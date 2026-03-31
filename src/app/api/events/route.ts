@@ -7,6 +7,7 @@ import { canManageEvent, canManageOrganization } from '@/server/accessControl';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import {
   deleteMatchesByEvent,
+  isEventFieldConflictError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
   saveEventSchedule,
@@ -582,13 +583,14 @@ const resolveSessionContext = (
 const buildDefaultEventVisibilityClause = (
   sessionUserId: string | null,
   isAdmin: boolean,
+  includeManagedOrganizationDrafts: boolean = false,
 ) => {
   const visibilityOr: any[] = [
     { state: 'PUBLISHED' },
     { state: null },
   ];
 
-  if (isAdmin) {
+  if (isAdmin || includeManagedOrganizationDrafts) {
     visibilityOr.push({ state: 'UNPUBLISHED' });
   } else if (sessionUserId) {
     visibilityOr.push({
@@ -650,11 +652,25 @@ export async function GET(req: NextRequest) {
   const ids = idsParam
     ? idsParam.split(',').map((id) => id.trim()).filter(Boolean)
     : undefined;
+  const includeManagedOrganizationDrafts = (() => {
+    if (normalizedState || !organizationId || !sessionContext) {
+      return Promise.resolve(false);
+    }
+    return prisma.organizations.findUnique({
+      where: { id: organizationId },
+      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    }).then((organization) => canManageOrganization(sessionContext, organization));
+  })();
+  const canViewOrganizationDrafts = await includeManagedOrganizationDrafts;
 
   const where: any = {};
   // Event templates are not real events and should not appear in normal lists.
   if (!normalizedState) {
-    const visibilityClause = buildDefaultEventVisibilityClause(sessionUserId, isAdminSession);
+    const visibilityClause = buildDefaultEventVisibilityClause(
+      sessionUserId,
+      isAdminSession,
+      canViewOrganizationDrafts,
+    );
     where.AND = [...(Array.isArray(where.AND) ? where.AND : []), ...visibilityClause.AND];
   }
   if (ids?.length) where.id = { in: ids };
@@ -753,7 +769,7 @@ export async function POST(req: NextRequest) {
   const eventPayload = {
     ...payload,
     id: eventId,
-    hostId: payload?.hostId ?? session.userId,
+    hostId: session.userId,
   } as Record<string, unknown>;
 
   try {
@@ -794,6 +810,20 @@ export async function POST(req: NextRequest) {
       { status: 201 },
     );
   } catch (error) {
+    if (isEventFieldConflictError(error)) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          conflicts: error.conflicts.map((conflict) => ({
+            fieldId: conflict.fieldId,
+            parentId: conflict.parentId,
+            start: conflict.start.toISOString(),
+            end: conflict.end.toISOString(),
+          })),
+        },
+        { status: 409 },
+      );
+    }
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

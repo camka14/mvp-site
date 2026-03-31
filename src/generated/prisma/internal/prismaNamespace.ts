@@ -2922,7 +2922,6 @@ export const FieldsScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   fieldNumber: 'fieldNumber',
-  divisions: 'divisions',
   lat: 'lat',
   long: 'long',
   heading: 'heading',

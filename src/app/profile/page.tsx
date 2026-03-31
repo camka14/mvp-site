@@ -49,6 +49,7 @@ import {
 import { formatDisplayDate, formatDisplayDateTime } from '@/lib/dateUtils';
 import { selectBillOwnerTeams } from '@/lib/profileBilling';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
+import { withSelectedProfileImage } from './profileImageSelection';
 
 const toDateInputValue = (value?: string | null): string => {
     if (!value) return '';
@@ -553,7 +554,7 @@ function ProfilePageContent() {
     };
 
     const handleImageUploaded = (fileId: string, imageUrl: string) => {
-        setProfileData(prev => ({ ...prev, profileImageId: imageUrl }));
+        setProfileData((prev) => withSelectedProfileImage(prev, fileId, imageUrl));
     };
 
     const handleEmailUpdate = async () => {
@@ -1431,6 +1432,7 @@ function ProfilePageContent() {
                                                 ? `/api/files/${profileData.profileImageId}/preview?w=320&h=320&fit=cover`
                                                 : ''
                                         }
+                                        onChange={handleImageUploaded}
                                         placeholder="Upload new profile picture"
                                     />
                                 </div>

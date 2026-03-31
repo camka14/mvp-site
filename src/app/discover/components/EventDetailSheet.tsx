@@ -78,6 +78,22 @@ type JoinIntent = {
     childEmail?: string | null;
 };
 
+const isChildJoinIntent = (intent: JoinIntent): boolean => (
+    intent.mode === 'child' || intent.mode === 'child_free_agent' || intent.mode === 'child_waitlist'
+);
+
+const dedupeSignSteps = (steps: SignStep[], fallbackSignerContext: 'participant' | 'parent_guardian' | 'child'): SignStep[] => {
+    const seen = new Set<string>();
+    return steps.filter((step) => {
+        const key = `${step.signerContext ?? fallbackSignerContext}:${step.templateId}:${step.documentId ?? ''}:${step.type}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+};
+
 const parseDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
     const parsed = new Date(value);
@@ -1167,6 +1183,49 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
     }, [currentEvent, loadEventDetails]);
 
+    const loadRequiredSignLinksForIntent = useCallback(async (intent: JoinIntent): Promise<SignStep[]> => {
+        if (!currentEvent || !user || !authUser?.email) {
+            throw new Error('Sign-in email is required to sign documents.');
+        }
+
+        const signerContext: 'participant' | 'parent_guardian' = isChildJoinIntent(intent)
+            ? 'parent_guardian'
+            : 'participant';
+
+        const parentLinks = await boldsignService.createSignLinks({
+            eventId: currentEvent.$id,
+            user,
+            userEmail: authUser.email,
+            signerContext,
+            childUserId: intent.childId,
+            childEmail: intent.childEmail ?? undefined,
+            timeoutMs: JOIN_API_TIMEOUT_MS,
+        });
+
+        const shouldCollectChildSignatureInSameSession = isChildJoinIntent(intent) && Boolean(
+            intent.childId
+            && normalizeEmailValue(authUser.email)
+            && normalizeEmailValue(intent.childEmail ?? null)
+            && normalizeEmailValue(authUser.email) === normalizeEmailValue(intent.childEmail ?? null),
+        );
+
+        if (!shouldCollectChildSignatureInSameSession || !intent.childId) {
+            return dedupeSignSteps(parentLinks, signerContext);
+        }
+
+        const childLinks = await boldsignService.createSignLinks({
+            eventId: currentEvent.$id,
+            user,
+            userEmail: authUser.email,
+            signerContext: 'child',
+            childUserId: intent.childId,
+            childEmail: intent.childEmail ?? undefined,
+            timeoutMs: JOIN_API_TIMEOUT_MS,
+        });
+
+        return dedupeSignSteps([...parentLinks, ...childLinks], signerContext);
+    }, [authUser?.email, currentEvent, user]);
+
     const beginSigningFlow = useCallback(async (intent: JoinIntent) => {
         if (!currentEvent || !user) {
             return false;
@@ -1180,8 +1239,19 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!authUser?.email) {
             throw new Error('Sign-in email is required to sign documents.');
         }
+        const links = await loadRequiredSignLinksForIntent(intent);
+        if (!links.length) {
+            setPendingJoin(null);
+            setSignLinks([]);
+            setCurrentSignIndex(0);
+            setPendingSignedDocumentId(null);
+            setPendingSignatureOperationId(null);
+            setShowPasswordModal(false);
+            return false;
+        }
+
         setPendingJoin(intent);
-        setSignLinks([]);
+        setSignLinks(links);
         setCurrentSignIndex(0);
         setPassword('');
         setPasswordError(null);
@@ -1189,7 +1259,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setPendingSignatureOperationId(null);
         setShowPasswordModal(true);
         return true;
-    }, [authUser?.email, currentEvent, user]);
+    }, [authUser?.email, currentEvent, loadRequiredSignLinksForIntent, user]);
 
     const finalizeJoin = useCallback(async (intent: JoinIntent) => {
         if (!user || !currentEvent) return;
@@ -1423,7 +1493,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setPasswordError(null);
         setJoinError(null);
         setJoinNotice(null);
-        let stage: 'confirm_password' | 'load_sign_links' | 'finalize_join' = 'confirm_password';
+        let stage: 'confirm_password' | 'finalize_join' = 'confirm_password';
         try {
             stage = 'confirm_password';
             await apiRequest<{ ok: true }>('/api/documents/confirm-password', {
@@ -1435,50 +1505,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     eventId: currentEvent.$id,
                 },
             });
-
-            const signerContext =
-                pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent' || pendingJoin.mode === 'child_waitlist'
-                    ? 'parent_guardian'
-                    : 'participant';
-            stage = 'load_sign_links';
-            const parentLinks = await boldsignService.createSignLinks({
-                eventId: currentEvent.$id,
-                user,
-                userEmail: authUser.email,
-                signerContext,
-                childUserId: pendingJoin.childId,
-                childEmail: pendingJoin.childEmail ?? undefined,
-                timeoutMs: JOIN_API_TIMEOUT_MS,
-            });
-            const shouldCollectChildSignatureInSameSession = (
-                pendingJoin.mode === 'child' || pendingJoin.mode === 'child_free_agent' || pendingJoin.mode === 'child_waitlist'
-            ) && Boolean(
-                pendingJoin.childId
-                && normalizeEmailValue(authUser.email)
-                && normalizeEmailValue(pendingJoin.childEmail ?? null)
-                && normalizeEmailValue(authUser.email) === normalizeEmailValue(pendingJoin.childEmail ?? null),
-            );
-            let links = parentLinks;
-            if (shouldCollectChildSignatureInSameSession && pendingJoin.childId) {
-                const childLinks = await boldsignService.createSignLinks({
-                    eventId: currentEvent.$id,
-                    user,
-                    userEmail: authUser.email,
-                    signerContext: 'child',
-                    childUserId: pendingJoin.childId,
-                    childEmail: pendingJoin.childEmail ?? undefined,
-                    timeoutMs: JOIN_API_TIMEOUT_MS,
-                });
-                const seen = new Set<string>();
-                links = [...parentLinks, ...childLinks].filter((link) => {
-                    const key = `${link.signerContext ?? signerContext}:${link.templateId}:${link.documentId ?? ''}:${link.type}`;
-                    if (seen.has(key)) {
-                        return false;
-                    }
-                    seen.add(key);
-                    return true;
-                });
-            }
+            const links = signLinks.length ? signLinks : await loadRequiredSignLinksForIntent(pendingJoin);
 
             if (!links.length) {
                 stage = 'finalize_join';
@@ -1514,7 +1541,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         } finally {
             setConfirmingPassword(false);
         }
-    }, [authUser?.email, currentEvent, finalizeJoin, password, pendingJoin, user]);
+    }, [
+        authUser?.email,
+        currentEvent,
+        finalizeJoin,
+        loadRequiredSignLinksForIntent,
+        password,
+        pendingJoin,
+        signLinks,
+        user,
+    ]);
 
     const recordSignature = useCallback(async (payload: {
         templateId: string;
@@ -1957,7 +1993,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setJoinError('This event has already started. Joining is closed.');
             return;
         }
-        if (!selection && canRegisterChild && activeChildren.length > 0) {
+        if (!selection && canRegisterChild && hasActiveChildren) {
             setShowJoinChoiceModal(true);
             return;
         }
@@ -2323,7 +2359,15 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
         return divisionEligibility.eligible !== false;
     };
-    const activeChildren = children.filter((child) => (child.linkStatus ?? 'active') === 'active');
+    const activeChildren = children.filter((child) => {
+        const normalizedLinkStatus = typeof child.linkStatus === 'string'
+            ? child.linkStatus.trim().toLowerCase()
+            : 'active';
+        return normalizedLinkStatus === 'active';
+    });
+    const hasActiveChildren = activeChildren.length > 0;
+    const shouldShowChildRegistrationPanel = canRegisterChild
+        && (childrenLoading || Boolean(childrenError) || hasActiveChildren);
     const childOptions = activeChildren.map((child) => {
         const name = `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Child';
         const childDob = parseDateValue(child.dateOfBirth ?? null);
@@ -2412,7 +2456,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     || (!selectedChildIsWaitlisted && (!selectedChildEligible || isDivisionSelectionMissing || selectedChildIsRegistered))
                 )
                 : (!selectedChildEligible || registeringChild || isDivisionSelectionMissing));
-    const childRegistrationPanel = canRegisterChild ? (
+    const childRegistrationPanel = shouldShowChildRegistrationPanel ? (
         <Paper withBorder p="sm" radius="md" className="space-y-3">
             <Text size="sm" fw={600}>
                 {isTeamSignup ? 'Child Free Agent' : (childWaitlistMode ? 'Child Waitlist' : 'Register a child')}
@@ -3737,3 +3781,4 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         </>
     );
 }
+

@@ -20,7 +20,6 @@ const fieldPatchSchema = z.object({
   heading: z.number().nullable().optional(),
   inUse: z.boolean().nullable().optional(),
   organizationId: z.string().nullable().optional(),
-  divisions: z.array(z.string()).optional(),
   rentalSlotIds: z.array(z.string()).optional(),
 });
 

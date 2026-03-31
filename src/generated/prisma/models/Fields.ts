@@ -73,7 +73,6 @@ export type FieldsCountAggregateOutputType = {
   createdAt: number
   updatedAt: number
   fieldNumber: number
-  divisions: number
   lat: number
   long: number
   heading: number
@@ -133,7 +132,6 @@ export type FieldsCountAggregateInputType = {
   createdAt?: true
   updatedAt?: true
   fieldNumber?: true
-  divisions?: true
   lat?: true
   long?: true
   heading?: true
@@ -236,7 +234,6 @@ export type FieldsGroupByOutputType = {
   createdAt: Date | null
   updatedAt: Date | null
   fieldNumber: number
-  divisions: string[]
   lat: number | null
   long: number | null
   heading: number | null
@@ -275,7 +272,6 @@ export type FieldsWhereInput = {
   createdAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
   fieldNumber?: Prisma.IntFilter<"Fields"> | number
-  divisions?: Prisma.StringNullableListFilter<"Fields">
   lat?: Prisma.FloatNullableFilter<"Fields"> | number | null
   long?: Prisma.FloatNullableFilter<"Fields"> | number | null
   heading?: Prisma.FloatNullableFilter<"Fields"> | number | null
@@ -291,7 +287,6 @@ export type FieldsOrderByWithRelationInput = {
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   fieldNumber?: Prisma.SortOrder
-  divisions?: Prisma.SortOrder
   lat?: Prisma.SortOrderInput | Prisma.SortOrder
   long?: Prisma.SortOrderInput | Prisma.SortOrder
   heading?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -310,7 +305,6 @@ export type FieldsWhereUniqueInput = Prisma.AtLeast<{
   createdAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"Fields"> | Date | string | null
   fieldNumber?: Prisma.IntFilter<"Fields"> | number
-  divisions?: Prisma.StringNullableListFilter<"Fields">
   lat?: Prisma.FloatNullableFilter<"Fields"> | number | null
   long?: Prisma.FloatNullableFilter<"Fields"> | number | null
   heading?: Prisma.FloatNullableFilter<"Fields"> | number | null
@@ -326,7 +320,6 @@ export type FieldsOrderByWithAggregationInput = {
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   fieldNumber?: Prisma.SortOrder
-  divisions?: Prisma.SortOrder
   lat?: Prisma.SortOrderInput | Prisma.SortOrder
   long?: Prisma.SortOrderInput | Prisma.SortOrder
   heading?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -350,7 +343,6 @@ export type FieldsScalarWhereWithAggregatesInput = {
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Fields"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Fields"> | Date | string | null
   fieldNumber?: Prisma.IntWithAggregatesFilter<"Fields"> | number
-  divisions?: Prisma.StringNullableListFilter<"Fields">
   lat?: Prisma.FloatNullableWithAggregatesFilter<"Fields"> | number | null
   long?: Prisma.FloatNullableWithAggregatesFilter<"Fields"> | number | null
   heading?: Prisma.FloatNullableWithAggregatesFilter<"Fields"> | number | null
@@ -366,7 +358,6 @@ export type FieldsCreateInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   fieldNumber: number
-  divisions?: Prisma.FieldsCreatedivisionsInput | string[]
   lat?: number | null
   long?: number | null
   heading?: number | null
@@ -382,7 +373,6 @@ export type FieldsUncheckedCreateInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   fieldNumber: number
-  divisions?: Prisma.FieldsCreatedivisionsInput | string[]
   lat?: number | null
   long?: number | null
   heading?: number | null
@@ -398,7 +388,6 @@ export type FieldsUpdateInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   fieldNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  divisions?: Prisma.FieldsUpdatedivisionsInput | string[]
   lat?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   long?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   heading?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -414,7 +403,6 @@ export type FieldsUncheckedUpdateInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   fieldNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  divisions?: Prisma.FieldsUpdatedivisionsInput | string[]
   lat?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   long?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   heading?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -430,7 +418,6 @@ export type FieldsCreateManyInput = {
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   fieldNumber: number
-  divisions?: Prisma.FieldsCreatedivisionsInput | string[]
   lat?: number | null
   long?: number | null
   heading?: number | null
@@ -446,7 +433,6 @@ export type FieldsUpdateManyMutationInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   fieldNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  divisions?: Prisma.FieldsUpdatedivisionsInput | string[]
   lat?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   long?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   heading?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -462,7 +448,6 @@ export type FieldsUncheckedUpdateManyInput = {
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   fieldNumber?: Prisma.IntFieldUpdateOperationsInput | number
-  divisions?: Prisma.FieldsUpdatedivisionsInput | string[]
   lat?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   long?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   heading?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -486,7 +471,6 @@ export type FieldsCountOrderByAggregateInput = {
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   fieldNumber?: Prisma.SortOrder
-  divisions?: Prisma.SortOrder
   lat?: Prisma.SortOrder
   long?: Prisma.SortOrder
   heading?: Prisma.SortOrder
@@ -539,10 +523,6 @@ export type FieldsSumOrderByAggregateInput = {
   heading?: Prisma.SortOrder
 }
 
-export type FieldsCreatedivisionsInput = {
-  set: string[]
-}
-
 export type FieldsCreaterentalSlotIdsInput = {
   set: string[]
 }
@@ -561,11 +541,6 @@ export type IntFieldUpdateOperationsInput = {
   decrement?: number
   multiply?: number
   divide?: number
-}
-
-export type FieldsUpdatedivisionsInput = {
-  set?: string[]
-  push?: string | string[]
 }
 
 export type NullableFloatFieldUpdateOperationsInput = {
@@ -596,7 +571,6 @@ export type FieldsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   createdAt?: boolean
   updatedAt?: boolean
   fieldNumber?: boolean
-  divisions?: boolean
   lat?: boolean
   long?: boolean
   heading?: boolean
@@ -612,7 +586,6 @@ export type FieldsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   createdAt?: boolean
   updatedAt?: boolean
   fieldNumber?: boolean
-  divisions?: boolean
   lat?: boolean
   long?: boolean
   heading?: boolean
@@ -628,7 +601,6 @@ export type FieldsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   createdAt?: boolean
   updatedAt?: boolean
   fieldNumber?: boolean
-  divisions?: boolean
   lat?: boolean
   long?: boolean
   heading?: boolean
@@ -644,7 +616,6 @@ export type FieldsSelectScalar = {
   createdAt?: boolean
   updatedAt?: boolean
   fieldNumber?: boolean
-  divisions?: boolean
   lat?: boolean
   long?: boolean
   heading?: boolean
@@ -655,7 +626,7 @@ export type FieldsSelectScalar = {
   organizationId?: boolean
 }
 
-export type FieldsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "fieldNumber" | "divisions" | "lat" | "long" | "heading" | "inUse" | "name" | "rentalSlotIds" | "location" | "organizationId", ExtArgs["result"]["fields"]>
+export type FieldsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "fieldNumber" | "lat" | "long" | "heading" | "inUse" | "name" | "rentalSlotIds" | "location" | "organizationId", ExtArgs["result"]["fields"]>
 
 export type $FieldsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Fields"
@@ -665,7 +636,6 @@ export type $FieldsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     createdAt: Date | null
     updatedAt: Date | null
     fieldNumber: number
-    divisions: string[]
     lat: number | null
     long: number | null
     heading: number | null
@@ -1101,7 +1071,6 @@ export interface FieldsFieldRefs {
   readonly createdAt: Prisma.FieldRef<"Fields", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"Fields", 'DateTime'>
   readonly fieldNumber: Prisma.FieldRef<"Fields", 'Int'>
-  readonly divisions: Prisma.FieldRef<"Fields", 'String[]'>
   readonly lat: Prisma.FieldRef<"Fields", 'Float'>
   readonly long: Prisma.FieldRef<"Fields", 'Float'>
   readonly heading: Prisma.FieldRef<"Fields", 'Float'>

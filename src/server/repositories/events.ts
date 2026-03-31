@@ -50,6 +50,27 @@ type PrismaLike = PrismaClient | any;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
 const warnedMissingEventArguments = new Set<string>();
 
+export type EventFieldScheduleConflict = {
+  fieldId: string;
+  blockId: string;
+  parentId: string | null;
+  start: Date;
+  end: Date;
+};
+
+export class EventFieldConflictError extends Error {
+  readonly conflicts: EventFieldScheduleConflict[];
+
+  constructor(conflicts: EventFieldScheduleConflict[]) {
+    super('Selected fields and time range conflict with existing reservations.');
+    this.name = 'EventFieldConflictError';
+    this.conflicts = conflicts;
+  }
+}
+
+export const isEventFieldConflictError = (error: unknown): error is EventFieldConflictError =>
+  error instanceof EventFieldConflictError;
+
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
@@ -723,7 +744,6 @@ const normalizeFieldIds = (value: unknown): string[] => {
 const buildDivisionFieldMap = (
   divisionKeys: string[],
   fieldIds: string[],
-  _fields: any[],
   incomingMap: Record<string, string[]>,
 ): Record<string, string[]> => {
   const map: Record<string, Set<string>> = {};
@@ -752,22 +772,6 @@ const buildDivisionFieldMap = (
   const result: Record<string, string[]> = {};
   for (const [key, ids] of Object.entries(map)) {
     result[key] = Array.from(ids).filter((id) => allowed.has(id));
-  }
-  return result;
-};
-
-const buildLegacyFieldDivisionMap = (divisionFieldMap: Record<string, string[]>): Record<string, string[]> => {
-  const map = new Map<string, Set<string>>();
-  for (const [divisionKey, fieldIds] of Object.entries(divisionFieldMap)) {
-    for (const fieldId of fieldIds) {
-      const existing = map.get(fieldId) ?? new Set<string>();
-      existing.add(divisionKey);
-      map.set(fieldId, existing);
-    }
-  }
-  const result: Record<string, string[]> = {};
-  for (const [fieldId, divisionKeys] of map.entries()) {
-    result[fieldId] = Array.from(divisionKeys);
   }
   return result;
 };
@@ -1038,9 +1042,7 @@ const buildFields = (
       .map(([divisionId]) => divisionId);
     const divisionIds = explicitDivisionIds.length
       ? explicitDivisionIds
-      : ensureStringArray(row.divisions).length
-        ? ensureStringArray(row.divisions)
-        : fallbackDivisionIds;
+      : fallbackDivisionIds;
     const divisions = divisionIds.map((id) =>
       divisionMap.get(id) ?? new Division(id, buildDivisionDisplayName(id)),
     );
@@ -1282,6 +1284,7 @@ const attachFieldSchedulingConflicts = async (params: {
   fields: Record<string, PlayingField>;
   windowStart: Date;
   windowEnd: Date;
+  currentEventSlotIdsOverride?: string[];
 }): Promise<void> => {
   const fieldIds = Object.keys(params.fields);
   if (!fieldIds.length) {
@@ -1293,15 +1296,22 @@ const attachFieldSchedulingConflicts = async (params: {
 
   clearManagedFieldBlockingEvents(params.fields);
 
-  const currentEventRow = await params.client.events.findUnique({
-    where: { id: params.eventId },
-    select: {
-      organizationId: true,
-      timeSlotIds: true,
-    },
-  });
+  const shouldLookupCurrentEvent = !params.currentEventSlotIdsOverride || !normalizeEntityId(params.organizationId);
+  const currentEventRow = shouldLookupCurrentEvent
+    ? await params.client.events.findUnique({
+      where: { id: params.eventId },
+      select: {
+        organizationId: true,
+        timeSlotIds: true,
+      },
+    })
+    : null;
   const scopedOrganizationId = normalizeEntityId(params.organizationId) ?? normalizeEntityId(currentEventRow?.organizationId);
-  const currentEventSlotIds = new Set(ensureStringArray(currentEventRow?.timeSlotIds));
+  const currentEventSlotIds = new Set(
+    params.currentEventSlotIdsOverride
+      ? ensureStringArray(params.currentEventSlotIdsOverride)
+      : ensureStringArray(currentEventRow?.timeSlotIds),
+  );
 
   const [externalMatchRowsRaw, externalEventRowsRaw, fieldRows] = await Promise.all([
     params.client.matches.findMany({
@@ -1544,6 +1554,104 @@ const toOptionalDate = (value: unknown): Date | null => {
   }
   const parsed = new Date(value as string | number);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const buildConflictFieldMap = (fieldIds: string[]): Record<string, PlayingField> => {
+  const fields: Record<string, PlayingField> = {};
+  for (const fieldId of fieldIds) {
+    fields[fieldId] = {
+      id: fieldId,
+      events: [],
+      matches: [],
+      rentalSlots: [],
+    } as unknown as PlayingField;
+  }
+  return fields;
+};
+
+const collectFieldScheduleConflicts = (params: {
+  fields: Record<string, PlayingField>;
+  start: Date;
+  end: Date;
+}): EventFieldScheduleConflict[] => {
+  const conflicts: EventFieldScheduleConflict[] = [];
+  for (const [fieldId, field] of Object.entries(params.fields)) {
+    for (const block of ensureArray((field as any)?.events)) {
+      const blockStart = toOptionalDate((block as any)?.start);
+      const blockEnd = toOptionalDate((block as any)?.end);
+      if (!blockStart || !blockEnd || blockEnd.getTime() <= blockStart.getTime()) {
+        continue;
+      }
+      if (!rangesOverlap(blockStart, blockEnd, params.start, params.end)) {
+        continue;
+      }
+      conflicts.push({
+        fieldId,
+        blockId: String((block as any)?.id ?? ''),
+        parentId: normalizeEntityId((block as any)?.parentId),
+        start: blockStart,
+        end: blockEnd,
+      });
+    }
+  }
+  return conflicts;
+};
+
+export const assertNoEventFieldSchedulingConflicts = async (params: {
+  client: PrismaLike;
+  eventId: string;
+  organizationId?: string | null;
+  fieldIds: string[];
+  timeSlotIds?: string[];
+  start: Date;
+  end: Date;
+  noFixedEndDateTime: boolean;
+  eventType?: string | null;
+  parentEvent?: string | null;
+}): Promise<void> => {
+  const eventType = typeof params.eventType === 'string' ? params.eventType.toUpperCase() : '';
+  const parentEventId = normalizeEntityId(params.parentEvent);
+  const shouldValidate = eventType === 'EVENT' || (eventType === 'WEEKLY_EVENT' && !parentEventId);
+  if (!shouldValidate) {
+    return;
+  }
+
+  const fieldIds = normalizeFieldIds(params.fieldIds);
+  if (!fieldIds.length) {
+    return;
+  }
+  if (params.end.getTime() <= params.start.getTime()) {
+    return;
+  }
+
+  const conflictWindowEnd = resolveFieldConflictWindowEnd({
+    start: params.start,
+    end: params.end,
+    noFixedEndDateTime: params.noFixedEndDateTime,
+  });
+  if (conflictWindowEnd.getTime() <= params.start.getTime()) {
+    return;
+  }
+
+  const fields = buildConflictFieldMap(fieldIds);
+  await attachFieldSchedulingConflicts({
+    client: params.client,
+    eventId: params.eventId,
+    organizationId: params.organizationId ?? null,
+    fields,
+    windowStart: params.start,
+    windowEnd: conflictWindowEnd,
+    currentEventSlotIdsOverride: ensureStringArray(params.timeSlotIds),
+  });
+
+  const conflicts = collectFieldScheduleConflicts({
+    fields,
+    start: params.start,
+    end: conflictWindowEnd,
+  });
+  if (conflicts.length > 0) {
+    throw new EventFieldConflictError(conflicts);
+  }
 };
 
 const buildMatches = (
@@ -2709,6 +2817,21 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       },
     })
     : [];
+  const requestedPayloadHostId = normalizeEntityId(payload.hostId);
+  const allowCreatorHostAssignment = !existingEvent && Boolean(requestedPayloadHostId);
+  const effectiveOrganizationAccess = organizationAccess
+    ? {
+      ...organizationAccess,
+      hostIds: allowCreatorHostAssignment
+        ? Array.from(
+          new Set([
+            ...ensureStringArray(organizationAccess.hostIds),
+            requestedPayloadHostId as string,
+          ]),
+        )
+        : organizationAccess.hostIds,
+    }
+    : null;
   const organizationAssignments = resolvedOrganizationId
     ? sanitizeOrganizationEventAssignments(
       {
@@ -2716,10 +2839,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         assistantHostIds: ensureStringArray(payload.assistantHostIds),
         officialIds: ensureStringArray(payload.officialIds),
       },
-      organizationAccess ? { ...organizationAccess, staffMembers: organizationStaffMembers, staffInvites: organizationStaffInvites } : null,
+      effectiveOrganizationAccess
+        ? { ...effectiveOrganizationAccess, staffMembers: organizationStaffMembers, staffInvites: organizationStaffInvites }
+        : null,
     )
     : null;
-  const normalizedHostId = organizationAssignments?.hostId ?? resolvedHostId ?? '';
+  const normalizedHostId = organizationAssignments?.hostId ?? requestedPayloadHostId ?? resolvedHostId ?? '';
   const normalizedAssistantHostIds = organizationAssignments
     ? organizationAssignments.assistantHostIds
     : ensureStringArray(payload.assistantHostIds);
@@ -2850,10 +2975,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const divisionFieldMap = buildDivisionFieldMap(
     normalizedEventDivisionIds,
     fieldIds,
-    fields,
     incomingDivisionFieldMap,
   );
-  const legacyFieldDivisionMap = buildLegacyFieldDivisionMap(divisionFieldMap);
 
   const payloadEventType = typeof payload.eventType === 'string'
     ? payload.eventType.toUpperCase()
@@ -2890,6 +3013,20 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
 
   if (!noFixedEndDateTime && (!normalizedEnd || normalizedEnd.getTime() <= start.getTime())) {
     throw new Error('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
+  }
+  if (normalizedEnd) {
+    await assertNoEventFieldSchedulingConflicts({
+      client,
+      eventId: id,
+      organizationId: resolvedOrganizationId,
+      fieldIds,
+      timeSlotIds,
+      start,
+      end: normalizedEnd,
+      noFixedEndDateTime,
+      eventType: nextEventType,
+      parentEvent: normalizedParentEvent,
+    });
   }
 
   const normalizedLeagueScoringConfig = normalizeLeagueScoringConfigPayload(payload.leagueScoringConfig);
@@ -3123,29 +3260,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     const normalizedRentalSlotIds = hasRentalSlotIdsInput
       ? ensureArray(field.rentalSlotIds).map((value) => String(value)).filter(Boolean)
       : null;
-    // Backward-compatible mirror so legacy clients can still inspect field division tags.
-    let fieldDivisions = legacyFieldDivisionMap[fieldId] ?? [];
-    if (!fieldDivisions.length) {
-      fieldDivisions = ensureStringArray(field.divisions);
-    }
-    if (!fieldDivisions.length && normalizedEventDivisionIds.length) {
-      fieldDivisions = [...normalizedEventDivisionIds];
-    }
-    if (!fieldDivisions.length) {
-      const existing = await client.fields.findUnique({ where: { id: fieldId }, select: { divisions: true } });
-      if (existing?.divisions?.length) {
-        fieldDivisions = existing.divisions;
-      }
-    }
-    if (!fieldDivisions.length) {
-      fieldDivisions = [DEFAULT_DIVISION_KEY];
-    }
     await client.fields.upsert({
       where: { id: fieldId },
       create: {
         id: fieldId,
         fieldNumber: field.fieldNumber ?? 0,
-        divisions: fieldDivisions,
         lat: field.lat ?? null,
         long: field.long ?? null,
         heading: field.heading ?? null,
@@ -3159,7 +3278,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       },
       update: {
         fieldNumber: field.fieldNumber ?? 0,
-        divisions: fieldDivisions,
         lat: field.lat ?? null,
         long: field.long ?? null,
         heading: field.heading ?? null,
@@ -3286,6 +3404,3 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
 
   return id;
 };
-
-
-

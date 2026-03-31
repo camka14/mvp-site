@@ -19,6 +19,16 @@ const schema = z.object({
   divisionTypeKey: z.string().optional(),
 }).passthrough();
 
+const normalizeIdList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const normalized = value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry) => entry.length > 0);
+  return Array.from(new Set(normalized));
+};
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -40,6 +50,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       divisions: true,
       requiredTemplateIds: true,
       organizationId: true,
+      userIds: true,
+      waitListIds: true,
     },
   });
   if (!event) {
@@ -143,6 +155,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   });
 
   if (existingRegistration) {
+    if (existingRegistration.status === 'ACTIVE') {
+      const currentUserIds = normalizeIdList(event.userIds);
+      const currentWaitListIds = normalizeIdList(event.waitListIds);
+      const nextUserIds = currentUserIds.includes(childId)
+        ? currentUserIds
+        : [...currentUserIds, childId];
+      const nextWaitListIds = currentWaitListIds.filter((value) => value !== childId);
+      const membershipChanged = nextUserIds.length !== currentUserIds.length
+        || nextWaitListIds.length !== currentWaitListIds.length;
+      if (membershipChanged) {
+        await prisma.events.update({
+          where: { id: eventId },
+          data: {
+            userIds: nextUserIds,
+            waitListIds: nextWaitListIds,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+
     const warnings = [
       ...(!childEmail && childAgeAtEvent < 13
         ? ['Under-13 child profile is missing email; child signature cannot be completed until email is added.']
@@ -193,6 +226,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       updatedAt: new Date(),
     },
   });
+
+  if (registration.status === 'ACTIVE') {
+    const currentUserIds = normalizeIdList(event.userIds);
+    const currentWaitListIds = normalizeIdList(event.waitListIds);
+    const nextUserIds = currentUserIds.includes(childId)
+      ? currentUserIds
+      : [...currentUserIds, childId];
+    const nextWaitListIds = currentWaitListIds.filter((value) => value !== childId);
+    const membershipChanged = nextUserIds.length !== currentUserIds.length
+      || nextWaitListIds.length !== currentWaitListIds.length;
+    if (membershipChanged) {
+      await prisma.events.update({
+        where: { id: eventId },
+        data: {
+          userIds: nextUserIds,
+          waitListIds: nextWaitListIds,
+          updatedAt: new Date(),
+        },
+      });
+    }
+  }
 
   const warnings = [
     ...(!childEmail && childAgeAtEvent < 13

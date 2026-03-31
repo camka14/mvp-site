@@ -26,7 +26,6 @@ const createSchema = z.object({
   heading: z.number().optional(),
   inUse: z.boolean().optional(),
   organizationId: z.string().optional(),
-  divisions: z.array(z.string()).optional(),
   rentalSlotIds: z.array(z.string()).optional(),
 }).passthrough();
 
@@ -95,7 +94,6 @@ export async function POST(req: NextRequest) {
           heading: data.heading ?? null,
           inUse: data.inUse ?? null,
           organizationId: orgId,
-          divisions: Array.isArray(data.divisions) ? data.divisions : [],
           rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
           createdAt: new Date(),
           updatedAt: new Date(),

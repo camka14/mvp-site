@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 const prismaMock = {
   events: {
     findUnique: jest.fn(),
+    update: jest.fn(),
   },
   userData: {
     findUnique: jest.fn(),
@@ -60,10 +61,17 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
       maxAge: null,
       requiredTemplateIds: ['tmpl_1'],
       organizationId: null,
+      userIds: [],
+      waitListIds: [],
     });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
     prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.events.update.mockResolvedValue({
+      id: 'event_1',
+      userIds: ['child_1'],
+      waitListIds: [],
+    });
     prismaMock.userData.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => {
       if (where.id === 'parent_1') {
         return { dateOfBirth: new Date('1988-04-01T00:00:00.000Z') };
@@ -138,6 +146,43 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
     expect(payload.consent).toEqual(expect.objectContaining({
       status: 'sent',
       childEmail: 'child@example.com',
+    }));
+  });
+
+  it('projects active child registration into event userIds when no consent is required', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      requiredTemplateIds: [],
+      organizationId: null,
+      userIds: [],
+      waitListIds: ['child_1'],
+    });
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValueOnce({ email: 'child@example.com' });
+    prismaMock.eventRegistrations.create.mockResolvedValueOnce({
+      id: 'registration_active',
+      status: 'ACTIVE',
+      eventId: 'event_1',
+      registrantId: 'child_1',
+      parentId: 'parent_1',
+      registrantType: 'CHILD',
+      consentStatus: null,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/registrations/child', { childId: 'child_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'event_1' },
+      data: expect.objectContaining({
+        userIds: ['child_1'],
+        waitListIds: [],
+      }),
     }));
   });
 });

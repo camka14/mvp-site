@@ -281,6 +281,33 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('includes organization unpublished events when requester can manage the organization', async () => {
+    getTokenFromRequestMock.mockReturnValueOnce('token_1');
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValueOnce({ id: 'org_1', ownerId: 'owner_1' });
+    prismaMock.staffMembers.findUnique.mockResolvedValueOnce({
+      organizationId: 'org_1',
+      userId: 'host_1',
+      types: ['HOST'],
+    });
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events?organizationId=org_1'));
+
+    expect(res.status).toBe(200);
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.AND).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          OR: expect.arrayContaining([
+            { state: 'UNPUBLISHED' },
+          ]),
+        }),
+      ]),
+    );
+  });
+
   it('includes user-owned unpublished events in POST /api/events/search visibility', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
     verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });

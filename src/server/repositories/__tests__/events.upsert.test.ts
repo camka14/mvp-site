@@ -9,7 +9,7 @@ import { buildEventDivisionId } from '@/lib/divisionTypes';
 
 type MockClient = {
   $executeRaw: jest.Mock;
-  events: { findUnique: jest.Mock; upsert: jest.Mock };
+  events: { findUnique: jest.Mock; findMany: jest.Mock; upsert: jest.Mock };
   sports: { findUnique: jest.Mock };
   organizations: { findUnique: jest.Mock };
   staffMembers: { findMany: jest.Mock };
@@ -17,17 +17,18 @@ type MockClient = {
   userData: { findUnique: jest.Mock };
   leagueScoringConfigs: { upsert: jest.Mock };
   eventOfficials: { findMany: jest.Mock; deleteMany: jest.Mock; create: jest.Mock };
-  fields: { findUnique: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
-  matches: { deleteMany: jest.Mock };
+  fields: { findUnique: jest.Mock; findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
+  matches: { findMany: jest.Mock; deleteMany: jest.Mock };
   divisions: { findMany: jest.Mock; deleteMany: jest.Mock; upsert: jest.Mock };
   teams: { upsert: jest.Mock };
-  timeSlots: { upsert: jest.Mock; deleteMany: jest.Mock };
+  timeSlots: { findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
 };
 
 const createMockClient = (): MockClient => ({
   $executeRaw: jest.fn().mockResolvedValue(1),
   events: {
     findUnique: jest.fn().mockResolvedValue(null),
+    findMany: jest.fn().mockResolvedValue([]),
     upsert: jest.fn().mockResolvedValue(undefined),
   },
   sports: {
@@ -55,10 +56,12 @@ const createMockClient = (): MockClient => ({
   },
   fields: {
     findUnique: jest.fn().mockResolvedValue(null),
+    findMany: jest.fn().mockResolvedValue([]),
     upsert: jest.fn().mockResolvedValue(undefined),
     deleteMany: jest.fn().mockResolvedValue(undefined),
   },
   matches: {
+    findMany: jest.fn().mockResolvedValue([]),
     deleteMany: jest.fn().mockResolvedValue(undefined),
   },
   divisions: {
@@ -70,6 +73,7 @@ const createMockClient = (): MockClient => ({
     upsert: jest.fn().mockResolvedValue(undefined),
   },
   timeSlots: {
+    findMany: jest.fn().mockResolvedValue([]),
     upsert: jest.fn().mockResolvedValue(undefined),
     deleteMany: jest.fn().mockResolvedValue(undefined),
   },
@@ -364,10 +368,7 @@ describe('upsertEventFromPayload', () => {
 
     await upsertEventFromPayload(payload, client as any);
 
-    expect(client.fields.findUnique).not.toHaveBeenCalled();
     const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
-    expect(fieldUpsertArg.create.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
-    expect(fieldUpsertArg.update.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
 
@@ -413,16 +414,6 @@ describe('upsertEventFromPayload', () => {
     await upsertEventFromPayload(payload, client as any);
 
     const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
-    expect(fieldUpsertArg.create.divisions).toEqual([
-      divisionId('beginner'),
-      divisionId('intermediate'),
-      divisionId('advanced'),
-    ]);
-    expect(fieldUpsertArg.update.divisions).toEqual([
-      divisionId('beginner'),
-      divisionId('intermediate'),
-      divisionId('advanced'),
-    ]);
     expect(client.divisions.upsert).toHaveBeenCalledTimes(3);
   });
 
@@ -446,8 +437,6 @@ describe('upsertEventFromPayload', () => {
     await upsertEventFromPayload(payload, client as any);
 
     const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
-    expect(fieldUpsertArg.create.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
-    expect(fieldUpsertArg.update.divisions).toEqual([divisionId('beginner'), divisionId('advanced')]);
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
 
@@ -988,6 +977,78 @@ describe('upsertEventFromPayload', () => {
     const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
     expect(eventUpsertArgs.create.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
     expect(eventUpsertArgs.update.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
+  });
+
+  it('keeps the creator as host for new organization events even when hostIds exclude them', async () => {
+    const client = createMockClient();
+    client.organizations.findUnique
+      .mockResolvedValueOnce({
+        ownerId: 'owner_1',
+        hostIds: ['owner_1'],
+        officialIds: [],
+      })
+      .mockResolvedValueOnce({ hasStripeAccount: true });
+
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'EVENT',
+      organizationId: 'org_1',
+      hostId: 'creator_1',
+      end: '2026-01-05T11:00:00.000Z',
+      timeSlots: [],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create.hostId).toBe('creator_1');
+    expect(eventUpsertArgs.update.hostId).toBe('creator_1');
+  });
+
+  it('rejects overlapping rental event windows on the same field', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'EVENT',
+      start: '2026-01-05T13:30:00.000Z',
+      end: '2026-01-05T16:00:00.000Z',
+      divisions: ['OPEN'],
+      fields: [
+        {
+          $id: 'field_1',
+          fieldNumber: 1,
+          name: 'Court A',
+          location: 'Main Gym',
+          lat: 0,
+          long: 0,
+          divisions: ['OPEN'],
+          rentalSlotIds: [],
+        },
+      ],
+      timeSlots: [],
+    };
+    client.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_existing',
+        eventType: 'EVENT',
+        parentEvent: null,
+        start: new Date('2026-01-05T14:00:00.000Z'),
+        end: new Date('2026-01-05T17:00:00.000Z'),
+        fieldIds: ['field_1'],
+        timeSlotIds: [],
+      },
+    ]);
+    client.fields.findMany.mockResolvedValueOnce([
+      {
+        id: 'field_1',
+        rentalSlotIds: [],
+      },
+    ]);
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'Selected fields and time range conflict with existing reservations.',
+    );
+    expect(client.events.upsert).not.toHaveBeenCalled();
   });
 
   it('persists official staffing payload fields and event-official rows', async () => {

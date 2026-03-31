@@ -1472,8 +1472,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             'PLAYOFF',
           )
         : [];
-      const incomingFieldDivisionMap = {};
-
       if (Object.prototype.hasOwnProperty.call(payload, 'divisions')) {
         const normalized = hasDivisionDetailsInput
           ? normalizeDivisionIds(payload.divisions, eventId)
@@ -1825,7 +1823,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           nextDivisionKeys,
           nextFieldIds,
           currentDivisionFieldMap,
-          incomingFieldDivisionMap,
           incomingDivisionFieldMap,
         );
         divisionFieldMapChanged = !divisionFieldMapsEqual(currentDivisionFieldMap, nextDivisionFieldMap);
@@ -1918,19 +1915,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           const field = incomingFieldsById.get(fieldId);
           if (!field) continue;
           const now = new Date();
-          const fieldDivisions = hasDivisionDetailsInput
-            ? normalizeDivisionIds(field.divisions, eventId)
-            : normalizeDivisionKeys(field.divisions);
-          const divisions = fieldDivisions.length
-            ? fieldDivisions
-            : (
-              nextDivisionKeys.length
-                ? nextDivisionKeys
-                : [hasDivisionDetailsInput ? buildEventDivisionId(eventId, DEFAULT_DIVISION_KEY) : DEFAULT_DIVISION_KEY]
-            );
           const fieldData = {
             fieldNumber: normalizeFieldNumber(field.fieldNumber, index + 1),
-            divisions,
             lat: normalizeNullableNumber(field.lat),
             long: normalizeNullableNumber(field.long),
             heading: normalizeNullableNumber(field.heading),

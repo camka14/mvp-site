@@ -592,11 +592,6 @@ const normalizeSlotFieldIds = (slot: { scheduledFieldId?: string; scheduledField
         : [];
 };
 
-const defaultFieldDivisionKeys = (eventDivisions: unknown): string[] => {
-    const normalized = normalizeDivisionKeys(eventDivisions);
-    return normalized.length ? normalized : [DEFAULT_DIVISION_KEY];
-};
-
 const resolveSportInput = (sportInput?: Sport | string | null): string => {
     const sportName = typeof sportInput === 'string'
         ? sportInput
@@ -907,34 +902,6 @@ const normalizeDivisionFieldIds = (
         result[divisionKey] = selected.length ? selected : [...availableFieldIds];
     });
 
-    return result;
-};
-
-const deriveDivisionFieldIdsFromFields = (
-    fields: Field[],
-    divisionKeys: string[],
-    fallbackFieldIds: string[],
-): Record<string, string[]> => {
-    const normalizedDivisionKeys = divisionKeys.length ? divisionKeys : [DEFAULT_DIVISION_KEY];
-    const map = new Map<string, Set<string>>();
-    normalizedDivisionKeys.forEach((divisionKey) => map.set(divisionKey, new Set<string>()));
-
-    fields.forEach((field) => {
-        const fieldId = field?.$id;
-        if (!fieldId) return;
-        const keys = normalizeDivisionKeys(field.divisions);
-        keys.forEach((key) => {
-            const bucket = map.get(key) ?? new Set<string>();
-            bucket.add(fieldId);
-            map.set(key, bucket);
-        });
-    });
-
-    const result: Record<string, string[]> = {};
-    normalizedDivisionKeys.forEach((divisionKey) => {
-        const mapped = Array.from(map.get(divisionKey) ?? []);
-        result[divisionKey] = mapped.length ? mapped : [...fallbackFieldIds];
-    });
     return result;
 };
 
@@ -3705,27 +3672,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     .map((detail) => detail.id),
             );
         })();
-        const defaultDivisionFieldIds = (() => {
-            const normalizedFromEvent = normalizeDivisionFieldIds(
-                base.divisionFieldIds,
-                defaultDivisionKeys,
-                availableFieldIdsForDivisions,
-            );
-            const hasEventMapValues = Object.values(normalizedFromEvent).some((fieldIds) => fieldIds.length > 0);
-            if (hasEventMapValues) {
-                return normalizedFromEvent;
-            }
-            const derivedFromFields = deriveDivisionFieldIdsFromFields(
-                defaultFields,
-                defaultDivisionKeys,
-                availableFieldIdsForDivisions,
-            );
-            return normalizeDivisionFieldIds(
-                derivedFromFields,
-                defaultDivisionKeys,
-                availableFieldIdsForDivisions,
-            );
-        })();
+        const defaultDivisionFieldIds = normalizeDivisionFieldIds(
+            base.divisionFieldIds,
+            defaultDivisionKeys,
+            availableFieldIdsForDivisions,
+        );
 
         const defaults = immutableDefaults ?? {};
         const defaultFieldId = Array.isArray(defaults.fields) && defaults.fields.length > 0
@@ -6688,20 +6639,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setFields(sanitizeFieldsForForm(immutableFields), { shouldDirty: false });
     }, [hasImmutableFields, immutableFields, setFields]);
 
-    // When provisioning local fields, mirror count/division changes into the generated list.
+    // When provisioning local fields, mirror count changes into the generated list.
     useEffect(() => {
         if (!shouldManageLocalFields) {
             return;
         }
-        const fallbackDivisions = defaultFieldDivisionKeys(eventData.divisions);
         setFields(prev => {
             const normalized: Field[] = prev.slice(0, fieldCount).map((field, index) => ({
                 ...field,
                 fieldNumber: index + 1,
-                divisions: (() => {
-                    const current = normalizeDivisionKeys(field.divisions);
-                    return current.length ? current : fallbackDivisions;
-                })(),
             } as Field));
 
             if (normalized.length < fieldCount) {
@@ -6713,14 +6659,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         location: '',
                         lat: 0,
                         long: 0,
-                        divisions: fallbackDivisions,
                     } as Field);
                 }
             }
 
             return normalized;
         }, { shouldDirty: false });
-    }, [fieldCount, shouldManageLocalFields, eventData.divisions, setFields]);
+    }, [fieldCount, shouldManageLocalFields, setFields]);
 
     // For non-organization events with existing facilities, seed the field list with event ordering.
     useEffect(() => {
@@ -6753,13 +6698,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const divisionKeys = normalizeDivisionKeys(eventData.divisions);
         const availableFieldIds = toFieldIdList(fields);
 
-        const nextDivisionFieldIds = shouldManageLocalFields
-            ? normalizeDivisionFieldIds(
-                deriveDivisionFieldIdsFromFields(fields, divisionKeys, availableFieldIds),
-                divisionKeys,
-                availableFieldIds,
-            )
-            : normalizeDivisionFieldIds(divisionFieldIds, divisionKeys, availableFieldIds);
+        const nextDivisionFieldIds = normalizeDivisionFieldIds(
+            divisionFieldIds,
+            divisionKeys,
+            availableFieldIds,
+        );
 
         if (!divisionFieldIdsEqual(divisionFieldIds, nextDivisionFieldIds)) {
             setValue('divisionFieldIds', nextDivisionFieldIds, { shouldDirty: false, shouldValidate: true });
@@ -6769,7 +6712,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.divisions,
         fields,
         setValue,
-        shouldManageLocalFields,
     ]);
 
     // Clear slot field references that point to fields no longer selected/available.
@@ -8043,15 +7985,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
         } else {
             const localFields = hasImmutableFields ? immutableFields : fields;
-            const fallbackDivisions = defaultFieldDivisionKeys(normalizedDivisionKeys);
             if (localFields.length) {
                 draft.fields = localFields.map((field, idx) => ({
                     ...field,
                     fieldNumber: field.fieldNumber ?? idx + 1,
-                    divisions: (() => {
-                        const normalized = normalizeDivisionKeys(field.divisions);
-                        return normalized.length ? normalized : fallbackDivisions;
-                    })(),
                 }));
                 const fieldIds = toIdList(localFields);
                 if (fieldIds.length) {

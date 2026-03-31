@@ -1347,7 +1347,16 @@ export default function FieldsTabContent({ organization, organizationId, current
   }, [canManage, fields, selectedField]);
 
   const CalendarEvent: any = ({ event }: any) => {
-    const title = event?.metaType === 'booked' ? 'Booked' : (event.resource?.name || event.title);
+    const normalizedFieldName = typeof event?.fieldName === 'string' ? event.fieldName.trim() : '';
+    const titlePrefix = normalizedFieldName ? `${normalizedFieldName}: ` : '';
+
+    let title = event.resource?.name || event.title;
+    if (event?.metaType === 'booked') {
+      title = `${titlePrefix}Booked Slot`;
+    } else if (event?.metaType === 'rental') {
+      title = `${titlePrefix}Rental Slot`;
+    }
+
     return (
       <div className="leading-tight">
         <div className="truncate">{title}</div>

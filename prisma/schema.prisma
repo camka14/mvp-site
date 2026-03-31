@@ -119,7 +119,6 @@ model Fields {
   createdAt      DateTime?
   updatedAt      DateTime?
   fieldNumber    Int
-  divisions      String[]
   lat            Float?
   long           Float?
   heading        Float?

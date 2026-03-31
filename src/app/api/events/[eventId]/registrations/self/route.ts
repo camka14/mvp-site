@@ -8,6 +8,7 @@ import {
   validateRegistrantAgeForSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
+import { normalizeRequiredSignerType } from '@/lib/templateSignerTypes';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,6 +17,24 @@ const schema = z.object({
   divisionTypeId: z.string().optional(),
   divisionTypeKey: z.string().optional(),
 }).passthrough();
+
+const isSignedStatus = (value: unknown): boolean => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === 'signed' || normalized === 'completed';
+};
+
+const normalizeIdList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const normalized = value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry) => entry.length > 0);
+  return Array.from(new Set(normalized));
+};
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const session = await requireSession(req);
@@ -38,6 +57,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       divisions: true,
       requiredTemplateIds: true,
       organizationId: true,
+      userIds: true,
+      waitListIds: true,
     },
   });
   if (!event) {
@@ -154,39 +175,155 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     );
   }
 
-  const needsConsent = Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0;
+  const requiredTemplateIds = Array.isArray(event.requiredTemplateIds)
+    ? event.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  let participantRequiredTemplateIds = requiredTemplateIds;
+  let participantTemplates: Array<{
+    id: string;
+    requiredSignerType: string | null;
+    signOnce: boolean | null;
+  }> = [];
+  if (requiredTemplateIds.length > 0) {
+    const templates = await prisma.templateDocuments.findMany({
+      where: { id: { in: requiredTemplateIds } },
+      select: {
+        id: true,
+        requiredSignerType: true,
+        signOnce: true,
+      },
+    });
+    const templateById = new Map(templates.map((template) => [template.id, template]));
+    participantRequiredTemplateIds = requiredTemplateIds.filter((templateId) => {
+      const template = templateById.get(templateId);
+      if (!template) {
+        return false;
+      }
+      return normalizeRequiredSignerType(template.requiredSignerType) === 'PARTICIPANT';
+    });
+    participantTemplates = participantRequiredTemplateIds
+      .map((templateId) => templateById.get(templateId))
+      .filter((template): template is {
+        id: string;
+        requiredSignerType: string | null;
+        signOnce: boolean | null;
+      } => Boolean(template));
+  }
+
+  let hasAllParticipantSignatures = false;
+  if (participantRequiredTemplateIds.length > 0) {
+    const signOnceTemplateIds = participantTemplates
+      .filter((template) => template.signOnce === true)
+      .map((template) => template.id);
+    const eventScopedTemplateIds = participantTemplates
+      .filter((template) => template.signOnce !== true)
+      .map((template) => template.id);
+
+    const signedRows = (signOnceTemplateIds.length || eventScopedTemplateIds.length)
+      ? await prisma.signedDocuments.findMany({
+        where: {
+          userId: session.userId,
+          signerRole: 'participant',
+          OR: [
+            ...(signOnceTemplateIds.length
+              ? [{ templateId: { in: signOnceTemplateIds } }]
+              : []),
+            ...(eventScopedTemplateIds.length
+              ? [{ templateId: { in: eventScopedTemplateIds }, eventId }]
+              : []),
+          ],
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 200,
+        select: {
+          templateId: true,
+          status: true,
+        },
+      })
+      : [];
+
+    const signedTemplateIds = new Set(
+      signedRows
+        .filter((row) => isSignedStatus(row.status))
+        .map((row) => row.templateId),
+    );
+    hasAllParticipantSignatures = participantRequiredTemplateIds.every((templateId) => (
+      signedTemplateIds.has(templateId)
+    ));
+  }
+
+  const needsConsent = participantRequiredTemplateIds.length > 0 && !hasAllParticipantSignatures;
   const consentDispatch = needsConsent
     ? await dispatchRequiredEventDocuments({
       eventId,
       organizationId: event.organizationId ?? null,
-      requiredTemplateIds: event.requiredTemplateIds,
+      requiredTemplateIds: participantRequiredTemplateIds,
       participantUserId: session.userId,
     })
     : null;
-  const consentStatus = !needsConsent
+  const consentStatus = participantRequiredTemplateIds.length === 0
     ? null
+    : !needsConsent
+      ? 'completed'
     : (consentDispatch?.errors.length ?? 0) > 0
       ? 'send_failed'
       : 'sent';
 
-  const registration = await prisma.eventRegistrations.create({
-    data: {
-      id: crypto.randomUUID(),
+  const existingRegistration = await prisma.eventRegistrations.findFirst({
+    where: {
       eventId,
       registrantId: session.userId,
       registrantType: 'SELF',
-      status: needsConsent ? 'PENDINGCONSENT' : 'ACTIVE',
-      ageAtEvent,
-      divisionId: divisionSelection.selection.divisionId,
-      divisionTypeId: divisionSelection.selection.divisionTypeId,
-      divisionTypeKey: divisionSelection.selection.divisionTypeKey,
-      consentDocumentId: consentDispatch?.firstDocumentId ?? null,
-      consentStatus,
-      createdBy: session.userId,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    },
+    orderBy: {
+      updatedAt: 'desc',
+    },
+    select: {
+      id: true,
+      consentDocumentId: true,
+      consentStatus: true,
     },
   });
+
+  const now = new Date();
+  const nextStatus = needsConsent ? 'PENDINGCONSENT' : 'ACTIVE';
+  const nextConsentDocumentId = needsConsent
+    ? (consentDispatch?.firstDocumentId ?? existingRegistration?.consentDocumentId ?? null)
+    : (existingRegistration?.consentDocumentId ?? null);
+  const nextConsentStatus = consentStatus ?? existingRegistration?.consentStatus ?? null;
+
+  const registration = existingRegistration
+    ? await prisma.eventRegistrations.update({
+      where: { id: existingRegistration.id },
+      data: {
+        status: nextStatus,
+        ageAtEvent,
+        divisionId: divisionSelection.selection.divisionId,
+        divisionTypeId: divisionSelection.selection.divisionTypeId,
+        divisionTypeKey: divisionSelection.selection.divisionTypeKey,
+        consentDocumentId: nextConsentDocumentId,
+        consentStatus: nextConsentStatus,
+        updatedAt: now,
+      },
+    })
+    : await prisma.eventRegistrations.create({
+      data: {
+        id: crypto.randomUUID(),
+        eventId,
+        registrantId: session.userId,
+        registrantType: 'SELF',
+        status: nextStatus,
+        ageAtEvent,
+        divisionId: divisionSelection.selection.divisionId,
+        divisionTypeId: divisionSelection.selection.divisionTypeId,
+        divisionTypeKey: divisionSelection.selection.divisionTypeKey,
+        consentDocumentId: nextConsentDocumentId,
+        consentStatus: nextConsentStatus,
+        createdBy: session.userId,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
 
   await prisma.invites?.deleteMany?.({
     where: {
@@ -195,6 +332,28 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       userId: session.userId,
     },
   });
+
+  if (nextStatus === 'ACTIVE') {
+    const currentUserIds = normalizeIdList(event.userIds);
+    const currentWaitListIds = normalizeIdList(event.waitListIds);
+    const nextUserIds = currentUserIds.includes(session.userId)
+      ? currentUserIds
+      : [...currentUserIds, session.userId];
+    const nextWaitListIds = currentWaitListIds.filter((value) => value !== session.userId);
+    const membershipChanged = nextUserIds.length !== currentUserIds.length
+      || nextWaitListIds.length !== currentWaitListIds.length;
+
+    if (membershipChanged) {
+      await prisma.events.update({
+        where: { id: eventId },
+        data: {
+          userIds: nextUserIds,
+          waitListIds: nextWaitListIds,
+          updatedAt: now,
+        },
+      });
+    }
+  }
 
   return NextResponse.json({
     registration: withLegacyFields(registration),
