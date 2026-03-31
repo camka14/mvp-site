@@ -106,7 +106,7 @@ describe('POST /api/billing/purchase-intent', () => {
     const res = await POST(jsonPost({
       user: { $id: 'user_1' },
       event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
-      timeSlot: { $id: 'slot_1', price: 2500, requiredTemplateIds: ['tmpl_rental_1'] },
+      timeSlot: { $id: 'slot_1', price: 2500, hostRequiredTemplateIds: ['tmpl_rental_1'] },
     }));
     const data = await res.json();
 
@@ -129,7 +129,7 @@ describe('POST /api/billing/purchase-intent', () => {
     const res = await POST(jsonPost({
       user: { $id: 'user_1' },
       event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
-      timeSlot: { $id: 'slot_1', price: 2500, requiredTemplateIds: ['tmpl_rental_1'] },
+      timeSlot: { $id: 'slot_1', price: 2500, hostRequiredTemplateIds: ['tmpl_rental_1'] },
     }));
     const data = await res.json();
 
@@ -160,7 +160,7 @@ describe('POST /api/billing/purchase-intent', () => {
       timeSlot: {
         $id: 'slot_1',
         price: 2500,
-        requiredTemplateIds: ['tmpl_rental_1', 'tmpl_rental_2', 'tmpl_rental_1'],
+        hostRequiredTemplateIds: ['tmpl_rental_1', 'tmpl_rental_2', 'tmpl_rental_1'],
       },
     }));
     const data = await res.json();
@@ -198,6 +198,24 @@ describe('POST /api/billing/purchase-intent', () => {
         where: { id: { in: ['tmpl_host_only'] } },
       }),
     );
+  });
+
+  it('does not require rental signing when only participant template ids are present', async () => {
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+      timeSlot: {
+        $id: 'slot_1',
+        price: 2500,
+        requiredTemplateIds: ['tmpl_participant_only'],
+      },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(String(data.paymentIntent ?? '')).toContain('pi_mock_');
+    expect(prismaMock.templateDocuments.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.signedDocuments.findMany).not.toHaveBeenCalled();
   });
 
   it('creates STARTED registration reservation before event checkout payment intent', async () => {
