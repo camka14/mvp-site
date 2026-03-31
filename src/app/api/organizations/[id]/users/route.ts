@@ -12,6 +12,9 @@ type OrgEventRow = {
   end: Date;
   userIds: string[];
   teamIds: string[];
+  hostId: string | null;
+  assistantHostIds: string[];
+  officialIds: string[];
 };
 
 type EventSummary = {
@@ -65,6 +68,11 @@ const normalizeStatus = (value: string | null | undefined): string | undefined =
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   return trimmed.toUpperCase();
+};
+
+const normalizeEventName = (value: string | null | undefined): string => {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed.length > 0 ? trimmed : 'Untitled Event';
 };
 
 const normalizeId = (value: unknown): string | null => {
@@ -167,8 +175,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
 
-  const events = await prisma.events.findMany({
+  const organizationFields = await prisma.fields.findMany({
     where: { organizationId: id },
+    select: { id: true },
+  });
+  const organizationFieldIds = organizationFields
+    .map((field) => normalizeId(field.id))
+    .filter((fieldId): fieldId is string => Boolean(fieldId));
+
+  const eventWhere = organizationFieldIds.length
+    ? {
+      OR: [
+        { organizationId: id },
+        { fieldIds: { hasSome: organizationFieldIds } },
+      ],
+    }
+    : { organizationId: id };
+
+  const events = await prisma.events.findMany({
+    where: eventWhere,
     select: {
       id: true,
       name: true,
@@ -176,16 +201,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       end: true,
       userIds: true,
       teamIds: true,
+      hostId: true,
+      assistantHostIds: true,
+      officialIds: true,
     },
     orderBy: { start: 'desc' },
   });
   const eventRows: OrgEventRow[] = events.map((event) => ({
     id: event.id,
-    name: event.name,
+    name: normalizeEventName(event.name),
     start: event.start,
     end: event.end ?? event.start,
     userIds: normalizeIdList(event.userIds),
     teamIds: normalizeIdList(event.teamIds),
+    hostId: normalizeId(event.hostId),
+    assistantHostIds: normalizeIdList(event.assistantHostIds),
+    officialIds: normalizeIdList(event.officialIds),
   }));
 
   const canAccess = await hasOrganizationUserAccess({
@@ -213,6 +244,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         status: true,
       },
       orderBy: { updatedAt: 'desc' },
+    })
+    : [];
+  const eventOfficials = eventIds.length
+    ? await prisma.eventOfficials.findMany({
+      where: { eventId: { in: eventIds } },
+      select: {
+        eventId: true,
+        userId: true,
+      },
     })
     : [];
 
@@ -285,6 +325,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const participantUserIds = new Set<string>();
   eventRows.forEach((event) => {
     event.userIds.forEach((userId) => participantUserIds.add(userId));
+    if (event.hostId) {
+      participantUserIds.add(event.hostId);
+    }
+    event.assistantHostIds.forEach((userId) => participantUserIds.add(userId));
+    event.officialIds.forEach((userId) => participantUserIds.add(userId));
+  });
+  eventOfficials.forEach((assignment) => {
+    const userId = normalizeId(assignment.userId);
+    if (userId) {
+      participantUserIds.add(userId);
+    }
   });
   registrations.forEach((registration) => {
     if (isTeamRegistrantType(registration.registrantType)) {
@@ -378,6 +429,50 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         });
       }
     });
+    const assignmentUserIds = [
+      event.hostId,
+      ...event.assistantHostIds,
+      ...event.officialIds,
+    ];
+    assignmentUserIds.forEach((userId) => {
+      const normalizedUserId = normalizeId(userId);
+      if (!normalizedUserId) {
+        return;
+      }
+      const summary = summariesByUserId.get(normalizedUserId);
+      if (!summary) return;
+      if (!summary.eventsById.has(event.id)) {
+        summary.eventsById.set(event.id, {
+          eventId: event.id,
+          eventName: event.name,
+          start: event.start.toISOString(),
+          end: event.end.toISOString(),
+        });
+      }
+    });
+  });
+
+  eventOfficials.forEach((assignment) => {
+    const userId = normalizeId(assignment.userId);
+    if (!userId) {
+      return;
+    }
+    const event = eventsById.get(assignment.eventId);
+    if (!event) {
+      return;
+    }
+    const summary = summariesByUserId.get(userId);
+    if (!summary) {
+      return;
+    }
+    if (!summary.eventsById.has(event.id)) {
+      summary.eventsById.set(event.id, {
+        eventId: event.id,
+        eventName: event.name,
+        start: event.start.toISOString(),
+        end: event.end.toISOString(),
+      });
+    }
   });
 
   eventRows.forEach((event) => {

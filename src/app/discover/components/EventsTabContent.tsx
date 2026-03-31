@@ -55,13 +55,13 @@ const milesToKm = (value: number): number => value * KM_PER_MILE;
 const clampMiles = (value: number): number =>
   Math.min(DISTANCE_SLIDER_MAX_MILES, Math.max(DISTANCE_SLIDER_MIN_MILES, Math.round(value)));
 
-type EventsTabContentProps = {
+type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   location: { lat: number; lng: number } | null;
   searchTerm: string;
   setSearchTerm: (value: string) => void;
-  selectedEventTypes: Event['eventType'][];
-  setSelectedEventTypes: (value: Event['eventType'][]) => void;
-  eventTypeOptions: readonly Event['eventType'][];
+  selectedEventTypes: TEventType[];
+  setSelectedEventTypes: (value: TEventType[]) => void;
+  eventTypeOptions: readonly TEventType[];
   selectedSports: string[];
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
   maxDistance: number | null;
@@ -88,7 +88,9 @@ type EventsTabContentProps = {
   setHideWeeklyChildren?: (value: boolean) => void;
 };
 
-export default function EventsTabContent(props: EventsTabContentProps) {
+export default function EventsTabContent<TEventType extends string = Event['eventType']>(
+  props: EventsTabContentProps<TEventType>,
+) {
   const {
     location,
     searchTerm,

@@ -9,6 +9,12 @@ const prismaMock = {
   events: {
     findMany: jest.fn(),
   },
+  fields: {
+    findMany: jest.fn(),
+  },
+  eventOfficials: {
+    findMany: jest.fn(),
+  },
   eventRegistrations: {
     findFirst: jest.fn(),
     findMany: jest.fn(),
@@ -45,6 +51,8 @@ describe('GET /api/organizations/[id]/users', () => {
     jest.clearAllMocks();
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
+    prismaMock.fields.findMany.mockResolvedValue([]);
+    prismaMock.eventOfficials.findMany.mockResolvedValue([]);
   });
 
   it('returns 403 for users who are not part of the organization', async () => {
@@ -255,6 +263,77 @@ describe('GET /api/organizations/[id]/users', () => {
           eventId: 'event_1',
           status: 'ACTIVE',
         }),
+      ]));
+    });
+  });
+
+  it('includes host and staff users from external events that use organization fields', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      officialIds: [],
+      hostIds: [],
+    });
+    prismaMock.fields.findMany.mockResolvedValue([
+      { id: 'field_org_1' },
+    ]);
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'event_ext_1',
+        name: 'Rental Event',
+        start: new Date('2026-03-15T18:00:00.000Z'),
+        end: new Date('2026-03-15T20:00:00.000Z'),
+        userIds: ['player_1'],
+        teamIds: [],
+        hostId: 'host_1',
+        assistantHostIds: ['assistant_host_1'],
+        officialIds: ['official_1'],
+      },
+    ]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.eventOfficials.findMany.mockResolvedValue([
+      {
+        eventId: 'event_ext_1',
+        userId: 'event_official_1',
+      },
+    ]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'player_1', firstName: 'Pat', lastName: 'Lee', userName: 'plee' },
+      { id: 'host_1', firstName: 'Host', lastName: 'One', userName: 'hostone' },
+      { id: 'assistant_host_1', firstName: 'Assist', lastName: 'One', userName: 'assistone' },
+      { id: 'official_1', firstName: 'Official', lastName: 'One', userName: 'officialone' },
+      { id: 'event_official_1', firstName: 'Crew', lastName: 'One', userName: 'crewone' },
+    ]);
+    prismaMock.templateDocuments.findMany.mockResolvedValue([]);
+    prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1/users'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        OR: [
+          { organizationId: 'org_1' },
+          { fieldIds: { hasSome: ['field_org_1'] } },
+        ],
+      },
+    }));
+    expect(payload.users.map((row: { userId: string }) => row.userId)).toEqual(expect.arrayContaining([
+      'assistant_host_1',
+      'event_official_1',
+      'host_1',
+      'official_1',
+      'player_1',
+    ]));
+    payload.users.forEach((row: { events: Array<{ eventId: string }> }) => {
+      expect(row.events).toEqual(expect.arrayContaining([
+        expect.objectContaining({ eventId: 'event_ext_1' }),
       ]));
     });
   });

@@ -54,6 +54,9 @@ export default function OrganizationDetailPage() {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORG_EVENTS_LIMIT = 18;
 const ORG_EVENTS_DEFAULT_MAX_DISTANCE = 50;
+const ORG_HOSTED_EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const;
+const ORG_EVENT_TYPE_OPTIONS = [...ORG_HOSTED_EVENT_TYPE_OPTIONS, 'RENTAL'] as const;
+type OrganizationEventTypeFilter = (typeof ORG_EVENT_TYPE_OPTIONS)[number];
 
 const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
   if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
@@ -160,7 +163,7 @@ const mapOrganizationUserRow = (row: Record<string, any>): OrganizationUserSumma
   const events = eventsRaw
     .map((eventRow: Record<string, any>): OrganizationUserEventSummary => ({
       eventId: String(eventRow?.eventId ?? ''),
-      eventName: String(eventRow?.eventName ?? 'Untitled Event'),
+      eventName: String(eventRow?.eventName ?? 'Untitled Event').trim() || 'Untitled Event',
       start: typeof eventRow?.start === 'string' ? eventRow.start : undefined,
       end: typeof eventRow?.end === 'string' ? eventRow.end : undefined,
       status: typeof eventRow?.status === 'string' ? eventRow.status : undefined,
@@ -220,11 +223,15 @@ function OrganizationDetailContent() {
   const [showEventDetailSheet, setShowEventDetailSheet] = useState(false);
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
   const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
-  const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const, []);
   const [eventSearchTerm, setEventSearchTerm] = useState('');
   const debouncedEventSearch = useDebounce(eventSearchTerm, 500);
   const [selectedEventTypes, setSelectedEventTypes] =
-    useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']);
+    useState<OrganizationEventTypeFilter[]>([...ORG_EVENT_TYPE_OPTIONS]);
+  const selectedHostedEventTypes = useMemo(
+    () => selectedEventTypes.filter((value): value is (typeof ORG_HOSTED_EVENT_TYPE_OPTIONS)[number] => value !== 'RENTAL'),
+    [selectedEventTypes],
+  );
+  const includeRentalEventType = selectedEventTypes.includes('RENTAL');
   const [selectedSports, setSelectedSports] = useState<string[]>([]);
   const [hideWeeklyChildEvents, setHideWeeklyChildEvents] = useState(false);
   const [eventsTabMaxDistance, setEventsTabMaxDistance] = useState<number | null>(null);
@@ -610,11 +617,14 @@ function OrganizationDetailContent() {
         ).toISOString()
       : undefined;
     const normalizedOrganizationId = typeof id === 'string' ? id.trim() : '';
+    const hostedEventTypes = selectedHostedEventTypes.length === ORG_HOSTED_EVENT_TYPE_OPTIONS.length
+      ? undefined
+      : selectedHostedEventTypes;
 
     return {
       organizationId: normalizedOrganizationId || undefined,
       includeWeeklyChildren: true,
-      eventTypes: selectedEventTypes.length === EVENT_TYPE_OPTIONS.length ? undefined : selectedEventTypes,
+      eventTypes: hostedEventTypes,
       sports: selectedSports.length > 0 ? selectedSports : undefined,
       userLocation: location || undefined,
       maxDistance: location && typeof eventsTabMaxDistance === 'number' ? eventsTabMaxDistance : undefined,
@@ -623,16 +633,100 @@ function OrganizationDetailContent() {
       query: normalizedQuery || undefined,
     };
   }, [
-    EVENT_TYPE_OPTIONS,
     debouncedEventSearch,
     eventsTabMaxDistance,
     eventsTabSelectedEndDate,
     eventsTabSelectedStartDate,
     id,
     location,
-    selectedEventTypes,
+    selectedHostedEventTypes,
     selectedSports,
   ]);
+
+  const loadRentalEventsForOrganization = useCallback(async (
+    organizationId: string,
+    dateFrom?: string,
+    dateTo?: string,
+  ): Promise<Event[]> => {
+    const fieldIdsFromOrganization = Array.isArray(org?.fieldIds)
+      ? org.fieldIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      : [];
+    const fieldIdsFromHydratedFields = Array.isArray(org?.fields)
+      ? org.fields
+        .map((field) => (typeof field?.$id === 'string' ? field.$id.trim() : ''))
+        .filter((value): value is string => value.length > 0)
+      : [];
+    const organizationFieldIds = Array.from(new Set([...fieldIdsFromOrganization, ...fieldIdsFromHydratedFields]));
+    if (!organizationFieldIds.length) {
+      return [];
+    }
+
+    const rangeStart = dateFrom ?? new Date().toISOString();
+    const settled = await Promise.allSettled(
+      organizationFieldIds.map((fieldId) => eventService.getEventsForFieldInRange(fieldId, rangeStart, dateTo ?? null)),
+    );
+    const mergedEvents = new Map<string, Event>();
+    settled.forEach((result) => {
+      if (result.status === 'rejected') {
+        console.warn('Failed to load field events for organization rentals', result.reason);
+        return;
+      }
+      result.value.forEach((event) => {
+        const eventId = typeof event.$id === 'string' ? event.$id.trim() : '';
+        if (!eventId) {
+          return;
+        }
+        const eventOrganizationId = typeof event.organizationId === 'string' ? event.organizationId.trim() : '';
+        if (eventOrganizationId === organizationId) {
+          return;
+        }
+        mergedEvents.set(eventId, event);
+      });
+    });
+    return Array.from(mergedEvents.values());
+  }, [org?.fieldIds, org?.fields]);
+
+  const filterRentalEventsForTab = useCallback((events: Event[], query: string): Event[] => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const selectedSportSet = new Set(
+      selectedSports.map((sport) => sport.trim().toLowerCase()).filter((sport) => sport.length > 0),
+    );
+
+    return events.filter((event) => {
+      if (normalizedQuery.length > 0) {
+        const haystacks = [
+          event.name,
+          event.description,
+          event.location,
+        ].map((value) => (typeof value === 'string' ? value.trim().toLowerCase() : ''));
+        const hasMatch = haystacks.some((value) => value.includes(normalizedQuery));
+        if (!hasMatch) {
+          return false;
+        }
+      }
+
+      if (selectedSportSet.size > 0) {
+        const eventSport = typeof event.sport?.name === 'string' ? event.sport.name.trim().toLowerCase() : '';
+        if (!selectedSportSet.has(eventSport)) {
+          return false;
+        }
+      }
+
+      if (location && typeof eventsTabMaxDistance === 'number') {
+        const coordinates = Array.isArray(event.coordinates) ? event.coordinates : null;
+        if (coordinates && coordinates.length >= 2) {
+          const [lng, lat] = coordinates;
+          if (Number.isFinite(lat) && Number.isFinite(lng)) {
+            if (kmBetween(location, { lat, lng }) > eventsTabMaxDistance) {
+              return false;
+            }
+          }
+        }
+      }
+
+      return true;
+    });
+  }, [eventsTabMaxDistance, kmBetween, location, selectedSports]);
 
   const loadFirstPageOfOrganizationEvents = useCallback(async () => {
     const normalizedOrganizationId = typeof id === 'string' ? id.trim() : '';
@@ -651,20 +745,42 @@ function OrganizationDetailContent() {
     setEventsTabHasMoreEvents(true);
     try {
       const filters = buildEventFilters();
-      const page = await eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, 0);
-      setEventsTabEvents(page);
-      setEventsTabOffset(page.length);
-      setEventsTabHasMoreEvents(page.length === ORG_EVENTS_LIMIT);
+      const shouldLoadHostedEvents = selectedHostedEventTypes.length > 0;
+      const hostedEventsPromise = shouldLoadHostedEvents
+        ? eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, 0)
+        : Promise.resolve<Event[]>([]);
+      const rentalEventsPromise = includeRentalEventType
+        ? loadRentalEventsForOrganization(normalizedOrganizationId, filters.dateFrom, filters.dateTo)
+          .then((events) => filterRentalEventsForTab(events, filters.query ?? ''))
+        : Promise.resolve<Event[]>([]);
+
+      const [hostedEvents, rentalEvents] = await Promise.all([hostedEventsPromise, rentalEventsPromise]);
+      const mergedEvents = [...hostedEvents, ...rentalEvents];
+      const dedupedEvents = mergedEvents.filter((event, index, all) => (
+        all.findIndex((candidate) => candidate.$id === event.$id) === index
+      ));
+
+      setEventsTabEvents(dedupedEvents);
+      setEventsTabOffset(hostedEvents.length);
+      setEventsTabHasMoreEvents(shouldLoadHostedEvents && hostedEvents.length === ORG_EVENTS_LIMIT);
     } catch (error) {
       console.error('Failed to load organization events:', error);
       setEventsTabError('Failed to load events. Please try again.');
     } finally {
       setEventsTabLoadingInitial(false);
     }
-  }, [buildEventFilters, id]);
+  }, [
+    buildEventFilters,
+    filterRentalEventsForTab,
+    id,
+    includeRentalEventType,
+    loadRentalEventsForOrganization,
+    selectedHostedEventTypes.length,
+  ]);
 
   const loadMoreOrganizationEvents = useCallback(async () => {
     if (eventsTabLoadingInitial || eventsTabLoadingMore || !eventsTabHasMoreEvents) return;
+    if (selectedHostedEventTypes.length === 0) return;
     setEventsTabLoadingMore(true);
     setEventsTabError(null);
     try {
@@ -687,7 +803,14 @@ function OrganizationDetailContent() {
     } finally {
       setEventsTabLoadingMore(false);
     }
-  }, [buildEventFilters, eventsTabHasMoreEvents, eventsTabLoadingInitial, eventsTabLoadingMore, eventsTabOffset]);
+  }, [
+    buildEventFilters,
+    eventsTabHasMoreEvents,
+    eventsTabLoadingInitial,
+    eventsTabLoadingMore,
+    eventsTabOffset,
+    selectedHostedEventTypes.length,
+  ]);
 
   const handleSetHomePage = useCallback(async (checked: boolean) => {
     if (!user?.$id || !org || !canToggleHomePagePreference) {
@@ -1881,7 +2004,7 @@ function OrganizationDetailContent() {
                 setSearchTerm={setEventSearchTerm}
                 selectedEventTypes={selectedEventTypes}
                 setSelectedEventTypes={setSelectedEventTypes}
-                eventTypeOptions={EVENT_TYPE_OPTIONS}
+                eventTypeOptions={ORG_EVENT_TYPE_OPTIONS}
                 selectedSports={selectedSports}
                 setSelectedSports={setSelectedSports}
                 maxDistance={eventsTabMaxDistance}
@@ -1980,7 +2103,7 @@ function OrganizationDetailContent() {
                   <Stack gap={2}>
                     <Title order={5}>Users</Title>
                     <Text size="sm" c="dimmed">
-                      Members who signed up for organization events and the documents they signed.
+                      Members, hosts, and staff from organization events or events using organization fields.
                     </Text>
                   </Stack>
                   <Button
@@ -2034,6 +2157,7 @@ function OrganizationDetailContent() {
                                           key={eventSummary.eventId}
                                           size="xs"
                                           variant="subtle"
+                                          styles={{ inner: { justifyContent: 'flex-start' }, label: { textAlign: 'left' } }}
                                           onClick={() => openOrganizationEvent(eventSummary.eventId)}
                                         >
                                           {eventSummary.eventName}
@@ -2096,6 +2220,7 @@ function OrganizationDetailContent() {
                                                   <Button
                                                     size="xs"
                                                     variant="subtle"
+                                                    styles={{ inner: { justifyContent: 'flex-start' }, label: { textAlign: 'left' } }}
                                                     onClick={() => openOrganizationEvent(eventSummary.eventId)}
                                                   >
                                                     {eventSummary.eventName}
