@@ -30,7 +30,7 @@ export type RazumlyAdminStatus = {
   reason?: RazumlyAdminFailureReason;
 };
 
-const DEFAULT_RAZUMLY_ADMIN_DOMAIN = 'razumly.com';
+const DEFAULT_RAZUMLY_ADMIN_DOMAINS = ['razumly.com', 'bracket-iq.com'] as const;
 
 const normalizeEmail = (value: string | null | undefined): string | null => {
   if (typeof value !== 'string') return null;
@@ -38,10 +38,29 @@ const normalizeEmail = (value: string | null | undefined): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
-const getAllowedDomain = (): string => {
-  const configured = normalizeEmail(process.env.RAZUMLY_ADMIN_DOMAIN);
-  if (!configured) return DEFAULT_RAZUMLY_ADMIN_DOMAIN;
-  return configured.replace(/^@+/, '');
+const normalizeDomain = (value: string | null | undefined): string | null => {
+  const normalized = normalizeEmail(value);
+  if (!normalized) return null;
+  const withoutAtPrefix = normalized.replace(/^@+/, '');
+  return withoutAtPrefix.length > 0 ? withoutAtPrefix : null;
+};
+
+const getAllowedDomains = (): Set<string> => {
+  const configuredDomains = (process.env.RAZUMLY_ADMIN_DOMAINS ?? '')
+    .split(',')
+    .map((entry) => normalizeDomain(entry))
+    .filter((entry): entry is string => Boolean(entry));
+
+  if (configuredDomains.length > 0) {
+    return new Set(configuredDomains);
+  }
+
+  const legacySingleDomain = normalizeDomain(process.env.RAZUMLY_ADMIN_DOMAIN);
+  if (legacySingleDomain) {
+    return new Set([legacySingleDomain]);
+  }
+
+  return new Set(DEFAULT_RAZUMLY_ADMIN_DOMAINS);
 };
 
 const parseAllowListedEmails = (): Set<string> => (
@@ -53,9 +72,9 @@ const parseAllowListedEmails = (): Set<string> => (
   )
 );
 
-const isAllowedDomainEmail = (email: string, domain: string): boolean => {
+const isAllowedDomainEmail = (email: string, allowedDomains: Set<string>): boolean => {
   const [, emailDomain = ''] = email.split('@');
-  return emailDomain === domain;
+  return allowedDomains.has(emailDomain);
 };
 
 export const evaluateRazumlyAdminAccess = async (
@@ -80,8 +99,8 @@ export const evaluateRazumlyAdminAccess = async (
     return { allowed: false, email, verified, reason: 'unverified_email' };
   }
 
-  const domain = getAllowedDomain();
-  if (!isAllowedDomainEmail(email, domain)) {
+  const allowedDomains = getAllowedDomains();
+  if (!isAllowedDomainEmail(email, allowedDomains)) {
     return { allowed: false, email, verified, reason: 'invalid_domain' };
   }
 
