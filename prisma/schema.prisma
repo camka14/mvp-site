@@ -516,7 +516,6 @@ model Organizations {
   officialIds           String[]
   hasStripeAccount Boolean?
   coordinates      Json?
-  fieldIds         String[]
   productIds       String[]
   teamIds          String[]
 }

@@ -2044,9 +2044,7 @@ export default function FieldsTabContent({ organization, organizationId, current
               ? prevFields.map((field) => (field.$id === savedField.$id ? savedField : field))
               : [...prevFields, savedField].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
 
-            const prevIds = Array.isArray(prev.fieldIds) ? prev.fieldIds : [];
-            const nextIds = Array.from(new Set([...prevIds, savedField.$id]));
-            return { ...prev, fieldIds: nextIds, fields: nextFields };
+            return { ...prev, fields: nextFields };
           });
 
           setSelection(() => {

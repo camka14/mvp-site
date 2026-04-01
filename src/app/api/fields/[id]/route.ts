@@ -93,7 +93,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const organization = orgId
     ? await prisma.organizations.findUnique({
         where: { id: orgId },
-        select: { id: true, ownerId: true, fieldIds: true },
+        select: { id: true, ownerId: true, hostIds: true, officialIds: true },
       })
     : null;
 
@@ -107,17 +107,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.fields.delete({ where: { id } });
-
-    if (organization && orgId) {
-      const currentIds = Array.isArray(organization.fieldIds) ? organization.fieldIds : [];
-      const nextIds = currentIds.filter((fieldId) => fieldId !== id);
-      await tx.organizations.update({
-        where: { id: orgId },
-        data: { fieldIds: nextIds, updatedAt: new Date() },
-      });
-    }
-  });
+  await prisma.fields.delete({ where: { id } });
   return NextResponse.json({ deleted: true }, { status: 200 });
 }

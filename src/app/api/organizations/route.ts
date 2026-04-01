@@ -22,7 +22,6 @@ const createSchema = z.object({
   officialIds: z.array(z.string()).optional(),
   hasStripeAccount: z.boolean().optional(),
   coordinates: z.any().optional(),
-  fieldIds: z.array(z.string()).optional(),
   productIds: z.array(z.string()).optional(),
   teamIds: z.array(z.string()).optional(),
 }).passthrough();
@@ -205,7 +204,6 @@ export async function POST(req: NextRequest) {
     officialIds: Array.isArray(data.officialIds) ? data.officialIds : [],
     hasStripeAccount: data.hasStripeAccount ?? false,
     coordinates: data.coordinates ?? null,
-    fieldIds: Array.isArray(data.fieldIds) ? data.fieldIds : [],
     productIds: Array.isArray(data.productIds) ? data.productIds : [],
     teamIds: Array.isArray(data.teamIds) ? data.teamIds : [],
     createdAt: new Date(),

@@ -9,7 +9,6 @@ const prismaMock = {
   },
   organizations: {
     findUnique: jest.fn(),
-    update: jest.fn(),
   },
   staffMembers: {
     findUnique: jest.fn(),
@@ -41,12 +40,11 @@ describe('field routes', () => {
     prismaMock.invites.findMany.mockResolvedValue([]);
   });
 
-  it('creates a field and links it to an organization when owner', async () => {
+  it('creates a field for an organization when owner', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      fieldIds: ['field_existing'],
     });
 
     prismaMock.fields.create.mockResolvedValue({
@@ -64,20 +62,12 @@ describe('field routes', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    prismaMock.organizations.update.mockResolvedValue({ id: 'org_1' });
-
     const res = await POST(jsonRequest({ id: 'field_1', name: 'Court A', fieldNumber: 1, organizationId: 'org_1' }));
     const json = await res.json();
 
     expect(res.status).toBe(201);
     expect(json.$id).toBe('field_1');
     expect(prismaMock.fields.create).toHaveBeenCalled();
-    expect(prismaMock.organizations.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'org_1' },
-        data: expect.objectContaining({ fieldIds: ['field_existing', 'field_1'] }),
-      }),
-    );
   });
 
   it('rejects field creation for non-owners when organization is provided', async () => {
@@ -85,7 +75,6 @@ describe('field routes', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      fieldIds: [],
     });
 
     const res = await POST(jsonRequest({ id: 'field_1', fieldNumber: 1, organizationId: 'org_1' }));
@@ -94,6 +83,5 @@ describe('field routes', () => {
     expect(res.status).toBe(403);
     expect(json.error).toBe('Forbidden');
     expect(prismaMock.fields.create).not.toHaveBeenCalled();
-    expect(prismaMock.organizations.update).not.toHaveBeenCalled();
   });
 });

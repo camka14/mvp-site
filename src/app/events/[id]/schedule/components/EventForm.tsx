@@ -7245,13 +7245,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     ? sortByFieldNumber(sanitizeFieldsForForm(fetchedOrganization.fields as Field[]))
                     : seededFields;
                 if (!resolvedFields.length) {
-                    const fallbackFieldIds = Array.isArray(fetchedOrganization?.fieldIds)
-                        ? fetchedOrganization.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
-                        : Array.isArray(resolvedOrganization?.fieldIds)
-                            ? resolvedOrganization.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)
-                            : [];
-                    if (fallbackFieldIds.length) {
-                        const fetchedFields = await fieldService.listFields({ fieldIds: fallbackFieldIds });
+                    const fallbackOrganizationId = fetchedOrganization?.$id
+                        ?? resolvedOrganization?.$id
+                        ?? organizationHostedEventId;
+                    if (fallbackOrganizationId) {
+                        const fetchedFields = await fieldService.listFields({ organizationId: fallbackOrganizationId });
                         if (cancelled) return;
                         resolvedFields = sortByFieldNumber(sanitizeFieldsForForm(fetchedFields));
                     }
@@ -7274,7 +7272,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             cancelled = true;
         };
     }, [
-        resolvedOrganization?.fieldIds,
         resolvedOrganization?.fields,
         hasImmutableFields,
         isEditMode,
@@ -7348,7 +7345,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             eventOrganizationId,
             sourceFields,
             organizationFieldIds: [
-                ...normalizeFieldIds(resolvedOrganization?.fieldIds),
                 ...normalizeFieldIds((resolvedOrganization?.fields ?? []).map((field) => field?.$id)),
             ],
             referencedFieldIds: Array.from(referencedFieldIds),
@@ -7363,7 +7359,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         fields,
         immutableFields,
         isEditMode,
-        resolvedOrganization?.fieldIds,
         resolvedOrganization?.fields,
     ]);
 

@@ -162,9 +162,6 @@ class OrganizationService {
 
   private mapRowToOrganization(row: AnyRow): Organization {
     const coordinates = this.resolveCoordinates(row);
-    const fieldIds = Array.isArray(row.fieldIds)
-      ? row.fieldIds.map((value: unknown) => String(value))
-      : undefined;
     const officialIds = Array.isArray(row.officialIds)
       ? row.officialIds.map((value: unknown) => String(value))
       : undefined;
@@ -206,7 +203,6 @@ class OrganizationService {
       ownerId: row.ownerId ?? row.owner_id ?? undefined,
       hostIds: staffMembers.length > 0 ? derivedHostIds : hostIds,
       hasStripeAccount: Boolean(row.hasStripeAccount),
-      fieldIds,
       officialIds: staffMembers.length > 0 ? derivedOfficialIds : officialIds,
       staffMembers,
       staffInvites,
@@ -376,11 +372,7 @@ class OrganizationService {
   }
 
   private async withEventFormRelations(organization: Organization): Promise<Organization> {
-    const fieldIds = Array.isArray(organization.fieldIds)
-      ? organization.fieldIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
-      : [];
-
-    const fieldsPromise = fieldIds.length ? fieldService.listFields({ fieldIds }) : Promise.resolve<Field[]>([]);
+    const fieldsPromise = fieldService.listFields({ organizationId: organization.$id });
     const staffMembers = Array.isArray(organization.staffMembers) ? organization.staffMembers : [];
     const staffInvites = Array.isArray(organization.staffInvites) ? organization.staffInvites : [];
     const staffUserIds = Array.from(new Set(staffMembers.map((member) => member.userId).filter(Boolean)));
@@ -426,11 +418,7 @@ class OrganizationService {
   }
 
     private async withRelations(organization: Organization): Promise<Organization> {
-      const fieldIds = Array.isArray(organization.fieldIds)
-        ? organization.fieldIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
-        : [];
-
-      const fieldsPromise = fieldIds.length ? fieldService.listFields({ fieldIds }) : Promise.resolve<Field[]>([]);
+      const fieldsPromise = fieldService.listFields({ organizationId: organization.$id });
       const staffMembers = Array.isArray(organization.staffMembers) ? organization.staffMembers : [];
       const staffInvites = Array.isArray(organization.staffInvites) ? organization.staffInvites : [];
       const staffUserIds = Array.from(new Set(staffMembers.map((member) => member.userId).filter(Boolean)));

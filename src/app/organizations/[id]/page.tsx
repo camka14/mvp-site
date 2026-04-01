@@ -648,15 +648,12 @@ function OrganizationDetailContent() {
     dateFrom?: string,
     dateTo?: string,
   ): Promise<Event[]> => {
-    const fieldIdsFromOrganization = Array.isArray(org?.fieldIds)
-      ? org.fieldIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      : [];
     const fieldIdsFromHydratedFields = Array.isArray(org?.fields)
       ? org.fields
         .map((field) => (typeof field?.$id === 'string' ? field.$id.trim() : ''))
         .filter((value): value is string => value.length > 0)
       : [];
-    const organizationFieldIds = Array.from(new Set([...fieldIdsFromOrganization, ...fieldIdsFromHydratedFields]));
+    const organizationFieldIds = Array.from(new Set(fieldIdsFromHydratedFields));
     if (!organizationFieldIds.length) {
       return [];
     }
@@ -684,7 +681,7 @@ function OrganizationDetailContent() {
       });
     });
     return Array.from(mergedEvents.values());
-  }, [org?.fieldIds, org?.fields]);
+  }, [org?.fields]);
 
   const filterRentalEventsForTab = useCallback((events: Event[], query: string): Event[] => {
     const normalizedQuery = query.trim().toLowerCase();

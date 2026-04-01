@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
   const eventId = params.get('eventId');
+  const organizationId = params.get('organizationId');
 
   let ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   if (!ids && eventId) {
@@ -43,6 +44,9 @@ export async function GET(req: NextRequest) {
   const where: any = {};
   if (ids && ids.length) {
     where.id = { in: ids };
+  }
+  if (organizationId) {
+    where.organizationId = organizationId;
   }
 
   const fields = await prisma.fields.findMany({
@@ -69,7 +73,7 @@ export async function POST(req: NextRequest) {
   const organization = orgId
     ? await prisma.organizations.findUnique({
         where: { id: orgId },
-        select: { id: true, ownerId: true, hostIds: true, officialIds: true, fieldIds: true },
+        select: { id: true, ownerId: true, hostIds: true, officialIds: true },
       })
     : null;
 
@@ -82,34 +86,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const record = await prisma.$transaction(async (tx) => {
-      const created = await tx.fields.create({
-        data: {
-          id: data.id,
-          name: data.name ?? null,
-          location: data.location ?? null,
-          lat: data.lat ?? null,
-          long: data.long ?? null,
-          fieldNumber: data.fieldNumber ?? 0,
-          heading: data.heading ?? null,
-          inUse: data.inUse ?? null,
-          organizationId: orgId,
-          rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      });
-
-      if (organization && orgId) {
-        const currentIds = Array.isArray(organization.fieldIds) ? organization.fieldIds : [];
-        const nextIds = Array.from(new Set([...currentIds, created.id]));
-        await tx.organizations.update({
-          where: { id: orgId },
-          data: { fieldIds: nextIds, updatedAt: new Date() },
-        });
-      }
-
-      return created;
+    const record = await prisma.fields.create({
+      data: {
+        id: data.id,
+        name: data.name ?? null,
+        location: data.location ?? null,
+        lat: data.lat ?? null,
+        long: data.long ?? null,
+        fieldNumber: data.fieldNumber ?? 0,
+        heading: data.heading ?? null,
+        inUse: data.inUse ?? null,
+        organizationId: orgId,
+        rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
     });
 
     return NextResponse.json(withLegacyFields(record), { status: 201 });

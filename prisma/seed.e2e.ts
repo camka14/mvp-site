@@ -433,7 +433,6 @@ const seed = async (): Promise<void> => {
         ownerId: SEED_ORG.ownerId,
         hasStripeAccount: SEED_ORG.hasStripeAccount,
         coordinates: SEED_ORG.coordinates,
-        fieldIds: [SEED_FIELD.id],
         productIds: [],
         officialIds: [],
         teamIds: [],

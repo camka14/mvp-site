@@ -1909,12 +1909,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       const resolvedNextOrganizationId = (data.organizationId ?? existing.organizationId ?? null) as string | null;
-      const shouldPersistLocalFields = incomingFieldsById.size > 0 && !resolvedNextOrganizationId;
+      const shouldPersistLocalFields = incomingFieldsById.size > 0;
       if (shouldPersistLocalFields && typeof (tx as any).fields?.upsert === 'function') {
         for (const [index, fieldId] of nextFieldIds.entries()) {
           const field = incomingFieldsById.get(fieldId);
           if (!field) continue;
           const now = new Date();
+          const resolvedFieldOrganizationId = normalizeNullableString(field.organizationId) ?? resolvedNextOrganizationId;
           const fieldData = {
             fieldNumber: normalizeFieldNumber(field.fieldNumber, index + 1),
             lat: normalizeNullableNumber(field.lat),
@@ -1924,7 +1925,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             name: normalizeNullableString(field.name),
             rentalSlotIds: normalizeFieldIds(field.rentalSlotIds),
             location: normalizeNullableString(field.location),
-            organizationId: null,
+            organizationId: resolvedFieldOrganizationId ?? null,
             updatedAt: now,
           };
 

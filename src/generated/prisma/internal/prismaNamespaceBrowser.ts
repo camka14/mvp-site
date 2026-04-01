@@ -523,7 +523,6 @@ export const OrganizationsScalarFieldEnum = {
   officialIds: 'officialIds',
   hasStripeAccount: 'hasStripeAccount',
   coordinates: 'coordinates',
-  fieldIds: 'fieldIds',
   productIds: 'productIds',
   teamIds: 'teamIds'
 } as const

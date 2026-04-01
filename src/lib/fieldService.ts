@@ -92,7 +92,7 @@ class FieldService {
   }
 
   async listFields(
-    filter?: { fieldIds?: string[]; eventId?: string },
+    filter?: { fieldIds?: string[]; eventId?: string; organizationId?: string },
     range?: { start: string; end?: string | null },
     options?: FieldRangeFetchOptions,
   ): Promise<Field[]> {
@@ -111,6 +111,9 @@ class FieldService {
       const params = new URLSearchParams();
       if (normalizedFilter.eventId) {
         params.set('eventId', normalizedFilter.eventId);
+      }
+      if (normalizedFilter.organizationId) {
+        params.set('organizationId', normalizedFilter.organizationId);
       }
       const response = await apiRequest<{ fields?: any[] }>(`/api/fields?${params.toString()}`);
       rows.push(...(response.fields ?? []));

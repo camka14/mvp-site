@@ -572,7 +572,6 @@ export interface Organization {
   ownerId?: string;
   hostIds?: string[];
   hasStripeAccount?: boolean;
-  fieldIds?: string[];
   officialIds?: string[];
   staffMembers?: StaffMember[];
   staffInvites?: Invite[];

@@ -130,6 +130,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const payload = parsed.data.organization ?? parsed.data ?? {};
   const updateData: Record<string, unknown> = { ...payload, updatedAt: new Date() };
+  delete updateData.fieldIds;
   if (Object.prototype.hasOwnProperty.call(payload, 'sports')) {
     updateData.sports = sanitizeStringArray((payload as Record<string, unknown>).sports);
   }
