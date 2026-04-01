@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
+import { getRequestOrigin } from '@/lib/requestOrigin';
+import {
+  isInitialEmailVerificationAvailable,
+  sendInitialEmailVerification,
+} from '@/server/authEmailVerification';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -34,6 +39,40 @@ export async function POST(req: NextRequest) {
   const ok = await verifyPassword(password, authUser.passwordHash);
   if (!ok) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+  }
+
+  if (!authUser.emailVerifiedAt) {
+    if (!isInitialEmailVerificationAvailable()) {
+      return NextResponse.json(
+        { error: 'Email verification is unavailable because SMTP is not configured.', code: 'EMAIL_VERIFICATION_UNAVAILABLE' },
+        { status: 503 },
+      );
+    }
+
+    try {
+      await sendInitialEmailVerification({
+        userId: authUser.id,
+        email: authUser.email,
+        origin: getRequestOrigin(req),
+      });
+    } catch (error) {
+      console.error('Failed to send verification email during login', error);
+      return NextResponse.json(
+        { error: 'Failed to send verification email. Please try again.', code: 'EMAIL_VERIFICATION_SEND_FAILED' },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json(
+      {
+        error: 'Email not verified. We sent a verification link to your email.',
+        code: 'EMAIL_NOT_VERIFIED',
+        email: authUser.email,
+        requiresEmailVerification: true,
+        verificationEmailSent: true,
+      },
+      { status: 403 },
+    );
   }
 
   const now = new Date();

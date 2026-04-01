@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
-import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { hashPassword } from '@/lib/authServer';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
+import { getRequestOrigin } from '@/lib/requestOrigin';
+import {
+  isInitialEmailVerificationAvailable,
+  sendInitialEmailVerification,
+} from '@/server/authEmailVerification';
 import {
   findUserNameConflictUserId,
   isPrismaUserNameUniqueError,
@@ -325,14 +330,37 @@ export async function POST(req: NextRequest) {
     throw error;
   }
 
-  const session: SessionToken = { userId: authUser.id, isAdmin: false };
-  const token = signSessionToken(session);
-  const res = NextResponse.json({
-    user: toPublicUser(authUser),
-    session,
-    token,
-    profile: applyNameCaseToUserFields(profile),
-  }, { status: 201 });
-  setAuthCookie(res, token);
-  return res;
+  if (!isInitialEmailVerificationAvailable()) {
+    return NextResponse.json(
+      { error: 'Email verification is unavailable because SMTP is not configured.', code: 'EMAIL_VERIFICATION_UNAVAILABLE' },
+      { status: 503 },
+    );
+  }
+
+  try {
+    await sendInitialEmailVerification({
+      userId: authUser.id,
+      email: authUser.email,
+      origin: getRequestOrigin(req),
+    });
+  } catch (error) {
+    console.error('Failed to send verification email during registration', error);
+    return NextResponse.json(
+      { error: 'Failed to send verification email. Please try again.', code: 'EMAIL_VERIFICATION_SEND_FAILED' },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      error: 'Email not verified. We sent a verification link to your email.',
+      code: 'EMAIL_NOT_VERIFIED',
+      email: authUser.email,
+      requiresEmailVerification: true,
+      verificationEmailSent: true,
+      user: toPublicUser(authUser),
+      profile: applyNameCaseToUserFields(profile),
+    },
+    { status: 202 },
+  );
 }

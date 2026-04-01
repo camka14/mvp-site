@@ -3,7 +3,7 @@
 import { useState, ChangeEvent, FormEvent, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
-import { authService } from '@/lib/auth';
+import { ApiError, authService } from '@/lib/auth';
 import { userService } from '@/lib/userService';
 import { getHomePathForUser } from '@/lib/homePage';
 import Loading from '@/components/ui/Loading';
@@ -22,6 +22,10 @@ function LoginPageContent() {
   const [formData, setFormData] = useState<FormData>({ email: '', password: '', firstName: '', lastName: '', userName: '', dateOfBirth: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [verificationPendingEmail, setVerificationPendingEmail] = useState('');
+  const [verificationMessage, setVerificationMessage] = useState('');
+  const [verificationMessageType, setVerificationMessageType] = useState<'info' | 'success'>('info');
+  const [resendingVerification, setResendingVerification] = useState(false);
   const { user, setUser, setAuthUser, loading: authLoading } = useApp();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,6 +45,24 @@ function LoginPageContent() {
     if (oauth === 'google' && oauthError) {
       setError('Google sign-in failed. Please try again.');
     }
+
+    const verificationStatus = searchParams.get('verification');
+    const verificationStatusMessage = searchParams.get('verificationMessage')?.trim();
+    if (verificationStatus === 'success') {
+      setVerificationMessage(verificationStatusMessage || 'Email verified successfully. You can sign in now.');
+      setVerificationMessageType('success');
+      setVerificationPendingEmail('');
+      setError('');
+    } else if (verificationStatus === 'error') {
+      setError(verificationStatusMessage || 'Unable to verify email. Please request another verification email.');
+    }
+
+    if (verificationStatus && typeof window !== 'undefined') {
+      const nextUrl = new URL(window.location.href);
+      nextUrl.searchParams.delete('verification');
+      nextUrl.searchParams.delete('verificationMessage');
+      window.history.replaceState({}, '', nextUrl.toString());
+    }
   }, [searchParams]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -52,6 +74,8 @@ function LoginPageContent() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setVerificationMessage('');
+    setVerificationPendingEmail('');
 
     try {
       let authUser: Awaited<ReturnType<typeof authService.login>> | null = null;
@@ -88,9 +112,32 @@ function LoginPageContent() {
 
     } catch (error: any) {
       console.error('Auth error:', error);
+      if (error instanceof ApiError && error.code === 'EMAIL_NOT_VERIFIED') {
+        const pendingEmail = error.email || formData.email.trim().toLowerCase();
+        setVerificationPendingEmail(pendingEmail);
+        setVerificationMessage(error.message || 'Please verify your email before signing in.');
+        setVerificationMessageType('info');
+        setError('');
+        return;
+      }
       setError(error.message || 'Authentication failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!verificationPendingEmail) return;
+    setResendingVerification(true);
+    setError('');
+    try {
+      await authService.resendVerification(verificationPendingEmail);
+      setVerificationMessage(`Verification email sent to ${verificationPendingEmail}.`);
+      setVerificationMessageType('info');
+    } catch (resendError: any) {
+      setError(resendError?.message || 'Failed to resend verification email.');
+    } finally {
+      setResendingVerification(false);
     }
   };
 
@@ -232,6 +279,34 @@ function LoginPageContent() {
             />
           </div>
 
+          {verificationMessage && (
+            <div
+              className={`border rounded-lg p-4 ${
+                verificationMessageType === 'success'
+                  ? 'bg-green-50 border-green-200'
+                  : 'bg-amber-50 border-amber-200'
+              }`}
+            >
+              <p
+                className={`text-sm ${
+                  verificationMessageType === 'success' ? 'text-green-800' : 'text-amber-800'
+                }`}
+              >
+                {verificationMessage}
+              </p>
+              {verificationPendingEmail && (
+                <button
+                  type="button"
+                  disabled={resendingVerification}
+                  onClick={handleResendVerification}
+                  className="mt-3 text-sm font-medium text-amber-900 underline disabled:opacity-50"
+                >
+                  {resendingVerification ? 'Sending...' : 'Resend verification email'}
+                </button>
+              )}
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <p className="text-red-800 text-sm">{error}</p>
@@ -251,7 +326,12 @@ function LoginPageContent() {
         <div className="text-center mt-6">
           <button
             type="button"
-            onClick={() => setIsLogin(!isLogin)}
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError('');
+              setVerificationPendingEmail('');
+              setVerificationMessage('');
+            }}
             className="text-blue-600 hover:text-blue-800 font-medium text-sm"
           >
             {isLogin ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}

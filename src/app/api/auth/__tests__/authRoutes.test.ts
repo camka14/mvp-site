@@ -31,10 +31,20 @@ const authServerMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getRequestOriginMock = jest.fn();
+const authEmailVerificationMock = {
+  isInitialEmailVerificationAvailable: jest.fn(),
+  sendInitialEmailVerification: jest.fn(),
+};
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/authServer', () => authServerMock);
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/requestOrigin', () => ({ getRequestOrigin: (...args: any[]) => getRequestOriginMock(...args) }));
+jest.mock('@/server/authEmailVerification', () => ({
+  isInitialEmailVerificationAvailable: () => authEmailVerificationMock.isInitialEmailVerificationAvailable(),
+  sendInitialEmailVerification: (...args: any[]) => authEmailVerificationMock.sendInitialEmailVerification(...args),
+}));
 
 import { POST as REGISTER_POST } from '@/app/api/auth/register/route';
 import { POST as LOGIN_POST } from '@/app/api/auth/login/route';
@@ -62,6 +72,9 @@ describe('auth routes', () => {
     authServerMock.hashPassword.mockResolvedValue('hashed');
     authServerMock.verifyPassword.mockResolvedValue(true);
     authServerMock.signSessionToken.mockReturnValue('signed-token');
+    getRequestOriginMock.mockReturnValue('http://localhost');
+    authEmailVerificationMock.isInitialEmailVerificationAvailable.mockReturnValue(true);
+    authEmailVerificationMock.sendInitialEmailVerification.mockResolvedValue({ sent: true });
   });
 
   describe('POST /api/auth/register', () => {
@@ -99,9 +112,10 @@ describe('auth routes', () => {
       const res = await REGISTER_POST(req);
       const json = await res.json();
 
-      expect(res.status).toBe(201);
+      expect(res.status).toBe(202);
       expect(json.user.id).toBe('user_1');
-      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
+      expect(json.code).toBe('EMAIL_NOT_VERIFIED');
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
       expect(prismaMock.authUser.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -110,6 +124,11 @@ describe('auth routes', () => {
           }),
         }),
       );
+      expect(authEmailVerificationMock.sendInitialEmailVerification).toHaveBeenCalledWith({
+        userId: 'user_1',
+        email: 'test@example.com',
+        origin: 'http://localhost',
+      });
       expect(prismaMock.userData.create).toHaveBeenCalled();
       expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalled();
     });
@@ -210,7 +229,7 @@ describe('auth routes', () => {
       const res = await REGISTER_POST(req);
       const json = await res.json();
 
-      expect(res.status).toBe(201);
+      expect(res.status).toBe(202);
       expect(json.user.id).toBe('user_1');
       expect(prismaMock.authUser.create).not.toHaveBeenCalled();
       expect(prismaMock.authUser.update).toHaveBeenCalledWith(
@@ -316,7 +335,7 @@ describe('auth routes', () => {
       const res = await REGISTER_POST(req);
       const json = await res.json();
 
-      expect(res.status).toBe(201);
+      expect(res.status).toBe(202);
       expect(json.user.id).toBe('user_1');
       expect(prismaMock.userData.update).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -336,6 +355,7 @@ describe('auth routes', () => {
         email: 'test@example.com',
         name: 'Tester',
         passwordHash: 'hashed',
+        emailVerifiedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -361,6 +381,7 @@ describe('auth routes', () => {
         email: 'test@example.com',
         name: 'Tester',
         passwordHash: 'hashed',
+        emailVerifiedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -376,6 +397,36 @@ describe('auth routes', () => {
 
       expect(res.status).toBe(401);
       expect(json.error).toBe('Invalid credentials');
+      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+    });
+
+    it('blocks login for unverified users and sends verification email', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        passwordHash: 'hashed',
+        emailVerifiedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const req = buildJsonRequest('http://localhost/api/auth/login', {
+        email: 'test@example.com',
+        password: 'password123',
+      });
+
+      const res = await LOGIN_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(json.code).toBe('EMAIL_NOT_VERIFIED');
+      expect(authEmailVerificationMock.sendInitialEmailVerification).toHaveBeenCalledWith({
+        userId: 'user_1',
+        email: 'test@example.com',
+        origin: 'http://localhost',
+      });
+      expect(prismaMock.authUser.update).not.toHaveBeenCalled();
       expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
     });
   });
@@ -415,6 +466,7 @@ describe('auth routes', () => {
         id: 'user_1',
         email: 'test@example.com',
         name: 'Tester',
+        emailVerifiedAt: new Date(),
         createdAt: new Date(),
         updatedAt: new Date(),
       });
@@ -427,6 +479,29 @@ describe('auth routes', () => {
       expect(res.status).toBe(200);
       expect(json.user.id).toBe('user_1');
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'refreshed-token');
+    });
+
+    it('clears cookies when session user email is not verified', async () => {
+      authServerMock.getTokenFromRequest.mockReturnValue('token');
+      authServerMock.verifySessionToken.mockReturnValue({ userId: 'user_1', isAdmin: false });
+
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        emailVerifiedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const req = new NextRequest('http://localhost/api/auth/me');
+      const res = await ME_GET(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.user).toBeNull();
+      expect(json.code).toBe('EMAIL_NOT_VERIFIED');
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
     });
   });
 

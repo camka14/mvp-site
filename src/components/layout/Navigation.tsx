@@ -46,7 +46,10 @@ export default function Navigation() {
       }
 
       try {
-        const res = await fetch('/api/admin/access', { credentials: 'include' });
+        const res = await fetch('/api/admin/access', {
+          credentials: 'include',
+          cache: 'no-store',
+        });
         if (!res.ok) {
           if (!cancelled) setIsRazumlyAdmin(false);
           return;

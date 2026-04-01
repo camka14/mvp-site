@@ -31,17 +31,58 @@ type AuthPayload = {
   profile?: UserData | null;
 };
 
+type VerificationRequiredPayload = {
+  error: string;
+  code: 'EMAIL_NOT_VERIFIED';
+  email: string;
+  requiresEmailVerification?: boolean;
+  verificationEmailSent?: boolean;
+  user?: { id: string; email: string; name?: string | null } | null;
+  profile?: UserData | null;
+};
+
+type ApiErrorData = {
+  error?: string;
+  code?: string;
+  email?: string;
+  requiresEmailVerification?: boolean;
+  verificationEmailSent?: boolean;
+  [key: string]: unknown;
+};
+
+export class ApiError extends Error {
+  status: number;
+  code?: string;
+  email?: string;
+  data: ApiErrorData;
+
+  constructor(message: string, status: number, data: ApiErrorData = {}) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = typeof data.code === 'string' ? data.code : undefined;
+    this.email = typeof data.email === 'string' ? data.email : undefined;
+    this.data = data;
+  }
+}
+
+const isVerificationRequiredPayload = (value: unknown): value is VerificationRequiredPayload => {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<VerificationRequiredPayload>;
+  return candidate.code === 'EMAIL_NOT_VERIFIED' || candidate.requiresEmailVerification === true;
+};
+
 const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(path, {
     credentials: 'include',
     headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
     ...init,
   });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new Error(data?.error || 'Request failed');
+    throw new ApiError(data?.error || 'Request failed', res.status, data ?? {});
   }
-  return res.json() as Promise<T>;
+  return data as T;
 };
 
 export const authService = {
@@ -137,7 +178,7 @@ export const authService = {
   ): Promise<UserAccount> {
     const normalizedFirstName = normalizeOptionalName(firstName) ?? firstName.trim();
     const normalizedLastName = normalizeOptionalName(lastName) ?? lastName.trim();
-    const data = await apiFetch<AuthPayload>('/api/auth/register', {
+    const data = await apiFetch<AuthPayload | VerificationRequiredPayload>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({
         email,
@@ -149,6 +190,9 @@ export const authService = {
         dateOfBirth,
       }),
     });
+    if (isVerificationRequiredPayload(data)) {
+      throw new ApiError(data.error || 'Email verification required', 403, data);
+    }
     if (!data.user) throw new Error('Authentication failed');
     const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
     this.setCurrentAuthUser(mapped);
@@ -158,10 +202,13 @@ export const authService = {
   },
 
   async login(email: string, password: string): Promise<UserAccount> {
-    const data = await apiFetch<AuthPayload>('/api/auth/login', {
+    const data = await apiFetch<AuthPayload | VerificationRequiredPayload>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
+    if (isVerificationRequiredPayload(data)) {
+      throw new ApiError(data.error || 'Email verification required', 403, data);
+    }
     if (!data.user) throw new Error('Authentication failed');
     const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
     this.setCurrentAuthUser(mapped);
@@ -206,8 +253,11 @@ export const authService = {
     });
   },
 
-  async resendVerification(): Promise<void> {
-    return;
+  async resendVerification(email: string): Promise<void> {
+    await apiFetch('/api/auth/verify/resend', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
   },
 
   async confirmVerification(_userId: string, _secret: string): Promise<void> {

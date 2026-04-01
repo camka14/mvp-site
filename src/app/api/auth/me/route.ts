@@ -32,6 +32,12 @@ export async function GET(req: NextRequest) {
     return res;
   }
 
+  if (!user.emailVerifiedAt) {
+    const res = NextResponse.json({ user: null, session: null, code: 'EMAIL_NOT_VERIFIED' }, { status: 200 });
+    setAuthCookie(res, '');
+    return res;
+  }
+
   const profile = await prisma.userData.findUnique({ where: { id: user.id } });
   const refreshed = signSessionToken(decoded);
   const res = NextResponse.json(
