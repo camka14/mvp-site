@@ -13,6 +13,12 @@ const prismaMock = {
   matches: {
     findMany: jest.fn(),
   },
+  timeSlots: {
+    findMany: jest.fn(),
+  },
+  fields: {
+    findFirst: jest.fn(),
+  },
   organizations: {
     findUnique: jest.fn(),
   },
@@ -60,6 +66,8 @@ describe('event template privacy routes', () => {
     prismaMock.events.findUnique.mockReset();
     prismaMock.teams.findMany.mockReset();
     prismaMock.matches.findMany.mockReset();
+    prismaMock.timeSlots.findMany.mockReset();
+    prismaMock.fields.findFirst.mockReset();
     prismaMock.organizations.findUnique.mockReset();
     prismaMock.staffMembers.findUnique.mockReset();
     prismaMock.invites.findMany.mockReset();
@@ -68,6 +76,7 @@ describe('event template privacy routes', () => {
     prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
+    prismaMock.fields.findFirst.mockResolvedValue(null);
     getTokenFromRequestMock.mockReturnValue(null);
     verifySessionTokenMock.mockReturnValue(null);
   });
@@ -650,6 +659,67 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('uses lightweight event selection for GET /api/events/field/:fieldId overlap-only rental queries', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await eventsByFieldGet(
+      new NextRequest('http://localhost/api/events/field/field_1?rentalOverlapOnly=1'),
+      { params: Promise.resolve({ fieldId: 'field_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          id: true,
+          eventType: true,
+          parentEvent: true,
+          start: true,
+          end: true,
+          timeSlotIds: true,
+        }),
+      }),
+    );
+  });
+
+  it('filters overlap-only field events to rental slot windows', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_outside_slot',
+        eventType: 'EVENT',
+        parentEvent: null,
+        start: new Date('2026-04-01T18:00:00.000Z'),
+        end: new Date('2026-04-01T19:00:00.000Z'),
+        timeSlotIds: [],
+      },
+    ]);
+    prismaMock.fields.findFirst.mockResolvedValueOnce({ rentalSlotIds: ['slot_1'] });
+    prismaMock.timeSlots.findMany.mockResolvedValueOnce([
+      {
+        id: 'slot_1',
+        dayOfWeek: 2,
+        daysOfWeek: [2],
+        repeating: true,
+        startDate: new Date('2026-01-01T00:00:00.000Z'),
+        endDate: new Date('2026-12-31T23:59:59.000Z'),
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 11 * 60,
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+      },
+    ]);
+
+    const res = await eventsByFieldGet(
+      new NextRequest('http://localhost/api/events/field/field_1?start=2026-03-29T07:00:00.000Z&end=2026-04-05T06:59:59.000Z&rentalOverlapOnly=1'),
+      { params: Promise.resolve({ fieldId: 'field_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(json.events)).toBe(true);
+    expect(json.events).toHaveLength(0);
+  });
+
   it('excludes template matches from GET /api/fields/:id/matches results', async () => {
     prismaMock.matches.findMany.mockResolvedValueOnce([
       { id: 'match_published', eventId: 'event_published', fieldId: 'field_1' },
@@ -700,6 +770,28 @@ describe('event template privacy routes', () => {
               ],
             },
           ],
+        }),
+      }),
+    );
+  });
+
+  it('uses lightweight match selection for GET /api/fields/:id/matches overlap-only rental queries', async () => {
+    prismaMock.matches.findMany.mockResolvedValueOnce([]);
+
+    const res = await matchesByFieldGet(
+      new NextRequest('http://localhost/api/fields/field_1/matches?rentalOverlapOnly=true'),
+      { params: Promise.resolve({ id: 'field_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.matches.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({
+          id: true,
+          start: true,
+          end: true,
+          eventId: true,
+          fieldId: true,
         }),
       }),
     );

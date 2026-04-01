@@ -36,6 +36,11 @@ export interface ManageRentalSlotResult {
   slot: TimeSlot;
 }
 
+export interface FieldRangeFetchOptions {
+  rentalOverlapOnly?: boolean;
+  includeMatches?: boolean;
+}
+
 class FieldService {
   async createField(data: CreateFieldData): Promise<Field> {
     const rowId = data.$id ?? createId();
@@ -88,7 +93,8 @@ class FieldService {
 
   async listFields(
     filter?: { fieldIds?: string[]; eventId?: string },
-    range?: { start: string; end?: string | null }
+    range?: { start: string; end?: string | null },
+    options?: FieldRangeFetchOptions,
   ): Promise<Field[]> {
     const normalizedFilter = filter ?? {};
     const rows: any[] = [];
@@ -114,7 +120,7 @@ class FieldService {
     await this.hydrateFieldRentalSlots(fields);
 
     if (range?.start) {
-      return Promise.all(fields.map((field) => this.getFieldEventsMatches(field, range)));
+      return Promise.all(fields.map((field) => this.getFieldEventsMatches(field, range, options)));
     }
 
     return fields;
@@ -122,14 +128,22 @@ class FieldService {
 
   async getFieldEventsMatches(
     field: Field,
-    range: { start: string; end?: string | null }
+    range: { start: string; end?: string | null },
+    options?: FieldRangeFetchOptions,
   ): Promise<Field> {
     const start = range.start;
     const end = range.end ?? null;
+    const requestOptions = options?.rentalOverlapOnly ? { rentalOverlapOnly: true } : undefined;
+    const includeMatches = options?.includeMatches ?? !options?.rentalOverlapOnly;
+
+    const eventsPromise = eventService.getEventsForFieldInRange(field.$id, start, end, requestOptions);
+    const matchesPromise = includeMatches
+      ? eventService.getMatchesForFieldInRange(field.$id, start, end, requestOptions)
+      : Promise.resolve([]);
 
     const [events, matches] = await Promise.all([
-      eventService.getEventsForFieldInRange(field.$id, start, end),
-      eventService.getMatchesForFieldInRange(field.$id, start, end),
+      eventsPromise,
+      matchesPromise,
     ]);
 
     return {

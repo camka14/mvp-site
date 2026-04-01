@@ -91,6 +91,41 @@ describe('fieldService', () => {
     expect(fields[0].matches?.[0].$id).toBe('match_1');
   });
 
+  it('forwards rental overlap option when requested', async () => {
+    const field = { $id: 'field_1', name: 'Court A', fieldNumber: 1 } as any;
+    const range = { start: '2024-01-01T00:00:00Z', end: '2024-01-07T00:00:00Z' };
+
+    await fieldService.getFieldEventsMatches(field, range, { rentalOverlapOnly: true, includeMatches: true });
+
+    expect(eventServiceMock.getEventsForFieldInRange).toHaveBeenCalledWith(
+      'field_1',
+      range.start,
+      range.end,
+      { rentalOverlapOnly: true },
+    );
+    expect(eventServiceMock.getMatchesForFieldInRange).toHaveBeenCalledWith(
+      'field_1',
+      range.start,
+      range.end,
+      { rentalOverlapOnly: true },
+    );
+  });
+
+  it('skips match hydration when rental overlap mode is enabled', async () => {
+    const field = { $id: 'field_1', name: 'Court A', fieldNumber: 1 } as any;
+    const range = { start: '2024-01-01T00:00:00Z', end: '2024-01-07T00:00:00Z' };
+
+    await fieldService.getFieldEventsMatches(field, range, { rentalOverlapOnly: true, includeMatches: false });
+
+    expect(eventServiceMock.getEventsForFieldInRange).toHaveBeenCalledWith(
+      'field_1',
+      range.start,
+      range.end,
+      { rentalOverlapOnly: true },
+    );
+    expect(eventServiceMock.getMatchesForFieldInRange).not.toHaveBeenCalled();
+  });
+
   it('creates rental slots and patches the field rentalSlotIds list', async () => {
     let createdSlotId = 'slot_1';
 

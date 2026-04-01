@@ -1119,7 +1119,7 @@ describe('League schedule page', () => {
       expect(screen.getByText(/Summer League/)).toBeInTheDocument();
     });
 
-    const cancelButton = await screen.findByRole('button', { name: /cancel .* preview/i });
+    const cancelButton = await screen.findByRole('button', { name: /cancel manage/i });
     fireEvent.click(cancelButton);
 
     await waitFor(() => {
@@ -2118,6 +2118,81 @@ describe('League schedule page', () => {
     expect(capturedEventFormProps?.rentalPurchase?.requiredTemplateIds).toEqual([
       'tmpl_host_contract',
     ]);
+  });
+
+  it('submits rental self-create payload with null organizationId', async () => {
+    const start = formatLocalDateTime(new Date());
+    const end = formatLocalDateTime(new Date(Date.now() + 60 * 60 * 1000));
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        if (key === 'rentalStart') return start;
+        if (key === 'rentalEnd') return end;
+        if (key === 'rentalFieldId') return 'field_1';
+        if (key === 'rentalOrgId') return 'org_rental';
+        if (key === 'mode') return 'edit';
+        return null;
+      },
+    });
+    mockEventFormDirtyState = true;
+    mockEventFormValidateResult = true;
+    mockEventFormDraft = {
+      ...buildApiEvent({
+        id: 'event_1',
+        $id: 'event_1',
+        state: 'DRAFT',
+        eventType: 'EVENT',
+        organizationId: 'org_rental',
+        organization: 'org_rental',
+        fieldIds: ['field_1'],
+        fields: [
+          {
+            $id: 'field_1',
+            id: 'field_1',
+            name: 'Rental Field',
+            fieldNumber: 1,
+            organizationId: 'org_rental',
+            organization: { $id: 'org_rental' },
+          },
+        ],
+      }),
+    };
+
+    (organizationService.getOrganizationById as jest.Mock).mockResolvedValue({
+      $id: 'org_rental',
+      name: 'Rental Org',
+      fields: [],
+    });
+    (eventService.scheduleEvent as jest.Mock).mockResolvedValue({
+      event: buildApiEvent({
+        id: 'event_1',
+        $id: 'event_1',
+      }),
+      warnings: [],
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path.startsWith('/api/events?state=TEMPLATE')) {
+        return Promise.resolve({ events: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByTestId('event-form');
+    const createButton = await screen.findByRole('button', { name: /^create event$/i });
+    fireEvent.click(createButton);
+
+    await waitFor(() => {
+      expect(eventService.scheduleEvent).toHaveBeenCalled();
+    });
+
+    const schedulePayload = (eventService.scheduleEvent as jest.Mock).mock.calls[0]?.[0] as Record<string, unknown>;
+
+    expect(schedulePayload?.organizationId).toBeNull();
+    expect(schedulePayload?.organization).toBeUndefined();
   });
 
   it('shows create-mode submit errors from form validation', async () => {

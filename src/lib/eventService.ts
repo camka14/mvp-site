@@ -76,6 +76,12 @@ export interface FieldBlockingResult {
     rentalSlots: TimeSlot[];
 }
 
+export interface FieldRangeQueryOptions {
+    organizationId?: string;
+    excludeEventId?: string;
+    rentalOverlapOnly?: boolean;
+}
+
 class EventService {
     private normalizeMatchOfficialAssignments(value: unknown): MatchOfficialAssignment[] {
         if (!Array.isArray(value)) {
@@ -918,10 +924,7 @@ class EventService {
         fieldId: string,
         start: Date | string,
         end: Date | string | null = null,
-        options?: {
-            organizationId?: string;
-            excludeEventId?: string;
-        },
+        options?: FieldRangeQueryOptions,
     ): Promise<FieldBlockingResult> {
         const startFilter = this.normalizeDateInput(start) ?? undefined;
         const endFilter = this.normalizeDateInput(end) ?? undefined;
@@ -936,40 +939,62 @@ class EventService {
         if (excludeEventId.length > 0) {
             params.set('excludeEventId', excludeEventId);
         }
+        if (options?.rentalOverlapOnly) {
+            params.set('rentalOverlapOnly', '1');
+        }
 
         const response = await apiRequest<{ events?: any[]; rentalSlots?: any[] }>(`/api/events/field/${fieldId}?${params.toString()}`);
         const rows = Array.isArray(response?.events) ? response.events : [];
         const rentalRows = Array.isArray(response?.rentalSlots) ? response.rentalSlots : [];
 
-        const events: Event[] = [];
-        for (const row of rows) {
-            await this.ensureSportRelationship(row);
-            await this.ensureLeagueScoringConfig(row);
-            events.push(this.mapRowToEvent(row));
-        }
+        const events: Event[] = options?.rentalOverlapOnly
+            ? rows.map((row) => ({
+                $id: String(row.$id ?? row.id ?? ''),
+                eventType: typeof row.eventType === 'string' ? row.eventType : 'EVENT',
+                parentEvent: typeof row.parentEvent === 'string' ? row.parentEvent : null,
+                start: row.start ?? null,
+                end: row.end ?? null,
+                timeSlotIds: Array.isArray(row.timeSlotIds)
+                    ? row.timeSlotIds.map((slotId: unknown) => String(slotId))
+                    : [],
+                timeSlots: Array.isArray(row.timeSlots)
+                    ? row.timeSlots.map((slot: any) => this.mapRowToTimeSlot(slot))
+                    : [],
+            } as Event))
+            : await (async () => {
+                const hydrated: Event[] = [];
+                for (const row of rows) {
+                    await this.ensureSportRelationship(row);
+                    await this.ensureLeagueScoringConfig(row);
+                    hydrated.push(this.mapRowToEvent(row));
+                }
+                return hydrated;
+            })();
 
-        const allTimeSlotIds = this.extractStringIds(events.flatMap((event) => event.timeSlotIds ?? []));
         let hydratedEvents = events;
-        if (allTimeSlotIds.length > 0) {
-            const timeSlots = await this.fetchTimeSlotsByIds(allTimeSlotIds);
-            if (timeSlots.length > 0) {
-                const slotsById = new Map(timeSlots.map((slot) => [slot.$id, slot]));
-                hydratedEvents = events.map((event) => {
-                    const slotIds = this.extractStringIds(event.timeSlotIds ?? []);
-                    if (!slotIds.length) {
-                        return event;
-                    }
-                    const hydratedSlots = slotIds
-                        .map((slotId) => slotsById.get(slotId))
-                        .filter((slot): slot is TimeSlot => Boolean(slot));
-                    if (!hydratedSlots.length) {
-                        return event;
-                    }
-                    return {
-                        ...event,
-                        timeSlots: hydratedSlots,
-                    };
-                });
+        if (!options?.rentalOverlapOnly) {
+            const allTimeSlotIds = this.extractStringIds(events.flatMap((event) => event.timeSlotIds ?? []));
+            if (allTimeSlotIds.length > 0) {
+                const timeSlots = await this.fetchTimeSlotsByIds(allTimeSlotIds);
+                if (timeSlots.length > 0) {
+                    const slotsById = new Map(timeSlots.map((slot) => [slot.$id, slot]));
+                    hydratedEvents = events.map((event) => {
+                        const slotIds = this.extractStringIds(event.timeSlotIds ?? []);
+                        if (!slotIds.length) {
+                            return event;
+                        }
+                        const hydratedSlots = slotIds
+                            .map((slotId) => slotsById.get(slotId))
+                            .filter((slot): slot is TimeSlot => Boolean(slot));
+                        if (!hydratedSlots.length) {
+                            return event;
+                        }
+                        return {
+                            ...event,
+                            timeSlots: hydratedSlots,
+                        };
+                    });
+                }
             }
         }
 
@@ -983,27 +1008,34 @@ class EventService {
         fieldId: string,
         start: Date | string,
         end: Date | string | null = null,
-        options?: {
-            organizationId?: string;
-            excludeEventId?: string;
-        },
+        options?: FieldRangeQueryOptions,
     ): Promise<Event[]> {
         const result = await this.getBlockingForFieldInRange(fieldId, start, end, options);
         return result.events;
     }
 
-    async getMatchesForFieldInRange(fieldId: string, start: Date | string, end: Date | string | null = null): Promise<Match[]> {
+    async getMatchesForFieldInRange(
+        fieldId: string,
+        start: Date | string,
+        end: Date | string | null = null,
+        options?: { rentalOverlapOnly?: boolean },
+    ): Promise<Match[]> {
         const startFilter = this.normalizeDateInput(start) ?? undefined;
         const endFilter = this.normalizeDateInput(end) ?? undefined;
         const params = new URLSearchParams();
         if (startFilter) params.set('start', startFilter);
         if (endFilter) params.set('end', endFilter);
+        if (options?.rentalOverlapOnly) params.set('rentalOverlapOnly', '1');
 
         const response = await apiRequest<{ matches?: any[] }>(`/api/fields/${fieldId}/matches?${params.toString()}`);
         const rows = Array.isArray(response?.matches) ? response.matches : [];
 
         if (!rows.length) {
             return [];
+        }
+
+        if (options?.rentalOverlapOnly) {
+            return rows.map((row) => this.mapMatchRecord(row));
         }
 
         const teamIds = new Set<string>();

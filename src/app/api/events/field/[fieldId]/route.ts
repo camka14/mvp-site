@@ -31,12 +31,25 @@ type EventRow = {
   [key: string]: unknown;
 };
 
+type TimeWindow = {
+  start: Date;
+  end: Date;
+};
+
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+};
+
+const parseBooleanQueryParam = (value: string | null): boolean => {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
 };
 
 const normalizeStringList = (value: unknown): string[] => {
@@ -223,6 +236,128 @@ const eventOverlapsRange = (
   return false;
 };
 
+const buildSlotWindowsInRange = (
+  slot: TimeSlotRow,
+  rangeStart: Date,
+  rangeEnd: Date,
+  fallbackStart?: Date | null,
+  fallbackEnd?: Date | null,
+): TimeWindow[] => {
+  const windows: TimeWindow[] = [];
+  const slotStart = normalizeToDate(slot.startDate ?? fallbackStart ?? null);
+  if (!slotStart) {
+    return windows;
+  }
+
+  const startMinutes = typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : null;
+  const endMinutes = typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : null;
+  const repeating = slot.repeating !== false;
+
+  if (!repeating) {
+    const inferredEnd = normalizeToDate(slot.endDate ?? fallbackEnd ?? null);
+    const derivedEnd = inferredEnd
+      ?? (startMinutes !== null && endMinutes !== null && endMinutes > startMinutes
+        ? new Date(slotStart.getTime() + (endMinutes - startMinutes) * 60 * 1000)
+        : null);
+    if (!derivedEnd || derivedEnd.getTime() <= slotStart.getTime()) {
+      return windows;
+    }
+    if (rangesOverlap(slotStart, derivedEnd, rangeStart, rangeEnd)) {
+      windows.push({
+        start: new Date(Math.max(slotStart.getTime(), rangeStart.getTime())),
+        end: new Date(Math.min(derivedEnd.getTime(), rangeEnd.getTime())),
+      });
+    }
+    return windows;
+  }
+
+  if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+    return windows;
+  }
+
+  const days = normalizeWeekdays(slot);
+  if (!days.length) {
+    return windows;
+  }
+
+  const slotEnd = normalizeToDate(slot.endDate ?? fallbackEnd ?? null) ?? MAX_DATE;
+  if (!rangesOverlap(slotStart, slotEnd, rangeStart, rangeEnd)) {
+    return windows;
+  }
+
+  const overlapStart = new Date(Math.max(slotStart.getTime(), rangeStart.getTime()));
+  const overlapEnd = new Date(Math.min(slotEnd.getTime(), rangeEnd.getTime()));
+  if (overlapEnd.getTime() <= overlapStart.getTime()) {
+    return windows;
+  }
+
+  const cursor = new Date(overlapStart.getTime());
+  cursor.setHours(0, 0, 0, 0);
+  const finalDay = new Date(overlapEnd.getTime());
+  finalDay.setHours(0, 0, 0, 0);
+
+  while (cursor.getTime() <= finalDay.getTime()) {
+    if (days.includes(toMondayIndex(cursor))) {
+      const occurrenceStart = setMinutesOnDay(cursor, startMinutes);
+      const occurrenceEnd = setMinutesOnDay(cursor, endMinutes);
+      if (
+        occurrenceEnd.getTime() > occurrenceStart.getTime()
+        && rangesOverlap(occurrenceStart, occurrenceEnd, overlapStart, overlapEnd)
+      ) {
+        windows.push({
+          start: new Date(Math.max(occurrenceStart.getTime(), overlapStart.getTime())),
+          end: new Date(Math.min(occurrenceEnd.getTime(), overlapEnd.getTime())),
+        });
+      }
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return windows;
+};
+
+const rangesOverlapAnyWindow = (start: Date, end: Date, windows: TimeWindow[]): boolean =>
+  windows.some((window) => rangesOverlap(start, end, window.start, window.end));
+
+const eventOverlapsRentalWindows = (
+  event: EventRow & { timeSlots?: TimeSlotRow[] },
+  fieldId: string,
+  rentalWindows: TimeWindow[],
+  rangeStart: Date,
+  rangeEnd: Date,
+): boolean => {
+  if (!rentalWindows.length) {
+    return false;
+  }
+
+  const eventType = String(event.eventType ?? '').toUpperCase();
+  const parentEvent = normalizeId(event.parentEvent);
+  const eventStart = normalizeToDate(event.start ?? null);
+  const eventEnd = normalizeToDate(event.end ?? null);
+
+  if (eventType === 'EVENT') {
+    if (!eventStart || !eventEnd || eventEnd.getTime() <= eventStart.getTime()) {
+      return false;
+    }
+    return rangesOverlapAnyWindow(eventStart, eventEnd, rentalWindows);
+  }
+
+  if (isSchedulableSlotEventType(eventType) || isWeeklyParentEventType(eventType, parentEvent)) {
+    if (!Array.isArray(event.timeSlots) || event.timeSlots.length === 0) {
+      return false;
+    }
+    return event.timeSlots.some((slot) => {
+      if (!slotFieldIds(slot).includes(fieldId)) {
+        return false;
+      }
+      const slotWindows = buildSlotWindowsInRange(slot, rangeStart, rangeEnd, eventStart, eventEnd);
+      return slotWindows.some((window) => rangesOverlapAnyWindow(window.start, window.end, rentalWindows));
+    });
+  }
+
+  return false;
+};
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ fieldId: string }> }) {
   const { fieldId } = await params;
   const search = req.nextUrl.searchParams;
@@ -232,6 +367,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
   const rangeEnd = requestedEnd instanceof Date && !Number.isNaN(requestedEnd.getTime()) ? requestedEnd : MAX_DATE;
   const organizationId = normalizeId(search.get('organizationId'));
   const excludeEventId = normalizeId(search.get('excludeEventId'));
+  const rentalOverlapOnly = parseBooleanQueryParam(search.get('rentalOverlapOnly'));
 
   const where: Record<string, unknown> = {
     fieldIds: { has: fieldId },
@@ -252,6 +388,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
   const events = await prisma.events.findMany({
     where: where as any,
     orderBy: { start: 'asc' },
+    ...(rentalOverlapOnly
+      ? {
+        select: {
+          id: true,
+          eventType: true,
+          parentEvent: true,
+          start: true,
+          end: true,
+          timeSlotIds: true,
+        },
+      }
+      : {}),
   });
 
   const filteredByType = events.filter((event) => {
@@ -259,31 +407,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
     const parentEvent = normalizeId((event as any).parentEvent);
     return shouldIncludeEventType(eventType, parentEvent);
   });
-
-  const allEventSlotIds = Array.from(
-    new Set(
-      filteredByType.flatMap((event) => normalizeStringList((event as any).timeSlotIds)),
-    ),
-  );
-  const eventSlotRows = allEventSlotIds.length > 0
-    ? await prisma.timeSlots.findMany({
-      where: { id: { in: allEventSlotIds } },
-    })
-    : [];
-  const eventSlotById = new Map<string, TimeSlotRow>(eventSlotRows.map((slot) => [slot.id, slot]));
-  const hydratedEvents = filteredByType.map((event) => {
-    const slotIds = normalizeStringList((event as any).timeSlotIds);
-    const timeSlots = slotIds.flatMap((slotId) => {
-      const slot = eventSlotById.get(slotId);
-      return slot ? [slot] : [];
-    });
-    return {
-      ...event,
-      timeSlots,
-    };
-  });
-
-  const filteredEvents = hydratedEvents.filter((event) => eventOverlapsRange(event, fieldId, rangeStart, rangeEnd));
 
   const fieldsDelegate = ((prisma as any).fields ?? (prisma as any).volleyBallFields) as {
     findFirst?: (args: any) => Promise<{ rentalSlotIds?: string[] | null } | null>;
@@ -300,21 +423,86 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
     })
     : null;
   const rentalSlotIds = normalizeStringList(field?.rentalSlotIds);
-  const eventBoundSlotIds = new Set(
-    filteredEvents.flatMap((event) => normalizeStringList((event as any).timeSlotIds)),
-  );
-  const filteredRentalSlotIds = rentalSlotIds.filter((slotId) => !eventBoundSlotIds.has(slotId));
-  const rentalSlotRows = filteredRentalSlotIds.length > 0
+  const allFieldRentalSlotRows = rentalSlotIds.length > 0
     ? await prisma.timeSlots.findMany({
       where: {
-        id: { in: filteredRentalSlotIds },
+        id: { in: rentalSlotIds },
       },
+      ...(rentalOverlapOnly
+        ? {
+          select: {
+            id: true,
+            dayOfWeek: true,
+            daysOfWeek: true,
+            startTimeMinutes: true,
+            endTimeMinutes: true,
+            startDate: true,
+            endDate: true,
+            repeating: true,
+            scheduledFieldId: true,
+            scheduledFieldIds: true,
+          },
+        }
+        : {}),
     })
     : [];
-  const filteredRentalSlots = rentalSlotRows.filter((slot) => (
+  const rentalSlotRowsInRange = allFieldRentalSlotRows.filter((slot) => (
     slotFieldIds(slot).includes(fieldId)
     && slotOverlapsRange(slot, rangeStart, rangeEnd)
   ));
+  const rentalWindows = rentalOverlapOnly
+    ? rentalSlotRowsInRange.flatMap((slot) => buildSlotWindowsInRange(slot, rangeStart, rangeEnd))
+    : [];
+
+  const allEventSlotIds = Array.from(
+    new Set(
+      filteredByType.flatMap((event) => normalizeStringList((event as any).timeSlotIds)),
+    ),
+  );
+  const eventSlotRows = allEventSlotIds.length > 0
+    ? await prisma.timeSlots.findMany({
+      where: { id: { in: allEventSlotIds } },
+      ...(rentalOverlapOnly
+        ? {
+          select: {
+            id: true,
+            dayOfWeek: true,
+            daysOfWeek: true,
+            startTimeMinutes: true,
+            endTimeMinutes: true,
+            startDate: true,
+            endDate: true,
+            repeating: true,
+            scheduledFieldId: true,
+            scheduledFieldIds: true,
+          },
+        }
+        : {}),
+    })
+    : [];
+  const eventSlotById = new Map<string, TimeSlotRow>(eventSlotRows.map((slot) => [slot.id, slot]));
+  const hydratedEvents = filteredByType.map((event) => {
+    const slotIds = normalizeStringList((event as any).timeSlotIds);
+    const timeSlots = slotIds.flatMap((slotId) => {
+      const slot = eventSlotById.get(slotId);
+      return slot ? [slot] : [];
+    });
+    return {
+      ...event,
+      timeSlots,
+    };
+  });
+
+  const filteredEvents = hydratedEvents
+    .filter((event) => eventOverlapsRange(event, fieldId, rangeStart, rangeEnd))
+    .filter((event) => (
+      !rentalOverlapOnly || eventOverlapsRentalWindows(event, fieldId, rentalWindows, rangeStart, rangeEnd)
+    ));
+
+  const eventBoundSlotIds = new Set(
+    filteredEvents.flatMap((event) => normalizeStringList((event as any).timeSlotIds)),
+  );
+  const filteredRentalSlots = rentalSlotRowsInRange.filter((slot) => !eventBoundSlotIds.has(slot.id));
 
   return NextResponse.json({
     events: filteredEvents.map((event) => withLegacyFields(event)),

@@ -4,11 +4,20 @@ import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
+const parseBooleanQueryParam = (value: string | null): boolean => {
+  if (!value) {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized === '1' || normalized === 'true' || normalized === 'yes';
+};
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const search = req.nextUrl.searchParams;
   const start = parseDateInput(search.get('start'));
   const end = parseDateInput(search.get('end'));
+  const rentalOverlapOnly = parseBooleanQueryParam(search.get('rentalOverlapOnly'));
   const rangeWhere = (() => {
     if (start && end) {
       return {
@@ -43,6 +52,34 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       ...rangeWhere,
     },
     orderBy: { start: 'asc' },
+    ...(rentalOverlapOnly
+      ? {
+        select: {
+          id: true,
+          start: true,
+          end: true,
+          eventId: true,
+          fieldId: true,
+          team1Id: true,
+          team2Id: true,
+          teamOfficialId: true,
+          officialId: true,
+          officialIds: true,
+          locked: true,
+          team1Seed: true,
+          team2Seed: true,
+          losersBracket: true,
+          matchId: true,
+          team1Points: true,
+          team2Points: true,
+          setResults: true,
+          previousLeftId: true,
+          previousRightId: true,
+          winnerNextMatchId: true,
+          loserNextMatchId: true,
+        },
+      }
+      : {}),
   });
 
   const eventIds = Array.from(

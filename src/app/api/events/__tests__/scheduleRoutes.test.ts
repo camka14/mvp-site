@@ -39,6 +39,7 @@ const upsertEventFromPayloadMock = jest.fn();
 const deleteMatchesByEventMock = jest.fn();
 const saveTeamRecordsMock = jest.fn();
 const acquireEventLockMock = jest.fn();
+const isEventFieldConflictErrorMock = jest.fn();
 const scheduleEventMock = jest.fn();
 const serializeEventLegacyMock = jest.fn();
 const serializeMatchesLegacyMock = jest.fn();
@@ -50,6 +51,8 @@ const isScheduleWindowExceededErrorMock = jest.fn();
 const sendPushToUsersMock = jest.fn();
 const isEmailEnabledMock = jest.fn();
 const sendEmailMock = jest.fn();
+const extractRentalCheckoutWindowMock = jest.fn();
+const releaseRentalCheckoutLocksMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -62,6 +65,7 @@ jest.mock('@/server/repositories/events', () => ({
   upsertEventFromPayload: (...args: any[]) => upsertEventFromPayloadMock(...args),
   deleteMatchesByEvent: (...args: any[]) => deleteMatchesByEventMock(...args),
   saveTeamRecords: (...args: any[]) => saveTeamRecordsMock(...args),
+  isEventFieldConflictError: (...args: any[]) => isEventFieldConflictErrorMock(...args),
 }));
 
 jest.mock('@/server/repositories/locks', () => ({
@@ -94,6 +98,10 @@ jest.mock('@/server/pushNotifications', () => ({
 jest.mock('@/server/email', () => ({
   isEmailEnabled: (...args: any[]) => isEmailEnabledMock(...args),
   sendEmail: (...args: any[]) => sendEmailMock(...args),
+}));
+jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
+  extractRentalCheckoutWindow: (...args: any[]) => extractRentalCheckoutWindowMock(...args),
+  releaseRentalCheckoutLocks: (...args: any[]) => releaseRentalCheckoutLocksMock(...args),
 }));
 
 import { POST as schedulePost } from '@/app/api/events/schedule/route';
@@ -132,6 +140,13 @@ describe('schedule routes', () => {
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'host@example.test' });
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.divisions.update.mockResolvedValue(null);
+    isEventFieldConflictErrorMock.mockReturnValue(false);
+    extractRentalCheckoutWindowMock.mockReturnValue({
+      ok: false,
+      status: 400,
+      error: 'not_rental_checkout',
+    });
+    releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
   });
 
   it('schedules an event from an event document payload', async () => {
@@ -314,6 +329,46 @@ describe('schedule routes', () => {
         timeout: 20_000,
       }),
     );
+  });
+
+  it('returns 409 when event field conflicts are raised during scheduling', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const conflictError = {
+      message: 'Selected fields and time range conflict with existing reservations.',
+      conflicts: [
+        {
+          fieldId: 'field_1',
+          parentId: 'event_existing',
+          start: new Date('2026-04-01T13:30:00.000Z'),
+          end: new Date('2026-04-01T15:00:00.000Z'),
+        },
+      ],
+    };
+    upsertEventFromPayloadMock.mockRejectedValue(conflictError);
+    isEventFieldConflictErrorMock.mockImplementation((error: unknown) => error === conflictError);
+
+    const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
+      eventDocument: {
+        $id: 'event_1',
+        eventType: 'EVENT',
+      },
+    }));
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(String(json.error ?? '')).toContain('conflict');
+    expect(json.conflicts).toEqual([
+      expect.objectContaining({
+        fieldId: 'field_1',
+        parentId: 'event_existing',
+      }),
+    ]);
   });
 
   it('returns 500 when schedule upsert fails before persistence work starts', async () => {

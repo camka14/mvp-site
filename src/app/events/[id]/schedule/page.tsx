@@ -3590,6 +3590,7 @@ function EventScheduleContent() {
 
   const hasUnsavedChangesRef = useRef(hasPendingUnsavedChanges);
   const pendingRegularEventRef = useRef<Partial<Event> | null>(null);
+  const pendingRentalLockRef = useRef<{ eventDraft: Event; rentalSlot: TimeSlot } | null>(null);
   useEffect(() => {
     hasUnsavedChangesRef.current = hasPendingUnsavedChanges;
   }, [hasPendingUnsavedChanges]);
@@ -3904,7 +3905,6 @@ function EventScheduleContent() {
   const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
     if (isCreateMode) return 'Cancel';
-    if (isPreview) return `Cancel ${entityLabel} Preview`;
     if (isEditingEvent) return 'Cancel Manage';
     return `Cancel ${entityLabel}`;
   })();
@@ -5131,9 +5131,13 @@ function EventScheduleContent() {
         ? draft.$id
         : eventId ?? createClientId();
       const normalizedDraft = { ...draft, $id: resolvedId } as Event;
+      if (isRentalFlow && !resolvedHostOrgId) {
+        normalizedDraft.organization = undefined;
+        normalizedDraft.organizationId = null;
+      }
       return toEventPayload(normalizedDraft) as Record<string, unknown>;
     },
-    [eventId],
+    [eventId, isRentalFlow, resolvedHostOrgId],
   );
 
   const buildBracketNodes = useCallback((draftMatches: Match[]): BracketNode[] => (
@@ -5317,7 +5321,7 @@ function EventScheduleContent() {
         const scheduleEventId = !isCreateMode ? eventId : undefined;
         const result = await eventService.scheduleEvent(payload, { eventId: scheduleEventId });
         if (!result?.event) {
-          throw new Error('Failed to generate schedule preview.');
+          throw new Error('Failed to apply schedule changes.');
         }
 
         handlePreviewEventUpdate(result.event);
@@ -5325,14 +5329,14 @@ function EventScheduleContent() {
         if (pathname) {
           const params = new URLSearchParams(searchParams?.toString() ?? '');
           params.delete('create');
-          params.delete('mode');
-          params.set('preview', '1');
+          params.delete('preview');
+          params.set('mode', 'edit');
           const query = params.toString();
           router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
         }
       } catch (err) {
-        console.error('Failed to generate schedule preview:', err);
-        setError('Failed to generate schedule preview.');
+        console.error('Failed to apply schedule changes:', err);
+        setError('Failed to apply schedule changes.');
       } finally {
         setPublishing(false);
       }
@@ -5394,6 +5398,27 @@ function EventScheduleContent() {
     setPendingRentalSignatureOperationId(null);
   }, []);
 
+  const releasePendingRentalCheckoutLock = useCallback(async () => {
+    const pendingLock = pendingRentalLockRef.current;
+    pendingRentalLockRef.current = null;
+    if (!pendingLock) {
+      return;
+    }
+    try {
+      await paymentService.releaseRentalCheckoutLock(pendingLock.eventDraft, pendingLock.rentalSlot);
+    } catch (error) {
+      console.warn('Failed to release rental checkout lock.', error);
+    }
+  }, []);
+
+  const reserveRentalCheckoutLock = useCallback(async (context: PendingRentalCheckoutContext) => {
+    await paymentService.reserveRentalCheckoutLock(context.eventDraft, context.rentalSlot);
+    pendingRentalLockRef.current = {
+      eventDraft: context.eventDraft,
+      rentalSlot: context.rentalSlot,
+    };
+  }, []);
+
   const startRentalPaymentIntent = useCallback(async (context: PendingRentalCheckoutContext) => {
     if (!context.requiresPayment) {
       const scheduledEvent = await scheduleRegularEvent(context.draftToSave);
@@ -5407,6 +5432,7 @@ function EventScheduleContent() {
       return;
     }
     if (!user) {
+      await releasePendingRentalCheckoutLock();
       setSubmitError('You must be signed in to continue checkout.');
       return;
     }
@@ -5425,18 +5451,27 @@ function EventScheduleContent() {
       setShowRentalPayment(true);
     } catch (error) {
       pendingRegularEventRef.current = null;
+      await releasePendingRentalCheckoutLock();
       setSubmitError(error instanceof Error ? error.message : 'Failed to start rental payment.');
     } finally {
       setPublishing(false);
     }
-  }, [handlePreviewEventUpdate, rentalOrganization, scheduleRegularEvent, syncPendingEventFormInvites, user]);
+  }, [handlePreviewEventUpdate, releasePendingRentalCheckoutLock, rentalOrganization, scheduleRegularEvent, syncPendingEventFormInvites, user]);
 
   const startRentalCheckoutFlow = useCallback(async (context: PendingRentalCheckoutContext) => {
+    try {
+      await reserveRentalCheckoutLock(context);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Failed to reserve rental checkout slot.');
+      return;
+    }
+
     if (!rentalHostRequiredTemplateIds.length) {
       await startRentalPaymentIntent(context);
       return;
     }
     if (!user) {
+      await releasePendingRentalCheckoutLock();
       setSubmitError('You must be signed in to sign rental documents.');
       return;
     }
@@ -5465,13 +5500,16 @@ function EventScheduleContent() {
       setPendingRentalSignatureOperationId(null);
       setShowRentalSignModal(true);
     } catch (error) {
+      await releasePendingRentalCheckoutLock();
       setSubmitError(error instanceof Error ? error.message : 'Failed to start rental document signing.');
     }
   }, [
     authUser?.email,
     eventId,
+    releasePendingRentalCheckoutLock,
     rentalHostRequiredTemplateIds,
     rentalOrganization?.$id,
+    reserveRentalCheckoutLock,
     startRentalPaymentIntent,
     user,
   ]);
@@ -5748,13 +5786,17 @@ function EventScheduleContent() {
     setShowRentalSignModal(false);
     resetRentalSignFlowState();
     pendingRentalCheckoutRef.current = null;
-  }, [resetRentalSignFlowState]);
+    void releasePendingRentalCheckoutLock();
+  }, [releasePendingRentalCheckoutLock, resetRentalSignFlowState]);
 
-  const closeRentalPaymentModal = useCallback(() => {
+  const closeRentalPaymentModal = useCallback((options?: { releaseLock?: boolean }) => {
     setShowRentalPayment(false);
     setRentalPaymentData(null);
     pendingRegularEventRef.current = null;
-  }, []);
+    if (options?.releaseLock !== false) {
+      void releasePendingRentalCheckoutLock();
+    }
+  }, [releasePendingRentalCheckoutLock]);
 
   const handleRentalPaymentSuccess = useCallback(async () => {
     const pendingDraft = pendingRegularEventRef.current;
@@ -5768,8 +5810,14 @@ function EventScheduleContent() {
         }
       }
     }
-    closeRentalPaymentModal();
+    closeRentalPaymentModal({ releaseLock: false });
   }, [closeRentalPaymentModal, handlePreviewEventUpdate, scheduleRegularEvent, syncPendingEventFormInvites]);
+
+  useEffect(() => {
+    return () => {
+      void releasePendingRentalCheckoutLock();
+    };
+  }, [releasePendingRentalCheckoutLock]);
 
   const saveExistingEvent = useCallback(
     async ({
@@ -7990,14 +8038,14 @@ function EventScheduleContent() {
                                           size="xs"
                                         />
                                         <Text size="xs" c={deltaColor}>
-                                          Î” {formatPoints(points.pointsDelta)}
+                                          ÃƒÅ½Ã¢â‚¬Â {formatPoints(points.pointsDelta)}
                                         </Text>
                                       </Group>
                                     ) : (
                                       <Group justify="flex-end" gap="xs" wrap="nowrap">
                                         <Text size="sm" fw={600}>{formatPoints(points.finalPoints)}</Text>
                                         <Text size="xs" c={deltaColor}>
-                                          Î” {formatPoints(points.pointsDelta)}
+                                          ÃƒÅ½Ã¢â‚¬Â {formatPoints(points.pointsDelta)}
                                         </Text>
                                       </Group>
                                     )}

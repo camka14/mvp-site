@@ -11,6 +11,7 @@ import {
   MultiSelect,
   Paper,
   Select,
+  SimpleGrid,
   Stack,
   Text,
   Title,
@@ -76,7 +77,16 @@ type RentalSelectionValidation = {
   totalHours: number;
   requiredTemplateIds: string[];
   hostRequiredTemplateIds: string[];
+  conflictCount: number;
+  conflictCheckPending: boolean;
   errors: string[];
+};
+
+type RentalSelectionConflictState = {
+  signature: string;
+  conflictCount: number;
+  loading: boolean;
+  error: string | null;
 };
 
 const MIN_FIELD_CALENDAR_HEIGHT = 800;
@@ -190,6 +200,22 @@ const resolveSelectionDateRange = (
   const endCandidate = minutesToDate(baseDay, endMinutes);
   const end = endCandidate > start ? endCandidate : new Date(start.getTime() + MIN_SELECTION_MS);
   return { start, end };
+};
+
+const buildSelectionConflictSignature = (
+  selection: RentalDraftSelection,
+): {
+  signature: string | null;
+  fieldIds: string[];
+  dateRange: { start: Date; end: Date } | null;
+} => {
+  const fieldIds = normalizeFieldIds(selection.scheduledFieldIds);
+  const dateRange = resolveSelectionDateRange(selection);
+  if (!fieldIds.length || !dateRange) {
+    return { signature: null, fieldIds, dateRange };
+  }
+  const signature = `${fieldIds.join(',')}|${dateRange.start.toISOString()}|${dateRange.end.toISOString()}`;
+  return { signature, fieldIds, dateRange };
 };
 
 const buildSelectionFromCalendarRange = (
@@ -326,6 +352,12 @@ export default function FieldsTabContent({ organization, organizationId, current
   const [editingRentalSlot, setEditingRentalSlot] = useState<TimeSlot | null>(null);
   const [editingRentalField, setEditingRentalField] = useState<Field | null>(null);
   const [rentalDraftRange, setRentalDraftRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [selectionConflictStateByKey, setSelectionConflictStateByKey] = useState<Record<string, RentalSelectionConflictState>>({});
+  const selectionConflictStateRef = useRef<Record<string, RentalSelectionConflictState>>({});
+
+  useEffect(() => {
+    selectionConflictStateRef.current = selectionConflictStateByKey;
+  }, [selectionConflictStateByKey]);
 
   useEffect(() => {
     setOrg(organization ?? null);
@@ -484,6 +516,26 @@ export default function FieldsTabContent({ organization, organizationId, current
     [fields, selectedFieldIds],
   );
   const selectedField = selectedFields[0] ?? null;
+  const selectionConflictInputs = useMemo(
+    () => (
+      canManage
+        ? []
+        : rentalSelections.map((selectionItem) => {
+          const resolved = buildSelectionConflictSignature(selectionItem);
+          return {
+            key: selectionItem.key,
+            signature: resolved.signature,
+            fieldIds: resolved.fieldIds,
+            dateRange: resolved.dateRange,
+          };
+        })
+    ),
+    [canManage, rentalSelections],
+  );
+  const selectionConflictInputByKey = useMemo(
+    () => new Map(selectionConflictInputs.map((input) => [input.key, input])),
+    [selectionConflictInputs],
+  );
 
   const refreshOrganization = useCallback(async () => {
     if (!organizationId) return;
@@ -520,9 +572,13 @@ export default function FieldsTabContent({ organization, organizationId, current
     () => (
       canManage
         ? selectedFieldIds
-        : fields.map((field) => field.$id).filter(Boolean)
+        : Array.from(
+          new Set(
+            rentalSelections.flatMap((selectionItem) => normalizeFieldIds(selectionItem.scheduledFieldIds)),
+          ),
+        )
     ),
-    [canManage, fields, selectedFieldIds],
+    [canManage, rentalSelections, selectedFieldIds],
   );
   const fieldEventsRequestKey = useMemo(
     () => (
@@ -788,10 +844,19 @@ export default function FieldsTabContent({ organization, organizationId, current
             if (!source) {
               return null;
             }
-            return fieldService.getFieldEventsMatches(source, {
-              start: new Date(calendarRangeStartMs).toISOString(),
-              end: new Date(calendarRangeEndMs).toISOString(),
-            });
+            return fieldService.getFieldEventsMatches(
+              source,
+              {
+                start: new Date(calendarRangeStartMs).toISOString(),
+                end: new Date(calendarRangeEndMs).toISOString(),
+              },
+              canManage
+                ? undefined
+                : {
+                  rentalOverlapOnly: true,
+                  includeMatches: false,
+                },
+            );
           }),
         );
         if (cancelled) return;
@@ -837,28 +902,206 @@ export default function FieldsTabContent({ organization, organizationId, current
     return () => {
       cancelled = true;
     };
-  }, [calendarRangeEndMs, calendarRangeStartMs, fieldEventsRequestKey, fieldIdsToHydrate, fields]);
+  }, [calendarRangeEndMs, calendarRangeStartMs, canManage, fieldEventsRequestKey, fieldIdsToHydrate, fields]);
+
+  useEffect(() => {
+    if (canManage) {
+      if (Object.keys(selectionConflictStateRef.current).length > 0) {
+        setSelectionConflictStateByKey({});
+      }
+      return;
+    }
+
+    const fieldsById = new Map(fields.map((field) => [field.$id, field]));
+    const previousState = selectionConflictStateRef.current;
+    const toFetch: Array<{
+      key: string;
+      signature: string;
+      fieldIds: string[];
+      dateRange: { start: Date; end: Date };
+    }> = [];
+    const nextState: Record<string, RentalSelectionConflictState> = {};
+
+    selectionConflictInputs.forEach((input) => {
+      if (!input.signature || !input.dateRange || !input.fieldIds.length) {
+        return;
+      }
+
+      const existing = previousState[input.key];
+      if (existing && existing.signature === input.signature && !existing.loading) {
+        nextState[input.key] = existing;
+        return;
+      } else {
+        nextState[input.key] = {
+          signature: input.signature,
+          conflictCount: 0,
+          loading: true,
+          error: null,
+        };
+        toFetch.push({
+          key: input.key,
+          signature: input.signature,
+          fieldIds: input.fieldIds,
+          dateRange: input.dateRange,
+        });
+      }
+    });
+
+    const stateChanged = (() => {
+      const previousKeys = Object.keys(previousState);
+      const nextKeys = Object.keys(nextState);
+      if (previousKeys.length !== nextKeys.length) {
+        return true;
+      }
+      return nextKeys.some((key) => {
+        const previous = previousState[key];
+        const next = nextState[key];
+        return (
+          !previous
+          || previous.signature !== next.signature
+          || previous.conflictCount !== next.conflictCount
+          || previous.loading !== next.loading
+          || previous.error !== next.error
+        );
+      });
+    })();
+
+    if (stateChanged) {
+      setSelectionConflictStateByKey(nextState);
+    }
+
+    if (!toFetch.length) {
+      return;
+    }
+
+    let cancelled = false;
+    const fieldRequestCache = new Map<string, Promise<Field | null>>();
+
+    const getFieldInSelectionWindow = (
+      fieldId: string,
+      range: { start: Date; end: Date },
+    ): Promise<Field | null> => {
+      const cacheKey = `${fieldId}:${range.start.toISOString()}:${range.end.toISOString()}`;
+      if (!fieldRequestCache.has(cacheKey)) {
+        fieldRequestCache.set(cacheKey, (async () => {
+          const sourceField = fieldsById.get(fieldId);
+          if (!sourceField) {
+            return null;
+          }
+          return fieldService.getFieldEventsMatches(sourceField, {
+            start: range.start.toISOString(),
+            end: range.end.toISOString(),
+          }, {
+            rentalOverlapOnly: true,
+            includeMatches: false,
+          });
+        })());
+      }
+      return fieldRequestCache.get(cacheKey)!;
+    };
+
+    Promise.all(
+      toFetch.map(async (input) => {
+        try {
+          let conflictCount = 0;
+          await Promise.all(
+            input.fieldIds.map(async (fieldId) => {
+              const hydratedField = await getFieldInSelectionWindow(fieldId, input.dateRange);
+              if (!hydratedField) {
+                return;
+              }
+              const blockers = buildFieldCalendarEvents([hydratedField], input.dateRange)
+                .filter((entry) => entry.metaType === 'booked');
+              const hasConflict = blockers.some((blocker) => (
+                compareRanges(
+                  input.dateRange.start,
+                  input.dateRange.end,
+                  blocker.start,
+                  blocker.end,
+                )
+              ));
+              if (hasConflict) {
+                conflictCount += 1;
+              }
+            }),
+          );
+
+          return {
+            key: input.key,
+            signature: input.signature,
+            conflictCount,
+            error: null,
+          };
+        } catch (error) {
+          return {
+            key: input.key,
+            signature: input.signature,
+            conflictCount: 0,
+            error: error instanceof Error ? error.message : 'Failed to load conflict data.',
+          };
+        }
+      }),
+    ).then((results) => {
+      if (cancelled) {
+        return;
+      }
+      setSelectionConflictStateByKey((prev) => {
+        const next = { ...prev };
+        results.forEach((result) => {
+          const current = next[result.key];
+          if (!current || current.signature !== result.signature) {
+            return;
+          }
+          next[result.key] = {
+            signature: result.signature,
+            conflictCount: result.conflictCount,
+            loading: false,
+            error: result.error,
+          };
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canManage, fields, selectionConflictInputs]);
 
   const conflictCountsBySelectionKey = useMemo(() => {
     const counts = new Map<string, number>();
     if (canManage) {
       return counts;
     }
-    selectionCalendarEvents.forEach((selectionEvent) => {
-      const slotKey = selectionEvent.resource.slotKey;
-      if (!slotKey) {
+    selectionConflictInputs.forEach((input) => {
+      if (!input.signature) {
         return;
       }
-      const hasConflict = calendarBlockers.some((event) => (
-        event.resourceId === selectionEvent.resourceId
-        && compareRanges(selectionEvent.start, selectionEvent.end, event.start, event.end)
-      ));
-      if (hasConflict) {
-        counts.set(slotKey, (counts.get(slotKey) ?? 0) + 1);
+      const conflictState = selectionConflictStateByKey[input.key];
+      if (!conflictState || conflictState.signature !== input.signature || conflictState.loading) {
+        return;
+      }
+      if (conflictState.conflictCount > 0) {
+        counts.set(input.key, conflictState.conflictCount);
       }
     });
     return counts;
-  }, [calendarBlockers, canManage, selectionCalendarEvents]);
+  }, [canManage, selectionConflictInputs, selectionConflictStateByKey]);
+
+  const hasPendingConflictChecks = useMemo(() => {
+    if (canManage) {
+      return false;
+    }
+    return selectionConflictInputs.some((input) => {
+      if (!input.signature) {
+        return false;
+      }
+      const conflictState = selectionConflictStateByKey[input.key];
+      return !conflictState
+        || conflictState.signature !== input.signature
+        || conflictState.loading;
+    });
+  }, [canManage, selectionConflictInputs, selectionConflictStateByKey]);
 
   const rentalSelectionValidations = useMemo<RentalSelectionValidation[]>(() => {
     if (canManage) {
@@ -920,8 +1163,21 @@ export default function FieldsTabContent({ organization, organizationId, current
       }
 
       const conflictCount = conflictCountsBySelectionKey.get(selectionItem.key) ?? 0;
+      const conflictState = selectionConflictStateByKey[selectionItem.key];
+      const conflictInput = selectionConflictInputByKey.get(selectionItem.key);
+      const isConflictCheckPending = Boolean(
+        conflictInput?.signature
+        && (
+          !conflictState
+          || conflictState.signature !== conflictInput.signature
+          || conflictState.loading
+        ),
+      );
       if (conflictCount > 0) {
         errors.push('Selection overlaps an existing event or match on at least one field.');
+      }
+      if (conflictState?.error && conflictInput?.signature && conflictState.signature === conflictInput.signature) {
+        errors.push('Unable to verify conflicts for this selection right now. Try again.');
       }
 
       return {
@@ -930,10 +1186,12 @@ export default function FieldsTabContent({ organization, organizationId, current
         totalHours: dateRange ? Math.max(0, (dateRange.end.getTime() - dateRange.start.getTime()) / (60 * 60 * 1000)) : 0,
         requiredTemplateIds: Array.from(requiredTemplateIds),
         hostRequiredTemplateIds: Array.from(hostRequiredTemplateIds),
+        conflictCount,
+        conflictCheckPending: isConflictCheckPending,
         errors,
       };
     });
-  }, [canManage, conflictCountsBySelectionKey, fields, rentalSelections]);
+  }, [canManage, conflictCountsBySelectionKey, fields, rentalSelections, selectionConflictInputByKey, selectionConflictStateByKey]);
 
   const rentalSelectionValidationByKey = useMemo(
     () => new Map(rentalSelectionValidations.map((validation) => [validation.selection.key, validation])),
@@ -958,11 +1216,14 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (canManage || !currentUser) {
       return false;
     }
+    if (hasPendingConflictChecks) {
+      return false;
+    }
     if (!rentalSelections.length || !rentalSelectionValidations.length) {
       return false;
     }
     return rentalSelectionValidations.every((validation) => validation.errors.length === 0);
-  }, [canManage, currentUser, rentalSelectionValidations, rentalSelections.length]);
+  }, [canManage, currentUser, hasPendingConflictChecks, rentalSelectionValidations, rentalSelections.length]);
 
   const summaryColor = useMemo(() => {
     if (canManage) {
@@ -970,8 +1231,9 @@ export default function FieldsTabContent({ organization, organizationId, current
       return existingConflicts.length ? 'yellow' : 'teal';
     }
     if (!currentUser) return 'dimmed';
+    if (hasPendingConflictChecks) return 'yellow';
     return canCreateRentalEvent ? 'teal' : 'red';
-  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, selectedFieldIds.length, selection]);
+  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, hasPendingConflictChecks, selectedFieldIds.length, selection]);
 
   const summaryText = useMemo(() => {
     if (canManage) {
@@ -990,11 +1252,14 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (!rentalSelections.length) {
       return 'Add at least one rental selection.';
     }
+    if (hasPendingConflictChecks) {
+      return 'Checking field conflicts for your selections...';
+    }
     if (!canCreateRentalEvent) {
       return 'Resolve selection errors before creating an event.';
     }
     return `${rentalSelections.length} selection${rentalSelections.length === 1 ? '' : 's'} ready • Total ${formatPrice(totalRentalCents)}`;
-  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, rentalSelections.length, selectedFieldIds.length, selection, totalRentalCents]);
+  }, [canManage, canCreateRentalEvent, currentUser, existingConflicts.length, hasPendingConflictChecks, rentalSelections.length, selectedFieldIds.length, selection, totalRentalCents]);
 
   const updateRentalSelection = useCallback(
     (selectionKey: string, updater: (selectionItem: RentalDraftSelection) => RentalDraftSelection) => {
@@ -1524,97 +1789,121 @@ export default function FieldsTabContent({ organization, organizationId, current
                     + Add Selection
                   </Button>
                 </Group>
-                {rentalSelections.map((selectionItem, index) => {
-                  const validation = rentalSelectionValidationByKey.get(selectionItem.key);
-                  const selectionRange = resolveSelectionDateRange(selectionItem);
-                  const selectionFieldNames = normalizeFieldIds(selectionItem.scheduledFieldIds)
-                    .map((fieldId) => fieldLabelById.get(fieldId) ?? fieldId);
-                  return (
-                    <Paper key={selectionItem.key} withBorder radius="md" p="sm">
-                      <Stack gap="sm">
-                        <Group justify="space-between" align="center">
-                          <Group gap="xs">
-                            <Badge color={validation?.errors.length ? 'red' : 'teal'} variant="light">
-                              Selection {index + 1}
-                            </Badge>
-                            <Badge variant="dot">
-                              {formatPrice(validation?.totalCents ?? 0)}
-                            </Badge>
+                <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 4 }} spacing="md">
+                  {rentalSelections.map((selectionItem, index) => {
+                    const validation = rentalSelectionValidationByKey.get(selectionItem.key);
+                    const selectionRange = resolveSelectionDateRange(selectionItem);
+                    const selectionFieldNames = normalizeFieldIds(selectionItem.scheduledFieldIds)
+                      .map((fieldId) => fieldLabelById.get(fieldId) ?? fieldId);
+                    const hasConflict = (validation?.conflictCount ?? 0) > 0;
+                    return (
+                      <Paper
+                        key={selectionItem.key}
+                        withBorder
+                        radius="md"
+                        p="md"
+                        shadow="xs"
+                        style={{
+                          aspectRatio: '1 / 1',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          overflow: 'hidden',
+                          borderColor: hasConflict ? 'var(--mantine-color-red-5)' : undefined,
+                          backgroundColor: hasConflict ? 'var(--mantine-color-red-0)' : undefined,
+                        }}
+                      >
+                        <div className="space-y-2 overflow-y-auto pr-1">
+                          <Group justify="space-between" align="center">
+                            <Group gap="xs">
+                              <Badge color={validation?.errors.length ? 'red' : 'teal'} variant="light">
+                                Selection {index + 1}
+                              </Badge>
+                              <Badge variant="dot">
+                                {formatPrice(validation?.totalCents ?? 0)}
+                              </Badge>
+                              {hasConflict ? (
+                                <Badge color="red" variant="filled">Conflict</Badge>
+                              ) : null}
+                              {validation?.conflictCheckPending ? (
+                                <Badge color="yellow" variant="light">Checking</Badge>
+                              ) : null}
+                            </Group>
+                            <Button
+                              size="compact-xs"
+                              variant="subtle"
+                              color="red"
+                              onClick={() => handleRemoveRentalSelection(selectionItem.key)}
+                            >
+                              Remove
+                            </Button>
                           </Group>
-                          <Button
-                            size="compact-xs"
-                            variant="subtle"
-                            color="red"
-                            onClick={() => handleRemoveRentalSelection(selectionItem.key)}
-                          >
-                            Remove
-                          </Button>
-                        </Group>
-                        <MultiSelect
-                          label="Fields"
-                          data={fieldOptions}
-                          value={normalizeFieldIds(selectionItem.scheduledFieldIds)}
-                          onChange={(nextValues) => {
-                            updateRentalSelection(selectionItem.key, (current) => ({
-                              ...current,
-                              scheduledFieldIds: normalizeFieldIds(nextValues),
-                            }));
-                          }}
-                          searchable
-                          placeholder="Select one or more fields"
-                        />
-                        <Group grow>
-                          <DateTimePicker
-                            label="Start"
-                            value={formatLocalDateTime(selectionRange?.start ?? null) ?? null}
-                            onChange={(value) => {
-                              const nextStart = parseLocalDateTime(value ?? null);
-                              if (!nextStart) return;
-                              updateRentalSelection(
-                                selectionItem.key,
-                                (current) => updateSelectionWithCalendarRange(
-                                  current,
-                                  nextStart,
-                                  selectionRange?.end && selectionRange.end.getTime() > nextStart.getTime()
-                                    ? selectionRange.end
-                                    : new Date(nextStart.getTime() + MIN_SELECTION_MS),
-                                ),
-                              );
+                          <MultiSelect
+                            label="Fields"
+                            data={fieldOptions}
+                            value={normalizeFieldIds(selectionItem.scheduledFieldIds)}
+                            onChange={(nextValues) => {
+                              updateRentalSelection(selectionItem.key, (current) => ({
+                                ...current,
+                                scheduledFieldIds: normalizeFieldIds(nextValues),
+                              }));
                             }}
+                            searchable
+                            placeholder="Select one or more fields"
                           />
-                          <DateTimePicker
-                            label="End"
-                            value={formatLocalDateTime(selectionRange?.end ?? null) ?? null}
-                            onChange={(value) => {
-                              const nextEnd = parseLocalDateTime(value ?? null);
-                              if (!nextEnd) return;
-                              updateRentalSelection(
-                                selectionItem.key,
-                                (current) => updateSelectionWithCalendarRange(
-                                  current,
-                                  selectionRange?.start && selectionRange.start.getTime() < nextEnd.getTime()
-                                    ? selectionRange.start
-                                    : new Date(nextEnd.getTime() - MIN_SELECTION_MS),
-                                  nextEnd,
-                                ),
-                              );
-                            }}
-                          />
-                        </Group>
-                        <Text size="xs" c="dimmed">
-                          {selectionRange
-                            ? `${formatDisplayDateTime(selectionRange.start)} - ${formatDisplayDateTime(selectionRange.end)} • ${selectionFieldNames.join(', ')}`
-                            : 'Select date/time and fields to validate availability.'}
-                        </Text>
-                        {validation?.errors.map((errorMessage, errorIndex) => (
-                          <Text key={`${selectionItem.key}-${errorIndex}`} size="xs" c="red">
-                            {errorMessage}
+                          <Group grow>
+                            <DateTimePicker
+                              label="Start"
+                              value={formatLocalDateTime(selectionRange?.start ?? null) ?? null}
+                              onChange={(value) => {
+                                const nextStart = parseLocalDateTime(value ?? null);
+                                if (!nextStart) return;
+                                updateRentalSelection(
+                                  selectionItem.key,
+                                  (current) => updateSelectionWithCalendarRange(
+                                    current,
+                                    nextStart,
+                                    selectionRange?.end && selectionRange.end.getTime() > nextStart.getTime()
+                                      ? selectionRange.end
+                                      : new Date(nextStart.getTime() + MIN_SELECTION_MS),
+                                  ),
+                                );
+                              }}
+                            />
+                            <DateTimePicker
+                              label="End"
+                              value={formatLocalDateTime(selectionRange?.end ?? null) ?? null}
+                              onChange={(value) => {
+                                const nextEnd = parseLocalDateTime(value ?? null);
+                                if (!nextEnd) return;
+                                updateRentalSelection(
+                                  selectionItem.key,
+                                  (current) => updateSelectionWithCalendarRange(
+                                    current,
+                                    selectionRange?.start && selectionRange.start.getTime() < nextEnd.getTime()
+                                      ? selectionRange.start
+                                      : new Date(nextEnd.getTime() - MIN_SELECTION_MS),
+                                    nextEnd,
+                                  ),
+                                );
+                              }}
+                            />
+                          </Group>
+                          <Text size="xs" c="dimmed">
+                            {selectionRange
+                              ? `${formatDisplayDateTime(selectionRange.start)} - ${formatDisplayDateTime(selectionRange.end)} • ${selectionFieldNames.join(', ')}`
+                              : 'Select date/time and fields to validate availability.'}
                           </Text>
-                        ))}
-                      </Stack>
-                    </Paper>
-                  );
-                })}
+                          {validation?.errors.map((errorMessage, errorIndex) => (
+                            <Text key={`${selectionItem.key}-${errorIndex}`} size="xs" c="red">
+                              {errorMessage}
+                            </Text>
+                          ))}
+                        </div>
+                      </Paper>
+                    );
+                  })}
+                </SimpleGrid>
               </Stack>
             </Paper>
           )}

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import {
   deleteMatchesByEvent,
+  isEventFieldConflictError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
   saveEventSchedule,
@@ -15,6 +16,11 @@ import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
+import {
+  extractRentalCheckoutWindow,
+  releaseRentalCheckoutLocks,
+  type RentalCheckoutWindow,
+} from '@/server/repositories/rentalCheckoutLocks';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,10 +66,38 @@ export async function POST(req: NextRequest) {
     const { eventDocument, participantCount } = parsed.data;
     let eventId = parsed.data.eventId ?? parsed.data.event;
     const context = buildContext();
+    let rentalLockWindowToRelease: RentalCheckoutWindow | null = null;
+
+    if (eventDocument && typeof eventDocument === 'object') {
+      const slotSource = Array.isArray((eventDocument as Record<string, unknown>).timeSlots)
+        ? ((eventDocument as Record<string, unknown>).timeSlots as unknown[])[0]
+        : null;
+      const rentalWindowCandidate = extractRentalCheckoutWindow({
+        event: eventDocument,
+        timeSlot: slotSource,
+      });
+      if (rentalWindowCandidate.ok) {
+        rentalLockWindowToRelease = rentalWindowCandidate.window;
+      }
+    }
 
     const result = await prisma.$transaction(async (tx) => {
       if (eventDocument) {
-        eventId = await upsertEventFromPayload(eventDocument, tx);
+        const eventPayload = eventDocument as Record<string, unknown>;
+        const payloadEventId = String(eventPayload.id ?? eventPayload.$id ?? '').trim();
+        const existingEvent = payloadEventId
+          ? await tx.events.findUnique({
+              where: { id: payloadEventId },
+              select: { id: true },
+            })
+          : null;
+        const payloadForUpsert = !existingEvent
+          ? {
+              ...eventPayload,
+              hostId: session.userId,
+            }
+          : eventPayload;
+        eventId = await upsertEventFromPayload(payloadForUpsert, tx);
       }
       if (!eventId) {
         throw new Error('Missing eventId');
@@ -95,6 +129,26 @@ export async function POST(req: NextRequest) {
       return scheduled;
     }, SCHEDULE_TRANSACTION_OPTIONS);
 
+    if (rentalLockWindowToRelease && eventId) {
+      const windowWithResolvedEventId = {
+        ...rentalLockWindowToRelease,
+        eventId,
+      };
+      try {
+        await releaseRentalCheckoutLocks({
+          client: prisma,
+          window: windowWithResolvedEventId,
+          userId: session.userId,
+        });
+      } catch (error) {
+        console.warn('Failed to release rental checkout lock after successful schedule.', {
+          eventId,
+          fieldIds: windowWithResolvedEventId.fieldIds,
+          error,
+        });
+      }
+    }
+
     return NextResponse.json(
       {
         preview: typeof result.preview === 'boolean' ? result.preview : false,
@@ -105,6 +159,20 @@ export async function POST(req: NextRequest) {
     );
   } catch (error) {
     if (error instanceof Response) return error;
+    if (isEventFieldConflictError(error)) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          conflicts: error.conflicts.map((conflict) => ({
+            fieldId: conflict.fieldId,
+            parentId: conflict.parentId,
+            start: conflict.start.toISOString(),
+            end: conflict.end.toISOString(),
+          })),
+        },
+        { status: 409 },
+      );
+    }
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

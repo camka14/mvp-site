@@ -65,13 +65,21 @@ export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange =
         && typeof evt.parentEvent === 'string'
         && evt.parentEvent.trim().length > 0
       );
-      return eventType !== 'LEAGUE' && eventType !== 'TOURNAMENT' && !hasParentWeeklyEvent;
+      return !hasParentWeeklyEvent;
     });
     const matches = field.matches || [];
 
     const eventEntries: FieldCalendarEntry[] = events.flatMap((evt) => {
       const eventType = typeof evt.eventType === 'string' ? evt.eventType.toUpperCase() : '';
-      if (eventType === 'WEEKLY_EVENT' && !evt.parentEvent && Array.isArray(evt.timeSlots) && evt.timeSlots.length > 0) {
+      const shouldUseTimeslotBlocks = (
+        (eventType === 'WEEKLY_EVENT' && !evt.parentEvent)
+        || eventType === 'LEAGUE'
+        || eventType === 'TOURNAMENT'
+      );
+      if (shouldUseTimeslotBlocks) {
+        if (!Array.isArray(evt.timeSlots) || evt.timeSlots.length === 0) {
+          return [];
+        }
         const rangeStart = range ? new Date(range.start.getTime()) : new Date();
         const rangeEnd = range ? new Date(range.end.getTime()) : addDays(rangeStart, 28);
         rangeStart.setHours(0, 0, 0, 0);

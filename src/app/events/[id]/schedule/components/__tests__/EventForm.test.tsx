@@ -1060,5 +1060,42 @@ describe('EventForm dirty state', () => {
     );
   });
 
-});
+  it('allows null team capacity limits in form state while surfacing warning and errors', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
 
+    renderForm(onDirtyStateChange, formRef, {
+      teamSignup: true,
+      maxParticipants: 10,
+      teamSizeLimit: 2,
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const maxTeamsInput = screen.getByLabelText('Max Teams');
+    const teamSizeLimitInput = screen.getByLabelText('Team Size Limit');
+
+    fireEvent.change(maxTeamsInput, {
+      target: { value: '' },
+    });
+    fireEvent.blur(maxTeamsInput);
+    fireEvent.change(teamSizeLimitInput, {
+      target: { value: '' },
+    });
+    fireEvent.blur(teamSizeLimitInput);
+
+    await waitFor(() => {
+      expect(screen.getByText('Capacity limits are required before save')).toBeInTheDocument();
+    });
+
+    let isValid: boolean | undefined;
+    await act(async () => {
+      isValid = await formRef.current?.validate();
+    });
+
+    expect(isValid).toBe(false);
+  });
+
+});

@@ -2031,8 +2031,8 @@ type EventFormState = {
     installmentDueDates: string[];
     installmentAmounts: number[];
     allowTeamSplitDefault: boolean;
-    maxParticipants: number;
-    teamSizeLimit: number;
+    maxParticipants: number | null;
+    teamSizeLimit: number | null;
     teamSignup: boolean;
     singleDivision: boolean;
     splitLeaguePlayoffDivisions: boolean;
@@ -2612,8 +2612,8 @@ const mapEventToFormState = (event: Event): EventFormState => {
     })(),
     installmentDueDates: Array.isArray(event.installmentDueDates) ? event.installmentDueDates as string[] : [],
     allowTeamSplitDefault: Boolean(event.allowTeamSplitDefault),
-    maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
-    teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : 2,
+    maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : null,
+    teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : null,
     teamSignup: Boolean(event.teamSignup),
     singleDivision: Boolean(event.singleDivision),
     splitLeaguePlayoffDivisions,
@@ -2764,8 +2764,8 @@ const eventFormSchema = z
         installmentDueDates: z.array(z.string()).default([]),
         installmentAmounts: z.array(z.number().int().min(0)).default([]),
         allowTeamSplitDefault: z.boolean().default(false),
-        maxParticipants: z.number().min(2, 'Enter at least 2'),
-        teamSizeLimit: z.number().min(1, 'Enter at least 1'),
+        maxParticipants: z.number().min(2, 'Enter at least 2').nullable(),
+        teamSizeLimit: z.number().min(1, 'Enter at least 1').nullable(),
         teamSignup: z.boolean(),
         singleDivision: z.boolean(),
         splitLeaguePlayoffDivisions: z.boolean().default(false),
@@ -2875,6 +2875,22 @@ const eventFormSchema = z
         joinAsParticipant: z.boolean(),
     })
     .superRefine((values, ctx) => {
+        if (values.maxParticipants == null) {
+            ctx.addIssue({
+                code: 'custom',
+                message: values.teamSignup ? 'Max teams is required' : 'Max participants is required',
+                path: ['maxParticipants'],
+            });
+        }
+
+        if (values.teamSizeLimit == null) {
+            ctx.addIssue({
+                code: 'custom',
+                message: 'Team size limit is required',
+                path: ['teamSizeLimit'],
+            });
+        }
+
         if (!coordinatesAreSet(values.coordinates)) {
             ctx.addIssue({
                 code: "custom",
@@ -3867,6 +3883,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
     const eventData = formValues;
+    const hasUnsetTeamCapacityLimits = eventData.maxParticipants == null || eventData.teamSizeLimit == null;
     const leagueSlots = formValues.leagueSlots;
     const leagueData = formValues.leagueData;
     const tournamentData = formValues.tournamentData;
@@ -7887,8 +7904,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             installmentAmounts: eventAllowPaymentPlans ? installmentAmountsCents : [],
             installmentDueDates: eventAllowPaymentPlans ? source.installmentDueDates : [],
             allowTeamSplitDefault: source.allowTeamSplitDefault,
-            maxParticipants: source.maxParticipants,
-            teamSizeLimit: source.teamSizeLimit,
+            maxParticipants: source.maxParticipants ?? undefined,
+            teamSizeLimit: source.teamSizeLimit ?? undefined,
             teamSignup: source.teamSignup,
             singleDivision: source.singleDivision,
             splitLeaguePlayoffDivisions,
@@ -8812,13 +8829,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
                                                 min={2}
                                                 max={MAX_STANDARD_NUMBER}
-                                                value={field.value}
+                                                value={field.value ?? ''}
                                                 maw={220}
-                                                clampBehavior="strict"
+                                                clampBehavior="blur"
                                                 disabled={isImmutableField('maxParticipants')}
                                                 onChange={(val) => {
                                                     if (isImmutableField('maxParticipants')) return;
-                                                    field.onChange(Number(val) || 10);
+                                                    const numeric = typeof val === 'number' && Number.isFinite(val)
+                                                        ? Math.trunc(val)
+                                                        : null;
+                                                    field.onChange(numeric);
                                                 }}
                                                 error={fieldState.error?.message as string | undefined}
                                             />
@@ -8834,19 +8854,31 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 label="Team Size Limit"
                                                 min={1}
                                                 max={MAX_STANDARD_NUMBER}
-                                                value={field.value}
+                                                value={field.value ?? ''}
                                                 maw={220}
-                                                clampBehavior="strict"
+                                                clampBehavior="blur"
                                                 disabled={isImmutableField('teamSizeLimit')}
                                                 onChange={(val) => {
                                                     if (isImmutableField('teamSizeLimit')) return;
-                                                    field.onChange(Number(val) || 2);
+                                                    const numeric = typeof val === 'number' && Number.isFinite(val)
+                                                        ? Math.trunc(val)
+                                                        : null;
+                                                    field.onChange(numeric);
                                                 }}
                                                 error={fieldState.error?.message as string | undefined}
                                             />
                                         )}
                                     />
                                 </div>
+                                <AnimatedSection in={hasUnsetTeamCapacityLimits} className="md:col-span-12">
+                                    <Alert color="yellow" variant="light" radius="md">
+                                        <Text size="sm" fw={600}>Capacity limits are required before save</Text>
+                                        <Text size="sm">
+                                            Set {eventData.teamSignup ? 'Max Teams' : 'Max Participants'} and Team Size Limit.
+                                            Blank values are kept as null and shown as validation errors.
+                                        </Text>
+                                    </Alert>
+                                </AnimatedSection>
                                 <div className="md:col-span-3">
                                     <AnimatedSection in={eventData.eventType === 'LEAGUE'} className="rounded-lg border border-gray-200 bg-white p-3 transition-all duration-200">
                                         <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
@@ -10712,12 +10744,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     leagueData={leagueData}
                                                     sport={eventData.sportConfig ?? undefined}
                                                     participantCount={eventData.singleDivision
-                                                        ? eventData.maxParticipants
+                                                        ? (eventData.maxParticipants ?? 0)
                                                         : (() => {
                                                             const total = (eventData.divisionDetails || []).reduce((sum, detail) => (
                                                                 sum + Math.max(0, Math.trunc(detail.maxParticipants || 0))
                                                             ), 0);
-                                                            return total > 0 ? total : eventData.maxParticipants;
+                                                            return total > 0 ? total : (eventData.maxParticipants ?? 0);
                                                         })()}
                                                     onLeagueDataChange={(updates) => setLeagueData(prev => ({ ...prev, ...updates }))}
                                                     slots={leagueSlots}
@@ -10786,7 +10818,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 EventForm.displayName = 'EventForm';
 
 export default EventForm;
-
 
 
 
