@@ -5,6 +5,12 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { calculateMvpAndStripeFees } from '@/lib/billingFees';
 import { resolveEventDivisionSelection } from '@/app/api/events/[eventId]/registrationDivisionUtils';
+import {
+  extractRentalCheckoutWindow,
+  releaseRentalCheckoutLocks,
+  reserveRentalCheckoutLocks,
+  type RentalCheckoutWindow,
+} from '@/server/repositories/rentalCheckoutLocks';
 
 export const dynamic = 'force-dynamic';
 
@@ -350,6 +356,29 @@ const releaseStartedRegistration = async ({
   }
 };
 
+const releaseReservedRentalWindow = async ({
+  window,
+  userId,
+}: {
+  window: RentalCheckoutWindow | null;
+  userId: string;
+}) => {
+  if (!window) return;
+  try {
+    await releaseRentalCheckoutLocks({
+      client: prisma,
+      window,
+      userId,
+    });
+  } catch (error) {
+    console.warn('Failed to release reserved rental checkout window.', {
+      eventId: window.eventId,
+      fieldIds: window.fieldIds,
+      error,
+    });
+  }
+};
+
 const normalizeDivisionInput = (payload: Record<string, unknown>): RegistrationDivisionSelectionInput => {
   const eventPayload = payload.event && typeof payload.event === 'object'
     ? (payload.event as Record<string, unknown>)
@@ -512,6 +541,7 @@ export async function POST(req: NextRequest) {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   const actorUserId = normalizeString(session?.userId) ?? userId ?? 'system:purchase-intent';
   let reservedRegistrationId: string | null = null;
+  let reservedRentalWindow: RentalCheckoutWindow | null = null;
 
   if (purchaseType === 'event') {
     const reservationResult = await reserveEventRegistrationSlot({
@@ -526,6 +556,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: reservationResult.error }, { status: reservationResult.status });
     }
     reservedRegistrationId = reservationResult.registrationId;
+  } else if (purchaseType === 'rental') {
+    const rentalWindowResult = extractRentalCheckoutWindow({
+      event: payload.event,
+      timeSlot: payload.timeSlot,
+    });
+    if (!rentalWindowResult.ok) {
+      return NextResponse.json({ error: rentalWindowResult.error }, { status: rentalWindowResult.status });
+    }
+
+    const lockReservation = await reserveRentalCheckoutLocks({
+      client: prisma,
+      window: rentalWindowResult.window,
+      userId: actorUserId,
+      now: new Date(),
+    });
+    if (!lockReservation.ok) {
+      return NextResponse.json(
+        {
+          error: lockReservation.error,
+          conflicts: lockReservation.conflicts,
+          conflictFieldIds: lockReservation.conflictFieldIds,
+        },
+        { status: lockReservation.status },
+      );
+    }
+    reservedRentalWindow = rentalWindowResult.window;
   }
 
   if (!secretKey) {
@@ -596,6 +652,10 @@ export async function POST(req: NextRequest) {
     await releaseStartedRegistration({
       registrationId: reservedRegistrationId,
       eventId,
+    });
+    await releaseReservedRentalWindow({
+      window: reservedRentalWindow,
+      userId: actorUserId,
     });
     return NextResponse.json({
       paymentIntent: `pi_fallback_${crypto.randomUUID()}`,

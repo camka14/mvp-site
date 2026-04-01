@@ -31,9 +31,17 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const extractRentalCheckoutWindowMock = jest.fn();
+const reserveRentalCheckoutLocksMock = jest.fn();
+const releaseRentalCheckoutLocksMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
+  extractRentalCheckoutWindow: (...args: unknown[]) => extractRentalCheckoutWindowMock(...args),
+  reserveRentalCheckoutLocks: (...args: unknown[]) => reserveRentalCheckoutLocksMock(...args),
+  releaseRentalCheckoutLocks: (...args: unknown[]) => releaseRentalCheckoutLocksMock(...args),
+}));
 
 import { POST } from '@/app/api/billing/purchase-intent/route';
 
@@ -89,6 +97,26 @@ describe('POST /api/billing/purchase-intent', () => {
       };
       return callback(tx);
     });
+    extractRentalCheckoutWindowMock.mockReturnValue({
+      ok: true,
+      window: {
+        eventId: 'event_1',
+        fieldIds: ['field_1'],
+        start: new Date('2026-03-18T12:00:00.000Z'),
+        end: new Date('2026-03-18T13:00:00.000Z'),
+        noFixedEndDateTime: false,
+        organizationId: null,
+        eventType: 'EVENT',
+        parentEvent: null,
+      },
+    });
+    reserveRentalCheckoutLocksMock.mockResolvedValue({
+      ok: true,
+      ownerToken: 'rental:user_1:event_1',
+      lockIds: ['rental-checkout:field_1:2026-03-18T12:00:00.000Z:2026-03-18T13:00:00.000Z'],
+      expiresAt: new Date('2026-03-18T12:10:00.000Z'),
+    });
+    releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
     process.env.STRIPE_SECRET_KEY = '';
     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_mock';
   });
@@ -135,6 +163,27 @@ describe('POST /api/billing/purchase-intent', () => {
 
     expect(res.status).toBe(200);
     expect(String(data.paymentIntent ?? '')).toContain('pi_mock_');
+    expect(reserveRentalCheckoutLocksMock).toHaveBeenCalled();
+  });
+
+  it('returns 409 when rental checkout lock reservation conflicts', async () => {
+    reserveRentalCheckoutLocksMock.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      error: 'Selected fields and time range are temporarily reserved by another checkout.',
+      conflictFieldIds: ['field_1'],
+    });
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+      timeSlot: { $id: 'slot_1', price: 2500 },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(String(data.error ?? '')).toContain('temporarily reserved');
+    expect(data.conflictFieldIds).toEqual(['field_1']);
   });
 
   it('blocks rental checkout when any required rental document template is unsigned', async () => {
@@ -622,5 +671,202 @@ describe('POST /api/billing/purchase-intent', () => {
         .some((message) => message.includes('Event is full')),
     ).toBe(true);
     expect(registrations.filter((entry) => entry.status === 'STARTED')).toHaveLength(1);
+  });
+
+  it('allows only one reservation when two users race for the final division slot', async () => {
+    type RegistrationRow = {
+      id: string;
+      eventId: string;
+      registrantId: string;
+      registrantType: string;
+      status: string;
+      divisionId: string | null;
+      createdAt: Date | null;
+      updatedAt: Date | null;
+    };
+
+    const registrations: RegistrationRow[] = [];
+    let transactionQueue = Promise.resolve();
+
+    prismaMock.$queryRaw.mockImplementation(async () => [
+      {
+        id: 'event_1',
+        start: new Date('2026-03-18T12:00:00.000Z'),
+        minAge: null,
+        maxAge: null,
+        sportId: null,
+        registrationByDivisionType: false,
+        divisions: ['div_a'],
+        maxParticipants: 10,
+        teamSignup: false,
+      },
+    ]);
+    prismaMock.divisions.findMany.mockResolvedValue([
+      {
+        id: 'div_a',
+        key: 'div_a',
+        name: 'Division A',
+        sportId: null,
+        divisionTypeId: 'adult',
+        divisionTypeName: 'Adult',
+        ratingType: 'AGE',
+        gender: 'C',
+        ageCutoffDate: null,
+        ageCutoffLabel: null,
+        ageCutoffSource: null,
+      },
+    ]);
+    prismaMock.divisions.findFirst.mockResolvedValue({
+      id: 'div_a',
+      maxParticipants: 1,
+    });
+
+    prismaMock.eventRegistrations.findUnique.mockImplementation(async ({ where }: any) => {
+      const id = String(where?.id ?? '');
+      const row = registrations.find((entry) => entry.id === id);
+      if (!row) return null;
+      return {
+        id: row.id,
+        status: row.status,
+        createdAt: row.createdAt,
+        divisionId: row.divisionId,
+        divisionTypeId: null,
+        divisionTypeKey: null,
+      };
+    });
+
+    prismaMock.eventRegistrations.findMany.mockImplementation(async ({ where, select }: any) => {
+      let rows = registrations.filter((entry) => entry.eventId === where?.eventId);
+
+      if (typeof where?.status === 'string') {
+        rows = rows.filter((entry) => entry.status === where.status);
+      } else if (Array.isArray(where?.status?.in)) {
+        rows = rows.filter((entry) => where.status.in.includes(entry.status));
+      }
+
+      if (Array.isArray(where?.OR)) {
+        const cutoff = where.OR.find((item: any) => item?.createdAt?.lt)?.createdAt?.lt;
+        rows = rows.filter((entry) => {
+          if (entry.createdAt == null) return true;
+          if (cutoff instanceof Date) return entry.createdAt < cutoff;
+          return false;
+        });
+      }
+
+      if (typeof where?.divisionId === 'string') {
+        rows = rows.filter((entry) => entry.divisionId === where.divisionId);
+      }
+
+      if (typeof where?.registrantType === 'string') {
+        rows = rows.filter((entry) => entry.registrantType === where.registrantType);
+      } else if (Array.isArray(where?.registrantType?.in)) {
+        rows = rows.filter((entry) => where.registrantType.in.includes(entry.registrantType));
+      }
+
+      return rows.map((entry) => {
+        if (!select) return { ...entry };
+        const projected: Record<string, unknown> = {};
+        if (select.id) projected.id = entry.id;
+        if (select.status) projected.status = entry.status;
+        if (select.createdAt) projected.createdAt = entry.createdAt;
+        return projected;
+      });
+    });
+
+    prismaMock.eventRegistrations.create.mockImplementation(async ({ data }: any) => {
+      registrations.push({
+        id: String(data.id),
+        eventId: String(data.eventId),
+        registrantId: String(data.registrantId),
+        registrantType: String(data.registrantType),
+        status: String(data.status),
+        divisionId: data.divisionId == null ? null : String(data.divisionId),
+        createdAt: data.createdAt instanceof Date ? data.createdAt : new Date(),
+        updatedAt: data.updatedAt instanceof Date ? data.updatedAt : new Date(),
+      });
+      return data;
+    });
+
+    prismaMock.eventRegistrations.update.mockImplementation(async ({ where, data }: any) => {
+      const id = String(where?.id ?? '');
+      const row = registrations.find((entry) => entry.id === id);
+      if (!row) return null;
+      if (typeof data?.status === 'string') row.status = data.status;
+      if (typeof data?.divisionId === 'string' || data?.divisionId === null) {
+        row.divisionId = data.divisionId == null ? null : String(data.divisionId);
+      }
+      if (data?.updatedAt instanceof Date) row.updatedAt = data.updatedAt;
+      return {
+        id: row.id,
+        status: row.status,
+        createdAt: row.createdAt,
+      };
+    });
+
+    prismaMock.eventRegistrations.deleteMany.mockImplementation(async ({ where }: any) => {
+      const ids = Array.isArray(where?.id?.in)
+        ? where.id.in.map((value: unknown) => String(value))
+        : where?.id != null
+          ? [String(where.id)]
+          : [];
+      const requiredStatus = typeof where?.status === 'string' ? where.status : null;
+      const beforeCount = registrations.length;
+      for (let index = registrations.length - 1; index >= 0; index -= 1) {
+        const entry = registrations[index];
+        const idMatches = ids.length === 0 || ids.includes(entry.id);
+        const statusMatches = !requiredStatus || entry.status === requiredStatus;
+        if (idMatches && statusMatches) {
+          registrations.splice(index, 1);
+        }
+      }
+      return { count: beforeCount - registrations.length };
+    });
+
+    prismaMock.$transaction.mockImplementation((callback: (tx: any) => Promise<unknown>) => {
+      const tx = {
+        $queryRaw: prismaMock.$queryRaw,
+        teams: {
+          findUnique: prismaMock.teams.findUnique,
+        },
+        divisions: {
+          findFirst: prismaMock.divisions.findFirst,
+        },
+        eventRegistrations: {
+          findMany: prismaMock.eventRegistrations.findMany,
+          findUnique: prismaMock.eventRegistrations.findUnique,
+          create: prismaMock.eventRegistrations.create,
+          update: prismaMock.eventRegistrations.update,
+          deleteMany: prismaMock.eventRegistrations.deleteMany,
+        },
+      };
+
+      const run = transactionQueue.then(() => callback(tx));
+      transactionQueue = run.then(() => undefined, () => undefined);
+      return run;
+    });
+
+    const [firstResponse, secondResponse] = await Promise.all([
+      POST(jsonPost({
+        user: { $id: 'user_1' },
+        event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+        divisionId: 'div_a',
+      })),
+      POST(jsonPost({
+        user: { $id: 'user_2' },
+        event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
+        divisionId: 'div_a',
+      })),
+    ]);
+
+    const firstPayload = await firstResponse.json();
+    const secondPayload = await secondResponse.json();
+    const statusCodes = [firstResponse.status, secondResponse.status].sort((left, right) => left - right);
+
+    expect(statusCodes).toEqual([200, 409]);
+    expect(
+      [String(firstPayload.error ?? ''), String(secondPayload.error ?? '')]
+        .some((message) => message.includes('Selected division is full')),
+    ).toBe(true);
+    expect(registrations.filter((entry) => entry.status === 'STARTED' && entry.divisionId === 'div_a')).toHaveLength(1);
   });
 });

@@ -19,6 +19,51 @@ type StripeOnboardingLinkResult = {
 };
 
 class PaymentService {
+  async reserveRentalCheckoutLock(
+    event: Event,
+    timeSlot: TimeSlot,
+  ): Promise<{ ok?: boolean; expiresAt?: string }> {
+    if (!event) {
+      throw new Error('Event is required to reserve a rental checkout lock.');
+    }
+    if (!timeSlot) {
+      throw new Error('Time slot is required to reserve a rental checkout lock.');
+    }
+    const payloadEvent = buildPayload(event);
+    return apiRequest<{ ok?: boolean; expiresAt?: string; error?: string }>('/api/billing/rental-lock', {
+      method: 'POST',
+      body: {
+        event: payloadEvent,
+        timeSlot,
+      },
+    }).then((result) => {
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+      return result;
+    });
+  }
+
+  async releaseRentalCheckoutLock(
+    event: Event,
+    timeSlot: TimeSlot,
+  ): Promise<void> {
+    if (!event || !timeSlot) {
+      return;
+    }
+    const payloadEvent = buildPayload(event);
+    const result = await apiRequest<{ ok?: boolean; error?: string }>('/api/billing/rental-lock', {
+      method: 'DELETE',
+      body: {
+        event: payloadEvent,
+        timeSlot,
+      },
+    });
+    if (result?.error) {
+      throw new Error(result.error);
+    }
+  }
+
   async createPaymentIntent(
     user: UserData,
     event?: Event,
