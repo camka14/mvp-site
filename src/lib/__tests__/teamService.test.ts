@@ -75,8 +75,16 @@ describe('teamService', () => {
       const team = await teamService.getTeamById('team_1', true);
 
       expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1');
-      expect(userServiceMock.getUsersByIds).toHaveBeenNthCalledWith(1, ['user_1']);
-      expect(userServiceMock.getUsersByIds).toHaveBeenNthCalledWith(2, ['user_2']);
+      expect(userServiceMock.getUsersByIds).toHaveBeenNthCalledWith(
+        1,
+        ['user_1'],
+        expect.objectContaining({ teamId: 'team_1' }),
+      );
+      expect(userServiceMock.getUsersByIds).toHaveBeenNthCalledWith(
+        2,
+        ['user_2'],
+        expect.objectContaining({ teamId: 'team_1' }),
+      );
       expect(userServiceMock.getUserById).not.toHaveBeenCalled();
       expect(team?.players?.[0].$id).toBe('user_1');
       expect(team?.pendingPlayers?.[0].$id).toBe('user_2');
@@ -100,7 +108,10 @@ describe('teamService', () => {
 
       const team = await teamService.getTeamById('team_missing_captain', true);
 
-      expect(userServiceMock.getUserById).toHaveBeenCalledWith('captain_missing');
+      expect(userServiceMock.getUserById).toHaveBeenCalledWith(
+        'captain_missing',
+        expect.objectContaining({ teamId: 'team_missing_captain' }),
+      );
       expect(team?.captain?.$id).toBe('captain_missing');
     });
   });
@@ -247,3 +258,4 @@ describe('teamService', () => {
     });
   });
 });
+

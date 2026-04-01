@@ -109,6 +109,9 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     const event = buildEvent({
       $id: 'event_1',
       teamSignup: false,
+      singleDivision: true,
+      divisions: ['open'],
+      divisionDetails: [{ id: 'open', name: 'Open' }] as any,
       start: futureStart,
       end: futureEnd,
       price: 2500,
@@ -141,11 +144,6 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     const joinButton = await screen.findByRole('button', { name: /Join Event/i });
     fireEvent.click(joinButton);
 
-    await screen.findByRole('heading', { name: /Confirm your password/i });
-    const passwordInput = await screen.findByLabelText(/Password/i, { selector: 'input' });
-    fireEvent.change(passwordInput, { target: { value: 'pw123' } });
-    fireEvent.click(screen.getByRole('button', { name: /Continue/i }));
-
     await waitFor(() => {
       expect(screen.getByText(/payment plan already exists/i)).toBeInTheDocument();
     });
@@ -153,11 +151,11 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     expect(screen.queryByRole('button', { name: /Submitting/i })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Join Event/i })).toBeEnabled();
 
-    expect(apiRequest).toHaveBeenCalledWith(
-      '/api/documents/confirm-password',
-      expect.objectContaining({ timeoutMs: 5000 }),
-    );
+    expect(apiRequest).not.toHaveBeenCalled();
     expect(boldsignService.createSignLinks).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 5000 }));
     expect(billService.createBill).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 5000 }));
   });
 });
+
+
+

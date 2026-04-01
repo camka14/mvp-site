@@ -14,6 +14,10 @@ const removeFriendMock = jest.fn();
 const followUserMock = jest.fn();
 const unfollowUserMock = jest.fn();
 
+const createVisibilityContextMock = jest.fn();
+const applyUserPrivacyMock = jest.fn((row) => row);
+const applyUserPrivacyListMock = jest.fn((rows) => rows);
+
 jest.mock('@/lib/permissions', () => ({ requireSession: (request: NextRequest) => requireSessionMock(request) }));
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => withLegacyFieldsMock(row),
@@ -34,6 +38,12 @@ jest.mock('@/server/socialGraph', () => ({
       this.status = status;
     }
   },
+}));
+jest.mock('@/lib/prisma', () => ({ prisma: {} }));
+jest.mock('@/server/userPrivacy', () => ({
+  createVisibilityContext: (...args: any[]) => createVisibilityContextMock(...args),
+  applyUserPrivacy: (row: any, context: any) => applyUserPrivacyMock(row, context),
+  applyUserPrivacyList: (rows: any[], context: any) => applyUserPrivacyListMock(rows, context),
 }));
 
 import { GET as socialGet } from '@/app/api/users/social/route';
@@ -56,6 +66,7 @@ describe('social routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    createVisibilityContextMock.mockResolvedValue({ viewerId: 'user_1', isAdmin: false });
   });
 
   it('returns social graph for the signed-in user', async () => {
@@ -143,3 +154,6 @@ describe('social routes', () => {
     expect(unfollowUserMock).toHaveBeenCalledWith('user_1', 'user_2');
   });
 });
+
+
+

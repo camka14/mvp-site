@@ -357,12 +357,13 @@ describe('EventDetailSheet payment-plan team join', () => {
     fireEvent.click(screen.getByRole('button', { name: /Join for/i }));
 
     await waitFor(() => {
-      expect(paymentService.createPaymentIntent).toHaveBeenCalledWith(
-        user,
-        expect.objectContaining({ $id: event.$id, price: 5000 }),
-        expect.objectContaining({ $id: team.$id }),
-      );
+      expect(paymentService.createPaymentIntent).toHaveBeenCalled();
     });
+
+    const [paymentIntentCall] = (paymentService.createPaymentIntent as jest.Mock).mock.calls;
+    expect(paymentIntentCall?.[0]).toEqual(user);
+    expect(paymentIntentCall?.[1]).toEqual(expect.objectContaining({ $id: event.$id, price: 5000 }));
+    expect(paymentIntentCall?.[2]).toEqual(expect.objectContaining({ $id: team.$id }));
 
     expect(paymentService.joinEvent).not.toHaveBeenCalled();
     expect(billService.createBill).not.toHaveBeenCalled();
@@ -479,3 +480,4 @@ describe('EventDetailSheet payment-plan team join', () => {
     });
   });
 });
+

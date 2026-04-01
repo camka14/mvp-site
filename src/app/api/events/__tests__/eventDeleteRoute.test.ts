@@ -307,6 +307,7 @@ describe('event DELETE route', () => {
       where: { id: 'slot_2' },
       data: {
         requiredTemplateIds: [],
+        hostRequiredTemplateIds: [],
         updatedAt: expect.any(Date),
       },
     });
@@ -412,3 +413,4 @@ describe('event DELETE route', () => {
     });
   });
 });
+

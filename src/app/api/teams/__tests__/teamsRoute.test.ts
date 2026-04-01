@@ -13,12 +13,16 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const syncTeamChatByTeamIdMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
   withLegacyList: (rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })),
+}));
+jest.mock('@/server/teamChatSync', () => ({
+  syncTeamChatByTeamId: (...args: any[]) => syncTeamChatByTeamIdMock(...args),
 }));
 
 import { GET, POST } from '@/app/api/teams/route';
@@ -33,6 +37,7 @@ describe('/api/teams route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    syncTeamChatByTeamIdMock.mockResolvedValue(undefined);
   });
 
   it('filters by player OR manager when both query params are supplied', async () => {
@@ -117,3 +122,4 @@ describe('/api/teams route', () => {
     }));
   });
 });
+

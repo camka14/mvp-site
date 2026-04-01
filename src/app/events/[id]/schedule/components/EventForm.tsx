@@ -5933,7 +5933,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             includePlayoffs: eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs,
             defaultPlayoffTeamCount: typeof leagueData.playoffTeamCount === 'number'
                 ? leagueData.playoffTeamCount
-                : eventData.maxParticipants,
+                : typeof eventData.maxParticipants === 'number'
+                    ? eventData.maxParticipants
+                    : undefined,
         });
         if (changed) {
             setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
@@ -10061,7 +10063,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         label={eventData.teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
                                         min={2}
                                         max={MAX_STANDARD_NUMBER}
-                                        value={eventData.singleDivision ? eventData.maxParticipants : divisionEditor.maxParticipants}
+                                        value={eventData.singleDivision
+                                            ? (typeof eventData.maxParticipants === 'number' ? eventData.maxParticipants : undefined)
+                                            : divisionEditor.maxParticipants}
                                         className="md:col-span-3"
                                         maw={220}
                                         clampBehavior="strict"
@@ -10818,6 +10822,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 EventForm.displayName = 'EventForm';
 
 export default EventForm;
+
+
 
 
 

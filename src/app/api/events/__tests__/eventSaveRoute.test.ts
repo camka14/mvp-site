@@ -24,6 +24,7 @@ const deleteMatchesByEventMock = jest.fn();
 const saveMatchesMock = jest.fn();
 const saveEventScheduleMock = jest.fn();
 const notifySocialAudienceOfEventCreationMock = jest.fn();
+const isEventFieldConflictErrorMock = jest.fn(() => false);
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -33,6 +34,7 @@ jest.mock('@/server/repositories/events', () => ({
   deleteMatchesByEvent: (...args: any[]) => deleteMatchesByEventMock(...args),
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
   saveEventSchedule: (...args: any[]) => saveEventScheduleMock(...args),
+  isEventFieldConflictError: (...args: any[]) => isEventFieldConflictErrorMock(...args),
 }));
 jest.mock('@/server/eventCreationNotifications', () => ({
   notifySocialAudienceOfEventCreation: (...args: any[]) => notifySocialAudienceOfEventCreationMock(...args),
@@ -54,6 +56,7 @@ describe('event save route', () => {
       async (callback: (tx: typeof prismaMock) => Promise<unknown> | unknown) => callback(prismaMock),
     );
     notifySocialAudienceOfEventCreationMock.mockResolvedValue(undefined);
+    isEventFieldConflictErrorMock.mockReturnValue(false);
   });
 
   it('creates an event and returns divisionFieldIds for the saved response', async () => {
@@ -179,3 +182,6 @@ describe('event save route', () => {
     expect(notifySocialAudienceOfEventCreationMock).not.toHaveBeenCalled();
   });
 });
+
+
+
