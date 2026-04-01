@@ -105,6 +105,22 @@ const baseEventPayload = () => ({
 const divisionId = (token: string) => buildEventDivisionId('event_1', token);
 
 describe('upsertEventFromPayload', () => {
+  it('rejects fixed endDateTime values that are not after startDateTime', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      start: '2026-01-05T09:00:00.000Z',
+      end: '2026-01-05T09:00:00.000Z',
+      noFixedEndDateTime: false,
+      divisions: ['OPEN'],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'End date/time must be after start date/time when "No fixed end date/time" is disabled.',
+    );
+    expect(client.events.upsert).not.toHaveBeenCalled();
+  });
+
   it('persists multi-day slot payloads as one canonical row', async () => {
     const client = createMockClient();
     const payload = {

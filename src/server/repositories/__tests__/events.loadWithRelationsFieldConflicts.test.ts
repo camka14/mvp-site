@@ -183,4 +183,91 @@ describe('loadEventWithRelations field conflict hydration', () => {
     expect(eventConflictWhere.start.lt.toISOString()).toBe(expectedWindowEnd.toISOString());
     expect(eventConflictWhere.end.gt.toISOString()).toBe(start.toISOString());
   });
+
+  it('hydrates rental-slot blocking windows when event and field organizations match', async () => {
+    const client = createClient({
+      organizationId: 'org_1',
+    });
+    client.fields.findMany.mockResolvedValue([
+      {
+        id: 'field_1',
+        fieldNumber: 1,
+        organizationId: 'org_1',
+        divisions: ['open'],
+        name: 'Court A',
+        rentalSlotIds: ['slot_rental_1'],
+        createdAt: null,
+        updatedAt: null,
+      },
+    ]);
+    client.timeSlots.findMany.mockImplementation((args?: Record<string, any>) => {
+      const ids = args?.where?.id?.in;
+      if (Array.isArray(ids) && ids.includes('slot_rental_1')) {
+        return Promise.resolve([
+          {
+            id: 'slot_rental_1',
+            dayOfWeek: 6,
+            daysOfWeek: [6],
+            startTimeMinutes: 630,
+            endTimeMinutes: 690,
+            startDate: new Date('2026-03-01T10:30:00.000Z'),
+            endDate: new Date('2026-03-01T11:30:00.000Z'),
+            repeating: false,
+            scheduledFieldId: 'field_1',
+            scheduledFieldIds: ['field_1'],
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const loaded = await loadEventWithRelations('event_sched', client as any);
+    const field = loaded.fields.field_1;
+
+    expect(field.events).toHaveLength(1);
+    expect(field.events[0]?.id).toContain('__field_event_block__rental__slot_rental_1__field_1__');
+  });
+
+  it('does not hydrate rental-slot blocking windows when event rents from a different field organization', async () => {
+    const client = createClient({
+      organizationId: null,
+    });
+    client.fields.findMany.mockResolvedValue([
+      {
+        id: 'field_1',
+        fieldNumber: 1,
+        organizationId: 'facility_org',
+        divisions: ['open'],
+        name: 'Court A',
+        rentalSlotIds: ['slot_rental_1'],
+        createdAt: null,
+        updatedAt: null,
+      },
+    ]);
+    client.timeSlots.findMany.mockImplementation((args?: Record<string, any>) => {
+      const ids = args?.where?.id?.in;
+      if (Array.isArray(ids) && ids.includes('slot_rental_1')) {
+        return Promise.resolve([
+          {
+            id: 'slot_rental_1',
+            dayOfWeek: 6,
+            daysOfWeek: [6],
+            startTimeMinutes: 630,
+            endTimeMinutes: 690,
+            startDate: new Date('2026-03-01T10:30:00.000Z'),
+            endDate: new Date('2026-03-01T11:30:00.000Z'),
+            repeating: false,
+            scheduledFieldId: 'field_1',
+            scheduledFieldIds: ['field_1'],
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const loaded = await loadEventWithRelations('event_sched', client as any);
+    const field = loaded.fields.field_1;
+
+    expect(field.events).toHaveLength(0);
+  });
 });

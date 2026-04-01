@@ -723,6 +723,39 @@ describe('event PATCH route', () => {
     expect(scheduleEventMock).not.toHaveBeenCalled();
   });
 
+  it('rejects fixed schedulable windows when persisted end equals start', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    const equalBoundary = new Date('2026-03-01T10:00:00.000Z');
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'TOURNAMENT',
+      noFixedEndDateTime: false,
+      start: equalBoundary,
+      end: equalBoundary,
+      divisions: ['open'],
+      fieldIds: ['field_1'],
+      timeSlotIds: [],
+      singleDivision: false,
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          name: 'Updated Tournament Name',
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    await expect(res.text()).resolves.toBe(
+      'End date/time must be after start date/time when no fixed end date/time is disabled.',
+    );
+  });
+
   it('persists league scoring config values and links the event config id', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique

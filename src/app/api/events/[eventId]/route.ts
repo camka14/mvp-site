@@ -2390,5 +2390,3 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
 
   return NextResponse.json({ deleted: true }, { status: 200 });
 }
-
-

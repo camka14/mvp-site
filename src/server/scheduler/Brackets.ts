@@ -357,6 +357,80 @@ export class Brackets {
   }
 
   private processMatches(matches: Match[]): void {
+    const formatIso = (value: Date | null | undefined): string => {
+      if (!value || Number.isNaN(value.getTime())) {
+        return 'null';
+      }
+      return value.toISOString();
+    };
+    const normalizeFieldIds = (slot: unknown): string[] => {
+      if (!slot || typeof slot !== 'object') {
+        return [];
+      }
+      const source = slot as {
+        scheduledFieldIds?: unknown[];
+        fieldIds?: unknown[];
+        field?: unknown;
+        scheduledFieldId?: unknown;
+      };
+      const candidates: unknown[] = Array.isArray(source.scheduledFieldIds) && source.scheduledFieldIds.length
+        ? source.scheduledFieldIds
+        : Array.isArray(source.fieldIds) && source.fieldIds.length
+          ? source.fieldIds
+          : [source.field ?? source.scheduledFieldId];
+      return Array.from(
+        new Set(
+          candidates
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value.length > 0),
+        ),
+      );
+    };
+    const normalizeSlotDivisionIds = (slot: unknown): string[] => {
+      if (!slot || typeof slot !== 'object') {
+        return [];
+      }
+      const source = slot as { divisions?: unknown[] };
+      if (!Array.isArray(source.divisions)) {
+        return [];
+      }
+      return Array.from(
+        new Set(
+          source.divisions
+            .map((division) => {
+              if (typeof division === 'string') {
+                return division.trim();
+              }
+              if (division && typeof division === 'object') {
+                const id = (division as { id?: unknown }).id;
+                return typeof id === 'string' ? id.trim() : '';
+              }
+              return '';
+            })
+            .filter((value) => value.length > 0),
+        ),
+      );
+    };
+    const summarizeDivisionSlotFields = (divisionId: string): { slotCount: number; fieldIds: string[] } => {
+      const slotFieldIds = new Set<string>();
+      let slotCount = 0;
+      for (const slot of this.tournament.timeSlots) {
+        const slotDivisions = normalizeSlotDivisionIds(slot);
+        if (slotDivisions.length && !slotDivisions.includes(divisionId)) {
+          continue;
+        }
+        slotCount += 1;
+        for (const fieldId of normalizeFieldIds(slot)) {
+          slotFieldIds.add(fieldId);
+        }
+      }
+      return {
+        slotCount,
+        fieldIds: Array.from(slotFieldIds).slice(0, 30),
+      };
+    };
+
+    const schedulingFailures: Array<{ matchId: number; reason: string }> = [];
     let count = 1;
     for (const match of [...matches].reverse()) {
       match.matchId = count;
@@ -372,7 +446,29 @@ export class Brackets {
           this.bracketSchedule.scheduleEvent(match, this.getMultiplier(match) * TIMES.SET);
         }
       } catch (err) {
-        this.context.error(`ERROR scheduling event for match ${count}: ${err}`);
+        const error = err instanceof Error ? err : new Error(String(err));
+        const divisionId = match.division?.id ?? this.currentDivision?.id ?? 'unknown-division';
+        const divisionFieldIds = this.currentFields
+          .filter((field) => field.getGroups().some((group) => group.id === divisionId))
+          .map((field) => field.id)
+          .slice(0, 30);
+        const slotSummary = summarizeDivisionSlotFields(divisionId);
+        this.context.error(
+          `[scheduler][match-failure] eventId=${this.tournament.id} matchId=${count} divisionId=${divisionId} reason=${error.message}`,
+        );
+        this.context.error(
+          `[scheduler][match-failure] eventWindow=${formatIso(this.tournament.start)}..${formatIso(this.tournament.end)} mode=${this.tournament.officialSchedulingMode} durationMs=${this.getMultiplier(match) * TIMES.SET}`,
+        );
+        this.context.error(
+          `[scheduler][match-failure] matchState field=${match.field?.id ?? 'null'} start=${formatIso(match.start)} end=${formatIso(match.end)} deps=${match.getDependencies().map((dep) => dep.matchId ?? 'null').join(',') || 'none'}`,
+        );
+        this.context.error(
+          `[scheduler][match-failure] divisionFields=${divisionFieldIds.join(',') || 'none'} slotCount=${slotSummary.slotCount} slotFieldIds=${slotSummary.fieldIds.join(',') || 'none'}`,
+        );
+        if (error.stack) {
+          this.context.error(`[scheduler][match-failure] stack=${error.stack}`);
+        }
+        schedulingFailures.push({ matchId: count, reason: error.message });
       }
       const existingMatch = this.existingMatches[count];
       if (existingMatch) {
@@ -383,6 +479,16 @@ export class Brackets {
         this.tournament.matches[match.id] = match;
       }
       count += 1;
+    }
+
+    if (schedulingFailures.length > 0) {
+      const details = schedulingFailures
+        .slice(0, 5)
+        .map((failure) => `match ${failure.matchId}: ${failure.reason}`)
+        .join('; ');
+      throw new Error(
+        `Failed to schedule ${schedulingFailures.length} bracket matches. ${details}`,
+      );
     }
 
     const orderedMatches = [...matches].sort((a, b) => {

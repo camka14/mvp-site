@@ -275,7 +275,7 @@ export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContex
     return buildLeagueSchedule(event, context, openEndedSchedule);
   }
 
-  return buildTournamentSchedule(event, context);
+  return buildTournamentSchedule(event, context, openEndedSchedule);
 };
 
 const buildLeagueSchedule = (
@@ -391,7 +391,11 @@ const buildLeagueSchedule = (
 
   const latestEnd = latestMatchEnd(Object.values(updated.matches));
   if (latestEnd) {
-    updated.end = latestEnd;
+    if (openEndedSchedule) {
+      updated.end = latestEnd;
+    } else if (latestEnd.getTime() > updated.end.getTime()) {
+      throw new ScheduleError('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end date/time".');
+    }
   }
 
   return {
@@ -462,7 +466,11 @@ const formatNoFieldsErrorForUser = (message: string, league: League): string => 
   return `Unable to schedule event because no fields are available for divisions: ${uniqueLabels.join(', ')}.`;
 };
 
-const buildTournamentSchedule = (tournament: Tournament, context: SchedulerContext): ScheduleResult => {
+const buildTournamentSchedule = (
+  tournament: Tournament,
+  context: SchedulerContext,
+  openEndedSchedule: boolean,
+): ScheduleResult => {
   const builder = new EventBuilder(tournament, context);
   let scheduled: Tournament;
   try {
@@ -480,7 +488,11 @@ const buildTournamentSchedule = (tournament: Tournament, context: SchedulerConte
   }
   const latestEnd = latestMatchEnd(Object.values(scheduled.matches));
   if (latestEnd) {
-    scheduled.end = latestEnd;
+    if (openEndedSchedule) {
+      scheduled.end = latestEnd;
+    } else if (latestEnd.getTime() > scheduled.end.getTime()) {
+      throw new ScheduleError('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end date/time".');
+    }
   }
   return {
     preview: false,

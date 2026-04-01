@@ -1355,6 +1355,7 @@ const attachFieldSchedulingConflicts = async (params: {
       },
       select: {
         id: true,
+        organizationId: true,
         rentalSlotIds: true,
       },
     }),
@@ -1517,6 +1518,12 @@ const attachFieldSchedulingConflicts = async (params: {
   for (const fieldRow of fieldRows) {
     const field = params.fields[fieldRow.id];
     if (!field) {
+      continue;
+    }
+    const eventOrganizationId = scopedOrganizationId ?? null;
+    const fieldOrganizationId = normalizeEntityId((fieldRow as any).organizationId);
+    const isRentingThisField = eventOrganizationId !== fieldOrganizationId;
+    if (isRentingThisField) {
       continue;
     }
     const rentalIdsForField = ensureStringArray(fieldRow.rentalSlotIds);

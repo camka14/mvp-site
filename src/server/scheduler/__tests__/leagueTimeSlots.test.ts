@@ -213,6 +213,52 @@ describe('league scheduling (time slots)', () => {
     );
   });
 
+  it('keeps fixed end windows unchanged after scheduling', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(2, division);
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 0, 3, 14, 0, 0);
+    const timeSlots = [
+      new TimeSlot({
+        id: 'slot_fixed_equal_window',
+        dayOfWeek: 5,
+        startDate: new Date(2026, 0, 3),
+        repeating: true,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 12 * 60,
+      }),
+    ];
+
+    const league = new League({
+      id: 'league_fixed_window_end_unchanged',
+      name: 'Fixed Window End Unchanged',
+      start,
+      end,
+      noFixedEndDateTime: false,
+      maxParticipants: 2,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      officials: [],
+      fields: { [field.id]: field },
+      timeSlots,
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    expect(scheduled.matches.length).toBeGreaterThan(0);
+    expect(scheduled.event.end.getTime()).toBe(end.getTime());
+  });
+
   it('allows open-ended schedules to continue past the stored end date/time when enabled', () => {
     const division = buildDivision();
     const field = buildField(division);

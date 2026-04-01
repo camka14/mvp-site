@@ -595,6 +595,7 @@ export const rescheduleEventMatchesPreservingLocks = (
   stripEventAvailabilityFromFieldRentalSlots(event);
   ensureSplitPlayoffTimeSlotCoverage(event);
   const schedulingDivisions = schedulingDivisionsForEvent(event);
+  const openEndedSchedule = isOpenEndedSchedule(event);
   const rescheduleEndTime = resolveRescheduleEndTime(event);
 
   const lockedMatches = allMatches.filter((match) => match.locked);
@@ -699,7 +700,11 @@ export const rescheduleEventMatchesPreservingLocks = (
 
   const latestEnd = latestMatchEnd(allMatches);
   if (latestEnd) {
-    event.end = latestEnd;
+    if (openEndedSchedule) {
+      event.end = latestEnd;
+    } else if (latestEnd.getTime() > event.end.getTime()) {
+      throw new Error('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end date/time".');
+    }
   }
 
   return {
