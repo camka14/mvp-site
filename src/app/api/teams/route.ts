@@ -13,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 const createSchema = z.object({
   id: z.string(),
-  name: z.string().optional(),
+  name: z.string().trim().min(1, 'Team name is required.'),
   division: z.string().optional(),
   divisionTypeId: z.string().optional(),
   divisionTypeName: z.string().optional(),
@@ -154,6 +154,7 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
+  const normalizedTeamName = data.name.trim();
   const addSelfAsPlayer = data.addSelfAsPlayer !== false;
   const captainId = addSelfAsPlayer ? session.userId : '';
   const managerId = session.userId;
@@ -181,7 +182,7 @@ export async function POST(req: NextRequest) {
 
   const team = await createTeamWithCompatibility(teamsDelegate, {
     id: data.id,
-    name: data.name ?? null,
+    name: normalizedTeamName,
     division: normalizedDivision,
     divisionTypeId,
     divisionTypeName,

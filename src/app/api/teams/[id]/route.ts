@@ -8,15 +8,16 @@ import {
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
 import { deleteTeamChatInTx, getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
+import { asRecord, findPresentKeys } from '@/server/http/strictPatch';
 
 export const dynamic = 'force-dynamic';
 
 const patchEnvelopeSchema = z.object({
-  team: z.unknown().optional(),
-}).passthrough();
+  team: z.record(z.string(), z.unknown()),
+}).strict();
 
 const teamPatchSchema = z.object({
-  name: z.string().optional(),
+  name: z.string().trim().min(1, 'Team name cannot be blank.').optional(),
   division: z.string().optional(),
   divisionTypeId: z.string().optional(),
   divisionTypeName: z.string().optional(),
@@ -31,7 +32,20 @@ const teamPatchSchema = z.object({
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
   profileImage: z.string().optional(),
-});
+  parentTeamId: z.string().nullable().optional(),
+}).strict();
+
+const TEAM_HARD_IMMUTABLE_FIELDS = new Set<string>([
+  'id',
+  '$id',
+  'createdAt',
+  '$createdAt',
+  'updatedAt',
+  '$updatedAt',
+]);
+const TEAM_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
+  'parentTeamId',
+]);
 
 const VERSIONED_PROFILE_FIELDS: ReadonlySet<string> = new Set([
   'name',
@@ -55,6 +69,18 @@ const normalizeText = (value: unknown): string | null => {
   const normalized = value.trim();
   return normalized.length ? normalized : null;
 };
+
+const fallbackTeamNameFromId = (value: unknown): string => {
+  const normalizedId = normalizeText(value);
+  if (!normalizedId) {
+    return 'Team';
+  }
+  return `Team ${normalizedId.slice(0, 8)}`;
+};
+
+const normalizeTeamNameOrFallback = (name: unknown, teamId: unknown): string => (
+  normalizeText(name) ?? fallbackTeamNameFromId(teamId)
+);
 
 const toUniqueStrings = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
@@ -96,7 +122,7 @@ const arraysEqual = (a: string[], b: string[]): boolean => (
 );
 
 type TeamState = {
-  name: string | null;
+  name: string;
   division: string;
   divisionTypeId: string;
   divisionTypeName: string;
@@ -115,6 +141,7 @@ const buildTeamState = (
   existing: Record<string, any>,
   payload: z.infer<typeof teamPatchSchema>,
 ): TeamState => {
+  const resolvedExistingName = normalizeTeamNameOrFallback(existing.name, existing.id);
   const normalizedDivision = normalizeText(payload.division)
     ?? normalizeText(existing.division)
     ?? 'Open';
@@ -161,7 +188,7 @@ const buildTeamState = (
     ?? null;
 
   return {
-    name: normalizeText(payload.name) ?? normalizeText(existing.name),
+    name: payload.name ?? resolvedExistingName,
     division: normalizedDivision,
     divisionTypeId,
     divisionTypeName,
@@ -190,7 +217,7 @@ const hasVersionedProfileChanges = (
   for (const key of keys) {
     switch (key) {
       case 'name':
-        if ((normalizeText(existing.name) ?? null) !== next.name) return true;
+        if (normalizeTeamNameOrFallback(existing.name, existing.id) !== next.name) return true;
         break;
       case 'division':
         if ((normalizeText(existing.division) ?? 'Open') !== next.division) return true;
@@ -368,7 +395,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Invalid input', details: envelope.error.flatten() }, { status: 400 });
   }
 
-  const payloadRaw = envelope.data.team ?? envelope.data ?? {};
+  const payloadRaw = envelope.data.team;
+  const payloadRecord = asRecord(payloadRaw) ?? {};
+  const hardImmutableKeys = findPresentKeys(payloadRecord, TEAM_HARD_IMMUTABLE_FIELDS);
+  if (hardImmutableKeys.length) {
+    return NextResponse.json(
+      { error: 'Immutable team fields cannot be updated.', fields: hardImmutableKeys },
+      { status: 403 },
+    );
+  }
+  const adminOverrideKeys = findPresentKeys(payloadRecord, TEAM_ADMIN_OVERRIDABLE_FIELDS);
+  if (adminOverrideKeys.length && !session.isAdmin) {
+    return NextResponse.json(
+      { error: 'Immutable team fields cannot be updated.', fields: adminOverrideKeys },
+      { status: 403 },
+    );
+  }
+
   const payloadParsed = teamPatchSchema.safeParse(payloadRaw);
   if (!payloadParsed.success) {
     return NextResponse.json({ error: 'Invalid input', details: payloadParsed.error.flatten() }, { status: 400 });
@@ -517,4 +560,3 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   });
   return NextResponse.json({ deleted: true }, { status: 200 });
 }
-
