@@ -80,52 +80,18 @@ const DIVISION_ENUM_FIELDS = ['ratingType', 'gender'] as const;
 const DIVISION_DATE_FIELDS = ['ageCutoffDate'] as const;
 
 const LEAGUE_BOOLEAN_FIELDS = [
-  'applyShutoutOnlyIfWin',
-  'overtimeEnabled',
-  'goalDifferenceTiebreaker',
-  'headToHeadTiebreaker',
-  'totalGoalsTiebreaker',
-  'enableBonusForComebackWin',
-  'enableBonusForHighScoringMatch',
-  'enablePenaltyForUnsportingBehavior',
 ] as const;
 
 const LEAGUE_NUMBER_FIELDS = [
   'pointsForWin',
   'pointsForDraw',
   'pointsForLoss',
-  'pointsForForfeitWin',
-  'pointsForForfeitLoss',
   'pointsPerSetWin',
   'pointsPerSetLoss',
   'pointsPerGameWin',
   'pointsPerGameLoss',
   'pointsPerGoalScored',
   'pointsPerGoalConceded',
-  'maxGoalBonusPoints',
-  'minGoalBonusThreshold',
-  'pointsForShutout',
-  'pointsForCleanSheet',
-  'pointsPerGoalDifference',
-  'maxGoalDifferencePoints',
-  'pointsPenaltyPerGoalDifference',
-  'pointsForParticipation',
-  'pointsForNoShow',
-  'pointsForWinStreakBonus',
-  'winStreakThreshold',
-  'pointsForOvertimeWin',
-  'pointsForOvertimeLoss',
-  'pointsPerRedCard',
-  'pointsPerYellowCard',
-  'pointsPerPenalty',
-  'maxPenaltyDeductions',
-  'maxPointsPerMatch',
-  'minPointsPerMatch',
-  'bonusPointsForComebackWin',
-  'highScoringThreshold',
-  'bonusPointsForHighScoringMatch',
-  'penaltyPointsForUnsportingBehavior',
-  'pointPrecision',
 ] as const;
 
 export const editableFieldsByKind: Record<AdminConstantResponseKey, string[]> = {

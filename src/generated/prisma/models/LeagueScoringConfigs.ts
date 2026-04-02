@@ -30,76 +30,24 @@ export type LeagueScoringConfigsAvgAggregateOutputType = {
   pointsForWin: number | null
   pointsForDraw: number | null
   pointsForLoss: number | null
-  pointsForForfeitWin: number | null
-  pointsForForfeitLoss: number | null
   pointsPerSetWin: number | null
   pointsPerSetLoss: number | null
   pointsPerGameWin: number | null
   pointsPerGameLoss: number | null
   pointsPerGoalScored: number | null
   pointsPerGoalConceded: number | null
-  maxGoalBonusPoints: number | null
-  minGoalBonusThreshold: number | null
-  pointsForShutout: number | null
-  pointsForCleanSheet: number | null
-  pointsPerGoalDifference: number | null
-  maxGoalDifferencePoints: number | null
-  pointsPenaltyPerGoalDifference: number | null
-  pointsForParticipation: number | null
-  pointsForNoShow: number | null
-  pointsForWinStreakBonus: number | null
-  winStreakThreshold: number | null
-  pointsForOvertimeWin: number | null
-  pointsForOvertimeLoss: number | null
-  pointsPerRedCard: number | null
-  pointsPerYellowCard: number | null
-  pointsPerPenalty: number | null
-  maxPenaltyDeductions: number | null
-  maxPointsPerMatch: number | null
-  minPointsPerMatch: number | null
-  bonusPointsForComebackWin: number | null
-  highScoringThreshold: number | null
-  bonusPointsForHighScoringMatch: number | null
-  penaltyPointsForUnsportingBehavior: number | null
-  pointPrecision: number | null
 }
 
 export type LeagueScoringConfigsSumAggregateOutputType = {
   pointsForWin: number | null
   pointsForDraw: number | null
   pointsForLoss: number | null
-  pointsForForfeitWin: number | null
-  pointsForForfeitLoss: number | null
   pointsPerSetWin: number | null
   pointsPerSetLoss: number | null
   pointsPerGameWin: number | null
   pointsPerGameLoss: number | null
   pointsPerGoalScored: number | null
   pointsPerGoalConceded: number | null
-  maxGoalBonusPoints: number | null
-  minGoalBonusThreshold: number | null
-  pointsForShutout: number | null
-  pointsForCleanSheet: number | null
-  pointsPerGoalDifference: number | null
-  maxGoalDifferencePoints: number | null
-  pointsPenaltyPerGoalDifference: number | null
-  pointsForParticipation: number | null
-  pointsForNoShow: number | null
-  pointsForWinStreakBonus: number | null
-  winStreakThreshold: number | null
-  pointsForOvertimeWin: number | null
-  pointsForOvertimeLoss: number | null
-  pointsPerRedCard: number | null
-  pointsPerYellowCard: number | null
-  pointsPerPenalty: number | null
-  maxPenaltyDeductions: number | null
-  maxPointsPerMatch: number | null
-  minPointsPerMatch: number | null
-  bonusPointsForComebackWin: number | null
-  highScoringThreshold: number | null
-  bonusPointsForHighScoringMatch: number | null
-  penaltyPointsForUnsportingBehavior: number | null
-  pointPrecision: number | null
 }
 
 export type LeagueScoringConfigsMinAggregateOutputType = {
@@ -109,46 +57,12 @@ export type LeagueScoringConfigsMinAggregateOutputType = {
   pointsForWin: number | null
   pointsForDraw: number | null
   pointsForLoss: number | null
-  pointsForForfeitWin: number | null
-  pointsForForfeitLoss: number | null
   pointsPerSetWin: number | null
   pointsPerSetLoss: number | null
   pointsPerGameWin: number | null
   pointsPerGameLoss: number | null
   pointsPerGoalScored: number | null
   pointsPerGoalConceded: number | null
-  maxGoalBonusPoints: number | null
-  minGoalBonusThreshold: number | null
-  pointsForShutout: number | null
-  pointsForCleanSheet: number | null
-  applyShutoutOnlyIfWin: boolean | null
-  pointsPerGoalDifference: number | null
-  maxGoalDifferencePoints: number | null
-  pointsPenaltyPerGoalDifference: number | null
-  pointsForParticipation: number | null
-  pointsForNoShow: number | null
-  pointsForWinStreakBonus: number | null
-  winStreakThreshold: number | null
-  pointsForOvertimeWin: number | null
-  pointsForOvertimeLoss: number | null
-  overtimeEnabled: boolean | null
-  pointsPerRedCard: number | null
-  pointsPerYellowCard: number | null
-  pointsPerPenalty: number | null
-  maxPenaltyDeductions: number | null
-  maxPointsPerMatch: number | null
-  minPointsPerMatch: number | null
-  goalDifferenceTiebreaker: boolean | null
-  headToHeadTiebreaker: boolean | null
-  totalGoalsTiebreaker: boolean | null
-  enableBonusForComebackWin: boolean | null
-  bonusPointsForComebackWin: number | null
-  enableBonusForHighScoringMatch: boolean | null
-  highScoringThreshold: number | null
-  bonusPointsForHighScoringMatch: number | null
-  enablePenaltyForUnsportingBehavior: boolean | null
-  penaltyPointsForUnsportingBehavior: number | null
-  pointPrecision: number | null
 }
 
 export type LeagueScoringConfigsMaxAggregateOutputType = {
@@ -158,46 +72,12 @@ export type LeagueScoringConfigsMaxAggregateOutputType = {
   pointsForWin: number | null
   pointsForDraw: number | null
   pointsForLoss: number | null
-  pointsForForfeitWin: number | null
-  pointsForForfeitLoss: number | null
   pointsPerSetWin: number | null
   pointsPerSetLoss: number | null
   pointsPerGameWin: number | null
   pointsPerGameLoss: number | null
   pointsPerGoalScored: number | null
   pointsPerGoalConceded: number | null
-  maxGoalBonusPoints: number | null
-  minGoalBonusThreshold: number | null
-  pointsForShutout: number | null
-  pointsForCleanSheet: number | null
-  applyShutoutOnlyIfWin: boolean | null
-  pointsPerGoalDifference: number | null
-  maxGoalDifferencePoints: number | null
-  pointsPenaltyPerGoalDifference: number | null
-  pointsForParticipation: number | null
-  pointsForNoShow: number | null
-  pointsForWinStreakBonus: number | null
-  winStreakThreshold: number | null
-  pointsForOvertimeWin: number | null
-  pointsForOvertimeLoss: number | null
-  overtimeEnabled: boolean | null
-  pointsPerRedCard: number | null
-  pointsPerYellowCard: number | null
-  pointsPerPenalty: number | null
-  maxPenaltyDeductions: number | null
-  maxPointsPerMatch: number | null
-  minPointsPerMatch: number | null
-  goalDifferenceTiebreaker: boolean | null
-  headToHeadTiebreaker: boolean | null
-  totalGoalsTiebreaker: boolean | null
-  enableBonusForComebackWin: boolean | null
-  bonusPointsForComebackWin: number | null
-  enableBonusForHighScoringMatch: boolean | null
-  highScoringThreshold: number | null
-  bonusPointsForHighScoringMatch: number | null
-  enablePenaltyForUnsportingBehavior: boolean | null
-  penaltyPointsForUnsportingBehavior: number | null
-  pointPrecision: number | null
 }
 
 export type LeagueScoringConfigsCountAggregateOutputType = {
@@ -207,46 +87,12 @@ export type LeagueScoringConfigsCountAggregateOutputType = {
   pointsForWin: number
   pointsForDraw: number
   pointsForLoss: number
-  pointsForForfeitWin: number
-  pointsForForfeitLoss: number
   pointsPerSetWin: number
   pointsPerSetLoss: number
   pointsPerGameWin: number
   pointsPerGameLoss: number
   pointsPerGoalScored: number
   pointsPerGoalConceded: number
-  maxGoalBonusPoints: number
-  minGoalBonusThreshold: number
-  pointsForShutout: number
-  pointsForCleanSheet: number
-  applyShutoutOnlyIfWin: number
-  pointsPerGoalDifference: number
-  maxGoalDifferencePoints: number
-  pointsPenaltyPerGoalDifference: number
-  pointsForParticipation: number
-  pointsForNoShow: number
-  pointsForWinStreakBonus: number
-  winStreakThreshold: number
-  pointsForOvertimeWin: number
-  pointsForOvertimeLoss: number
-  overtimeEnabled: number
-  pointsPerRedCard: number
-  pointsPerYellowCard: number
-  pointsPerPenalty: number
-  maxPenaltyDeductions: number
-  maxPointsPerMatch: number
-  minPointsPerMatch: number
-  goalDifferenceTiebreaker: number
-  headToHeadTiebreaker: number
-  totalGoalsTiebreaker: number
-  enableBonusForComebackWin: number
-  bonusPointsForComebackWin: number
-  enableBonusForHighScoringMatch: number
-  highScoringThreshold: number
-  bonusPointsForHighScoringMatch: number
-  enablePenaltyForUnsportingBehavior: number
-  penaltyPointsForUnsportingBehavior: number
-  pointPrecision: number
   _all: number
 }
 
@@ -255,76 +101,24 @@ export type LeagueScoringConfigsAvgAggregateInputType = {
   pointsForWin?: true
   pointsForDraw?: true
   pointsForLoss?: true
-  pointsForForfeitWin?: true
-  pointsForForfeitLoss?: true
   pointsPerSetWin?: true
   pointsPerSetLoss?: true
   pointsPerGameWin?: true
   pointsPerGameLoss?: true
   pointsPerGoalScored?: true
   pointsPerGoalConceded?: true
-  maxGoalBonusPoints?: true
-  minGoalBonusThreshold?: true
-  pointsForShutout?: true
-  pointsForCleanSheet?: true
-  pointsPerGoalDifference?: true
-  maxGoalDifferencePoints?: true
-  pointsPenaltyPerGoalDifference?: true
-  pointsForParticipation?: true
-  pointsForNoShow?: true
-  pointsForWinStreakBonus?: true
-  winStreakThreshold?: true
-  pointsForOvertimeWin?: true
-  pointsForOvertimeLoss?: true
-  pointsPerRedCard?: true
-  pointsPerYellowCard?: true
-  pointsPerPenalty?: true
-  maxPenaltyDeductions?: true
-  maxPointsPerMatch?: true
-  minPointsPerMatch?: true
-  bonusPointsForComebackWin?: true
-  highScoringThreshold?: true
-  bonusPointsForHighScoringMatch?: true
-  penaltyPointsForUnsportingBehavior?: true
-  pointPrecision?: true
 }
 
 export type LeagueScoringConfigsSumAggregateInputType = {
   pointsForWin?: true
   pointsForDraw?: true
   pointsForLoss?: true
-  pointsForForfeitWin?: true
-  pointsForForfeitLoss?: true
   pointsPerSetWin?: true
   pointsPerSetLoss?: true
   pointsPerGameWin?: true
   pointsPerGameLoss?: true
   pointsPerGoalScored?: true
   pointsPerGoalConceded?: true
-  maxGoalBonusPoints?: true
-  minGoalBonusThreshold?: true
-  pointsForShutout?: true
-  pointsForCleanSheet?: true
-  pointsPerGoalDifference?: true
-  maxGoalDifferencePoints?: true
-  pointsPenaltyPerGoalDifference?: true
-  pointsForParticipation?: true
-  pointsForNoShow?: true
-  pointsForWinStreakBonus?: true
-  winStreakThreshold?: true
-  pointsForOvertimeWin?: true
-  pointsForOvertimeLoss?: true
-  pointsPerRedCard?: true
-  pointsPerYellowCard?: true
-  pointsPerPenalty?: true
-  maxPenaltyDeductions?: true
-  maxPointsPerMatch?: true
-  minPointsPerMatch?: true
-  bonusPointsForComebackWin?: true
-  highScoringThreshold?: true
-  bonusPointsForHighScoringMatch?: true
-  penaltyPointsForUnsportingBehavior?: true
-  pointPrecision?: true
 }
 
 export type LeagueScoringConfigsMinAggregateInputType = {
@@ -334,46 +128,12 @@ export type LeagueScoringConfigsMinAggregateInputType = {
   pointsForWin?: true
   pointsForDraw?: true
   pointsForLoss?: true
-  pointsForForfeitWin?: true
-  pointsForForfeitLoss?: true
   pointsPerSetWin?: true
   pointsPerSetLoss?: true
   pointsPerGameWin?: true
   pointsPerGameLoss?: true
   pointsPerGoalScored?: true
   pointsPerGoalConceded?: true
-  maxGoalBonusPoints?: true
-  minGoalBonusThreshold?: true
-  pointsForShutout?: true
-  pointsForCleanSheet?: true
-  applyShutoutOnlyIfWin?: true
-  pointsPerGoalDifference?: true
-  maxGoalDifferencePoints?: true
-  pointsPenaltyPerGoalDifference?: true
-  pointsForParticipation?: true
-  pointsForNoShow?: true
-  pointsForWinStreakBonus?: true
-  winStreakThreshold?: true
-  pointsForOvertimeWin?: true
-  pointsForOvertimeLoss?: true
-  overtimeEnabled?: true
-  pointsPerRedCard?: true
-  pointsPerYellowCard?: true
-  pointsPerPenalty?: true
-  maxPenaltyDeductions?: true
-  maxPointsPerMatch?: true
-  minPointsPerMatch?: true
-  goalDifferenceTiebreaker?: true
-  headToHeadTiebreaker?: true
-  totalGoalsTiebreaker?: true
-  enableBonusForComebackWin?: true
-  bonusPointsForComebackWin?: true
-  enableBonusForHighScoringMatch?: true
-  highScoringThreshold?: true
-  bonusPointsForHighScoringMatch?: true
-  enablePenaltyForUnsportingBehavior?: true
-  penaltyPointsForUnsportingBehavior?: true
-  pointPrecision?: true
 }
 
 export type LeagueScoringConfigsMaxAggregateInputType = {
@@ -383,46 +143,12 @@ export type LeagueScoringConfigsMaxAggregateInputType = {
   pointsForWin?: true
   pointsForDraw?: true
   pointsForLoss?: true
-  pointsForForfeitWin?: true
-  pointsForForfeitLoss?: true
   pointsPerSetWin?: true
   pointsPerSetLoss?: true
   pointsPerGameWin?: true
   pointsPerGameLoss?: true
   pointsPerGoalScored?: true
   pointsPerGoalConceded?: true
-  maxGoalBonusPoints?: true
-  minGoalBonusThreshold?: true
-  pointsForShutout?: true
-  pointsForCleanSheet?: true
-  applyShutoutOnlyIfWin?: true
-  pointsPerGoalDifference?: true
-  maxGoalDifferencePoints?: true
-  pointsPenaltyPerGoalDifference?: true
-  pointsForParticipation?: true
-  pointsForNoShow?: true
-  pointsForWinStreakBonus?: true
-  winStreakThreshold?: true
-  pointsForOvertimeWin?: true
-  pointsForOvertimeLoss?: true
-  overtimeEnabled?: true
-  pointsPerRedCard?: true
-  pointsPerYellowCard?: true
-  pointsPerPenalty?: true
-  maxPenaltyDeductions?: true
-  maxPointsPerMatch?: true
-  minPointsPerMatch?: true
-  goalDifferenceTiebreaker?: true
-  headToHeadTiebreaker?: true
-  totalGoalsTiebreaker?: true
-  enableBonusForComebackWin?: true
-  bonusPointsForComebackWin?: true
-  enableBonusForHighScoringMatch?: true
-  highScoringThreshold?: true
-  bonusPointsForHighScoringMatch?: true
-  enablePenaltyForUnsportingBehavior?: true
-  penaltyPointsForUnsportingBehavior?: true
-  pointPrecision?: true
 }
 
 export type LeagueScoringConfigsCountAggregateInputType = {
@@ -432,46 +158,12 @@ export type LeagueScoringConfigsCountAggregateInputType = {
   pointsForWin?: true
   pointsForDraw?: true
   pointsForLoss?: true
-  pointsForForfeitWin?: true
-  pointsForForfeitLoss?: true
   pointsPerSetWin?: true
   pointsPerSetLoss?: true
   pointsPerGameWin?: true
   pointsPerGameLoss?: true
   pointsPerGoalScored?: true
   pointsPerGoalConceded?: true
-  maxGoalBonusPoints?: true
-  minGoalBonusThreshold?: true
-  pointsForShutout?: true
-  pointsForCleanSheet?: true
-  applyShutoutOnlyIfWin?: true
-  pointsPerGoalDifference?: true
-  maxGoalDifferencePoints?: true
-  pointsPenaltyPerGoalDifference?: true
-  pointsForParticipation?: true
-  pointsForNoShow?: true
-  pointsForWinStreakBonus?: true
-  winStreakThreshold?: true
-  pointsForOvertimeWin?: true
-  pointsForOvertimeLoss?: true
-  overtimeEnabled?: true
-  pointsPerRedCard?: true
-  pointsPerYellowCard?: true
-  pointsPerPenalty?: true
-  maxPenaltyDeductions?: true
-  maxPointsPerMatch?: true
-  minPointsPerMatch?: true
-  goalDifferenceTiebreaker?: true
-  headToHeadTiebreaker?: true
-  totalGoalsTiebreaker?: true
-  enableBonusForComebackWin?: true
-  bonusPointsForComebackWin?: true
-  enableBonusForHighScoringMatch?: true
-  highScoringThreshold?: true
-  bonusPointsForHighScoringMatch?: true
-  enablePenaltyForUnsportingBehavior?: true
-  penaltyPointsForUnsportingBehavior?: true
-  pointPrecision?: true
   _all?: true
 }
 
@@ -568,46 +260,12 @@ export type LeagueScoringConfigsGroupByOutputType = {
   pointsForWin: number | null
   pointsForDraw: number | null
   pointsForLoss: number | null
-  pointsForForfeitWin: number | null
-  pointsForForfeitLoss: number | null
   pointsPerSetWin: number | null
   pointsPerSetLoss: number | null
   pointsPerGameWin: number | null
   pointsPerGameLoss: number | null
   pointsPerGoalScored: number | null
   pointsPerGoalConceded: number | null
-  maxGoalBonusPoints: number | null
-  minGoalBonusThreshold: number | null
-  pointsForShutout: number | null
-  pointsForCleanSheet: number | null
-  applyShutoutOnlyIfWin: boolean | null
-  pointsPerGoalDifference: number | null
-  maxGoalDifferencePoints: number | null
-  pointsPenaltyPerGoalDifference: number | null
-  pointsForParticipation: number | null
-  pointsForNoShow: number | null
-  pointsForWinStreakBonus: number | null
-  winStreakThreshold: number | null
-  pointsForOvertimeWin: number | null
-  pointsForOvertimeLoss: number | null
-  overtimeEnabled: boolean | null
-  pointsPerRedCard: number | null
-  pointsPerYellowCard: number | null
-  pointsPerPenalty: number | null
-  maxPenaltyDeductions: number | null
-  maxPointsPerMatch: number | null
-  minPointsPerMatch: number | null
-  goalDifferenceTiebreaker: boolean | null
-  headToHeadTiebreaker: boolean | null
-  totalGoalsTiebreaker: boolean | null
-  enableBonusForComebackWin: boolean | null
-  bonusPointsForComebackWin: number | null
-  enableBonusForHighScoringMatch: boolean | null
-  highScoringThreshold: number | null
-  bonusPointsForHighScoringMatch: number | null
-  enablePenaltyForUnsportingBehavior: boolean | null
-  penaltyPointsForUnsportingBehavior: number | null
-  pointPrecision: number | null
   _count: LeagueScoringConfigsCountAggregateOutputType | null
   _avg: LeagueScoringConfigsAvgAggregateOutputType | null
   _sum: LeagueScoringConfigsSumAggregateOutputType | null
@@ -640,46 +298,12 @@ export type LeagueScoringConfigsWhereInput = {
   pointsForWin?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsForDraw?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsForLoss?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForForfeitWin?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForForfeitLoss?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerSetWin?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerSetLoss?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGameWin?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGameLoss?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGoalScored?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGoalConceded?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  maxGoalBonusPoints?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  minGoalBonusThreshold?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForShutout?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForCleanSheet?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  applyShutoutOnlyIfWin?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  pointsPerGoalDifference?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  maxGoalDifferencePoints?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsPenaltyPerGoalDifference?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForParticipation?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForNoShow?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForWinStreakBonus?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  winStreakThreshold?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForOvertimeWin?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForOvertimeLoss?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  overtimeEnabled?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  pointsPerRedCard?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsPerYellowCard?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsPerPenalty?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  maxPenaltyDeductions?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  maxPointsPerMatch?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  minPointsPerMatch?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  goalDifferenceTiebreaker?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  headToHeadTiebreaker?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  totalGoalsTiebreaker?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  enableBonusForComebackWin?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  bonusPointsForComebackWin?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  enableBonusForHighScoringMatch?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  highScoringThreshold?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  bonusPointsForHighScoringMatch?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  enablePenaltyForUnsportingBehavior?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  penaltyPointsForUnsportingBehavior?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointPrecision?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
 }
 
 export type LeagueScoringConfigsOrderByWithRelationInput = {
@@ -689,46 +313,12 @@ export type LeagueScoringConfigsOrderByWithRelationInput = {
   pointsForWin?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsForDraw?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsForLoss?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForForfeitWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForForfeitLoss?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerSetWin?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerSetLoss?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerGameWin?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerGameLoss?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerGoalScored?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerGoalConceded?: Prisma.SortOrderInput | Prisma.SortOrder
-  maxGoalBonusPoints?: Prisma.SortOrderInput | Prisma.SortOrder
-  minGoalBonusThreshold?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForShutout?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForCleanSheet?: Prisma.SortOrderInput | Prisma.SortOrder
-  applyShutoutOnlyIfWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPerGoalDifference?: Prisma.SortOrderInput | Prisma.SortOrder
-  maxGoalDifferencePoints?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPenaltyPerGoalDifference?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForParticipation?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForNoShow?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForWinStreakBonus?: Prisma.SortOrderInput | Prisma.SortOrder
-  winStreakThreshold?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForOvertimeWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForOvertimeLoss?: Prisma.SortOrderInput | Prisma.SortOrder
-  overtimeEnabled?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPerRedCard?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPerYellowCard?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPerPenalty?: Prisma.SortOrderInput | Prisma.SortOrder
-  maxPenaltyDeductions?: Prisma.SortOrderInput | Prisma.SortOrder
-  maxPointsPerMatch?: Prisma.SortOrderInput | Prisma.SortOrder
-  minPointsPerMatch?: Prisma.SortOrderInput | Prisma.SortOrder
-  goalDifferenceTiebreaker?: Prisma.SortOrderInput | Prisma.SortOrder
-  headToHeadTiebreaker?: Prisma.SortOrderInput | Prisma.SortOrder
-  totalGoalsTiebreaker?: Prisma.SortOrderInput | Prisma.SortOrder
-  enableBonusForComebackWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  bonusPointsForComebackWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  enableBonusForHighScoringMatch?: Prisma.SortOrderInput | Prisma.SortOrder
-  highScoringThreshold?: Prisma.SortOrderInput | Prisma.SortOrder
-  bonusPointsForHighScoringMatch?: Prisma.SortOrderInput | Prisma.SortOrder
-  enablePenaltyForUnsportingBehavior?: Prisma.SortOrderInput | Prisma.SortOrder
-  penaltyPointsForUnsportingBehavior?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointPrecision?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type LeagueScoringConfigsWhereUniqueInput = Prisma.AtLeast<{
@@ -741,46 +331,12 @@ export type LeagueScoringConfigsWhereUniqueInput = Prisma.AtLeast<{
   pointsForWin?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsForDraw?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsForLoss?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForForfeitWin?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForForfeitLoss?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerSetWin?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerSetLoss?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGameWin?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGameLoss?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGoalScored?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGoalConceded?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  maxGoalBonusPoints?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  minGoalBonusThreshold?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForShutout?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForCleanSheet?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  applyShutoutOnlyIfWin?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  pointsPerGoalDifference?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  maxGoalDifferencePoints?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsPenaltyPerGoalDifference?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForParticipation?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForNoShow?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForWinStreakBonus?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  winStreakThreshold?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForOvertimeWin?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsForOvertimeLoss?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  overtimeEnabled?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  pointsPerRedCard?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsPerYellowCard?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointsPerPenalty?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  maxPenaltyDeductions?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  maxPointsPerMatch?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  minPointsPerMatch?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  goalDifferenceTiebreaker?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  headToHeadTiebreaker?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  totalGoalsTiebreaker?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  enableBonusForComebackWin?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  bonusPointsForComebackWin?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  enableBonusForHighScoringMatch?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  highScoringThreshold?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
-  bonusPointsForHighScoringMatch?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  enablePenaltyForUnsportingBehavior?: Prisma.BoolNullableFilter<"LeagueScoringConfigs"> | boolean | null
-  penaltyPointsForUnsportingBehavior?: Prisma.FloatNullableFilter<"LeagueScoringConfigs"> | number | null
-  pointPrecision?: Prisma.IntNullableFilter<"LeagueScoringConfigs"> | number | null
 }, "id">
 
 export type LeagueScoringConfigsOrderByWithAggregationInput = {
@@ -790,46 +346,12 @@ export type LeagueScoringConfigsOrderByWithAggregationInput = {
   pointsForWin?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsForDraw?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsForLoss?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForForfeitWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForForfeitLoss?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerSetWin?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerSetLoss?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerGameWin?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerGameLoss?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerGoalScored?: Prisma.SortOrderInput | Prisma.SortOrder
   pointsPerGoalConceded?: Prisma.SortOrderInput | Prisma.SortOrder
-  maxGoalBonusPoints?: Prisma.SortOrderInput | Prisma.SortOrder
-  minGoalBonusThreshold?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForShutout?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForCleanSheet?: Prisma.SortOrderInput | Prisma.SortOrder
-  applyShutoutOnlyIfWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPerGoalDifference?: Prisma.SortOrderInput | Prisma.SortOrder
-  maxGoalDifferencePoints?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPenaltyPerGoalDifference?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForParticipation?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForNoShow?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForWinStreakBonus?: Prisma.SortOrderInput | Prisma.SortOrder
-  winStreakThreshold?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForOvertimeWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsForOvertimeLoss?: Prisma.SortOrderInput | Prisma.SortOrder
-  overtimeEnabled?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPerRedCard?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPerYellowCard?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointsPerPenalty?: Prisma.SortOrderInput | Prisma.SortOrder
-  maxPenaltyDeductions?: Prisma.SortOrderInput | Prisma.SortOrder
-  maxPointsPerMatch?: Prisma.SortOrderInput | Prisma.SortOrder
-  minPointsPerMatch?: Prisma.SortOrderInput | Prisma.SortOrder
-  goalDifferenceTiebreaker?: Prisma.SortOrderInput | Prisma.SortOrder
-  headToHeadTiebreaker?: Prisma.SortOrderInput | Prisma.SortOrder
-  totalGoalsTiebreaker?: Prisma.SortOrderInput | Prisma.SortOrder
-  enableBonusForComebackWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  bonusPointsForComebackWin?: Prisma.SortOrderInput | Prisma.SortOrder
-  enableBonusForHighScoringMatch?: Prisma.SortOrderInput | Prisma.SortOrder
-  highScoringThreshold?: Prisma.SortOrderInput | Prisma.SortOrder
-  bonusPointsForHighScoringMatch?: Prisma.SortOrderInput | Prisma.SortOrder
-  enablePenaltyForUnsportingBehavior?: Prisma.SortOrderInput | Prisma.SortOrder
-  penaltyPointsForUnsportingBehavior?: Prisma.SortOrderInput | Prisma.SortOrder
-  pointPrecision?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.LeagueScoringConfigsCountOrderByAggregateInput
   _avg?: Prisma.LeagueScoringConfigsAvgOrderByAggregateInput
   _max?: Prisma.LeagueScoringConfigsMaxOrderByAggregateInput
@@ -847,46 +369,12 @@ export type LeagueScoringConfigsScalarWhereWithAggregatesInput = {
   pointsForWin?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
   pointsForDraw?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
   pointsForLoss?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForForfeitWin?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForForfeitLoss?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
   pointsPerSetWin?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
   pointsPerSetLoss?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGameWin?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGameLoss?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGoalScored?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
   pointsPerGoalConceded?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  maxGoalBonusPoints?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  minGoalBonusThreshold?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForShutout?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForCleanSheet?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  applyShutoutOnlyIfWin?: Prisma.BoolNullableWithAggregatesFilter<"LeagueScoringConfigs"> | boolean | null
-  pointsPerGoalDifference?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  maxGoalDifferencePoints?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsPenaltyPerGoalDifference?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForParticipation?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForNoShow?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForWinStreakBonus?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  winStreakThreshold?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForOvertimeWin?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsForOvertimeLoss?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  overtimeEnabled?: Prisma.BoolNullableWithAggregatesFilter<"LeagueScoringConfigs"> | boolean | null
-  pointsPerRedCard?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsPerYellowCard?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointsPerPenalty?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  maxPenaltyDeductions?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  maxPointsPerMatch?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  minPointsPerMatch?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  goalDifferenceTiebreaker?: Prisma.BoolNullableWithAggregatesFilter<"LeagueScoringConfigs"> | boolean | null
-  headToHeadTiebreaker?: Prisma.BoolNullableWithAggregatesFilter<"LeagueScoringConfigs"> | boolean | null
-  totalGoalsTiebreaker?: Prisma.BoolNullableWithAggregatesFilter<"LeagueScoringConfigs"> | boolean | null
-  enableBonusForComebackWin?: Prisma.BoolNullableWithAggregatesFilter<"LeagueScoringConfigs"> | boolean | null
-  bonusPointsForComebackWin?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  enableBonusForHighScoringMatch?: Prisma.BoolNullableWithAggregatesFilter<"LeagueScoringConfigs"> | boolean | null
-  highScoringThreshold?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  bonusPointsForHighScoringMatch?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  enablePenaltyForUnsportingBehavior?: Prisma.BoolNullableWithAggregatesFilter<"LeagueScoringConfigs"> | boolean | null
-  penaltyPointsForUnsportingBehavior?: Prisma.FloatNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
-  pointPrecision?: Prisma.IntNullableWithAggregatesFilter<"LeagueScoringConfigs"> | number | null
 }
 
 export type LeagueScoringConfigsCreateInput = {
@@ -896,46 +384,12 @@ export type LeagueScoringConfigsCreateInput = {
   pointsForWin?: number | null
   pointsForDraw?: number | null
   pointsForLoss?: number | null
-  pointsForForfeitWin?: number | null
-  pointsForForfeitLoss?: number | null
   pointsPerSetWin?: number | null
   pointsPerSetLoss?: number | null
   pointsPerGameWin?: number | null
   pointsPerGameLoss?: number | null
   pointsPerGoalScored?: number | null
   pointsPerGoalConceded?: number | null
-  maxGoalBonusPoints?: number | null
-  minGoalBonusThreshold?: number | null
-  pointsForShutout?: number | null
-  pointsForCleanSheet?: number | null
-  applyShutoutOnlyIfWin?: boolean | null
-  pointsPerGoalDifference?: number | null
-  maxGoalDifferencePoints?: number | null
-  pointsPenaltyPerGoalDifference?: number | null
-  pointsForParticipation?: number | null
-  pointsForNoShow?: number | null
-  pointsForWinStreakBonus?: number | null
-  winStreakThreshold?: number | null
-  pointsForOvertimeWin?: number | null
-  pointsForOvertimeLoss?: number | null
-  overtimeEnabled?: boolean | null
-  pointsPerRedCard?: number | null
-  pointsPerYellowCard?: number | null
-  pointsPerPenalty?: number | null
-  maxPenaltyDeductions?: number | null
-  maxPointsPerMatch?: number | null
-  minPointsPerMatch?: number | null
-  goalDifferenceTiebreaker?: boolean | null
-  headToHeadTiebreaker?: boolean | null
-  totalGoalsTiebreaker?: boolean | null
-  enableBonusForComebackWin?: boolean | null
-  bonusPointsForComebackWin?: number | null
-  enableBonusForHighScoringMatch?: boolean | null
-  highScoringThreshold?: number | null
-  bonusPointsForHighScoringMatch?: number | null
-  enablePenaltyForUnsportingBehavior?: boolean | null
-  penaltyPointsForUnsportingBehavior?: number | null
-  pointPrecision?: number | null
 }
 
 export type LeagueScoringConfigsUncheckedCreateInput = {
@@ -945,46 +399,12 @@ export type LeagueScoringConfigsUncheckedCreateInput = {
   pointsForWin?: number | null
   pointsForDraw?: number | null
   pointsForLoss?: number | null
-  pointsForForfeitWin?: number | null
-  pointsForForfeitLoss?: number | null
   pointsPerSetWin?: number | null
   pointsPerSetLoss?: number | null
   pointsPerGameWin?: number | null
   pointsPerGameLoss?: number | null
   pointsPerGoalScored?: number | null
   pointsPerGoalConceded?: number | null
-  maxGoalBonusPoints?: number | null
-  minGoalBonusThreshold?: number | null
-  pointsForShutout?: number | null
-  pointsForCleanSheet?: number | null
-  applyShutoutOnlyIfWin?: boolean | null
-  pointsPerGoalDifference?: number | null
-  maxGoalDifferencePoints?: number | null
-  pointsPenaltyPerGoalDifference?: number | null
-  pointsForParticipation?: number | null
-  pointsForNoShow?: number | null
-  pointsForWinStreakBonus?: number | null
-  winStreakThreshold?: number | null
-  pointsForOvertimeWin?: number | null
-  pointsForOvertimeLoss?: number | null
-  overtimeEnabled?: boolean | null
-  pointsPerRedCard?: number | null
-  pointsPerYellowCard?: number | null
-  pointsPerPenalty?: number | null
-  maxPenaltyDeductions?: number | null
-  maxPointsPerMatch?: number | null
-  minPointsPerMatch?: number | null
-  goalDifferenceTiebreaker?: boolean | null
-  headToHeadTiebreaker?: boolean | null
-  totalGoalsTiebreaker?: boolean | null
-  enableBonusForComebackWin?: boolean | null
-  bonusPointsForComebackWin?: number | null
-  enableBonusForHighScoringMatch?: boolean | null
-  highScoringThreshold?: number | null
-  bonusPointsForHighScoringMatch?: number | null
-  enablePenaltyForUnsportingBehavior?: boolean | null
-  penaltyPointsForUnsportingBehavior?: number | null
-  pointPrecision?: number | null
 }
 
 export type LeagueScoringConfigsUpdateInput = {
@@ -994,46 +414,12 @@ export type LeagueScoringConfigsUpdateInput = {
   pointsForWin?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsForDraw?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsForLoss?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForForfeitWin?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForForfeitLoss?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsPerSetWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerSetLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGameWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGameLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGoalScored?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGoalConceded?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxGoalBonusPoints?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  minGoalBonusThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForShutout?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForCleanSheet?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  applyShutoutOnlyIfWin?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  pointsPerGoalDifference?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxGoalDifferencePoints?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsPenaltyPerGoalDifference?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForParticipation?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForNoShow?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForWinStreakBonus?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  winStreakThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForOvertimeWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForOvertimeLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  overtimeEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  pointsPerRedCard?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsPerYellowCard?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsPerPenalty?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxPenaltyDeductions?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  maxPointsPerMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  minPointsPerMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  goalDifferenceTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  headToHeadTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  totalGoalsTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  enableBonusForComebackWin?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  bonusPointsForComebackWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  enableBonusForHighScoringMatch?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  highScoringThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  bonusPointsForHighScoringMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  enablePenaltyForUnsportingBehavior?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  penaltyPointsForUnsportingBehavior?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointPrecision?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
 }
 
 export type LeagueScoringConfigsUncheckedUpdateInput = {
@@ -1043,46 +429,12 @@ export type LeagueScoringConfigsUncheckedUpdateInput = {
   pointsForWin?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsForDraw?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsForLoss?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForForfeitWin?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForForfeitLoss?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsPerSetWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerSetLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGameWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGameLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGoalScored?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGoalConceded?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxGoalBonusPoints?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  minGoalBonusThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForShutout?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForCleanSheet?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  applyShutoutOnlyIfWin?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  pointsPerGoalDifference?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxGoalDifferencePoints?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsPenaltyPerGoalDifference?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForParticipation?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForNoShow?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForWinStreakBonus?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  winStreakThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForOvertimeWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForOvertimeLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  overtimeEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  pointsPerRedCard?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsPerYellowCard?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsPerPenalty?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxPenaltyDeductions?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  maxPointsPerMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  minPointsPerMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  goalDifferenceTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  headToHeadTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  totalGoalsTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  enableBonusForComebackWin?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  bonusPointsForComebackWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  enableBonusForHighScoringMatch?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  highScoringThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  bonusPointsForHighScoringMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  enablePenaltyForUnsportingBehavior?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  penaltyPointsForUnsportingBehavior?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointPrecision?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
 }
 
 export type LeagueScoringConfigsCreateManyInput = {
@@ -1092,46 +444,12 @@ export type LeagueScoringConfigsCreateManyInput = {
   pointsForWin?: number | null
   pointsForDraw?: number | null
   pointsForLoss?: number | null
-  pointsForForfeitWin?: number | null
-  pointsForForfeitLoss?: number | null
   pointsPerSetWin?: number | null
   pointsPerSetLoss?: number | null
   pointsPerGameWin?: number | null
   pointsPerGameLoss?: number | null
   pointsPerGoalScored?: number | null
   pointsPerGoalConceded?: number | null
-  maxGoalBonusPoints?: number | null
-  minGoalBonusThreshold?: number | null
-  pointsForShutout?: number | null
-  pointsForCleanSheet?: number | null
-  applyShutoutOnlyIfWin?: boolean | null
-  pointsPerGoalDifference?: number | null
-  maxGoalDifferencePoints?: number | null
-  pointsPenaltyPerGoalDifference?: number | null
-  pointsForParticipation?: number | null
-  pointsForNoShow?: number | null
-  pointsForWinStreakBonus?: number | null
-  winStreakThreshold?: number | null
-  pointsForOvertimeWin?: number | null
-  pointsForOvertimeLoss?: number | null
-  overtimeEnabled?: boolean | null
-  pointsPerRedCard?: number | null
-  pointsPerYellowCard?: number | null
-  pointsPerPenalty?: number | null
-  maxPenaltyDeductions?: number | null
-  maxPointsPerMatch?: number | null
-  minPointsPerMatch?: number | null
-  goalDifferenceTiebreaker?: boolean | null
-  headToHeadTiebreaker?: boolean | null
-  totalGoalsTiebreaker?: boolean | null
-  enableBonusForComebackWin?: boolean | null
-  bonusPointsForComebackWin?: number | null
-  enableBonusForHighScoringMatch?: boolean | null
-  highScoringThreshold?: number | null
-  bonusPointsForHighScoringMatch?: number | null
-  enablePenaltyForUnsportingBehavior?: boolean | null
-  penaltyPointsForUnsportingBehavior?: number | null
-  pointPrecision?: number | null
 }
 
 export type LeagueScoringConfigsUpdateManyMutationInput = {
@@ -1141,46 +459,12 @@ export type LeagueScoringConfigsUpdateManyMutationInput = {
   pointsForWin?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsForDraw?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsForLoss?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForForfeitWin?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForForfeitLoss?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsPerSetWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerSetLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGameWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGameLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGoalScored?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGoalConceded?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxGoalBonusPoints?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  minGoalBonusThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForShutout?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForCleanSheet?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  applyShutoutOnlyIfWin?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  pointsPerGoalDifference?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxGoalDifferencePoints?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsPenaltyPerGoalDifference?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForParticipation?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForNoShow?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForWinStreakBonus?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  winStreakThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForOvertimeWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForOvertimeLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  overtimeEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  pointsPerRedCard?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsPerYellowCard?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsPerPenalty?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxPenaltyDeductions?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  maxPointsPerMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  minPointsPerMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  goalDifferenceTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  headToHeadTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  totalGoalsTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  enableBonusForComebackWin?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  bonusPointsForComebackWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  enableBonusForHighScoringMatch?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  highScoringThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  bonusPointsForHighScoringMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  enablePenaltyForUnsportingBehavior?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  penaltyPointsForUnsportingBehavior?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointPrecision?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
 }
 
 export type LeagueScoringConfigsUncheckedUpdateManyInput = {
@@ -1190,46 +474,12 @@ export type LeagueScoringConfigsUncheckedUpdateManyInput = {
   pointsForWin?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsForDraw?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsForLoss?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForForfeitWin?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForForfeitLoss?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   pointsPerSetWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerSetLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGameWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGameLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGoalScored?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   pointsPerGoalConceded?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxGoalBonusPoints?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  minGoalBonusThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForShutout?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForCleanSheet?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  applyShutoutOnlyIfWin?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  pointsPerGoalDifference?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxGoalDifferencePoints?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsPenaltyPerGoalDifference?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForParticipation?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForNoShow?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForWinStreakBonus?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  winStreakThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  pointsForOvertimeWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsForOvertimeLoss?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  overtimeEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  pointsPerRedCard?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsPerYellowCard?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointsPerPenalty?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  maxPenaltyDeductions?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  maxPointsPerMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  minPointsPerMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  goalDifferenceTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  headToHeadTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  totalGoalsTiebreaker?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  enableBonusForComebackWin?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  bonusPointsForComebackWin?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  enableBonusForHighScoringMatch?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  highScoringThreshold?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  bonusPointsForHighScoringMatch?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  enablePenaltyForUnsportingBehavior?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  penaltyPointsForUnsportingBehavior?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
-  pointPrecision?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
 }
 
 export type LeagueScoringConfigsCountOrderByAggregateInput = {
@@ -1239,84 +489,24 @@ export type LeagueScoringConfigsCountOrderByAggregateInput = {
   pointsForWin?: Prisma.SortOrder
   pointsForDraw?: Prisma.SortOrder
   pointsForLoss?: Prisma.SortOrder
-  pointsForForfeitWin?: Prisma.SortOrder
-  pointsForForfeitLoss?: Prisma.SortOrder
   pointsPerSetWin?: Prisma.SortOrder
   pointsPerSetLoss?: Prisma.SortOrder
   pointsPerGameWin?: Prisma.SortOrder
   pointsPerGameLoss?: Prisma.SortOrder
   pointsPerGoalScored?: Prisma.SortOrder
   pointsPerGoalConceded?: Prisma.SortOrder
-  maxGoalBonusPoints?: Prisma.SortOrder
-  minGoalBonusThreshold?: Prisma.SortOrder
-  pointsForShutout?: Prisma.SortOrder
-  pointsForCleanSheet?: Prisma.SortOrder
-  applyShutoutOnlyIfWin?: Prisma.SortOrder
-  pointsPerGoalDifference?: Prisma.SortOrder
-  maxGoalDifferencePoints?: Prisma.SortOrder
-  pointsPenaltyPerGoalDifference?: Prisma.SortOrder
-  pointsForParticipation?: Prisma.SortOrder
-  pointsForNoShow?: Prisma.SortOrder
-  pointsForWinStreakBonus?: Prisma.SortOrder
-  winStreakThreshold?: Prisma.SortOrder
-  pointsForOvertimeWin?: Prisma.SortOrder
-  pointsForOvertimeLoss?: Prisma.SortOrder
-  overtimeEnabled?: Prisma.SortOrder
-  pointsPerRedCard?: Prisma.SortOrder
-  pointsPerYellowCard?: Prisma.SortOrder
-  pointsPerPenalty?: Prisma.SortOrder
-  maxPenaltyDeductions?: Prisma.SortOrder
-  maxPointsPerMatch?: Prisma.SortOrder
-  minPointsPerMatch?: Prisma.SortOrder
-  goalDifferenceTiebreaker?: Prisma.SortOrder
-  headToHeadTiebreaker?: Prisma.SortOrder
-  totalGoalsTiebreaker?: Prisma.SortOrder
-  enableBonusForComebackWin?: Prisma.SortOrder
-  bonusPointsForComebackWin?: Prisma.SortOrder
-  enableBonusForHighScoringMatch?: Prisma.SortOrder
-  highScoringThreshold?: Prisma.SortOrder
-  bonusPointsForHighScoringMatch?: Prisma.SortOrder
-  enablePenaltyForUnsportingBehavior?: Prisma.SortOrder
-  penaltyPointsForUnsportingBehavior?: Prisma.SortOrder
-  pointPrecision?: Prisma.SortOrder
 }
 
 export type LeagueScoringConfigsAvgOrderByAggregateInput = {
   pointsForWin?: Prisma.SortOrder
   pointsForDraw?: Prisma.SortOrder
   pointsForLoss?: Prisma.SortOrder
-  pointsForForfeitWin?: Prisma.SortOrder
-  pointsForForfeitLoss?: Prisma.SortOrder
   pointsPerSetWin?: Prisma.SortOrder
   pointsPerSetLoss?: Prisma.SortOrder
   pointsPerGameWin?: Prisma.SortOrder
   pointsPerGameLoss?: Prisma.SortOrder
   pointsPerGoalScored?: Prisma.SortOrder
   pointsPerGoalConceded?: Prisma.SortOrder
-  maxGoalBonusPoints?: Prisma.SortOrder
-  minGoalBonusThreshold?: Prisma.SortOrder
-  pointsForShutout?: Prisma.SortOrder
-  pointsForCleanSheet?: Prisma.SortOrder
-  pointsPerGoalDifference?: Prisma.SortOrder
-  maxGoalDifferencePoints?: Prisma.SortOrder
-  pointsPenaltyPerGoalDifference?: Prisma.SortOrder
-  pointsForParticipation?: Prisma.SortOrder
-  pointsForNoShow?: Prisma.SortOrder
-  pointsForWinStreakBonus?: Prisma.SortOrder
-  winStreakThreshold?: Prisma.SortOrder
-  pointsForOvertimeWin?: Prisma.SortOrder
-  pointsForOvertimeLoss?: Prisma.SortOrder
-  pointsPerRedCard?: Prisma.SortOrder
-  pointsPerYellowCard?: Prisma.SortOrder
-  pointsPerPenalty?: Prisma.SortOrder
-  maxPenaltyDeductions?: Prisma.SortOrder
-  maxPointsPerMatch?: Prisma.SortOrder
-  minPointsPerMatch?: Prisma.SortOrder
-  bonusPointsForComebackWin?: Prisma.SortOrder
-  highScoringThreshold?: Prisma.SortOrder
-  bonusPointsForHighScoringMatch?: Prisma.SortOrder
-  penaltyPointsForUnsportingBehavior?: Prisma.SortOrder
-  pointPrecision?: Prisma.SortOrder
 }
 
 export type LeagueScoringConfigsMaxOrderByAggregateInput = {
@@ -1326,46 +516,12 @@ export type LeagueScoringConfigsMaxOrderByAggregateInput = {
   pointsForWin?: Prisma.SortOrder
   pointsForDraw?: Prisma.SortOrder
   pointsForLoss?: Prisma.SortOrder
-  pointsForForfeitWin?: Prisma.SortOrder
-  pointsForForfeitLoss?: Prisma.SortOrder
   pointsPerSetWin?: Prisma.SortOrder
   pointsPerSetLoss?: Prisma.SortOrder
   pointsPerGameWin?: Prisma.SortOrder
   pointsPerGameLoss?: Prisma.SortOrder
   pointsPerGoalScored?: Prisma.SortOrder
   pointsPerGoalConceded?: Prisma.SortOrder
-  maxGoalBonusPoints?: Prisma.SortOrder
-  minGoalBonusThreshold?: Prisma.SortOrder
-  pointsForShutout?: Prisma.SortOrder
-  pointsForCleanSheet?: Prisma.SortOrder
-  applyShutoutOnlyIfWin?: Prisma.SortOrder
-  pointsPerGoalDifference?: Prisma.SortOrder
-  maxGoalDifferencePoints?: Prisma.SortOrder
-  pointsPenaltyPerGoalDifference?: Prisma.SortOrder
-  pointsForParticipation?: Prisma.SortOrder
-  pointsForNoShow?: Prisma.SortOrder
-  pointsForWinStreakBonus?: Prisma.SortOrder
-  winStreakThreshold?: Prisma.SortOrder
-  pointsForOvertimeWin?: Prisma.SortOrder
-  pointsForOvertimeLoss?: Prisma.SortOrder
-  overtimeEnabled?: Prisma.SortOrder
-  pointsPerRedCard?: Prisma.SortOrder
-  pointsPerYellowCard?: Prisma.SortOrder
-  pointsPerPenalty?: Prisma.SortOrder
-  maxPenaltyDeductions?: Prisma.SortOrder
-  maxPointsPerMatch?: Prisma.SortOrder
-  minPointsPerMatch?: Prisma.SortOrder
-  goalDifferenceTiebreaker?: Prisma.SortOrder
-  headToHeadTiebreaker?: Prisma.SortOrder
-  totalGoalsTiebreaker?: Prisma.SortOrder
-  enableBonusForComebackWin?: Prisma.SortOrder
-  bonusPointsForComebackWin?: Prisma.SortOrder
-  enableBonusForHighScoringMatch?: Prisma.SortOrder
-  highScoringThreshold?: Prisma.SortOrder
-  bonusPointsForHighScoringMatch?: Prisma.SortOrder
-  enablePenaltyForUnsportingBehavior?: Prisma.SortOrder
-  penaltyPointsForUnsportingBehavior?: Prisma.SortOrder
-  pointPrecision?: Prisma.SortOrder
 }
 
 export type LeagueScoringConfigsMinOrderByAggregateInput = {
@@ -1375,84 +531,24 @@ export type LeagueScoringConfigsMinOrderByAggregateInput = {
   pointsForWin?: Prisma.SortOrder
   pointsForDraw?: Prisma.SortOrder
   pointsForLoss?: Prisma.SortOrder
-  pointsForForfeitWin?: Prisma.SortOrder
-  pointsForForfeitLoss?: Prisma.SortOrder
   pointsPerSetWin?: Prisma.SortOrder
   pointsPerSetLoss?: Prisma.SortOrder
   pointsPerGameWin?: Prisma.SortOrder
   pointsPerGameLoss?: Prisma.SortOrder
   pointsPerGoalScored?: Prisma.SortOrder
   pointsPerGoalConceded?: Prisma.SortOrder
-  maxGoalBonusPoints?: Prisma.SortOrder
-  minGoalBonusThreshold?: Prisma.SortOrder
-  pointsForShutout?: Prisma.SortOrder
-  pointsForCleanSheet?: Prisma.SortOrder
-  applyShutoutOnlyIfWin?: Prisma.SortOrder
-  pointsPerGoalDifference?: Prisma.SortOrder
-  maxGoalDifferencePoints?: Prisma.SortOrder
-  pointsPenaltyPerGoalDifference?: Prisma.SortOrder
-  pointsForParticipation?: Prisma.SortOrder
-  pointsForNoShow?: Prisma.SortOrder
-  pointsForWinStreakBonus?: Prisma.SortOrder
-  winStreakThreshold?: Prisma.SortOrder
-  pointsForOvertimeWin?: Prisma.SortOrder
-  pointsForOvertimeLoss?: Prisma.SortOrder
-  overtimeEnabled?: Prisma.SortOrder
-  pointsPerRedCard?: Prisma.SortOrder
-  pointsPerYellowCard?: Prisma.SortOrder
-  pointsPerPenalty?: Prisma.SortOrder
-  maxPenaltyDeductions?: Prisma.SortOrder
-  maxPointsPerMatch?: Prisma.SortOrder
-  minPointsPerMatch?: Prisma.SortOrder
-  goalDifferenceTiebreaker?: Prisma.SortOrder
-  headToHeadTiebreaker?: Prisma.SortOrder
-  totalGoalsTiebreaker?: Prisma.SortOrder
-  enableBonusForComebackWin?: Prisma.SortOrder
-  bonusPointsForComebackWin?: Prisma.SortOrder
-  enableBonusForHighScoringMatch?: Prisma.SortOrder
-  highScoringThreshold?: Prisma.SortOrder
-  bonusPointsForHighScoringMatch?: Prisma.SortOrder
-  enablePenaltyForUnsportingBehavior?: Prisma.SortOrder
-  penaltyPointsForUnsportingBehavior?: Prisma.SortOrder
-  pointPrecision?: Prisma.SortOrder
 }
 
 export type LeagueScoringConfigsSumOrderByAggregateInput = {
   pointsForWin?: Prisma.SortOrder
   pointsForDraw?: Prisma.SortOrder
   pointsForLoss?: Prisma.SortOrder
-  pointsForForfeitWin?: Prisma.SortOrder
-  pointsForForfeitLoss?: Prisma.SortOrder
   pointsPerSetWin?: Prisma.SortOrder
   pointsPerSetLoss?: Prisma.SortOrder
   pointsPerGameWin?: Prisma.SortOrder
   pointsPerGameLoss?: Prisma.SortOrder
   pointsPerGoalScored?: Prisma.SortOrder
   pointsPerGoalConceded?: Prisma.SortOrder
-  maxGoalBonusPoints?: Prisma.SortOrder
-  minGoalBonusThreshold?: Prisma.SortOrder
-  pointsForShutout?: Prisma.SortOrder
-  pointsForCleanSheet?: Prisma.SortOrder
-  pointsPerGoalDifference?: Prisma.SortOrder
-  maxGoalDifferencePoints?: Prisma.SortOrder
-  pointsPenaltyPerGoalDifference?: Prisma.SortOrder
-  pointsForParticipation?: Prisma.SortOrder
-  pointsForNoShow?: Prisma.SortOrder
-  pointsForWinStreakBonus?: Prisma.SortOrder
-  winStreakThreshold?: Prisma.SortOrder
-  pointsForOvertimeWin?: Prisma.SortOrder
-  pointsForOvertimeLoss?: Prisma.SortOrder
-  pointsPerRedCard?: Prisma.SortOrder
-  pointsPerYellowCard?: Prisma.SortOrder
-  pointsPerPenalty?: Prisma.SortOrder
-  maxPenaltyDeductions?: Prisma.SortOrder
-  maxPointsPerMatch?: Prisma.SortOrder
-  minPointsPerMatch?: Prisma.SortOrder
-  bonusPointsForComebackWin?: Prisma.SortOrder
-  highScoringThreshold?: Prisma.SortOrder
-  bonusPointsForHighScoringMatch?: Prisma.SortOrder
-  penaltyPointsForUnsportingBehavior?: Prisma.SortOrder
-  pointPrecision?: Prisma.SortOrder
 }
 
 
@@ -1464,46 +560,12 @@ export type LeagueScoringConfigsSelect<ExtArgs extends runtime.Types.Extensions.
   pointsForWin?: boolean
   pointsForDraw?: boolean
   pointsForLoss?: boolean
-  pointsForForfeitWin?: boolean
-  pointsForForfeitLoss?: boolean
   pointsPerSetWin?: boolean
   pointsPerSetLoss?: boolean
   pointsPerGameWin?: boolean
   pointsPerGameLoss?: boolean
   pointsPerGoalScored?: boolean
   pointsPerGoalConceded?: boolean
-  maxGoalBonusPoints?: boolean
-  minGoalBonusThreshold?: boolean
-  pointsForShutout?: boolean
-  pointsForCleanSheet?: boolean
-  applyShutoutOnlyIfWin?: boolean
-  pointsPerGoalDifference?: boolean
-  maxGoalDifferencePoints?: boolean
-  pointsPenaltyPerGoalDifference?: boolean
-  pointsForParticipation?: boolean
-  pointsForNoShow?: boolean
-  pointsForWinStreakBonus?: boolean
-  winStreakThreshold?: boolean
-  pointsForOvertimeWin?: boolean
-  pointsForOvertimeLoss?: boolean
-  overtimeEnabled?: boolean
-  pointsPerRedCard?: boolean
-  pointsPerYellowCard?: boolean
-  pointsPerPenalty?: boolean
-  maxPenaltyDeductions?: boolean
-  maxPointsPerMatch?: boolean
-  minPointsPerMatch?: boolean
-  goalDifferenceTiebreaker?: boolean
-  headToHeadTiebreaker?: boolean
-  totalGoalsTiebreaker?: boolean
-  enableBonusForComebackWin?: boolean
-  bonusPointsForComebackWin?: boolean
-  enableBonusForHighScoringMatch?: boolean
-  highScoringThreshold?: boolean
-  bonusPointsForHighScoringMatch?: boolean
-  enablePenaltyForUnsportingBehavior?: boolean
-  penaltyPointsForUnsportingBehavior?: boolean
-  pointPrecision?: boolean
 }, ExtArgs["result"]["leagueScoringConfigs"]>
 
 export type LeagueScoringConfigsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1513,46 +575,12 @@ export type LeagueScoringConfigsSelectCreateManyAndReturn<ExtArgs extends runtim
   pointsForWin?: boolean
   pointsForDraw?: boolean
   pointsForLoss?: boolean
-  pointsForForfeitWin?: boolean
-  pointsForForfeitLoss?: boolean
   pointsPerSetWin?: boolean
   pointsPerSetLoss?: boolean
   pointsPerGameWin?: boolean
   pointsPerGameLoss?: boolean
   pointsPerGoalScored?: boolean
   pointsPerGoalConceded?: boolean
-  maxGoalBonusPoints?: boolean
-  minGoalBonusThreshold?: boolean
-  pointsForShutout?: boolean
-  pointsForCleanSheet?: boolean
-  applyShutoutOnlyIfWin?: boolean
-  pointsPerGoalDifference?: boolean
-  maxGoalDifferencePoints?: boolean
-  pointsPenaltyPerGoalDifference?: boolean
-  pointsForParticipation?: boolean
-  pointsForNoShow?: boolean
-  pointsForWinStreakBonus?: boolean
-  winStreakThreshold?: boolean
-  pointsForOvertimeWin?: boolean
-  pointsForOvertimeLoss?: boolean
-  overtimeEnabled?: boolean
-  pointsPerRedCard?: boolean
-  pointsPerYellowCard?: boolean
-  pointsPerPenalty?: boolean
-  maxPenaltyDeductions?: boolean
-  maxPointsPerMatch?: boolean
-  minPointsPerMatch?: boolean
-  goalDifferenceTiebreaker?: boolean
-  headToHeadTiebreaker?: boolean
-  totalGoalsTiebreaker?: boolean
-  enableBonusForComebackWin?: boolean
-  bonusPointsForComebackWin?: boolean
-  enableBonusForHighScoringMatch?: boolean
-  highScoringThreshold?: boolean
-  bonusPointsForHighScoringMatch?: boolean
-  enablePenaltyForUnsportingBehavior?: boolean
-  penaltyPointsForUnsportingBehavior?: boolean
-  pointPrecision?: boolean
 }, ExtArgs["result"]["leagueScoringConfigs"]>
 
 export type LeagueScoringConfigsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -1562,46 +590,12 @@ export type LeagueScoringConfigsSelectUpdateManyAndReturn<ExtArgs extends runtim
   pointsForWin?: boolean
   pointsForDraw?: boolean
   pointsForLoss?: boolean
-  pointsForForfeitWin?: boolean
-  pointsForForfeitLoss?: boolean
   pointsPerSetWin?: boolean
   pointsPerSetLoss?: boolean
   pointsPerGameWin?: boolean
   pointsPerGameLoss?: boolean
   pointsPerGoalScored?: boolean
   pointsPerGoalConceded?: boolean
-  maxGoalBonusPoints?: boolean
-  minGoalBonusThreshold?: boolean
-  pointsForShutout?: boolean
-  pointsForCleanSheet?: boolean
-  applyShutoutOnlyIfWin?: boolean
-  pointsPerGoalDifference?: boolean
-  maxGoalDifferencePoints?: boolean
-  pointsPenaltyPerGoalDifference?: boolean
-  pointsForParticipation?: boolean
-  pointsForNoShow?: boolean
-  pointsForWinStreakBonus?: boolean
-  winStreakThreshold?: boolean
-  pointsForOvertimeWin?: boolean
-  pointsForOvertimeLoss?: boolean
-  overtimeEnabled?: boolean
-  pointsPerRedCard?: boolean
-  pointsPerYellowCard?: boolean
-  pointsPerPenalty?: boolean
-  maxPenaltyDeductions?: boolean
-  maxPointsPerMatch?: boolean
-  minPointsPerMatch?: boolean
-  goalDifferenceTiebreaker?: boolean
-  headToHeadTiebreaker?: boolean
-  totalGoalsTiebreaker?: boolean
-  enableBonusForComebackWin?: boolean
-  bonusPointsForComebackWin?: boolean
-  enableBonusForHighScoringMatch?: boolean
-  highScoringThreshold?: boolean
-  bonusPointsForHighScoringMatch?: boolean
-  enablePenaltyForUnsportingBehavior?: boolean
-  penaltyPointsForUnsportingBehavior?: boolean
-  pointPrecision?: boolean
 }, ExtArgs["result"]["leagueScoringConfigs"]>
 
 export type LeagueScoringConfigsSelectScalar = {
@@ -1611,49 +605,15 @@ export type LeagueScoringConfigsSelectScalar = {
   pointsForWin?: boolean
   pointsForDraw?: boolean
   pointsForLoss?: boolean
-  pointsForForfeitWin?: boolean
-  pointsForForfeitLoss?: boolean
   pointsPerSetWin?: boolean
   pointsPerSetLoss?: boolean
   pointsPerGameWin?: boolean
   pointsPerGameLoss?: boolean
   pointsPerGoalScored?: boolean
   pointsPerGoalConceded?: boolean
-  maxGoalBonusPoints?: boolean
-  minGoalBonusThreshold?: boolean
-  pointsForShutout?: boolean
-  pointsForCleanSheet?: boolean
-  applyShutoutOnlyIfWin?: boolean
-  pointsPerGoalDifference?: boolean
-  maxGoalDifferencePoints?: boolean
-  pointsPenaltyPerGoalDifference?: boolean
-  pointsForParticipation?: boolean
-  pointsForNoShow?: boolean
-  pointsForWinStreakBonus?: boolean
-  winStreakThreshold?: boolean
-  pointsForOvertimeWin?: boolean
-  pointsForOvertimeLoss?: boolean
-  overtimeEnabled?: boolean
-  pointsPerRedCard?: boolean
-  pointsPerYellowCard?: boolean
-  pointsPerPenalty?: boolean
-  maxPenaltyDeductions?: boolean
-  maxPointsPerMatch?: boolean
-  minPointsPerMatch?: boolean
-  goalDifferenceTiebreaker?: boolean
-  headToHeadTiebreaker?: boolean
-  totalGoalsTiebreaker?: boolean
-  enableBonusForComebackWin?: boolean
-  bonusPointsForComebackWin?: boolean
-  enableBonusForHighScoringMatch?: boolean
-  highScoringThreshold?: boolean
-  bonusPointsForHighScoringMatch?: boolean
-  enablePenaltyForUnsportingBehavior?: boolean
-  penaltyPointsForUnsportingBehavior?: boolean
-  pointPrecision?: boolean
 }
 
-export type LeagueScoringConfigsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "pointsForWin" | "pointsForDraw" | "pointsForLoss" | "pointsForForfeitWin" | "pointsForForfeitLoss" | "pointsPerSetWin" | "pointsPerSetLoss" | "pointsPerGameWin" | "pointsPerGameLoss" | "pointsPerGoalScored" | "pointsPerGoalConceded" | "maxGoalBonusPoints" | "minGoalBonusThreshold" | "pointsForShutout" | "pointsForCleanSheet" | "applyShutoutOnlyIfWin" | "pointsPerGoalDifference" | "maxGoalDifferencePoints" | "pointsPenaltyPerGoalDifference" | "pointsForParticipation" | "pointsForNoShow" | "pointsForWinStreakBonus" | "winStreakThreshold" | "pointsForOvertimeWin" | "pointsForOvertimeLoss" | "overtimeEnabled" | "pointsPerRedCard" | "pointsPerYellowCard" | "pointsPerPenalty" | "maxPenaltyDeductions" | "maxPointsPerMatch" | "minPointsPerMatch" | "goalDifferenceTiebreaker" | "headToHeadTiebreaker" | "totalGoalsTiebreaker" | "enableBonusForComebackWin" | "bonusPointsForComebackWin" | "enableBonusForHighScoringMatch" | "highScoringThreshold" | "bonusPointsForHighScoringMatch" | "enablePenaltyForUnsportingBehavior" | "penaltyPointsForUnsportingBehavior" | "pointPrecision", ExtArgs["result"]["leagueScoringConfigs"]>
+export type LeagueScoringConfigsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "pointsForWin" | "pointsForDraw" | "pointsForLoss" | "pointsPerSetWin" | "pointsPerSetLoss" | "pointsPerGameWin" | "pointsPerGameLoss" | "pointsPerGoalScored" | "pointsPerGoalConceded", ExtArgs["result"]["leagueScoringConfigs"]>
 
 export type $LeagueScoringConfigsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "LeagueScoringConfigs"
@@ -1665,46 +625,12 @@ export type $LeagueScoringConfigsPayload<ExtArgs extends runtime.Types.Extension
     pointsForWin: number | null
     pointsForDraw: number | null
     pointsForLoss: number | null
-    pointsForForfeitWin: number | null
-    pointsForForfeitLoss: number | null
     pointsPerSetWin: number | null
     pointsPerSetLoss: number | null
     pointsPerGameWin: number | null
     pointsPerGameLoss: number | null
     pointsPerGoalScored: number | null
     pointsPerGoalConceded: number | null
-    maxGoalBonusPoints: number | null
-    minGoalBonusThreshold: number | null
-    pointsForShutout: number | null
-    pointsForCleanSheet: number | null
-    applyShutoutOnlyIfWin: boolean | null
-    pointsPerGoalDifference: number | null
-    maxGoalDifferencePoints: number | null
-    pointsPenaltyPerGoalDifference: number | null
-    pointsForParticipation: number | null
-    pointsForNoShow: number | null
-    pointsForWinStreakBonus: number | null
-    winStreakThreshold: number | null
-    pointsForOvertimeWin: number | null
-    pointsForOvertimeLoss: number | null
-    overtimeEnabled: boolean | null
-    pointsPerRedCard: number | null
-    pointsPerYellowCard: number | null
-    pointsPerPenalty: number | null
-    maxPenaltyDeductions: number | null
-    maxPointsPerMatch: number | null
-    minPointsPerMatch: number | null
-    goalDifferenceTiebreaker: boolean | null
-    headToHeadTiebreaker: boolean | null
-    totalGoalsTiebreaker: boolean | null
-    enableBonusForComebackWin: boolean | null
-    bonusPointsForComebackWin: number | null
-    enableBonusForHighScoringMatch: boolean | null
-    highScoringThreshold: number | null
-    bonusPointsForHighScoringMatch: number | null
-    enablePenaltyForUnsportingBehavior: boolean | null
-    penaltyPointsForUnsportingBehavior: number | null
-    pointPrecision: number | null
   }, ExtArgs["result"]["leagueScoringConfigs"]>
   composites: {}
 }
@@ -2134,46 +1060,12 @@ export interface LeagueScoringConfigsFieldRefs {
   readonly pointsForWin: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
   readonly pointsForDraw: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
   readonly pointsForLoss: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
-  readonly pointsForForfeitWin: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
-  readonly pointsForForfeitLoss: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
   readonly pointsPerSetWin: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
   readonly pointsPerSetLoss: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
   readonly pointsPerGameWin: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
   readonly pointsPerGameLoss: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
   readonly pointsPerGoalScored: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
   readonly pointsPerGoalConceded: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly maxGoalBonusPoints: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
-  readonly minGoalBonusThreshold: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
-  readonly pointsForShutout: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly pointsForCleanSheet: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly applyShutoutOnlyIfWin: Prisma.FieldRef<"LeagueScoringConfigs", 'Boolean'>
-  readonly pointsPerGoalDifference: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly maxGoalDifferencePoints: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
-  readonly pointsPenaltyPerGoalDifference: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly pointsForParticipation: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly pointsForNoShow: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly pointsForWinStreakBonus: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly winStreakThreshold: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
-  readonly pointsForOvertimeWin: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly pointsForOvertimeLoss: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly overtimeEnabled: Prisma.FieldRef<"LeagueScoringConfigs", 'Boolean'>
-  readonly pointsPerRedCard: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly pointsPerYellowCard: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly pointsPerPenalty: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly maxPenaltyDeductions: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
-  readonly maxPointsPerMatch: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly minPointsPerMatch: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly goalDifferenceTiebreaker: Prisma.FieldRef<"LeagueScoringConfigs", 'Boolean'>
-  readonly headToHeadTiebreaker: Prisma.FieldRef<"LeagueScoringConfigs", 'Boolean'>
-  readonly totalGoalsTiebreaker: Prisma.FieldRef<"LeagueScoringConfigs", 'Boolean'>
-  readonly enableBonusForComebackWin: Prisma.FieldRef<"LeagueScoringConfigs", 'Boolean'>
-  readonly bonusPointsForComebackWin: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly enableBonusForHighScoringMatch: Prisma.FieldRef<"LeagueScoringConfigs", 'Boolean'>
-  readonly highScoringThreshold: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
-  readonly bonusPointsForHighScoringMatch: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly enablePenaltyForUnsportingBehavior: Prisma.FieldRef<"LeagueScoringConfigs", 'Boolean'>
-  readonly penaltyPointsForUnsportingBehavior: Prisma.FieldRef<"LeagueScoringConfigs", 'Float'>
-  readonly pointPrecision: Prisma.FieldRef<"LeagueScoringConfigs", 'Int'>
 }
     
 

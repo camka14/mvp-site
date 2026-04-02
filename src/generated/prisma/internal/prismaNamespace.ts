@@ -2929,7 +2929,8 @@ export const FieldsScalarFieldEnum = {
   name: 'name',
   rentalSlotIds: 'rentalSlotIds',
   location: 'location',
-  organizationId: 'organizationId'
+  organizationId: 'organizationId',
+  createdBy: 'createdBy'
 } as const
 
 export type FieldsScalarFieldEnum = (typeof FieldsScalarFieldEnum)[keyof typeof FieldsScalarFieldEnum]
@@ -3409,46 +3410,12 @@ export const LeagueScoringConfigsScalarFieldEnum = {
   pointsForWin: 'pointsForWin',
   pointsForDraw: 'pointsForDraw',
   pointsForLoss: 'pointsForLoss',
-  pointsForForfeitWin: 'pointsForForfeitWin',
-  pointsForForfeitLoss: 'pointsForForfeitLoss',
   pointsPerSetWin: 'pointsPerSetWin',
   pointsPerSetLoss: 'pointsPerSetLoss',
   pointsPerGameWin: 'pointsPerGameWin',
   pointsPerGameLoss: 'pointsPerGameLoss',
   pointsPerGoalScored: 'pointsPerGoalScored',
-  pointsPerGoalConceded: 'pointsPerGoalConceded',
-  maxGoalBonusPoints: 'maxGoalBonusPoints',
-  minGoalBonusThreshold: 'minGoalBonusThreshold',
-  pointsForShutout: 'pointsForShutout',
-  pointsForCleanSheet: 'pointsForCleanSheet',
-  applyShutoutOnlyIfWin: 'applyShutoutOnlyIfWin',
-  pointsPerGoalDifference: 'pointsPerGoalDifference',
-  maxGoalDifferencePoints: 'maxGoalDifferencePoints',
-  pointsPenaltyPerGoalDifference: 'pointsPenaltyPerGoalDifference',
-  pointsForParticipation: 'pointsForParticipation',
-  pointsForNoShow: 'pointsForNoShow',
-  pointsForWinStreakBonus: 'pointsForWinStreakBonus',
-  winStreakThreshold: 'winStreakThreshold',
-  pointsForOvertimeWin: 'pointsForOvertimeWin',
-  pointsForOvertimeLoss: 'pointsForOvertimeLoss',
-  overtimeEnabled: 'overtimeEnabled',
-  pointsPerRedCard: 'pointsPerRedCard',
-  pointsPerYellowCard: 'pointsPerYellowCard',
-  pointsPerPenalty: 'pointsPerPenalty',
-  maxPenaltyDeductions: 'maxPenaltyDeductions',
-  maxPointsPerMatch: 'maxPointsPerMatch',
-  minPointsPerMatch: 'minPointsPerMatch',
-  goalDifferenceTiebreaker: 'goalDifferenceTiebreaker',
-  headToHeadTiebreaker: 'headToHeadTiebreaker',
-  totalGoalsTiebreaker: 'totalGoalsTiebreaker',
-  enableBonusForComebackWin: 'enableBonusForComebackWin',
-  bonusPointsForComebackWin: 'bonusPointsForComebackWin',
-  enableBonusForHighScoringMatch: 'enableBonusForHighScoringMatch',
-  highScoringThreshold: 'highScoringThreshold',
-  bonusPointsForHighScoringMatch: 'bonusPointsForHighScoringMatch',
-  enablePenaltyForUnsportingBehavior: 'enablePenaltyForUnsportingBehavior',
-  penaltyPointsForUnsportingBehavior: 'penaltyPointsForUnsportingBehavior',
-  pointPrecision: 'pointPrecision'
+  pointsPerGoalConceded: 'pointsPerGoalConceded'
 } as const
 
 export type LeagueScoringConfigsScalarFieldEnum = (typeof LeagueScoringConfigsScalarFieldEnum)[keyof typeof LeagueScoringConfigsScalarFieldEnum]

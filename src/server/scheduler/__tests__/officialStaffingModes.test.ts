@@ -230,6 +230,118 @@ describe('official staffing modes', () => {
     ]);
   });
 
+  it('SCHEDULE keeps assignable single-position officials when another slot has no candidates', () => {
+    const division = buildDivision();
+    const field = buildField('field_1', 1, division);
+    const teams = Object.values(buildTeams(2, division));
+    const official1 = new UserData({ id: 'official_1', divisions: [division] });
+    const official2 = new UserData({ id: 'official_2', divisions: [division] });
+    const tournament = new Tournament({
+      id: 'planner_single_position_candidates',
+      name: 'Planner Single Position Candidates',
+      start: new Date(2026, 0, 3, 9, 0, 0),
+      end: new Date(2026, 0, 3, 10, 0, 0),
+      maxParticipants: 2,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams: Object.fromEntries(teams.map((team) => [team.id, team])),
+      divisions: [division],
+      fields: { [field.id]: field },
+      officials: [official1, official2],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [
+        { id: 'r1', name: 'R1', count: 1, order: 0 },
+        { id: 'r2', name: 'R2', count: 1, order: 1 },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_1',
+          userId: official1.id,
+          positionIds: ['r1'],
+          fieldIds: [],
+          isActive: true,
+        },
+        {
+          id: 'event_official_2',
+          userId: official2.id,
+          positionIds: ['r1'],
+          fieldIds: [],
+          isActive: true,
+        },
+      ],
+    });
+    const planner = new OfficialStaffingPlanner(tournament);
+    const match = buildPlannerMatch('match_1', division, field, teams[0], teams[1], 9);
+
+    planner.assignMatch(match);
+
+    expect(match.officialAssignments).toHaveLength(1);
+    expect(match.officialAssignments[0]).toEqual(expect.objectContaining({ positionId: 'r1' }));
+    expect(['official_1', 'official_2']).toContain(match.officialAssignments[0].userId);
+  });
+
+  it('assigns officials from position-specific pools per slot', () => {
+    const division = buildDivision();
+    const field = buildField('field_1', 1, division);
+    const teams = Object.values(buildTeams(2, division));
+    const official1 = new UserData({ id: 'official_1', divisions: [division] });
+    const official2 = new UserData({ id: 'official_2', divisions: [division] });
+    const tournament = new Tournament({
+      id: 'planner_position_pools',
+      name: 'Planner Position Pools',
+      start: new Date(2026, 0, 3, 9, 0, 0),
+      end: new Date(2026, 0, 3, 10, 0, 0),
+      maxParticipants: 2,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams: Object.fromEntries(teams.map((team) => [team.id, team])),
+      divisions: [division],
+      fields: { [field.id]: field },
+      officials: [official1, official2],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [
+        { id: 'r1', name: 'R1', count: 1, order: 0 },
+        { id: 'r2', name: 'R2', count: 1, order: 1 },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_1',
+          userId: official1.id,
+          positionIds: ['r1'],
+          fieldIds: [],
+          isActive: true,
+        },
+        {
+          id: 'event_official_2',
+          userId: official2.id,
+          positionIds: ['r2'],
+          fieldIds: [],
+          isActive: true,
+        },
+      ],
+    });
+    const planner = new OfficialStaffingPlanner(tournament);
+    const match = buildPlannerMatch('match_1', division, field, teams[0], teams[1], 9);
+
+    planner.assignMatch(match);
+
+    expect(match.officialAssignments).toHaveLength(2);
+    expect(match.officialAssignments).toEqual([
+      expect.objectContaining({ positionId: 'r1', userId: 'official_1' }),
+      expect.objectContaining({ positionId: 'r2', userId: 'official_2' }),
+    ]);
+  });
+
   it('OFF still avoids assigning the same user twice in one match', () => {
     const division = buildDivision();
     const field = buildField('field_1', 1, division);

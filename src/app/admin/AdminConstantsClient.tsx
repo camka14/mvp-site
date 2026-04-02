@@ -75,7 +75,7 @@ const getSecondaryLabel = (kind: ConstantKind, record: ConstantRecord): string =
     const sportId = typeof record.sportId === 'string' ? record.sportId : 'n/a';
     return `Sport: ${sportId}`;
   }
-  return `Point precision: ${String(record.pointPrecision ?? 'n/a')}`;
+  return "ID: " + getRecordId(record);
 };
 
 type AdminConstantsClientProps = {

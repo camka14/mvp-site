@@ -252,7 +252,9 @@ export class OfficialStaffingPlanner {
         return left.slot.slotIndex - right.slot.slotIndex;
       });
 
-      const next = candidateSets[0];
+      const next = options.requireFull
+        ? candidateSets[0]
+        : candidateSets.find((entry) => entry.candidates.length > 0);
       if (!next || !next.candidates.length) {
         if (options.requireFull) {
           return { assignments: [], complete: false };

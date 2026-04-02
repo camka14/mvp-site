@@ -269,7 +269,7 @@ export type TeamsGroupByOutputType = {
   divisionTypeName: string | null
   wins: number | null
   losses: number | null
-  name: string | null
+  name: string
   captainId: string
   managerId: string
   headCoachId: string | null
@@ -314,7 +314,7 @@ export type TeamsWhereInput = {
   divisionTypeName?: Prisma.StringNullableFilter<"Teams"> | string | null
   wins?: Prisma.IntNullableFilter<"Teams"> | number | null
   losses?: Prisma.IntNullableFilter<"Teams"> | number | null
-  name?: Prisma.StringNullableFilter<"Teams"> | string | null
+  name?: Prisma.StringFilter<"Teams"> | string
   captainId?: Prisma.StringFilter<"Teams"> | string
   managerId?: Prisma.StringFilter<"Teams"> | string
   headCoachId?: Prisma.StringNullableFilter<"Teams"> | string | null
@@ -336,7 +336,7 @@ export type TeamsOrderByWithRelationInput = {
   divisionTypeName?: Prisma.SortOrderInput | Prisma.SortOrder
   wins?: Prisma.SortOrderInput | Prisma.SortOrder
   losses?: Prisma.SortOrderInput | Prisma.SortOrder
-  name?: Prisma.SortOrderInput | Prisma.SortOrder
+  name?: Prisma.SortOrder
   captainId?: Prisma.SortOrder
   managerId?: Prisma.SortOrder
   headCoachId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -361,7 +361,7 @@ export type TeamsWhereUniqueInput = Prisma.AtLeast<{
   divisionTypeName?: Prisma.StringNullableFilter<"Teams"> | string | null
   wins?: Prisma.IntNullableFilter<"Teams"> | number | null
   losses?: Prisma.IntNullableFilter<"Teams"> | number | null
-  name?: Prisma.StringNullableFilter<"Teams"> | string | null
+  name?: Prisma.StringFilter<"Teams"> | string
   captainId?: Prisma.StringFilter<"Teams"> | string
   managerId?: Prisma.StringFilter<"Teams"> | string
   headCoachId?: Prisma.StringNullableFilter<"Teams"> | string | null
@@ -383,7 +383,7 @@ export type TeamsOrderByWithAggregationInput = {
   divisionTypeName?: Prisma.SortOrderInput | Prisma.SortOrder
   wins?: Prisma.SortOrderInput | Prisma.SortOrder
   losses?: Prisma.SortOrderInput | Prisma.SortOrder
-  name?: Prisma.SortOrderInput | Prisma.SortOrder
+  name?: Prisma.SortOrder
   captainId?: Prisma.SortOrder
   managerId?: Prisma.SortOrder
   headCoachId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -413,7 +413,7 @@ export type TeamsScalarWhereWithAggregatesInput = {
   divisionTypeName?: Prisma.StringNullableWithAggregatesFilter<"Teams"> | string | null
   wins?: Prisma.IntNullableWithAggregatesFilter<"Teams"> | number | null
   losses?: Prisma.IntNullableWithAggregatesFilter<"Teams"> | number | null
-  name?: Prisma.StringNullableWithAggregatesFilter<"Teams"> | string | null
+  name?: Prisma.StringWithAggregatesFilter<"Teams"> | string
   captainId?: Prisma.StringWithAggregatesFilter<"Teams"> | string
   managerId?: Prisma.StringWithAggregatesFilter<"Teams"> | string
   headCoachId?: Prisma.StringNullableWithAggregatesFilter<"Teams"> | string | null
@@ -435,7 +435,7 @@ export type TeamsCreateInput = {
   divisionTypeName?: string | null
   wins?: number | null
   losses?: number | null
-  name?: string | null
+  name: string
   captainId: string
   managerId: string
   headCoachId?: string | null
@@ -457,7 +457,7 @@ export type TeamsUncheckedCreateInput = {
   divisionTypeName?: string | null
   wins?: number | null
   losses?: number | null
-  name?: string | null
+  name: string
   captainId: string
   managerId: string
   headCoachId?: string | null
@@ -479,7 +479,7 @@ export type TeamsUpdateInput = {
   divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   wins?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  name?: Prisma.StringFieldUpdateOperationsInput | string
   captainId?: Prisma.StringFieldUpdateOperationsInput | string
   managerId?: Prisma.StringFieldUpdateOperationsInput | string
   headCoachId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -501,7 +501,7 @@ export type TeamsUncheckedUpdateInput = {
   divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   wins?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  name?: Prisma.StringFieldUpdateOperationsInput | string
   captainId?: Prisma.StringFieldUpdateOperationsInput | string
   managerId?: Prisma.StringFieldUpdateOperationsInput | string
   headCoachId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -523,7 +523,7 @@ export type TeamsCreateManyInput = {
   divisionTypeName?: string | null
   wins?: number | null
   losses?: number | null
-  name?: string | null
+  name: string
   captainId: string
   managerId: string
   headCoachId?: string | null
@@ -545,7 +545,7 @@ export type TeamsUpdateManyMutationInput = {
   divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   wins?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  name?: Prisma.StringFieldUpdateOperationsInput | string
   captainId?: Prisma.StringFieldUpdateOperationsInput | string
   managerId?: Prisma.StringFieldUpdateOperationsInput | string
   headCoachId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -567,7 +567,7 @@ export type TeamsUncheckedUpdateManyInput = {
   divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   wins?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
-  name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  name?: Prisma.StringFieldUpdateOperationsInput | string
   captainId?: Prisma.StringFieldUpdateOperationsInput | string
   managerId?: Prisma.StringFieldUpdateOperationsInput | string
   headCoachId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -783,7 +783,7 @@ export type $TeamsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs 
     divisionTypeName: string | null
     wins: number | null
     losses: number | null
-    name: string | null
+    name: string
     captainId: string
     managerId: string
     headCoachId: string | null

@@ -441,46 +441,12 @@ model LeagueScoringConfigs {
   pointsForWin Int?
   pointsForDraw Int?
   pointsForLoss Int?
-  pointsForForfeitWin Int?
-  pointsForForfeitLoss Int?
   pointsPerSetWin Float?
   pointsPerSetLoss Float?
   pointsPerGameWin Float?
   pointsPerGameLoss Float?
   pointsPerGoalScored Float?
   pointsPerGoalConceded Float?
-  maxGoalBonusPoints Int?
-  minGoalBonusThreshold Int?
-  pointsForShutout Float?
-  pointsForCleanSheet Float?
-  applyShutoutOnlyIfWin Boolean?
-  pointsPerGoalDifference Float?
-  maxGoalDifferencePoints Int?
-  pointsPenaltyPerGoalDifference Float?
-  pointsForParticipation Float?
-  pointsForNoShow Float?
-  pointsForWinStreakBonus Float?
-  winStreakThreshold Int?
-  pointsForOvertimeWin Float?
-  pointsForOvertimeLoss Float?
-  overtimeEnabled Boolean?
-  pointsPerRedCard Float?
-  pointsPerYellowCard Float?
-  pointsPerPenalty Float?
-  maxPenaltyDeductions Int?
-  maxPointsPerMatch Float?
-  minPointsPerMatch Float?
-  goalDifferenceTiebreaker Boolean?
-  headToHeadTiebreaker Boolean?
-  totalGoalsTiebreaker Boolean?
-  enableBonusForComebackWin Boolean?
-  bonusPointsForComebackWin Float?
-  enableBonusForHighScoringMatch Boolean?
-  highScoringThreshold Int?
-  bonusPointsForHighScoringMatch Float?
-  enablePenaltyForUnsportingBehavior Boolean?
-  penaltyPointsForUnsportingBehavior Float?
-  pointPrecision Int?
 }
 
 model Sports {
