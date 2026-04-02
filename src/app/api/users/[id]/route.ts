@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession, assertUserAccess, getOptionalSession } from '@/lib/permissions';
@@ -11,10 +10,34 @@ import {
   normalizeUserName,
 } from '@/server/userNames';
 import { applyUserPrivacy, createVisibilityContext, publicUserSelect } from '@/server/userPrivacy';
+import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 
-const updateSchema = z.object({
-  data: z.record(z.string(), z.any()),
-});
+const USER_MUTABLE_FIELDS = new Set<string>([
+  'firstName',
+  'lastName',
+  'dateOfBirth',
+  'dobVerified',
+  'dobVerifiedAt',
+  'ageVerificationProvider',
+  'teamIds',
+  'friendIds',
+  'userName',
+  'hasStripeAccount',
+  'followingIds',
+  'friendRequestIds',
+  'friendRequestSentIds',
+  'uploadedImages',
+  'profileImageId',
+  'homePageOrganizationId',
+]);
+const USER_IMMUTABLE_FIELDS = new Set<string>([
+  'id',
+  '$id',
+  'createdAt',
+  '$createdAt',
+  'updatedAt',
+  '$updatedAt',
+]);
 
 const normalizeNameFields = (data: Record<string, unknown>) => {
   if (Object.prototype.hasOwnProperty.call(data, 'firstName')) {
@@ -54,12 +77,38 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   assertUserAccess(session, id);
 
   const body = await req.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+  const parsed = parseStrictEnvelope({
+    body,
+    envelopeKey: 'data',
+  });
+  if ('error' in parsed) {
+    return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
   }
 
-  const nextData: Record<string, unknown> = { ...parsed.data.data };
+  const unknownKeys = findUnknownKeys(parsed.payload, [
+    ...USER_MUTABLE_FIELDS,
+    ...USER_IMMUTABLE_FIELDS,
+  ]);
+  if (unknownKeys.length) {
+    return NextResponse.json(
+      { error: 'Unknown user patch fields.', unknownKeys },
+      { status: 400 },
+    );
+  }
+  const immutableKeys = findPresentKeys(parsed.payload, USER_IMMUTABLE_FIELDS);
+  if (immutableKeys.length) {
+    return NextResponse.json(
+      { error: 'Immutable user fields cannot be updated.', fields: immutableKeys },
+      { status: 403 },
+    );
+  }
+
+  const nextData: Record<string, unknown> = {};
+  for (const key of USER_MUTABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(parsed.payload, key)) {
+      nextData[key] = parsed.payload[key];
+    }
+  }
   normalizeNameFields(nextData);
   if (Object.prototype.hasOwnProperty.call(nextData, 'userName')) {
     const normalizedUserName = normalizeUserName(nextData.userName);

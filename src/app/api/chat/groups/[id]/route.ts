@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
+import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 
 export const dynamic = 'force-dynamic';
 
-const updateSchema = z.object({
-  group: z.record(z.string(), z.any()).optional(),
-  name: z.string().nullable().optional(),
-  userIds: z.array(z.string()).optional(),
-}).passthrough();
+const CHAT_GROUP_MUTABLE_FIELDS = new Set<string>([
+  'name',
+  'userIds',
+]);
+const CHAT_GROUP_IMMUTABLE_FIELDS = new Set<string>([
+  'id',
+  '$id',
+  'hostId',
+  'createdAt',
+  '$createdAt',
+  'updatedAt',
+  '$updatedAt',
+]);
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
@@ -31,9 +39,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body ?? {});
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+  const parsed = parseStrictEnvelope({
+    body,
+    envelopeKey: 'group',
+  });
+  if ('error' in parsed) {
+    return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
   }
 
   const { id } = await params;
@@ -42,8 +53,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
-  const rawPayload = (parsed.data.group ?? parsed.data ?? {}) as Record<string, any>;
+  const rawPayload = parsed.payload as Record<string, any>;
   const payload = stripLegacyFieldsDeep(rawPayload) as Record<string, any>;
+
+  const unknownPayloadKeys = findUnknownKeys(payload, [
+    ...CHAT_GROUP_MUTABLE_FIELDS,
+    ...CHAT_GROUP_IMMUTABLE_FIELDS,
+  ]);
+  if (unknownPayloadKeys.length) {
+    return NextResponse.json(
+      { error: 'Unknown chat group patch fields.', unknownKeys: unknownPayloadKeys },
+      { status: 400 },
+    );
+  }
+  const immutableKeys = findPresentKeys(payload, CHAT_GROUP_IMMUTABLE_FIELDS);
+  if (immutableKeys.length && !session.isAdmin) {
+    return NextResponse.json(
+      { error: 'Immutable chat group fields cannot be updated.', fields: immutableKeys },
+      { status: 403 },
+    );
+  }
 
   // Never allow callers to override server-managed fields.
   delete payload.id;

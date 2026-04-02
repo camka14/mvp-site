@@ -164,9 +164,18 @@ class ProductService {
 
   async updateProduct(productId: string, updates: UpdateProductInput): Promise<Product> {
     try {
+      const payload: Record<string, unknown> = { ...updates };
+      delete payload.id;
+      delete payload.$id;
+      delete payload.organizationId;
+      delete payload.createdBy;
+      delete payload.createdAt;
+      delete payload.$createdAt;
+      delete payload.updatedAt;
+      delete payload.$updatedAt;
       const result = await apiRequest<Product & { error?: string }>(`/api/products/${productId}`, {
         method: 'PATCH',
-        body: { product: updates },
+        body: { product: payload },
       });
       if (result && (result as any).error) {
         throw new Error((result as any).error as string);

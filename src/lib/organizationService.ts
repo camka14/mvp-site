@@ -255,6 +255,22 @@ class OrganizationService {
 
   async updateOrganization(id: string, data: Partial<Organization>): Promise<Organization> {
     const payload = buildPayload(data);
+    delete (payload as Record<string, unknown>).id;
+    delete (payload as Record<string, unknown>).$id;
+    delete (payload as Record<string, unknown>).createdAt;
+    delete (payload as Record<string, unknown>).$createdAt;
+    delete (payload as Record<string, unknown>).updatedAt;
+    delete (payload as Record<string, unknown>).$updatedAt;
+    delete (payload as Record<string, unknown>).ownerId;
+    delete (payload as Record<string, unknown>).events;
+    delete (payload as Record<string, unknown>).teams;
+    delete (payload as Record<string, unknown>).fields;
+    delete (payload as Record<string, unknown>).officials;
+    delete (payload as Record<string, unknown>).hosts;
+    delete (payload as Record<string, unknown>).owner;
+    delete (payload as Record<string, unknown>).staffMembers;
+    delete (payload as Record<string, unknown>).staffInvites;
+    delete (payload as Record<string, unknown>).staffEmailsByUserId;
     if (data.officialIds !== undefined) {
       payload.officialIds = Array.isArray(data.officialIds) ? data.officialIds : [];
     }

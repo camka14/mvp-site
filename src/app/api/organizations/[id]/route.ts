@@ -1,17 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
+import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
 const warnedMissingOrganizationArguments = new Set<string>();
 
-const updateSchema = z.object({
-  organization: z.record(z.string(), z.any()).optional(),
-}).passthrough();
+const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
+  'name',
+  'location',
+  'address',
+  'description',
+  'logoId',
+  'hostIds',
+  'website',
+  'sports',
+  'officialIds',
+  'hasStripeAccount',
+  'coordinates',
+  'productIds',
+  'teamIds',
+  'ownerId',
+]);
+const ORGANIZATION_HARD_IMMUTABLE_FIELDS = new Set<string>([
+  'id',
+  '$id',
+  'createdAt',
+  '$createdAt',
+  'updatedAt',
+  '$updatedAt',
+]);
+const ORGANIZATION_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
+  'ownerId',
+]);
 
 const sanitizeStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
@@ -114,9 +138,12 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body ?? {});
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+  const parsed = parseStrictEnvelope({
+    body,
+    envelopeKey: 'organization',
+  });
+  if ('error' in parsed) {
+    return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
   }
 
   const { id } = await params;
@@ -128,12 +155,46 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const payload = parsed.data.organization ?? parsed.data ?? {};
-  const updateData: Record<string, unknown> = { ...payload, updatedAt: new Date() };
-  delete updateData.fieldIds;
-  if (Object.prototype.hasOwnProperty.call(payload, 'sports')) {
-    updateData.sports = sanitizeStringArray((payload as Record<string, unknown>).sports);
+  const payload = parsed.payload;
+  const unknownPayloadKeys = findUnknownKeys(payload, [
+    ...ORGANIZATION_MUTABLE_FIELDS,
+    ...ORGANIZATION_HARD_IMMUTABLE_FIELDS,
+    ...ORGANIZATION_ADMIN_OVERRIDABLE_FIELDS,
+  ]);
+  if (unknownPayloadKeys.length) {
+    return NextResponse.json(
+      { error: 'Unknown organization patch fields.', unknownKeys: unknownPayloadKeys },
+      { status: 400 },
+    );
   }
+
+  const hardImmutableKeys = findPresentKeys(payload, ORGANIZATION_HARD_IMMUTABLE_FIELDS);
+  if (hardImmutableKeys.length) {
+    return NextResponse.json(
+      { error: 'Immutable organization fields cannot be updated.', fields: hardImmutableKeys },
+      { status: 403 },
+    );
+  }
+
+  const overridableImmutableKeys = findPresentKeys(payload, ORGANIZATION_ADMIN_OVERRIDABLE_FIELDS);
+  if (overridableImmutableKeys.length && !session.isAdmin) {
+    return NextResponse.json(
+      { error: 'Immutable organization fields cannot be updated.', fields: overridableImmutableKeys },
+      { status: 403 },
+    );
+  }
+
+  const updateData: Record<string, unknown> = {};
+  for (const key of ORGANIZATION_MUTABLE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+      updateData[key] = payload[key];
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(updateData, 'sports')) {
+    updateData.sports = sanitizeStringArray(updateData.sports);
+  }
+  updateData.updatedAt = new Date();
+
   const updated = await updateOrganizationWithUnknownArgFallback(id, updateData);
 
   return NextResponse.json(withLegacyFields(updated), { status: 200 });

@@ -238,7 +238,7 @@ class ChatService {
         try {
             const response = await apiRequest<any>(`/api/chat/groups/${chatId}`, {
                 method: 'PATCH',
-                body: { name },
+                body: { group: { name } },
             });
 
             return {

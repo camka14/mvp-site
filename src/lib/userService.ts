@@ -160,9 +160,16 @@ class UserService {
   }
 
   async updateUser(id: string, updates: Partial<UserData>): Promise<UserData> {
+    const payload: Record<string, unknown> = { ...updates };
+    delete payload.id;
+    delete payload.$id;
+    delete payload.createdAt;
+    delete payload.$createdAt;
+    delete payload.updatedAt;
+    delete payload.$updatedAt;
     const response = await apiFetch<{ user: UserData }>(`/api/users/${id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ data: updates }),
+      body: JSON.stringify({ data: payload }),
     });
     return normalizeUserDataNames(response.user);
   }

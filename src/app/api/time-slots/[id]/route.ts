@@ -3,12 +3,33 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
+import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 
 export const dynamic = 'force-dynamic';
 
-const updateSchema = z.object({
-  slot: z.record(z.string(), z.any()).optional(),
-}).passthrough();
+const TIME_SLOT_MUTABLE_FIELDS = new Set<string>([
+  'dayOfWeek',
+  'daysOfWeek',
+  'repeating',
+  'scheduledFieldId',
+  'scheduledFieldIds',
+  'startTimeMinutes',
+  'endTimeMinutes',
+  'startDate',
+  'endDate',
+  'price',
+  'requiredTemplateIds',
+  'hostRequiredTemplateIds',
+  'divisions',
+]);
+const TIME_SLOT_IMMUTABLE_FIELDS = new Set<string>([
+  'id',
+  '$id',
+  'createdAt',
+  '$createdAt',
+  'updatedAt',
+  '$updatedAt',
+]);
 
 const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: number[] | null }): number[] => {
   const source = Array.isArray(input.daysOfWeek) && input.daysOfWeek.length
@@ -116,11 +137,14 @@ const persistTimeSlotDivisions = async (
 };
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  await requireSession(req);
+  const session = await requireSession(req);
   const body = await req.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body ?? {});
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+  const parsed = parseStrictEnvelope({
+    body,
+    envelopeKey: 'slot',
+  });
+  if ('error' in parsed) {
+    return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
   }
 
   const { id } = await params;
@@ -137,7 +161,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Time slot not found' }, { status: 404 });
   }
 
-  const payload = stripLegacyFieldsDeep(parsed.data.slot ?? parsed.data ?? {}) as Record<string, unknown>;
+  const payload = stripLegacyFieldsDeep(parsed.payload) as Record<string, unknown>;
+  const unknownPayloadKeys = findUnknownKeys(payload, [
+    ...TIME_SLOT_MUTABLE_FIELDS,
+    ...TIME_SLOT_IMMUTABLE_FIELDS,
+  ]);
+  if (unknownPayloadKeys.length) {
+    return NextResponse.json(
+      { error: 'Unknown time slot patch fields.', unknownKeys: unknownPayloadKeys },
+      { status: 400 },
+    );
+  }
+  const immutableKeys = findPresentKeys(payload, TIME_SLOT_IMMUTABLE_FIELDS);
+  if (immutableKeys.length && !session.isAdmin) {
+    return NextResponse.json(
+      { error: 'Immutable time slot fields cannot be updated.', fields: immutableKeys },
+      { status: 403 },
+    );
+  }
   delete payload.id;
   delete payload.createdAt;
   delete payload.updatedAt;
