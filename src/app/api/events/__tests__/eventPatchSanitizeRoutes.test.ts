@@ -13,6 +13,7 @@ const timeSlotsMock = {
 };
 
 const fieldsMock = {
+  findMany: jest.fn(),
   upsert: jest.fn(),
   deleteMany: jest.fn(),
 };
@@ -101,7 +102,25 @@ const patchRequest = (url: string, body: any) =>
 
 describe('event PATCH route', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+    prismaMock.$transaction.mockImplementation(async (callback: any) => callback({
+      events: eventsMock,
+      timeSlots: timeSlotsMock,
+      fields: fieldsMock,
+      matches: matchesMock,
+      divisions: divisionsMock,
+      sports: sportsMock,
+      eventOfficials: eventOfficialsMock,
+      leagueScoringConfigs: leagueScoringConfigsMock,
+      organizations: organizationsMock,
+      staffMembers: staffMembersMock,
+      invites: invitesMock,
+      $executeRaw: executeRawMock,
+    }));
+    fieldsMock.findMany.mockResolvedValue([]);
+    divisionsMock.findMany.mockResolvedValue([]);
+    divisionsMock.deleteMany.mockResolvedValue({ count: 0 });
+    divisionsMock.upsert.mockResolvedValue({});
     organizationsMock.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
@@ -116,7 +135,7 @@ describe('event PATCH route', () => {
     eventOfficialsMock.create.mockResolvedValue({});
   });
 
-  it('strips legacy $-prefixed fields and ignores unsupported keys (no legacy mapping)', async () => {
+  it('rejects unknown patch keys instead of silently ignoring them', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique
       .mockResolvedValueOnce({ id: 'event_1', hostId: 'host_1' })
@@ -127,10 +146,6 @@ describe('event PATCH route', () => {
     const res = await eventPatch(
       patchRequest('http://localhost/api/events/event_1', {
         event: {
-          $id: 'event_1',
-          $createdAt: '2020-01-01T00:00:00.000Z',
-          $updatedAt: '2020-01-02T00:00:00.000Z',
-          id: 'event_1',
           playerIds: ['user_1'],
           players: [{ $id: 'user_2' }],
           organization: 'org_1',
@@ -141,24 +156,16 @@ describe('event PATCH route', () => {
       { params: Promise.resolve({ eventId: 'event_1' }) },
     );
 
-    expect(res.status).toBe(200);
-    expect(prismaMock.events.update).toHaveBeenCalledTimes(1);
-
-    const updateArg = prismaMock.events.update.mock.calls[0][0];
-    expect(updateArg.where).toEqual({ id: 'event_1' });
-    expect(updateArg.data.$id).toBeUndefined();
-    expect(updateArg.data.$createdAt).toBeUndefined();
-    expect(updateArg.data.$updatedAt).toBeUndefined();
-    expect(updateArg.data.id).toBeUndefined();
-    expect(updateArg.data.playerIds).toBeUndefined();
-    expect(updateArg.data.players).toBeUndefined();
-    expect(updateArg.data.organization).toBeUndefined();
-    expect(updateArg.data.sport).toBeUndefined();
-    expect(updateArg.data.organizationId).toBeUndefined();
-    expect(updateArg.data.sportId).toBeUndefined();
-    expect(updateArg.data.userIds).toBeUndefined();
-    expect(updateArg.data.state).toBe('PUBLISHED');
-    expect(updateArg.data.updatedAt).toBeInstanceOf(Date);
+    expect(res.status).toBe(400);
+    const payload = await res.json();
+    expect(payload.error).toBe('Unknown event patch fields.');
+    expect(payload.unknownKeys).toEqual(expect.arrayContaining([
+      'playerIds',
+      'players',
+      'organization',
+      'sport',
+    ]));
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
   it('updates userIds when provided (preferred field name)', async () => {
@@ -664,6 +671,66 @@ describe('event PATCH route', () => {
 
     const updateArg = prismaMock.events.update.mock.calls[0][0];
     expect(updateArg.data.fieldIds.sort()).toEqual(['field_keep', 'field_new']);
+  });
+
+  it('preserves existing field organization ownership when incoming nested fields omit organizationId', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        divisions: ['open'],
+        fieldIds: ['field_owned'],
+        timeSlotIds: [],
+        organizationId: null,
+        noFixedEndDateTime: true,
+        start: new Date('2026-01-01T00:00:00.000Z'),
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        divisions: ['open'],
+        fieldIds: ['field_owned'],
+        organizationId: null,
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      divisions: ['open'],
+      fieldIds: ['field_owned'],
+      organizationId: null,
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+    fieldsMock.findMany.mockResolvedValueOnce([
+      { id: 'field_owned', organizationId: 'org_facility_1' },
+    ]);
+    fieldsMock.upsert.mockResolvedValue({});
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          fieldIds: ['field_owned'],
+          fields: [
+            { $id: 'field_owned', fieldNumber: 1, name: 'Facility Court', organizationId: null },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(fieldsMock.upsert).toHaveBeenCalledTimes(1);
+    expect(fieldsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'field_owned' },
+        update: expect.objectContaining({
+          organizationId: 'org_facility_1',
+        }),
+      }),
+    );
   });
 
   it('does not auto-reschedule leagues on regular PATCH saves', async () => {

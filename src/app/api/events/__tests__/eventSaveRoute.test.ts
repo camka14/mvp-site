@@ -81,36 +81,36 @@ describe('event save route', () => {
 
     const res = await eventsPost(
       postRequest('http://localhost/api/events', {
+        id: 'event_1',
         event: {
-          id: 'event_1',
           name: 'Saved Event',
           eventType: 'EVENT',
           divisions: ['open'],
           fieldIds: ['field_1'],
-          fields: [
-            {
-              id: 'field_inline_1',
-              name: 'Inline Field',
-              fieldNumber: 1,
-              divisions: ['open'],
-            },
-          ],
-          timeSlots: [
-            {
-              id: 'slot_inline_1',
-              dayOfWeek: 1,
-              daysOfWeek: [1, 3],
-              startTimeMinutes: 600,
-              endTimeMinutes: 660,
-              startDate: '2026-01-01T00:00:00.000Z',
-              repeating: true,
-              scheduledFieldId: 'field_inline_1',
-              scheduledFieldIds: ['field_inline_1'],
-            },
-          ],
           start: '2026-01-01T00:00:00.000Z',
           end: '2026-02-01T00:00:00.000Z',
         },
+        newFields: [
+          {
+            id: 'field_inline_1',
+            name: 'Inline Field',
+            fieldNumber: 1,
+            divisions: ['open'],
+          },
+        ],
+        timeSlots: [
+          {
+            id: 'slot_inline_1',
+            dayOfWeek: 1,
+            daysOfWeek: [1, 3],
+            startTimeMinutes: 600,
+            endTimeMinutes: 660,
+            startDate: '2026-01-01T00:00:00.000Z',
+            repeating: true,
+            scheduledFieldId: 'field_inline_1',
+            scheduledFieldIds: ['field_inline_1'],
+          },
+        ],
       }),
     );
 
@@ -163,8 +163,8 @@ describe('event save route', () => {
 
     const res = await eventsPost(
       postRequest('http://localhost/api/events', {
+        id: 'event_1',
         event: {
-          id: 'event_1',
           name: 'Broken Event',
           eventType: 'EVENT',
           start: '2026-01-01T00:00:00.000Z',

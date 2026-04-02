@@ -2283,14 +2283,7 @@ function EventScheduleContent() {
 
       const templateId = createId();
       const templateEvent = cloneEventAsTemplate(sourceEvent, { templateId, idFactory: createId });
-      const payload = toEventPayload(templateEvent);
-      await apiRequest('/api/events', {
-        method: 'POST',
-        body: {
-          id: templateId,
-          event: { ...payload, id: templateId },
-        },
-      });
+      await eventService.createEvent(templateEvent);
 
       setInfoMessage(`Template created: ${templateEvent.name}`);
     } catch (error) {
@@ -5897,7 +5890,13 @@ function EventScheduleContent() {
 
         let updatedEvent = nextEvent;
         if (nextEvent.$id) {
-          updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent);
+          updatedEvent = await eventService.updateEvent(nextEvent.$id, nextEvent, {
+            fields: Array.isArray(nextEvent.fields) ? nextEvent.fields : undefined,
+            timeSlots: Array.isArray(nextEvent.timeSlots) ? nextEvent.timeSlots : undefined,
+            leagueScoringConfig: Object.prototype.hasOwnProperty.call(nextEvent, 'leagueScoringConfig')
+              ? nextEvent.leagueScoringConfig ?? null
+              : undefined,
+          });
         }
 
         const shouldPersistDraftMatches = !isBuildBracketAction;
@@ -8830,6 +8829,4 @@ export default function EventSchedulePage() {
     </Suspense>
   );
 }
-
-
 

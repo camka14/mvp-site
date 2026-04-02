@@ -2969,6 +2969,25 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       return typeof fieldId === 'string' && allowedFieldIdSet.has(fieldId);
     })
     : fields;
+  const fieldsToPersistIds = fieldsToPersist
+    .map((field: any) => field?.$id || field?.id)
+    .filter((fieldId: unknown): fieldId is string => typeof fieldId === 'string' && fieldId.length > 0);
+  const existingFieldOwnershipById = new Map<string, { organizationId: string | null; createdBy: string | null }>();
+  if (fieldsToPersistIds.length && typeof (client as any).fields?.findMany === 'function') {
+    const existingFields = await (client as any).fields.findMany({
+      where: { id: { in: fieldsToPersistIds } },
+      select: { id: true, organizationId: true, createdBy: true },
+    });
+    for (const row of existingFields as Array<{ id: string; organizationId?: string | null; createdBy?: string | null }>) {
+      existingFieldOwnershipById.set(
+        row.id,
+        {
+          organizationId: normalizeEntityId(row.organizationId) ?? null,
+          createdBy: normalizeEntityId(row.createdBy) ?? null,
+        },
+      );
+    }
+  }
   const teamIds = Array.isArray(payload.teamIds) && payload.teamIds.length
     ? payload.teamIds
     : teams.map((team: any) => team.$id || team.id).filter(Boolean);
@@ -3263,6 +3282,22 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   for (const field of fieldsToPersist) {
     const fieldId = field.$id || field.id;
     if (!fieldId) continue;
+    const existingFieldOwnership = existingFieldOwnershipById.get(fieldId);
+    const incomingFieldOrganizationId = normalizeEntityId(field.organizationId);
+    const persistedFieldOrganizationId = existingFieldOwnership?.organizationId ?? null;
+    const persistedFieldCreatedBy = existingFieldOwnership?.createdBy ?? null;
+    const hasPersistedFieldOwnership = Boolean(existingFieldOwnership);
+    const createFieldOrganizationId = incomingFieldOrganizationId ?? normalizeEntityId(payload.organizationId) ?? null;
+    if (
+      hasPersistedFieldOwnership
+      && incomingFieldOrganizationId !== null
+      && persistedFieldOrganizationId !== incomingFieldOrganizationId
+    ) {
+      console.warn(
+        `[events] Ignoring attempted field ownership change in upsertEventFromPayload for field ${fieldId}: ` +
+          `${persistedFieldOrganizationId ?? 'null'} -> ${incomingFieldOrganizationId}`,
+      );
+    }
     const hasRentalSlotIdsInput = Array.isArray(field.rentalSlotIds);
     const normalizedRentalSlotIds = hasRentalSlotIdsInput
       ? ensureArray(field.rentalSlotIds).map((value) => String(value)).filter(Boolean)
@@ -3279,7 +3314,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         name: field.name ?? null,
         rentalSlotIds: normalizedRentalSlotIds ?? [],
         location: field.location ?? null,
-        organizationId: field.organizationId ?? payload.organizationId ?? null,
+        organizationId: createFieldOrganizationId,
+        createdBy: persistedFieldCreatedBy ?? (normalizedHostId || null),
         createdAt: new Date(),
         updatedAt: new Date(),
       },
@@ -3292,7 +3328,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         name: field.name ?? null,
         ...(normalizedRentalSlotIds !== null ? { rentalSlotIds: normalizedRentalSlotIds } : {}),
         location: field.location ?? null,
-        organizationId: field.organizationId ?? payload.organizationId ?? null,
+        ...(hasPersistedFieldOwnership
+          ? {
+              organizationId: persistedFieldOrganizationId ?? null,
+              createdBy: persistedFieldCreatedBy ?? null,
+            }
+          : {}),
         updatedAt: new Date(),
       },
     });

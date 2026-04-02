@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
@@ -32,6 +31,7 @@ import {
   normalizeOfficialSchedulingMode,
   normalizeSportOfficialPositionTemplates,
 } from '@/server/officials/config';
+import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -114,10 +114,32 @@ const LEAGUE_SCORING_NUMBER_FIELDS = [
   'pointsPerGoalConceded',
 ] as const;
 
-const updateSchema = z.object({
-  event: z.record(z.string(), z.any()).optional(),
-  reschedule: z.boolean().optional(),
-}).passthrough();
+const EVENT_PATCH_ALLOWED_FIELDS = new Set<string>([
+  ...EVENT_UPDATE_FIELDS,
+  'fields',
+  'timeSlots',
+  'divisionFieldIds',
+  'divisionDetails',
+  'playoffDivisionDetails',
+  'leagueScoringConfig',
+  'eventOfficials',
+  'fieldCount',
+  'status',
+  'leagueConfig',
+  'refType',
+]);
+const EVENT_PATCH_HARD_IMMUTABLE_FIELDS = new Set<string>([
+  'id',
+  '$id',
+  'createdAt',
+  '$createdAt',
+  'updatedAt',
+  '$updatedAt',
+]);
+const EVENT_PATCH_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
+  'organizationId',
+  'parentEvent',
+]);
 
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
   const message = error instanceof Error ? error.message : String(error ?? '');
@@ -1416,10 +1438,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
-  const parsed = updateSchema.safeParse(body ?? {});
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+  const parsed = parseStrictEnvelope({
+    body,
+    envelopeKey: 'event',
+    allowedTopLevelKeys: ['reschedule'],
+  });
+  if ('error' in parsed) {
+    return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
   }
+  const rescheduleValue = parsed.topLevel.reschedule;
+  if (rescheduleValue !== undefined && typeof rescheduleValue !== 'boolean') {
+    return NextResponse.json({ error: 'Invalid input: "reschedule" must be a boolean.' }, { status: 400 });
+  }
+  const rescheduleRequested = rescheduleValue === true;
 
   const { eventId } = await params;
 
@@ -1434,8 +1465,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Forbidden', { status: 403 });
       }
 
-      const rawPayload = (parsed.data.event ?? parsed.data ?? {}) as Record<string, any>;
+      const rawPayload = parsed.payload as Record<string, any>;
+      const hardImmutableKeys = findPresentKeys(rawPayload, EVENT_PATCH_HARD_IMMUTABLE_FIELDS);
+      if (hardImmutableKeys.length) {
+        throw NextResponse.json(
+          { error: 'Immutable event fields cannot be updated.', fields: hardImmutableKeys },
+          { status: 403 },
+        );
+      }
+      const adminOverridableKeys = findPresentKeys(rawPayload, EVENT_PATCH_ADMIN_OVERRIDABLE_FIELDS);
+      if (adminOverridableKeys.length && !session.isAdmin) {
+        throw NextResponse.json(
+          { error: 'Immutable event fields cannot be updated.', fields: adminOverridableKeys },
+          { status: 403 },
+        );
+      }
       const payload = stripLegacyFieldsDeep(rawPayload) as Record<string, any>;
+      const unknownPayloadKeys = findUnknownKeys(payload, [
+        ...EVENT_PATCH_ALLOWED_FIELDS,
+        ...EVENT_PATCH_ADMIN_OVERRIDABLE_FIELDS,
+      ]);
+      if (unknownPayloadKeys.length) {
+        throw NextResponse.json(
+          { error: 'Unknown event patch fields.', unknownKeys: unknownPayloadKeys },
+          { status: 400 },
+        );
+      }
 
       // Never allow callers to override the URL id or server-managed timestamps.
       delete payload.id;
@@ -1774,11 +1829,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         ? data.noFixedEndDateTime
         : typeof (existing as any).noFixedEndDateTime === 'boolean'
           ? Boolean((existing as any).noFixedEndDateTime)
-          : Boolean(
-            nextStart instanceof Date
-            && nextEnd instanceof Date
-            && nextStart.getTime() === nextEnd.getTime(),
-          );
+          : false;
       if (isSchedulableEventType(nextEventType) && !nextNoFixedEndDateTime) {
         if (!(nextStart instanceof Date) || !(nextEnd instanceof Date)) {
           throw new Response('Start and end date/time are required when no fixed end date/time is disabled.', { status: 400 });
@@ -1847,7 +1898,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
       // Keep plain PATCH saves metadata-only; clients must explicitly opt-in to a rebuild.
       const scheduleChanged = hasScheduleImpact(existing, data) || divisionFieldMapChanged || hasTimeSlotPayload;
-      const shouldSchedule = parsed.data.reschedule === true && scheduleChanged;
+      const shouldSchedule = rescheduleRequested && scheduleChanged;
 
       if (canonicalTimeSlots !== null) {
         const nextSlotIds = Array.from(new Set(canonicalTimeSlots.map((slot) => slot.id)));
@@ -1907,6 +1958,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         if (!fieldId) continue;
         incomingFieldsById.set(fieldId, field);
       }
+      const existingFieldOwnershipById = new Map<string, { organizationId: string | null; createdBy: string | null }>();
+      const incomingFieldIds = Array.from(incomingFieldsById.keys());
+      if (incomingFieldIds.length && typeof (tx as any).fields?.findMany === 'function') {
+        const existingIncomingFields = await (tx as any).fields.findMany({
+          where: { id: { in: incomingFieldIds } },
+          select: { id: true, organizationId: true, createdBy: true },
+        });
+        for (const row of existingIncomingFields as Array<{ id: string; organizationId?: string | null; createdBy?: string | null }>) {
+          existingFieldOwnershipById.set(
+            row.id,
+            {
+              organizationId: normalizeNullableString(row.organizationId) ?? null,
+              createdBy: normalizeNullableString(row.createdBy) ?? null,
+            },
+          );
+        }
+      }
 
       const resolvedNextOrganizationId = (data.organizationId ?? existing.organizationId ?? null) as string | null;
       const shouldPersistLocalFields = incomingFieldsById.size > 0;
@@ -1915,7 +1983,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           const field = incomingFieldsById.get(fieldId);
           if (!field) continue;
           const now = new Date();
-          const resolvedFieldOrganizationId = normalizeNullableString(field.organizationId) ?? resolvedNextOrganizationId;
+          const existingFieldOwnership = existingFieldOwnershipById.get(fieldId);
+          const incomingFieldOrganizationId = normalizeNullableString(field.organizationId);
+          const persistedFieldOrganizationId = existingFieldOwnership?.organizationId ?? null;
+          const persistedFieldCreatedBy = existingFieldOwnership?.createdBy ?? null;
+          const createFieldOrganizationId = incomingFieldOrganizationId ?? resolvedNextOrganizationId;
+          if (
+            Boolean(existingFieldOwnership)
+            && incomingFieldOrganizationId !== null
+            && persistedFieldOrganizationId !== incomingFieldOrganizationId
+          ) {
+            console.warn(
+              `[events] Ignoring attempted field ownership change during PATCH for field ${fieldId}: ` +
+                `${persistedFieldOrganizationId ?? 'null'} -> ${incomingFieldOrganizationId}`,
+            );
+          }
+          const updateFieldOwnershipUpdate = existingFieldOwnership
+            ? {
+                organizationId: persistedFieldOrganizationId ?? null,
+                createdBy: persistedFieldCreatedBy ?? null,
+              }
+            : {};
           const fieldData = {
             fieldNumber: normalizeFieldNumber(field.fieldNumber, index + 1),
             lat: normalizeNullableNumber(field.lat),
@@ -1925,7 +2013,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             name: normalizeNullableString(field.name),
             rentalSlotIds: normalizeFieldIds(field.rentalSlotIds),
             location: normalizeNullableString(field.location),
-            organizationId: resolvedFieldOrganizationId ?? null,
             updatedAt: now,
           };
 
@@ -1934,9 +2021,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             create: {
               id: fieldId,
               ...fieldData,
+              organizationId: createFieldOrganizationId ?? null,
+              createdBy: persistedFieldCreatedBy ?? session.userId,
               createdAt: now,
             },
-            update: fieldData,
+            update: {
+              ...fieldData,
+              ...updateFieldOwnershipUpdate,
+            },
           });
         }
       }

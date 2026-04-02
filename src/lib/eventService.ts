@@ -246,9 +246,53 @@ class EventService {
         }
     }
 
-    async updateEvent(eventId: string, eventData: Partial<Event>): Promise<Event> {
+    async updateEvent(
+        eventId: string,
+        eventData: Partial<Event>,
+        options: {
+            fields?: Field[];
+            timeSlots?: TimeSlot[];
+            leagueScoringConfig?: LeagueScoringConfig | null;
+        } = {},
+    ): Promise<Event> {
         try {
-            const payload = toEventPayload(eventData as Event)
+            const payload = toEventPayload(eventData as Event) as Record<string, unknown>;
+            const hasFieldsOverride = Object.prototype.hasOwnProperty.call(options, 'fields');
+            const hasTimeSlotsOverride = Object.prototype.hasOwnProperty.call(options, 'timeSlots');
+            const hasLeagueScoringConfigOverride = Object.prototype.hasOwnProperty.call(options, 'leagueScoringConfig');
+            delete payload.matches;
+            delete payload.teams;
+            delete payload.organization;
+            delete payload.sport;
+            delete payload.players;
+            delete payload.officials;
+            delete payload.assistantHosts;
+            delete payload.staffInvites;
+            delete payload.id;
+            delete payload.$id;
+            delete payload.createdAt;
+            delete payload.$createdAt;
+            delete payload.updatedAt;
+            delete payload.$updatedAt;
+            delete payload.organizationId;
+            delete payload.parentEvent;
+            delete payload.fieldCount;
+            delete payload.status;
+            delete payload.leagueConfig;
+            delete payload.refType;
+
+            delete payload.fields;
+            delete payload.timeSlots;
+            if (hasFieldsOverride && Array.isArray(options.fields)) {
+                payload.fields = options.fields;
+            }
+            if (hasTimeSlotsOverride && Array.isArray(options.timeSlots)) {
+                payload.timeSlots = options.timeSlots;
+            }
+            if (hasLeagueScoringConfigOverride) {
+                payload.leagueScoringConfig = options.leagueScoringConfig;
+            }
+
             const response = await apiRequest<any>(`/api/events/${eventId}`, {
                 method: 'PATCH',
                 body: { event: payload },
@@ -422,13 +466,56 @@ class EventService {
     async createEvent(newEvent: Partial<Event>): Promise<Event> {
         try {
             const normalizedEvent = this.withNormalizedOfficials(this.withNormalizedEventEnums(newEvent));
-            const payload = buildPayload(normalizedEvent);
+            const payload = toEventPayload(normalizedEvent as Event) as Record<string, unknown>;
             if (Object.prototype.hasOwnProperty.call(normalizedEvent, 'officialIds')) {
                 payload.officialIds = normalizedEvent.officialIds ?? [];
             }
+            const eventId = (() => {
+                const fromLegacyId = typeof payload.$id === 'string' ? payload.$id.trim() : '';
+                if (fromLegacyId) {
+                    return fromLegacyId;
+                }
+                const fromId = typeof payload.id === 'string' ? payload.id.trim() : '';
+                if (fromId) {
+                    return fromId;
+                }
+                return createId();
+            })();
+
+            const newFields = Array.isArray(payload.fields) ? payload.fields : undefined;
+            const timeSlots = Array.isArray(payload.timeSlots) ? payload.timeSlots : undefined;
+            const leagueScoringConfig = Object.prototype.hasOwnProperty.call(payload, 'leagueScoringConfig')
+                ? payload.leagueScoringConfig
+                : undefined;
+
+            delete payload.$id;
+            delete payload.id;
+            delete payload.matches;
+            delete payload.fields;
+            delete payload.teams;
+            delete payload.timeSlots;
+            delete payload.organization;
+            delete payload.sport;
+            delete payload.players;
+            delete payload.officials;
+            delete payload.assistantHosts;
+            delete payload.staffInvites;
+            delete payload.createdAt;
+            delete payload.$createdAt;
+            delete payload.updatedAt;
+            delete payload.$updatedAt;
+            delete payload.parentEvent;
+            delete payload.leagueScoringConfig;
+
             const response = await apiRequest<any>('/api/events', {
                 method: 'POST',
-                body: { event: payload, id: payload.$id ?? payload.id ?? createId() },
+                body: {
+                    id: eventId,
+                    event: payload,
+                    ...(newFields?.length ? { newFields } : {}),
+                    ...(timeSlots?.length ? { timeSlots } : {}),
+                    ...(leagueScoringConfig !== undefined ? { leagueScoringConfig } : {}),
+                },
             });
 
             const createdEvent = response?.event ?? response;
@@ -436,9 +523,9 @@ class EventService {
                 return await this.mapRowFromDatabase(createdEvent, true);
             }
 
-            const eventId = response?.eventId ?? response?.id;
-            if (eventId) {
-                const hydrated = await this.getEvent(String(eventId));
+            const createdEventId = response?.eventId ?? response?.id;
+            if (createdEventId) {
+                const hydrated = await this.getEvent(String(createdEventId));
                 if (hydrated) {
                     return hydrated;
                 }

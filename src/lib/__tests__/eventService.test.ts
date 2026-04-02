@@ -89,6 +89,15 @@ describe('eventService', () => {
     } as any);
 
     expect(apiRequestMock).toHaveBeenCalledWith('/api/events', expect.objectContaining({ method: 'POST' }));
+    const createCall = apiRequestMock.mock.calls[0][1];
+    expect(createCall?.body).toEqual(
+      expect.objectContaining({
+        id: 'evt_1',
+        event: expect.any(Object),
+      }),
+    );
+    expect(createCall?.body?.event?.fields).toBeUndefined();
+    expect(createCall?.body?.newFields).toBeUndefined();
     expect(created.$id).toBe('evt_1');
   });
 
@@ -104,6 +113,7 @@ describe('eventService', () => {
     await eventService.updateEvent('evt_1', {
       ...baseEventRow,
       eventType: 'LEAGUE',
+      organizationId: 'org_1',
       divisions: ['evt_1__division__open'],
       divisionDetails: [
         {

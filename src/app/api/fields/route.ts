@@ -16,6 +16,11 @@ const isUniqueConstraintError = (error: unknown): boolean => {
   );
 };
 
+const isUnknownPrismaCreatedByArgError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return /Unknown argument `createdBy`/i.test(message);
+};
+
 const createSchema = z.object({
   id: z.string(),
   name: z.string().optional(),
@@ -86,22 +91,34 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const record = await prisma.fields.create({
-      data: {
-        id: data.id,
-        name: data.name ?? null,
-        location: data.location ?? null,
-        lat: data.lat ?? null,
-        long: data.long ?? null,
-        fieldNumber: data.fieldNumber ?? 0,
-        heading: data.heading ?? null,
-        inUse: data.inUse ?? null,
-        organizationId: orgId,
-        rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    });
+    const baseCreateData = {
+      id: data.id,
+      name: data.name ?? null,
+      location: data.location ?? null,
+      lat: data.lat ?? null,
+      long: data.long ?? null,
+      fieldNumber: data.fieldNumber ?? 0,
+      heading: data.heading ?? null,
+      inUse: data.inUse ?? null,
+      organizationId: orgId,
+      rentalSlotIds: Array.isArray(data.rentalSlotIds) ? data.rentalSlotIds : [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    let record: any;
+    try {
+      record = await (prisma.fields as any).create({
+        data: {
+          ...baseCreateData,
+          createdBy: session.userId,
+        },
+      });
+    } catch (error) {
+      if (!isUnknownPrismaCreatedByArgError(error)) {
+        throw error;
+      }
+      record = await (prisma.fields as any).create({ data: baseCreateData });
+    }
 
     return NextResponse.json(withLegacyFields(record), { status: 201 });
   } catch (error) {

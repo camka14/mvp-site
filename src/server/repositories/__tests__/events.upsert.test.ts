@@ -411,6 +411,32 @@ describe('upsertEventFromPayload', () => {
     expect(fieldUpsertArg.update).not.toHaveProperty('rentalSlotIds');
   });
 
+  it('preserves existing field ownership when payload field omits organizationId', async () => {
+    const client = createMockClient();
+    client.fields.findMany.mockResolvedValueOnce([
+      { id: 'field_1', organizationId: 'org_facility_1' },
+    ]);
+    const payload = {
+      ...baseEventPayload(),
+      organizationId: null,
+      fields: [
+        {
+          $id: 'field_1',
+          fieldNumber: 1,
+          name: 'Court A',
+          divisions: ['OPEN'],
+          organizationId: null,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
+    expect(fieldUpsertArg.create.organizationId).toBeNull();
+    expect(fieldUpsertArg.update.organizationId).toBe('org_facility_1');
+  });
+
   it('uses sport-based default divisions when payload divisions are omitted', async () => {
     const client = createMockClient();
 

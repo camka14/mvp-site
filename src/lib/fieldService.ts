@@ -367,10 +367,6 @@ class FieldService {
         : [],
     };
 
-    if (options.slotId) {
-      payload.$id = options.slotId;
-    }
-
     return payload;
   }
 

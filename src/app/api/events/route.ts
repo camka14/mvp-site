@@ -36,9 +36,41 @@ const CREATE_EVENT_TRANSACTION_OPTIONS = {
 } as const;
 
 const createSchema = z.object({
-  id: z.string().optional(),
-  event: z.record(z.string(), z.any()).optional(),
-}).passthrough();
+  id: z.string().min(1),
+  event: z.record(z.string(), z.unknown()),
+  newFields: z.array(z.record(z.string(), z.unknown())).optional(),
+  timeSlots: z.array(z.record(z.string(), z.unknown())).optional(),
+  leagueScoringConfig: z.record(z.string(), z.unknown()).nullable().optional(),
+}).strict();
+
+const EVENT_CREATE_FORBIDDEN_EVENT_KEYS = new Set<string>([
+  'fields',
+  'timeSlots',
+  'teams',
+  'matches',
+  'players',
+  'officials',
+  'assistantHosts',
+  'organization',
+  'sport',
+  'leagueConfig',
+  'leagueScoringConfig',
+  'staffInvites',
+]);
+
+const EVENT_CREATE_ID_LIST_FIELDS = [
+  'assistantHostIds',
+  'officialIds',
+  'fieldIds',
+  'teamIds',
+  'userIds',
+  'timeSlotIds',
+  'requiredTemplateIds',
+] as const;
+
+const isStringIdArray = (value: unknown): boolean => (
+  Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+);
 
 const coerceArray = (value: unknown): string[] | undefined => {
   if (Array.isArray(value)) {
@@ -739,10 +771,46 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const payload = parsed.data.event ?? parsed.data;
-  const eventId = parsed.data.id ?? payload?.id ?? payload?.$id;
+  const eventId = parsed.data.id.trim();
+  const commandEvent = parsed.data.event as Record<string, unknown>;
   if (!eventId) {
-    return NextResponse.json({ error: 'Missing event id' }, { status: 400 });
+    return NextResponse.json({ error: 'Missing event id.' }, { status: 400 });
+  }
+  if (typeof commandEvent.id === 'string' && commandEvent.id.trim().length > 0 && commandEvent.id.trim() !== eventId) {
+    return NextResponse.json({ error: 'Event id mismatch between top-level id and event.id.' }, { status: 400 });
+  }
+  if (typeof (commandEvent as any).$id === 'string' && String((commandEvent as any).$id).trim().length > 0) {
+    return NextResponse.json({ error: 'Legacy event.$id is not allowed in create payload.' }, { status: 400 });
+  }
+
+  const forbiddenEventKeys = Object.keys(commandEvent)
+    .filter((key) => EVENT_CREATE_FORBIDDEN_EVENT_KEYS.has(key));
+  if (forbiddenEventKeys.length) {
+    return NextResponse.json(
+      {
+        error: 'Hydrated relationship objects are not allowed in event create payload.',
+        fields: forbiddenEventKeys,
+      },
+      { status: 400 },
+    );
+  }
+
+  const invalidIdListField = EVENT_CREATE_ID_LIST_FIELDS.find((fieldName) => (
+    Object.prototype.hasOwnProperty.call(commandEvent, fieldName)
+    && !isStringIdArray(commandEvent[fieldName])
+  ));
+  if (invalidIdListField) {
+    return NextResponse.json(
+      { error: `event.${invalidIdListField} must be an array of ids.` },
+      { status: 400 },
+    );
+  }
+
+  if (parsed.data.newFields?.some((row) => typeof row.id !== 'string' || row.id.trim().length === 0)) {
+    return NextResponse.json({ error: 'Each new field must include a non-empty id.' }, { status: 400 });
+  }
+  if (parsed.data.timeSlots?.some((row) => typeof row.id !== 'string' || row.id.trim().length === 0)) {
+    return NextResponse.json({ error: 'Each timeslot must include a non-empty id.' }, { status: 400 });
   }
 
   const existingEvent = await prisma.events.findUnique({
@@ -766,11 +834,23 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const eventPayload = {
-    ...payload,
+  const hostIdFromPayload = typeof commandEvent.hostId === 'string' && commandEvent.hostId.trim().length > 0
+    ? commandEvent.hostId.trim()
+    : session.userId;
+  const eventPayload: Record<string, unknown> = {
+    ...commandEvent,
     id: eventId,
-    hostId: session.userId,
-  } as Record<string, unknown>;
+    hostId: hostIdFromPayload,
+  };
+  if (Array.isArray(parsed.data.newFields) && parsed.data.newFields.length > 0) {
+    eventPayload.fields = parsed.data.newFields;
+  }
+  if (Array.isArray(parsed.data.timeSlots) && parsed.data.timeSlots.length > 0) {
+    eventPayload.timeSlots = parsed.data.timeSlots;
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed.data, 'leagueScoringConfig')) {
+    eventPayload.leagueScoringConfig = parsed.data.leagueScoringConfig;
+  }
 
   try {
     const context = buildContext();
