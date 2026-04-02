@@ -182,6 +182,8 @@ describe('EventDetailSheet payment-plan team join', () => {
     fireEvent.click(teamOption);
 
     fireEvent.click(screen.getByRole('button', { name: /Join for/i }));
+    expect(await screen.findByText(/Payment plan preview/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Payment Plan/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/payment plan started/i)).toBeInTheDocument();

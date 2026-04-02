@@ -143,6 +143,9 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
 
     const joinButton = await screen.findByRole('button', { name: /Join Event/i });
     fireEvent.click(joinButton);
+    expect(await screen.findByText(/Payment plan preview/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Continue with Payment Plan/i }));
 
     await waitFor(() => {
       expect(screen.getByText(/payment plan already exists/i)).toBeInTheDocument();
@@ -154,6 +157,54 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     expect(apiRequest).not.toHaveBeenCalled();
     expect(boldsignService.createSignLinks).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 5000 }));
     expect(billService.createBill).toHaveBeenCalledWith(expect.objectContaining({ timeoutMs: 5000 }));
+  });
+
+  it('does not join when payment-plan preview is canceled', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+
+    const event = buildEvent({
+      $id: 'event_2',
+      teamSignup: false,
+      singleDivision: true,
+      divisions: ['open'],
+      divisionDetails: [{ id: 'open', name: 'Open' }] as any,
+      start: futureStart,
+      end: futureEnd,
+      price: 2500,
+      allowPaymentPlans: true,
+      requiredTemplateIds: [],
+    });
+
+    const user = buildUser({
+      $id: 'user_1',
+      dateOfBirth: '1990-01-01',
+    });
+    const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (boldsignService.createSignLinks as jest.Mock).mockResolvedValue([]);
+    (registrationService.registerSelfForEvent as jest.Mock).mockResolvedValue({ registration: { status: 'active' } });
+    (billService.createBill as jest.Mock).mockResolvedValue({ bill: { id: 'bill_1' } });
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Join Event/i }));
+    expect(await screen.findByText(/Payment plan preview/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Cancel$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/Payment plan preview/i)).not.toBeInTheDocument();
+    });
+
+    expect(boldsignService.createSignLinks).not.toHaveBeenCalled();
+    expect(registrationService.registerSelfForEvent).not.toHaveBeenCalled();
+    expect(billService.createBill).not.toHaveBeenCalled();
   });
 });
 
