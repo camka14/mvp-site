@@ -78,6 +78,11 @@ type JoinIntent = {
     childEmail?: string | null;
 };
 
+type PaymentPlanPreviewState = {
+    intent: JoinIntent;
+    ownerLabel: string;
+};
+
 const isChildJoinIntent = (intent: JoinIntent): boolean => (
     intent.mode === 'child' || intent.mode === 'child_free_agent' || intent.mode === 'child_waitlist'
 );
@@ -344,6 +349,14 @@ const normalizeInstallmentDueDateValues = (value: unknown): string[] => {
         .map((entry) => entry.toISOString());
 };
 
+const formatInstallmentDueDateLabel = (value: string): string => {
+    const parsed = parseDateValue(value);
+    if (!parsed) {
+        return 'TBD';
+    }
+    return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
 const getDivisionIdFromEventEntry = (entry: unknown): string | null => {
     if (typeof entry === 'string') {
         return normalizeDivisionKey(entry);
@@ -536,6 +549,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
     const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
+    const [paymentPlanPreview, setPaymentPlanPreview] = useState<PaymentPlanPreviewState | null>(null);
     const [creatingWeeklySessionId, setCreatingWeeklySessionId] = useState<string | null>(null);
 
     // Team-signup join controls
@@ -779,6 +793,26 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             installmentDueDates: selectedDivisionBilling.installmentDueDates,
         };
     }, [currentEvent, selectedDivisionBilling]);
+    const paymentPlanPreviewRows = React.useMemo(() => {
+        const normalizedAmounts = normalizeInstallmentAmountsCents(selectedDivisionBilling.installmentAmounts);
+        const normalizedDueDates = normalizeInstallmentDueDateValues(selectedDivisionBilling.installmentDueDates);
+        const rowCount = Math.max(
+            selectedDivisionBilling.installmentCount || 0,
+            normalizedAmounts.length,
+            normalizedDueDates.length,
+        );
+
+        return Array.from({ length: rowCount }, (_, index) => ({
+            id: `${index}-${normalizedAmounts[index] ?? 0}-${normalizedDueDates[index] ?? ''}`,
+            installmentNumber: index + 1,
+            amountCents: normalizedAmounts[index] ?? 0,
+            dueDateLabel: formatInstallmentDueDateLabel(normalizedDueDates[index] ?? ''),
+        }));
+    }, [
+        selectedDivisionBilling.installmentAmounts,
+        selectedDivisionBilling.installmentCount,
+        selectedDivisionBilling.installmentDueDates,
+    ]);
     const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
     const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
     const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
@@ -1052,6 +1086,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setChildConsent(null);
             setChildRegistrationChildId(null);
             setCreatingWeeklySessionId(null);
+            setPaymentPlanPreview(null);
             setSelectedDivisionId('');
             setSelectedDivisionTypeKey('');
         }
@@ -1987,7 +2022,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     }, [currentEvent?.$id, router, selectedFreeAgentActionUser]);
 
     // Update the join event handlers
-    const handleJoinEvent = async (selection?: 'self' | 'child') => {
+    const handleJoinEvent = async (selection?: 'self' | 'child', skipPaymentPlanPreview = false) => {
         if (!user || !currentEvent) return;
         if (eventHasStarted) {
             setJoinError('This event has already started. Joining is closed.');
@@ -2013,6 +2048,18 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
         if (selfRegistrationBlockedReason) {
             setJoinError(selfRegistrationBlockedReason);
+            return;
+        }
+        if (
+            !skipPaymentPlanPreview
+            && !isMinor
+            && selectedDivisionBilling.allowPaymentPlans
+            && normalizePriceCents(selectedDivisionBilling.priceCents) > 0
+        ) {
+            setPaymentPlanPreview({
+                intent: { mode: 'user' },
+                ownerLabel: 'You',
+            });
             return;
         }
 
@@ -2138,8 +2185,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     };
 
     // Team-signup: join as team or free agent
-    const handleJoinAsTeam = async () => {
-        if (!user || !currentEvent || !selectedTeamId) return;
+    const handleJoinAsTeam = async (skipPaymentPlanPreview = false, teamOverride?: Team) => {
+        if (!user || !currentEvent || (!selectedTeamId && !teamOverride?.$id)) return;
         if (eventHasStarted) {
             setJoinError('This event has already started. Joining is closed.');
             return;
@@ -2152,11 +2199,28 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             );
             return;
         }
+
+        const team = teamOverride
+            ?? userTeams.find((t) => t.$id === selectedTeamId)
+            ?? ({ $id: selectedTeamId } as Team);
+        if (
+            !skipPaymentPlanPreview
+            && selectedDivisionBilling.allowPaymentPlans
+            && normalizePriceCents(selectedDivisionBilling.priceCents) > 0
+        ) {
+            const teamName = typeof team?.name === 'string' && team.name.trim().length > 0
+                ? team.name.trim()
+                : 'Your team';
+            setPaymentPlanPreview({
+                intent: { mode: 'team', team },
+                ownerLabel: teamName,
+            });
+            return;
+        }
+
         setJoining(true);
         setJoinError(null);
         setJoinNotice(null);
-
-        const team = userTeams.find((t) => t.$id === selectedTeamId) || ({ $id: selectedTeamId } as Team);
         let signingStarted = false;
         try {
             signingStarted = await beginSigningFlow({ mode: 'team', team });
@@ -2171,6 +2235,21 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 setJoining(false);
             }
         }
+    };
+
+    const continuePaymentPlanPreview = () => {
+        const preview = paymentPlanPreview;
+        setPaymentPlanPreview(null);
+        if (!preview) {
+            return;
+        }
+
+        if (preview.intent.mode === 'team') {
+            void handleJoinAsTeam(true, preview.intent.team ?? undefined);
+            return;
+        }
+
+        void handleJoinEvent('self', true);
     };
 
     const handleWithdrawTeam = async () => {
@@ -3252,7 +3331,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                         </Button>
                                                                     ) : (
                                                                         <Button
-                                                                            onClick={handleJoinAsTeam}
+                                                                            onClick={() => { void handleJoinAsTeam(); }}
                                                                             disabled={
                                                                                 joining
                                                                                 || eventHasStarted
@@ -3652,6 +3731,62 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             }}
                         >
                             Join Myself
+                        </Button>
+                    </Group>
+                </Stack>
+            </Modal>
+
+            <Modal
+                opened={Boolean(paymentPlanPreview)}
+                onClose={() => setPaymentPlanPreview(null)}
+                centered
+                title="Payment plan preview"
+                zIndex={SIGN_MODAL_Z_INDEX}
+            >
+                <Stack gap="sm">
+                    <Text size="sm" c="dimmed">
+                        Continuing will join this event and start a payment plan for {paymentPlanPreview?.ownerLabel ?? 'you'}.
+                    </Text>
+                    {selectedDivisionOption?.name && (
+                        <Text size="xs" c="dimmed">
+                            Division: {selectedDivisionOption.name}
+                        </Text>
+                    )}
+                    <Paper withBorder p="sm" radius="md">
+                        <Group justify="space-between" align="center">
+                            <Text fw={600}>Plan total</Text>
+                            <Text fw={700}>{formatPrice(selectedDivisionBilling.priceCents)}</Text>
+                        </Group>
+                    </Paper>
+                    {paymentPlanPreviewRows.length > 0 ? (
+                        <Paper withBorder p="sm" radius="md" className="space-y-2">
+                            {paymentPlanPreviewRows.map((row) => (
+                                <Group key={row.id} justify="space-between" align="flex-start" gap="xs">
+                                    <div>
+                                        <Text size="sm" fw={500}>
+                                            Installment {row.installmentNumber}
+                                        </Text>
+                                        <Text size="xs" c="dimmed">
+                                            Due {row.dueDateLabel}
+                                        </Text>
+                                    </div>
+                                    <Text size="sm" fw={600}>
+                                        {formatPrice(row.amountCents)}
+                                    </Text>
+                                </Group>
+                            ))}
+                        </Paper>
+                    ) : (
+                        <Alert color="yellow" variant="light">
+                            No installment schedule was configured. The plan will be created with event-level defaults.
+                        </Alert>
+                    )}
+                    <Group justify="flex-end">
+                        <Button variant="default" onClick={() => setPaymentPlanPreview(null)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={continuePaymentPlanPreview}>
+                            Continue with Payment Plan
                         </Button>
                     </Group>
                 </Stack>
