@@ -127,8 +127,10 @@ model Fields {
   rentalSlotIds  String[]
   location       String?
   organizationId String?
+  createdBy      String?
 
   @@index([organizationId])
+  @@index([createdBy])
 }
 
 model Matches {
@@ -293,7 +295,7 @@ model Teams {
   divisionTypeName String?
   wins             Int?
   losses           Int?
-  name             String?
+  name             String
   captainId        String
   managerId        String
   headCoachId      String?
