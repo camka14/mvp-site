@@ -130,4 +130,16 @@ describe('/api/teams/[id] PATCH', () => {
     }));
     expect(payload.headCoachId).toBeNull();
   });
+
+  it('rejects blank team names in patch payloads', async () => {
+    const response = await PATCH(
+      patchJson({ team: { name: '   ' } }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Invalid input');
+    expect(updateMock).not.toHaveBeenCalled();
+  });
 });

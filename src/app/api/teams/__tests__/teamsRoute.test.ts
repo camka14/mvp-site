@@ -115,11 +115,37 @@ describe('/api/teams route', () => {
     expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         id: 'team_1',
+        name: 'Managed Team',
         captainId: '',
         managerId: 'user_1',
         playerIds: ['user_2'],
       }),
     }));
+  });
+
+  it('rejects requests with blank team names', async () => {
+    const response = await POST(postJson({
+      id: 'team_2',
+      name: '   ',
+      teamSize: 6,
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Invalid input');
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects requests without team names', async () => {
+    const response = await POST(postJson({
+      id: 'team_3',
+      teamSize: 6,
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Invalid input');
+    expect(createMock).not.toHaveBeenCalled();
   });
 });
 
