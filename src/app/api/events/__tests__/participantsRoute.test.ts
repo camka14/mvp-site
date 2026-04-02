@@ -57,12 +57,23 @@ const prismaMock = {
 const requireSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
 const dispatchRequiredEventDocumentsMock = jest.fn();
+const resolveOrCreateWeeklySessionChildMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/accessControl', () => ({ canManageEvent: (...args: any[]) => canManageEventMock(...args) }));
 jest.mock('@/lib/eventConsentDispatch', () => ({
   dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
+}));
+jest.mock('@/server/events/weeklySessionResolver', () => ({
+  resolveOrCreateWeeklySessionChild: (...args: any[]) => resolveOrCreateWeeklySessionChildMock(...args),
+  WeeklySessionResolutionError: class WeeklySessionResolutionError extends Error {
+    status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.status = status;
+    }
+  },
 }));
 
 import { DELETE, POST } from '@/app/api/events/[eventId]/participants/route';
@@ -141,6 +152,7 @@ describe('POST /api/events/[eventId]/participants', () => {
     prismaMock.bills.findMany.mockResolvedValue([]);
     prismaMock.billPayments.findMany.mockResolvedValue([]);
     prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
+    resolveOrCreateWeeklySessionChildMock.mockReset();
   });
 
   it('rejects direct user participant joins for team-signup events', async () => {
@@ -242,6 +254,91 @@ describe('POST /api/events/[eventId]/participants', () => {
     expect(response.status).toBe(403);
     expect(payload.error).toBe('Only the team manager can register or withdraw this team.');
     expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
+  it('requires session context when joining a parent weekly event from participants route', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'weekly_parent',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      state: 'PUBLISHED',
+      teamSignup: false,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/weekly_parent/participants', {
+        userId: 'user_1',
+      }),
+      { params: Promise.resolve({ eventId: 'weekly_parent' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain('sessionStart/sessionEnd');
+    expect(resolveOrCreateWeeklySessionChildMock).not.toHaveBeenCalled();
+  });
+
+  it('routes weekly parent joins through session child resolution in participants route', async () => {
+    const parentEvent = {
+      id: 'weekly_parent',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      state: 'PUBLISHED',
+      teamSignup: false,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    };
+    const childEvent = {
+      ...parentEvent,
+      id: 'weekly_child_1',
+      parentEvent: 'weekly_parent',
+    };
+    prismaMock.events.findUnique.mockResolvedValueOnce(parentEvent);
+    canManageEventMock.mockResolvedValue(false);
+    resolveOrCreateWeeklySessionChildMock.mockResolvedValueOnce({ event: childEvent, created: false });
+    prismaMock.events.update.mockResolvedValueOnce({
+      ...childEvent,
+      userIds: ['user_1'],
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/weekly_parent/participants', {
+        userId: 'user_1',
+        sessionStart: '2026-07-08T18:00:00.000Z',
+        sessionEnd: '2026-07-08T19:00:00.000Z',
+      }),
+      { params: Promise.resolve({ eventId: 'weekly_parent' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(resolveOrCreateWeeklySessionChildMock).toHaveBeenCalledTimes(1);
+    expect(prismaMock.events.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'weekly_child_1' },
+      data: expect.objectContaining({
+        userIds: ['user_1'],
+      }),
+    }));
+    expect(payload.event.$id).toBe('weekly_child_1');
   });
 
   it('fills a placeholder slot instead of appending canonical teamId (schedulable events)', async () => {

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
+import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import {
@@ -11,6 +11,10 @@ import {
 import { canManageEvent } from '@/server/accessControl';
 import { extractDivisionTokenFromId } from '@/lib/divisionTypes';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
+import {
+  resolveOrCreateWeeklySessionChild,
+  WeeklySessionResolutionError,
+} from '@/server/events/weeklySessionResolver';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +26,10 @@ const payloadSchema = z.object({
   divisionId: z.string().optional(),
   divisionTypeId: z.string().optional(),
   divisionTypeKey: z.string().optional(),
-}).passthrough();
+  sessionStart: z.string().optional(),
+  sessionEnd: z.string().optional(),
+  slotId: z.string().optional(),
+}).strict();
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
@@ -353,22 +360,64 @@ async function updateParticipants(
   }
 
   const { eventId } = await params;
-  const event = await prisma.events.findUnique({
+  let event = await prisma.events.findUnique({
     where: { id: eventId },
   });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
+  const requestedEventId = event.id;
   const isWeeklyParent = (
     String(event.eventType ?? '').toUpperCase() === 'WEEKLY_EVENT'
     && !normalizeId((event as any).parentEvent)
   );
   if (mode === 'add' && isWeeklyParent) {
-    return NextResponse.json(
-      { error: 'Register through a weekly session instead of the parent weekly event.' },
-      { status: 403 },
-    );
+    const sessionStart = parsed.data.sessionStart ? parseDateInput(parsed.data.sessionStart) : null;
+    const sessionEnd = parsed.data.sessionEnd ? parseDateInput(parsed.data.sessionEnd) : null;
+    const slotId = normalizeId(parsed.data.slotId);
+    if (
+      !(sessionStart instanceof Date)
+      || Number.isNaN(sessionStart.getTime())
+      || !(sessionEnd instanceof Date)
+      || Number.isNaN(sessionEnd.getTime())
+      || sessionEnd.getTime() <= sessionStart.getTime()
+    ) {
+      return NextResponse.json(
+        { error: 'Weekly parent registration requires valid sessionStart/sessionEnd in the request body.' },
+        { status: 400 },
+      );
+    }
+    const canManageParent = await canManageEvent(session, event);
+    const parentState = String(event.state ?? '').toUpperCase();
+    if (parentState === 'UNPUBLISHED' && !canManageParent) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    try {
+      const resolution = await prisma.$transaction((tx) => (
+        resolveOrCreateWeeklySessionChild(
+          {
+            parentEventId: requestedEventId,
+            sessionStart,
+            sessionEnd,
+            slotId,
+          },
+          tx,
+        )
+      ));
+      event = resolution.event;
+    } catch (error) {
+      if (error instanceof WeeklySessionResolutionError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      console.error('Failed to resolve weekly child event during participant update', error);
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
   }
+  if (!event) {
+    return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  }
+  const effectiveEventId = event.id;
   const canManageCurrentEvent = await canManageEvent(session, event);
 
   const userId = parsed.data.userId ?? extractId(parsed.data.user);
@@ -446,7 +495,7 @@ async function updateParticipants(
 
       const existingRequest = await prisma.eventRegistrations.findFirst({
         where: {
-          eventId,
+          eventId: effectiveEventId,
           registrantId: userId,
           parentId: parentLink.parentId,
           registrantType: 'CHILD',
@@ -460,7 +509,7 @@ async function updateParticipants(
       const requestRegistration = existingRequest ?? await prisma.eventRegistrations.create({
         data: {
           id: crypto.randomUUID(),
-          eventId,
+          eventId: effectiveEventId,
           registrantId: userId,
           parentId: parentLink.parentId,
           registrantType: 'CHILD',
@@ -479,7 +528,7 @@ async function updateParticipants(
       await prisma.invites?.deleteMany?.({
         where: {
           type: 'EVENT',
-          eventId,
+          eventId: effectiveEventId,
           userId: session.userId,
         },
       });
@@ -628,7 +677,7 @@ async function updateParticipants(
     try {
       const result = await prisma.$transaction(async (tx) => {
         const freshEvent = await tx.events.findUnique({
-          where: { id: eventId },
+          where: { id: effectiveEventId },
           select: {
             id: true,
             eventType: true,
@@ -748,19 +797,19 @@ async function updateParticipants(
 
           const nextWaitListIds = normalizeUserIdList(freshEvent.waitListIds).filter((id) => id !== canonicalTeamId);
           const updatedEvent = await tx.events.update({
-            where: { id: eventId },
+            where: { id: effectiveEventId },
             data: {
               waitListIds: nextWaitListIds,
               updatedAt: now,
             },
           });
 
-          const registrationId = `${eventId}__team__${filledSlotTeamId}`;
+          const registrationId = `${effectiveEventId}__team__${filledSlotTeamId}`;
           await tx.eventRegistrations.upsert({
             where: { id: registrationId },
             create: {
               id: registrationId,
-              eventId,
+              eventId: effectiveEventId,
               registrantId: filledSlotTeamId,
               registrantType: 'TEAM',
               status: 'ACTIVE',
@@ -783,7 +832,7 @@ async function updateParticipants(
 
           await syncDivisionTeamMembership({
             event: {
-              id: eventId,
+              id: effectiveEventId,
               singleDivision: freshEvent.singleDivision,
               divisions: freshEvent.divisions,
             },
@@ -842,7 +891,7 @@ async function updateParticipants(
 
         await tx.eventRegistrations.deleteMany({
           where: {
-            eventId,
+            eventId: effectiveEventId,
             registrantId: slotTeam.id,
             registrantType: 'TEAM',
           },
@@ -850,7 +899,7 @@ async function updateParticipants(
 
         await syncDivisionTeamMembership({
           event: {
-            id: eventId,
+            id: effectiveEventId,
             singleDivision: freshEvent.singleDivision,
             divisions: freshEvent.divisions,
           },
@@ -860,7 +909,7 @@ async function updateParticipants(
         }, tx);
 
         const updatedEvent = await tx.events.update({
-          where: { id: eventId },
+          where: { id: effectiveEventId },
           data: { updatedAt: now },
         });
 
@@ -873,7 +922,7 @@ async function updateParticipants(
           ].filter(Boolean),
         );
         await ensureTeamRefundRequest({
-          eventId,
+          eventId: effectiveEventId,
           hostId: event.hostId,
           organizationId: event.organizationId ?? null,
           teamId: slotTeam.id,
@@ -894,7 +943,7 @@ async function updateParticipants(
         await prisma.invites?.deleteMany?.({
           where: {
             type: 'EVENT',
-            eventId,
+            eventId: effectiveEventId,
             userId: session.userId,
           },
         });
@@ -945,7 +994,7 @@ async function updateParticipants(
   }
 
   const updated = await prisma.events.update({
-    where: { id: eventId },
+    where: { id: effectiveEventId },
     data: {
       userIds: nextUserIds,
       teamIds: nextTeamIds,
@@ -957,7 +1006,7 @@ async function updateParticipants(
 
   if (mode === 'add' && userId && !teamId && requiredTemplateIds.length > 0) {
     const consentDispatch = await dispatchRequiredEventDocuments({
-      eventId,
+      eventId: effectiveEventId,
       organizationId: event.organizationId ?? null,
       requiredTemplateIds,
       participantUserId: userId,
@@ -968,12 +1017,12 @@ async function updateParticipants(
   if (teamId) {
     if (mode === 'add') {
       const now = new Date();
-      const registrationId = `${eventId}__team__${teamId}`;
+      const registrationId = `${effectiveEventId}__team__${teamId}`;
       await prisma.eventRegistrations.upsert({
         where: { id: registrationId },
         create: {
           id: registrationId,
-          eventId,
+          eventId: effectiveEventId,
           registrantId: teamId,
           registrantType: 'TEAM',
           status: 'ACTIVE',
@@ -995,7 +1044,7 @@ async function updateParticipants(
       });
       await syncDivisionTeamMembership({
         event: {
-          id: eventId,
+          id: effectiveEventId,
           singleDivision: event.singleDivision,
           divisions: event.divisions,
         },
@@ -1006,14 +1055,14 @@ async function updateParticipants(
     } else {
       await prisma.eventRegistrations.deleteMany({
         where: {
-          eventId,
+          eventId: effectiveEventId,
           registrantId: teamId,
           registrantType: 'TEAM',
         },
       });
       await syncDivisionTeamMembership({
         event: {
-          id: eventId,
+          id: effectiveEventId,
           singleDivision: event.singleDivision,
           divisions: event.divisions,
         },
@@ -1022,7 +1071,7 @@ async function updateParticipants(
         targetDivisionId: null,
       });
       await ensureTeamRefundRequest({
-        eventId,
+        eventId: effectiveEventId,
         hostId: event.hostId,
         organizationId: event.organizationId ?? null,
         teamId,
@@ -1037,7 +1086,7 @@ async function updateParticipants(
   await prisma.invites?.deleteMany?.({
     where: {
       type: 'EVENT',
-      eventId,
+      eventId: effectiveEventId,
       userId: session.userId,
     },
   });
