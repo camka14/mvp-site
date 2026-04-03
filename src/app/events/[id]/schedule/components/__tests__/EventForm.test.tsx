@@ -1060,6 +1060,74 @@ describe('EventForm dirty state', () => {
     );
   });
 
+  it('does not resend invites for unchanged assigned staff', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(onDirtyStateChange, formRef, {
+      officialIds: ['official_1'],
+      assistantHostIds: ['assistant_1'],
+      staffInvites: [],
+      pendingStaffInvites: [],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    await act(async () => {
+      await formRef.current?.submitPendingStaffInvites('event_1');
+    });
+
+    expect(userService.inviteUsersByEmail).not.toHaveBeenCalled();
+  });
+
+  it('updates existing pending invites when assigned roles change', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    (userService.inviteUsersByEmail as jest.Mock).mockResolvedValue({
+      sent: [],
+      not_sent: [],
+      failed: [],
+    });
+
+    renderForm(onDirtyStateChange, formRef, {
+      officialIds: ['official_1'],
+      assistantHostIds: ['official_1'],
+      staffInvites: [
+        {
+          $id: 'invite_1',
+          type: 'STAFF',
+          eventId: 'event_1',
+          userId: 'official_1',
+          status: 'PENDING',
+          staffTypes: ['OFFICIAL'],
+          email: 'official1@example.com',
+        },
+      ],
+      pendingStaffInvites: [],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    await act(async () => {
+      await formRef.current?.submitPendingStaffInvites('event_1');
+    });
+
+    expect(userService.inviteUsersByEmail).toHaveBeenCalledTimes(1);
+    const [, invitePayloadArg] = (userService.inviteUsersByEmail as jest.Mock).mock.calls[0];
+    expect(invitePayloadArg).toHaveLength(1);
+    expect(invitePayloadArg[0]).toEqual(expect.objectContaining({
+      userId: 'official_1',
+      type: 'STAFF',
+      eventId: 'event_1',
+      replaceStaffTypes: true,
+      staffTypes: ['HOST', 'OFFICIAL'],
+    }));
+  });
+
   it('allows null team capacity limits in form state while surfacing warning and errors', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();

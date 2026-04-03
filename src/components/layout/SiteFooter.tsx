@@ -11,7 +11,7 @@ export default function SiteFooter() {
           <p>Discover events, manage teams, and run leagues and tournaments in one place.</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 md:pr-20">
           <Link href="/blog" className="transition hover:text-slate-900">
             Blog
           </Link>

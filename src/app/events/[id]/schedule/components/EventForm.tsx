@@ -239,6 +239,18 @@ const normalizeInviteStatusToken = (status: unknown): StaffRosterStatus => {
     return 'active';
 };
 
+const normalizeInviteStaffTypes = (staffTypes: unknown): EventInviteStaffType[] => (
+    Array.isArray(staffTypes)
+        ? Array.from(
+            new Set(
+                staffTypes
+                    .map((type) => String(type).trim().toUpperCase())
+                    .filter((type): type is EventInviteStaffType => type === 'HOST' || type === 'OFFICIAL'),
+            ),
+        ).sort()
+        : []
+);
+
 const getUserEmail = (candidate?: Partial<UserData> | null): string | null => {
     const email = typeof (candidate as { email?: unknown } | undefined)?.email === 'string'
         ? String((candidate as { email?: string }).email).trim().toLowerCase()
@@ -4516,12 +4528,25 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const currentEventStaffInviteByUserId = useMemo(() => {
         const map = new Map<string, Invite>();
         currentEventStaffInvites.forEach((invite) => {
-            if (invite.userId) {
-                map.set(invite.userId, invite);
+            const normalizedUserId = normalizeEntityId(invite.userId);
+            if (normalizedUserId) {
+                map.set(normalizedUserId, invite);
             }
         });
         return map;
     }, [currentEventStaffInvites]);
+    const existingAssignedStaffUserIds = useMemo(() => {
+        const source = activeEditingEvent ?? incomingEvent;
+        const assignedIds = [
+            ...(Array.isArray(source?.officialIds) ? source.officialIds : []),
+            ...(Array.isArray(source?.assistantHostIds) ? source.assistantHostIds : []),
+        ];
+        return new Set(
+            assignedIds
+                .map((id) => normalizeEntityId(id))
+                .filter((id): id is string => Boolean(id)),
+        );
+    }, [activeEditingEvent, incomingEvent]);
     const organizationStaffRosterEntries = useMemo<StaffRosterEntry[]>(() => {
         const entries: StaffRosterEntry[] = [];
         const seen = new Set<string>();
@@ -5608,13 +5633,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
 
         const payload = [
-            ...Array.from(targetRolesByUserId.entries()).map(([userId, roles]) => ({
-                userId,
-                type: 'STAFF' as const,
-                eventId,
-                staffTypes: Array.from(roles),
-                replaceStaffTypes: true,
-            })),
+            ...Array.from(targetRolesByUserId.entries()).flatMap(([userId, roles]) => {
+                const normalizedUserId = normalizeEntityId(userId);
+                if (!normalizedUserId) {
+                    return [];
+                }
+                const targetStaffTypes = Array.from(roles).sort();
+                const existingInvite = currentEventStaffInviteByUserId.get(normalizedUserId);
+                const existingStatus = normalizeInviteStatusToken(existingInvite?.status);
+                const existingStaffTypes = normalizeInviteStaffTypes(existingInvite?.staffTypes);
+                const isExistingInviteUpdate = Boolean(existingInvite)
+                    && existingStatus !== 'active'
+                    && JSON.stringify(existingStaffTypes) !== JSON.stringify(targetStaffTypes);
+                const isNewAssignment = !existingAssignedStaffUserIds.has(normalizedUserId);
+                if (!isExistingInviteUpdate && !isNewAssignment) {
+                    return [];
+                }
+                return [{
+                    userId: normalizedUserId,
+                    type: 'STAFF' as const,
+                    eventId,
+                    staffTypes: targetStaffTypes,
+                    replaceStaffTypes: true,
+                }];
+            }),
             ...unresolvedEmailInvites.map((invite) => ({
                 firstName: invite.firstName,
                 lastName: invite.lastName,
@@ -5707,6 +5749,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setEventData,
         setPendingStaffInvites,
         validatePendingStaffInvites,
+        existingAssignedStaffUserIds,
+        currentEventStaffInviteByUserId,
     ]);
     const assignedOfficialCards = useMemo<AssignedStaffCard[]>(() => {
         const cards: AssignedStaffCard[] = (eventData.officialIds || []).map((officialId) => {

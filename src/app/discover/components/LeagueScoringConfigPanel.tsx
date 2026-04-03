@@ -8,6 +8,12 @@ const NUMERIC_FIELDS: Array<{ key: LeagueScoringConfigKey; label: string }> = [
   { key: 'pointsForWin', label: 'Points for Win' },
   { key: 'pointsForDraw', label: 'Points for Draw' },
   { key: 'pointsForLoss', label: 'Points for Loss' },
+  { key: 'pointsPerSetWin', label: 'Points per Set Win' },
+  { key: 'pointsPerSetLoss', label: 'Points per Set Loss' },
+  { key: 'pointsPerGameWin', label: 'Points per Game Win' },
+  { key: 'pointsPerGameLoss', label: 'Points per Game Loss' },
+  { key: 'pointsPerGoalScored', label: 'Points per Goal Scored' },
+  { key: 'pointsPerGoalConceded', label: 'Points per Goal Conceded' },
 ];
 
 interface LeagueScoringConfigPanelProps {
@@ -21,6 +27,12 @@ const FLAG_MAP: Partial<Record<LeagueScoringConfigKey, keyof Sport>> = {
   pointsForWin: 'usePointsForWin',
   pointsForDraw: 'usePointsForDraw',
   pointsForLoss: 'usePointsForLoss',
+  pointsPerSetWin: 'usePointsPerSetWin',
+  pointsPerSetLoss: 'usePointsPerSetLoss',
+  pointsPerGameWin: 'usePointsPerGameWin',
+  pointsPerGameLoss: 'usePointsPerGameLoss',
+  pointsPerGoalScored: 'usePointsPerGoalScored',
+  pointsPerGoalConceded: 'usePointsPerGoalConceded',
 };
 
 const shouldShowField = (sport: Sport | undefined, key: LeagueScoringConfigKey) => {
