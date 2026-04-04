@@ -61,6 +61,7 @@ const jsonPost = (url: string, body: unknown) =>
 
 describe('POST /api/billing/host/onboarding-link', () => {
   const originalEnv = {
+    PUBLIC_WEB_BASE_URL: process.env.PUBLIC_WEB_BASE_URL,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_CONNECT_CLIENT_ID: process.env.STRIPE_CONNECT_CLIENT_ID,
     AUTH_SECRET: process.env.AUTH_SECRET,
@@ -87,6 +88,12 @@ describe('POST /api/billing/host/onboarding-link', () => {
       delete process.env.STRIPE_SECRET_KEY;
     } else {
       process.env.STRIPE_SECRET_KEY = originalEnv.STRIPE_SECRET_KEY;
+    }
+
+    if (originalEnv.PUBLIC_WEB_BASE_URL === undefined) {
+      delete process.env.PUBLIC_WEB_BASE_URL;
+    } else {
+      process.env.PUBLIC_WEB_BASE_URL = originalEnv.PUBLIC_WEB_BASE_URL;
     }
 
     if (originalEnv.STRIPE_CONNECT_CLIENT_ID === undefined) {
@@ -123,6 +130,66 @@ describe('POST /api/billing/host/onboarding-link', () => {
     expect(accountsRetrieveMock).not.toHaveBeenCalled();
     expect(accountsCreateLoginLinkMock).not.toHaveBeenCalled();
     expect(accountLinksCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('rewrites localhost management redirects onto the public dev origin', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://untarnished-berserkly-everette.ngrok-free.dev';
+    prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_123' });
+    accountsRetrieveMock.mockResolvedValue({
+      type: 'custom',
+      livemode: false,
+      controller: { stripe_dashboard: { type: 'none' } },
+    });
+    accountLinksCreateMock.mockResolvedValue({
+      url: 'https://connect.stripe.com/account-links/acct_123',
+      expires_at: 999,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/host/onboarding-link', {
+        user: { id: 'user_1' },
+        refreshUrl: 'http://localhost/profile?stripe=refresh',
+        returnUrl: 'http://localhost/profile?stripe=return',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(accountLinksCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        refresh_url: 'https://untarnished-berserkly-everette.ngrok-free.dev/profile?stripe=refresh',
+        return_url: 'https://untarnished-berserkly-everette.ngrok-free.dev/profile?stripe=return',
+      }),
+    );
+  });
+
+  it('rewrites Android emulator management redirects onto the public dev origin', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://untarnished-berserkly-everette.ngrok-free.dev';
+    prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_123' });
+    accountsRetrieveMock.mockResolvedValue({
+      type: 'custom',
+      livemode: false,
+      controller: { stripe_dashboard: { type: 'none' } },
+    });
+    accountLinksCreateMock.mockResolvedValue({
+      url: 'https://connect.stripe.com/account-links/acct_123',
+      expires_at: 999,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/host/onboarding-link', {
+        user: { id: 'user_1' },
+        refreshUrl: 'http://10.0.2.2:3000/profile?stripe=refresh',
+        returnUrl: 'http://10.0.2.2:3000/profile?stripe=return',
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(accountLinksCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        refresh_url: 'https://untarnished-berserkly-everette.ngrok-free.dev/profile?stripe=refresh',
+        return_url: 'https://untarnished-berserkly-everette.ngrok-free.dev/profile?stripe=return',
+      }),
+    );
   });
 
   it('returns Stripe Dashboard URL for standard connected accounts', async () => {

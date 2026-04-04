@@ -2,12 +2,12 @@
   "cookies": [
     {
       "name": "auth_token",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX2hvc3QiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzcwNDE5NzcxLCJleHAiOjE3NzEwMjQ1NzF9.Oi_NF2XRIPsi4nwmo-stBsYgRrAMOSkOGr6432myqK4",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX2hvc3QiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzc1MjQzNDExLCJleHAiOjE3NzU4NDgyMTF9.UY-11c6pyUvQpZYHjFnUp3rKnM4ilwIkpO34xlfYU5A",
       "domain": "localhost",
       "path": "/",
-      "expires": 1771024571.12,
+      "expires": 1775848211.467,
       "httpOnly": true,
-      "secure": true,
+      "secure": false,
       "sameSite": "Lax"
     }
   ],
@@ -21,7 +21,7 @@
         },
         {
           "name": "app-user",
-          "value": "{\"id\":\"user_host\",\"createdAt\":\"2026-02-06T23:16:09.839Z\",\"updatedAt\":\"2026-02-06T23:16:09.839Z\",\"firstName\":\"Host\",\"lastName\":\"User\",\"dateOfBirth\":\"1990-01-01T00:00:00.000Z\",\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[],\"friendIds\":[],\"userName\":\"hostuser\",\"hasStripeAccount\":true,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"$id\":\"user_host\",\"fullName\":\"Host User\",\"avatarUrl\":\"\"}"
+          "value": "{\"id\":\"user_host\",\"createdAt\":\"2026-04-03T19:10:10.727Z\",\"updatedAt\":\"2026-04-03T19:10:10.727Z\",\"firstName\":\"Host\",\"lastName\":\"User\",\"dateOfBirth\":\"1990-01-01T00:00:00.000Z\",\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[],\"friendIds\":[],\"userName\":\"hostuser\",\"hasStripeAccount\":true,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"homePageOrganizationId\":null,\"$id\":\"user_host\",\"fullName\":\"Host User\",\"avatarUrl\":\"\"}"
         }
       ]
     }

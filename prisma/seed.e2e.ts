@@ -208,6 +208,7 @@ const ensureCamkaUploads = async (prisma: PrismaClient, now: Date): Promise<void
         email,
         passwordHash,
         name: displayName,
+        emailVerifiedAt: now,
         createdAt: now,
         updatedAt: now,
         lastLogin: now,
@@ -219,6 +220,7 @@ const ensureCamkaUploads = async (prisma: PrismaClient, now: Date): Promise<void
       data: {
         email,
         name: displayName,
+        emailVerifiedAt: (existingAuth as { emailVerifiedAt?: Date | null } | null)?.emailVerifiedAt ?? now,
         updatedAt: now,
       },
     });
@@ -324,6 +326,7 @@ const seed = async (): Promise<void> => {
         email: user.email.toLowerCase(),
         passwordHash: passwordHashes.get(user.id) ?? '',
         name: `${user.firstName} ${user.lastName}`,
+        emailVerifiedAt: now,
         createdAt: now,
         updatedAt: now,
         lastLogin: now,

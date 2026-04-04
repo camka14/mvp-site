@@ -54,6 +54,59 @@ export const getCallbackUrl = (origin: string): string => {
   return `${normalized}${STRIPE_CONNECT_CALLBACK_PATH}`;
 };
 
+const isIpv4Private = (hostname: string): boolean => {
+  const octets = hostname.split('.').map((part) => Number(part));
+  if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return false;
+  }
+
+  const [first, second] = octets;
+  if (first === 10 || first === 127 || first === 0) {
+    return true;
+  }
+  if (first === 192 && second === 168) {
+    return true;
+  }
+  if (first === 172 && second >= 16 && second <= 31) {
+    return true;
+  }
+  if (first === 169 && second === 254) {
+    return true;
+  }
+  return false;
+};
+
+const isIpv6Private = (hostname: string): boolean => {
+  const normalized = hostname.toLowerCase();
+  if (normalized === '::1') {
+    return true;
+  }
+  return normalized.startsWith('fc')
+    || normalized.startsWith('fd')
+    || normalized.startsWith('fe80:');
+};
+
+const isLikelyPrivateHost = (hostname: string): boolean => {
+  const normalized = hostname.toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (
+    normalized === 'localhost'
+    || normalized.endsWith('.localhost')
+    || normalized.endsWith('.local')
+  ) {
+    return true;
+  }
+  if (isIpv4Private(normalized)) {
+    return true;
+  }
+  if (normalized.includes(':') && isIpv6Private(normalized)) {
+    return true;
+  }
+  return false;
+};
+
 export const sanitizeSameOriginUrl = (value: string | null, origin: string): string | null => {
   if (!value) {
     return null;
@@ -63,6 +116,13 @@ export const sanitizeSameOriginUrl = (value: string | null, origin: string): str
     const parsed = new URL(value);
     const requestOrigin = new URL(origin);
     if (parsed.origin !== requestOrigin.origin) {
+      if (isLikelyPrivateHost(parsed.hostname) && !isLikelyPrivateHost(requestOrigin.hostname)) {
+        const rewritten = new URL(requestOrigin.toString());
+        rewritten.pathname = parsed.pathname;
+        rewritten.search = parsed.search;
+        rewritten.hash = parsed.hash;
+        return rewritten.toString();
+      }
       return null;
     }
     return parsed.toString();

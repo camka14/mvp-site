@@ -65,6 +65,7 @@ const buildStatefulBody = (options: {
 describe('POST /api/billing/host/connect', () => {
   const originalEnv = {
     AUTH_SECRET: process.env.AUTH_SECRET,
+    PUBLIC_WEB_BASE_URL: process.env.PUBLIC_WEB_BASE_URL,
     STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
     STRIPE_CONNECT_CLIENT_ID: process.env.STRIPE_CONNECT_CLIENT_ID,
     STRIPE_CONNECT_REDIRECT_URI: process.env.STRIPE_CONNECT_REDIRECT_URI,
@@ -114,6 +115,12 @@ describe('POST /api/billing/host/connect', () => {
       delete process.env.AUTH_SECRET;
     } else {
       process.env.AUTH_SECRET = originalEnv.AUTH_SECRET;
+    }
+
+    if (originalEnv.PUBLIC_WEB_BASE_URL === undefined) {
+      delete process.env.PUBLIC_WEB_BASE_URL;
+    } else {
+      process.env.PUBLIC_WEB_BASE_URL = originalEnv.PUBLIC_WEB_BASE_URL;
     }
 
     if (originalEnv.STRIPE_SECRET_KEY === undefined) {
@@ -237,6 +244,49 @@ describe('POST /api/billing/host/connect', () => {
     expect(stripeInstance.oauth.authorizeUrl).toHaveBeenCalledWith(
       expect.objectContaining({
         redirect_uri: 'https://bracket-iq.com/api/billing/host/callback',
+      }),
+    );
+  });
+
+  it('rewrites localhost redirect URLs onto the public dev origin', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://untarnished-berserkly-everette.ngrok-free.dev';
+
+    const res = await POST(jsonPost('http://localhost/api/billing/host/connect', buildStatefulBody({ user: { id: 'user_1', email: 'user@example.com' } })));
+    const payload = await res.json();
+    const authorizeUrl = new URL(payload.onboardingUrl);
+    const state = parseConnectState(authorizeUrl.searchParams.get('state') ?? '');
+
+    expect(res.status).toBe(200);
+    expect(state).toEqual(
+      expect.objectContaining({
+        returnUrl: 'https://untarnished-berserkly-everette.ngrok-free.dev/profile?stripe=return',
+        refreshUrl: 'https://untarnished-berserkly-everette.ngrok-free.dev/profile?stripe=refresh',
+      }),
+    );
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe(
+      'https://untarnished-berserkly-everette.ngrok-free.dev/api/billing/host/callback',
+    );
+  });
+
+  it('rewrites Android emulator redirect URLs onto the public dev origin', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://untarnished-berserkly-everette.ngrok-free.dev';
+
+    const res = await POST(
+      jsonPost('http://localhost/api/billing/host/connect', {
+        user: { id: 'user_1', email: 'user@example.com' },
+        returnUrl: 'http://10.0.2.2:3000/profile?stripe=return',
+        refreshUrl: 'http://10.0.2.2:3000/profile?stripe=refresh',
+      }),
+    );
+    const payload = await res.json();
+    const authorizeUrl = new URL(payload.onboardingUrl);
+    const state = parseConnectState(authorizeUrl.searchParams.get('state') ?? '');
+
+    expect(res.status).toBe(200);
+    expect(state).toEqual(
+      expect.objectContaining({
+        returnUrl: 'https://untarnished-berserkly-everette.ngrok-free.dev/profile?stripe=return',
+        refreshUrl: 'https://untarnished-berserkly-everette.ngrok-free.dev/profile?stripe=refresh',
       }),
     );
   });

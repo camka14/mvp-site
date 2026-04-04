@@ -92,6 +92,14 @@ export const SEED_IMAGE = {
   mimeType: 'image/png',
 } as const;
 
+export const SEED_UPLOADED_IMAGES = {
+  indoorSports: {
+    id: 'camka_upload_upscaled_cc_indoor_sports_024be2e8d5cdead5_jpg',
+    filename: 'Upscaled_CC_indoor_sports-024be2e8d5cdead5.jpg',
+    mimeType: 'image/jpeg',
+  },
+} as const;
+
 export const SEED_EVENTS = {
   free: {
     id: 'event_free_1',
