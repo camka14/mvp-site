@@ -248,6 +248,57 @@ describe('POST /api/billing/host/connect', () => {
     );
   });
 
+  it('canonicalizes the Stripe callback host when the request arrives on www.bracket-iq.com', async () => {
+    const response = await POST(
+      jsonPost('https://www.bracket-iq.com/api/billing/host/connect', {
+        user: { id: 'user_1', email: 'user@example.com' },
+        returnUrl: 'https://www.bracket-iq.com/profile?stripe=return',
+        refreshUrl: 'https://www.bracket-iq.com/profile?stripe=refresh',
+      }),
+    );
+    const payload = await response.json();
+    const authorizeUrl = new URL(payload.onboardingUrl);
+    const state = parseConnectState(authorizeUrl.searchParams.get('state') ?? '');
+
+    expect(response.status).toBe(200);
+    expect(state).toEqual(
+      expect.objectContaining({
+        returnUrl: 'https://www.bracket-iq.com/profile?stripe=return',
+        refreshUrl: 'https://www.bracket-iq.com/profile?stripe=refresh',
+      }),
+    );
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe('https://bracket-iq.com/api/billing/host/callback');
+    expect(stripeInstance.oauth.authorizeUrl).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirect_uri: 'https://bracket-iq.com/api/billing/host/callback',
+      }),
+    );
+  });
+
+  it('accepts apex return URLs when PUBLIC_WEB_BASE_URL is configured to www.bracket-iq.com', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://www.bracket-iq.com';
+
+    const response = await POST(
+      jsonPost('https://bracket-iq.com/api/billing/host/connect', {
+        user: { id: 'user_1', email: 'user@example.com' },
+        returnUrl: 'https://bracket-iq.com',
+        refreshUrl: 'https://bracket-iq.com',
+      }),
+    );
+    const payload = await response.json();
+    const authorizeUrl = new URL(payload.onboardingUrl);
+    const state = parseConnectState(authorizeUrl.searchParams.get('state') ?? '');
+
+    expect(response.status).toBe(200);
+    expect(state).toEqual(
+      expect.objectContaining({
+        returnUrl: 'https://bracket-iq.com/',
+        refreshUrl: 'https://bracket-iq.com/',
+      }),
+    );
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe('https://bracket-iq.com/api/billing/host/callback');
+  });
+
   it('rewrites localhost redirect URLs onto the public dev origin', async () => {
     process.env.PUBLIC_WEB_BASE_URL = 'https://untarnished-berserkly-everette.ngrok-free.dev';
 

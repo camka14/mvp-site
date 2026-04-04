@@ -8,6 +8,9 @@ export const STRIPE_CONNECT_CALLBACK_PATH = '/api/billing/host/callback';
 export const STRIPE_CONNECT_STATE_TTL_SECONDS = 10 * 60;
 const STRIPE_CONNECT_STATE_AUDIENCE = 'razumly-stripe-connect';
 const STRIPE_CONNECT_STATE_ISSUER = 'razumly';
+const STRIPE_CONNECT_CANONICAL_HOSTS: Record<string, string> = {
+  'www.bracket-iq.com': 'bracket-iq.com',
+};
 
 const normalizeAbsoluteUrl = (value: string | undefined | null): string | null => {
   const raw = value?.trim();
@@ -21,7 +24,24 @@ const normalizeAbsoluteUrl = (value: string | undefined | null): string | null =
 };
 
 const getConfiguredCallbackUrl = (): string | null => {
-  return normalizeAbsoluteUrl(process.env.STRIPE_CONNECT_REDIRECT_URI);
+  return canonicalizeStripeConnectUrl(
+    normalizeAbsoluteUrl(process.env.STRIPE_CONNECT_REDIRECT_URI),
+  );
+};
+
+const canonicalizeStripeConnectUrl = (value: string | null): string | null => {
+  if (!value) return null;
+
+  try {
+    const parsed = new URL(value);
+    const canonicalHost = STRIPE_CONNECT_CANONICAL_HOSTS[parsed.hostname.toLowerCase()];
+    if (canonicalHost) {
+      parsed.hostname = canonicalHost;
+    }
+    return parsed.toString();
+  } catch {
+    return value;
+  }
 };
 
 export type ConnectOwnerKind = 'user' | 'organization';
@@ -50,8 +70,11 @@ export const getCallbackUrl = (origin: string): string => {
     return configured;
   }
 
-  const normalized = origin.endsWith('/') ? origin.slice(0, -1) : origin;
-  return `${normalized}${STRIPE_CONNECT_CALLBACK_PATH}`;
+  const base = new URL(canonicalizeStripeConnectUrl(origin) ?? origin);
+  base.pathname = STRIPE_CONNECT_CALLBACK_PATH;
+  base.search = '';
+  base.hash = '';
+  return base.toString();
 };
 
 const isIpv4Private = (hostname: string): boolean => {
@@ -114,8 +137,11 @@ export const sanitizeSameOriginUrl = (value: string | null, origin: string): str
 
   try {
     const parsed = new URL(value);
-    const requestOrigin = new URL(origin);
-    if (parsed.origin !== requestOrigin.origin) {
+    const requestOrigin = new URL(canonicalizeStripeConnectUrl(origin) ?? origin);
+    const normalizedParsedOrigin = new URL(
+      canonicalizeStripeConnectUrl(parsed.origin) ?? parsed.origin,
+    ).origin;
+    if (normalizedParsedOrigin !== requestOrigin.origin) {
       if (isLikelyPrivateHost(parsed.hostname) && !isLikelyPrivateHost(requestOrigin.hostname)) {
         const rewritten = new URL(requestOrigin.toString());
         rewritten.pathname = parsed.pathname;

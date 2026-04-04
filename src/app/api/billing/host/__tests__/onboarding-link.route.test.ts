@@ -359,6 +359,47 @@ describe('POST /api/billing/host/onboarding-link', () => {
     );
   });
 
+  it('canonicalizes the Stripe callback host in OAuth fallback when the request arrives on www.bracket-iq.com', async () => {
+    prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_123' });
+    accountsRetrieveMock.mockResolvedValue({
+      type: 'custom',
+      livemode: false,
+      controller: { stripe_dashboard: { type: 'none' } },
+    });
+    accountLinksCreateMock.mockRejectedValue(new Error('accountLinks.create unsupported for this account type'));
+    stripeAuthorizeUrlMock.mockImplementation((options: { state: string; redirect_uri?: string }) =>
+      `https://connect.stripe.com/oauth/authorize?${new URLSearchParams({
+        state: options.state,
+        ...(options.redirect_uri ? { redirect_uri: options.redirect_uri } : {}),
+      }).toString()}`,
+    );
+
+    const response = await POST(
+      jsonPost('https://www.bracket-iq.com/api/billing/host/onboarding-link', {
+        user: { id: 'user_1', email: 'user@example.com' },
+        refreshUrl: 'https://www.bracket-iq.com/profile?stripe=refresh',
+        returnUrl: 'https://www.bracket-iq.com/profile?stripe=return',
+      }),
+    );
+    const payload = await response.json();
+    const authorizeUrl = new URL(payload.onboardingUrl);
+    const state = parseConnectState(authorizeUrl.searchParams.get('state') ?? '');
+
+    expect(response.status).toBe(200);
+    expect(state).toEqual(
+      expect.objectContaining({
+        returnUrl: 'https://www.bracket-iq.com/profile?stripe=return',
+        refreshUrl: 'https://www.bracket-iq.com/profile?stripe=refresh',
+      }),
+    );
+    expect(authorizeUrl.searchParams.get('redirect_uri')).toBe('https://bracket-iq.com/api/billing/host/callback');
+    expect(stripeAuthorizeUrlMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        redirect_uri: 'https://bracket-iq.com/api/billing/host/callback',
+      }),
+    );
+  });
+
   it('enforces organization owner/host permissions', async () => {
     canManageOrganizationMock.mockReturnValueOnce(false);
     prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_123' });
