@@ -37,11 +37,13 @@ import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
 import { useSports } from '@/app/hooks/useSports';
 import EventsTabContent from '@/app/discover/components/EventsTabContent';
+import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
 import {
   getRequiredSignerTypeLabel,
   normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
+import { buildOrganizationTabs, type OrganizationTab } from './organizationTabs';
 
 export default function OrganizationDetailPage() {
   return (
@@ -113,18 +115,6 @@ type PendingTemplateCreateCard = {
   status: string;
   error?: string;
 };
-
-type OrganizationTab =
-  | 'overview'
-  | 'events'
-  | 'eventTemplates'
-  | 'teams'
-  | 'users'
-  | 'fields'
-  | 'staff'
-  | 'refunds'
-  | 'store'
-  | 'templates';
 
 type OrganizationUserEventSummary = {
   eventId: string;
@@ -295,27 +285,43 @@ function OrganizationDetailContent() {
       && user.homePageOrganizationId === org.$id,
   );
   const canToggleHomePagePreference = Boolean(isOrganizationRoleMember || isCurrentOrganizationHomePage);
+  const hasVisibleTeams = useMemo(
+    () => Array.isArray(org?.teams) && org.teams.length > 0,
+    [org?.teams],
+  );
+  const hasVisibleProducts = useMemo(
+    () => Array.isArray(org?.products) && org.products.length > 0,
+    [org?.products],
+  );
+  const hasVisibleRentals = useMemo(() => {
+    const fields = Array.isArray(org?.fields) ? org.fields : [];
+    if (!fields.length) {
+      return false;
+    }
+
+    const referenceDate = new Date();
+    return fields.some((field) => (
+      Array.isArray(field.rentalSlots)
+        && field.rentalSlots.some((slot) => Boolean(getNextRentalOccurrence(slot, referenceDate)))
+    ));
+  }, [org?.fields]);
   const availableTabs = useMemo(
-    () => {
-      const base: { label: string; value: typeof activeTab }[] = [
-        { label: 'Overview', value: 'overview' },
-        { label: 'Events', value: 'events' },
-        { label: 'Teams', value: 'teams' },
-      ];
-      if (org?.viewerCanAccessUsers) {
-        base.push({ label: 'Users', value: 'users' });
-      }
-      if (isOwner) {
-        base.push({ label: 'Event Templates', value: 'eventTemplates' });
-        base.push({ label: 'Document Templates', value: 'templates' });
-        base.push({ label: 'Staff', value: 'staff' });
-        base.push({ label: 'Refunds', value: 'refunds' });
-      }
-      base.push({ label: 'Fields', value: 'fields' });
-      base.push({ label: 'Store', value: 'store' });
-      return base;
-    },
-    [isOwner, org?.viewerCanAccessUsers],
+    () => buildOrganizationTabs({
+      viewerCanAccessUsers: org?.viewerCanAccessUsers,
+      isOwner,
+      isOrganizationRoleMember,
+      hasTeams: hasVisibleTeams,
+      hasRentals: hasVisibleRentals,
+      hasProducts: hasVisibleProducts,
+    }),
+    [
+      hasVisibleProducts,
+      hasVisibleRentals,
+      hasVisibleTeams,
+      isOrganizationRoleMember,
+      isOwner,
+      org?.viewerCanAccessUsers,
+    ],
   );
   const stripeEmailValid = useMemo(
     () => Boolean(stripeEmail && EMAIL_REGEX.test(stripeEmail.trim())),
