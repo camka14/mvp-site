@@ -2,7 +2,7 @@
 
 Full-stack Next.js app that lets organizers and players run pickup games, leagues, and tournaments for any sport. Built with TypeScript, Mantine UI, Prisma + Postgres, and self-hosted Next.js APIs for auth, data, media, and billing.
 
-Live: https://mvp.razumly.com — Open Graph preview at `/opengraph-image`.
+Live: https://bracket-iq.com — Open Graph preview at `/opengraph-image`.
 
 ## Highlights
 - Create and manage multi-sport events (pickup, leagues, brackets) with scheduling and field/court slots

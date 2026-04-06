@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import BlogCard from '@/components/blog/BlogCard';
 import { getPublishedBlogPosts } from '@/lib/blog';
+import { SITE_URL } from '@/lib/siteUrl';
 
 export const metadata: Metadata = {
   title: 'Blog | BracketIQ by Razumly',
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
     title: 'Blog | BracketIQ by Razumly',
     description:
       'Practical guides for tournament hosts, league organizers, and facilities running sports events with BracketIQ.',
-    url: 'https://mvp.razumly.com/blog',
+    url: `${SITE_URL}/blog`,
   },
 };
 

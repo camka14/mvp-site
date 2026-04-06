@@ -202,12 +202,12 @@ describe('/api/invites', () => {
     const res = await POST(
       jsonRequest(
         { invites: [{ type: 'EVENT', eventId: 'event_1', email: 'forwarded@example.com' }] },
-        { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'mvp.razumly.com' },
+        { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'bracket-iq.com' },
       ),
     );
 
     expect(res.status).toBe(201);
-    expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'https://mvp.razumly.com');
+    expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'https://bracket-iq.com');
   });
 
   it('returns FAILED status when invite email delivery fails', async () => {

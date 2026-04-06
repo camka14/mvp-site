@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation';
 import BlogCtaCard from '@/components/blog/BlogCtaCard';
 import BlogFaq from '@/components/blog/BlogFaq';
 import BlogStructuredData from '@/components/blog/BlogStructuredData';
-import { SITE_URL, formatBlogDate, getBlogPostBySlug, getPublishedBlogPosts } from '@/lib/blog';
+import { formatBlogDate, getBlogPostBySlug, getPublishedBlogPosts } from '@/lib/blog';
+import { SITE_URL } from '@/lib/siteUrl';
 import { createArticleStructuredData, createFaqStructuredData } from '@/lib/blog/structuredData';
 
 type BlogPostPageProps = {

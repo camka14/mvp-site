@@ -1,4 +1,4 @@
-import { SITE_URL } from './index';
+import { SITE_URL } from '@/lib/siteUrl';
 import type { BlogPostEntry } from './types';
 
 export function createArticleStructuredData(post: BlogPostEntry) {

@@ -1,28 +1,29 @@
 import type { MetadataRoute } from 'next';
 import { getBlogSitemapEntries } from '@/lib/blog';
+import { SITE_URL } from '@/lib/siteUrl';
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticEntries: MetadataRoute.Sitemap = [
     {
-      url: 'https://mvp.razumly.com/',
+      url: `${SITE_URL}/`,
       lastModified: new Date('2026-03-11'),
       changeFrequency: 'weekly',
       priority: 1,
     },
     {
-      url: 'https://mvp.razumly.com/blog',
+      url: `${SITE_URL}/blog`,
       lastModified: new Date('2026-03-18'),
       changeFrequency: 'weekly',
       priority: 0.9,
     },
     {
-      url: 'https://mvp.razumly.com/privacy-policy',
+      url: `${SITE_URL}/privacy-policy`,
       lastModified: new Date('2026-03-11'),
       changeFrequency: 'monthly',
       priority: 0.3,
     },
     {
-      url: 'https://mvp.razumly.com/delete-data',
+      url: `${SITE_URL}/delete-data`,
       lastModified: new Date('2026-03-11'),
       changeFrequency: 'monthly',
       priority: 0.3,

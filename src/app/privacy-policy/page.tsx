@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE_URL } from '@/lib/siteUrl';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy | BracketIQ by Razumly',
@@ -10,7 +11,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Privacy Policy | BracketIQ by Razumly',
     description: 'Review how BracketIQ by Razumly collects, uses, retains, and protects personal information.',
-    url: 'https://mvp.razumly.com/privacy-policy',
+    url: `${SITE_URL}/privacy-policy`,
   },
 };
 

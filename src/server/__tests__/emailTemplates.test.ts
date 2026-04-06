@@ -18,7 +18,7 @@ describe('buildInviteEmail', () => {
 
   it('builds a team invite with teams link', () => {
     const result = buildInviteEmail({
-      baseUrl: 'https://mvp.razumly.com/',
+      baseUrl: 'https://bracket-iq.com/',
       email: 'player@example.com',
       inviteType: 'player',
       teamId: 'team_456',
@@ -27,7 +27,7 @@ describe('buildInviteEmail', () => {
 
     expect(result.subject).toContain('BracketIQ: Staff Invite');
     expect(result.subject).toContain('Aces United');
-    expect(result.actionUrl).toBe('https://mvp.razumly.com/teams');
+    expect(result.actionUrl).toBe('https://bracket-iq.com/teams');
   });
 });
 

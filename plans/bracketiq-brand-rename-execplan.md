@@ -18,8 +18,8 @@ After this change, the web app presents itself to users as BracketIQ instead of 
 
 ## Surprises & Discoveries
 
-- Observation: Most `mvp` references in the repository are technical identifiers such as repo paths, CSS custom properties, env defaults, function names, or URLs rather than user-facing app name text.
-  Evidence: `rg -n "\\bMVP\\b|\\bmvp\\b|Mvp|BracketIQ|file\\.svg" .` showed user-visible strings in a small set of app files, while most remaining matches were paths like `mvp-site`, URLs like `mvp.razumly.com`, or variables like `calculateMvpAndStripeFees`.
+- Observation: Most `mvp` references in the repository are technical identifiers such as repo paths, CSS custom properties, env defaults, function names, or legacy URL text rather than user-facing app name text.
+  Evidence: `rg -n "\\bMVP\\b|\\bmvp\\b|Mvp|BracketIQ|file\\.svg" .` showed user-visible strings in a small set of app files, while most remaining matches were paths like `mvp-site`, legacy hostnames, or variables like `calculateMvpAndStripeFees`.
 
 - Observation: A first Jest run only executed the invite-email suite because the billing route test path containing square brackets was treated as a pattern instead of a literal path.
   Evidence: `npx jest --runInBand src/server/__tests__/inviteEmails.test.ts "src/app/api/events/[eventId]/teams/[teamId]/billing/bills/__tests__/route.test.ts"` reported `Ran all test suites matching ...` but executed only one suite; rerunning with `--runTestsByPath` executed the billing suite successfully.

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { SITE_URL } from '@/lib/siteUrl';
 
 export const metadata: Metadata = {
   title: 'Delete Data | BracketIQ by Razumly',
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
     title: 'Delete Data | BracketIQ by Razumly',
     description:
       'Request account deletion for BracketIQ and review what data is deleted, retained, or delayed for recordkeeping.',
-    url: 'https://mvp.razumly.com/delete-data',
+    url: `${SITE_URL}/delete-data`,
   },
 };
 

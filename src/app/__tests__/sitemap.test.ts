@@ -5,7 +5,7 @@ describe('sitemap', () => {
     const entries = sitemap();
     const urls = entries.map((entry) => entry.url);
 
-    expect(urls).toContain('https://mvp.razumly.com/blog');
-    expect(urls).toContain('https://mvp.razumly.com/blog/tournament-schedule-maker');
+    expect(urls).toContain('https://bracket-iq.com/blog');
+    expect(urls).toContain('https://bracket-iq.com/blog/tournament-schedule-maker');
   });
 });

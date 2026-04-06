@@ -5,7 +5,7 @@ describe('robots', () => {
     const result = robots();
     const rules = Array.isArray(result.rules) ? result.rules[0] : result.rules;
 
-    expect(result.sitemap).toBe('https://mvp.razumly.com/sitemap.xml');
+    expect(result.sitemap).toBe('https://bracket-iq.com/sitemap.xml');
     expect(rules).toMatchObject({
       userAgent: '*',
     });

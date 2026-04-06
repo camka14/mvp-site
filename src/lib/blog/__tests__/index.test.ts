@@ -16,7 +16,7 @@ describe('blog registry', () => {
   it('returns sitemap entries for published posts', () => {
     expect(getBlogSitemapEntries()).toEqual([
       {
-        url: 'https://mvp.razumly.com/blog/tournament-schedule-maker',
+        url: 'https://bracket-iq.com/blog/tournament-schedule-maker',
         lastModified: '2026-03-18',
       },
     ]);

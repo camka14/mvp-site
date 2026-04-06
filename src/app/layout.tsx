@@ -12,6 +12,7 @@ import { ChatComponents } from '@/components/chat/ChatComponents';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
 import SiteFooter from '@/components/layout/SiteFooter';
 import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
+import { SITE_URL } from '@/lib/siteUrl';
 
 const robotoFlex = Roboto_Flex({
   subsets: ['latin'],
@@ -31,7 +32,7 @@ const theme = createTheme({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://mvp.razumly.com'),
+  metadataBase: new URL(SITE_URL),
   title: 'BracketIQ | Sports Event Platform',
   description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
   keywords: ['sports', 'events', 'tournaments', 'leagues', 'pickup games', 'teams'],
@@ -49,7 +50,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'BracketIQ | Sports Event Platform',
     description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
-    url: 'https://mvp.razumly.com',
+    url: SITE_URL,
     siteName: 'BracketIQ',
     images: [
       {

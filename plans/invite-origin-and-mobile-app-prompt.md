@@ -59,7 +59,7 @@ Add `getRequestOrigin(req)` utility, use it in invite routes, cover with tests, 
 
 Acceptance criteria:
 
-- Invites route test demonstrates forwarded-host origin (`https://mvp.razumly.com`) is used for email base URL.
+- Invites route test demonstrates forwarded-host origin (`https://bracket-iq.com`) is used for email base URL.
 - Mobile users on website see a prompt with `Open App`, `Get App`, and dismiss action.
 - Lint and targeted tests pass.
 

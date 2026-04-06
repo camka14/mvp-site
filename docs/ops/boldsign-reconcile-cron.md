@@ -9,7 +9,7 @@ Use a scheduled job to invoke the reconcile endpoint every 30 minutes.
 
 ## Endpoint
 - Method: `POST`
-- URL: `https://mvp.razumly.com/api/boldsign/reconcile`
+- URL: `https://bracket-iq.com/api/boldsign/reconcile`
 - Auth: `Authorization: Bearer <BOLDSIGN_RECONCILE_SECRET>`
 
 ## Required env var
@@ -27,7 +27,7 @@ Create a job component in App Platform:
 ```bash
 curl -fsS -X POST \
   -H "Authorization: Bearer $BOLDSIGN_RECONCILE_SECRET" \
-  "https://mvp.razumly.com/api/boldsign/reconcile"
+  "https://bracket-iq.com/api/boldsign/reconcile"
 ```
 
 ## Notes

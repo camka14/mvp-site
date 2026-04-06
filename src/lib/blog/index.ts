@@ -1,7 +1,6 @@
 import { getPreferredMobileStoreUrl } from '@/lib/mobileAppLinks';
+import { SITE_URL } from '@/lib/siteUrl';
 import type { BlogPostEntry } from './types';
-
-export const SITE_URL = 'https://mvp.razumly.com';
 
 const tournamentScheduleMaker: BlogPostEntry = {
   slug: 'tournament-schedule-maker',
