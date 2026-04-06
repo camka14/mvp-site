@@ -45,6 +45,7 @@ jest.mock('@/components/layout/Navigation', () => {
 jest.mock('@/lib/eventService', () => ({
   eventService: {
     getEvent: jest.fn(),
+    getEventById: jest.fn(),
     getEventWithRelations: jest.fn(),
     deleteEvent: jest.fn(),
     deleteUnpublishedEvent: jest.fn(),
@@ -204,6 +205,7 @@ describe('League schedule page', () => {
     jest.clearAllMocks();
     apiRequestMock.mockReset();
     (eventService.getEvent as jest.Mock).mockReset();
+    (eventService.getEventById as jest.Mock).mockReset();
     (eventService.getEventWithRelations as jest.Mock).mockReset();
     (eventService.deleteEvent as jest.Mock).mockReset();
     (eventService.deleteUnpublishedEvent as jest.Mock).mockReset();
@@ -229,6 +231,11 @@ describe('League schedule page', () => {
       return Promise.resolve({});
     });
     (eventService.getEvent as jest.Mock).mockImplementation(async () => {
+      const event = buildApiEvent();
+      delete (event as any).matches;
+      return event;
+    });
+    (eventService.getEventById as jest.Mock).mockImplementation(async () => {
       const event = buildApiEvent();
       delete (event as any).matches;
       return event;
@@ -627,16 +634,9 @@ describe('League schedule page', () => {
       }),
     };
 
-    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+    apiRequestMock.mockImplementation((path: string) => {
       if (path.startsWith('/api/events?state=TEMPLATE')) {
         return Promise.resolve({ events: [] });
-      }
-      if (path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST') {
-        const payloadEvent = (
-          (options as { body?: { event?: Record<string, unknown> } } | undefined)
-            ?.body?.event
-        ) ?? {};
-        return Promise.resolve({ event: { ...payloadEvent } });
       }
       return Promise.resolve({});
     });
@@ -647,20 +647,14 @@ describe('League schedule page', () => {
     fireEvent.click(createTemplateButton);
 
     await waitFor(() => {
-      const createCall = apiRequestMock.mock.calls.find(
-        ([path, options]) => path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST',
-      );
-      expect(createCall).toBeDefined();
+      expect(eventService.createEvent).toHaveBeenCalledTimes(1);
     });
 
-    const createCall = apiRequestMock.mock.calls.find(
-      ([path, options]) => path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST',
-    );
-    const requestBody = (createCall?.[1] as { body?: { id?: string; event?: Record<string, unknown> } } | undefined)?.body;
+    const templateEvent = (eventService.createEvent as jest.Mock).mock.calls[0]?.[0];
 
-    expect(requestBody?.id).toBeTruthy();
-    expect(requestBody?.event?.state).toBe('TEMPLATE');
-    expect(requestBody?.event?.name).toBe('Unsaved League (TEMPLATE)');
+    expect(templateEvent?.$id).toBeTruthy();
+    expect(templateEvent?.state).toBe('TEMPLATE');
+    expect(templateEvent?.name).toBe('Unsaved League (TEMPLATE)');
     expect(eventService.getEventWithRelations).not.toHaveBeenCalled();
   });
 
@@ -856,7 +850,7 @@ describe('League schedule page', () => {
 
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(persistedEvent);
 
-    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+    apiRequestMock.mockImplementation((path: string) => {
       if (path === '/api/events/event_1') {
         const event = buildApiEvent(persistedEvent);
         delete (event as any).matches;
@@ -864,13 +858,6 @@ describe('League schedule page', () => {
       }
       if (path === '/api/events/event_1/matches') {
         return Promise.resolve({ matches: buildApiEvent().matches });
-      }
-      if (path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST') {
-        const payloadEvent = (
-          (options as { body?: { event?: Record<string, unknown> } } | undefined)
-            ?.body?.event
-        ) ?? {};
-        return Promise.resolve({ event: { ...payloadEvent } });
       }
       return Promise.resolve({});
     });
@@ -881,27 +868,21 @@ describe('League schedule page', () => {
     fireEvent.click(createTemplateButton);
 
     await waitFor(() => {
-      const createCall = apiRequestMock.mock.calls.find(
-        ([path, options]) => path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST',
-      );
-      expect(createCall).toBeDefined();
+      expect(eventService.createEvent).toHaveBeenCalledTimes(1);
     });
 
-    const createCall = apiRequestMock.mock.calls.find(
-      ([path, options]) => path === '/api/events' && (options as { method?: string } | undefined)?.method === 'POST',
-    );
-    const requestBody = (createCall?.[1] as { body?: { event?: Record<string, any> } } | undefined)?.body;
-    const templateId = String(requestBody?.id ?? requestBody?.event?.$id ?? '');
+    const templateEvent = (eventService.createEvent as jest.Mock).mock.calls[0]?.[0];
+    const templateId = String(templateEvent?.$id ?? '');
     const openTemplateDivisionId = buildEventDivisionId(templateId, 'open');
     const advancedTemplateDivisionId = buildEventDivisionId(templateId, 'advanced');
     const playoffUpperTemplateDivisionId = buildEventDivisionId(templateId, 'playoff_upper');
     const playoffLowerTemplateDivisionId = buildEventDivisionId(templateId, 'playoff_lower');
 
     expect(templateId).toBeTruthy();
-    expect(requestBody?.event?.state).toBe('TEMPLATE');
-    expect(requestBody?.event?.name).toBe('Test League (TEMPLATE)');
-    expect(requestBody?.event?.divisions).toEqual([openTemplateDivisionId, advancedTemplateDivisionId]);
-    expect(requestBody?.event?.divisionDetails).toEqual(
+    expect(templateEvent?.state).toBe('TEMPLATE');
+    expect(templateEvent?.name).toBe('Test League (TEMPLATE)');
+    expect(templateEvent?.divisions).toEqual([openTemplateDivisionId, advancedTemplateDivisionId]);
+    expect(templateEvent?.divisionDetails).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: openTemplateDivisionId,
@@ -921,7 +902,7 @@ describe('League schedule page', () => {
         }),
       ]),
     );
-    expect(requestBody?.event?.fields).toEqual(
+    expect(templateEvent?.fields).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           divisions: [openTemplateDivisionId, advancedTemplateDivisionId],
@@ -931,7 +912,7 @@ describe('League schedule page', () => {
         }),
       ]),
     );
-    expect(requestBody?.event?.timeSlots).toEqual(
+    expect(templateEvent?.timeSlots).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           dayOfWeek: 1,
@@ -946,7 +927,7 @@ describe('League schedule page', () => {
         }),
       ]),
     );
-    const divisionTypeIds = (requestBody?.event?.divisionDetails ?? []).map((entry: { divisionTypeId?: string }) => entry.divisionTypeId);
+    const divisionTypeIds = (templateEvent?.divisionDetails ?? []).map((entry: { divisionTypeId?: string }) => entry.divisionTypeId);
     expect(divisionTypeIds).not.toContain('skill_undefined_age_undefined');
     expect(eventService.getEventWithRelations).toHaveBeenCalledWith('event_1');
   });
@@ -2015,6 +1996,351 @@ describe('League schedule page', () => {
     }
   });
 
+  it('lets managers add an existing participant for non-team events', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const event = buildApiEvent({
+      eventType: 'EVENT',
+      teamSignup: false,
+      teams: [],
+      teamIds: [],
+      userIds: [],
+      players: [],
+    });
+    delete (event as any).matches;
+
+    const participant = {
+      $id: 'user_2',
+      id: 'user_2',
+      firstName: 'Casey',
+      lastName: 'Rivers',
+      userName: 'crivers',
+      fullName: 'Casey Rivers',
+      teamIds: [],
+      friendIds: [],
+      friendRequestIds: [],
+      friendRequestSentIds: [],
+      followingIds: [],
+      uploadedImages: [],
+      avatarUrl: '',
+    };
+
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (
+        path === '/api/events/event_1/participants'
+        && typeof options === 'object'
+        && options !== null
+        && 'method' in options
+        && (options as { method?: string }).method === 'POST'
+      ) {
+        return Promise.resolve({});
+      }
+      return Promise.resolve({});
+    });
+
+    (eventService.getEventById as jest.Mock).mockResolvedValue({
+      ...event,
+      userIds: ['user_2'],
+      players: [participant],
+    });
+
+    const originalFetch = globalThis.fetch;
+    (globalThis as typeof globalThis & {
+      fetch: jest.Mock;
+    }).fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const rawUrl = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+      const url = new URL(rawUrl, 'http://localhost');
+
+      if (url.pathname === '/api/users' && url.searchParams.get('query') === 'Ca') {
+        return {
+          ok: true,
+          json: async () => ({ users: [participant] }),
+        } as Response;
+      }
+
+      if (url.pathname === '/api/users' && url.searchParams.get('ids') === 'user_2') {
+        return {
+          ok: true,
+          json: async () => ({ users: [participant] }),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ users: [] }),
+      } as Response;
+    });
+
+    try {
+      renderWithMantine(<LeagueSchedulePage />);
+
+      const participantsTab = await screen.findByRole('tab', { name: /participants/i });
+      fireEvent.click(participantsTab);
+
+      const addParticipantButton = await screen.findByRole('button', { name: /add participants/i });
+      fireEvent.click(addParticipantButton);
+
+      const searchInput = await screen.findByLabelText(/search participants/i);
+      fireEvent.change(searchInput, { target: { value: 'Ca' } });
+
+      await screen.findByText('Casey Rivers');
+
+      fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+      await waitFor(() => {
+        expect(apiRequestMock).toHaveBeenCalledWith(
+          '/api/events/event_1/participants',
+          expect.objectContaining({
+            method: 'POST',
+            body: { userId: 'user_2' },
+          }),
+        );
+      });
+
+      expect(await screen.findByText('Casey Rivers added to participants.')).toBeInTheDocument();
+      expect(eventService.getEventById).toHaveBeenCalledWith('event_1');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('lets managers add an organization team roster to a non-team event from org team ids', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const rosterUsers = [
+      {
+        $id: 'user_2',
+        id: 'user_2',
+        firstName: 'Avery',
+        lastName: 'Player',
+        userName: 'aplayer',
+        fullName: 'Avery Player',
+        teamIds: ['team_1'],
+        friendIds: [],
+        friendRequestIds: [],
+        friendRequestSentIds: [],
+        followingIds: [],
+        uploadedImages: [],
+        avatarUrl: '',
+      },
+      {
+        $id: 'user_3',
+        id: 'user_3',
+        firstName: 'Jordan',
+        lastName: 'Player',
+        userName: 'jplayer',
+        fullName: 'Jordan Player',
+        teamIds: ['team_1'],
+        friendIds: [],
+        friendRequestIds: [],
+        friendRequestSentIds: [],
+        followingIds: [],
+        uploadedImages: [],
+        avatarUrl: '',
+      },
+      {
+        $id: 'user_4',
+        id: 'user_4',
+        firstName: 'Morgan',
+        lastName: 'Manager',
+        userName: 'mmanager',
+        fullName: 'Morgan Manager',
+        teamIds: ['team_1'],
+        friendIds: [],
+        friendRequestIds: [],
+        friendRequestSentIds: [],
+        followingIds: [],
+        uploadedImages: [],
+        avatarUrl: '',
+      },
+      {
+        $id: 'user_5',
+        id: 'user_5',
+        firstName: 'Taylor',
+        lastName: 'Coach',
+        userName: 'tcoach',
+        fullName: 'Taylor Coach',
+        teamIds: ['team_1'],
+        friendIds: [],
+        friendRequestIds: [],
+        friendRequestSentIds: [],
+        followingIds: [],
+        uploadedImages: [],
+        avatarUrl: '',
+      },
+      {
+        $id: 'user_6',
+        id: 'user_6',
+        firstName: 'Riley',
+        lastName: 'Assistant',
+        userName: 'rassistant',
+        fullName: 'Riley Assistant',
+        teamIds: ['team_1'],
+        friendIds: [],
+        friendRequestIds: [],
+        friendRequestSentIds: [],
+        followingIds: [],
+        uploadedImages: [],
+        avatarUrl: '',
+      },
+    ];
+
+    const organizationTeam = {
+      $id: 'team_1',
+      id: 'team_1',
+      name: 'Org Aces',
+      division: 'Open',
+      divisionTypeId: 'open',
+      divisionTypeName: 'Open',
+      sport: 'Volleyball',
+      playerIds: ['user_2', 'user_3'],
+      captainId: 'user_2',
+      managerId: 'user_4',
+      headCoachId: 'user_5',
+      assistantCoachIds: ['user_6'],
+      coachIds: ['user_6'],
+      pending: [],
+      teamSize: 8,
+      currentSize: 2,
+      isFull: false,
+      avatarUrl: '',
+      players: rosterUsers.slice(0, 2),
+      captain: rosterUsers[0],
+      manager: rosterUsers[2],
+      headCoach: rosterUsers[3],
+      assistantCoaches: [rosterUsers[4]],
+      coaches: [rosterUsers[4]],
+    };
+
+    const event = buildApiEvent({
+      eventType: 'EVENT',
+      teamSignup: false,
+      organizationId: 'org_1',
+      organization: {
+        $id: 'org_1',
+        name: 'Org One',
+      },
+      teams: [],
+      teamIds: [],
+      userIds: [],
+      players: [],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string, options?: unknown) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path === '/api/teams?ids=team_1') {
+        return Promise.resolve({ teams: [organizationTeam] });
+      }
+      if (
+        path === '/api/events/event_1/participants'
+        && typeof options === 'object'
+        && options !== null
+        && 'method' in options
+        && (options as { method?: string }).method === 'POST'
+      ) {
+        return Promise.resolve({});
+      }
+      return Promise.resolve({});
+    });
+
+    (organizationService.getOrganizationById as jest.Mock).mockResolvedValue({
+      $id: 'org_1',
+      name: 'Org One',
+      teamIds: ['team_1'],
+    });
+
+    (eventService.getEventById as jest.Mock).mockResolvedValue({
+      ...event,
+      userIds: rosterUsers.map((userEntry) => userEntry.$id),
+      players: rosterUsers,
+    });
+
+    const originalFetch = globalThis.fetch;
+    (globalThis as typeof globalThis & {
+      fetch: jest.Mock;
+    }).fetch = jest.fn(async (input: RequestInfo | URL) => {
+      const rawUrl = typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+      const url = new URL(rawUrl, 'http://localhost');
+
+      if (url.pathname === '/api/users' && url.searchParams.has('ids')) {
+        return {
+          ok: true,
+          json: async () => ({ users: rosterUsers }),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ users: [] }),
+      } as Response;
+    });
+
+    try {
+      renderWithMantine(<LeagueSchedulePage />);
+
+      const participantsTab = await screen.findByRole('tab', { name: /participants/i });
+      fireEvent.click(participantsTab);
+
+      fireEvent.click(await screen.findByRole('button', { name: /add participants/i }));
+      fireEvent.click(await screen.findByText('Add from team'));
+
+      await screen.findByText('Org Aces');
+      fireEvent.click(screen.getByRole('button', { name: /add roster/i }));
+
+      await waitFor(() => {
+        const participantCalls = apiRequestMock.mock.calls.filter(([path, options]) => (
+          path === '/api/events/event_1/participants'
+          && (options as { method?: string } | undefined)?.method === 'POST'
+        ));
+        expect(participantCalls).toHaveLength(5);
+        expect(participantCalls.map(([, options]) => (options as { body: { userId: string } }).body.userId)).toEqual([
+          'user_2',
+          'user_3',
+          'user_4',
+          'user_5',
+          'user_6',
+        ]);
+      });
+
+      expect(await screen.findByText('Added 5 roster members from Org Aces.')).toBeInTheDocument();
+      expect(eventService.getEventById).toHaveBeenCalledWith('event_1');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('does not show team fullness labels for non-team participants in non-edit mode', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
@@ -2078,6 +2404,44 @@ describe('League schedule page', () => {
     } finally {
       (globalThis as any).fetch = originalFetch;
     }
+  });
+
+  it('shows the participants tab for empty non-team regular events', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const event = buildApiEvent({
+      eventType: 'EVENT',
+      teamSignup: false,
+      teams: [],
+      teamIds: [],
+      userIds: [],
+      players: [],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const participantsTab = await screen.findByRole('tab', { name: /participants/i });
+    fireEvent.click(participantsTab);
+
+    await screen.findByText('No participants have been added yet.');
+    expect(screen.queryByRole('button', { name: /add team/i })).not.toBeInTheDocument();
   });
 
   it('does not pass a host organization when creating a rental as self', async () => {
@@ -2271,4 +2635,3 @@ describe('League schedule page', () => {
     expect(await screen.findByText(/rental terms go here/i)).toBeInTheDocument();
   });
 });
-

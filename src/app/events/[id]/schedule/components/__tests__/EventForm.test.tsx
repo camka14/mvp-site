@@ -1166,4 +1166,19 @@ describe('EventForm dirty state', () => {
     expect(isValid).toBe(false);
   });
 
+  it('renders the team signup switch inside Event Details', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange);
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const eventDetailsSection = document.getElementById('section-event-details-content');
+
+    expect(eventDetailsSection).not.toBeNull();
+    expect(eventDetailsSection?.textContent).toContain('Team Sign Up');
+  });
+
 });

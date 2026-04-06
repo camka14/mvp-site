@@ -3631,10 +3631,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         })();
         const allDefaultFieldIds = toFieldIdList(defaultFields);
         const defaultSelectedFieldIds = (() => {
-            if (Array.isArray(base.selectedFieldIds) && base.selectedFieldIds.length) {
+            if (Array.isArray(base.selectedFieldIds)) {
                 return Array.from(new Set(base.selectedFieldIds.filter((fieldId) => allDefaultFieldIds.includes(fieldId))));
             }
-            if (Array.isArray(activeEditingEvent?.fieldIds) && activeEditingEvent.fieldIds.length) {
+            if (Array.isArray(activeEditingEvent?.fieldIds)) {
                 return Array.from(
                     new Set(
                         activeEditingEvent.fieldIds
@@ -3643,7 +3643,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     ),
                 );
             }
-            return allDefaultFieldIds;
+            return [];
         })();
         const availableFieldIdsForDivisions = defaultSelectedFieldIds.length
             ? defaultSelectedFieldIds
@@ -6776,9 +6776,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     .filter((fieldId) => allowed.has(fieldId)),
             ),
         );
-        const nextSelected = normalizedSelected.length ? normalizedSelected : availableFieldIds;
-        if (!stringArraysEqual(selectedFieldIds, nextSelected)) {
-            setValue('selectedFieldIds', nextSelected, { shouldDirty: false, shouldValidate: true });
+        if (!stringArraysEqual(selectedFieldIds, normalizedSelected)) {
+            setValue('selectedFieldIds', normalizedSelected, { shouldDirty: false, shouldValidate: true });
         }
     }, [fields, selectedFieldIds, setValue]);
 
@@ -8936,6 +8935,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         )}
                                     />
                                 </div>
+                                <AnimatedSection in={eventData.eventType === 'EVENT'} className="md:col-span-3 flex items-end">
+                                    <Controller
+                                        name="teamSignup"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Switch
+                                                label="Team Sign Up"
+                                                description="Teams compete rather than individuals."
+                                                checked={field.value}
+                                                disabled={isImmutableField('teamSignup')}
+                                                onChange={(e) => {
+                                                    if (isImmutableField('teamSignup')) return;
+                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                }}
+                                            />
+                                        )}
+                                    />
+                                </AnimatedSection>
                                 <AnimatedSection in={hasUnsetTeamCapacityLimits} className="md:col-span-12">
                                     <Alert color="yellow" variant="light" radius="md">
                                         <Text size="sm" fw={600}>Capacity limits are required before save</Text>
@@ -10542,21 +10559,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             {eventData.eventType === 'EVENT' ? (
                                 <div className="mt-6 space-y-3">
                                     <Controller
-                                        name="teamSignup"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <Switch
-                                                label="Team Event (teams compete rather than individuals)"
-                                                checked={field.value}
-                                                disabled={isImmutableField('teamSignup')}
-                                                onChange={(e) => {
-                                                    if (isImmutableField('teamSignup')) return;
-                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
-                                                }}
-                                            />
-                                        )}
-                                    />
-                                    <Controller
                                         name="singleDivision"
                                         control={control}
                                         render={({ field }) => (
@@ -10842,6 +10844,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     allowDivisionEditsWhenReadOnly={hasExternalRentalField && !eventData.singleDivision}
                                                     showPlayoffSettings={false}
                                                     showLeagueConfiguration={eventData.eventType === 'LEAGUE'}
+                                                    emptyFieldsMessage={isOrganizationManagedEvent
+                                                        ? 'No fields found. Create a field on the Organizations page first, then return here to attach weekly availability.'
+                                                        : undefined}
                                                 />
 
                                                 <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions}>

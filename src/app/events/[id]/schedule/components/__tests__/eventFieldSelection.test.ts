@@ -14,21 +14,21 @@ describe('eventFieldSelection', () => {
       ).toEqual(['field_2', 'field_1']);
     });
 
-    it('falls back to all available field ids when no valid selection is provided', () => {
+    it('returns an empty list when no valid selection is provided', () => {
       expect(
         resolveOrganizationEventFieldIds(
           ['missing'],
           ['field_1', 'field_2'],
         ),
-      ).toEqual(['field_1', 'field_2']);
+      ).toEqual([]);
     });
   });
 
   describe('requiresOrganizationEventFieldSelection', () => {
-    it('requires selection for organization regular events', () => {
+    it('does not require selection for organization regular events', () => {
       expect(
         requiresOrganizationEventFieldSelection('EVENT', 'org_1', []),
-      ).toBe(true);
+      ).toBe(false);
     });
 
     it('does not require selection for non-organization events', () => {
@@ -44,4 +44,3 @@ describe('eventFieldSelection', () => {
     });
   });
 });
-

@@ -6,6 +6,7 @@ import {
     Event,
     UserData,
     Team,
+    TimeSlot,
     getEventDateTime,
     getUserAvatarUrl,
     getUserFullName,
@@ -28,6 +29,7 @@ import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService, FamilyChild } from '@/lib/familyService';
 import { registrationService, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
+import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { buildDivisionCapacityBreakdown, isDivisionAtCapacity, resolveDivisionCapacitySnapshot } from '@/lib/divisionCapacity';
@@ -42,6 +44,7 @@ import {
     parseDivisionToken,
 } from '@/lib/divisionTypes';
 import { buildDivisionDisplayNameIndex, resolveDivisionDisplayName } from '@/lib/divisionDisplay';
+import { collectOrganizationHostIds } from '@/lib/organizationEventAccess';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
@@ -306,6 +309,8 @@ type EventDivisionOption = {
     ratingType: 'AGE' | 'SKILL';
     gender: 'M' | 'F' | 'C';
     priceCents?: number;
+    maxParticipants?: number;
+    playoffTeamCount?: number;
     allowPaymentPlans?: boolean;
     installmentCount?: number;
     installmentDueDates?: string[];
@@ -462,6 +467,12 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
             priceCents: typeof row?.price === 'number'
                 ? normalizePriceCents(row.price)
                 : defaultPriceCents,
+            maxParticipants: typeof row?.maxParticipants === 'number'
+                ? Math.max(2, Math.trunc(row.maxParticipants))
+                : undefined,
+            playoffTeamCount: typeof row?.playoffTeamCount === 'number'
+                ? Math.max(2, Math.trunc(row.playoffTeamCount))
+                : undefined,
             allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
                 ? row.allowPaymentPlans
                 : defaultAllowPaymentPlans,
@@ -507,6 +518,190 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
     return options;
 };
 
+type ReadOnlyDetailField = {
+    label: string;
+    value: string;
+};
+
+const uniqueNonEmptyStrings = (values: Array<string | null | undefined>): string[] => {
+    const normalizedValues = values
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value): value is string => value.length > 0);
+    return Array.from(new Set(normalizedValues));
+};
+
+const formatReadOnlyValueList = (
+    values: Array<string | null | undefined>,
+    emptyText: string = 'None',
+): string => {
+    const normalizedValues = uniqueNonEmptyStrings(values);
+    return normalizedValues.length > 0 ? normalizedValues.join(', ') : emptyText;
+};
+
+const getOrganizationName = (organization: Event['organization'] | null | undefined): string | null => {
+    if (organization && typeof organization === 'object' && typeof organization.name === 'string') {
+        const normalized = organization.name.trim();
+        return normalized.length > 0 ? normalized : null;
+    }
+    return null;
+};
+
+const getSportLabel = (event: Event): string => {
+    const rawSport: unknown = (event as { sport?: unknown }).sport;
+    if (typeof rawSport === 'string' && rawSport.trim().length > 0) {
+        return rawSport.trim();
+    }
+    if (
+        rawSport
+        && typeof rawSport === 'object'
+        && typeof (rawSport as { name?: unknown }).name === 'string'
+        && ((rawSport as { name: string }).name).trim().length > 0
+    ) {
+        return (rawSport as { name: string }).name.trim();
+    }
+    if (typeof event.sportId === 'string' && event.sportId.trim().length > 0) {
+        return event.sportId.trim();
+    }
+    return 'TBD';
+};
+
+const formatRegistrationCutoffSummary = (value: number | null | undefined): string => {
+    switch (Math.trunc(Number(value))) {
+        case 1:
+            return '24h before start';
+        case 2:
+            return '48h before start';
+        default:
+            return 'No cutoff';
+    }
+};
+
+const formatRefundSummary = (value: number | null | undefined): string => {
+    switch (Math.trunc(Number(value))) {
+        case 0:
+            return 'Automatic refunds';
+        case 1:
+            return '24h before start';
+        case 2:
+            return '48h before start';
+        default:
+            return 'No cutoff';
+    }
+};
+
+const formatOfficialSchedulingModeLabel = (value: Event['officialSchedulingMode']): string => {
+    switch (value) {
+        case 'STAFFING':
+            return 'Staffing first';
+        case 'SCHEDULE':
+            return 'Schedule first';
+        case 'OFF':
+            return 'Ignore staffing conflicts';
+        default:
+            return 'Schedule first';
+    }
+};
+
+const formatMinutesTo12Hour = (totalMinutes: number): string => {
+    const normalizedMinutes = ((totalMinutes % 1440) + 1440) % 1440;
+    const hour24 = Math.floor(normalizedMinutes / 60);
+    const minute = normalizedMinutes % 60;
+    const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+    const meridiem = hour24 >= 12 ? 'PM' : 'AM';
+    return `${hour12}:${String(minute).padStart(2, '0')} ${meridiem}`;
+};
+
+const formatSlotTimeRange = (
+    startMinutes: number | null | undefined,
+    endMinutes: number | null | undefined,
+): string => {
+    const startLabel = typeof startMinutes === 'number' ? formatMinutesTo12Hour(startMinutes) : 'Start not set';
+    const endLabel = typeof endMinutes === 'number' ? formatMinutesTo12Hour(endMinutes) : 'End not set';
+    return `${startLabel} - ${endLabel}`;
+};
+
+const getDayOfWeekLabel = (day: number): string => {
+    switch (day) {
+        case 0:
+            return 'Monday';
+        case 1:
+            return 'Tuesday';
+        case 2:
+            return 'Wednesday';
+        case 3:
+            return 'Thursday';
+        case 4:
+            return 'Friday';
+        case 5:
+            return 'Saturday';
+        case 6:
+            return 'Sunday';
+        default:
+            return 'Unassigned day';
+    }
+};
+
+const buildScheduleTimeslotGroups = (slots: TimeSlot[]): Array<[number, TimeSlot[]]> => {
+    if (!slots.length) {
+        return [];
+    }
+
+    const grouped = new Map<number, TimeSlot[]>();
+    slots.forEach((slot) => {
+        const sourceDays = (
+            Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+                ? slot.daysOfWeek
+                : typeof slot.dayOfWeek === 'number'
+                    ? [slot.dayOfWeek]
+                    : []
+        )
+            .map((value): number => Number(value))
+            .filter((value): value is number => Number.isInteger(value) && value >= 0 && value <= 6);
+        const normalizedDays = Array.from(new Set<number>(sourceDays));
+        const targetDays = normalizedDays.length > 0 ? normalizedDays : [-1];
+        targetDays.forEach((day) => {
+            const existing = grouped.get(day) ?? [];
+            existing.push(slot);
+            grouped.set(day, existing);
+        });
+    });
+
+    const dayOrder = [0, 1, 2, 3, 4, 5, 6, -1];
+    return Array.from(grouped.entries())
+        .sort((left, right) => dayOrder.indexOf(left[0]) - dayOrder.indexOf(right[0]))
+        .map(([day, daySlots]) => [
+            day,
+            [...daySlots].sort((left, right) => {
+                const leftStart = typeof left.startTimeMinutes === 'number' ? left.startTimeMinutes : Number.MAX_SAFE_INTEGER;
+                const rightStart = typeof right.startTimeMinutes === 'number' ? right.startTimeMinutes : Number.MAX_SAFE_INTEGER;
+                if (leftStart !== rightStart) {
+                    return leftStart - rightStart;
+                }
+                const leftEnd = typeof left.endTimeMinutes === 'number' ? left.endTimeMinutes : Number.MAX_SAFE_INTEGER;
+                const rightEnd = typeof right.endTimeMinutes === 'number' ? right.endTimeMinutes : Number.MAX_SAFE_INTEGER;
+                return leftEnd - rightEnd;
+            }),
+        ]);
+};
+
+function ReadOnlyDetailsGrid({ items }: { items: ReadOnlyDetailField[] }) {
+    const visibleItems = items.filter((item) => item.value.trim().length > 0);
+    if (!visibleItems.length) {
+        return null;
+    }
+
+    return (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {visibleItems.map((item) => (
+                <div key={`${item.label}-${item.value}`}>
+                    <Text size="sm" c="dimmed">{item.label}</Text>
+                    <Text fw={600}>{item.value}</Text>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export default function EventDetailSheet({ event, isOpen, onClose, renderInline = false }: EventDetailSheetProps) {
     const { user, authUser } = useApp();
     const router = useRouter();
@@ -551,6 +746,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
     const [paymentPlanPreview, setPaymentPlanPreview] = useState<PaymentPlanPreviewState | null>(null);
     const [creatingWeeklySessionId, setCreatingWeeklySessionId] = useState<string | null>(null);
+    const [hostUser, setHostUser] = useState<UserData | null>(null);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -866,6 +1062,35 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const isFreeForUser = isFreeEvent || shouldBypassHostPayment;
 
     const isActive = renderInline ? Boolean(isOpen) : isOpen;
+
+    useEffect(() => {
+        if (!isActive || !currentEvent?.hostId) {
+            setHostUser(null);
+            return;
+        }
+
+        let cancelled = false;
+
+        const loadHostUser = async () => {
+            try {
+                const resolvedHost = await userService.getUserById(currentEvent.hostId, { eventId: currentEvent.$id });
+                if (!cancelled) {
+                    setHostUser(resolvedHost ?? null);
+                }
+            } catch (error) {
+                console.error('Failed to load host user:', error);
+                if (!cancelled) {
+                    setHostUser(null);
+                }
+            }
+        };
+
+        void loadHostUser();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [currentEvent?.$id, currentEvent?.hostId, isActive]);
 
     useEffect(() => {
         if (!isActive || !user) {
@@ -2381,6 +2606,30 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const isWeeklyParentEvent = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
     const weeklySessionOptions = isWeeklyParentEvent ? buildWeeklySessionOptions(currentEvent, 3) : [];
     const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
+    const startDateValue = parseDateValue(currentEvent.start ?? null);
+    const endDateValue = parseDateValue(currentEvent.end ?? null);
+    const sharesSingleDayWindow = Boolean(
+        startDateValue
+        && endDateValue
+        && startDateValue.toDateString() === endDateValue.toDateString(),
+    );
+    const sportLabel = getSportLabel(currentEvent);
+    const organizationName = getOrganizationName(currentEvent.organization);
+    const isOrganizationEvent = typeof currentEvent.organizationId === 'string' && currentEvent.organizationId.trim().length > 0;
+    const hostedByLabel = (() => {
+        if (isOrganizationEvent && organizationName) {
+            return organizationName;
+        }
+        if (hostUser) {
+            return getUserFullName(hostUser);
+        }
+        if (organizationName) {
+            return organizationName;
+        }
+        const normalizedHostId = typeof currentEvent.hostId === 'string' ? currentEvent.hostId.trim() : '';
+        return normalizedHostId || 'Hosted by organizer';
+    })();
+    const hostedByHandle = !isOrganizationEvent && hostUser ? getUserHandle(hostUser) : null;
     const totalParticipants = isTeamSignup ? teams.length : players.length;
     const participantCapacity = resolveEventParticipantCapacity(currentEvent);
     const eventAtCapacity = participantCapacity > 0 && totalParticipants >= participantCapacity;
@@ -2494,6 +2743,189 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const mapEmbedSrc = mapQuery
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
+    const eventPriceSummary = `${formatPrice(normalizePriceCents(currentEvent.price))} / ${isTeamSignup ? 'team' : 'player'}`;
+    const maxParticipantsLabel = isTeamSignup ? 'Max teams' : 'Max players';
+    const registrationCutoffSummary = formatRegistrationCutoffSummary(currentEvent.registrationCutoffHours);
+    const refundSummary = formatRefundSummary(currentEvent.cancellationRefundHours);
+    const officialPositionsSummary = uniqueNonEmptyStrings(
+        (currentEvent.officialPositions ?? [])
+            .slice()
+            .sort((left, right) => (left.order ?? 0) - (right.order ?? 0))
+            .map((position) => {
+                const normalizedName = position.name?.trim() || 'Official';
+                const normalizedCount = Number.isFinite(Number(position.count))
+                    ? Math.max(1, Math.trunc(Number(position.count)))
+                    : 1;
+                return `${normalizedName} x${normalizedCount}`;
+            }),
+    ).join(', ') || 'None';
+    const assistantHostNames = (() => {
+        const hydratedIds = new Set((currentEvent.assistantHosts ?? []).map((entry) => entry.$id));
+        return uniqueNonEmptyStrings([
+            ...(currentEvent.assistantHosts ?? []).map((entry) => getUserFullName(entry)),
+            ...((currentEvent.assistantHostIds ?? []).filter((entry) => !hydratedIds.has(entry))),
+        ]);
+    })();
+    const officialNames = (() => {
+        const hydratedIds = new Set((currentEvent.officials ?? []).map((entry) => entry.$id));
+        return uniqueNonEmptyStrings([
+            ...(currentEvent.officials ?? []).map((entry) => getUserFullName(entry)),
+            ...((currentEvent.officialIds ?? []).filter((entry) => !hydratedIds.has(entry))),
+        ]);
+    })();
+    const normalizedViewerId = typeof user?.$id === 'string' ? user.$id.trim() : '';
+    const organizationHostIds = typeof currentEvent.organization === 'object' && currentEvent.organization
+        ? collectOrganizationHostIds(currentEvent.organization)
+        : [];
+    const canViewStaffSection = Boolean(
+        normalizedViewerId
+        && (
+            currentEvent.hostId === normalizedViewerId
+            || (currentEvent.assistantHostIds ?? []).includes(normalizedViewerId)
+            || (currentEvent.officialIds ?? []).includes(normalizedViewerId)
+            || organizationHostIds.includes(normalizedViewerId)
+        ),
+    );
+    const readOnlyFieldCount = (() => {
+        if (Array.isArray(currentEvent.fields) && currentEvent.fields.length > 0) {
+            return currentEvent.fields.length;
+        }
+        if (Array.isArray(currentEvent.fieldIds) && currentEvent.fieldIds.length > 0) {
+            return currentEvent.fieldIds.length;
+        }
+        if (typeof currentEvent.fieldCount === 'number' && Number.isFinite(currentEvent.fieldCount)) {
+            return Math.max(0, Math.trunc(currentEvent.fieldCount));
+        }
+        return 0;
+    })();
+    const scheduleDetailRows: ReadOnlyDetailField[] = (() => {
+        const rows: ReadOnlyDetailField[] = [
+            { label: 'Field count', value: String(readOnlyFieldCount) },
+            { label: 'Weekly timeslots', value: String(currentEvent.timeSlots?.length ?? 0) },
+        ];
+
+        if (currentEvent.eventType === 'LEAGUE') {
+            rows.push({ label: 'Games per opponent', value: String(currentEvent.gamesPerOpponent ?? 1) });
+            if (currentEvent.usesSets) {
+                rows.push({ label: 'Sets per match', value: String(currentEvent.setsPerMatch ?? 1) });
+                rows.push({ label: 'Set duration', value: `${currentEvent.setDurationMinutes ?? 20} minutes` });
+                if (Array.isArray(currentEvent.pointsToVictory) && currentEvent.pointsToVictory.length > 0) {
+                    rows.push({ label: 'Points to victory', value: currentEvent.pointsToVictory.join(', ') });
+                }
+            } else {
+                rows.push({ label: 'Match duration', value: `${currentEvent.matchDurationMinutes ?? 60} minutes` });
+            }
+            rows.push({ label: 'Rest time', value: `${currentEvent.restTimeMinutes ?? 0} minutes` });
+            if (currentEvent.includePlayoffs) {
+                rows.push({
+                    label: 'Playoffs',
+                    value: currentEvent.singleDivision
+                        ? `${Math.max(2, currentEvent.playoffTeamCount ?? currentEvent.maxParticipants)} teams`
+                        : 'Configured per division',
+                });
+            }
+        }
+
+        if (currentEvent.eventType === 'TOURNAMENT') {
+            if (currentEvent.usesSets) {
+                rows.push({ label: 'Set duration', value: `${currentEvent.setDurationMinutes ?? 20} minutes` });
+            } else {
+                rows.push({ label: 'Match duration', value: `${currentEvent.matchDurationMinutes ?? 60} minutes` });
+            }
+            rows.push({
+                label: 'Bracket',
+                value: currentEvent.doubleElimination ? 'Double elimination' : 'Single elimination',
+            });
+            if (typeof currentEvent.winnerSetCount === 'number') {
+                rows.push({ label: 'Winner set count', value: String(currentEvent.winnerSetCount) });
+            }
+            if (Array.isArray(currentEvent.winnerBracketPointsToVictory) && currentEvent.winnerBracketPointsToVictory.length > 0) {
+                rows.push({
+                    label: currentEvent.doubleElimination ? 'Winner points' : 'Bracket set points',
+                    value: currentEvent.winnerBracketPointsToVictory.join(', '),
+                });
+            }
+            if (currentEvent.doubleElimination && typeof currentEvent.loserSetCount === 'number') {
+                rows.push({ label: 'Loser set count', value: String(currentEvent.loserSetCount) });
+            }
+            if (currentEvent.doubleElimination && Array.isArray(currentEvent.loserBracketPointsToVictory) && currentEvent.loserBracketPointsToVictory.length > 0) {
+                rows.push({ label: 'Loser points', value: currentEvent.loserBracketPointsToVictory.join(', ') });
+            }
+        }
+
+        return rows;
+    })();
+    const divisionSettingsRows: ReadOnlyDetailField[] = (() => {
+        const rows: ReadOnlyDetailField[] = [
+            { label: 'Divisions', value: eventDivisionLabels.join(', ') || 'Not set' },
+            { label: maxParticipantsLabel, value: String(currentEvent.maxParticipants) },
+            { label: 'Team size', value: String(currentEvent.teamSizeLimit) },
+            { label: 'Team event', value: isTeamSignup ? 'Yes' : 'No' },
+            { label: 'Division mode', value: currentEvent.singleDivision ? 'Single' : 'Multi' },
+            { label: 'Teams', value: String(teams.length) },
+            { label: 'Free agents', value: String(normalizedFreeAgentIds.length) },
+        ];
+
+        if (currentEvent.eventType === 'LEAGUE') {
+            rows.push({ label: 'Games per opponent', value: String(currentEvent.gamesPerOpponent ?? 1) });
+            if (currentEvent.usesSets) {
+                rows.push({ label: 'Sets per match', value: String(currentEvent.setsPerMatch ?? 1) });
+                rows.push({ label: 'Set duration', value: `${currentEvent.setDurationMinutes ?? 20} minutes` });
+                if (Array.isArray(currentEvent.pointsToVictory) && currentEvent.pointsToVictory.length > 0) {
+                    rows.push({ label: 'Points to victory', value: currentEvent.pointsToVictory.join(', ') });
+                }
+            } else {
+                rows.push({ label: 'Match duration', value: `${currentEvent.matchDurationMinutes ?? 60} minutes` });
+            }
+            rows.push({ label: 'Rest time', value: `${currentEvent.restTimeMinutes ?? 0} minutes` });
+            if (currentEvent.includePlayoffs) {
+                rows.push({
+                    label: 'Playoffs',
+                    value: currentEvent.singleDivision
+                        ? `${Math.max(2, currentEvent.playoffTeamCount ?? currentEvent.maxParticipants)} teams`
+                        : 'Configured per division',
+                });
+            }
+        }
+
+        if (currentEvent.eventType === 'TOURNAMENT') {
+            if (currentEvent.usesSets) {
+                rows.push({ label: 'Set duration', value: `${currentEvent.setDurationMinutes ?? 20} minutes` });
+            } else {
+                rows.push({ label: 'Match duration', value: `${currentEvent.matchDurationMinutes ?? 60} minutes` });
+            }
+            rows.push({
+                label: 'Bracket',
+                value: currentEvent.doubleElimination ? 'Double elimination' : 'Single elimination',
+            });
+            if (typeof currentEvent.winnerSetCount === 'number') {
+                rows.push({ label: 'Winner set count', value: String(currentEvent.winnerSetCount) });
+            }
+            if (Array.isArray(currentEvent.winnerBracketPointsToVictory) && currentEvent.winnerBracketPointsToVictory.length > 0) {
+                rows.push({ label: 'Winner points', value: currentEvent.winnerBracketPointsToVictory.join(', ') });
+            }
+            if (currentEvent.doubleElimination && typeof currentEvent.loserSetCount === 'number') {
+                rows.push({ label: 'Loser set count', value: String(currentEvent.loserSetCount) });
+            }
+            if (currentEvent.doubleElimination && Array.isArray(currentEvent.loserBracketPointsToVictory) && currentEvent.loserBracketPointsToVictory.length > 0) {
+                rows.push({ label: 'Loser points', value: currentEvent.loserBracketPointsToVictory.join(', ') });
+            }
+        }
+
+        return rows;
+    })();
+    const scheduleFieldNamesById = new Map((currentEvent.fields ?? []).map((field) => [field.$id, field]));
+    const fallbackDivisionIds = Array.isArray(currentEvent.divisions)
+        ? currentEvent.divisions
+            .map((entry) => getDivisionIdFromEventEntry(entry))
+            .filter((entry): entry is string => Boolean(entry))
+        : [];
+    const scheduleTimeslotGroups = buildScheduleTimeslotGroups(currentEvent.timeSlots ?? []);
+    const supportsScheduleDetails = currentEvent.eventType === 'LEAGUE'
+        || currentEvent.eventType === 'TOURNAMENT'
+        || currentEvent.eventType === 'WEEKLY_EVENT'
+        || Boolean(readOnlyFieldCount)
+        || Boolean(currentEvent.timeSlots?.length);
     const canShowScheduleButton = isEventHost && !renderInline && !isWeeklyParentEvent;
     const showParticipantsSection = !isWeeklyParentEvent;
     const scheduleButtonLabel = isEventHost ? 'Manage Event' : 'View Schedule';
@@ -2708,157 +3140,460 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         {/* Main Content */}
                         <div className="lg:col-span-2 space-y-6">
-                            {/* Event Info */}
-                            <div>
-                                <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Details</h2>
-                                <Paper withBorder p="md" radius="md" className="space-y-3">
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <span className="text-sm text-gray-600">Type</span>
-                                            <p className="font-medium">{formatEnumDisplayLabel(currentEvent.eventType, 'Event')}</p>
-                                        </div>
-                                        <div>
-                                            <span className="text-sm text-gray-600">Registration</span>
-                                            <p className="font-medium">{isTeamSignup ? 'Team registration' : 'Individual registration'}</p>
-                                        </div>
-                                        <div>
-                                            <span className="text-sm text-gray-600">Price</span>
-                                            <p className="font-medium">
-                                                {selectedDivisionBilling.priceCents === 0
-                                                    ? 'Free'
-                                                    : `${formatPrice(selectedDivisionBilling.priceCents)}`}
-                                            </p>
-                                        </div>
-                                        <div>
-                                            <span className="text-sm text-gray-600">Sport</span>
-                                            <p className="font-medium">
-                                                {currentEvent.sport?.name || currentEvent.sportId || 'TBD'}
-                                            </p>
-                                        </div>
-                                        {(typeof eventMinAge === 'number' || typeof eventMaxAge === 'number') && (
-                                            <div>
-                                                <span className="text-sm text-gray-600">Age Range</span>
-                                                <p className="font-medium">{formatAgeRange(eventMinAge, eventMaxAge)}</p>
-                                            </div>
-                                        )}
-                                    </div>
+                            {renderInline ? (
+                                <>
+                                    <div>
+                                        <h2 className="text-xl font-semibold text-gray-900 mb-4">Details</h2>
+                                        <div className="space-y-4">
+                                            <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                <div>
+                                                    <Text size="sm" c="dimmed">Hosted by</Text>
+                                                    <Text fw={700}>{hostedByLabel}</Text>
+                                                    {hostedByHandle && (
+                                                        <Text size="sm" c="dimmed">{hostedByHandle}</Text>
+                                                    )}
+                                                </div>
+                                                <ReadOnlyDetailsGrid
+                                                    items={[
+                                                        {
+                                                            label: sharesSingleDayWindow ? 'Start Date & Time' : 'Start Date',
+                                                            value: startDateValue
+                                                                ? (
+                                                                    sharesSingleDayWindow
+                                                                        ? formatDisplayDateTime(startDateValue)
+                                                                        : formatDisplayDate(startDateValue)
+                                                                )
+                                                                : '',
+                                                        },
+                                                        {
+                                                            label: sharesSingleDayWindow ? 'End Time' : 'End Date',
+                                                            value: endDateValue
+                                                                ? (
+                                                                    sharesSingleDayWindow
+                                                                        ? formatDisplayTime(endDateValue)
+                                                                        : formatDisplayDate(endDateValue)
+                                                                )
+                                                                : '',
+                                                        },
+                                                        { label: 'Location', value: currentEvent.location || 'Location coming soon' },
+                                                        { label: 'Type', value: formatEnumDisplayLabel(currentEvent.eventType, 'Event') },
+                                                        { label: 'Sport', value: sportLabel },
+                                                        { label: 'Registration', value: isTeamSignup ? 'Team' : 'Individual' },
+                                                        ...(typeof eventMinAge === 'number' || typeof eventMaxAge === 'number'
+                                                            ? [{ label: 'Age Range', value: formatAgeRange(eventMinAge, eventMaxAge) }]
+                                                            : []),
+                                                    ]}
+                                                />
+                                                <div>
+                                                    <Text size="sm" c="dimmed">About</Text>
+                                                    <Text>
+                                                        {currentEvent.description?.trim() || 'No description provided yet.'}
+                                                    </Text>
+                                                </div>
+                                            </Paper>
 
-                                    {eventDivisionLabels.length > 0 && (
-                                        <div>
-                                            <span className="text-sm text-gray-600">Divisions</span>
-                                            <div className="flex flex-wrap gap-2 mt-1">
-                                                {eventDivisionLabels.map((divisionLabel, index) => (
-                                                    <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
-                                                        {divisionLabel}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                </Paper>
-                            </div>
+                                            <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                <Text fw={700}>Event Details</Text>
+                                                <ReadOnlyDetailsGrid
+                                                    items={[
+                                                        { label: 'Entry fee', value: eventPriceSummary },
+                                                        { label: maxParticipantsLabel, value: String(currentEvent.maxParticipants) },
+                                                        { label: 'Team size', value: String(currentEvent.teamSizeLimit) },
+                                                        { label: 'Registration closes', value: registrationCutoffSummary },
+                                                        { label: 'Refunds', value: refundSummary },
+                                                        { label: 'Waitlist', value: String(normalizedWaitlistIds.length) },
+                                                    ]}
+                                                />
+                                            </Paper>
 
-                            {/* Description */}
-                            <Paper withBorder p="md" radius="md">
-                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
-                                <p className="text-gray-700 leading-relaxed">{currentEvent.description}</p>
-                            </Paper>
+                                            <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                <Text fw={700}>Division Settings</Text>
+                                                <ReadOnlyDetailsGrid items={divisionSettingsRows} />
+                                            </Paper>
 
-                            {googleMapsLink && mapEmbedSrc && (
-                                <Paper withBorder p="md" radius="md" className="space-y-3">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <Text size="sm" c="dimmed">Location</Text>
-                                            <Text fw={600}>{currentEvent.location || 'Location coming soon'}</Text>
-                                            {hasValidCoords && (
-                                                <Text size="xs" c="dimmed">
-                                                    {mapLat.toFixed(4)}, {mapLng.toFixed(4)}
-                                                </Text>
+                                            {divisionOptions.length > 0 && (
+                                                <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                    <Text fw={700}>Divisions ({divisionOptions.length})</Text>
+                                                    <div className="space-y-3">
+                                                        {divisionOptions.map((division) => {
+                                                            const priceCents = currentEvent.singleDivision
+                                                                ? normalizePriceCents(currentEvent.price)
+                                                                : normalizePriceCents(
+                                                                    typeof division.priceCents === 'number'
+                                                                        ? division.priceCents
+                                                                        : currentEvent.price,
+                                                                );
+                                                            const maxDivisionParticipants = currentEvent.singleDivision
+                                                                ? currentEvent.maxParticipants
+                                                                : Math.max(
+                                                                    2,
+                                                                    Number.isFinite(Number(division.maxParticipants))
+                                                                        ? Math.trunc(Number(division.maxParticipants))
+                                                                        : currentEvent.maxParticipants,
+                                                                );
+                                                            const paymentPlanCount = Math.max(
+                                                                typeof division.installmentCount === 'number' ? division.installmentCount : 0,
+                                                                Array.isArray(division.installmentAmounts) ? division.installmentAmounts.length : 0,
+                                                                Array.isArray(division.installmentDueDates) ? division.installmentDueDates.length : 0,
+                                                            );
+                                                            const playoffTeams = currentEvent.eventType === 'LEAGUE'
+                                                                && currentEvent.includePlayoffs
+                                                                && !currentEvent.singleDivision
+                                                                && typeof division.playoffTeamCount === 'number'
+                                                                ? Math.max(2, Math.trunc(division.playoffTeamCount))
+                                                                : null;
+
+                                                            return (
+                                                                <div key={division.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-2">
+                                                                    <Text fw={700}>{division.name}</Text>
+                                                                    <ReadOnlyDetailsGrid
+                                                                        items={[
+                                                                            {
+                                                                                label: 'Format',
+                                                                                value: `${getDivisionGenderLabel(division.gender)} ${division.divisionTypeName}`,
+                                                                            },
+                                                                            ...(division.ageCutoffLabel
+                                                                                ? [{ label: 'Age cutoff', value: division.ageCutoffLabel }]
+                                                                                : []),
+                                                                            {
+                                                                                label: 'Price',
+                                                                                value: formatPrice(priceCents),
+                                                                            },
+                                                                            {
+                                                                                label: isTeamSignup ? 'Max teams' : 'Max participants',
+                                                                                value: String(maxDivisionParticipants),
+                                                                            },
+                                                                            ...(division.allowPaymentPlans && paymentPlanCount > 0
+                                                                                ? [{ label: 'Payment plan', value: `${paymentPlanCount} installments` }]
+                                                                                : []),
+                                                                            ...(playoffTeams !== null
+                                                                                ? [{ label: 'Playoff teams', value: String(playoffTeams) }]
+                                                                                : []),
+                                                                        ]}
+                                                                    />
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </Paper>
+                                            )}
+
+                                            {canViewStaffSection && (
+                                                <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                    <Text fw={700}>Staff</Text>
+                                                    <ReadOnlyDetailsGrid
+                                                        items={[
+                                                            { label: 'Primary host', value: hostedByLabel },
+                                                            { label: 'Assistant host count', value: String(assistantHostNames.length) },
+                                                            {
+                                                                label: 'Assistant hosts',
+                                                                value: formatReadOnlyValueList(assistantHostNames, 'No assistant hosts assigned'),
+                                                            },
+                                                            { label: 'Official count', value: String(officialNames.length) },
+                                                            {
+                                                                label: 'Officials',
+                                                                value: formatReadOnlyValueList(officialNames, 'No officials assigned'),
+                                                            },
+                                                            {
+                                                                label: 'Staffing mode',
+                                                                value: formatOfficialSchedulingModeLabel(currentEvent.officialSchedulingMode),
+                                                            },
+                                                            { label: 'Official positions', value: officialPositionsSummary },
+                                                            ...(currentEvent.doTeamsOfficiate === true
+                                                                ? [{ label: 'Teams provide officials', value: 'Yes' }]
+                                                                : []),
+                                                            ...(currentEvent.doTeamsOfficiate === true
+                                                                ? [{ label: 'Team officials may swap', value: currentEvent.teamOfficialsMaySwap === true ? 'Yes' : 'No' }]
+                                                                : []),
+                                                        ]}
+                                                    />
+                                                </Paper>
+                                            )}
+
+                                            {currentEvent.eventType === 'LEAGUE' && (
+                                                <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                    <Text fw={700}>League Scoring Rules</Text>
+                                                    <ReadOnlyDetailsGrid
+                                                        items={[
+                                                            {
+                                                                label: 'Scoring profile',
+                                                                value: sportLabel || 'Default',
+                                                            },
+                                                        ]}
+                                                    />
+                                                </Paper>
+                                            )}
+
+                                            {supportsScheduleDetails && (
+                                                <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                    <Text fw={700}>Schedule</Text>
+                                                    <ReadOnlyDetailsGrid items={scheduleDetailRows} />
+                                                    <div className="space-y-3">
+                                                        <Text size="sm" c="dimmed">Weekly timeslots</Text>
+                                                        {scheduleTimeslotGroups.length === 0 ? (
+                                                            <Text size="sm" c="dimmed">No weekly timeslots configured.</Text>
+                                                        ) : (
+                                                            <div className="space-y-4">
+                                                                {scheduleTimeslotGroups.map(([dayOfWeek, slots]) => (
+                                                                    <div key={`timeslot-day-${dayOfWeek}`} className="space-y-2">
+                                                                        <Text fw={700}>{`${getDayOfWeekLabel(dayOfWeek)} (${slots.length})`}</Text>
+                                                                        <div className="space-y-2">
+                                                                            {slots.map((slot) => {
+                                                                                const fieldNames = uniqueNonEmptyStrings(
+                                                                                    (
+                                                                                        Array.isArray(slot.scheduledFieldIds) && slot.scheduledFieldIds.length
+                                                                                            ? slot.scheduledFieldIds
+                                                                                            : typeof slot.scheduledFieldId === 'string' && slot.scheduledFieldId.trim().length > 0
+                                                                                                ? [slot.scheduledFieldId]
+                                                                                                : []
+                                                                                    ).map((fieldId: string) => {
+                                                                                        const resolved = scheduleFieldNamesById.get(fieldId);
+                                                                                        if (resolved?.name?.trim()) {
+                                                                                            return resolved.name.trim();
+                                                                                        }
+                                                                                        if (resolved && Number.isFinite(Number(resolved.fieldNumber))) {
+                                                                                            return `Field ${resolved.fieldNumber}`;
+                                                                                        }
+                                                                                        return fieldId;
+                                                                                    }),
+                                                                                );
+                                                                                const divisionNames = uniqueNonEmptyStrings(
+                                                                                    (
+                                                                                        Array.isArray(slot.divisions) && slot.divisions.length
+                                                                                            ? slot.divisions
+                                                                                            : fallbackDivisionIds
+                                                                                    ).map((divisionId: string) => resolveDivisionDisplayName({
+                                                                                        division: divisionId,
+                                                                                        divisionNameIndex: divisionDisplayNameIndex,
+                                                                                        sportInput: sportLabel,
+                                                                                    }) ?? divisionId),
+                                                                                );
+
+                                                                                return (
+                                                                                    <div key={slot.$id} className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+                                                                                        <Text fw={700}>
+                                                                                            {formatSlotTimeRange(slot.startTimeMinutes, slot.endTimeMinutes)}
+                                                                                        </Text>
+                                                                                        <ReadOnlyDetailsGrid
+                                                                                            items={[
+                                                                                                { label: 'Day', value: getDayOfWeekLabel(dayOfWeek) },
+                                                                                                {
+                                                                                                    label: `Fields (${fieldNames.length})`,
+                                                                                                    value: formatReadOnlyValueList(fieldNames, 'Not assigned'),
+                                                                                                },
+                                                                                                {
+                                                                                                    label: `Divisions (${divisionNames.length})`,
+                                                                                                    value: formatReadOnlyValueList(divisionNames, 'Not assigned'),
+                                                                                                },
+                                                                                            ]}
+                                                                                        />
+                                                                                    </div>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </Paper>
+                                            )}
+
+                                            {googleMapsLink && mapEmbedSrc && (
+                                                <Paper withBorder p="md" radius="md" className="space-y-4">
+                                                    <Text fw={700}>Map</Text>
+                                                    <ReadOnlyDetailsGrid
+                                                        items={[
+                                                            { label: 'Location', value: currentEvent.location || 'Location coming soon' },
+                                                            ...(eventAddress
+                                                                ? [{ label: 'Address', value: eventAddress }]
+                                                                : []),
+                                                            ...(!eventAddress && hasValidCoords
+                                                                ? [{ label: 'Coordinates', value: `${mapLat.toFixed(4)}, ${mapLng.toFixed(4)}` }]
+                                                                : []),
+                                                        ]}
+                                                    />
+                                                    <div>
+                                                        <Button
+                                                            component="a"
+                                                            href={googleMapsLink}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            variant="light"
+                                                            size="sm"
+                                                        >
+                                                            Open in Google Maps
+                                                        </Button>
+                                                    </div>
+                                                    <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
+                                                        <iframe
+                                                            title="Event location preview"
+                                                            src={mapEmbedSrc}
+                                                            className="w-full h-full"
+                                                            loading="lazy"
+                                                            allowFullScreen
+                                                        />
+                                                    </div>
+                                                </Paper>
                                             )}
                                         </div>
-                                        <Button
-                                            component="a"
-                                            href={googleMapsLink}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            variant="light"
-                                            size="sm"
-                                        >
-                                            Open in Google Maps
-                                        </Button>
                                     </div>
-                                    <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
-                                        <iframe
-                                            title="Event location preview"
-                                            src={mapEmbedSrc}
-                                            className="w-full h-full"
-                                            loading="lazy"
-                                            allowFullScreen
-                                        />
-                                    </div>
-                                </Paper>
-                            )}
+                                </>
+                            ) : (
+                                <>
+                                    {/* Event Info */}
+                                    <div>
+                                        <h2 className="text-xl font-semibold text-gray-900 mb-4">Event Details</h2>
+                                        <Paper withBorder p="md" radius="md" className="space-y-3">
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <span className="text-sm text-gray-600">Type</span>
+                                                    <p className="font-medium">{formatEnumDisplayLabel(currentEvent.eventType, 'Event')}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-sm text-gray-600">Registration</span>
+                                                    <p className="font-medium">{isTeamSignup ? 'Team registration' : 'Individual registration'}</p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-sm text-gray-600">Price</span>
+                                                    <p className="font-medium">
+                                                        {selectedDivisionBilling.priceCents === 0
+                                                            ? 'Free'
+                                                            : `${formatPrice(selectedDivisionBilling.priceCents)}`}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <span className="text-sm text-gray-600">Sport</span>
+                                                    <p className="font-medium">
+                                                        {currentEvent.sport?.name || currentEvent.sportId || 'TBD'}
+                                                    </p>
+                                                </div>
+                                                {(typeof eventMinAge === 'number' || typeof eventMaxAge === 'number') && (
+                                                    <div>
+                                                        <span className="text-sm text-gray-600">Age Range</span>
+                                                        <p className="font-medium">{formatAgeRange(eventMinAge, eventMaxAge)}</p>
+                                                    </div>
+                                                )}
+                                            </div>
 
-                            {/* Tournament Details */}
-                            {currentEvent.eventType === 'TOURNAMENT' && (
-                                <div>
-                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Format</h3>
-                                    <Paper withBorder p="md" radius="md" className="space-y-2">
-                                        {currentEvent.doubleElimination && (
-                                            <p><span className="font-medium">Format:</span> Double Elimination</p>
-                                        )}
-                                        {currentEvent.prize && (
-                                            <p><span className="font-medium">Prize:</span> {currentEvent.prize}</p>
-                                        )}
-                                        {currentEvent.winnerSetCount && (
-                                            <p><span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}</p>
-                                        )}
+                                            {eventDivisionLabels.length > 0 && (
+                                                <div>
+                                                    <span className="text-sm text-gray-600">Divisions</span>
+                                                    <div className="flex flex-wrap gap-2 mt-1">
+                                                        {eventDivisionLabels.map((divisionLabel, index) => (
+                                                            <span key={index} className="text-xs px-2 py-1 bg-blue-100 text-blue-800 rounded-full">
+                                                                {divisionLabel}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </Paper>
+                                    </div>
+
+                                    {/* Description */}
+                                    <Paper withBorder p="md" radius="md">
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Description</h3>
+                                        <p className="text-gray-700 leading-relaxed">{currentEvent.description}</p>
                                     </Paper>
-                                </div>
-                            )}
 
-                            {/* League Playoff Details */}
-                            {currentEvent.eventType === 'LEAGUE' && currentEvent.includePlayoffs && (
-                                <div>
-                                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Playoff Format</h3>
-                                    <Paper withBorder p="md" radius="md" className="space-y-2">
-                                        <p>
-                                            <span className="font-medium">Teams Included:</span>{' '}
-                                            {currentEvent.playoffTeamCount ?? 'Configured'}
-                                        </p>
-                                        {typeof currentEvent.doubleElimination === 'boolean' && (
-                                            <p>
-                                                <span className="font-medium">Format:</span>{' '}
-                                                {currentEvent.doubleElimination ? 'Double Elimination' : 'Single Elimination'}
-                                            </p>
-                                        )}
-                                        {typeof currentEvent.winnerSetCount === 'number' && currentEvent.winnerSetCount > 0 && (
-                                            <p>
-                                                <span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}
-                                            </p>
-                                        )}
+                                    {googleMapsLink && mapEmbedSrc && (
+                                        <Paper withBorder p="md" radius="md" className="space-y-3">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <Text size="sm" c="dimmed">Location</Text>
+                                                    <Text fw={600}>{currentEvent.location || 'Location coming soon'}</Text>
+                                                    {hasValidCoords && (
+                                                        <Text size="xs" c="dimmed">
+                                                            {mapLat.toFixed(4)}, {mapLng.toFixed(4)}
+                                                        </Text>
+                                                    )}
+                                                </div>
+                                                <Button
+                                                    component="a"
+                                                    href={googleMapsLink}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    variant="light"
+                                                    size="sm"
+                                                >
+                                                    Open in Google Maps
+                                                </Button>
+                                            </div>
+                                            <div className="overflow-hidden rounded-md border border-gray-200" style={{ aspectRatio: '16 / 9' }}>
+                                                <iframe
+                                                    title="Event location preview"
+                                                    src={mapEmbedSrc}
+                                                    className="w-full h-full"
+                                                    loading="lazy"
+                                                    allowFullScreen
+                                                />
+                                            </div>
+                                        </Paper>
+                                    )}
+
+                                    {/* Tournament Details */}
+                                    {currentEvent.eventType === 'TOURNAMENT' && (
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Tournament Format</h3>
+                                            <Paper withBorder p="md" radius="md" className="space-y-2">
+                                                {currentEvent.doubleElimination && (
+                                                    <p><span className="font-medium">Format:</span> Double Elimination</p>
+                                                )}
+                                                {currentEvent.prize && (
+                                                    <p><span className="font-medium">Prize:</span> {currentEvent.prize}</p>
+                                                )}
+                                                {currentEvent.winnerSetCount && (
+                                                    <p><span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}</p>
+                                                )}
+                                            </Paper>
+                                        </div>
+                                    )}
+
+                                    {/* League Playoff Details */}
+                                    {currentEvent.eventType === 'LEAGUE' && currentEvent.includePlayoffs && (
+                                        <div>
+                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Playoff Format</h3>
+                                            <Paper withBorder p="md" radius="md" className="space-y-2">
+                                                <p>
+                                                    <span className="font-medium">Teams Included:</span>{' '}
+                                                    {currentEvent.playoffTeamCount ?? 'Configured'}
+                                                </p>
+                                                {typeof currentEvent.doubleElimination === 'boolean' && (
+                                                    <p>
+                                                        <span className="font-medium">Format:</span>{' '}
+                                                        {currentEvent.doubleElimination ? 'Double Elimination' : 'Single Elimination'}
+                                                    </p>
+                                                )}
+                                                {typeof currentEvent.winnerSetCount === 'number' && currentEvent.winnerSetCount > 0 && (
+                                                    <p>
+                                                        <span className="font-medium">Sets to Win:</span> {currentEvent.winnerSetCount}
+                                                    </p>
+                                                )}
+                                            </Paper>
+                                        </div>
+                                    )}
+
+                                    {/* Event Stats */}
+                                    <Paper withBorder p="md" radius="md">
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">Event Stats</h3>
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Max Participants:</span>
+                                                <span className="font-medium">{participantCapacity}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Team Size Limit:</span>
+                                                <span className="font-medium">{currentEvent.teamSizeLimit}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-gray-600">Registration Cutoff:</span>
+                                                <span className="font-medium">{currentEvent.registrationCutoffHours}h before</span>
+                                            </div>
+                                        </div>
                                     </Paper>
-                                </div>
+                                </>
                             )}
-
-                            {/* Event Stats */}
-                            <Paper withBorder p="md" radius="md">
-                                <h3 className="text-lg font-semibold text-gray-900 mb-2">Event Stats</h3>
-                                <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Max Participants:</span>
-                                        <span className="font-medium">{participantCapacity}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Team Size Limit:</span>
-                                        <span className="font-medium">{currentEvent.teamSizeLimit}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-gray-600">Registration Cutoff:</span>
-                                        <span className="font-medium">{currentEvent.registrationCutoffHours}h before</span>
-                                    </div>
-                                </div>
-                            </Paper>
                         </div>
 
                         {/* Sidebar */}

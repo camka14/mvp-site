@@ -829,6 +829,60 @@ describe('POST /api/events/[eventId]/participants', () => {
       consentStatus: 'guardian_approval_required',
     }));
   });
+
+  it('allows event managers to add an unrelated user participant', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    canManageEventMock.mockResolvedValueOnce(true);
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      eventType: 'EVENT',
+      teamSignup: false,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({
+      dateOfBirth: new Date('1992-03-15T00:00:00.000Z'),
+    });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      userIds: ['participant_1'],
+      teamIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        userId: 'participant_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.event).toEqual(expect.objectContaining({ userIds: ['participant_1'] }));
+    expect(prismaMock.parentChildLinks.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1' },
+        data: expect.objectContaining({
+          userIds: ['participant_1'],
+        }),
+      }),
+    );
+  });
 });
 
 describe('DELETE /api/events/[eventId]/participants', () => {
@@ -1167,5 +1221,56 @@ describe('DELETE /api/events/[eventId]/participants', () => {
     expect(response.status).toBe(200);
     expect(payload.event).toEqual(expect.objectContaining({ teamIds: [] }));
     expect(prismaMock.refundRequests.create).not.toHaveBeenCalled();
+  });
+
+  it('allows event managers to remove an unrelated user participant', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    canManageEventMock.mockResolvedValueOnce(true);
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      eventType: 'EVENT',
+      teamSignup: false,
+      requiredTemplateIds: [],
+      userIds: ['participant_1'],
+      teamIds: [],
+      waitListIds: ['participant_1'],
+      freeAgentIds: ['participant_1'],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+    });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      userIds: [],
+      teamIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+
+    const response = await DELETE(
+      jsonDelete('http://localhost/api/events/event_1/participants', { userId: 'participant_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.event).toEqual(expect.objectContaining({ userIds: [] }));
+    expect(prismaMock.parentChildLinks.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1' },
+        data: expect.objectContaining({
+          userIds: [],
+          waitListIds: [],
+          freeAgentIds: [],
+        }),
+      }),
+    );
   });
 });

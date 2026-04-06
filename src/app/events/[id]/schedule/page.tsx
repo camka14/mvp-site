@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover, SegmentedControl } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 import { ListChecks, Megaphone } from 'lucide-react';
@@ -114,6 +114,14 @@ type DivisionOption = {
   label: string;
 };
 
+type ParticipantInviteMode = 'existing' | 'email' | 'team';
+
+type ParticipantInviteRow = {
+  firstName: string;
+  lastName: string;
+  email: string;
+};
+
 type MatchCreateContext = 'schedule' | 'bracket';
 
 type StagedMatchCreateMeta = {
@@ -124,6 +132,29 @@ type StagedMatchCreateMeta = {
 
 const CLIENT_MATCH_PREFIX = 'client:';
 const LOCAL_PLACEHOLDER_PREFIX = 'placeholder-local:';
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const collectTeamRosterUserIds = (team: Team): string[] => {
+  const assistantCoachIds = Array.isArray(team.assistantCoachIds)
+    ? team.assistantCoachIds
+    : Array.isArray(team.coachIds)
+      ? team.coachIds
+      : [];
+
+  return Array.from(
+    new Set(
+      [
+        ...team.playerIds,
+        team.captainId,
+        team.managerId ?? '',
+        team.headCoachId ?? '',
+        ...assistantCoachIds,
+      ]
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value.length > 0),
+    ),
+  );
+};
 
 const isClientMatchId = (id: string | null | undefined): boolean =>
   typeof id === 'string' && id.startsWith(CLIENT_MATCH_PREFIX);
@@ -978,6 +1009,17 @@ function EventScheduleContent() {
   const [createBillAllowSplit, setCreateBillAllowSplit] = useState(false);
   const [createBillLabel, setCreateBillLabel] = useState('Event registration');
   const [isAddTeamModalOpen, setIsAddTeamModalOpen] = useState(false);
+  const [isAddParticipantModalOpen, setIsAddParticipantModalOpen] = useState(false);
+  const [participantInviteMode, setParticipantInviteMode] = useState<ParticipantInviteMode>('existing');
+  const [participantSearchValue, setParticipantSearchValue] = useState('');
+  const [participantSearchResults, setParticipantSearchResults] = useState<UserData[]>([]);
+  const [participantSearchLoading, setParticipantSearchLoading] = useState(false);
+  const [participantSearchError, setParticipantSearchError] = useState<string | null>(null);
+  const [participantInviteRows, setParticipantInviteRows] = useState<ParticipantInviteRow[]>([
+    { firstName: '', lastName: '', email: '' },
+  ]);
+  const [participantInviteError, setParticipantInviteError] = useState<string | null>(null);
+  const [invitingParticipants, setInvitingParticipants] = useState(false);
   const [selectedParticipantTeam, setSelectedParticipantTeam] = useState<Team | null>(null);
   const [selectedAddTeamDivisionId, setSelectedAddTeamDivisionId] = useState<string | null>(null);
   const [teamSearchQuery, setTeamSearchQuery] = useState('');
@@ -2482,6 +2524,11 @@ function EventScheduleContent() {
     [organizationTeamsForPicker, participantTeamIdSet],
   );
 
+  const availableOrganizationParticipantTeams = useMemo(
+    () => organizationTeamsForPicker.filter((team) => Boolean(team?.$id)),
+    [organizationTeamsForPicker],
+  );
+
   const availableOrganizationTeamIdSet = useMemo(
     () => new Set(availableOrganizationTeams.map((team) => team.$id)),
     [availableOrganizationTeams],
@@ -2815,7 +2862,12 @@ function EventScheduleContent() {
   }, [isAddTeamModalOpen, isSplitDivisionEvent, participantDivisionSelectData, selectedAddTeamDivisionId]);
 
   useEffect(() => {
-    if (!isAddTeamModalOpen) {
+    const shouldLoadOrganizationTeams =
+      isAddTeamModalOpen
+      || (isAddParticipantModalOpen && participantInviteMode === 'team');
+    const shouldLoadSearchPool = isAddTeamModalOpen;
+
+    if (!shouldLoadOrganizationTeams && !shouldLoadSearchPool) {
       return;
     }
 
@@ -2830,22 +2882,48 @@ function EventScheduleContent() {
 
       setOrganizationTeamsLoading(true);
       try {
+        const eventVisibilityContext = normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined;
         const eventOrganization = activeEvent?.organization;
         if (eventOrganization && typeof eventOrganization === 'object') {
           const org = eventOrganization as Organization;
-          if (org.$id === organizationIdForParticipants && Array.isArray(org.teams)) {
+          if (org.$id === organizationIdForParticipants && Array.isArray(org.teams) && org.teams.length > 0) {
             if (!cancelled) {
               setOrganizationTeamsForPicker(org.teams);
             }
             return;
           }
+
+          if (org.$id === organizationIdForParticipants && Array.isArray(org.teamIds) && org.teamIds.length > 0) {
+            const hydratedTeams = await teamService.getTeamsByIds(
+              org.teamIds,
+              true,
+              { eventId: eventVisibilityContext },
+            );
+            if (!cancelled) {
+              setOrganizationTeamsForPicker(hydratedTeams);
+            }
+            return;
+          }
         }
 
-        const organization = await organizationService.getOrganizationById(organizationIdForParticipants, true);
+        const organization = await organizationService.getOrganizationById(organizationIdForParticipants, false);
         if (cancelled) {
           return;
         }
-        setOrganizationTeamsForPicker(Array.isArray(organization?.teams) ? organization.teams : []);
+        const teamIds = Array.isArray(organization?.teamIds)
+          ? organization.teamIds.filter((teamId): teamId is string => typeof teamId === 'string' && teamId.trim().length > 0)
+          : [];
+        const hydratedTeams = teamIds.length > 0
+          ? await teamService.getTeamsByIds(
+            teamIds,
+            true,
+            { eventId: eventVisibilityContext },
+          )
+          : [];
+        if (cancelled) {
+          return;
+        }
+        setOrganizationTeamsForPicker(hydratedTeams);
       } catch (organizationError) {
         if (cancelled) {
           return;
@@ -2894,12 +2972,28 @@ function EventScheduleContent() {
       }
     };
 
-    void Promise.all([loadOrganizationTeams(), loadSearchPool()]);
+    const pendingLoads: Array<Promise<void>> = [];
+    if (shouldLoadOrganizationTeams) {
+      pendingLoads.push(loadOrganizationTeams());
+    }
+    if (shouldLoadSearchPool) {
+      pendingLoads.push(loadSearchPool());
+    }
+
+    void Promise.all(pendingLoads);
 
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, activeEvent?.organization, eventId, isAddTeamModalOpen, organizationIdForParticipants]);
+  }, [
+    activeEvent?.$id,
+    activeEvent?.organization,
+    eventId,
+    isAddParticipantModalOpen,
+    isAddTeamModalOpen,
+    organizationIdForParticipants,
+    participantInviteMode,
+  ]);
 
   const refreshParticipantTeamsFromServer = useCallback(
     async (targetEventId: string) => {
@@ -3032,15 +3126,20 @@ function EventScheduleContent() {
       setParticipantsError(null);
       setActionError(null);
       try {
-        await apiRequest(`/api/events/${targetEventId}/participants`, {
+        const response = await apiRequest<{ requiresParentApproval?: boolean; warnings?: string[] }>(`/api/events/${targetEventId}/participants`, {
           method: params.mode === 'add' ? 'POST' : 'DELETE',
           body: {
             userId: params.user.$id,
           },
         });
         await refreshParticipantTeamsFromServer(targetEventId);
+        if (Array.isArray(response?.warnings) && response.warnings.length > 0) {
+          setWarningMessage(response.warnings[0] ?? null);
+        }
         if (params.mode === 'remove') {
           setInfoMessage(`${params.user.fullName || params.user.userName || 'Participant'} removed from participants.`);
+        } else if (response?.requiresParentApproval) {
+          setInfoMessage(`${params.user.fullName || params.user.userName || 'Participant'} requires parent/guardian approval before registration can continue.`);
         } else {
           setInfoMessage(`${params.user.fullName || params.user.userName || 'Participant'} added to participants.`);
         }
@@ -3050,6 +3149,184 @@ function EventScheduleContent() {
       }
     },
     [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer],
+  );
+
+  const closeAddParticipantModal = useCallback(() => {
+    setIsAddParticipantModalOpen(false);
+    setParticipantInviteMode('existing');
+    setParticipantSearchValue('');
+    setParticipantSearchResults([]);
+    setParticipantSearchError(null);
+    setParticipantInviteRows([{ firstName: '', lastName: '', email: '' }]);
+    setParticipantInviteError(null);
+  }, []);
+
+  const handleSearchParticipants = useCallback(
+    async (query: string) => {
+      setParticipantSearchValue(query);
+      setParticipantSearchError(null);
+      if (query.trim().length < 2) {
+        setParticipantSearchResults([]);
+        return;
+      }
+      try {
+        setParticipantSearchLoading(true);
+        const results = await userService.searchUsers(query.trim());
+        const filtered = results.filter((candidate) => !participantUserIdSet.has(candidate.$id));
+        setParticipantSearchResults(filtered);
+      } catch (searchError) {
+        console.error('Failed to search participants:', searchError);
+        setParticipantSearchError('Failed to search participants. Try again.');
+      } finally {
+        setParticipantSearchLoading(false);
+      }
+    },
+    [participantUserIdSet],
+  );
+
+  const handleAddExistingParticipant = useCallback(
+    async (candidate: UserData) => {
+      if (participantsUpdatingTeamId || !candidate?.$id || participantUserIdSet.has(candidate.$id)) {
+        return;
+      }
+
+      setParticipantsUpdatingTeamId(candidate.$id);
+      await mutateUserParticipantMembership({
+        user: candidate,
+        mode: 'add',
+      });
+      setParticipantSearchResults((prev) => prev.filter((entry) => entry.$id !== candidate.$id));
+      setParticipantsUpdatingTeamId(null);
+    },
+    [mutateUserParticipantMembership, participantUserIdSet, participantsUpdatingTeamId],
+  );
+
+  const handleInviteParticipantsByEmail = useCallback(async () => {
+    const targetEventId = activeEvent?.$id ?? eventId;
+    if (!targetEventId || !user?.$id) {
+      setParticipantInviteError('You must be signed in to invite participants.');
+      return;
+    }
+
+    const sanitized = participantInviteRows.map((invite) => ({
+      firstName: invite.firstName.trim(),
+      lastName: invite.lastName.trim(),
+      email: invite.email.trim().toLowerCase(),
+    }));
+
+    for (const invite of sanitized) {
+      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email)) {
+        setParticipantInviteError('Enter first name, last name, and a valid email for every participant invite.');
+        return;
+      }
+    }
+
+    setParticipantInviteError(null);
+    setInvitingParticipants(true);
+    try {
+      const result = await userService.inviteUsersByEmail(
+        user.$id,
+        sanitized.map((invite) => ({
+          ...invite,
+          type: 'EVENT',
+          eventId: targetEventId,
+          organizationId: activeEvent?.organizationId ?? undefined,
+        })),
+      );
+      if ((result.failed ?? []).length > 0) {
+        throw new Error('Failed to create one or more participant invites.');
+      }
+      setInfoMessage('Participant invites sent.');
+      setParticipantInviteRows([{ firstName: '', lastName: '', email: '' }]);
+    } catch (inviteError) {
+      console.error('Failed to invite participants:', inviteError);
+      setParticipantInviteError(inviteError instanceof Error ? inviteError.message : 'Failed to invite participants.');
+    } finally {
+      setInvitingParticipants(false);
+    }
+  }, [activeEvent?.$id, activeEvent?.organizationId, eventId, participantInviteRows, user?.$id]);
+
+  const handleAddTeamRosterParticipants = useCallback(
+    async (team: Team) => {
+      const targetEventId = activeEvent?.$id ?? eventId;
+      if (!targetEventId || participantsUpdatingTeamId || !team?.$id) {
+        return;
+      }
+
+      const rosterUserIds = collectTeamRosterUserIds(team);
+      if (rosterUserIds.length === 0) {
+        setParticipantInviteError('This team has no players or staff to add.');
+        return;
+      }
+
+      const userIdsToAdd = rosterUserIds.filter((userId) => !participantUserIdSet.has(userId));
+      if (userIdsToAdd.length === 0) {
+        setParticipantInviteError('All roster members on this team are already participants.');
+        return;
+      }
+
+      setParticipantInviteError(null);
+      setParticipantsError(null);
+      setActionError(null);
+      setParticipantsUpdatingTeamId(team.$id);
+
+      let addedCount = 0;
+      let approvalCount = 0;
+      let failureCount = 0;
+      const warningMessages: string[] = [];
+
+      try {
+        for (const userId of userIdsToAdd) {
+          try {
+            const response = await apiRequest<{ requiresParentApproval?: boolean; warnings?: string[] }>(`/api/events/${targetEventId}/participants`, {
+              method: 'POST',
+              body: { userId },
+            });
+
+            if (Array.isArray(response?.warnings) && response.warnings.length > 0) {
+              warningMessages.push(...response.warnings);
+            }
+
+            if (response?.requiresParentApproval) {
+              approvalCount += 1;
+            } else {
+              addedCount += 1;
+            }
+          } catch (error) {
+            console.error('Failed to add team roster participant:', error);
+            failureCount += 1;
+          }
+        }
+
+        await refreshParticipantTeamsFromServer(targetEventId);
+
+        if (warningMessages.length > 0) {
+          const [firstWarning, ...restWarnings] = warningMessages;
+          setWarningMessage(restWarnings.length > 0 ? `${firstWarning} (+${restWarnings.length} more)` : firstWarning);
+        }
+
+        const summaryParts: string[] = [];
+        if (addedCount > 0) {
+          summaryParts.push(`Added ${addedCount} roster member${addedCount === 1 ? '' : 's'}`);
+        }
+        if (approvalCount > 0) {
+          summaryParts.push(`${approvalCount} require parent/guardian approval`);
+        }
+        if (failureCount > 0) {
+          summaryParts.push(`${failureCount} could not be added`);
+        }
+
+        if (summaryParts.length > 0) {
+          setInfoMessage(`${summaryParts.join('. ')} from ${team.name || 'team'}.`);
+        }
+        if (failureCount > 0) {
+          setParticipantInviteError(`${failureCount} roster member${failureCount === 1 ? '' : 's'} could not be added. Check the event requirements and try again.`);
+        }
+      } finally {
+        setParticipantsUpdatingTeamId(null);
+      }
+    },
+    [activeEvent?.$id, eventId, participantUserIdSet, participantsUpdatingTeamId, refreshParticipantTeamsFromServer],
   );
 
   const handleAddTeamToParticipants = useCallback(
@@ -4809,7 +5086,14 @@ function EventScheduleContent() {
   const showScheduleTab = isLeague || isTournament;
   const showStandingsTab = isLeague;
   const showParticipantsTab = !isTemplateEvent
-    && Boolean(activeEvent?.teamSignup || isLeague || isTournament || participantTeamIds.length > 0 || participantUserIds.length > 0);
+    && Boolean(
+      activeEvent?.teamSignup
+      || isLeague
+      || isTournament
+      || (!isCreateMode && activeEvent?.eventType === 'EVENT' && activeEvent?.teamSignup === false)
+      || participantTeamIds.length > 0
+      || participantUserIds.length > 0,
+    );
   const selectedComplianceSummary = selectedComplianceTeamId
     ? teamComplianceById[selectedComplianceTeamId] ?? null
     : null;
@@ -7527,18 +7811,31 @@ function EventScheduleContent() {
                             : `${filledParticipantTeams.length} teams are currently participating.`
                         )}
                     </Text>
-                    {canManageEvent && activeEvent?.teamSignup !== false && (
-                      <Button
-                        variant="light"
-                        onClick={() => {
-                          setParticipantsError(null);
-                          setTeamSearchQuery('');
-                          setSelectedAddTeamDivisionId(null);
-                          setIsAddTeamModalOpen(true);
-                        }}
-                      >
-                        Add Team
-                      </Button>
+                    {canManageEvent && (
+                      activeEvent?.teamSignup === false ? (
+                        <Button
+                          variant="light"
+                          onClick={() => {
+                            setParticipantsError(null);
+                            setParticipantInviteError(null);
+                            setIsAddParticipantModalOpen(true);
+                          }}
+                        >
+                          Add Participants
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="light"
+                          onClick={() => {
+                            setParticipantsError(null);
+                            setTeamSearchQuery('');
+                            setSelectedAddTeamDivisionId(null);
+                            setIsAddTeamModalOpen(true);
+                          }}
+                        >
+                          Add Team
+                        </Button>
+                      )
                     )}
                   </Group>
 
@@ -8155,6 +8452,193 @@ function EventScheduleContent() {
               Confirm
             </Button>
           </Group>
+        </Stack>
+      </Modal>
+      <Modal
+        opened={isAddParticipantModalOpen}
+        onClose={closeAddParticipantModal}
+        title="Add Participant"
+        size="xl"
+        centered
+        fullScreen={Boolean(isMobile)}
+      >
+        <Stack gap="md">
+          <SegmentedControl
+            value={participantInviteMode}
+            onChange={(value) => {
+              setParticipantInviteMode(value as ParticipantInviteMode);
+              setParticipantInviteError(null);
+            }}
+            data={[
+              { label: 'Add existing', value: 'existing' },
+              { label: 'Email invite', value: 'email' },
+              ...(organizationIdForParticipants ? [{ label: 'Add from team', value: 'team' }] : []),
+            ]}
+          />
+
+          {participantInviteMode === 'existing' ? (
+            <Stack gap="sm">
+              <TextInput
+                label="Search participants"
+                placeholder="Search by name or username"
+                value={participantSearchValue}
+                onChange={(event) => { void handleSearchParticipants(event.currentTarget.value); }}
+              />
+              {participantSearchError ? (
+                <Text size="xs" c="red">{participantSearchError}</Text>
+              ) : null}
+              {participantSearchLoading ? (
+                <Paper withBorder radius="md" p="md">
+                  <Group justify="center" gap="sm">
+                    <Loader size="sm" />
+                    <Text size="sm" c="dimmed">Searching participants...</Text>
+                  </Group>
+                </Paper>
+              ) : participantSearchValue.trim().length < 2 ? (
+                <Text size="sm" c="dimmed">Type at least 2 characters to search.</Text>
+              ) : participantSearchResults.length > 0 ? (
+                <Stack gap="xs">
+                  {participantSearchResults.map((result) => (
+                    <Paper key={result.$id} withBorder p="sm" radius="md">
+                      <Group justify="space-between" align="center" gap="sm">
+                        <UserCard user={result} className="!p-0 !shadow-none flex-1" />
+                        <Button
+                          size="xs"
+                          onClick={() => { void handleAddExistingParticipant(result); }}
+                          loading={participantsUpdatingTeamId === result.$id}
+                        >
+                          Add
+                        </Button>
+                      </Group>
+                    </Paper>
+                  ))}
+                </Stack>
+              ) : (
+                <Text size="sm" c="dimmed">No users found.</Text>
+              )}
+            </Stack>
+          ) : participantInviteMode === 'email' ? (
+            <Stack gap="sm">
+              {participantInviteRows.map((invite, index) => (
+                <Paper key={index} withBorder radius="md" p="sm">
+                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                    <TextInput
+                      label="First name"
+                      placeholder="First name"
+                      value={invite.firstName}
+                      onChange={(event) => {
+                        const next = [...participantInviteRows];
+                        next[index] = { ...invite, firstName: event.currentTarget.value };
+                        setParticipantInviteRows(next);
+                      }}
+                    />
+                    <TextInput
+                      label="Last name"
+                      placeholder="Last name"
+                      value={invite.lastName}
+                      onChange={(event) => {
+                        const next = [...participantInviteRows];
+                        next[index] = { ...invite, lastName: event.currentTarget.value };
+                        setParticipantInviteRows(next);
+                      }}
+                    />
+                  </SimpleGrid>
+                  <TextInput
+                    mt="sm"
+                    label="Email"
+                    placeholder="name@example.com"
+                    value={invite.email}
+                    onChange={(event) => {
+                      const next = [...participantInviteRows];
+                      next[index] = { ...invite, email: event.currentTarget.value };
+                      setParticipantInviteRows(next);
+                    }}
+                  />
+                  {participantInviteRows.length > 1 ? (
+                    <Group justify="flex-end" mt="xs">
+                      <Button
+                        variant="subtle"
+                        color="red"
+                        size="xs"
+                        onClick={() => setParticipantInviteRows(participantInviteRows.filter((_, rowIndex) => rowIndex !== index))}
+                      >
+                        Remove
+                      </Button>
+                    </Group>
+                  ) : null}
+                </Paper>
+              ))}
+              <Group justify="space-between" align="center">
+                <Button
+                  type="button"
+                  variant="default"
+                  size="xs"
+                  onClick={() => setParticipantInviteRows([...participantInviteRows, { firstName: '', lastName: '', email: '' }])}
+                >
+                  Add row
+                </Button>
+                <Button onClick={() => { void handleInviteParticipantsByEmail(); }} loading={invitingParticipants} disabled={invitingParticipants}>
+                  Send invites
+                </Button>
+              </Group>
+              {participantInviteError ? <Text size="xs" c="red">{participantInviteError}</Text> : null}
+            </Stack>
+          ) : (
+            <Stack gap="sm">
+              <Text size="sm" c="dimmed">
+                Add every player and staff member from an organization team, including managers and coaches.
+              </Text>
+              {participantInviteError ? <Text size="xs" c="red">{participantInviteError}</Text> : null}
+              {organizationTeamsLoading ? (
+                <Paper withBorder radius="md" p="md">
+                  <Group justify="center" gap="sm">
+                    <Loader size="sm" />
+                    <Text size="sm" c="dimmed">Loading organization teams...</Text>
+                  </Group>
+                </Paper>
+              ) : availableOrganizationParticipantTeams.length === 0 ? (
+                <Paper withBorder radius="md" p="md">
+                  <Text size="sm" c="dimmed" ta="center">
+                    No organization teams are available.
+                  </Text>
+                </Paper>
+              ) : (
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+                  {availableOrganizationParticipantTeams.map((team) => {
+                    const rosterUserIds = collectTeamRosterUserIds(team);
+                    const availableRosterCount = rosterUserIds.filter((userId) => !participantUserIdSet.has(userId)).length;
+                    return renderParticipantTeamCard({
+                      cardKey: `participant-roster-${team.$id}`,
+                      team,
+                      showComplianceDetails: false,
+                      enableDetailsView: false,
+                      actions: participantsUpdatingTeamId === team.$id
+                        ? <Text size="xs" c="dimmed">Adding roster...</Text>
+                        : (
+                          <Stack gap={6}>
+                            <Text size="xs" c="dimmed">
+                              {availableRosterCount > 0
+                                ? `${availableRosterCount} roster member${availableRosterCount === 1 ? '' : 's'} available to add`
+                                : 'All roster members already added'}
+                            </Text>
+                            <Button
+                              size="xs"
+                              disabled={availableRosterCount === 0}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleAddTeamRosterParticipants(team);
+                              }}
+                            >
+                              Add Roster
+                            </Button>
+                          </Stack>
+                        ),
+                    });
+                  })}
+                </SimpleGrid>
+              )}
+            </Stack>
+          )}
         </Stack>
       </Modal>
       <Modal
@@ -8829,4 +9313,3 @@ export default function EventSchedulePage() {
     </Suspense>
   );
 }
-

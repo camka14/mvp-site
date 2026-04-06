@@ -219,6 +219,7 @@ interface LeagueFieldsProps {
   onAutoResolveSlotConflict?: (index: number) => void;
   showLeagueConfiguration?: boolean;
   showPlayoffSettings?: boolean;
+  emptyFieldsMessage?: string;
 }
 
 const LeagueFields: React.FC<LeagueFieldsProps> = ({
@@ -242,6 +243,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   onAutoResolveSlotConflict,
   showLeagueConfiguration = true,
   showPlayoffSettings = true,
+  emptyFieldsMessage = 'No fields found. Create a field first so you can attach weekly availability.',
 }) => {
   const fieldLookup = useMemo(
     () => new Map(fields.map((field) => [field.$id, field])),
@@ -555,7 +557,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
 
           {!fieldsLoading && availableFieldOptions.length === 0 && (
             <Alert color="yellow" radius="md" className="mb-4">
-              No fields found. Create a field first so you can attach weekly availability.
+              {emptyFieldsMessage}
             </Alert>
           )}
 

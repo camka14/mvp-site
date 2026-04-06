@@ -376,4 +376,30 @@ describe('LeagueFields', () => {
     expect(screen.getAllByText('Grass Volleyball - Beginner').length).toBeGreaterThan(0);
     expect(screen.queryByText('DIVISION_ABC_123')).not.toBeInTheDocument();
   });
+
+  it('renders a custom empty-fields message when provided', () => {
+    const customMessage = 'No fields found. Create a field on the Organizations page first, then return here to attach weekly availability.';
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[]}
+        fieldsLoading={false}
+        emptyFieldsMessage={customMessage}
+      />,
+    );
+
+    expect(screen.getByText(customMessage)).toBeInTheDocument();
+  });
 });

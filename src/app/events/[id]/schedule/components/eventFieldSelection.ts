@@ -19,17 +19,15 @@ export const resolveOrganizationEventFieldIds = (
 ): string[] => {
   const normalizedAvailable = normalizeFieldIds(availableFieldIds);
   const allowedFieldIds = new Set(normalizedAvailable);
-  const normalizedSelected = normalizeFieldIds(selectedFieldIds)
+  return normalizeFieldIds(selectedFieldIds)
     .filter((fieldId) => allowedFieldIds.has(fieldId));
-  return normalizedSelected.length ? normalizedSelected : normalizedAvailable;
 };
 
 export const requiresOrganizationEventFieldSelection = (
-  eventType: EventType,
-  organizationId: unknown,
-  selectedFieldIds: unknown,
+  _eventType: EventType,
+  _organizationId: unknown,
+  _selectedFieldIds: unknown,
 ): boolean => {
-  const hasOrganization = typeof organizationId === 'string' && organizationId.trim().length > 0;
-  return eventType === 'EVENT' && hasOrganization && normalizeFieldIds(selectedFieldIds).length === 0;
+  return false;
 };
 

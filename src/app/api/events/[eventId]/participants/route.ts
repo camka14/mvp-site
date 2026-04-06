@@ -430,7 +430,7 @@ async function updateParticipants(
     );
   }
 
-  if (userId && !session.isAdmin && session.userId !== userId) {
+  if (userId && !session.isAdmin && session.userId !== userId && !canManageCurrentEvent) {
     const canManageChild = mode === 'remove'
       ? await canManageLinkedChildParticipant({
         parentId: session.userId,
