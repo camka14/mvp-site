@@ -26,6 +26,7 @@ describe('Home landing page', () => {
       user: null,
       loading: false,
       isGuest: false,
+      isAuthenticated: false,
     });
   });
 
@@ -44,18 +45,20 @@ describe('Home landing page', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('redirects authenticated users to their home path', async () => {
+  it('renders a single app CTA for signed-in users on the landing page', () => {
     useAppMock.mockReturnValue({
       user: { homePageOrganizationId: 'org_42' },
       loading: false,
       isGuest: false,
+      isAuthenticated: true,
     });
 
     render(<HomePage />);
 
-    await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith('/organizations/org_42');
-    });
+    expect(screen.getAllByRole('link', { name: /go to app/i }).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('link', { name: /^sign up$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^sign in$/i })).not.toBeInTheDocument();
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('renders landing content for active guest sessions', () => {
@@ -63,6 +66,7 @@ describe('Home landing page', () => {
       user: null,
       loading: false,
       isGuest: true,
+      isAuthenticated: false,
     });
 
     render(<HomePage />);

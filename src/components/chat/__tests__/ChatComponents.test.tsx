@@ -2,6 +2,12 @@ import { render, screen } from '@testing-library/react';
 import { ChatComponents } from '../ChatComponents';
 
 const useAppMock = jest.fn();
+const usePathnameMock = jest.fn();
+
+jest.mock('next/navigation', () => ({
+  usePathname: () => usePathnameMock(),
+}));
+
 jest.mock('@/app/providers', () => ({
   useApp: () => useAppMock(),
 }));
@@ -17,6 +23,8 @@ jest.mock('../InviteUsersModal', () => ({
 describe('ChatComponents', () => {
   beforeEach(() => {
     useAppMock.mockReset();
+    usePathnameMock.mockReset();
+    usePathnameMock.mockReturnValue('/discover');
   });
 
   it('does not render chat UI while auth state is loading', () => {
@@ -56,5 +64,33 @@ describe('ChatComponents', () => {
 
     expect(screen.getByTestId('chat-drawer')).toBeInTheDocument();
     expect(screen.getByTestId('invite-users-modal')).toBeInTheDocument();
+  });
+
+  it('does not render chat UI on the landing page', () => {
+    useAppMock.mockReturnValue({
+      loading: false,
+      isAuthenticated: true,
+      isGuest: false,
+    });
+    usePathnameMock.mockReturnValue('/');
+
+    render(<ChatComponents />);
+
+    expect(screen.queryByTestId('chat-drawer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('invite-users-modal')).not.toBeInTheDocument();
+  });
+
+  it('does not render chat UI on blog pages', () => {
+    useAppMock.mockReturnValue({
+      loading: false,
+      isAuthenticated: true,
+      isGuest: false,
+    });
+    usePathnameMock.mockReturnValue('/blog/tournament-schedule-maker');
+
+    render(<ChatComponents />);
+
+    expect(screen.queryByTestId('chat-drawer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('invite-users-modal')).not.toBeInTheDocument();
   });
 });

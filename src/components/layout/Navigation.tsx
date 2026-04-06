@@ -10,6 +10,7 @@ import { getHomePathForUser } from '@/lib/homePage';
 import { NavItem } from '@/types';
 
 const baseNav: NavItem[] = [
+  { label: 'Info', href: '/' },
   { label: 'Discover', href: '/discover' },
   { label: 'My Organizations', href: '/organizations' },
   { label: 'My Schedule', href: '/my-schedule' },

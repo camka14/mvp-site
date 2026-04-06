@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Loading from '@/components/ui/Loading';
 import { useApp } from './providers';
 import { authService } from '@/lib/auth';
@@ -219,17 +219,15 @@ const integrations = [
 ];
 
 export default function HomePage() {
-  const { user, loading } = useApp();
+  const { user, loading, isAuthenticated, isGuest } = useApp();
   const router = useRouter();
   const [startingGuestSession, setStartingGuestSession] = useState(false);
   const [guestError, setGuestError] = useState('');
-
-  useEffect(() => {
-    if (loading) return;
-    if (user) {
-      router.push(getHomePathForUser(user));
-    }
-  }, [loading, router, user]);
+  const appHref = getHomePathForUser(user);
+  const showAppCta = isAuthenticated && !isGuest;
+  const landingImageProps = {
+    unoptimized: true,
+  } as const;
 
   const handleContinueAsGuest = async () => {
     if (startingGuestSession) return;
@@ -245,7 +243,7 @@ export default function HomePage() {
     }
   };
 
-  if (loading || user) {
+  if (loading) {
     return <Loading fullScreen text="Loading..." />;
   }
 
@@ -279,18 +277,29 @@ export default function HomePage() {
           </nav>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            <Link
-              href="/login"
-              className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/login"
-              className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
-            >
-              Sign up
-            </Link>
+            {showAppCta ? (
+              <Link
+                href={appHref}
+                className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
+              >
+                Go to app
+              </Link>
+            ) : (
+              <>
+                <Link
+                  href="/login"
+                  className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
+                >
+                  Sign in
+                </Link>
+                <Link
+                  href="/login"
+                  className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
+                >
+                  Sign up
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -309,26 +318,37 @@ export default function HomePage() {
             </p>
 
             <div className="flex flex-wrap gap-3">
-              <Link
-                href="/login"
-                className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-              >
-                Sign up
-              </Link>
-              <Link
-                href="/login"
-                className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-              >
-                Sign in
-              </Link>
-              <button
-                type="button"
-                onClick={handleContinueAsGuest}
-                disabled={startingGuestSession}
-                className="landing-btn-outline inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {startingGuestSession ? 'Opening discover...' : 'Continue as guest'}
-              </button>
+              {showAppCta ? (
+                <Link
+                  href={appHref}
+                  className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                >
+                  Go to app
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Sign up
+                  </Link>
+                  <Link
+                    href="/login"
+                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Sign in
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleContinueAsGuest}
+                    disabled={startingGuestSession}
+                    className="landing-btn-outline inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {startingGuestSession ? 'Opening discover...' : 'Continue as guest'}
+                  </button>
+                </>
+              )}
             </div>
 
             <p className="landing-support text-sm">
@@ -346,6 +366,7 @@ export default function HomePage() {
               <div className="landing-hero-stack space-y-4">
                 <div className="landing-shot-image landing-shot-image-equal">
                   <Image
+                    {...landingImageProps}
                     src={heroScreenshots.web.src}
                     alt={heroScreenshots.web.alt}
                     width={heroScreenshots.web.width}
@@ -358,6 +379,7 @@ export default function HomePage() {
                   <div className="landing-phone-frame landing-phone-frame-hero">
                     <div className="landing-phone-screen">
                       <Image
+                        {...landingImageProps}
                         src={heroScreenshots.mobile.src}
                         alt={heroScreenshots.mobile.alt}
                         width={heroScreenshots.mobile.width}
@@ -405,6 +427,7 @@ export default function HomePage() {
               </ul>
               <div className="landing-shot-image landing-shot-image-equal mt-5">
                 <Image
+                  {...landingImageProps}
                   src="/landing/org_home_web.png"
                   alt="Web organizer organization home dashboard screenshot"
                   width={1919}
@@ -427,6 +450,7 @@ export default function HomePage() {
               <div className="landing-phone-frame landing-phone-frame-two-sides mt-5">
                 <div className="landing-phone-screen">
                   <Image
+                    {...landingImageProps}
                     src="/landing/discover_screen_mobile.png"
                     alt="Mobile discover screenshot"
                     width={1344}
@@ -461,6 +485,7 @@ export default function HomePage() {
                     <div className={`landing-media-grid grid gap-3 ${feature.mobileImage ? 'landing-media-grid-paired' : ''}`}>
                       <div className={`landing-shot-image ${feature.mobileImage ? 'landing-media-pair-item' : ''}`}>
                         <Image
+                          {...landingImageProps}
                           src={feature.webImage.src}
                           alt={feature.webImage.alt}
                           width={feature.webImage.width}
@@ -477,6 +502,7 @@ export default function HomePage() {
                         <div className="landing-phone-frame landing-phone-frame-compact landing-phone-frame-equal landing-media-pair-item">
                           <div className="landing-phone-screen">
                             <Image
+                              {...landingImageProps}
                               src={feature.mobileImage.src}
                               alt={feature.mobileImage.alt}
                               width={feature.mobileImage.width}
@@ -646,20 +672,31 @@ export default function HomePage() {
               Start with your first league, tournament, or event and invite your teams immediately.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <Link
-                href="/login"
-                className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-              >
-                Sign up
-              </Link>
-              <button
-                type="button"
-                onClick={handleContinueAsGuest}
-                disabled={startingGuestSession}
-                className="landing-btn-outline inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Continue as guest
-              </button>
+              {showAppCta ? (
+                <Link
+                  href={appHref}
+                  className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                >
+                  Go to app
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Sign up
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleContinueAsGuest}
+                    disabled={startingGuestSession}
+                    className="landing-btn-outline inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Continue as guest
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </section>
