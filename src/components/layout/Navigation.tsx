@@ -13,7 +13,6 @@ const baseNav: NavItem[] = [
   { label: 'Discover', href: '/discover' },
   { label: 'My Organizations', href: '/organizations' },
   { label: 'My Schedule', href: '/my-schedule' },
-  { label: 'Profile', href: '/profile' },
 ];
 
 export default function Navigation() {
@@ -81,6 +80,7 @@ export default function Navigation() {
         : baseNav
     );
   const homeHref = getHomePathForUser(user);
+  const isProfileActive = pathname === '/profile' || pathname.startsWith('/profile/');
 
   return (
     <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -132,14 +132,21 @@ export default function Navigation() {
               </>
             ) : (
               <>
-                <div className="hidden md:flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1.5">
+                <Link
+                  href="/profile"
+                  className={`hidden md:flex items-center gap-2 rounded-full px-3 py-1.5 transition-colors ${
+                    isProfileActive
+                      ? 'bg-blue-100 text-blue-900'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
+                  }`}
+                >
                   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
                     {(authUser.name || authUser.email.split('@')[0]).slice(0, 1).toUpperCase()}
                   </div>
-                  <span className="text-sm font-medium text-slate-800">
+                  <span className="text-sm font-medium">
                     {authUser.name || authUser.email.split('@')[0]}
                   </span>
-                </div>
+                </Link>
 
                 <button
                   onClick={handleLogout}
@@ -165,6 +172,27 @@ export default function Navigation() {
         {/* Mobile Menu */}
         {isMenuOpen && (
           <div className="md:hidden border-t border-gray-200 py-2">
+            {!isGuest && (
+              <Link
+                href="/profile"
+                className={`mx-4 mb-2 flex items-center gap-3 rounded-2xl px-4 py-3 ${
+                  isProfileActive
+                    ? 'bg-blue-50 text-blue-700'
+                    : 'bg-slate-100 text-slate-800'
+                }`}
+                onClick={() => setIsMenuOpen(false)}
+              >
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
+                  {(authUser.name || authUser.email.split('@')[0]).slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold">
+                    {authUser.name || authUser.email.split('@')[0]}
+                  </div>
+                  <div className="text-xs opacity-75">Profile</div>
+                </div>
+              </Link>
+            )}
             {items.map((item) => (
               <Link
                 key={item.href}
