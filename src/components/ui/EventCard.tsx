@@ -53,7 +53,21 @@ export default function EventCard({
 }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
   const normalizedState = typeof event.state === 'string' ? event.state.toUpperCase() : 'PUBLISHED';
-  const isDraftEvent = normalizedState === 'UNPUBLISHED' || normalizedState === 'DRAFT';
+  const lifecycleBadge = useMemo(() => {
+    if (normalizedState === 'PRIVATE') {
+      return {
+        label: 'Private',
+        className: 'discover-badge-private',
+      };
+    }
+    if (normalizedState === 'UNPUBLISHED' || normalizedState === 'DRAFT') {
+      return {
+        label: 'Draft',
+        className: 'discover-badge-draft',
+      };
+    }
+    return null;
+  }, [normalizedState]);
 
   const eventTypeInfo = useMemo(() => {
     const normalizedEventType = typeof event.eventType === 'string'
@@ -282,9 +296,9 @@ export default function EventCard({
           <span className="discover-muted-pill">
             {event.teamSignup ? 'Team Registration' : 'Individual Registration'}
           </span>
-          {isDraftEvent && (
-            <span className="discover-event-badge discover-badge-draft">
-              Draft
+          {lifecycleBadge && (
+            <span className={`discover-event-badge ${lifecycleBadge.className}`}>
+              {lifecycleBadge.label}
             </span>
           )}
           {distance && (

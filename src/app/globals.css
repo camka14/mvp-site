@@ -328,6 +328,12 @@ svg {
   border: 1px solid #fecaca;
 }
 
+.discover-badge-private {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
 .discover-muted-pill {
   display: inline-flex;
   align-items: center;

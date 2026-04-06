@@ -48,6 +48,7 @@ export type RefundRequestsStatusEnum = (typeof RefundRequestsStatusEnum)[keyof t
 export const EventsStateEnum = {
   PUBLISHED: 'PUBLISHED',
   UNPUBLISHED: 'UNPUBLISHED',
+  PRIVATE: 'PRIVATE',
   TEMPLATE: 'TEMPLATE'
 } as const
 

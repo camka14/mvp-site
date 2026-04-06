@@ -191,6 +191,31 @@ describe('event template privacy routes', () => {
     expect(requireSessionMock).toHaveBeenCalled();
   });
 
+  it('forbids reading a private event when requester is not a manager', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PRIVATE', hostId: 'host_1' });
+    requireSessionMock.mockResolvedValueOnce({ userId: 'user_2', isAdmin: false });
+
+    const res = await eventGet(
+      new NextRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(requireSessionMock).toHaveBeenCalled();
+  });
+
+  it('allows reading a private event when requester is host', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PRIVATE', hostId: 'host_1' });
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+
+    const res = await eventGet(
+      new NextRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+  });
+
   it('allows reading a template event when requester is host', async () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'TEMPLATE', hostId: 'host_1' });
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
@@ -278,7 +303,7 @@ describe('event template privacy routes', () => {
         expect.objectContaining({
           OR: expect.arrayContaining([
             expect.objectContaining({
-              state: 'UNPUBLISHED',
+              state: { in: ['UNPUBLISHED', 'PRIVATE'] },
               OR: expect.arrayContaining([
                 { hostId: 'host_1' },
                 { assistantHostIds: { has: 'host_1' } },
@@ -310,7 +335,7 @@ describe('event template privacy routes', () => {
       expect.arrayContaining([
         expect.objectContaining({
           OR: expect.arrayContaining([
-            { state: 'UNPUBLISHED' },
+            { state: { in: ['UNPUBLISHED', 'PRIVATE'] } },
           ]),
         }),
       ]),
@@ -338,7 +363,7 @@ describe('event template privacy routes', () => {
         expect.objectContaining({
           OR: expect.arrayContaining([
             expect.objectContaining({
-              state: 'UNPUBLISHED',
+              state: { in: ['UNPUBLISHED', 'PRIVATE'] },
               OR: expect.arrayContaining([
                 { hostId: 'host_1' },
                 { assistantHostIds: { has: 'host_1' } },
@@ -461,6 +486,27 @@ describe('event template privacy routes', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           eventId: { in: ['event_2'] },
+        }),
+      }),
+    );
+  });
+
+  it('allows hosts to explicitly query private events via GET /api/events', async () => {
+    getTokenFromRequestMock.mockReturnValueOnce('token_1');
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events?state=PRIVATE'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          state: 'PRIVATE',
+          OR: [
+            { hostId: 'host_1' },
+            { assistantHostIds: { has: 'host_1' } },
+          ],
         }),
       }),
     );
