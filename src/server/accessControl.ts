@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { STAFF_ACCESS_TYPES, getBlockingStaffInvite, hasStaffMemberType, normalizeStaffMemberTypes } from '@/lib/staff';
 import type { StaffMemberType } from '@/types';
+import { evaluateRazumlyAdminAccess } from '@/server/razumlyAdmin';
 
 const normalizeIdList = (values: unknown): string[] => {
   if (!Array.isArray(values)) {
@@ -35,6 +36,15 @@ type EventAccessRecord = {
 };
 
 type OrganizationLookupClient = {
+  authUser?: {
+    findUnique: (args: {
+      where: { id: string };
+      select: { email: true; emailVerifiedAt: true };
+    }) => Promise<{
+      email: string;
+      emailVerifiedAt: Date | null;
+    } | null>;
+  } | undefined;
   organizations: {
     findUnique: (args: any) => Promise<{
       id?: string | null;
@@ -58,6 +68,19 @@ type OrganizationLookupClient = {
       status: string | null;
     }>>;
   } | undefined;
+};
+
+const hasRazumlyOrganizationAccess = async (
+  session: SessionLike,
+  client: OrganizationLookupClient,
+): Promise<boolean> => {
+  if (!client.authUser?.findUnique) {
+    return false;
+  }
+  const status = await evaluateRazumlyAdminAccess(session.userId, {
+    authUser: client.authUser,
+  });
+  return status.allowed;
 };
 
 export const hasOrganizationStaffAccess = async (
@@ -86,6 +109,10 @@ export const hasOrganizationStaffAccess = async (
     ((allowedTypes.includes('HOST') || allowedTypes.includes('STAFF')) && assignedHostIds.includes(session.userId))
     || (allowedTypes.includes('OFFICIAL') && assignedOfficialIds.includes(session.userId))
   ) {
+    return true;
+  }
+
+  if (await hasRazumlyOrganizationAccess(session, client)) {
     return true;
   }
 

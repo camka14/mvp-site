@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
+import { canAccessOrganizationUsers } from '@/server/organizationUsersAccess';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -102,8 +103,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const session = await requireSession(_req).catch(() => null);
-  const canManage = session ? await canManageOrganization(session, { id: org.id, ownerId: org.ownerId }) : false;
-  const [staffInvites, staffEmails] = canManage
+  const viewerCanManageOrganization = session
+    ? await canManageOrganization(session, { id: org.id, ownerId: org.ownerId, hostIds: org.hostIds, officialIds: org.officialIds })
+    : false;
+  const viewerCanAccessUsers = session
+    ? await canAccessOrganizationUsers({
+      session,
+      organization: {
+        id: org.id,
+        ownerId: org.ownerId,
+        hostIds: org.hostIds,
+        officialIds: org.officialIds,
+      },
+      canManage: viewerCanManageOrganization,
+    })
+    : false;
+  const [staffInvites, staffEmails] = viewerCanManageOrganization
     ? await Promise.all([
       prisma.invites.findMany({
         where: { organizationId: id, type: 'STAFF' },
@@ -132,7 +147,17 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       .map((row) => [row.userId, row.email] as const),
   );
 
-  return NextResponse.json(withLegacyFields({ ...org, staffMembers, staffInvites, staffEmailsByUserId }), { status: 200 });
+  return NextResponse.json(
+    withLegacyFields({
+      ...org,
+      staffMembers,
+      staffInvites,
+      staffEmailsByUserId,
+      viewerCanManageOrganization,
+      viewerCanAccessUsers,
+    }),
+    { status: 200 },
+  );
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
