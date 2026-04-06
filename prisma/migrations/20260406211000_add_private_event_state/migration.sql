@@ -1,0 +1,1 @@
+ALTER TYPE "EventsStateEnum" ADD VALUE 'PRIVATE';

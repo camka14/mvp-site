@@ -1209,6 +1209,97 @@ describe('League schedule page', () => {
     expect(mockSubmitPendingStaffInvites).toHaveBeenCalledWith('event_unpublished');
   });
 
+  it('saves a private league without changing lifecycle state', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'preview') return '1';
+        if (key === 'mode') return null;
+        return null;
+      },
+    });
+
+    const baseEvent = buildApiEvent({
+      id: 'event_private',
+      name: 'Private League',
+      state: 'PRIVATE',
+      attendees: 8,
+      fields: [
+        {
+          id: 'field_1',
+          name: 'Court A',
+          fieldNumber: 1,
+          location: '',
+          lat: 0,
+          long: 0,
+          rentalSlotIds: ['rental_1'],
+          rentalSlots: [
+            {
+              id: 'rental_1',
+              dayOfWeek: 0,
+              startTimeMinutes: 480,
+              endTimeMinutes: 540,
+              repeating: true,
+            },
+          ],
+        },
+      ],
+      matches: [
+        {
+          ...buildApiEvent().matches[0],
+          id: 'match_private',
+          field: {
+            id: 'field_1',
+            name: 'Court A',
+            fieldNumber: 1,
+            location: '',
+            lat: 0,
+            long: 0,
+          },
+        },
+      ],
+      timeSlots: [
+        {
+          id: 'slot_1',
+          dayOfWeek: 1,
+          startTimeMinutes: 600,
+          endTimeMinutes: 660,
+          repeating: true,
+          event: 'event_private',
+        },
+      ],
+    });
+
+    apiRequestMock.mockResolvedValue({ event: baseEvent });
+    mockEventFormDirtyState = true;
+
+    (eventService.updateEvent as jest.Mock).mockImplementation((_id: string, payload: any) =>
+      Promise.resolve({
+        ...payload,
+        $id: 'event_private',
+        state: 'PRIVATE',
+      }),
+    );
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const publishButton = await screen.findByRole('button', { name: /^save$/i });
+    await waitFor(() => {
+      expect(publishButton).toBeEnabled();
+    });
+    fireEvent.click(publishButton);
+
+    await waitFor(() => {
+      expect(eventService.updateEvent).toHaveBeenCalledTimes(1);
+    });
+
+    const [, payload] = (eventService.updateEvent as jest.Mock).mock.calls[0];
+    expect(payload.state).toBe('PRIVATE');
+    expect(payload.matches).toHaveLength(1);
+    expect(payload.timeSlots).toHaveLength(1);
+    expect(payload.fields?.[0]?.rentalSlotIds).toBeUndefined();
+    expect(payload).not.toHaveProperty('attendees');
+  });
+
   it('saves a template without changing template lifecycle state', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {

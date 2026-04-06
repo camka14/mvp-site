@@ -207,6 +207,17 @@ describe('eventService', () => {
     expect(event.sport.name).toBe('unknown_sport');
   });
 
+  it('preserves private event state when mapping rows', async () => {
+    const privateRow = {
+      ...baseEventRow,
+      state: 'PRIVATE',
+    };
+
+    const event = await eventService.mapRowFromDatabase(privateRow, false);
+
+    expect(event.state).toBe('PRIVATE');
+  });
+
   it('preserves split playoff division settings when mapping event rows', async () => {
     apiRequestMock.mockResolvedValue({
       ...baseEventRow,

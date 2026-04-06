@@ -235,6 +235,8 @@ const resolveSessionContext = (
   };
 };
 
+const HIDDEN_EVENT_STATES = ['UNPUBLISHED', 'PRIVATE'] as const;
+
 const buildDiscoverVisibilityClause = (
   sessionUserId: string | null,
   isAdmin: boolean,
@@ -245,10 +247,10 @@ const buildDiscoverVisibilityClause = (
   ];
 
   if (isAdmin) {
-    visibilityOr.push({ state: 'UNPUBLISHED' });
+    visibilityOr.push({ state: { in: [...HIDDEN_EVENT_STATES] } });
   } else if (sessionUserId) {
     visibilityOr.push({
-      state: 'UNPUBLISHED',
+      state: { in: [...HIDDEN_EVENT_STATES] },
       OR: [
         { hostId: sessionUserId },
         { assistantHostIds: { has: sessionUserId } },

@@ -682,7 +682,13 @@ class EventService {
     private normalizeEventState(value: unknown): EventState {
         if (typeof value === 'string') {
             const normalized = value.toUpperCase();
-            if (normalized === 'PUBLISHED' || normalized === 'UNPUBLISHED' || normalized === 'TEMPLATE') {
+            if (
+                normalized === 'PUBLISHED'
+                || normalized === 'UNPUBLISHED'
+                || normalized === 'PRIVATE'
+                || normalized === 'TEMPLATE'
+                || normalized === 'DRAFT'
+            ) {
                 return normalized as EventState;
             }
         }
