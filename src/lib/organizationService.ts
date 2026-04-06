@@ -214,6 +214,8 @@ class OrganizationService {
         : undefined,
       productIds,
       teamIds,
+      viewerCanManageOrganization: Boolean(row.viewerCanManageOrganization),
+      viewerCanAccessUsers: Boolean(row.viewerCanAccessUsers),
       $createdAt: row.$createdAt,
       $updatedAt: row.$updatedAt,
       events: [],

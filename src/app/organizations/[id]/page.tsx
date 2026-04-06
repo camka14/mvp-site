@@ -262,24 +262,31 @@ function OrganizationDetailContent() {
   const [stripeEmail, setStripeEmail] = useState('');
   const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
   const [updatingHomePagePreference, setUpdatingHomePagePreference] = useState(false);
+  const viewerCanManageOrganization = Boolean(org?.viewerCanManageOrganization);
   const isOwner = Boolean(
-    user
-      && org
-      && (
-        user.$id === org.ownerId
-        || (org.staffMembers ?? []).some((staffMember) => (
-          staffMember.userId === user.$id
-            && !staffMember.invite
-            && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
-        ))
+    viewerCanManageOrganization
+      || (
+        user
+          && org
+          && (
+            user.$id === org.ownerId
+            || (org.staffMembers ?? []).some((staffMember) => (
+              staffMember.userId === user.$id
+                && !staffMember.invite
+                && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
+            ))
+          )
       ),
   );
   const isOrganizationRoleMember = Boolean(
-    user
-      && org
-      && (
-        user.$id === org.ownerId
-        || (org.staffMembers ?? []).some((staffMember) => staffMember.userId === user.$id && !staffMember.invite)
+    viewerCanManageOrganization
+      || (
+        user
+          && org
+          && (
+            user.$id === org.ownerId
+            || (org.staffMembers ?? []).some((staffMember) => staffMember.userId === user.$id && !staffMember.invite)
+          )
       ),
   );
   const isCurrentOrganizationHomePage = Boolean(
@@ -294,8 +301,10 @@ function OrganizationDetailContent() {
         { label: 'Overview', value: 'overview' },
         { label: 'Events', value: 'events' },
         { label: 'Teams', value: 'teams' },
-        { label: 'Users', value: 'users' },
       ];
+      if (org?.viewerCanAccessUsers) {
+        base.push({ label: 'Users', value: 'users' });
+      }
       if (isOwner) {
         base.push({ label: 'Event Templates', value: 'eventTemplates' });
         base.push({ label: 'Document Templates', value: 'templates' });
@@ -306,7 +315,7 @@ function OrganizationDetailContent() {
       base.push({ label: 'Store', value: 'store' });
       return base;
     },
-    [isOwner],
+    [isOwner, org?.viewerCanAccessUsers],
   );
   const stripeEmailValid = useMemo(
     () => Boolean(stripeEmail && EMAIL_REGEX.test(stripeEmail.trim())),
@@ -1145,7 +1154,7 @@ function OrganizationDetailContent() {
   }, [org, isOwner, user, loadEventTemplates]);
 
   useEffect(() => {
-    if (!org || !user) {
+    if (!org || !user || !org.viewerCanAccessUsers) {
       setOrganizationUsers([]);
       setExpandedOrganizationUserIds([]);
       return;

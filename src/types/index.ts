@@ -544,6 +544,8 @@ export interface Organization {
   staffEmailsByUserId?: Record<string, string>;
   productIds?: string[];
   teamIds?: string[];
+  viewerCanManageOrganization?: boolean;
+  viewerCanAccessUsers?: boolean;
   $createdAt?: string;
   $updatedAt?: string;
 
@@ -637,7 +639,7 @@ export enum Sports {
 
 export const SPORTS_LIST: string[] = Object.values(Sports);
 
-export type EventState = 'PUBLISHED' | 'UNPUBLISHED' | 'TEMPLATE' | 'DRAFT';
+export type EventState = 'PUBLISHED' | 'UNPUBLISHED' | 'PRIVATE' | 'TEMPLATE' | 'DRAFT';
 
 export type EventStatus = 'draft' | 'published' | 'archived' | 'cancelled' | 'completed';
 

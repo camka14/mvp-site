@@ -1,21 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { canManageOrganization, canOfficialOrganization } from '@/server/accessControl';
+import {
+  canAccessOrganizationUsers,
+  listOrganizationUsersScopeEvents,
+} from '@/server/organizationUsersAccess';
 
 export const dynamic = 'force-dynamic';
-
-type OrgEventRow = {
-  id: string;
-  name: string;
-  start: Date;
-  end: Date;
-  userIds: string[];
-  teamIds: string[];
-  hostId: string | null;
-  assistantHostIds: string[];
-  officialIds: string[];
-};
 
 type EventSummary = {
   eventId: string;
@@ -70,11 +61,6 @@ const normalizeStatus = (value: string | null | undefined): string | undefined =
   return trimmed.toUpperCase();
 };
 
-const normalizeEventName = (value: string | null | undefined): string => {
-  const trimmed = typeof value === 'string' ? value.trim() : '';
-  return trimmed.length > 0 ? trimmed : 'Untitled Event';
-};
-
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -113,56 +99,6 @@ const getSortTimestamp = (value: string | undefined): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const hasOrganizationUserAccess = async (params: {
-  sessionUserId: string;
-  isAdmin: boolean;
-  org: { id: string; ownerId: string };
-  events: OrgEventRow[];
-}): Promise<boolean> => {
-  if (await canManageOrganization(
-    {
-      userId: params.sessionUserId,
-      isAdmin: params.isAdmin,
-    },
-    params.org,
-  )) {
-    return true;
-  }
-
-  if (await canOfficialOrganization(
-    {
-      userId: params.sessionUserId,
-      isAdmin: params.isAdmin,
-    },
-    params.org,
-  )) {
-    return true;
-  }
-
-  const inEventUsers = params.events.some((event) => event.userIds.includes(params.sessionUserId));
-  if (inEventUsers) {
-    return true;
-  }
-
-  const eventIds = params.events.map((event) => event.id);
-  if (!eventIds.length) {
-    return false;
-  }
-
-  const registration = await prisma.eventRegistrations.findFirst({
-    where: {
-      eventId: { in: eventIds },
-      OR: [
-        { registrantId: params.sessionUserId },
-        { createdBy: params.sessionUserId },
-      ],
-    },
-    select: { id: true },
-  });
-
-  return Boolean(registration);
-};
-
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const { id } = await params;
@@ -175,57 +111,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
 
-  const organizationFields = await prisma.fields.findMany({
-    where: { organizationId: id },
-    select: { id: true },
-  });
-  const organizationFieldIds = organizationFields
-    .map((field) => normalizeId(field.id))
-    .filter((fieldId): fieldId is string => Boolean(fieldId));
+  const eventRows = await listOrganizationUsersScopeEvents(id);
 
-  const eventWhere = organizationFieldIds.length
-    ? {
-      OR: [
-        { organizationId: id },
-        { fieldIds: { hasSome: organizationFieldIds } },
-      ],
-    }
-    : { organizationId: id };
-
-  const events = await prisma.events.findMany({
-    where: eventWhere,
-    select: {
-      id: true,
-      name: true,
-      start: true,
-      end: true,
-      userIds: true,
-      teamIds: true,
-      hostId: true,
-      assistantHostIds: true,
-      officialIds: true,
-    },
-    orderBy: { start: 'desc' },
-  });
-  const eventRows: OrgEventRow[] = events.map((event) => ({
-    id: event.id,
-    name: normalizeEventName(event.name),
-    start: event.start,
-    end: event.end ?? event.start,
-    userIds: normalizeIdList(event.userIds),
-    teamIds: normalizeIdList(event.teamIds),
-    hostId: normalizeId(event.hostId),
-    assistantHostIds: normalizeIdList(event.assistantHostIds),
-    officialIds: normalizeIdList(event.officialIds),
-  }));
-
-  const canAccess = await hasOrganizationUserAccess({
-    sessionUserId: session.userId,
-    isAdmin: session.isAdmin,
-    org: {
-      id: org.id,
-      ownerId: org.ownerId,
-    },
+  const canAccess = await canAccessOrganizationUsers({
+    session,
+    organization: org,
     events: eventRows,
   });
 

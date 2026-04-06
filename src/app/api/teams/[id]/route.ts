@@ -7,6 +7,7 @@ import {
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
+import { canManageOrganization } from '@/server/accessControl';
 import { deleteTeamChatInTx, getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 import { asRecord, findPresentKeys } from '@/server/http/strictPatch';
 
@@ -335,42 +336,19 @@ const createTeamWithCompatibility = async (
   throw lastError instanceof Error ? lastError : new Error('Failed to create team with compatible schema.');
 };
 
-const hasOrganizationTeamManagementAccess = async (teamId: string, userId: string): Promise<boolean> => {
-  if (!teamId || !userId) return false;
+const hasOrganizationTeamManagementAccess = async (
+  teamId: string,
+  session: { userId: string; isAdmin: boolean },
+): Promise<boolean> => {
+  if (!teamId || !session.userId) return false;
   const organization = await prisma.organizations.findFirst({
     where: { teamIds: { has: teamId } },
-    select: { id: true, ownerId: true },
+    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
   });
   if (!organization) {
     return false;
   }
-  if (organization.ownerId === userId) {
-    return true;
-  }
-  const staffMember = await prisma.staffMembers.findUnique({
-    where: {
-      organizationId_userId: {
-        organizationId: organization.id,
-        userId,
-      },
-    },
-    select: { types: true },
-  });
-  if (!staffMember || !Array.isArray(staffMember.types)) {
-    return false;
-  }
-  if (!staffMember.types.some((type) => type === 'HOST' || type === 'STAFF')) {
-    return false;
-  }
-  const blockingInvite = await prisma.invites.findFirst({
-    where: {
-      organizationId: organization.id,
-      userId,
-      type: 'STAFF',
-    },
-    select: { id: true },
-  });
-  return !blockingInvite;
+  return canManageOrganization(session, organization);
 };
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -431,7 +409,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const isCaptain = existing.captainId === session.userId;
   const isManager = normalizeText((existing as any).managerId) === session.userId;
   const isOrganizationManager = (!session.isAdmin && !isCaptain && !isManager)
-    ? await hasOrganizationTeamManagementAccess(id, session.userId)
+    ? await hasOrganizationTeamManagementAccess(id, session)
     : false;
   if (!session.isAdmin && !isCaptain && !isManager && !isOrganizationManager) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -545,7 +523,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
   const isCaptain = existing.captainId === session.userId;
   const isManager = normalizeText((existing as any).managerId) === session.userId;
-  const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session.userId);
+  const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session);
   if (!session.isAdmin && !isCaptain && !isManager && !isOrganizationManager) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

@@ -571,7 +571,7 @@ type LocationDefaults = {
   coordinates?: [number, number];
 };
 
-type EventLifecycleStatus = 'DRAFT' | 'PUBLISHED';
+type EventLifecycleStatus = 'DRAFT' | 'PRIVATE' | 'PUBLISHED';
 type NotificationAudienceKey = 'managers' | 'players' | 'parents' | 'officials' | 'hosts';
 type NotificationAudienceState = Record<NotificationAudienceKey, boolean>;
 
@@ -664,8 +664,12 @@ const DEFAULT_NOTIFICATION_AUDIENCE: NotificationAudienceState = {
   hosts: false,
 };
 
+const DRAFT_LIKE_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
+const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT', 'PRIVATE']);
+
 const EVENT_LIFECYCLE_OPTIONS: Array<{ value: EventLifecycleStatus; label: string }> = [
   { value: 'DRAFT', label: 'Draft' },
+  { value: 'PRIVATE', label: 'Private' },
   { value: 'PUBLISHED', label: 'Published' },
 ];
 
@@ -675,12 +679,34 @@ const getEventLifecycleStatus = (eventInput: Pick<Event, 'state'> | null | undef
   }
 
   const normalizedState = typeof eventInput.state === 'string' ? eventInput.state.toUpperCase() : 'PUBLISHED';
-  if (normalizedState === 'UNPUBLISHED' || normalizedState === 'DRAFT') {
+  if (normalizedState === 'PRIVATE') {
+    return 'PRIVATE';
+  }
+  if (DRAFT_LIKE_EVENT_STATES.has(normalizedState)) {
     return 'DRAFT';
   }
 
   return 'PUBLISHED';
 };
+
+const toStoredEventLifecycleState = (
+  lifecycleStatus: EventLifecycleStatus,
+  currentState: Event['state'] | null | undefined,
+): EventState => {
+  if (lifecycleStatus === 'PUBLISHED') {
+    return 'PUBLISHED';
+  }
+  if (lifecycleStatus === 'PRIVATE') {
+    return 'PRIVATE';
+  }
+  return typeof currentState === 'string' && currentState.toUpperCase() === 'DRAFT'
+    ? 'DRAFT'
+    : 'UNPUBLISHED';
+};
+
+const getLifecycleStatusLabel = (status: EventLifecycleStatus): string => (
+  EVENT_LIFECYCLE_OPTIONS.find((option) => option.value === status)?.label ?? status
+);
 
 const DEFAULT_SPORT: Sport = {
   $id: '',
@@ -1379,7 +1405,7 @@ function EventScheduleContent() {
   const activeEvent = usingChangeCopies ? changesEvent : event;
   const hasPendingUnsavedChanges = hasUnsavedChanges || formHasUnsavedChanges;
   const isTemplateEvent = (activeEvent?.state ?? '').toUpperCase() === 'TEMPLATE';
-  const isUnpublished = (activeEvent?.state ?? 'PUBLISHED') === 'UNPUBLISHED' || activeEvent?.state === 'DRAFT';
+  const isHiddenEvent = HIDDEN_EVENT_STATES.has(String(activeEvent?.state ?? 'PUBLISHED').toUpperCase());
   const isEditingEvent = isTemplateEvent || isPreview || isEditParam;
   const activeMatches = usingChangeCopies ? changesMatches : matches;
   const matchConflictsById = useMemo<Record<string, string[]>>(
@@ -1702,15 +1728,18 @@ function EventScheduleContent() {
     user?.$id && eventOfficialIds.includes(user.$id),
   );
   const isOrganizationManager = Boolean(
-    user?.$id
-      && activeOrganization
-      && (
-        activeOrganization.ownerId === user.$id
-        || (activeOrganization.staffMembers ?? []).some((staffMember) => (
-          staffMember.userId === user.$id
-            && !staffMember.invite
-            && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
-        ))
+    activeOrganization?.viewerCanManageOrganization
+      || (
+        user?.$id
+          && activeOrganization
+          && (
+            activeOrganization.ownerId === user.$id
+            || (activeOrganization.staffMembers ?? []).some((staffMember) => (
+              staffMember.userId === user.$id
+                && !staffMember.invite
+                && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
+            ))
+          )
       ),
   );
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
@@ -1812,7 +1841,7 @@ function EventScheduleContent() {
       items.push({
         id: 'event-lifecycle-status',
         category: 'event',
-        label: `Event status: ${activeLifecycleStatus} -> ${selectedLifecycleStatus}`,
+        label: `Event status: ${getLifecycleStatusLabel(activeLifecycleStatus)} -> ${getLifecycleStatusLabel(selectedLifecycleStatus)}`,
         detail: 'Lifecycle status will update on save.',
         sortOrder: 0,
       });
@@ -4198,7 +4227,7 @@ function EventScheduleContent() {
       const base = prev ?? activeEvent;
       if (!base) return prev;
 
-      const nextState: EventState = nextStatus === 'DRAFT' ? 'UNPUBLISHED' : 'PUBLISHED';
+      const nextState = toStoredEventLifecycleState(nextStatus, base.state);
 
       return {
         ...base,
@@ -6169,7 +6198,7 @@ function EventScheduleContent() {
           nextEvent.state = 'TEMPLATE';
         } else {
           const lifecycleStatus = selectedLifecycleStatus ?? getEventLifecycleStatus(nextEvent);
-          nextEvent.state = lifecycleStatus === 'DRAFT' ? 'UNPUBLISHED' : 'PUBLISHED';
+          nextEvent.state = toStoredEventLifecycleState(lifecycleStatus, nextEvent.state);
         }
 
         let updatedEvent = nextEvent;
@@ -6487,7 +6516,7 @@ function EventScheduleContent() {
 
     if (!activeEvent) return;
 
-    if (!isPreview && !isEditingEvent && !isUnpublished) {
+    if (!isPreview && !isEditingEvent && !isHiddenEvent) {
       handleEnterEditMode();
       return;
     }
