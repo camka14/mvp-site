@@ -173,6 +173,207 @@ describe('eventService', () => {
     expect(apiRequestMock.mock.calls[2][0]).toBe('/api/league-scoring-configs/cfg_1');
   });
 
+  it('serializes a comprehensive event update without circular field references', async () => {
+    apiRequestMock
+      .mockResolvedValueOnce({ ...baseEventRow })
+      .mockResolvedValueOnce({
+        ...baseEventRow,
+        eventType: 'LEAGUE',
+        leagueScoringConfigId: 'cfg_1',
+      })
+      .mockResolvedValueOnce({
+        $id: 'cfg_1',
+        pointsForWin: 3,
+        pointsForDraw: 1,
+        pointsForLoss: 0,
+      });
+
+    const field = {
+      $id: 'field_1',
+      name: 'Court 1',
+      location: 'Denver',
+      lat: 39.7392,
+      long: -104.9903,
+      fieldNumber: 1,
+      heading: 90,
+      inUse: true,
+      divisions: [
+        {
+          id: 'evt_1__division__open',
+          key: 'open',
+          name: 'Open',
+          fieldIds: ['field_1'],
+        },
+      ],
+      rentalSlotIds: ['rental_1'],
+    } as any;
+
+    const match = {
+      $id: 'match_1',
+      eventId: 'evt_1',
+      fieldId: 'field_1',
+      team1Id: 'team_1',
+      team2Id: 'team_2',
+      startTime: '2025-01-01T00:00:00Z',
+      endTime: '2025-01-01T01:00:00Z',
+      field,
+    } as any;
+
+    field.matches = [match];
+
+    const eventUpdate = {
+      ...baseEventRow,
+      name: 'Updated Event',
+      description: 'Updated description',
+      location: 'Aurora',
+      address: '123 Main St',
+      coordinates: [39.73, -104.99],
+      price: 2500,
+      minAge: 18,
+      maxAge: 45,
+      rating: 4.5,
+      noFixedEndDateTime: false,
+      maxParticipants: 16,
+      teamSizeLimit: 6,
+      restTimeMinutes: 15,
+      teamSignup: true,
+      singleDivision: false,
+      waitListIds: ['user_wait_1'],
+      freeAgentIds: ['user_free_1'],
+      teamIds: ['team_1', 'team_2'],
+      userIds: ['user_1', 'user_2'],
+      timeSlotIds: ['slot_1'],
+      officialIds: ['official_1'],
+      officialSchedulingMode: 'SCHEDULE',
+      officialPositions: [
+        { id: 'ref', name: 'Ref', count: 1, order: 0 },
+      ],
+      eventOfficials: [
+        { id: 'assignment_1', userId: 'official_1', positionIds: ['ref'], fieldIds: ['field_1'], isActive: true },
+      ],
+      assistantHostIds: ['assistant_1'],
+      cancellationRefundHours: 12,
+      registrationCutoffHours: 24,
+      seedColor: 7,
+      eventType: 'LEAGUE',
+      divisions: ['evt_1__division__open'],
+      divisionDetails: [
+        {
+          id: 'evt_1__division__open',
+          key: 'open',
+          name: 'Open',
+          price: 2500,
+          maxParticipants: 16,
+          playoffTeamCount: 8,
+          allowPaymentPlans: true,
+          installmentCount: 2,
+          installmentAmounts: [1500, 1000],
+          installmentDueDates: ['2025-01-02T00:00:00Z', '2025-01-09T00:00:00Z'],
+          fieldIds: ['field_1'],
+          teamIds: ['team_1', 'team_2'],
+        },
+      ],
+      allowPaymentPlans: true,
+      installmentCount: 2,
+      installmentAmounts: [1500, 1000],
+      installmentDueDates: ['2025-01-02T00:00:00Z', '2025-01-09T00:00:00Z'],
+      allowTeamSplitDefault: true,
+      registrationByDivisionType: false,
+      splitLeaguePlayoffDivisions: false,
+      gamesPerOpponent: 2,
+      includePlayoffs: true,
+      playoffTeamCount: 8,
+      usesSets: true,
+      matchDurationMinutes: 60,
+      setDurationMinutes: 25,
+      setsPerMatch: 3,
+      doTeamsOfficiate: true,
+      teamOfficialsMaySwap: true,
+      pointsToVictory: [21, 21, 15],
+      leagueScoringConfigId: 'cfg_1',
+      leagueScoringConfig: {
+        $id: 'cfg_1',
+        pointsForWin: 3,
+        pointsForDraw: 1,
+        pointsForLoss: 0,
+      },
+      sport: { $id: 'sport_1', name: 'Volleyball' },
+      fields: [field],
+      matches: [match],
+      timeSlots: [
+        {
+          $id: 'slot_1',
+          dayOfWeek: 2,
+          daysOfWeek: [2, 4],
+          divisions: ['evt_1__division__open'],
+          startTimeMinutes: 540,
+          endTimeMinutes: 600,
+          startDate: '2025-01-01',
+          endDate: '2025-02-01',
+          repeating: true,
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          price: 0,
+          requiredTemplateIds: ['template_1'],
+          hostRequiredTemplateIds: ['template_host_1'],
+          event: { $id: 'evt_1' },
+        },
+      ],
+      requiredTemplateIds: ['template_event_1'],
+      attendees: 8,
+    } as any;
+
+    await eventService.updateEvent('evt_1', eventUpdate, {
+      fields: eventUpdate.fields,
+      timeSlots: eventUpdate.timeSlots,
+      leagueScoringConfig: eventUpdate.leagueScoringConfig,
+    });
+
+    expect(apiRequestMock).toHaveBeenCalledTimes(3);
+
+    const [, options] = apiRequestMock.mock.calls[0];
+    expect(() => JSON.stringify(options?.body)).not.toThrow();
+    expect(options?.method).toBe('PATCH');
+    expect(options?.body).toEqual(
+      expect.objectContaining({
+        event: expect.objectContaining({
+          name: 'Updated Event',
+          fields: [
+            expect.objectContaining({
+              $id: 'field_1',
+              divisions: ['evt_1__division__open'],
+              matchIds: ['match_1'],
+            }),
+          ],
+          timeSlots: [
+            expect.objectContaining({
+              $id: 'slot_1',
+              dayOfWeek: 2,
+              daysOfWeek: [2, 4],
+              scheduledFieldId: 'field_1',
+              scheduledFieldIds: ['field_1'],
+            }),
+          ],
+          divisionDetails: [
+            expect.objectContaining({
+              id: 'evt_1__division__open',
+              teamIds: ['team_1', 'team_2'],
+            }),
+          ],
+          leagueScoringConfig: expect.objectContaining({
+            pointsForWin: 3,
+            pointsForDraw: 1,
+            pointsForLoss: 0,
+          }),
+        }),
+      }),
+    );
+    expect((options?.body as any)?.event?.fields?.[0]?.matches).toBeUndefined();
+    expect((options?.body as any)?.event?.timeSlots?.[0]?.event).toBeUndefined();
+    expect(apiRequestMock.mock.calls[1][0]).toBe('/api/events/evt_1');
+    expect(apiRequestMock.mock.calls[2][0]).toBe('/api/league-scoring-configs/cfg_1');
+  });
+
   it('maps template rows without sport data using a fallback sport object', async () => {
     const rowWithoutSport = {
       ...baseEventRow,

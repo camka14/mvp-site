@@ -256,10 +256,15 @@ class EventService {
         } = {},
     ): Promise<Event> {
         try {
-            const payload = toEventPayload(eventData as Event) as Record<string, unknown>;
             const hasFieldsOverride = Object.prototype.hasOwnProperty.call(options, 'fields');
             const hasTimeSlotsOverride = Object.prototype.hasOwnProperty.call(options, 'timeSlots');
             const hasLeagueScoringConfigOverride = Object.prototype.hasOwnProperty.call(options, 'leagueScoringConfig');
+            const payloadSource = {
+                ...(eventData as Event),
+                ...(hasFieldsOverride ? { fields: options.fields } : {}),
+                ...(hasTimeSlotsOverride ? { timeSlots: options.timeSlots } : {}),
+            } as Event;
+            const payload = toEventPayload(payloadSource) as Record<string, unknown>;
             delete payload.matches;
             delete payload.teams;
             delete payload.organization;
@@ -281,13 +286,11 @@ class EventService {
             delete payload.leagueConfig;
             delete payload.refType;
 
-            delete payload.fields;
-            delete payload.timeSlots;
-            if (hasFieldsOverride && Array.isArray(options.fields)) {
-                payload.fields = options.fields;
+            if (!hasFieldsOverride) {
+                delete payload.fields;
             }
-            if (hasTimeSlotsOverride && Array.isArray(options.timeSlots)) {
-                payload.timeSlots = options.timeSlots;
+            if (!hasTimeSlotsOverride) {
+                delete payload.timeSlots;
             }
             if (hasLeagueScoringConfigOverride) {
                 payload.leagueScoringConfig = options.leagueScoringConfig;
