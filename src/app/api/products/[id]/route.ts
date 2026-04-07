@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
+import { normalizeProductTaxCategory, syncPlatformRecurringProduct } from '@/lib/stripeProducts';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,6 +14,7 @@ const PRODUCT_MUTABLE_FIELDS = new Set<string>([
   'description',
   'priceCents',
   'period',
+  'taxCategory',
   'isActive',
   'stripeProductId',
   'stripePriceId',
@@ -30,7 +33,6 @@ const PRODUCT_ADMIN_OVERRIDABLE_FIELDS = new Set<string>([
   'organizationId',
   'createdBy',
 ]);
-
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -100,6 +102,44 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (payload.period) {
     updateData.period = String(payload.period).toUpperCase();
   }
+  if (payload.taxCategory !== undefined) {
+    const normalizedTaxCategory = normalizeProductTaxCategory(payload.taxCategory);
+    if (!normalizedTaxCategory) {
+      return NextResponse.json({ error: 'Invalid product tax category.' }, { status: 400 });
+    }
+    updateData.taxCategory = normalizedTaxCategory;
+  }
+
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  if (!secretKey) {
+    return NextResponse.json({ error: 'Stripe is not configured.' }, { status: 500 });
+  }
+
+  const nextProduct = {
+    id: existing.id,
+    name: typeof updateData.name === 'string' ? updateData.name : existing.name,
+    description: Object.prototype.hasOwnProperty.call(updateData, 'description')
+      ? (typeof updateData.description === 'string' ? updateData.description : null)
+      : existing.description,
+    priceCents: typeof updateData.priceCents === 'number' ? updateData.priceCents : existing.priceCents,
+    period: typeof updateData.period === 'string' ? updateData.period : existing.period,
+    organizationId: typeof updateData.organizationId === 'string' ? updateData.organizationId : existing.organizationId,
+    taxCategory: normalizeProductTaxCategory(updateData.taxCategory) ?? normalizeProductTaxCategory(existing.taxCategory),
+    stripeProductId: existing.stripeProductId,
+    stripePriceId: existing.stripePriceId,
+  };
+  const stripe = new Stripe(secretKey);
+  const stripeCatalog = await syncPlatformRecurringProduct({
+    stripe,
+    product: nextProduct,
+    forceNewPrice: (
+      Object.prototype.hasOwnProperty.call(updateData, 'priceCents')
+      || Object.prototype.hasOwnProperty.call(updateData, 'period')
+      || !existing.stripePriceId
+    ),
+  });
+  updateData.stripeProductId = stripeCatalog.stripeProductId;
+  updateData.stripePriceId = stripeCatalog.stripePriceId;
 
   const updated = await prisma.products.update({
     where: { id },

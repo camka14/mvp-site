@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
+    BillingAddress,
     Event,
     UserData,
     Team,
@@ -15,9 +16,10 @@ import {
     PaymentIntent,
     getEventImageFallbackUrl,
     getEventImageUrl,
+    formatEventDivisionPriceRange,
     formatPrice,
 } from '@/types';
-import { apiRequest } from '@/lib/apiClient';
+import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { eventService } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
@@ -27,7 +29,7 @@ import { createId } from '@/lib/id';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
 import { signedDocumentService } from '@/lib/signedDocumentService';
 import { familyService, FamilyChild } from '@/lib/familyService';
-import { registrationService, ConsentLinks, EventRegistration } from '@/lib/registrationService';
+import { registrationService, type DivisionRegistrationSelection, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
@@ -48,6 +50,7 @@ import { collectOrganizationHostIds } from '@/lib/organizationEventAccess';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
+import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import PaymentModal from '@/components/ui/PaymentModal';
 import RefundSection from '@/components/ui/RefundSection';
 import UserCard from '@/components/ui/UserCard';
@@ -84,6 +87,12 @@ type JoinIntent = {
 type PaymentPlanPreviewState = {
     intent: JoinIntent;
     ownerLabel: string;
+};
+
+type PendingEventCheckoutState = {
+    event: Event;
+    team?: Team;
+    selection?: DivisionRegistrationSelection;
 };
 
 const isChildJoinIntent = (intent: JoinIntent): boolean => (
@@ -721,6 +730,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [joinError, setJoinError] = useState<string | null>(null);
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
+    const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
+    const [pendingEventCheckout, setPendingEventCheckout] = useState<PendingEventCheckoutState | null>(null);
     const [confirmingPurchase, setConfirmingPurchase] = useState(false);
     const [showSignModal, setShowSignModal] = useState(false);
     const [signLinks, setSignLinks] = useState<SignStep[]>([]);
@@ -930,7 +941,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             ? Math.max(0, Math.trunc(Number(currentEvent.installmentCount)))
             : eventInstallmentAmounts.length;
 
-        if (currentEvent.singleDivision || !selectedDivisionOption) {
+        if (!selectedDivisionOption) {
             return {
                 priceCents: eventPriceCents,
                 allowPaymentPlans: eventAllowPaymentPlans,
@@ -1521,6 +1532,52 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         return true;
     }, [authUser?.email, currentEvent, loadRequiredSignLinksForIntent, user]);
 
+    const startEventCheckout = useCallback(async ({
+        event: checkoutEvent,
+        team,
+        selection,
+        billingAddress,
+    }: PendingEventCheckoutState & {
+        billingAddress?: BillingAddress;
+    }) => {
+        if (!user) {
+            throw new Error('You must be signed in to continue.');
+        }
+
+        try {
+            const paymentIntent = await paymentService.createPaymentIntent(
+                user,
+                checkoutEvent,
+                team,
+                undefined,
+                undefined,
+                selection,
+                billingAddress,
+            );
+            setPaymentData(paymentIntent);
+            setShowPaymentModal(true);
+            setPendingEventCheckout(null);
+            setShowBillingAddressModal(false);
+        } catch (error) {
+            if (
+                isApiRequestError(error)
+                && error.data
+                && typeof error.data === 'object'
+                && 'billingAddressRequired' in error.data
+                && Boolean((error.data as { billingAddressRequired?: boolean }).billingAddressRequired)
+            ) {
+                setPendingEventCheckout({
+                    event: checkoutEvent,
+                    team,
+                    selection,
+                });
+                setShowBillingAddressModal(true);
+                return;
+            }
+            throw error;
+        }
+    }, [user]);
+
     const finalizeJoin = useCallback(async (intent: JoinIntent) => {
         if (!user || !currentEvent) return;
         const requiresDivisionSelection = intent.mode !== 'child_free_agent';
@@ -1635,8 +1692,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     user,
                     eventForJoin,
                     joinTeam,
-                    undefined,
-                    undefined,
                     selection,
                     JOIN_API_TIMEOUT_MS,
                 );
@@ -1672,8 +1727,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             eventForJoin,
                             joinTeam,
                             undefined,
-                            undefined,
-                            undefined,
                             JOIN_API_TIMEOUT_MS,
                         );
                     } catch (rollbackError) {
@@ -1693,24 +1746,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     user,
                     checkoutEvent ?? currentEvent,
                     resolvedTeam,
-                    undefined,
-                    undefined,
                     selection,
                     JOIN_API_TIMEOUT_MS,
                 );
             }
             await loadEventDetails();
         } else {
-            const paymentIntent = await paymentService.createPaymentIntent(
-                user,
-                checkoutEvent ?? currentEvent,
-                resolvedTeam,
-                undefined,
-                undefined,
+            await startEventCheckout({
+                event: checkoutEvent ?? currentEvent,
+                team: resolvedTeam,
                 selection,
-            );
-            setPaymentData(paymentIntent);
-            setShowPaymentModal(true);
+            });
         }
     }, [
         checkoutEvent,
@@ -1726,6 +1772,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         selectedDivisionBilling.allowPaymentPlans,
         selectedDivisionAtCapacity,
         selectedTeamId,
+        startEventCheckout,
         teams.length,
         user,
         userTeams,
@@ -2496,8 +2543,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 currentEvent,
                 selectedTeam,
                 undefined,
-                undefined,
-                undefined,
                 JOIN_API_TIMEOUT_MS,
             );
 
@@ -2556,8 +2601,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     user,
                     checkoutEvent ?? currentEvent,
                     joinTeam,
-                    undefined,
-                    undefined,
                     selection,
                     JOIN_API_TIMEOUT_MS,
                 );
@@ -2743,7 +2786,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const mapEmbedSrc = mapQuery
         ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
         : null;
-    const eventPriceSummary = `${formatPrice(normalizePriceCents(currentEvent.price))} / ${isTeamSignup ? 'team' : 'player'}`;
+    const eventPriceSummary = `${formatEventDivisionPriceRange(currentEvent)} / ${isTeamSignup ? 'team' : 'player'}`;
     const maxParticipantsLabel = isTeamSignup ? 'Max teams' : 'Max players';
     const registrationCutoffSummary = formatRegistrationCutoffSummary(currentEvent.registrationCutoffHours);
     const refundSummary = formatRefundSummary(currentEvent.cancellationRefundHours);
@@ -2844,65 +2887,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     label: currentEvent.doubleElimination ? 'Winner points' : 'Bracket set points',
                     value: currentEvent.winnerBracketPointsToVictory.join(', '),
                 });
-            }
-            if (currentEvent.doubleElimination && typeof currentEvent.loserSetCount === 'number') {
-                rows.push({ label: 'Loser set count', value: String(currentEvent.loserSetCount) });
-            }
-            if (currentEvent.doubleElimination && Array.isArray(currentEvent.loserBracketPointsToVictory) && currentEvent.loserBracketPointsToVictory.length > 0) {
-                rows.push({ label: 'Loser points', value: currentEvent.loserBracketPointsToVictory.join(', ') });
-            }
-        }
-
-        return rows;
-    })();
-    const divisionSettingsRows: ReadOnlyDetailField[] = (() => {
-        const rows: ReadOnlyDetailField[] = [
-            { label: 'Divisions', value: eventDivisionLabels.join(', ') || 'Not set' },
-            { label: maxParticipantsLabel, value: String(currentEvent.maxParticipants) },
-            { label: 'Team size', value: String(currentEvent.teamSizeLimit) },
-            { label: 'Team event', value: isTeamSignup ? 'Yes' : 'No' },
-            { label: 'Division mode', value: currentEvent.singleDivision ? 'Single' : 'Multi' },
-            { label: 'Teams', value: String(teams.length) },
-            { label: 'Free agents', value: String(normalizedFreeAgentIds.length) },
-        ];
-
-        if (currentEvent.eventType === 'LEAGUE') {
-            rows.push({ label: 'Games per opponent', value: String(currentEvent.gamesPerOpponent ?? 1) });
-            if (currentEvent.usesSets) {
-                rows.push({ label: 'Sets per match', value: String(currentEvent.setsPerMatch ?? 1) });
-                rows.push({ label: 'Set duration', value: `${currentEvent.setDurationMinutes ?? 20} minutes` });
-                if (Array.isArray(currentEvent.pointsToVictory) && currentEvent.pointsToVictory.length > 0) {
-                    rows.push({ label: 'Points to victory', value: currentEvent.pointsToVictory.join(', ') });
-                }
-            } else {
-                rows.push({ label: 'Match duration', value: `${currentEvent.matchDurationMinutes ?? 60} minutes` });
-            }
-            rows.push({ label: 'Rest time', value: `${currentEvent.restTimeMinutes ?? 0} minutes` });
-            if (currentEvent.includePlayoffs) {
-                rows.push({
-                    label: 'Playoffs',
-                    value: currentEvent.singleDivision
-                        ? `${Math.max(2, currentEvent.playoffTeamCount ?? currentEvent.maxParticipants)} teams`
-                        : 'Configured per division',
-                });
-            }
-        }
-
-        if (currentEvent.eventType === 'TOURNAMENT') {
-            if (currentEvent.usesSets) {
-                rows.push({ label: 'Set duration', value: `${currentEvent.setDurationMinutes ?? 20} minutes` });
-            } else {
-                rows.push({ label: 'Match duration', value: `${currentEvent.matchDurationMinutes ?? 60} minutes` });
-            }
-            rows.push({
-                label: 'Bracket',
-                value: currentEvent.doubleElimination ? 'Double elimination' : 'Single elimination',
-            });
-            if (typeof currentEvent.winnerSetCount === 'number') {
-                rows.push({ label: 'Winner set count', value: String(currentEvent.winnerSetCount) });
-            }
-            if (Array.isArray(currentEvent.winnerBracketPointsToVictory) && currentEvent.winnerBracketPointsToVictory.length > 0) {
-                rows.push({ label: 'Winner points', value: currentEvent.winnerBracketPointsToVictory.join(', ') });
             }
             if (currentEvent.doubleElimination && typeof currentEvent.loserSetCount === 'number') {
                 rows.push({ label: 'Loser set count', value: String(currentEvent.loserSetCount) });
@@ -3206,23 +3190,16 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                 />
                                             </Paper>
 
-                                            <Paper withBorder p="md" radius="md" className="space-y-4">
-                                                <Text fw={700}>Division Settings</Text>
-                                                <ReadOnlyDetailsGrid items={divisionSettingsRows} />
-                                            </Paper>
-
                                             {divisionOptions.length > 0 && (
                                                 <Paper withBorder p="md" radius="md" className="space-y-4">
                                                     <Text fw={700}>Divisions ({divisionOptions.length})</Text>
                                                     <div className="space-y-3">
                                                         {divisionOptions.map((division) => {
-                                                            const priceCents = currentEvent.singleDivision
-                                                                ? normalizePriceCents(currentEvent.price)
-                                                                : normalizePriceCents(
-                                                                    typeof division.priceCents === 'number'
-                                                                        ? division.priceCents
-                                                                        : currentEvent.price,
-                                                                );
+                                                            const priceCents = normalizePriceCents(
+                                                                typeof division.priceCents === 'number'
+                                                                    ? division.priceCents
+                                                                    : currentEvent.price,
+                                                            );
                                                             const maxDivisionParticipants = currentEvent.singleDivision
                                                                 ? currentEvent.maxParticipants
                                                                 : Math.max(
@@ -4634,6 +4611,24 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     <Text size="sm" c="dimmed">Preparing documents...</Text>
                 )}
             </Modal>
+
+            <BillingAddressModal
+                opened={showBillingAddressModal}
+                onClose={() => {
+                    setShowBillingAddressModal(false);
+                    setPendingEventCheckout(null);
+                }}
+                onSaved={async (billingAddress) => {
+                    if (!pendingEventCheckout) {
+                        setShowBillingAddressModal(false);
+                        return;
+                    }
+                    await startEventCheckout({
+                        ...pendingEventCheckout,
+                        billingAddress,
+                    });
+                }}
+            />
 
             <PaymentModal
                 isOpen={showPaymentModal}

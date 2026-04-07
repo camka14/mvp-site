@@ -371,6 +371,7 @@ const getDivisionDetailsForEvents = async (
       key: true,
       name: true,
       sportId: true,
+      price: true,
       maxParticipants: true,
       divisionTypeId: true,
       divisionTypeName: true,
@@ -435,6 +436,7 @@ const getDivisionDetailsForEvents = async (
         ratingType: row?.ratingType ?? inferred.ratingType,
         gender: row?.gender ?? inferred.gender,
         sportId: row?.sportId ?? event.sportId ?? null,
+        price: typeof row?.price === 'number' ? row.price : null,
         maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
       };
     });

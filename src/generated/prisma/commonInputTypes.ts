@@ -487,6 +487,13 @@ export type EnumProductsPeriodEnumFilter<$PrismaModel = never> = {
   not?: Prisma.NestedEnumProductsPeriodEnumFilter<$PrismaModel> | $Enums.ProductsPeriodEnum
 }
 
+export type EnumProductsTaxCategoryEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.ProductsTaxCategoryEnum | Prisma.EnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.ProductsTaxCategoryEnum[] | Prisma.ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ProductsTaxCategoryEnum[] | Prisma.ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumProductsTaxCategoryEnumFilter<$PrismaModel> | $Enums.ProductsTaxCategoryEnum
+}
+
 export type EnumProductsPeriodEnumWithAggregatesFilter<$PrismaModel = never> = {
   equals?: $Enums.ProductsPeriodEnum | Prisma.EnumProductsPeriodEnumFieldRefInput<$PrismaModel>
   in?: $Enums.ProductsPeriodEnum[] | Prisma.ListEnumProductsPeriodEnumFieldRefInput<$PrismaModel>
@@ -495,6 +502,16 @@ export type EnumProductsPeriodEnumWithAggregatesFilter<$PrismaModel = never> = {
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumProductsPeriodEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumProductsPeriodEnumFilter<$PrismaModel>
+}
+
+export type EnumProductsTaxCategoryEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.ProductsTaxCategoryEnum | Prisma.EnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.ProductsTaxCategoryEnum[] | Prisma.ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ProductsTaxCategoryEnum[] | Prisma.ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumProductsTaxCategoryEnumWithAggregatesFilter<$PrismaModel> | $Enums.ProductsTaxCategoryEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumProductsTaxCategoryEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumProductsTaxCategoryEnumFilter<$PrismaModel>
 }
 
 export type EnumSubscriptionsPeriodEnumFilter<$PrismaModel = never> = {
@@ -1054,6 +1071,13 @@ export type NestedEnumProductsPeriodEnumFilter<$PrismaModel = never> = {
   not?: Prisma.NestedEnumProductsPeriodEnumFilter<$PrismaModel> | $Enums.ProductsPeriodEnum
 }
 
+export type NestedEnumProductsTaxCategoryEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.ProductsTaxCategoryEnum | Prisma.EnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.ProductsTaxCategoryEnum[] | Prisma.ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ProductsTaxCategoryEnum[] | Prisma.ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumProductsTaxCategoryEnumFilter<$PrismaModel> | $Enums.ProductsTaxCategoryEnum
+}
+
 export type NestedEnumProductsPeriodEnumWithAggregatesFilter<$PrismaModel = never> = {
   equals?: $Enums.ProductsPeriodEnum | Prisma.EnumProductsPeriodEnumFieldRefInput<$PrismaModel>
   in?: $Enums.ProductsPeriodEnum[] | Prisma.ListEnumProductsPeriodEnumFieldRefInput<$PrismaModel>
@@ -1062,6 +1086,16 @@ export type NestedEnumProductsPeriodEnumWithAggregatesFilter<$PrismaModel = neve
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumProductsPeriodEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumProductsPeriodEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumProductsTaxCategoryEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.ProductsTaxCategoryEnum | Prisma.EnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.ProductsTaxCategoryEnum[] | Prisma.ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.ProductsTaxCategoryEnum[] | Prisma.ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumProductsTaxCategoryEnumWithAggregatesFilter<$PrismaModel> | $Enums.ProductsTaxCategoryEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumProductsTaxCategoryEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumProductsTaxCategoryEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumSubscriptionsPeriodEnumFilter<$PrismaModel = never> = {

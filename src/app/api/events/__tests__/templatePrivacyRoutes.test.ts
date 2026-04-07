@@ -391,6 +391,7 @@ describe('event template privacy routes', () => {
         id: 'event_1__division__open',
         key: 'open',
         name: 'Open',
+        price: 3500,
         maxParticipants: 8,
         sportId: 'sport_1',
       },
@@ -399,6 +400,7 @@ describe('event template privacy routes', () => {
         id: 'event_1__division__advanced',
         key: 'advanced',
         name: 'Advanced',
+        price: 5000,
         maxParticipants: 10,
         sportId: 'sport_1',
       },
@@ -409,8 +411,8 @@ describe('event template privacy routes', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.events[0].divisionDetails).toEqual([
-      expect.objectContaining({ id: 'event_1__division__open', maxParticipants: 8 }),
-      expect.objectContaining({ id: 'event_1__division__advanced', maxParticipants: 10 }),
+      expect.objectContaining({ id: 'event_1__division__open', price: 3500, maxParticipants: 8 }),
+      expect.objectContaining({ id: 'event_1__division__advanced', price: 5000, maxParticipants: 10 }),
     ]);
     expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -461,6 +463,7 @@ describe('event template privacy routes', () => {
         id: 'event_2__division__open',
         key: 'open',
         name: 'Open',
+        price: 2500,
         maxParticipants: 6,
         sportId: 'sport_1',
       },
@@ -469,6 +472,7 @@ describe('event template privacy routes', () => {
         id: 'event_2__division__advanced',
         key: 'advanced',
         name: 'Advanced',
+        price: 4500,
         maxParticipants: 8,
         sportId: 'sport_1',
       },
@@ -479,8 +483,8 @@ describe('event template privacy routes', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.events[0].divisionDetails).toEqual([
-      expect.objectContaining({ id: 'event_2__division__open', maxParticipants: 6 }),
-      expect.objectContaining({ id: 'event_2__division__advanced', maxParticipants: 8 }),
+      expect.objectContaining({ id: 'event_2__division__open', price: 2500, maxParticipants: 6 }),
+      expect.objectContaining({ id: 'event_2__division__advanced', price: 4500, maxParticipants: 8 }),
     ]);
     expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -3,8 +3,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
-import { Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
+import { BillingAddress, Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import { billingAddressService } from '@/lib/billingAddressService';
 import PaymentForm from './PaymentForm';
 import { Modal, Button, Group, Alert, Loader, Text } from '@mantine/core';
 import { MOBILE_APP_THEME_TOKENS } from '@/app/theme/mobilePalette';
@@ -37,39 +38,13 @@ export default function PaymentModal({
     const [error, setError] = useState<string | null>(null);
     const [view, setView] = useState<'confirm' | 'payment' | 'success'>('confirm');
     const [reloadingEvent, setReloadingEvent] = useState(false);
+    const [billingAddress, setBillingAddress] = useState<BillingAddress | null>(null);
+    const [billingEmail, setBillingEmail] = useState<string | null>(null);
     const isMountedRef = useRef(true);
 
     const eventName = event.name ?? 'Event';
     const eventLocation = event.location ?? '';
     const eventTypeLabel = formatEnumDisplayLabel(event.eventType, 'Event');
-
-    // Early return if modal shouldn't be shown
-    if (!isOpen) return null;
-
-    const clientSecret = paymentData?.paymentIntent;
-    const publishableKey = paymentData?.publishableKey || envPublishableKey;
-
-    const stripePromise = publishableKey
-        ? loadStripe(publishableKey, {
-            developerTools: {
-                assistant: {
-                    enabled: false,
-                },
-            },
-        })
-        : null;
-
-    // Handle Stripe configuration error
-    if (!stripePromise) {
-        return (
-            <Modal opened={true} onClose={onClose} title="Configuration Error" centered zIndex={1500}>
-                <Alert color="red" variant="light" mb="md">
-                    Payment system is not properly configured. Please contact support.
-                </Alert>
-                <Button fullWidth onClick={onClose}>Close</Button>
-            </Modal>
-        );
-    }
 
     const resetModal = () => {
         setView('confirm');
@@ -99,6 +74,65 @@ export default function PaymentModal({
         : view === 'payment'
             ? 'Payment'
             : 'Payment Complete';
+
+    useEffect(() => {
+        isMountedRef.current = true;
+        return () => {
+            isMountedRef.current = false;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setBillingAddress(null);
+            setBillingEmail(null);
+            return;
+        }
+
+        let cancelled = false;
+        billingAddressService.getBillingAddressProfile()
+            .then((profile) => {
+                if (!cancelled && isMountedRef.current) {
+                    setBillingAddress(profile.billingAddress ?? null);
+                    setBillingEmail(profile.email ?? null);
+                }
+            })
+            .catch((loadError) => {
+                console.error('Failed to load billing address for payment modal', loadError);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [isOpen]);
+
+    // Early return if modal shouldn't be shown
+    if (!isOpen) return null;
+
+    const clientSecret = paymentData?.paymentIntent;
+    const publishableKey = paymentData?.publishableKey || envPublishableKey;
+
+    const stripePromise = publishableKey
+        ? loadStripe(publishableKey, {
+            developerTools: {
+                assistant: {
+                    enabled: false,
+                },
+            },
+        })
+        : null;
+
+    // Handle Stripe configuration error
+    if (!stripePromise) {
+        return (
+            <Modal opened={true} onClose={onClose} title="Configuration Error" centered zIndex={1500}>
+                <Alert color="red" variant="light" mb="md">
+                    Payment system is not properly configured. Please contact support.
+                </Alert>
+                <Button fullWidth onClick={onClose}>Close</Button>
+            </Modal>
+        );
+    }
 
     return (
         <Modal
@@ -153,6 +187,12 @@ export default function PaymentModal({
                                     <span className="text-gray-600">Stripe Fee:</span>
                                     <span className="font-medium">{formatPrice(paymentData.feeBreakdown.stripeFee)}</span>
                                 </div>
+                                {typeof paymentData.feeBreakdown.taxAmount === 'number' ? (
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Tax:</span>
+                                        <span className="font-medium">{formatPrice(paymentData.feeBreakdown.taxAmount)}</span>
+                                    </div>
+                                ) : null}
                                 <div className="border-t pt-2 flex justify-between font-semibold text-base">
                                     <span>Total:</span>
                                     <span>${(paymentData.feeBreakdown.totalCharge / 100).toFixed(2)}</span>
@@ -190,6 +230,8 @@ export default function PaymentModal({
                             onError={setError}
                             amount={paymentData.feeBreakdown?.totalCharge || 0}
                             eventName={eventName}
+                            billingAddress={billingAddress}
+                            billingEmail={billingEmail}
                         />
                     </Elements>
                 )

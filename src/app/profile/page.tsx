@@ -10,6 +10,7 @@ import React, {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useApp } from "@/app/providers";
 import { authService } from "@/lib/auth";
+import { billingAddressService } from "@/lib/billingAddressService";
 import { userService, type UserSocialGraph } from "@/lib/userService";
 import {
   familyService,
@@ -18,6 +19,7 @@ import {
 } from "@/lib/familyService";
 import { ImageUploader } from "@/components/ui/ImageUploader";
 import {
+  BillingAddress,
   Bill,
   PaymentIntent,
   Team,
@@ -120,6 +122,44 @@ const formatDobLabel = (value?: string | null): string => {
   return formatDisplayDate(date, { timeZone: "UTC", year: "numeric" });
 };
 
+const EMPTY_BILLING_ADDRESS: BillingAddress = {
+  line1: "",
+  line2: "",
+  city: "",
+  state: "",
+  postalCode: "",
+  countryCode: "US",
+};
+
+const normalizeBillingAddress = (
+  value?: BillingAddress | null,
+): BillingAddress => ({
+  line1: value?.line1 ?? "",
+  line2: value?.line2 ?? "",
+  city: value?.city ?? "",
+  state: value?.state ?? "",
+  postalCode: value?.postalCode ?? "",
+  countryCode: value?.countryCode ?? "US",
+});
+
+const formatBillingAddressLabel = (value?: BillingAddress | null): string => {
+  if (!value) {
+    return "No billing address saved.";
+  }
+
+  const parts = [
+    value.line1,
+    value.line2,
+    [value.city, value.state].filter(Boolean).join(", "),
+    value.postalCode,
+    value.countryCode,
+  ]
+    .map((entry) => entry?.trim())
+    .filter((entry): entry is string => Boolean(entry));
+
+  return parts.length ? parts.join(" • ") : "No billing address saved.";
+};
+
 const formatDateTimeLabel = (value?: string): string => {
   if (!value) return "Unknown date";
   const formatted = formatDisplayDateTime(value);
@@ -214,6 +254,14 @@ function ProfilePageContent() {
     dateOfBirth: "",
     profileImageId: "",
   });
+  const [savedBillingAddress, setSavedBillingAddress] =
+    useState<BillingAddress>(EMPTY_BILLING_ADDRESS);
+  const [billingAddressData, setBillingAddressData] =
+    useState<BillingAddress>(EMPTY_BILLING_ADDRESS);
+  const [loadingBillingAddress, setLoadingBillingAddress] = useState(false);
+  const [billingAddressError, setBillingAddressError] = useState<string | null>(
+    null,
+  );
 
   const [children, setChildren] = useState<FamilyChild[]>([]);
   const [childrenLoading, setChildrenLoading] = useState(false);
@@ -366,6 +414,38 @@ function ProfilePageContent() {
     }
   }, [user]);
 
+  const loadBillingAddress = useCallback(async () => {
+    if (!user?.$id) {
+      setSavedBillingAddress(EMPTY_BILLING_ADDRESS);
+      setBillingAddressData(EMPTY_BILLING_ADDRESS);
+      setBillingAddressError(null);
+      return;
+    }
+
+    setLoadingBillingAddress(true);
+    setBillingAddressError(null);
+    try {
+      const profile = await billingAddressService.getBillingAddressProfile();
+      const normalized = normalizeBillingAddress(profile.billingAddress);
+      setSavedBillingAddress(normalized);
+      setBillingAddressData(normalized);
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load billing address.";
+      setBillingAddressError(message);
+      setSavedBillingAddress(EMPTY_BILLING_ADDRESS);
+      setBillingAddressData(EMPTY_BILLING_ADDRESS);
+    } finally {
+      setLoadingBillingAddress(false);
+    }
+  }, [user?.$id]);
+
+  useEffect(() => {
+    void loadBillingAddress();
+  }, [loadBillingAddress]);
+
   useEffect(() => {
     if (!emailChangeStatus) return;
 
@@ -414,6 +494,7 @@ function ProfilePageContent() {
           profileImageId: user.profileImageId || "",
         });
       }
+      setBillingAddressData(savedBillingAddress);
       setShowEmailSection(false);
       setShowPasswordSection(false);
       setEmailData({ email: "", currentPassword: "" });
@@ -441,15 +522,91 @@ function ProfilePageContent() {
         setError("Please provide a valid date of birth");
         return;
       }
-      const updatedUser = await userService.updateProfile(user.$id, {
-        firstName: profileData.firstName,
-        lastName: profileData.lastName,
-        userName: profileData.userName,
-        dateOfBirth: normalizedDob,
-        profileImageId: profileData.profileImageId,
-      });
+      const normalizedBillingAddress = normalizeBillingAddress(
+        billingAddressData,
+      );
+      if (
+        !normalizedBillingAddress.line1.trim() ||
+        !normalizedBillingAddress.city.trim() ||
+        !normalizedBillingAddress.state.trim() ||
+        !normalizedBillingAddress.postalCode.trim() ||
+        !normalizedBillingAddress.countryCode.trim()
+      ) {
+        setError(
+          "Billing address line 1, city, state, ZIP code, and country are required.",
+        );
+        return;
+      }
 
-      setUser(updatedUser);
+      const [profileResult, billingResult] = await Promise.allSettled([
+        userService.updateProfile(user.$id, {
+          firstName: profileData.firstName,
+          lastName: profileData.lastName,
+          userName: profileData.userName,
+          dateOfBirth: normalizedDob,
+          profileImageId: profileData.profileImageId,
+        }),
+        billingAddressService.saveBillingAddress({
+          ...normalizedBillingAddress,
+          line1: normalizedBillingAddress.line1.trim(),
+          line2: normalizedBillingAddress.line2?.trim() || "",
+          city: normalizedBillingAddress.city.trim(),
+          state: normalizedBillingAddress.state.trim().toUpperCase(),
+          postalCode: normalizedBillingAddress.postalCode.trim(),
+          countryCode: normalizedBillingAddress.countryCode.trim().toUpperCase(),
+        }),
+      ]);
+
+      const profileSucceeded = profileResult.status === "fulfilled";
+      const billingSucceeded = billingResult.status === "fulfilled";
+
+      if (profileSucceeded) {
+        setUser(profileResult.value);
+      }
+      if (billingSucceeded) {
+        const normalizedSavedAddress = normalizeBillingAddress(
+          billingResult.value.billingAddress,
+        );
+        setSavedBillingAddress(normalizedSavedAddress);
+        setBillingAddressData(normalizedSavedAddress);
+        setBillingAddressError(null);
+      }
+
+      if (!profileSucceeded && !billingSucceeded) {
+        const profileMessage =
+          profileResult.reason instanceof Error
+            ? profileResult.reason.message
+            : "Failed to update profile.";
+        const billingMessage =
+          billingResult.reason instanceof Error
+            ? billingResult.reason.message
+            : "Failed to save billing address.";
+        setError(`${profileMessage} ${billingMessage}`.trim());
+        return;
+      }
+
+      if (!profileSucceeded) {
+        const profileMessage =
+          profileResult.reason instanceof Error
+            ? profileResult.reason.message
+            : "Failed to update profile.";
+        setError(
+          `Billing address saved, but profile details failed to update: ${profileMessage}`,
+        );
+        return;
+      }
+
+      if (!billingSucceeded) {
+        const billingMessage =
+          billingResult.reason instanceof Error
+            ? billingResult.reason.message
+            : "Failed to save billing address.";
+        setError(
+          `Profile updated, but billing address failed to save: ${billingMessage}`,
+        );
+        return;
+      }
+
       setIsEditing(false);
       setShowEmailSection(false);
       setShowPasswordSection(false);
@@ -1906,6 +2063,38 @@ function ProfilePageContent() {
 
   const renderOverviewTab = () => (
     <div className="space-y-6">
+      <Paper withBorder radius="xl" p="lg" shadow="sm">
+        <Group justify="space-between" align="flex-start" gap="md">
+          <div>
+            <Title order={4}>Billing address</Title>
+            <Text size="sm" c="dimmed" mt="xs">
+              Used for tax calculation and payment checkout.
+            </Text>
+          </div>
+          <Button
+            size="xs"
+            variant="light"
+            onClick={() => {
+              setIsEditing(true);
+              setEditTab("general");
+            }}
+          >
+            Edit
+          </Button>
+        </Group>
+        {billingAddressError ? (
+          <Alert color="red" mt="md">
+            {billingAddressError}
+          </Alert>
+        ) : loadingBillingAddress ? (
+          <Text c="dimmed" size="sm" mt="md">
+            Loading billing address...
+          </Text>
+        ) : (
+          <Text mt="md">{formatBillingAddressLabel(savedBillingAddress)}</Text>
+        )}
+      </Paper>
+
       <Paper withBorder radius="xl" p="lg" shadow="sm">
         <ProfileInvitesSection userId={user.$id} />
       </Paper>
@@ -3629,6 +3818,91 @@ function ProfilePageContent() {
           </div>
         </Paper>
       </SimpleGrid>
+
+      <Paper withBorder radius="xl" p="lg" shadow="sm">
+        <div className="space-y-4">
+          <div>
+            <Title order={4}>Billing address</Title>
+            <Text size="sm" c="dimmed" mt="xs">
+              This address is used to calculate tax and prefill checkout.
+            </Text>
+          </div>
+          {billingAddressError ? (
+            <Alert color="red">{billingAddressError}</Alert>
+          ) : null}
+          {loadingBillingAddress ? (
+            <Text c="dimmed" size="sm">
+              Loading billing address...
+            </Text>
+          ) : (
+            <>
+              <TextInput
+                label="Address line 1"
+                value={billingAddressData.line1}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setBillingAddressData((prev) => ({ ...prev, line1: value }));
+                }}
+                required
+              />
+              <TextInput
+                label="Address line 2"
+                value={billingAddressData.line2 ?? ""}
+                onChange={(event) => {
+                  const value = event.currentTarget.value;
+                  setBillingAddressData((prev) => ({ ...prev, line2: value }));
+                }}
+              />
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                <TextInput
+                  label="City"
+                  value={billingAddressData.city}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setBillingAddressData((prev) => ({ ...prev, city: value }));
+                  }}
+                  required
+                />
+                <TextInput
+                  label="State"
+                  value={billingAddressData.state}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setBillingAddressData((prev) => ({ ...prev, state: value }));
+                  }}
+                  required
+                />
+              </SimpleGrid>
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+                <TextInput
+                  label="ZIP code"
+                  value={billingAddressData.postalCode}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setBillingAddressData((prev) => ({
+                      ...prev,
+                      postalCode: value,
+                    }));
+                  }}
+                  required
+                />
+                <TextInput
+                  label="Country"
+                  value={billingAddressData.countryCode}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setBillingAddressData((prev) => ({
+                      ...prev,
+                      countryCode: value,
+                    }));
+                  }}
+                  required
+                />
+              </SimpleGrid>
+            </>
+          )}
+        </div>
+      </Paper>
     </div>
   );
 

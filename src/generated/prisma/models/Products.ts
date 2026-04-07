@@ -42,6 +42,7 @@ export type ProductsMinAggregateOutputType = {
   description: string | null
   priceCents: number | null
   period: $Enums.ProductsPeriodEnum | null
+  taxCategory: $Enums.ProductsTaxCategoryEnum | null
   organizationId: string | null
   createdBy: string | null
   isActive: boolean | null
@@ -57,6 +58,7 @@ export type ProductsMaxAggregateOutputType = {
   description: string | null
   priceCents: number | null
   period: $Enums.ProductsPeriodEnum | null
+  taxCategory: $Enums.ProductsTaxCategoryEnum | null
   organizationId: string | null
   createdBy: string | null
   isActive: boolean | null
@@ -72,6 +74,7 @@ export type ProductsCountAggregateOutputType = {
   description: number
   priceCents: number
   period: number
+  taxCategory: number
   organizationId: number
   createdBy: number
   isActive: number
@@ -97,6 +100,7 @@ export type ProductsMinAggregateInputType = {
   description?: true
   priceCents?: true
   period?: true
+  taxCategory?: true
   organizationId?: true
   createdBy?: true
   isActive?: true
@@ -112,6 +116,7 @@ export type ProductsMaxAggregateInputType = {
   description?: true
   priceCents?: true
   period?: true
+  taxCategory?: true
   organizationId?: true
   createdBy?: true
   isActive?: true
@@ -127,6 +132,7 @@ export type ProductsCountAggregateInputType = {
   description?: true
   priceCents?: true
   period?: true
+  taxCategory?: true
   organizationId?: true
   createdBy?: true
   isActive?: true
@@ -229,6 +235,7 @@ export type ProductsGroupByOutputType = {
   description: string | null
   priceCents: number
   period: $Enums.ProductsPeriodEnum
+  taxCategory: $Enums.ProductsTaxCategoryEnum
   organizationId: string
   createdBy: string | null
   isActive: boolean | null
@@ -267,6 +274,7 @@ export type ProductsWhereInput = {
   description?: Prisma.StringNullableFilter<"Products"> | string | null
   priceCents?: Prisma.IntFilter<"Products"> | number
   period?: Prisma.EnumProductsPeriodEnumFilter<"Products"> | $Enums.ProductsPeriodEnum
+  taxCategory?: Prisma.EnumProductsTaxCategoryEnumFilter<"Products"> | $Enums.ProductsTaxCategoryEnum
   organizationId?: Prisma.StringFilter<"Products"> | string
   createdBy?: Prisma.StringNullableFilter<"Products"> | string | null
   isActive?: Prisma.BoolNullableFilter<"Products"> | boolean | null
@@ -282,6 +290,7 @@ export type ProductsOrderByWithRelationInput = {
   description?: Prisma.SortOrderInput | Prisma.SortOrder
   priceCents?: Prisma.SortOrder
   period?: Prisma.SortOrder
+  taxCategory?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   isActive?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -300,6 +309,7 @@ export type ProductsWhereUniqueInput = Prisma.AtLeast<{
   description?: Prisma.StringNullableFilter<"Products"> | string | null
   priceCents?: Prisma.IntFilter<"Products"> | number
   period?: Prisma.EnumProductsPeriodEnumFilter<"Products"> | $Enums.ProductsPeriodEnum
+  taxCategory?: Prisma.EnumProductsTaxCategoryEnumFilter<"Products"> | $Enums.ProductsTaxCategoryEnum
   organizationId?: Prisma.StringFilter<"Products"> | string
   createdBy?: Prisma.StringNullableFilter<"Products"> | string | null
   isActive?: Prisma.BoolNullableFilter<"Products"> | boolean | null
@@ -315,6 +325,7 @@ export type ProductsOrderByWithAggregationInput = {
   description?: Prisma.SortOrderInput | Prisma.SortOrder
   priceCents?: Prisma.SortOrder
   period?: Prisma.SortOrder
+  taxCategory?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   isActive?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -338,6 +349,7 @@ export type ProductsScalarWhereWithAggregatesInput = {
   description?: Prisma.StringNullableWithAggregatesFilter<"Products"> | string | null
   priceCents?: Prisma.IntWithAggregatesFilter<"Products"> | number
   period?: Prisma.EnumProductsPeriodEnumWithAggregatesFilter<"Products"> | $Enums.ProductsPeriodEnum
+  taxCategory?: Prisma.EnumProductsTaxCategoryEnumWithAggregatesFilter<"Products"> | $Enums.ProductsTaxCategoryEnum
   organizationId?: Prisma.StringWithAggregatesFilter<"Products"> | string
   createdBy?: Prisma.StringNullableWithAggregatesFilter<"Products"> | string | null
   isActive?: Prisma.BoolNullableWithAggregatesFilter<"Products"> | boolean | null
@@ -353,6 +365,7 @@ export type ProductsCreateInput = {
   description?: string | null
   priceCents: number
   period: $Enums.ProductsPeriodEnum
+  taxCategory?: $Enums.ProductsTaxCategoryEnum
   organizationId: string
   createdBy?: string | null
   isActive?: boolean | null
@@ -368,6 +381,7 @@ export type ProductsUncheckedCreateInput = {
   description?: string | null
   priceCents: number
   period: $Enums.ProductsPeriodEnum
+  taxCategory?: $Enums.ProductsTaxCategoryEnum
   organizationId: string
   createdBy?: string | null
   isActive?: boolean | null
@@ -383,6 +397,7 @@ export type ProductsUpdateInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   priceCents?: Prisma.IntFieldUpdateOperationsInput | number
   period?: Prisma.EnumProductsPeriodEnumFieldUpdateOperationsInput | $Enums.ProductsPeriodEnum
+  taxCategory?: Prisma.EnumProductsTaxCategoryEnumFieldUpdateOperationsInput | $Enums.ProductsTaxCategoryEnum
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isActive?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -398,6 +413,7 @@ export type ProductsUncheckedUpdateInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   priceCents?: Prisma.IntFieldUpdateOperationsInput | number
   period?: Prisma.EnumProductsPeriodEnumFieldUpdateOperationsInput | $Enums.ProductsPeriodEnum
+  taxCategory?: Prisma.EnumProductsTaxCategoryEnumFieldUpdateOperationsInput | $Enums.ProductsTaxCategoryEnum
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isActive?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -413,6 +429,7 @@ export type ProductsCreateManyInput = {
   description?: string | null
   priceCents: number
   period: $Enums.ProductsPeriodEnum
+  taxCategory?: $Enums.ProductsTaxCategoryEnum
   organizationId: string
   createdBy?: string | null
   isActive?: boolean | null
@@ -428,6 +445,7 @@ export type ProductsUpdateManyMutationInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   priceCents?: Prisma.IntFieldUpdateOperationsInput | number
   period?: Prisma.EnumProductsPeriodEnumFieldUpdateOperationsInput | $Enums.ProductsPeriodEnum
+  taxCategory?: Prisma.EnumProductsTaxCategoryEnumFieldUpdateOperationsInput | $Enums.ProductsTaxCategoryEnum
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isActive?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -443,6 +461,7 @@ export type ProductsUncheckedUpdateManyInput = {
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   priceCents?: Prisma.IntFieldUpdateOperationsInput | number
   period?: Prisma.EnumProductsPeriodEnumFieldUpdateOperationsInput | $Enums.ProductsPeriodEnum
+  taxCategory?: Prisma.EnumProductsTaxCategoryEnumFieldUpdateOperationsInput | $Enums.ProductsTaxCategoryEnum
   organizationId?: Prisma.StringFieldUpdateOperationsInput | string
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   isActive?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -458,6 +477,7 @@ export type ProductsCountOrderByAggregateInput = {
   description?: Prisma.SortOrder
   priceCents?: Prisma.SortOrder
   period?: Prisma.SortOrder
+  taxCategory?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
@@ -477,6 +497,7 @@ export type ProductsMaxOrderByAggregateInput = {
   description?: Prisma.SortOrder
   priceCents?: Prisma.SortOrder
   period?: Prisma.SortOrder
+  taxCategory?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
@@ -492,6 +513,7 @@ export type ProductsMinOrderByAggregateInput = {
   description?: Prisma.SortOrder
   priceCents?: Prisma.SortOrder
   period?: Prisma.SortOrder
+  taxCategory?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   isActive?: Prisma.SortOrder
@@ -507,6 +529,10 @@ export type EnumProductsPeriodEnumFieldUpdateOperationsInput = {
   set?: $Enums.ProductsPeriodEnum
 }
 
+export type EnumProductsTaxCategoryEnumFieldUpdateOperationsInput = {
+  set?: $Enums.ProductsTaxCategoryEnum
+}
+
 
 
 export type ProductsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -517,6 +543,7 @@ export type ProductsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   description?: boolean
   priceCents?: boolean
   period?: boolean
+  taxCategory?: boolean
   organizationId?: boolean
   createdBy?: boolean
   isActive?: boolean
@@ -532,6 +559,7 @@ export type ProductsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   description?: boolean
   priceCents?: boolean
   period?: boolean
+  taxCategory?: boolean
   organizationId?: boolean
   createdBy?: boolean
   isActive?: boolean
@@ -547,6 +575,7 @@ export type ProductsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   description?: boolean
   priceCents?: boolean
   period?: boolean
+  taxCategory?: boolean
   organizationId?: boolean
   createdBy?: boolean
   isActive?: boolean
@@ -562,6 +591,7 @@ export type ProductsSelectScalar = {
   description?: boolean
   priceCents?: boolean
   period?: boolean
+  taxCategory?: boolean
   organizationId?: boolean
   createdBy?: boolean
   isActive?: boolean
@@ -569,7 +599,7 @@ export type ProductsSelectScalar = {
   stripePriceId?: boolean
 }
 
-export type ProductsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "description" | "priceCents" | "period" | "organizationId" | "createdBy" | "isActive" | "stripeProductId" | "stripePriceId", ExtArgs["result"]["products"]>
+export type ProductsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "description" | "priceCents" | "period" | "taxCategory" | "organizationId" | "createdBy" | "isActive" | "stripeProductId" | "stripePriceId", ExtArgs["result"]["products"]>
 
 export type $ProductsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Products"
@@ -582,6 +612,7 @@ export type $ProductsPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     description: string | null
     priceCents: number
     period: $Enums.ProductsPeriodEnum
+    taxCategory: $Enums.ProductsTaxCategoryEnum
     organizationId: string
     createdBy: string | null
     isActive: boolean | null
@@ -1017,6 +1048,7 @@ export interface ProductsFieldRefs {
   readonly description: Prisma.FieldRef<"Products", 'String'>
   readonly priceCents: Prisma.FieldRef<"Products", 'Int'>
   readonly period: Prisma.FieldRef<"Products", 'ProductsPeriodEnum'>
+  readonly taxCategory: Prisma.FieldRef<"Products", 'ProductsTaxCategoryEnum'>
   readonly organizationId: Prisma.FieldRef<"Products", 'String'>
   readonly createdBy: Prisma.FieldRef<"Products", 'String'>
   readonly isActive: Prisma.FieldRef<"Products", 'Boolean'>

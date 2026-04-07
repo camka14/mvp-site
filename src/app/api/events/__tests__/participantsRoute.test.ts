@@ -526,6 +526,26 @@ describe('POST /api/events/[eventId]/participants', () => {
     expect(prismaMock.events.update).toHaveBeenCalled();
   });
 
+  it('rejects unknown legacy checkout context fields on team join payloads', async () => {
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/participants', {
+        user: { $id: 'user_1', email: 'user@example.com' },
+        event: { $id: 'event_1', name: 'Summer League' },
+        team: { $id: 'team_1', name: 'Team One' },
+        timeSlot: { $id: 'slot_1' },
+        organization: { $id: 'org_1' },
+        teamId: 'team_1',
+        divisionTypeKey: 'c_skill_open',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Invalid input');
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+  });
+
   it('allows event manager to move an already-registered team to a different division', async () => {
     canManageEventMock.mockResolvedValueOnce(true);
     prismaMock.events.findUnique.mockResolvedValueOnce({

@@ -3,7 +3,15 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { calculateMvpAndStripeFees } from '@/lib/billingFees';
+import { calculateMvpAndStripeFeesWithTax } from '@/lib/billingFees';
+import {
+  loadUserBillingProfile,
+  resolveBillingAddressInput,
+  upsertUserBillingAddress,
+  validateUsBillingAddress,
+} from '@/lib/billingAddress';
+import { resolvePurchaseContext } from '@/lib/purchaseContext';
+import { calculateTaxQuote, INTERNAL_TAX_CATEGORIES, type InternalTaxCategory } from '@/lib/stripeTax';
 import { resolveEventDivisionSelection } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import {
   extractRentalCheckoutWindow,
@@ -23,6 +31,8 @@ const schema = z.object({
   productId: z.string().optional(),
   billId: z.string().optional(),
   billPaymentId: z.string().optional(),
+  taxCategory: z.enum(INTERNAL_TAX_CATEGORIES).optional(),
+  billingAddress: z.unknown().optional(),
 }).passthrough();
 
 const normalizeString = (value: unknown): string | null => {
@@ -43,6 +53,25 @@ const extractEntityId = (value: unknown): string | null => {
   const row = value as Record<string, unknown>;
   return normalizeString(row.$id ?? row.id);
 };
+
+const buildLineItemReference = ({
+  purchaseType,
+  productId,
+  eventId,
+  timeSlotId,
+  billId,
+  billPaymentId,
+}: {
+  purchaseType: string;
+  productId?: string | null;
+  eventId?: string | null;
+  timeSlotId?: string | null;
+  billId?: string | null;
+  billPaymentId?: string | null;
+}) => [purchaseType, productId, eventId, timeSlotId, billId, billPaymentId]
+  .filter((value): value is string => Boolean(value))
+  .join('_')
+  .slice(0, 200);
 
 const appendMetadata = (
   metadata: Record<string, string>,
@@ -475,75 +504,128 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  let amountCents = 0;
-  let purchaseType = 'event';
-  let product: {
-    id: string;
-    name: string;
-    description: string | null;
-    priceCents: number;
-    period: string;
-    organizationId: string;
-  } | null = null;
+  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
+  const secretKey = process.env.STRIPE_SECRET_KEY;
+  let resolvedPurchase: Awaited<ReturnType<typeof resolvePurchaseContext>>;
 
-  if (payload.productId) {
-    product = await prisma.products.findUnique({
-      where: { id: payload.productId },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        priceCents: true,
-        period: true,
-        organizationId: true,
-      },
+  try {
+    resolvedPurchase = await resolvePurchaseContext({
+      productId: payload.productId ?? null,
+      event: payload.event ?? null,
+      timeSlot: payload.timeSlot ?? null,
+      requestedTaxCategory: (payload.taxCategory ?? null) as InternalTaxCategory | null,
     });
-    if (!product) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
-    }
-    amountCents = product.priceCents;
-    purchaseType = 'product';
-  } else if (payload.timeSlot && typeof payload.timeSlot.price === 'number') {
-    amountCents = payload.timeSlot.price;
-    purchaseType = 'rental';
-  } else if (payload.event && typeof payload.event.price === 'number') {
-    amountCents = payload.event.price;
-    purchaseType = 'event';
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unable to resolve purchase details.';
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  if (amountCents <= 0) {
+  if (resolvedPurchase.amountCents <= 0) {
     return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
   }
 
-  const eventType = payload.event?.eventType;
-  const {
-    mvpFeeCents,
-    stripeFeeCents,
-    totalChargeCents,
-    mvpFeePercentage,
-  } = calculateMvpAndStripeFees({
-    eventAmountCents: amountCents,
-    eventType,
-  });
+  if (!secretKey) {
+    const fallbackFees = calculateMvpAndStripeFeesWithTax({
+      eventAmountCents: resolvedPurchase.amountCents,
+      eventType: resolvedPurchase.eventType,
+      taxAmountCents: 0,
+      stripeTaxServiceFeeCents: 0,
+    });
+    return NextResponse.json({
+      paymentIntent: `pi_mock_${crypto.randomUUID()}`,
+      publishableKey,
+      taxCalculationId: `tax_mock_${crypto.randomUUID()}`,
+      taxCategory: resolvedPurchase.taxCategory,
+      feeBreakdown: {
+        eventPrice: resolvedPurchase.amountCents,
+        stripeFee: fallbackFees.stripeFeeCents,
+        processingFee: fallbackFees.mvpFeeCents,
+        mvpFee: fallbackFees.mvpFeeCents,
+        taxAmount: 0,
+        totalCharge: fallbackFees.totalChargeCents,
+        hostReceives: resolvedPurchase.amountCents,
+        feePercentage: fallbackFees.mvpFeePercentage * 100,
+        purchaseType: resolvedPurchase.purchaseType,
+      },
+    }, { status: 200 });
+  }
+
+  const inlineBillingAddress = resolveBillingAddressInput(payload.billingAddress);
+  if (payload.billingAddress !== undefined && !inlineBillingAddress) {
+    return NextResponse.json({ error: 'Invalid billing address.' }, { status: 400 });
+  }
+  const billingProfile = await loadUserBillingProfile(session.userId);
+  let savedBillingProfile: Awaited<ReturnType<typeof upsertUserBillingAddress>> | null = null;
+  if (inlineBillingAddress) {
+    try {
+      savedBillingProfile = await upsertUserBillingAddress(session.userId, inlineBillingAddress);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save billing address.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
+  const billingAddress = savedBillingProfile?.billingAddress ?? billingProfile.billingAddress;
+  const billingEmail = savedBillingProfile?.email ?? billingProfile.email;
+  if (!billingAddress) {
+    return NextResponse.json({
+      error: 'Billing address is required before creating a payment intent.',
+      billingAddressRequired: true,
+    }, { status: 400 });
+  }
+
+  let taxQuote: Awaited<ReturnType<typeof calculateTaxQuote>>;
+  try {
+    const stripe = new Stripe(secretKey);
+    const eventIdForReference = extractEntityId(payload.event);
+    const timeSlotIdForReference = extractEntityId(payload.timeSlot);
+    taxQuote = await calculateTaxQuote({
+      stripe,
+      userId: session.userId,
+      organizationId:
+        extractEntityId(payload.organization)
+        ?? resolvedPurchase.organizationId
+        ?? normalizeString(payload.event?.organizationId)
+        ?? null,
+      email: billingEmail,
+      billingAddress: validateUsBillingAddress(billingAddress),
+      subtotalCents: resolvedPurchase.amountCents,
+      purchaseType: resolvedPurchase.purchaseType,
+      taxCategory: resolvedPurchase.taxCategory,
+      eventType: resolvedPurchase.eventType,
+      lineItemReference: buildLineItemReference({
+        purchaseType: resolvedPurchase.purchaseType,
+        productId: resolvedPurchase.product?.id ?? null,
+        eventId: eventIdForReference,
+        timeSlotId: timeSlotIdForReference,
+        billId: payload.billId ?? null,
+        billPaymentId: payload.billPaymentId ?? null,
+      }),
+      description: resolvedPurchase.product?.name
+        ?? normalizeString(payload.event?.name)
+        ?? resolvedPurchase.purchaseType,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to calculate tax.';
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   const feeBreakdown = {
-    eventPrice: amountCents,
-    stripeFee: stripeFeeCents,
-    processingFee: mvpFeeCents,
-    mvpFee: mvpFeeCents,
-    totalCharge: totalChargeCents,
-    hostReceives: amountCents,
-    feePercentage: mvpFeePercentage * 100,
-    purchaseType,
+    eventPrice: taxQuote.subtotalCents,
+    stripeFee: taxQuote.stripeFeeCents,
+    processingFee: taxQuote.processingFeeCents,
+    mvpFee: taxQuote.processingFeeCents,
+    taxAmount: taxQuote.taxAmountCents,
+    totalCharge: taxQuote.totalChargeCents,
+    hostReceives: taxQuote.hostReceivesCents,
+    feePercentage: taxQuote.feePercentage,
+    purchaseType: taxQuote.purchaseType,
   };
 
-  const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
-  const secretKey = process.env.STRIPE_SECRET_KEY;
   const actorUserId = normalizeString(session?.userId) ?? userId ?? 'system:purchase-intent';
   let reservedRegistrationId: string | null = null;
   let reservedRentalWindow: RentalCheckoutWindow | null = null;
 
-  if (purchaseType === 'event') {
+  if (resolvedPurchase.purchaseType === 'event') {
     const reservationResult = await reserveEventRegistrationSlot({
       eventId,
       teamId,
@@ -556,7 +638,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: reservationResult.error }, { status: reservationResult.status });
     }
     reservedRegistrationId = reservationResult.registrationId;
-  } else if (purchaseType === 'rental') {
+  } else if (resolvedPurchase.purchaseType === 'rental') {
     const rentalWindowResult = extractRentalCheckoutWindow({
       event: payload.event,
       timeSlot: payload.timeSlot,
@@ -583,38 +665,34 @@ export async function POST(req: NextRequest) {
     }
     reservedRentalWindow = rentalWindowResult.window;
   }
-
-  if (!secretKey) {
-    return NextResponse.json({
-      paymentIntent: `pi_mock_${crypto.randomUUID()}`,
-      publishableKey,
-      feeBreakdown,
-    }, { status: 200 });
-  }
-
-  const stripe = new Stripe(secretKey);
   try {
+    const stripe = new Stripe(secretKey);
     const organizationId =
       extractEntityId(payload.organization)
       ?? normalizeString(payload.event?.organizationId)
-      ?? (product?.organizationId ?? null);
+      ?? (resolvedPurchase.product?.organizationId ?? null);
 
     const metadata: Record<string, string> = {
-      purchase_type: purchaseType,
+      purchase_type: resolvedPurchase.purchaseType,
     };
 
     appendMetadata(metadata, 'user_id', userId);
     appendMetadata(metadata, 'team_id', teamId);
     appendMetadata(metadata, 'event_id', eventId);
-    appendMetadata(metadata, 'product_id', payload.productId ?? product?.id);
+    appendMetadata(metadata, 'product_id', payload.productId ?? resolvedPurchase.product?.id);
     appendMetadata(metadata, 'organization_id', organizationId);
     appendMetadata(metadata, 'organization_name', payload.organization?.name);
     appendMetadata(metadata, 'team_name', payload.team?.name);
-    appendMetadata(metadata, 'amount_cents', amountCents);
-    appendMetadata(metadata, 'total_charge_cents', totalChargeCents);
-    appendMetadata(metadata, 'processing_fee_cents', mvpFeeCents);
-    appendMetadata(metadata, 'mvp_fee_cents', mvpFeeCents);
-    appendMetadata(metadata, 'stripe_fee_cents', stripeFeeCents);
+    appendMetadata(metadata, 'amount_cents', taxQuote.subtotalCents);
+    appendMetadata(metadata, 'total_charge_cents', taxQuote.totalChargeCents);
+    appendMetadata(metadata, 'processing_fee_cents', taxQuote.processingFeeCents);
+    appendMetadata(metadata, 'mvp_fee_cents', taxQuote.processingFeeCents);
+    appendMetadata(metadata, 'stripe_fee_cents', taxQuote.stripeFeeCents);
+    appendMetadata(metadata, 'stripe_processing_fee_cents', taxQuote.stripeProcessingFeeCents);
+    appendMetadata(metadata, 'stripe_tax_service_fee_cents', taxQuote.stripeTaxServiceFeeCents);
+    appendMetadata(metadata, 'tax_cents', taxQuote.taxAmountCents);
+    appendMetadata(metadata, 'tax_calculation_id', taxQuote.calculationId);
+    appendMetadata(metadata, 'tax_category', taxQuote.taxCategory);
     appendMetadata(metadata, 'event_name', payload.event?.name);
     appendMetadata(metadata, 'event_location', payload.event?.location);
     appendMetadata(metadata, 'event_start', payload.event?.start);
@@ -631,20 +709,31 @@ export async function POST(req: NextRequest) {
       appendMetadata(metadata, 'rental_host_template_ids', hostRequiredTemplateIds.join(','));
     }
     appendMetadata(metadata, 'registration_id', reservedRegistrationId);
-    appendMetadata(metadata, 'product_name', product?.name);
-    appendMetadata(metadata, 'product_description', product?.description);
-    appendMetadata(metadata, 'product_period', product?.period);
+    appendMetadata(metadata, 'product_name', resolvedPurchase.product?.name);
+    appendMetadata(metadata, 'product_description', resolvedPurchase.product?.description);
+    appendMetadata(metadata, 'product_period', resolvedPurchase.product?.period);
 
     const intent = await stripe.paymentIntents.create({
-      amount: totalChargeCents,
+      amount: taxQuote.totalChargeCents,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
+      customer: taxQuote.customerId,
+      receipt_email: billingEmail ?? undefined,
+      hooks: {
+        inputs: {
+          tax: {
+            calculation: taxQuote.calculationId,
+          },
+        },
+      },
       metadata,
     });
 
     return NextResponse.json({
       paymentIntent: intent.client_secret ?? intent.id,
       publishableKey,
+      taxCalculationId: taxQuote.calculationId,
+      taxCategory: taxQuote.taxCategory,
       feeBreakdown,
     }, { status: 200 });
   } catch (error) {
@@ -660,6 +749,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       paymentIntent: `pi_fallback_${crypto.randomUUID()}`,
       publishableKey,
+      taxCalculationId: taxQuote.calculationId,
+      taxCategory: taxQuote.taxCategory,
       feeBreakdown,
     }, { status: 200 });
   }

@@ -63,3 +63,64 @@ export const calculateMvpAndStripeFees = ({
     mvpFeePercentage,
   };
 };
+
+export const calculateMvpAndStripeFeesWithTax = ({
+  eventAmountCents,
+  eventType,
+  taxAmountCents,
+  stripeTaxServiceFeeCents,
+}: {
+  eventAmountCents: number;
+  eventType?: unknown;
+  taxAmountCents?: number;
+  stripeTaxServiceFeeCents?: number;
+}): {
+  mvpFeeCents: number;
+  stripeProcessingFeeCents: number;
+  stripeTaxServiceFeeCents: number;
+  stripeFeeCents: number;
+  taxAmountCents: number;
+  totalChargeCents: number;
+  mvpFeePercentage: number;
+} => {
+  const normalizedEventAmount = Number.isFinite(Number(eventAmountCents))
+    ? Math.max(0, Math.round(Number(eventAmountCents)))
+    : 0;
+  const normalizedTaxAmount = Number.isFinite(Number(taxAmountCents))
+    ? Math.max(0, Math.round(Number(taxAmountCents)))
+    : 0;
+  const normalizedStripeTaxServiceFee = Number.isFinite(Number(stripeTaxServiceFeeCents))
+    ? Math.max(0, Math.round(Number(stripeTaxServiceFeeCents)))
+    : 0;
+  const mvpFeePercentage = resolveMvpFeePercentage(eventType);
+
+  if (normalizedEventAmount === 0) {
+    return {
+      mvpFeeCents: 0,
+      stripeProcessingFeeCents: 0,
+      stripeTaxServiceFeeCents: normalizedStripeTaxServiceFee,
+      stripeFeeCents: normalizedStripeTaxServiceFee,
+      taxAmountCents: normalizedTaxAmount,
+      totalChargeCents: normalizedTaxAmount + normalizedStripeTaxServiceFee,
+      mvpFeePercentage,
+    };
+  }
+
+  const mvpFeeCents = Math.round(normalizedEventAmount * mvpFeePercentage);
+  const goalAmountCents = normalizedEventAmount
+    + mvpFeeCents
+    + normalizedTaxAmount
+    + normalizedStripeTaxServiceFee;
+  const totalChargeCents = calculateChargeAmount(goalAmountCents);
+  const stripeProcessingFeeCents = Math.max(0, totalChargeCents - goalAmountCents);
+
+  return {
+    mvpFeeCents,
+    stripeProcessingFeeCents,
+    stripeTaxServiceFeeCents: normalizedStripeTaxServiceFee,
+    stripeFeeCents: stripeProcessingFeeCents + normalizedStripeTaxServiceFee,
+    taxAmountCents: normalizedTaxAmount,
+    totalChargeCents,
+    mvpFeePercentage,
+  };
+};

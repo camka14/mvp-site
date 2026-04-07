@@ -83,6 +83,15 @@ export const ProductsPeriodEnum = {
 export type ProductsPeriodEnum = (typeof ProductsPeriodEnum)[keyof typeof ProductsPeriodEnum]
 
 
+export const ProductsTaxCategoryEnum = {
+  ONE_TIME_PRODUCT: 'ONE_TIME_PRODUCT',
+  SUBSCRIPTION: 'SUBSCRIPTION',
+  NON_TAXABLE: 'NON_TAXABLE'
+} as const
+
+export type ProductsTaxCategoryEnum = (typeof ProductsTaxCategoryEnum)[keyof typeof ProductsTaxCategoryEnum]
+
+
 export const SubscriptionsPeriodEnum = {
   WEEK: 'WEEK',
   MONTH: 'MONTH',

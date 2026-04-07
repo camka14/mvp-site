@@ -1,5 +1,6 @@
 import { apiRequest } from '@/lib/apiClient';
 import type {
+  BillingAddress,
   Event,
   Organization,
   PaymentIntent,
@@ -71,6 +72,7 @@ class PaymentService {
     timeSlot?: TimeSlot,
     organization?: PaymentOrganizationContext,
     selection?: DivisionRegistrationSelection,
+    billingAddress?: BillingAddress,
   ): Promise<PaymentIntent> {
     try {
       if (!event) {
@@ -83,6 +85,7 @@ class PaymentService {
         team,
         timeSlot,
         organization,
+        billingAddress,
         ...selection,
       };
 
@@ -102,7 +105,10 @@ class PaymentService {
       return result as PaymentIntent;
     } catch (error) {
       console.error('Failed to create payment intent:', error);
-      throw new Error(error instanceof Error ? error.message : 'Failed to create payment intent');
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to create payment intent');
     }
   }
 
@@ -110,12 +116,14 @@ class PaymentService {
     user: UserData,
     product: Product,
     organization?: PaymentOrganizationContext,
+    billingAddress?: BillingAddress,
   ): Promise<PaymentIntent> {
     try {
       const payload = {
         user,
         productId: product.$id,
         organization,
+        billingAddress,
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
@@ -130,7 +138,10 @@ class PaymentService {
       return result as PaymentIntent;
     } catch (error) {
       console.error('Failed to create product payment intent:', error);
-      throw new Error(error instanceof Error ? error.message : 'Failed to start product purchase');
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to start product purchase');
     }
   }
 
@@ -138,8 +149,6 @@ class PaymentService {
     user?: UserData,
     event?: Event,
     team?: Team,
-    timeSlot?: TimeSlot,
-    organization?: PaymentOrganizationContext,
     selection?: DivisionRegistrationSelection,
     timeoutMs?: number,
   ): Promise<void> {
@@ -147,14 +156,9 @@ class PaymentService {
       if (!event?.$id) {
         throw new Error('Event is required to join.');
       }
-      const payloadEvent = buildPayload(event)
-
       const payload = {
         user,
-        event: payloadEvent,
         team,
-        timeSlot,
-        organization,
         ...selection,
       };
 
@@ -177,8 +181,6 @@ class PaymentService {
     user?: UserData,
     event?: Event,
     team?: Team,
-    timeSlot?: TimeSlot,
-    organization?: PaymentOrganizationContext,
     targetUserId?: string,
     timeoutMs?: number,
   ): Promise<void> {
@@ -186,15 +188,10 @@ class PaymentService {
       if (!event?.$id) {
         throw new Error('Event is required to leave.');
       }
-      const payloadEvent = buildPayload(event)
-
       const payload = {
         user,
         userId: targetUserId ?? user?.$id,
-        event: payloadEvent,
         team,
-        timeSlot,
-        organization,
       };
 
       const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {

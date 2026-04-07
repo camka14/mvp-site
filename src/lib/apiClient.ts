@@ -12,6 +12,21 @@ export interface ApiRequestOptions {
   signal?: AbortSignal;
 }
 
+export class ApiRequestError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
+export const isApiRequestError = (error: unknown): error is ApiRequestError =>
+  error instanceof ApiRequestError;
+
 const isFormData = (value: unknown): value is FormData => {
   return typeof FormData !== 'undefined' && value instanceof FormData;
 };
@@ -78,7 +93,7 @@ export const apiRequest = async <T>(path: string, options: ApiRequestOptions = {
     const message = (data && typeof data === 'object' && 'error' in data)
       ? String((data as { error?: string }).error)
       : res.statusText || 'Request failed';
-    throw new Error(message);
+    throw new ApiRequestError(message, res.status, data);
   }
 
   return data as T;
