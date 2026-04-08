@@ -18,9 +18,9 @@ export const metadata: Metadata = {
 };
 
 const requestSteps = [
-  'Email support@bracket-iq.com from the email address associated with your BracketIQ account.',
-  'Include your full name and username so BracketIQ by Razumly can verify the request and locate the correct account.',
-  'Any pending refund requests owed to you must be addressed before the account can be deleted.',
+  'Sign in to BracketIQ and open Profile > Profile Details.',
+  'Tap Delete Account, type "delete my account", and confirm the deletion request in the app.',
+  'Account deletion is blocked until outstanding bills and pending refunds in either direction are resolved.',
 ];
 
 const deletedData = [
@@ -48,7 +48,7 @@ const retainedRecords = [
 
 const additionalNotes = [
   'Once the deletion request is processed, the account is no longer considered active.',
-  'BracketIQ may contact you by email if more information is needed to verify the request or resolve refund issues first.',
+  'If you cannot access the app, contact support@bracket-iq.com from the email address associated with your BracketIQ account.',
 ];
 
 function SectionCard({
@@ -129,7 +129,7 @@ export default function DeleteDataPage() {
                 ))}
               </ol>
               <div className="landing-note-secondary mt-5 rounded-2xl p-4 text-sm">
-                Contact email:{' '}
+                Support fallback:{' '}
                 <a className="font-semibold text-[var(--landing-accent-text)] underline underline-offset-4" href="mailto:support@bracket-iq.com">
                   support@bracket-iq.com
                 </a>
@@ -146,8 +146,8 @@ export default function DeleteDataPage() {
                 account deletion.
               </p>
               <p>
-                If you opened a refund request toward someone else, that request stays on file until the other party
-                addresses it.
+                If there is a pending refund request you still owe as a host or organizer, that must also be resolved
+                before the deletion can finish.
               </p>
             </div>
           </aside>

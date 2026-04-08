@@ -36,6 +36,7 @@ export type SensitiveUserDataMinAggregateOutputType = {
   billingState: string | null
   billingPostalCode: string | null
   billingCountryCode: string | null
+  appleRefreshToken: string | null
 }
 
 export type SensitiveUserDataMaxAggregateOutputType = {
@@ -50,6 +51,7 @@ export type SensitiveUserDataMaxAggregateOutputType = {
   billingState: string | null
   billingPostalCode: string | null
   billingCountryCode: string | null
+  appleRefreshToken: string | null
 }
 
 export type SensitiveUserDataCountAggregateOutputType = {
@@ -64,6 +66,7 @@ export type SensitiveUserDataCountAggregateOutputType = {
   billingState: number
   billingPostalCode: number
   billingCountryCode: number
+  appleRefreshToken: number
   _all: number
 }
 
@@ -80,6 +83,7 @@ export type SensitiveUserDataMinAggregateInputType = {
   billingState?: true
   billingPostalCode?: true
   billingCountryCode?: true
+  appleRefreshToken?: true
 }
 
 export type SensitiveUserDataMaxAggregateInputType = {
@@ -94,6 +98,7 @@ export type SensitiveUserDataMaxAggregateInputType = {
   billingState?: true
   billingPostalCode?: true
   billingCountryCode?: true
+  appleRefreshToken?: true
 }
 
 export type SensitiveUserDataCountAggregateInputType = {
@@ -108,6 +113,7 @@ export type SensitiveUserDataCountAggregateInputType = {
   billingState?: true
   billingPostalCode?: true
   billingCountryCode?: true
+  appleRefreshToken?: true
   _all?: true
 }
 
@@ -195,6 +201,7 @@ export type SensitiveUserDataGroupByOutputType = {
   billingState: string | null
   billingPostalCode: string | null
   billingCountryCode: string | null
+  appleRefreshToken: string | null
   _count: SensitiveUserDataCountAggregateOutputType | null
   _min: SensitiveUserDataMinAggregateOutputType | null
   _max: SensitiveUserDataMaxAggregateOutputType | null
@@ -230,6 +237,7 @@ export type SensitiveUserDataWhereInput = {
   billingState?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   billingPostalCode?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   billingCountryCode?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  appleRefreshToken?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
 }
 
 export type SensitiveUserDataOrderByWithRelationInput = {
@@ -244,6 +252,7 @@ export type SensitiveUserDataOrderByWithRelationInput = {
   billingState?: Prisma.SortOrderInput | Prisma.SortOrder
   billingPostalCode?: Prisma.SortOrderInput | Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrderInput | Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type SensitiveUserDataWhereUniqueInput = Prisma.AtLeast<{
@@ -261,6 +270,7 @@ export type SensitiveUserDataWhereUniqueInput = Prisma.AtLeast<{
   billingState?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   billingPostalCode?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   billingCountryCode?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  appleRefreshToken?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
 }, "id">
 
 export type SensitiveUserDataOrderByWithAggregationInput = {
@@ -275,6 +285,7 @@ export type SensitiveUserDataOrderByWithAggregationInput = {
   billingState?: Prisma.SortOrderInput | Prisma.SortOrder
   billingPostalCode?: Prisma.SortOrderInput | Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrderInput | Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.SensitiveUserDataCountOrderByAggregateInput
   _max?: Prisma.SensitiveUserDataMaxOrderByAggregateInput
   _min?: Prisma.SensitiveUserDataMinOrderByAggregateInput
@@ -295,6 +306,7 @@ export type SensitiveUserDataScalarWhereWithAggregatesInput = {
   billingState?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
   billingPostalCode?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
   billingCountryCode?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
+  appleRefreshToken?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
 }
 
 export type SensitiveUserDataCreateInput = {
@@ -309,6 +321,7 @@ export type SensitiveUserDataCreateInput = {
   billingState?: string | null
   billingPostalCode?: string | null
   billingCountryCode?: string | null
+  appleRefreshToken?: string | null
 }
 
 export type SensitiveUserDataUncheckedCreateInput = {
@@ -323,6 +336,7 @@ export type SensitiveUserDataUncheckedCreateInput = {
   billingState?: string | null
   billingPostalCode?: string | null
   billingCountryCode?: string | null
+  appleRefreshToken?: string | null
 }
 
 export type SensitiveUserDataUpdateInput = {
@@ -337,6 +351,7 @@ export type SensitiveUserDataUpdateInput = {
   billingState?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingPostalCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingCountryCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type SensitiveUserDataUncheckedUpdateInput = {
@@ -351,6 +366,7 @@ export type SensitiveUserDataUncheckedUpdateInput = {
   billingState?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingPostalCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingCountryCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type SensitiveUserDataCreateManyInput = {
@@ -365,6 +381,7 @@ export type SensitiveUserDataCreateManyInput = {
   billingState?: string | null
   billingPostalCode?: string | null
   billingCountryCode?: string | null
+  appleRefreshToken?: string | null
 }
 
 export type SensitiveUserDataUpdateManyMutationInput = {
@@ -379,6 +396,7 @@ export type SensitiveUserDataUpdateManyMutationInput = {
   billingState?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingPostalCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingCountryCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type SensitiveUserDataUncheckedUpdateManyInput = {
@@ -393,6 +411,7 @@ export type SensitiveUserDataUncheckedUpdateManyInput = {
   billingState?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingPostalCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingCountryCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type SensitiveUserDataCountOrderByAggregateInput = {
@@ -407,6 +426,7 @@ export type SensitiveUserDataCountOrderByAggregateInput = {
   billingState?: Prisma.SortOrder
   billingPostalCode?: Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrder
 }
 
 export type SensitiveUserDataMaxOrderByAggregateInput = {
@@ -421,6 +441,7 @@ export type SensitiveUserDataMaxOrderByAggregateInput = {
   billingState?: Prisma.SortOrder
   billingPostalCode?: Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrder
 }
 
 export type SensitiveUserDataMinOrderByAggregateInput = {
@@ -435,6 +456,7 @@ export type SensitiveUserDataMinOrderByAggregateInput = {
   billingState?: Prisma.SortOrder
   billingPostalCode?: Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrder
 }
 
 
@@ -451,6 +473,7 @@ export type SensitiveUserDataSelect<ExtArgs extends runtime.Types.Extensions.Int
   billingState?: boolean
   billingPostalCode?: boolean
   billingCountryCode?: boolean
+  appleRefreshToken?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -465,6 +488,7 @@ export type SensitiveUserDataSelectCreateManyAndReturn<ExtArgs extends runtime.T
   billingState?: boolean
   billingPostalCode?: boolean
   billingCountryCode?: boolean
+  appleRefreshToken?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -479,6 +503,7 @@ export type SensitiveUserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.T
   billingState?: boolean
   billingPostalCode?: boolean
   billingCountryCode?: boolean
+  appleRefreshToken?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectScalar = {
@@ -493,9 +518,10 @@ export type SensitiveUserDataSelectScalar = {
   billingState?: boolean
   billingPostalCode?: boolean
   billingCountryCode?: boolean
+  appleRefreshToken?: boolean
 }
 
-export type SensitiveUserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "email" | "billingAddressLine1" | "billingAddressLine2" | "billingCity" | "billingState" | "billingPostalCode" | "billingCountryCode", ExtArgs["result"]["sensitiveUserData"]>
+export type SensitiveUserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "email" | "billingAddressLine1" | "billingAddressLine2" | "billingCity" | "billingState" | "billingPostalCode" | "billingCountryCode" | "appleRefreshToken", ExtArgs["result"]["sensitiveUserData"]>
 
 export type $SensitiveUserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "SensitiveUserData"
@@ -512,6 +538,7 @@ export type $SensitiveUserDataPayload<ExtArgs extends runtime.Types.Extensions.I
     billingState: string | null
     billingPostalCode: string | null
     billingCountryCode: string | null
+    appleRefreshToken: string | null
   }, ExtArgs["result"]["sensitiveUserData"]>
   composites: {}
 }
@@ -946,6 +973,7 @@ export interface SensitiveUserDataFieldRefs {
   readonly billingState: Prisma.FieldRef<"SensitiveUserData", 'String'>
   readonly billingPostalCode: Prisma.FieldRef<"SensitiveUserData", 'String'>
   readonly billingCountryCode: Prisma.FieldRef<"SensitiveUserData", 'String'>
+  readonly appleRefreshToken: Prisma.FieldRef<"SensitiveUserData", 'String'>
 }
     
 

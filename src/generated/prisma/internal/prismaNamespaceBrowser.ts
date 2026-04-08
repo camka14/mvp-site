@@ -227,7 +227,8 @@ export const SensitiveUserDataScalarFieldEnum = {
   billingCity: 'billingCity',
   billingState: 'billingState',
   billingPostalCode: 'billingPostalCode',
-  billingCountryCode: 'billingCountryCode'
+  billingCountryCode: 'billingCountryCode',
+  appleRefreshToken: 'appleRefreshToken'
 } as const
 
 export type SensitiveUserDataScalarFieldEnum = (typeof SensitiveUserDataScalarFieldEnum)[keyof typeof SensitiveUserDataScalarFieldEnum]
@@ -808,6 +809,7 @@ export const AuthUserScalarFieldEnum = {
   email: 'email',
   passwordHash: 'passwordHash',
   name: 'name',
+  appleSubject: 'appleSubject',
   emailVerifiedAt: 'emailVerifiedAt',
   lastLogin: 'lastLogin',
   createdAt: 'createdAt',

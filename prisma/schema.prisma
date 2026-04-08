@@ -251,6 +251,7 @@ model SensitiveUserData {
   billingState        String?
   billingPostalCode   String?
   billingCountryCode  String?
+  appleRefreshToken String?
 }
 
 model Invites {
@@ -788,6 +789,7 @@ model AuthUser {
   email           String    @unique
   passwordHash    String
   name            String?
+  appleSubject    String?   @unique
   emailVerifiedAt DateTime?
   lastLogin       DateTime?
   createdAt       DateTime?
