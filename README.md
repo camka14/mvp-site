@@ -40,6 +40,8 @@ npm install
   - Mobile Google OAuth token audience allow-list:
   - `GOOGLE_MOBILE_ANDROID_CLIENT_ID`
   - `GOOGLE_MOBILE_IOS_CLIENT_ID`
+  - Mobile Apple OAuth token audience allow-list:
+  - `APPLE_MOBILE_BUNDLE_ID` (defaults to `com.razumly.mvp` if omitted)
   - `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`
   - `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`
   - `STORAGE_PROVIDER` (`local` or `spaces`)
