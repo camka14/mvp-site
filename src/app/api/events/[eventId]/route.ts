@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
   deleteMatchesByEvent,
@@ -1342,14 +1343,15 @@ const settleEventBillingBeforeDelete = async (params: {
   for (const [intentId, state] of byIntentId.entries()) {
     if (state.hasPaid) {
       try {
-        await stripe!.refunds.create({
-          payment_intent: intentId,
+        await stripe!.refunds.create(await buildRefundCreateParamsForPaymentIntent({
+          stripe: stripe!,
+          paymentIntentId: intentId,
           reason: 'requested_by_customer',
           metadata: {
             event_id: params.eventId,
             source: 'event_delete',
           },
-        });
+        }));
         refundedPaymentIntentIds.push(intentId);
       } catch (error) {
         if (isAlreadyRefundedStripeError(error)) {

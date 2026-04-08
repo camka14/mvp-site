@@ -12,6 +12,7 @@ import {
 } from '@/lib/billingAddress';
 import { resolvePurchaseContext } from '@/lib/purchaseContext';
 import { calculateTaxQuote, INTERNAL_TAX_CATEGORIES, type InternalTaxCategory } from '@/lib/stripeTax';
+import { buildDestinationTransferData } from '@/lib/stripeConnectAccounts';
 import { resolveEventDivisionSelection } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import {
   extractRentalCheckoutWindow,
@@ -671,6 +672,11 @@ export async function POST(req: NextRequest) {
       extractEntityId(payload.organization)
       ?? normalizeString(payload.event?.organizationId)
       ?? (resolvedPurchase.product?.organizationId ?? null);
+    const transferData = await buildDestinationTransferData({
+      organizationId,
+      hostUserId: normalizeString(payload.event?.hostId),
+      transferAmountCents: taxQuote.subtotalCents,
+    });
 
     const metadata: Record<string, string> = {
       purchase_type: resolvedPurchase.purchaseType,
@@ -712,6 +718,8 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'product_name', resolvedPurchase.product?.name);
     appendMetadata(metadata, 'product_description', resolvedPurchase.product?.description);
     appendMetadata(metadata, 'product_period', resolvedPurchase.product?.period);
+    appendMetadata(metadata, 'transfer_destination_account_id', transferData?.destination);
+    appendMetadata(metadata, 'transfer_amount_cents', transferData?.amount);
 
     const intent = await stripe.paymentIntents.create({
       amount: taxQuote.totalChargeCents,
@@ -727,6 +735,7 @@ export async function POST(req: NextRequest) {
         },
       },
       metadata,
+      ...(transferData ? { transfer_data: transferData } : {}),
     });
 
     return NextResponse.json({
@@ -746,12 +755,13 @@ export async function POST(req: NextRequest) {
       window: reservedRentalWindow,
       userId: actorUserId,
     });
+    const message = error instanceof Error ? error.message : 'Failed to create payment intent.';
     return NextResponse.json({
-      paymentIntent: `pi_fallback_${crypto.randomUUID()}`,
+      error: message,
       publishableKey,
       taxCalculationId: taxQuote.calculationId,
       taxCategory: taxQuote.taxCategory,
       feeBreakdown,
-    }, { status: 200 });
+    }, { status: 502 });
   }
 }

@@ -2,6 +2,20 @@
 
 import { NextRequest } from 'next/server';
 
+const stripeInvoicesUpdateMock = jest.fn();
+const stripeSubscriptionsRetrieveMock = jest.fn();
+const StripeMock = jest.fn(() => ({
+  invoices: {
+    update: (...args: any[]) => stripeInvoicesUpdateMock(...args),
+  },
+  subscriptions: {
+    retrieve: (...args: any[]) => stripeSubscriptionsRetrieveMock(...args),
+  },
+  webhooks: {
+    constructEvent: jest.fn(),
+  },
+}));
+
 const prismaMock = {
   bills: {
     findUnique: jest.fn(),
@@ -23,6 +37,9 @@ const prismaMock = {
   products: {
     findUnique: jest.fn(),
   },
+  stripeAccounts: {
+    findFirst: jest.fn(),
+  },
   events: {
     update: jest.fn(),
   },
@@ -38,6 +55,10 @@ const prismaMock = {
 const sendPurchaseReceiptEmailMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+jest.mock('stripe', () => ({
+  __esModule: true,
+  default: StripeMock,
+}));
 jest.mock('@/server/purchaseReceipts', () => ({
   sendPurchaseReceiptEmail: (...args: any[]) => sendPurchaseReceiptEmailMock(...args),
 }));
@@ -74,9 +95,34 @@ const buildPaymentIntentSucceededEvent = ({
 });
 
 describe('POST /api/billing/webhook', () => {
+  const originalStripeSecret = process.env.STRIPE_SECRET_KEY;
+
   beforeEach(() => {
     jest.clearAllMocks();
     sendPurchaseReceiptEmailMock.mockResolvedValue({ sent: true });
+    delete process.env.STRIPE_SECRET_KEY;
+    stripeInvoicesUpdateMock.mockResolvedValue({});
+    stripeSubscriptionsRetrieveMock.mockResolvedValue({
+      id: 'sub_123',
+      metadata: {
+        purchase_type: 'product_subscription',
+        product_id: 'product_1',
+        user_id: 'user_1',
+        organization_id: 'org_1',
+      },
+      items: {
+        data: [
+          {
+            metadata: { line_type: 'product_base' },
+            price: { unit_amount: 2500 },
+          },
+          {
+            metadata: { line_type: 'platform_fee' },
+            price: { unit_amount: 303 },
+          },
+        ],
+      },
+    });
 
     prismaMock.bills.findUnique.mockResolvedValue({
       id: 'bill_1',
@@ -114,6 +160,7 @@ describe('POST /api/billing/webhook', () => {
       period: 'MONTH',
       organizationId: 'org_1',
     });
+    prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_connected_123' });
     prismaMock.events.update.mockResolvedValue({});
     prismaMock.eventRegistrations.findUnique.mockResolvedValue({ status: 'ACTIVE' });
     prismaMock.eventRegistrations.create.mockResolvedValue({});
@@ -151,6 +198,14 @@ describe('POST /api/billing/webhook', () => {
       };
       return callback(tx);
     });
+  });
+
+  afterAll(() => {
+    if (originalStripeSecret === undefined) {
+      delete process.env.STRIPE_SECRET_KEY;
+    } else {
+      process.env.STRIPE_SECRET_KEY = originalStripeSecret;
+    }
   });
 
   it('creates a paid bill and bill payment for an instant event purchase and sends a receipt', async () => {
@@ -446,5 +501,38 @@ describe('POST /api/billing/webhook', () => {
     expect(response.status).toBe(200);
     expect(prismaMock.billPayments.update).not.toHaveBeenCalled();
     expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('configures renewal invoices for connected-account destination charges on invoice.created', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123';
+
+    const response = await POST(
+      jsonPost({
+        type: 'invoice.created',
+        data: {
+          object: {
+            id: 'in_123',
+            status: 'draft',
+            total: 2978,
+            parent: {
+              subscription_details: {
+                subscription: 'sub_123',
+              },
+            },
+          },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(stripeSubscriptionsRetrieveMock).toHaveBeenCalledWith('sub_123', {
+      expand: ['items.data.price'],
+    });
+    expect(stripeInvoicesUpdateMock).toHaveBeenCalledWith('in_123', {
+      application_fee_amount: 478,
+      transfer_data: {
+        destination: 'acct_connected_123',
+      },
+    });
   });
 });

@@ -371,6 +371,10 @@ class OrganizationService {
     return this.fetchOrganizationById(id, includeRelations ? 'full' : 'base');
   }
 
+  invalidateCachedOrganization(id?: string): void {
+    this.invalidateOrganizationCache(id);
+  }
+
   async getOrganizationByIdForEventForm(id: string): Promise<Organization | undefined> {
     return this.fetchOrganizationById(id, 'eventForm');
   }
@@ -445,15 +449,10 @@ class OrganizationService {
         ? userService.getUserById(organization.ownerId)
         : Promise.resolve(undefined);
 
-      const productIds = Array.isArray(organization.productIds)
-        ? organization.productIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
-        : [];
       const teamIds = Array.isArray(organization.teamIds)
         ? organization.teamIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
         : [];
-      const productsPromise: Promise<Product[]> = productIds.length
-        ? productService.listProducts(organization.$id)
-        : Promise.resolve<Product[]>([]);
+      const productsPromise: Promise<Product[]> = productService.listProducts(organization.$id);
       const teamsPromise: Promise<Team[]> = teamIds.length
         ? teamService.getTeamsByIds(teamIds, true)
         : Promise.resolve<Team[]>([]);

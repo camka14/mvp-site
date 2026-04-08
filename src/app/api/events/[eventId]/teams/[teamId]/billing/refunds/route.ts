@@ -3,6 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import { canManageEvent } from '@/server/accessControl';
 import { withLegacyFields } from '@/server/legacyFormat';
 
@@ -214,9 +215,10 @@ export async function POST(
   let refundId: string | null = null;
   let appliedRefundAmountCents = requestedAmountCents;
   try {
-    const refund = await stripe.refunds.create({
-      payment_intent: paymentIntentId,
-      amount: requestedAmountCents,
+    const refund = await stripe.refunds.create(await buildRefundCreateParamsForPaymentIntent({
+      stripe,
+      paymentIntentId,
+      amountCents: requestedAmountCents,
       reason: 'requested_by_customer',
       metadata: {
         event_id: eventId,
@@ -225,7 +227,7 @@ export async function POST(
         bill_payment_id: payment.id,
         host_user_id: session.userId,
       },
-    });
+    }));
     refundId = normalizeId(refund.id);
   } catch (error) {
     if (isAlreadyRefundedStripeError(error)) {

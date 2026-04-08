@@ -3,11 +3,15 @@
 import { NextRequest } from 'next/server';
 
 const mockStripeRefundCreate = jest.fn();
+const mockStripePaymentIntentRetrieve = jest.fn();
 
 jest.mock('stripe', () => (
   jest.fn().mockImplementation(() => ({
     refunds: {
       create: (...args: unknown[]) => mockStripeRefundCreate(...args),
+    },
+    paymentIntents: {
+      retrieve: (...args: unknown[]) => mockStripePaymentIntentRetrieve(...args),
     },
   }))
 ));
@@ -57,6 +61,7 @@ describe('POST /api/billing/refund', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockStripeRefundCreate.mockReset();
+    mockStripePaymentIntentRetrieve.mockReset();
     process.env.STRIPE_SECRET_KEY = 'sk_test_123';
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -85,6 +90,7 @@ describe('POST /api/billing/refund', () => {
     prismaMock.billPayments.findUnique.mockResolvedValue(null);
     prismaMock.billPayments.update.mockResolvedValue({ id: 'payment_1', refundedAmountCents: 5000 });
     prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock));
+    mockStripePaymentIntentRetrieve.mockResolvedValue({ id: 'pi_1', transfer_data: null });
   });
 
   it('creates a refund request for the current user and withdraws them from event state', async () => {
@@ -149,6 +155,10 @@ describe('POST /api/billing/refund', () => {
       amountCents: 5000,
       refundedAmountCents: 0,
     });
+    mockStripePaymentIntentRetrieve.mockResolvedValueOnce({
+      id: 'pi_1',
+      transfer_data: { destination: 'acct_connected_123' },
+    });
     prismaMock.refundRequests.create.mockResolvedValueOnce({
       id: 'refund_1',
       status: 'APPROVED',
@@ -172,6 +182,7 @@ describe('POST /api/billing/refund', () => {
       expect.objectContaining({
         payment_intent: 'pi_1',
         amount: 5000,
+        reverse_transfer: true,
         metadata: expect.objectContaining({
           refund_request_id: createdRequestId,
           user_id: 'user_1',

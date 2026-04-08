@@ -223,7 +223,12 @@ describe('event DELETE route', () => {
       { id: 'bill_payment_pending', billId: 'bill_child_1', paymentIntentId: 'pi_pending_1', status: 'PENDING' },
     ]);
     stripeRefundCreateMock.mockResolvedValue({ id: 're_1' });
-    stripePaymentIntentRetrieveMock.mockResolvedValue({ id: 'pi_pending_1', status: 'requires_payment_method' });
+    stripePaymentIntentRetrieveMock
+      .mockResolvedValueOnce({
+        id: 'pi_paid_1',
+        transfer_data: { destination: 'acct_connected_123' },
+      })
+      .mockResolvedValueOnce({ id: 'pi_pending_1', status: 'requires_payment_method' });
     stripePaymentIntentCancelMock.mockResolvedValue({ id: 'pi_pending_1', status: 'canceled' });
 
     timeSlotsMock.findMany.mockResolvedValue([
@@ -260,6 +265,7 @@ describe('event DELETE route', () => {
     expect(stripeRefundCreateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         payment_intent: 'pi_paid_1',
+        reverse_transfer: true,
       }),
     );
     expect(stripePaymentIntentCancelMock).toHaveBeenCalledWith('pi_pending_1');

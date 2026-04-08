@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
+import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
@@ -223,21 +224,23 @@ export const createStripeRefundAttempts = async (params: {
 
     let refundId: string | null = null;
     try {
-      const refund = await stripe.refunds.create(
-        {
-          payment_intent: paymentIntentId,
-          amount: payment.refundableAmountCents,
-          reason: 'requested_by_customer',
-          metadata: {
-            event_id: params.request.eventId,
-            refund_request_id: params.request.id,
-            team_id: params.request.teamId ?? '',
-            user_id: params.request.userId,
-            bill_id: payment.billId,
-            bill_payment_id: payment.id,
-            approved_by_user_id: params.approvedByUserId,
-          },
+      const refundParams = await buildRefundCreateParamsForPaymentIntent({
+        stripe,
+        paymentIntentId,
+        amountCents: payment.refundableAmountCents,
+        reason: 'requested_by_customer',
+        metadata: {
+          event_id: params.request.eventId,
+          refund_request_id: params.request.id,
+          team_id: params.request.teamId ?? '',
+          user_id: params.request.userId,
+          bill_id: payment.billId,
+          bill_payment_id: payment.id,
+          approved_by_user_id: params.approvedByUserId,
         },
+      });
+      const refund = await stripe.refunds.create(
+        refundParams,
         {
           idempotencyKey: `refund-request:${params.request.id}:payment:${payment.id}`,
         },

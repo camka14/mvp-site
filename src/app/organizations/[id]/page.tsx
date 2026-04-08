@@ -1612,14 +1612,14 @@ function OrganizationDetailContent() {
 
   const refreshOrganizationProducts = useCallback(
     async (orgId: string) => {
-      await loadOrg(orgId, { silent: true });
+      organizationService.invalidateCachedOrganization(orgId);
       const latest = await organizationService.getOrganizationById(orgId, true);
       if (latest) {
         setOrg(latest);
         setProducts(latest.products ?? []);
       }
     },
-    [loadOrg],
+    [],
   );
 
   const handleCreateProduct = useCallback(async () => {

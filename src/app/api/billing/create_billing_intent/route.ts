@@ -115,12 +115,13 @@ export async function POST(req: NextRequest) {
     }, { status: 200 });
   } catch (error) {
     console.error('Stripe billing intent failed', error);
+    const message = error instanceof Error ? error.message : 'Failed to create billing payment intent.';
     return NextResponse.json({
-      paymentIntent: `pi_fallback_${crypto.randomUUID()}`,
+      error: message,
       publishableKey,
       feeBreakdown,
       billId: bill.id,
       billPaymentId: payment.id,
-    }, { status: 200 });
+    }, { status: 502 });
   }
 }

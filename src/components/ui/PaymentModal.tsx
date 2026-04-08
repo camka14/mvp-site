@@ -5,6 +5,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
 import { BillingAddress, Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import { isStripePaymentIntentClientSecret } from '@/lib/stripeClientSecret';
 import { billingAddressService } from '@/lib/billingAddressService';
 import PaymentForm from './PaymentForm';
 import { Modal, Button, Group, Alert, Loader, Text } from '@mantine/core';
@@ -110,6 +111,7 @@ export default function PaymentModal({
     if (!isOpen) return null;
 
     const clientSecret = paymentData?.paymentIntent;
+    const hasValidClientSecret = isStripePaymentIntentClientSecret(clientSecret);
     const publishableKey = paymentData?.publishableKey || envPublishableKey;
 
     const stripePromise = publishableKey
@@ -203,15 +205,21 @@ export default function PaymentModal({
                         <Alert color="yellow" variant="light">Price details are unavailable. Continue to complete payment.</Alert>
                     )}
 
+                    {!hasValidClientSecret && (
+                        <Alert color="red" variant="light">
+                            Checkout could not be initialized. Please close this dialog and try again.
+                        </Alert>
+                    )}
+
                     {/* Action Buttons */}
                     <Group grow>
                         <Button variant="default" onClick={onClose}>Cancel</Button>
-                        <Button onClick={() => setView('payment')}>Continue to Payment</Button>
+                        <Button onClick={() => setView('payment')} disabled={!hasValidClientSecret}>Continue to Payment</Button>
                     </Group>
                 </div>
             ) : view === 'payment' ? (
                 /* Payment Form - Only show when we have payment intent */
-                clientSecret && (
+                hasValidClientSecret ? (
                     <Elements
                         key={clientSecret}
                         stripe={stripePromise}
@@ -234,6 +242,10 @@ export default function PaymentModal({
                             billingEmail={billingEmail}
                         />
                     </Elements>
+                ) : (
+                    <Alert color="red" variant="light">
+                        Checkout could not be initialized. Please close this dialog and try again.
+                    </Alert>
                 )
             ) : (
                 <div className="space-y-4 text-center">

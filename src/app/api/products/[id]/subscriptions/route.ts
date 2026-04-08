@@ -16,6 +16,10 @@ import {
   normalizeProductTaxCategory,
   syncPlatformProductCatalog,
 } from '@/lib/stripeProducts';
+import {
+  calculatePlatformApplicationFeeAmount,
+  resolveConnectedAccountId,
+} from '@/lib/stripeConnectAccounts';
 import { upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 
 export const dynamic = 'force-dynamic';
@@ -32,12 +36,12 @@ const normalizeRecurringInterval = (period: string): 'week' | 'month' | 'year' =
 };
 
 const toFeeBreakdown = (taxQuote: Awaited<ReturnType<typeof calculateTaxQuote>>) => ({
-  eventPrice: taxQuote.subtotalCents / 100,
-  processingFee: taxQuote.processingFeeCents / 100,
-  stripeFee: taxQuote.stripeFeeCents / 100,
-  taxAmount: taxQuote.taxAmountCents / 100,
-  totalCharge: taxQuote.totalChargeCents / 100,
-  hostReceives: taxQuote.hostReceivesCents / 100,
+  eventPrice: taxQuote.subtotalCents,
+  processingFee: taxQuote.processingFeeCents,
+  stripeFee: taxQuote.stripeFeeCents,
+  taxAmount: taxQuote.taxAmountCents,
+  totalCharge: taxQuote.totalChargeCents,
+  hostReceives: taxQuote.hostReceivesCents,
   feePercentage: taxQuote.feePercentage,
   purchaseType: taxQuote.purchaseType,
 });
@@ -149,6 +153,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     0,
     taxQuote.totalChargeCents - taxQuote.subtotalCents - taxQuote.taxAmountCents,
   );
+  const connectedAccountId = await resolveConnectedAccountId({
+    organizationId: product.organizationId,
+  });
   const platformFeeProductId = recurringFeeAmountCents > 0
     ? await ensurePlatformFeeProduct({ stripe })
     : null;
@@ -197,8 +204,33 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       tax_category: taxCategory,
       purchase_type: 'product_subscription',
     },
-    expand: ['latest_invoice.confirmation_secret', 'items.data.price'],
+    ...(connectedAccountId ? { transfer_data: { destination: connectedAccountId } } : {}),
+    expand: ['latest_invoice.confirmation_secret', 'latest_invoice.payment_intent', 'items.data.price'],
   });
+
+  const latestInvoice = typeof subscription.latest_invoice === 'object' && subscription.latest_invoice
+    ? subscription.latest_invoice
+    : null;
+  let firstInvoicePaymentIntentId: string | null = null;
+  if (connectedAccountId && latestInvoice?.id) {
+    const invoiceWithPaymentIntent = await stripe.invoices.retrieve(latestInvoice.id, {
+      expand: ['payment_intent'],
+    });
+    firstInvoicePaymentIntentId = typeof invoiceWithPaymentIntent.payment_intent === 'string'
+      ? invoiceWithPaymentIntent.payment_intent
+      : invoiceWithPaymentIntent.payment_intent?.id ?? null;
+  }
+  if (connectedAccountId && firstInvoicePaymentIntentId) {
+    await stripe.paymentIntents.update(firstInvoicePaymentIntentId, {
+      application_fee_amount: calculatePlatformApplicationFeeAmount({
+        totalChargeCents: taxQuote.totalChargeCents,
+        connectedAccountAmountCents: taxQuote.subtotalCents,
+      }),
+      transfer_data: {
+        destination: connectedAccountId,
+      },
+    });
+  }
 
   await upsertStripeSubscriptionMirror({
     subscription,
@@ -209,9 +241,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     },
   });
 
-  const latestInvoice = typeof subscription.latest_invoice === 'object' && subscription.latest_invoice
-    ? subscription.latest_invoice
-    : null;
   const paymentIntentClientSecret = latestInvoice?.confirmation_secret?.client_secret ?? null;
   if (!paymentIntentClientSecret) {
     return NextResponse.json({

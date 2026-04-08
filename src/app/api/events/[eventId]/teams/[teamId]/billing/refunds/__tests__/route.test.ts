@@ -3,11 +3,15 @@
 import { NextRequest } from 'next/server';
 
 const mockStripeRefundCreate = jest.fn();
+const mockStripePaymentIntentRetrieve = jest.fn();
 
 jest.mock('stripe', () => (
   jest.fn().mockImplementation(() => ({
     refunds: {
       create: (...args: unknown[]) => mockStripeRefundCreate(...args),
+    },
+    paymentIntents: {
+      retrieve: (...args: unknown[]) => mockStripePaymentIntentRetrieve(...args),
     },
   }))
 ));
@@ -67,6 +71,10 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/refunds', () => {
       headCoachId: null,
       parentTeamId: null,
     });
+    mockStripePaymentIntentRetrieve.mockResolvedValue({
+      id: 'pi_1',
+      transfer_data: null,
+    });
   });
 
   it('creates a partial stripe refund and persists refundedAmountCents on the payment', async () => {
@@ -83,6 +91,10 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/refunds', () => {
       ownerType: 'USER',
       ownerId: 'user_2',
       eventId: 'event_1',
+    });
+    mockStripePaymentIntentRetrieve.mockResolvedValueOnce({
+      id: 'pi_1',
+      transfer_data: { destination: 'acct_connected_123' },
     });
     mockStripeRefundCreate.mockResolvedValue({ id: 're_1' });
     prismaMock.billPayments.update.mockResolvedValue({
@@ -111,6 +123,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/refunds', () => {
         payment_intent: 'pi_1',
         amount: 300,
         reason: 'requested_by_customer',
+        reverse_transfer: true,
       }),
     );
     expect(prismaMock.billPayments.update).toHaveBeenCalledWith(

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
+import {
+  calculatePlatformApplicationFeeAmount,
+  findSubscriptionProductBaseAmountCents,
+  resolveConnectedAccountId,
+} from '@/lib/stripeConnectAccounts';
 import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 
@@ -67,11 +72,95 @@ const sameOrderedIds = (left: string[], right: string[]): boolean => {
 
 const SUPPORTED_EVENT_TYPES = new Set([
   'payment_intent.succeeded',
+  'invoice.created',
   'invoice.paid',
   'customer.subscription.created',
   'customer.subscription.updated',
   'customer.subscription.deleted',
 ]);
+
+const extractStripeSubscriptionIdFromInvoice = (
+  invoice: (Stripe.Invoice & {
+    parent?: {
+      subscription_details?: {
+        subscription?: string | Stripe.Subscription | null;
+      } | null;
+    } | null;
+    subscription?: string | Stripe.Subscription | null;
+  }) | null,
+): string | null => {
+  const parentSubscription = invoice?.parent?.subscription_details?.subscription;
+  if (typeof parentSubscription === 'string') {
+    return parentSubscription;
+  }
+  if (parentSubscription?.id) {
+    return parentSubscription.id;
+  }
+  const invoiceSubscription = invoice?.subscription;
+  if (typeof invoiceSubscription === 'string') {
+    return invoiceSubscription;
+  }
+  return invoiceSubscription?.id ?? null;
+};
+
+const applySubscriptionInvoiceConnectConfiguration = async ({
+  stripe,
+  invoice,
+}: {
+  stripe: Stripe;
+  invoice: (Stripe.Invoice & {
+    parent?: {
+      subscription_details?: {
+        subscription?: string | Stripe.Subscription | null;
+      } | null;
+    } | null;
+    subscription?: string | Stripe.Subscription | null;
+  });
+}) => {
+  if (!invoice.id || invoice.status !== 'draft') {
+    return;
+  }
+
+  const stripeSubscriptionId = extractStripeSubscriptionIdFromInvoice(invoice);
+  if (!stripeSubscriptionId) {
+    return;
+  }
+
+  const subscription = await stripe.subscriptions.retrieve(stripeSubscriptionId, {
+    expand: ['items.data.price'],
+  });
+  await upsertStripeSubscriptionMirror({ subscription });
+
+  if ((subscription.metadata?.purchase_type ?? '').trim().toLowerCase() !== 'product_subscription') {
+    return;
+  }
+
+  const organizationId = toStringOrNull(subscription.metadata?.organization_id ?? null);
+  if (!organizationId) {
+    return;
+  }
+
+  const connectedAccountId = await resolveConnectedAccountId({ organizationId });
+  if (!connectedAccountId) {
+    return;
+  }
+
+  const baseAmountCents = findSubscriptionProductBaseAmountCents(subscription);
+  const totalChargeCents = toIntOrNull(invoice.total);
+  if (baseAmountCents == null || totalChargeCents == null) {
+    return;
+  }
+
+  await stripe.invoices.update(invoice.id, {
+    application_fee_amount: calculatePlatformApplicationFeeAmount({
+      totalChargeCents,
+      connectedAccountAmountCents: baseAmountCents,
+    }),
+    transfer_data: {
+      destination: connectedAccountId,
+    },
+  });
+};
 
 const ensureEventRegistrationFromPurchase = async ({
   purchaseType,
@@ -808,6 +897,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ received: true }, { status: 200 });
   }
 
+  if (eventType === 'invoice.created') {
+    const invoice = (event.data?.object ?? null) as (Stripe.Invoice & {
+      parent?: {
+        subscription_details?: {
+          subscription?: string | Stripe.Subscription | null;
+        } | null;
+      } | null;
+      subscription?: string | Stripe.Subscription | null;
+    }) | null;
+
+    if (invoice && stripeForPaymentIntentSync) {
+      await applySubscriptionInvoiceConnectConfiguration({
+        stripe: stripeForPaymentIntentSync,
+        invoice,
+      });
+    }
+
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
   if (eventType === 'invoice.paid') {
     const invoice = (event.data?.object ?? null) as (Stripe.Invoice & {
       parent?: {
@@ -815,11 +924,9 @@ export async function POST(req: NextRequest) {
           subscription?: string | Stripe.Subscription | null;
         } | null;
       } | null;
+      subscription?: string | Stripe.Subscription | null;
     }) | null;
-    const invoiceSubscription = invoice?.parent?.subscription_details?.subscription;
-    const stripeSubscriptionId = typeof invoiceSubscription === 'string'
-      ? invoiceSubscription
-      : invoiceSubscription?.id ?? null;
+    const stripeSubscriptionId = extractStripeSubscriptionIdFromInvoice(invoice);
 
     if (stripeSubscriptionId && stripeForPaymentIntentSync) {
       await syncStripeSubscriptionMirrorById({
