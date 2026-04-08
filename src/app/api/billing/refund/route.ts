@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { getRefundPolicy } from '@/lib/refundPolicy';
+import {
+  applyRefundAttempts,
+  createStripeRefundAttempts,
+  resolveRefundablePaymentsForRequest,
+  summarizeRefundAttempts,
+  type RefundRequestRow,
+  type StripeRefundAttempt,
+} from '@/server/refunds/refundExecution';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,6 +89,8 @@ export async function POST(req: NextRequest) {
     where: { id: eventId },
     select: {
       id: true,
+      start: true,
+      cancellationRefundHours: true,
       hostId: true,
       organizationId: true,
       teamIds: true,
@@ -125,12 +136,140 @@ export async function POST(req: NextRequest) {
 
   const now = new Date();
   const reason = normalizeId(parsed.data.reason) ?? 'requested_by_customer';
+  const refundTeamId = registeredTeam?.id ?? null;
+  const { canAutoRefund } = getRefundPolicy(event, now);
+
+  const requestSelect = {
+    id: true,
+    eventId: true,
+    userId: true,
+    hostId: true,
+    teamId: true,
+    organizationId: true,
+    reason: true,
+    status: true,
+  } as const;
+
+  const buildRefundRequestRow = (id: string, status: RefundRequestRow['status']): RefundRequestRow => ({
+    id,
+    eventId,
+    userId: targetUserId,
+    hostId: event.hostId ?? parsed.data.payloadEvent?.hostId ?? null,
+    teamId: refundTeamId,
+    organizationId: event.organizationId ?? parsed.data.payloadEvent?.organizationId ?? null,
+    reason,
+    status,
+  });
+
+  if (canAutoRefund) {
+    const existingAutoRefund = await prisma.refundRequests.findFirst({
+      where: {
+        eventId,
+        userId: targetUserId,
+        teamId: refundTeamId,
+        status: { in: ['WAITING', 'APPROVED'] },
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      select: requestSelect,
+    });
+
+    const refundRequest = existingAutoRefund
+      ? { ...existingAutoRefund, reason } as RefundRequestRow
+      : buildRefundRequestRow(crypto.randomUUID(), 'APPROVED');
+
+    let stripeRefundAttempts: StripeRefundAttempt[] = [];
+    try {
+      const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, refundRequest);
+      stripeRefundAttempts = await createStripeRefundAttempts({
+        request: refundRequest,
+        payments: refundablePayments,
+        approvedByUserId: session.userId,
+      });
+    } catch (error) {
+      console.error('Stripe refund failed during automatic refund processing', error);
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Failed to create refund.' },
+        { status: 502 },
+      );
+    }
+
+    if (!stripeRefundAttempts.length && existingAutoRefund?.status !== 'APPROVED') {
+      return NextResponse.json(
+        { error: 'No refundable payment found for automatic refund.' },
+        { status: 400 },
+      );
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.events.update({
+        where: { id: eventId },
+        data: {
+          userIds: currentUserIds.filter((id) => id !== targetUserId),
+          waitListIds: currentWaitlistIds.filter((id) => id !== targetUserId),
+          freeAgentIds: currentFreeAgentIds.filter((id) => id !== targetUserId),
+          updatedAt: now,
+        },
+      });
+
+      const persistedRequest = existingAutoRefund
+        ? await tx.refundRequests.update({
+          where: { id: existingAutoRefund.id },
+          data: {
+            status: 'APPROVED',
+            updatedAt: now,
+          },
+          select: { id: true, status: true },
+        })
+        : await tx.refundRequests.create({
+          data: {
+            id: refundRequest.id,
+            eventId: refundRequest.eventId,
+            userId: refundRequest.userId,
+            hostId: refundRequest.hostId,
+            teamId: refundRequest.teamId,
+            organizationId: refundRequest.organizationId,
+            reason: refundRequest.reason,
+            status: 'APPROVED',
+            createdAt: now,
+            updatedAt: now,
+          },
+          select: { id: true, status: true },
+        });
+
+      const updatedPayments = await applyRefundAttempts(tx, stripeRefundAttempts, now);
+
+      return {
+        persistedRequest,
+        updatedPayments,
+      };
+    });
+
+    const refundSummary = summarizeRefundAttempts(stripeRefundAttempts);
+
+    return NextResponse.json(
+      {
+        success: true,
+        emailSent: false,
+        targetUserId,
+        refundId: result.persistedRequest.id,
+        refundAlreadyPending: false,
+        refundStatus: result.persistedRequest.status,
+        refundedAmountCents: refundSummary.refundedAmountCents,
+        stripeRefundIds: refundSummary.stripeRefundIds,
+        refundedPaymentIds: result.updatedPayments.map((payment: { id: string }) => payment.id),
+      },
+      { status: 200 },
+    );
+  }
 
   const result = await prisma.$transaction(async (tx) => {
     const existingWaitingRequest = await tx.refundRequests.findFirst({
       where: {
         eventId,
         userId: targetUserId,
+        teamId: refundTeamId,
         status: 'WAITING',
       },
       select: { id: true },
@@ -159,7 +298,7 @@ export async function POST(req: NextRequest) {
         eventId,
         userId: targetUserId,
         hostId: event.hostId ?? parsed.data.payloadEvent?.hostId ?? null,
-        teamId: registeredTeam?.id ?? null,
+        teamId: refundTeamId,
         organizationId: event.organizationId ?? parsed.data.payloadEvent?.organizationId ?? null,
         reason,
         status: 'WAITING',

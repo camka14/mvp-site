@@ -1,7 +1,7 @@
 'use client';
 
 import { apiRequest } from '@/lib/apiClient';
-import type { Product, ProductPeriod, Subscription, UserData } from '@/types';
+import type { BillingAddress, PaymentIntent, Product, ProductPeriod, Subscription, UserData } from '@/types';
 
 
 const normalizeProductPeriod = (value: unknown): ProductPeriod => {
@@ -26,6 +26,7 @@ type CreateProductInput = {
   priceCents: number;
   period: ProductPeriod;
   description?: string;
+  taxCategory?: Product['taxCategory'];
 };
 
 type CreateSubscriptionInput = {
@@ -36,11 +37,17 @@ type CreateSubscriptionInput = {
   organizationId?: string;
 };
 
+type CreateSubscriptionCheckoutInput = {
+  productId: string;
+  billingAddress?: BillingAddress;
+};
+
 type UpdateProductInput = {
   name?: string;
   description?: string;
   priceCents?: number;
   period?: ProductPeriod;
+  taxCategory?: Product['taxCategory'];
   isActive?: boolean;
 };
 
@@ -57,8 +64,11 @@ class ProductService {
       description: row?.description ?? row?.desc ?? undefined,
       priceCents,
       period,
+      taxCategory: row?.taxCategory ?? 'ONE_TIME_PRODUCT',
       createdBy: row?.createdBy ?? row?.ownerId,
       isActive: row?.isActive ?? true,
+      stripeProductId: row?.stripeProductId ?? null,
+      stripePriceId: row?.stripePriceId ?? null,
       $createdAt: row?.$createdAt,
     };
   }
@@ -120,6 +130,7 @@ class ProductService {
         description: input.description,
         priceCents: input.priceCents,
         period: input.period,
+        taxCategory: input.taxCategory,
       },
     };
 
@@ -158,6 +169,23 @@ class ProductService {
       return this.mapSubscription(result);
     } catch (error) {
       console.error('Failed to create subscription:', error);
+      throw error;
+    }
+  }
+
+  async createSubscriptionCheckout(input: CreateSubscriptionCheckoutInput): Promise<PaymentIntent> {
+    try {
+      const result = await apiRequest<PaymentIntent & { error?: string }>(`/api/products/${input.productId}/subscriptions`, {
+        method: 'POST',
+        body: input.billingAddress ? { billingAddress: input.billingAddress } : {},
+      });
+      if (result && (result as any).error) {
+        throw new Error((result as any).error as string);
+      }
+
+      return result as PaymentIntent;
+    } catch (error) {
+      console.error('Failed to start subscription checkout:', error);
       throw error;
     }
   }

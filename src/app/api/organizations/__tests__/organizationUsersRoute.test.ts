@@ -6,6 +6,9 @@ const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
   events: {
     findMany: jest.fn(),
   },
@@ -49,6 +52,7 @@ import { GET } from '@/app/api/organizations/[id]/users/route';
 describe('GET /api/organizations/[id]/users', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.authUser.findUnique.mockResolvedValue(null);
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.fields.findMany.mockResolvedValue([]);
@@ -84,6 +88,10 @@ describe('GET /api/organizations/[id]/users', () => {
 
   it('returns aggregated users with events and signed documents', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'player_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      email: 'player@example.com',
+      emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
@@ -200,6 +208,10 @@ describe('GET /api/organizations/[id]/users', () => {
 
   it('includes users from teams registered for organization events', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      email: 'owner@example.com',
+      emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
@@ -269,6 +281,10 @@ describe('GET /api/organizations/[id]/users', () => {
 
   it('includes host and staff users from external events that use organization fields', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      email: 'owner@example.com',
+      emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
@@ -336,5 +352,34 @@ describe('GET /api/organizations/[id]/users', () => {
         expect.objectContaining({ eventId: 'event_ext_1' }),
       ]));
     });
+  });
+
+  it('allows verified razumly admins even when they are not org members', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'raz_admin_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      email: 'admin@razumly.com',
+      emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      officialIds: [],
+      hostIds: [],
+    });
+    prismaMock.events.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.userData.findMany.mockResolvedValue([]);
+    prismaMock.templateDocuments.findMany.mockResolvedValue([]);
+    prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1/users'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.users).toEqual([]);
   });
 });

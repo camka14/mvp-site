@@ -34,6 +34,7 @@ enum RefundRequestsStatusEnum {
 enum EventsStateEnum {
   PUBLISHED
   UNPUBLISHED
+  PRIVATE
   TEMPLATE
 }
 
@@ -54,6 +55,12 @@ enum ProductsPeriodEnum {
   WEEK
   MONTH
   YEAR
+}
+
+enum ProductsTaxCategoryEnum {
+  ONE_TIME_PRODUCT
+  SUBSCRIPTION
+  NON_TAXABLE
 }
 
 enum SubscriptionsPeriodEnum {
@@ -233,11 +240,17 @@ model UserData {
 }
 
 model SensitiveUserData {
-  id        String    @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  userId    String
-  email     String
+  id                  String    @id
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  userId              String
+  email               String
+  billingAddressLine1 String?
+  billingAddressLine2 String?
+  billingCity         String?
+  billingState        String?
+  billingPostalCode   String?
+  billingCountryCode  String?
 }
 
 model Invites {
@@ -388,18 +401,23 @@ model Bills {
 }
 
 model BillPayments {
-  id              String                  @id
-  createdAt       DateTime?
-  updatedAt       DateTime?
-  billId          String
-  sequence        Int
-  dueDate         DateTime
-  amountCents     Int
-  status          BillPaymentsStatusEnum?
-  paidAt          DateTime?
-  paymentIntentId String?
-  payerUserId     String?
-  refundedAmountCents Int                 @default(0)
+  id                       String                  @id
+  createdAt                DateTime?
+  updatedAt                DateTime?
+  billId                   String
+  sequence                 Int
+  dueDate                  DateTime
+  amountCents              Int
+  status                   BillPaymentsStatusEnum?
+  paidAt                   DateTime?
+  paymentIntentId          String?
+  payerUserId              String?
+  refundedAmountCents      Int                     @default(0)
+  taxCalculationId         String?
+  taxTransactionId         String?
+  taxAmountCents           Int                     @default(0)
+  stripeProcessingFeeCents Int                     @default(0)
+  stripeTaxServiceFeeCents Int                     @default(0)
 }
 
 model RefundRequests {
@@ -530,6 +548,7 @@ model Products {
   description     String?
   priceCents      Int
   period          ProductsPeriodEnum
+  taxCategory     ProductsTaxCategoryEnum @default(ONE_TIME_PRODUCT)
   organizationId  String
   createdBy       String?
   isActive        Boolean?

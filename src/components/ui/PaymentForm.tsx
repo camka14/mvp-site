@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useStripe, useElements, PaymentElement } from '@stripe/react-stripe-js';
+import type { BillingAddress } from '@/types';
 import { formatPrice } from '@/types';
 
 interface PaymentFormProps {
@@ -7,13 +8,17 @@ interface PaymentFormProps {
     onError: (error: string) => void;
     amount: number;
     eventName: string;
+    billingAddress?: BillingAddress | null;
+    billingEmail?: string | null;
 }
 
 export default function PaymentForm({
     onSuccess,
     onError,
     amount,
-    eventName
+    eventName,
+    billingAddress,
+    billingEmail,
 }: PaymentFormProps) {
     const stripe = useStripe();
     const elements = useElements();
@@ -59,6 +64,19 @@ export default function PaymentForm({
             <PaymentElement
                 options={{
                     layout: 'tabs',
+                    defaultValues: billingAddress ? {
+                        billingDetails: {
+                            email: billingEmail ?? undefined,
+                            address: {
+                                line1: billingAddress.line1,
+                                line2: billingAddress.line2 ?? undefined,
+                                city: billingAddress.city,
+                                state: billingAddress.state,
+                                postal_code: billingAddress.postalCode,
+                                country: billingAddress.countryCode,
+                            },
+                        },
+                    } : undefined,
                 }}
             />
 

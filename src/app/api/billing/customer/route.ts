@@ -4,6 +4,8 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
+import { loadUserBillingProfile } from '@/lib/billingAddress';
+import { ensurePlatformStripeCustomer } from '@/lib/stripeCustomer';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,70 +44,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const existing = await prisma.stripeAccounts.findFirst({
-    where: {
-      ...(organizationId ? { organizationId } : { userId }),
-    },
-  });
-
-  if (existing?.customerId) {
-    return NextResponse.json({
-      customerId: existing.customerId,
-      userId: existing.userId ?? undefined,
-      organizationId: existing.organizationId ?? undefined,
-    }, { status: 200 });
-  }
-
-  let email = normalizeEmail(parsed.data.email);
-  if (!email && !organizationId) {
-    const sensitive = await prisma.sensitiveUserData.findFirst({ where: { userId } });
-    email = normalizeEmail(sensitive?.email) ?? null;
-  }
-
   const secretKey = process.env.STRIPE_SECRET_KEY;
-  let customerId: string | null = existing?.customerId ?? null;
+  const existing = await prisma.stripeAccounts.findFirst({
+    where: organizationId ? { organizationId } : { userId },
+    orderBy: { updatedAt: 'desc' },
+  });
+  let email = normalizeEmail(parsed.data.email);
+  let billingAddress = null;
+  if (!organizationId) {
+    const billingProfile = await loadUserBillingProfile(userId);
+    email = email ?? billingProfile.email ?? null;
+    billingAddress = billingProfile.billingAddress;
+  }
 
-  if (secretKey && !customerId) {
+  let customerId = existing?.customerId ?? null;
+  if (secretKey) {
     try {
       const stripe = new Stripe(secretKey);
-      const customer = await stripe.customers.create({
-        email: email ?? undefined,
-        metadata: {
-          user_id: userId,
-          organization_id: organizationId ?? '',
-        },
+      customerId = await ensurePlatformStripeCustomer({
+        stripe,
+        userId,
+        organizationId,
+        email,
+        billingAddress,
       });
-      customerId = customer.id;
     } catch (error) {
-      console.error('Failed to create Stripe customer', error);
+      console.error('Failed to create or update Stripe customer', error);
     }
   }
 
-  const record = existing
-    ? await prisma.stripeAccounts.update({
-      where: { id: existing.id },
-      data: {
-        customerId,
-        email: email ?? existing.email,
-        updatedAt: new Date(),
-      },
-    })
-    : await prisma.stripeAccounts.create({
-      data: {
-        id: crypto.randomUUID(),
-        customerId,
-        accountId: null,
-        userId: organizationId ? null : userId,
-        organizationId,
-        email,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
-    });
+  const record = await prisma.stripeAccounts.findFirst({
+    where: organizationId ? { organizationId } : { userId },
+    orderBy: { updatedAt: 'desc' },
+  });
 
   return NextResponse.json({
-    customerId: record.customerId ?? null,
-    userId: record.userId ?? undefined,
-    organizationId: record.organizationId ?? undefined,
+    customerId: record?.customerId ?? customerId ?? null,
+    userId: record?.userId ?? undefined,
+    organizationId: record?.organizationId ?? undefined,
   }, { status: 200 });
 }

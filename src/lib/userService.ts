@@ -258,7 +258,15 @@ class UserService {
   }
 
   async listUserSubscriptions(_userId: string): Promise<Subscription[]> {
-    return [];
+    try {
+      const params = new URLSearchParams();
+      params.set('userId', _userId);
+      const response = await apiFetch<{ subscriptions?: Subscription[] }>(`/api/subscriptions?${params.toString()}`);
+      return response.subscriptions ?? [];
+    } catch (error) {
+      console.error('Failed to list user subscriptions:', error);
+      return [];
+    }
   }
 
   async listInvites(filters: { userId?: string; type?: string; types?: readonly string[]; teamId?: string } = {}): Promise<Invite[]> {

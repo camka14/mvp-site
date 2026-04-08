@@ -28,7 +28,7 @@ import EventCard from '@/components/ui/EventCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import LocationSearch from '@/components/location/LocationSearch';
 import Loading from '@/components/ui/Loading';
-import { Event } from '@/types';
+import { Event, getEventDivisionPriceRange } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 
 const EVENT_SORT_OPTIONS = [
@@ -207,7 +207,11 @@ export default function EventsTabContent<TEventType extends string = Event['even
         });
         break;
       case 'price-low':
-        sorted.sort((a, b) => a.price - b.price || compareByStart(a, b));
+        sorted.sort((a, b) => {
+          const aMinPrice = getEventDivisionPriceRange(a).minPriceCents;
+          const bMinPrice = getEventDivisionPriceRange(b).minPriceCents;
+          return aMinPrice - bMinPrice || compareByStart(a, b);
+        });
         break;
       case 'popular':
         sorted.sort((a, b) => b.attendees - a.attendees || compareByStart(a, b));

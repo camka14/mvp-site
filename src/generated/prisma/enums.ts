@@ -48,6 +48,7 @@ export type RefundRequestsStatusEnum = (typeof RefundRequestsStatusEnum)[keyof t
 export const EventsStateEnum = {
   PUBLISHED: 'PUBLISHED',
   UNPUBLISHED: 'UNPUBLISHED',
+  PRIVATE: 'PRIVATE',
   TEMPLATE: 'TEMPLATE'
 } as const
 
@@ -80,6 +81,15 @@ export const ProductsPeriodEnum = {
 } as const
 
 export type ProductsPeriodEnum = (typeof ProductsPeriodEnum)[keyof typeof ProductsPeriodEnum]
+
+
+export const ProductsTaxCategoryEnum = {
+  ONE_TIME_PRODUCT: 'ONE_TIME_PRODUCT',
+  SUBSCRIPTION: 'SUBSCRIPTION',
+  NON_TAXABLE: 'NON_TAXABLE'
+} as const
+
+export type ProductsTaxCategoryEnum = (typeof ProductsTaxCategoryEnum)[keyof typeof ProductsTaxCategoryEnum]
 
 
 export const SubscriptionsPeriodEnum = {

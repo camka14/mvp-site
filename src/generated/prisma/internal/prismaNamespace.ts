@@ -3036,7 +3036,13 @@ export const SensitiveUserDataScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   userId: 'userId',
-  email: 'email'
+  email: 'email',
+  billingAddressLine1: 'billingAddressLine1',
+  billingAddressLine2: 'billingAddressLine2',
+  billingCity: 'billingCity',
+  billingState: 'billingState',
+  billingPostalCode: 'billingPostalCode',
+  billingCountryCode: 'billingCountryCode'
 } as const
 
 export type SensitiveUserDataScalarFieldEnum = (typeof SensitiveUserDataScalarFieldEnum)[keyof typeof SensitiveUserDataScalarFieldEnum]
@@ -3213,7 +3219,12 @@ export const BillPaymentsScalarFieldEnum = {
   paidAt: 'paidAt',
   paymentIntentId: 'paymentIntentId',
   payerUserId: 'payerUserId',
-  refundedAmountCents: 'refundedAmountCents'
+  refundedAmountCents: 'refundedAmountCents',
+  taxCalculationId: 'taxCalculationId',
+  taxTransactionId: 'taxTransactionId',
+  taxAmountCents: 'taxAmountCents',
+  stripeProcessingFeeCents: 'stripeProcessingFeeCents',
+  stripeTaxServiceFeeCents: 'stripeTaxServiceFeeCents'
 } as const
 
 export type BillPaymentsScalarFieldEnum = (typeof BillPaymentsScalarFieldEnum)[keyof typeof BillPaymentsScalarFieldEnum]
@@ -3354,6 +3365,7 @@ export const ProductsScalarFieldEnum = {
   description: 'description',
   priceCents: 'priceCents',
   period: 'period',
+  taxCategory: 'taxCategory',
   organizationId: 'organizationId',
   createdBy: 'createdBy',
   isActive: 'isActive',
@@ -3890,6 +3902,20 @@ export type EnumProductsPeriodEnumFieldRefInput<$PrismaModel> = FieldRefInputTyp
  * Reference to a field of type 'ProductsPeriodEnum[]'
  */
 export type ListEnumProductsPeriodEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ProductsPeriodEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'ProductsTaxCategoryEnum'
+ */
+export type EnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ProductsTaxCategoryEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'ProductsTaxCategoryEnum[]'
+ */
+export type ListEnumProductsTaxCategoryEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ProductsTaxCategoryEnum[]'>
     
 
 

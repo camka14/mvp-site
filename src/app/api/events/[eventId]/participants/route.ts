@@ -15,8 +15,17 @@ import {
   resolveOrCreateWeeklySessionChild,
   WeeklySessionResolutionError,
 } from '@/server/events/weeklySessionResolver';
+import { getRefundPolicy } from '@/lib/refundPolicy';
+import {
+  applyRefundAttempts,
+  createStripeRefundAttempts,
+  resolveRefundablePaymentsForRequest,
+  type RefundRequestRow,
+  type StripeRefundAttempt,
+} from '@/server/refunds/refundExecution';
 
 export const dynamic = 'force-dynamic';
+const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'PRIVATE', 'DRAFT']);
 
 const payloadSchema = z.object({
   user: z.record(z.string(), z.any()).optional(),
@@ -29,6 +38,8 @@ const payloadSchema = z.object({
   sessionStart: z.string().optional(),
   sessionEnd: z.string().optional(),
   slotId: z.string().optional(),
+  refundMode: z.enum(['auto', 'request']).optional(),
+  refundReason: z.string().optional(),
 }).strict();
 
 const withLegacyEvent = (row: any) => {
@@ -136,6 +147,17 @@ const divisionMatchesTarget = (
 };
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
+
+const refundRequestSelect = {
+  id: true,
+  eventId: true,
+  userId: true,
+  hostId: true,
+  teamId: true,
+  organizationId: true,
+  reason: true,
+  status: true,
+} as const;
 
 const divisionAliases = (divisionId: string | null): Set<string> => {
   const aliases = new Set<string>();
@@ -389,7 +411,7 @@ async function updateParticipants(
     }
     const canManageParent = await canManageEvent(session, event);
     const parentState = String(event.state ?? '').toUpperCase();
-    if (parentState === 'UNPUBLISHED' && !canManageParent) {
+    if (HIDDEN_EVENT_STATES.has(parentState) && !canManageParent) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -458,6 +480,16 @@ async function updateParticipants(
 
   const requiredTemplateIds = normalizeRequiredTemplateIds(event.requiredTemplateIds);
   const warnings: string[] = [];
+  const refundPolicy = getRefundPolicy(event);
+  const requestedRefundMode = mode === 'remove' && teamId
+    ? (parsed.data.refundMode ?? 'request')
+    : undefined;
+  if (requestedRefundMode === 'auto' && !refundPolicy.canAutoRefund) {
+    return NextResponse.json(
+      { error: 'Automatic refund is not available for this event.' },
+      { status: 400 },
+    );
+  }
 
   if (mode === 'add' && userId && !teamId) {
     const registrant = await prisma.userData.findUnique({
@@ -551,7 +583,7 @@ async function updateParticipants(
       managerId: string | null;
     }
     | null = null;
-  let teamRefundReason = 'team_refund_requested';
+  let teamRefundReason = normalizeId(parsed.data.refundReason) ?? 'team_refund_requested';
   let teamRefundOwnerIds: string[] = [];
   let teamRefundParticipantUserIds: string[] = [];
 
@@ -869,6 +901,55 @@ async function updateParticipants(
           return { ok: false as const, status: 404, error: 'Team is not registered for this event.' };
         }
 
+        const refundTeamOwnerIds = ensureUnique(
+          [
+            ...teamRefundOwnerIds,
+            slotTeam.id,
+            normalizeId(slotTeam.parentTeamId) ?? '',
+            inputTeamId,
+          ].filter(Boolean),
+        );
+        let autoRefundRequest: RefundRequestRow | null = null;
+        let existingAutoRefundRequest: RefundRequestRow | null = null;
+        let autoRefundAttempts: StripeRefundAttempt[] = [];
+
+        if (requestedRefundMode === 'auto') {
+          existingAutoRefundRequest = await tx.refundRequests.findFirst({
+            where: {
+              eventId: effectiveEventId,
+              teamId: slotTeam.id,
+              status: { in: ['WAITING', 'APPROVED'] },
+            },
+            orderBy: {
+              updatedAt: 'desc',
+            },
+            select: refundRequestSelect,
+          }) as RefundRequestRow | null;
+          autoRefundRequest = existingAutoRefundRequest
+            ? { ...existingAutoRefundRequest, reason: teamRefundReason }
+            : {
+              id: crypto.randomUUID(),
+              eventId: effectiveEventId,
+              userId: session.userId,
+              hostId: event.hostId,
+              teamId: slotTeam.id,
+              organizationId: event.organizationId ?? null,
+              reason: teamRefundReason,
+              status: 'APPROVED',
+            };
+
+          const refundablePayments = await resolveRefundablePaymentsForRequest(tx, autoRefundRequest);
+          autoRefundAttempts = await createStripeRefundAttempts({
+            request: autoRefundRequest,
+            payments: refundablePayments,
+            approvedByUserId: session.userId,
+          });
+
+          if (!autoRefundAttempts.length && existingAutoRefundRequest?.status !== 'APPROVED') {
+            return { ok: false as const, status: 400, error: 'No refundable payment found for automatic refund.' };
+          }
+        }
+
         await tx.teams.update({
           where: { id: slotTeam.id },
           data: {
@@ -913,24 +994,44 @@ async function updateParticipants(
           data: { updatedAt: now },
         });
 
-        const refundTeamOwnerIds = ensureUnique(
-          [
-            ...teamRefundOwnerIds,
-            slotTeam.id,
-            normalizeId(slotTeam.parentTeamId) ?? '',
-            inputTeamId,
-          ].filter(Boolean),
-        );
-        await ensureTeamRefundRequest({
-          eventId: effectiveEventId,
-          hostId: event.hostId,
-          organizationId: event.organizationId ?? null,
-          teamId: slotTeam.id,
-          requestedByUserId: session.userId,
-          reason: teamRefundReason,
-          teamOwnerIds: refundTeamOwnerIds,
-          participantUserIds: teamRefundParticipantUserIds,
-        }, tx);
+        if (requestedRefundMode === 'auto' && autoRefundRequest) {
+          if (existingAutoRefundRequest) {
+            await tx.refundRequests.update({
+              where: { id: existingAutoRefundRequest.id },
+              data: {
+                status: 'APPROVED',
+                updatedAt: now,
+              },
+            });
+          } else {
+            await tx.refundRequests.create({
+              data: {
+                id: autoRefundRequest.id,
+                eventId: autoRefundRequest.eventId,
+                userId: autoRefundRequest.userId,
+                hostId: autoRefundRequest.hostId,
+                teamId: autoRefundRequest.teamId,
+                organizationId: autoRefundRequest.organizationId,
+                reason: autoRefundRequest.reason,
+                status: 'APPROVED',
+                createdAt: now,
+                updatedAt: now,
+              },
+            });
+          }
+          await applyRefundAttempts(tx, autoRefundAttempts, now);
+        } else {
+          await ensureTeamRefundRequest({
+            eventId: effectiveEventId,
+            hostId: event.hostId,
+            organizationId: event.organizationId ?? null,
+            teamId: slotTeam.id,
+            requestedByUserId: session.userId,
+            reason: teamRefundReason,
+            teamOwnerIds: refundTeamOwnerIds,
+            participantUserIds: teamRefundParticipantUserIds,
+          }, tx);
+        }
 
         return { ok: true as const, event: updatedEvent };
       });
@@ -958,6 +1059,146 @@ async function updateParticipants(
     }
   }
 
+  if (teamId && mode === 'remove') {
+    const now = new Date();
+    let autoRefundRequest: RefundRequestRow | null = null;
+    let existingAutoRefundRequest: RefundRequestRow | null = null;
+    let autoRefundAttempts: StripeRefundAttempt[] = [];
+
+    if (requestedRefundMode === 'auto') {
+      existingAutoRefundRequest = await prisma.refundRequests.findFirst({
+        where: {
+          eventId: effectiveEventId,
+          teamId,
+          status: { in: ['WAITING', 'APPROVED'] },
+        },
+        orderBy: {
+          updatedAt: 'desc',
+        },
+        select: refundRequestSelect,
+      }) as RefundRequestRow | null;
+      autoRefundRequest = existingAutoRefundRequest
+        ? { ...existingAutoRefundRequest, reason: teamRefundReason }
+        : {
+          id: crypto.randomUUID(),
+          eventId: effectiveEventId,
+          userId: session.userId,
+          hostId: event.hostId,
+          teamId,
+          organizationId: event.organizationId ?? null,
+          reason: teamRefundReason,
+          status: 'APPROVED',
+        };
+
+      try {
+        const refundablePayments = await resolveRefundablePaymentsForRequest(prisma, autoRefundRequest);
+        autoRefundAttempts = await createStripeRefundAttempts({
+          request: autoRefundRequest,
+          payments: refundablePayments,
+          approvedByUserId: session.userId,
+        });
+      } catch (error) {
+        console.error('Automatic team refund failed during withdrawal', error);
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : 'Failed to create refund.' },
+          { status: 502 },
+        );
+      }
+
+      if (!autoRefundAttempts.length && existingAutoRefundRequest?.status !== 'APPROVED') {
+        return NextResponse.json(
+          { error: 'No refundable payment found for automatic refund.' },
+          { status: 400 },
+        );
+      }
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedEvent = await tx.events.update({
+        where: { id: effectiveEventId },
+        data: {
+          userIds: nextUserIds,
+          teamIds: nextTeamIds.filter((id) => id !== teamId),
+          waitListIds: nextWaitListIds.filter((id) => id !== teamId),
+          freeAgentIds: nextFreeAgentIds,
+          updatedAt: now,
+        },
+      });
+
+      await tx.eventRegistrations.deleteMany({
+        where: {
+          eventId: effectiveEventId,
+          registrantId: teamId,
+          registrantType: 'TEAM',
+        },
+      });
+      await syncDivisionTeamMembership({
+        event: {
+          id: effectiveEventId,
+          singleDivision: event.singleDivision,
+          divisions: event.divisions,
+        },
+        teamId,
+        mode,
+        targetDivisionId: null,
+      }, tx);
+
+      if (requestedRefundMode === 'auto' && autoRefundRequest) {
+        if (existingAutoRefundRequest) {
+          await tx.refundRequests.update({
+            where: { id: existingAutoRefundRequest.id },
+            data: {
+              status: 'APPROVED',
+              updatedAt: now,
+            },
+          });
+        } else {
+          await tx.refundRequests.create({
+            data: {
+              id: autoRefundRequest.id,
+              eventId: autoRefundRequest.eventId,
+              userId: autoRefundRequest.userId,
+              hostId: autoRefundRequest.hostId,
+              teamId: autoRefundRequest.teamId,
+              organizationId: autoRefundRequest.organizationId,
+              reason: autoRefundRequest.reason,
+              status: 'APPROVED',
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
+        }
+        await applyRefundAttempts(tx, autoRefundAttempts, now);
+      } else {
+        await ensureTeamRefundRequest({
+          eventId: effectiveEventId,
+          hostId: event.hostId,
+          organizationId: event.organizationId ?? null,
+          teamId,
+          requestedByUserId: session.userId,
+          reason: teamRefundReason,
+          teamOwnerIds: teamRefundOwnerIds,
+          participantUserIds: teamRefundParticipantUserIds,
+        }, tx);
+      }
+
+      return updatedEvent;
+    });
+
+    await prisma.invites?.deleteMany?.({
+      where: {
+        type: 'EVENT',
+        eventId: effectiveEventId,
+        userId: session.userId,
+      },
+    });
+
+    return NextResponse.json({
+      event: withLegacyEvent(updated),
+      warnings: warnings.length ? warnings : undefined,
+    }, { status: 200 });
+  }
+
   if (mode === 'add' && teamId && nextTeamIds.includes(teamId)) {
     if (!canManageCurrentEvent) {
       return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
@@ -976,9 +1217,6 @@ async function updateParticipants(
   if (teamId) {
     if (mode === 'add') {
       nextTeamIds = ensureUnique([...nextTeamIds, teamId]);
-      nextWaitListIds = nextWaitListIds.filter((id) => id !== teamId);
-    } else {
-      nextTeamIds = nextTeamIds.filter((id) => id !== teamId);
       nextWaitListIds = nextWaitListIds.filter((id) => id !== teamId);
     }
   } else if (userId) {
@@ -1051,34 +1289,6 @@ async function updateParticipants(
         teamId,
         mode,
         targetDivisionId: divisionSelection.divisionId,
-      });
-    } else {
-      await prisma.eventRegistrations.deleteMany({
-        where: {
-          eventId: effectiveEventId,
-          registrantId: teamId,
-          registrantType: 'TEAM',
-        },
-      });
-      await syncDivisionTeamMembership({
-        event: {
-          id: effectiveEventId,
-          singleDivision: event.singleDivision,
-          divisions: event.divisions,
-        },
-        teamId,
-        mode,
-        targetDivisionId: null,
-      });
-      await ensureTeamRefundRequest({
-        eventId: effectiveEventId,
-        hostId: event.hostId,
-        organizationId: event.organizationId ?? null,
-        teamId,
-        requestedByUserId: session.userId,
-        reason: teamRefundReason,
-        teamOwnerIds: teamRefundOwnerIds,
-        participantUserIds: teamRefundParticipantUserIds,
       });
     }
   }

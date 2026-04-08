@@ -371,6 +371,7 @@ const getDivisionDetailsForEvents = async (
       key: true,
       name: true,
       sportId: true,
+      price: true,
       maxParticipants: true,
       divisionTypeId: true,
       divisionTypeName: true,
@@ -435,6 +436,7 @@ const getDivisionDetailsForEvents = async (
         ratingType: row?.ratingType ?? inferred.ratingType,
         gender: row?.gender ?? inferred.gender,
         sportId: row?.sportId ?? event.sportId ?? null,
+        price: typeof row?.price === 'number' ? row.price : null,
         maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
       };
     });
@@ -612,6 +614,14 @@ const resolveSessionContext = (
   };
 };
 
+const HIDDEN_EVENT_STATES = ['UNPUBLISHED', 'PRIVATE'] as const;
+
+const isHiddenEventStateFilter = (
+  value: string | undefined,
+): value is (typeof HIDDEN_EVENT_STATES)[number] => (
+  value === 'UNPUBLISHED' || value === 'PRIVATE'
+);
+
 const buildDefaultEventVisibilityClause = (
   sessionUserId: string | null,
   isAdmin: boolean,
@@ -623,10 +633,10 @@ const buildDefaultEventVisibilityClause = (
   ];
 
   if (isAdmin || includeManagedOrganizationDrafts) {
-    visibilityOr.push({ state: 'UNPUBLISHED' });
+    visibilityOr.push({ state: { in: [...HIDDEN_EVENT_STATES] } });
   } else if (sessionUserId) {
     visibilityOr.push({
-      state: 'UNPUBLISHED',
+      state: { in: [...HIDDEN_EVENT_STATES] },
       OR: [
         { hostId: sessionUserId },
         { assistantHostIds: { has: sessionUserId } },
@@ -714,8 +724,10 @@ export async function GET(req: NextRequest) {
   if (sportId) where.sportId = sportId;
   if (eventType) where.eventType = eventType;
   if (state) where.state = normalizedState ?? state;
-  if (normalizedState === 'UNPUBLISHED' && !isAdminSession) {
-    if (sessionUserId) {
+  if (isHiddenEventStateFilter(normalizedState) && !isAdminSession) {
+    if (canViewOrganizationDrafts) {
+      // Organization managers can view hidden events within the scoped organization.
+    } else if (sessionUserId) {
       where.OR = [
         { hostId: sessionUserId },
         { assistantHostIds: { has: sessionUserId } },

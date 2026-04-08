@@ -3,7 +3,7 @@ import Image from 'next/image';
 import {
   Event,
   LocationCoordinates,
-  formatPrice,
+  formatEventDivisionPriceRange,
   getEventDateTime,
   getEventImageFallbackUrl,
   getEventImageUrl,
@@ -53,7 +53,21 @@ export default function EventCard({
 }: EventCardProps) {
   const { date, time } = getEventDateTime(event);
   const normalizedState = typeof event.state === 'string' ? event.state.toUpperCase() : 'PUBLISHED';
-  const isDraftEvent = normalizedState === 'UNPUBLISHED' || normalizedState === 'DRAFT';
+  const lifecycleBadge = useMemo(() => {
+    if (normalizedState === 'PRIVATE') {
+      return {
+        label: 'Private',
+        className: 'discover-badge-private',
+      };
+    }
+    if (normalizedState === 'UNPUBLISHED' || normalizedState === 'DRAFT') {
+      return {
+        label: 'Draft',
+        className: 'discover-badge-draft',
+      };
+    }
+    return null;
+  }, [normalizedState]);
 
   const eventTypeInfo = useMemo(() => {
     const normalizedEventType = typeof event.eventType === 'string'
@@ -282,9 +296,9 @@ export default function EventCard({
           <span className="discover-muted-pill">
             {event.teamSignup ? 'Team Registration' : 'Individual Registration'}
           </span>
-          {isDraftEvent && (
-            <span className="discover-event-badge discover-badge-draft">
-              Draft
+          {lifecycleBadge && (
+            <span className={`discover-event-badge ${lifecycleBadge.className}`}>
+              {lifecycleBadge.label}
             </span>
           )}
           {distance && (
@@ -373,7 +387,7 @@ export default function EventCard({
 
         <div className="mt-auto flex items-center justify-between border-t border-slate-200 pt-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-900">{formatPrice(event.price)}</span>
+            <span className="text-sm font-semibold text-slate-900">{formatEventDivisionPriceRange(event)}</span>
             <span className="text-slate-300">•</span>
             <span className="text-xs text-slate-500">
               {attendeeCount} / {participantCapacity} going

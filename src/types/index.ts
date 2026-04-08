@@ -332,6 +332,12 @@ export interface SensitiveUserData {
   $id: string;
   userId: string;
   email: string;
+  billingAddressLine1?: string | null;
+  billingAddressLine2?: string | null;
+  billingCity?: string | null;
+  billingState?: string | null;
+  billingPostalCode?: string | null;
+  billingCountryCode?: string | null;
   $createdAt?: string;
   $updatedAt?: string;
 }
@@ -544,6 +550,8 @@ export interface Organization {
   staffEmailsByUserId?: Record<string, string>;
   productIds?: string[];
   teamIds?: string[];
+  viewerCanManageOrganization?: boolean;
+  viewerCanAccessUsers?: boolean;
   $createdAt?: string;
   $updatedAt?: string;
 
@@ -590,8 +598,11 @@ export interface Product {
   description?: string;
   priceCents: number;
   period: ProductPeriod;
+  taxCategory?: 'ONE_TIME_PRODUCT' | 'SUBSCRIPTION' | 'NON_TAXABLE';
   createdBy?: string;
   isActive?: boolean;
+  stripeProductId?: string | null;
+  stripePriceId?: string | null;
   $createdAt?: string;
 }
 
@@ -604,6 +615,7 @@ export interface Subscription {
   priceCents: number;
   period: ProductPeriod;
   status?: 'ACTIVE' | 'CANCELLED';
+  stripeSubscriptionId?: string | null;
 }
 
 export interface RefundRequest {
@@ -637,7 +649,7 @@ export enum Sports {
 
 export const SPORTS_LIST: string[] = Object.values(Sports);
 
-export type EventState = 'PUBLISHED' | 'UNPUBLISHED' | 'TEMPLATE' | 'DRAFT';
+export type EventState = 'PUBLISHED' | 'UNPUBLISHED' | 'PRIVATE' | 'TEMPLATE' | 'DRAFT';
 
 export type EventStatus = 'draft' | 'published' | 'archived' | 'cancelled' | 'completed';
 
@@ -1408,12 +1420,28 @@ export interface NavItem {
   badge?: string | number;
 }
 
+export interface BillingAddress {
+  line1: string;
+  line2?: string | null;
+  city: string;
+  state: string;
+  postalCode: string;
+  countryCode: string;
+}
+
+export interface BillingAddressProfile {
+  billingAddress: BillingAddress | null;
+  email?: string | null;
+}
+
 export interface PaymentIntent {
   paymentIntent: string;
   ephemeralKey?: string;
   customer?: string;
   publishableKey: string;
   feeBreakdown: FeeBreakdown;
+  taxCalculationId?: string;
+  taxCategory?: string;
   error?: string;
   billId?: string | null;
   billPaymentId?: string | null;
@@ -1425,6 +1453,7 @@ export interface FeeBreakdown {
   eventPrice: number;
   stripeFee: number;
   processingFee: number;
+  taxAmount?: number;
   totalCharge: number;
   hostReceives: number;
   feePercentage: number;
@@ -1479,9 +1508,110 @@ export interface Bill {
   payments?: BillPayment[];
 }
 
+const normalizePriceCentsValue = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.max(0, Math.round(parsed));
+};
+
+const normalizeDivisionLookupKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const collectEventDivisionPriceCents = (
+  event?: Pick<Event, 'price' | 'divisions' | 'divisionDetails'> | null,
+): number[] => {
+  if (!event) {
+    return [0];
+  }
+
+  const defaultPriceCents = normalizePriceCentsValue(event.price);
+  const divisionEntries = Array.isArray(event.divisions) ? event.divisions : [];
+  const detailEntries = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
+  const detailsByLookup = new Map<string, Division>();
+
+  detailEntries.forEach((detail) => {
+    const detailId = normalizeDivisionLookupKey(detail.id);
+    const detailKey = normalizeDivisionLookupKey(detail.key);
+    if (detailId) {
+      detailsByLookup.set(detailId, detail);
+    }
+    if (detailKey) {
+      detailsByLookup.set(detailKey, detail);
+    }
+  });
+
+  const resolvePrice = (detail?: Partial<Division> | null): number => (
+    detail && Number.isFinite(Number(detail.price))
+      ? normalizePriceCentsValue(detail.price)
+      : defaultPriceCents
+  );
+
+  const prices: number[] = [];
+
+  if (divisionEntries.length > 0) {
+    divisionEntries.forEach((entry) => {
+      if (entry && typeof entry === 'object') {
+        const division = entry as Division;
+        const explicitPrice = Number.isFinite(Number(division.price))
+          ? normalizePriceCentsValue(division.price)
+          : null;
+        const divisionId = normalizeDivisionLookupKey(division.id);
+        const divisionKey = normalizeDivisionLookupKey(division.key);
+        const detail = (divisionId ? detailsByLookup.get(divisionId) : null)
+          ?? (divisionKey ? detailsByLookup.get(divisionKey) : null);
+        prices.push(explicitPrice ?? resolvePrice(detail));
+        return;
+      }
+
+      const lookupKey = normalizeDivisionLookupKey(entry);
+      const detail = lookupKey ? detailsByLookup.get(lookupKey) : null;
+      prices.push(resolvePrice(detail));
+    });
+  } else if (detailEntries.length > 0) {
+    detailEntries.forEach((detail) => {
+      prices.push(resolvePrice(detail));
+    });
+  }
+
+  return prices.length > 0 ? prices : [defaultPriceCents];
+};
+
 export function formatPrice(price?: number) {
   if (!price) return 'Free';
   return `$${(price / 100).toFixed(2)}`;
+}
+
+export function getEventDivisionPriceRange(
+  event?: Pick<Event, 'price' | 'divisions' | 'divisionDetails'> | null,
+) {
+  const prices = collectEventDivisionPriceCents(event);
+  return prices.reduce(
+    (range, priceCents) => ({
+      minPriceCents: Math.min(range.minPriceCents, priceCents),
+      maxPriceCents: Math.max(range.maxPriceCents, priceCents),
+    }),
+    {
+      minPriceCents: prices[0] ?? 0,
+      maxPriceCents: prices[0] ?? 0,
+    },
+  );
+}
+
+export function formatEventDivisionPriceRange(
+  event?: Pick<Event, 'price' | 'divisions' | 'divisionDetails'> | null,
+) {
+  const { minPriceCents, maxPriceCents } = getEventDivisionPriceRange(event);
+  if (minPriceCents === maxPriceCents) {
+    return formatPrice(minPriceCents);
+  }
+  return `${formatPrice(minPriceCents)} - ${formatPrice(maxPriceCents)}`;
 }
 
 export function formatBillAmount(amountCents: number) {

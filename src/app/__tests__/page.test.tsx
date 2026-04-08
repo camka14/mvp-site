@@ -40,7 +40,14 @@ describe('Home landing page', () => {
     ).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /sign up/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('link', { name: /sign in/i }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: /^integrations$/i })).toHaveAttribute('href', '#integrations');
     expect(screen.getByRole('link', { name: /visit the blog/i })).toHaveAttribute('href', '/blog');
+    expect(screen.getByRole('heading', { name: /free app access\. fees only apply when you process payments/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /we integrate our api with your website for free/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /support@bracket-iq.com/i })).toHaveAttribute(
+      'href',
+      'mailto:support@bracket-iq.com',
+    );
     expect(screen.getAllByRole('button', { name: /continue as guest/i }).length).toBeGreaterThan(0);
     expect(pushMock).not.toHaveBeenCalled();
   });

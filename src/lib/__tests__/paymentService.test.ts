@@ -94,10 +94,12 @@ describe('paymentService', () => {
           method: 'POST',
           body: expect.objectContaining({
             user: expect.objectContaining({ $id: mockUser.$id }),
-            event: expect.objectContaining({ $id: mockEvent.$id }),
           }),
         }),
       );
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('event');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('timeSlot');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('organization');
     });
   });
 
@@ -117,10 +119,12 @@ describe('paymentService', () => {
           body: expect.objectContaining({
             user: expect.objectContaining({ $id: mockUser.$id }),
             userId: mockUser.$id,
-            event: expect.objectContaining({ $id: mockEvent.$id }),
           }),
         }),
       );
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('event');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('timeSlot');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('organization');
     });
 
     it('sends explicit target user id when leaving on behalf of a linked child', async () => {
@@ -129,7 +133,7 @@ describe('paymentService', () => {
       const mockUser = { $id: 'parent_1' } as UserData;
       const mockEvent = buildEvent({ $id: 'event_1' }) as Event;
 
-      await paymentService.leaveEvent(mockUser, mockEvent, undefined, undefined, undefined, 'child_1');
+      await paymentService.leaveEvent(mockUser, mockEvent, undefined, 'child_1');
 
       expect(apiRequestMock).toHaveBeenCalledWith(
         `/api/events/${mockEvent.$id}/participants`,
@@ -138,7 +142,30 @@ describe('paymentService', () => {
           body: expect.objectContaining({
             user: expect.objectContaining({ $id: mockUser.$id }),
             userId: 'child_1',
-            event: expect.objectContaining({ $id: mockEvent.$id }),
+          }),
+        }),
+      );
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('event');
+    });
+
+    it('passes refund intent metadata when leaving through the refund flow', async () => {
+      apiRequestMock.mockResolvedValue({});
+
+      const mockEvent = buildEvent({ $id: 'event_1' }) as Event;
+
+      await paymentService.leaveEvent(undefined, mockEvent, undefined, 'user_1', {
+        refundMode: 'request',
+        refundReason: 'Need a refund',
+      });
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        `/api/events/${mockEvent.$id}/participants`,
+        expect.objectContaining({
+          method: 'DELETE',
+          body: expect.objectContaining({
+            userId: 'user_1',
+            refundMode: 'request',
+            refundReason: 'Need a refund',
           }),
         }),
       );

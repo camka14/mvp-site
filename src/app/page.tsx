@@ -271,8 +271,9 @@ export default function HomePage() {
 
           <nav className="landing-nav hidden items-center gap-6 text-sm md:flex">
             <a href="#product" className="landing-nav-link transition">Product</a>
+            <a href="#integrations" className="landing-nav-link transition">Integrations</a>
             <a href="#use-cases" className="landing-nav-link transition">Use Cases</a>
-            <a href="#pricing" className="landing-nav-link transition">Pricing</a>
+            <a href="#fees" className="landing-nav-link transition">Fees</a>
             <a href="#resources" className="landing-nav-link transition">Resources</a>
           </nav>
 
@@ -408,7 +409,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="product" className="container-responsive py-16">
+        <section id="product" className="landing-anchor-section container-responsive py-16">
           <div className="mb-8">
             <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Two sides of the platform</h2>
             <p className="landing-section-copy mt-3 max-w-3xl">
@@ -539,7 +540,31 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="use-cases" className="container-responsive pb-16">
+        <section id="integrations" className="landing-anchor-section container-responsive pb-16">
+          <div className="landing-surface-strong rounded-3xl p-8">
+            <p className="landing-label text-xs uppercase tracking-[0.16em]">Website Integration</p>
+            <h2 className="landing-section-title mt-3 text-3xl font-semibold sm:text-4xl">
+              We integrate our API with your website for free.
+            </h2>
+            <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
+              We can connect BracketIQ to your existing website so your public pages stay in sync with the platform.
+              That can include event listings, registration flows, schedules, standings, payment links, and other live
+              event data your audience already expects to find on your website.
+            </p>
+            <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
+              Reach out to{' '}
+              <a
+                href="mailto:support@bracket-iq.com"
+                className="font-semibold text-[var(--landing-accent-text)] underline underline-offset-4"
+              >
+                support@bracket-iq.com
+              </a>{' '}
+              for more details regarding website integration, implementation options, and setup support.
+            </p>
+          </div>
+        </section>
+
+        <section id="use-cases" className="landing-anchor-section container-responsive pb-16">
           <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Use cases</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {useCases.map((useCase) => (
@@ -550,7 +575,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="resources" className="container-responsive pb-16">
+        <section id="resources" className="landing-anchor-section container-responsive pb-16">
           <div className="landing-surface rounded-3xl p-6 lg:p-8">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl">
@@ -640,32 +665,41 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section id="pricing" className="container-responsive pb-16">
-          <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Pricing preview</h2>
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            {[
-              {
-                tier: 'Starter',
-                detail: 'Run core events and registrations.',
-              },
-              {
-                tier: 'Pro',
-                detail: 'Add payments, docs, messaging, and notifications.',
-              },
-              {
-                tier: 'Enterprise',
-                detail: 'Multi-location operations and advanced controls.',
-              },
-            ].map((plan) => (
-              <article key={plan.tier} className="landing-surface rounded-2xl p-5">
-                <h3 className="landing-section-title text-lg font-semibold">{plan.tier}</h3>
-                <p className="landing-section-copy mt-2 text-sm">{plan.detail}</p>
-              </article>
-            ))}
+        <section id="fees" className="landing-anchor-section container-responsive pb-16">
+          <div className="landing-surface rounded-3xl p-6 sm:p-8">
+            <p className="landing-label text-xs uppercase tracking-[0.16em]">Free To Use</p>
+            <h2 className="landing-section-title mt-3 text-3xl font-semibold sm:text-4xl">
+              Free app access. Fees only apply when you process payments.
+            </h2>
+            <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
+              BracketIQ is free to use for event operations. If you collect payments through the platform, we only
+              take a 1-3% fee on processed payments. If you do not process payments, there is nothing to pay.
+            </p>
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              {[
+                {
+                  title: 'No subscription',
+                  detail: 'There is no app subscription or setup cost required to run your events.',
+                },
+                {
+                  title: '1-3% payment fee',
+                  detail: 'Fees apply only when BracketIQ processes payments through the platform.',
+                },
+                {
+                  title: 'No payments required',
+                  detail: 'Run free events or manage collections elsewhere without platform charges.',
+                },
+              ].map((item) => (
+                <article key={item.title} className="landing-surface-soft rounded-2xl p-5">
+                  <h3 className="landing-section-title text-lg font-semibold">{item.title}</h3>
+                  <p className="landing-section-copy mt-2 text-sm">{item.detail}</p>
+                </article>
+              ))}
+            </div>
           </div>
         </section>
 
-        <section className="container-responsive pb-20">
+        <section className="container-responsive pb-10">
           <div className="landing-cta rounded-3xl p-8">
             <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Ready to run your next event on BracketIQ?</h2>
             <p className="landing-cta-copy mt-3 max-w-2xl">
@@ -700,6 +734,7 @@ export default function HomePage() {
             </div>
           </div>
         </section>
+
       </main>
 
     </div>

@@ -12,7 +12,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { Event, Organization, Product, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
+import type { BillingAddress, Event, Organization, Product, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { eventService } from '@/lib/eventService';
@@ -22,10 +22,11 @@ import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
+import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
 import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
-import { apiRequest } from '@/lib/apiClient';
+import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { hasStaffMemberType } from '@/lib/staff';
 import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
@@ -37,11 +38,13 @@ import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
 import { useSports } from '@/app/hooks/useSports';
 import EventsTabContent from '@/app/discover/components/EventsTabContent';
+import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
 import {
   getRequiredSignerTypeLabel,
   normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
+import { buildOrganizationTabs, type OrganizationTab } from './organizationTabs';
 
 export default function OrganizationDetailPage() {
   return (
@@ -113,18 +116,6 @@ type PendingTemplateCreateCard = {
   status: string;
   error?: string;
 };
-
-type OrganizationTab =
-  | 'overview'
-  | 'events'
-  | 'eventTemplates'
-  | 'teams'
-  | 'users'
-  | 'fields'
-  | 'staff'
-  | 'refunds'
-  | 'store'
-  | 'templates';
 
 type OrganizationUserEventSummary = {
   eventId: string;
@@ -262,24 +253,31 @@ function OrganizationDetailContent() {
   const [stripeEmail, setStripeEmail] = useState('');
   const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
   const [updatingHomePagePreference, setUpdatingHomePagePreference] = useState(false);
+  const viewerCanManageOrganization = Boolean(org?.viewerCanManageOrganization);
   const isOwner = Boolean(
-    user
-      && org
-      && (
-        user.$id === org.ownerId
-        || (org.staffMembers ?? []).some((staffMember) => (
-          staffMember.userId === user.$id
-            && !staffMember.invite
-            && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
-        ))
+    viewerCanManageOrganization
+      || (
+        user
+          && org
+          && (
+            user.$id === org.ownerId
+            || (org.staffMembers ?? []).some((staffMember) => (
+              staffMember.userId === user.$id
+                && !staffMember.invite
+                && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
+            ))
+          )
       ),
   );
   const isOrganizationRoleMember = Boolean(
-    user
-      && org
-      && (
-        user.$id === org.ownerId
-        || (org.staffMembers ?? []).some((staffMember) => staffMember.userId === user.$id && !staffMember.invite)
+    viewerCanManageOrganization
+      || (
+        user
+          && org
+          && (
+            user.$id === org.ownerId
+            || (org.staffMembers ?? []).some((staffMember) => staffMember.userId === user.$id && !staffMember.invite)
+          )
       ),
   );
   const isCurrentOrganizationHomePage = Boolean(
@@ -288,25 +286,43 @@ function OrganizationDetailContent() {
       && user.homePageOrganizationId === org.$id,
   );
   const canToggleHomePagePreference = Boolean(isOrganizationRoleMember || isCurrentOrganizationHomePage);
+  const hasVisibleTeams = useMemo(
+    () => Array.isArray(org?.teams) && org.teams.length > 0,
+    [org?.teams],
+  );
+  const hasVisibleProducts = useMemo(
+    () => Array.isArray(org?.products) && org.products.length > 0,
+    [org?.products],
+  );
+  const hasVisibleRentals = useMemo(() => {
+    const fields = Array.isArray(org?.fields) ? org.fields : [];
+    if (!fields.length) {
+      return false;
+    }
+
+    const referenceDate = new Date();
+    return fields.some((field) => (
+      Array.isArray(field.rentalSlots)
+        && field.rentalSlots.some((slot) => Boolean(getNextRentalOccurrence(slot, referenceDate)))
+    ));
+  }, [org?.fields]);
   const availableTabs = useMemo(
-    () => {
-      const base: { label: string; value: typeof activeTab }[] = [
-        { label: 'Overview', value: 'overview' },
-        { label: 'Events', value: 'events' },
-        { label: 'Teams', value: 'teams' },
-        { label: 'Users', value: 'users' },
-      ];
-      if (isOwner) {
-        base.push({ label: 'Event Templates', value: 'eventTemplates' });
-        base.push({ label: 'Document Templates', value: 'templates' });
-        base.push({ label: 'Staff', value: 'staff' });
-        base.push({ label: 'Refunds', value: 'refunds' });
-      }
-      base.push({ label: 'Fields', value: 'fields' });
-      base.push({ label: 'Store', value: 'store' });
-      return base;
-    },
-    [isOwner],
+    () => buildOrganizationTabs({
+      viewerCanAccessUsers: org?.viewerCanAccessUsers,
+      isOwner,
+      isOrganizationRoleMember,
+      hasTeams: hasVisibleTeams,
+      hasRentals: hasVisibleRentals,
+      hasProducts: hasVisibleProducts,
+    }),
+    [
+      hasVisibleProducts,
+      hasVisibleRentals,
+      hasVisibleTeams,
+      isOrganizationRoleMember,
+      isOwner,
+      org?.viewerCanAccessUsers,
+    ],
   );
   const stripeEmailValid = useMemo(
     () => Boolean(stripeEmail && EMAIL_REGEX.test(stripeEmail.trim())),
@@ -462,17 +478,20 @@ function OrganizationDetailContent() {
   const [productName, setProductName] = useState('');
   const [productDescription, setProductDescription] = useState('');
   const [productPeriod, setProductPeriod] = useState<'month' | 'week' | 'year'>('month');
+  const [productTaxCategory, setProductTaxCategory] = useState<Product['taxCategory']>('SUBSCRIPTION');
   const [productPrice, setProductPrice] = useState<number | ''>(10);
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [purchaseProduct, setPurchaseProduct] = useState<Product | null>(null);
   const [purchasePaymentData, setPurchasePaymentData] = useState<PaymentIntent | null>(null);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
+  const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [editProductName, setEditProductName] = useState('');
   const [editProductDescription, setEditProductDescription] = useState('');
   const [editProductPeriod, setEditProductPeriod] = useState<'month' | 'week' | 'year'>('month');
+  const [editProductTaxCategory, setEditProductTaxCategory] = useState<Product['taxCategory']>('SUBSCRIPTION');
   const [editProductPrice, setEditProductPrice] = useState<number | ''>(0);
   const [updatingProduct, setUpdatingProduct] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState(false);
@@ -1145,7 +1164,7 @@ function OrganizationDetailContent() {
   }, [org, isOwner, user, loadEventTemplates]);
 
   useEffect(() => {
-    if (!org || !user) {
+    if (!org || !user || !org.viewerCanAccessUsers) {
       setOrganizationUsers([]);
       setExpandedOrganizationUserIds([]);
       return;
@@ -1539,12 +1558,14 @@ function OrganizationDetailContent() {
         description: productDescription.trim() || undefined,
         priceCents,
         period: productPeriod,
+        taxCategory: productTaxCategory,
       });
       notifications.show({ color: 'green', message: `Created product "${created.name}".` });
       setProductName('');
       setProductDescription('');
       setProductPrice(10);
       setProductPeriod('month');
+      setProductTaxCategory('SUBSCRIPTION');
       await refreshOrganizationProducts(org.$id);
     } catch (error) {
       console.error('Failed to create product', error);
@@ -1552,7 +1573,7 @@ function OrganizationDetailContent() {
     } finally {
       setCreatingProduct(false);
     }
-  }, [isOwner, org, productDescription, productName, productPeriod, productPrice, refreshOrganizationProducts, user]);
+  }, [isOwner, org, productDescription, productName, productPeriod, productPrice, productTaxCategory, refreshOrganizationProducts, user]);
 
   const openProductModal = useCallback((product: Product) => {
     setSelectedProduct(product);
@@ -1560,6 +1581,7 @@ function OrganizationDetailContent() {
     setEditProductDescription(product.description ?? '');
     const normalizedPeriod = (product.period === 'month' ? 'month' : product.period) as 'month' | 'week' | 'year';
     setEditProductPeriod(normalizedPeriod ?? 'month');
+    setEditProductTaxCategory(product.taxCategory ?? 'SUBSCRIPTION');
     const priceDollars = (typeof product.priceCents === 'number' ? product.priceCents : Number(product.priceCents) || 0) / 100;
     setEditProductPrice(Number.isFinite(priceDollars) ? priceDollars : 0);
     setProductModalOpen(true);
@@ -1571,6 +1593,7 @@ function OrganizationDetailContent() {
     setEditProductName('');
     setEditProductDescription('');
     setEditProductPeriod('month');
+    setEditProductTaxCategory('SUBSCRIPTION');
     setEditProductPrice(0);
   }, []);
 
@@ -1593,6 +1616,7 @@ function OrganizationDetailContent() {
         description: editProductDescription.trim() || undefined,
         priceCents,
         period: editProductPeriod,
+        taxCategory: editProductTaxCategory,
       });
       notifications.show({ color: 'green', message: 'Product updated.' });
       await refreshOrganizationProducts(org.$id);
@@ -1603,7 +1627,7 @@ function OrganizationDetailContent() {
     } finally {
       setUpdatingProduct(false);
     }
-  }, [closeProductModal, editProductDescription, editProductName, editProductPeriod, editProductPrice, isOwner, org, refreshOrganizationProducts, selectedProduct]);
+  }, [closeProductModal, editProductDescription, editProductName, editProductPeriod, editProductPrice, editProductTaxCategory, isOwner, org, refreshOrganizationProducts, selectedProduct]);
 
   const handleDeleteProduct = useCallback(async () => {
     if (!org || !selectedProduct || !isOwner) return;
@@ -1627,6 +1651,35 @@ function OrganizationDetailContent() {
     }
   }, [closeProductModal, isOwner, org, refreshOrganizationProducts, selectedProduct]);
 
+  const startProductSubscriptionCheckout = useCallback(
+    async (product: Product, billingAddress?: BillingAddress) => {
+      try {
+        setPurchaseProduct(product);
+        setPurchasePaymentData(null);
+        const intent = await productService.createSubscriptionCheckout({
+          productId: product.$id,
+          billingAddress,
+        });
+        setPurchasePaymentData(intent);
+        setShowPurchaseModal(true);
+        setShowBillingAddressModal(false);
+      } catch (error) {
+        if (
+          isApiRequestError(error)
+          && error.data
+          && typeof error.data === 'object'
+          && 'billingAddressRequired' in error.data
+          && Boolean((error.data as { billingAddressRequired?: boolean }).billingAddressRequired)
+        ) {
+          setShowBillingAddressModal(true);
+          return;
+        }
+        throw error;
+      }
+    },
+    [],
+  );
+
   const handlePurchaseProduct = useCallback(
     async (product: Product) => {
       if (!org || !user) {
@@ -1634,44 +1687,33 @@ function OrganizationDetailContent() {
         return;
       }
       try {
-        setPurchaseProduct(product);
-        setPurchasePaymentData(null);
-        const intent = await paymentService.createProductPaymentIntent(user, product, org);
-        setPurchasePaymentData(intent);
-        setShowPurchaseModal(true);
+        await startProductSubscriptionCheckout(product);
       } catch (error) {
         console.error('Failed to start purchase', error);
         notifications.show({ color: 'red', message: 'Unable to start checkout. Please try again.' });
       }
     },
-    [org, user],
+    [org, startProductSubscriptionCheckout, user],
   );
 
   const handleProductPaymentSuccess = useCallback(async () => {
-    if (!purchaseProduct || !user) return;
+    if (!purchaseProduct) return;
     try {
       setSubscribing(true);
-      await productService.createSubscription({
-        productId: purchaseProduct.$id,
-        user,
-        organizationId: org?.$id,
-        priceCents: purchaseProduct.priceCents,
-        startDate: new Date().toISOString(),
-      });
       notifications.show({ color: 'green', message: `Subscription started for ${purchaseProduct.name}.` });
       if (org?.$id) {
         await refreshOrganizationProducts(org.$id);
       }
     } catch (error) {
-      console.error('Failed to record subscription', error);
-      notifications.show({ color: 'red', message: 'Payment succeeded but subscription failed. Contact support.' });
+      console.error('Failed to refresh product state after payment', error);
+      notifications.show({ color: 'red', message: 'Payment succeeded, but product state failed to refresh.' });
     } finally {
       setSubscribing(false);
       setShowPurchaseModal(false);
       setPurchasePaymentData(null);
       setPurchaseProduct(null);
     }
-  }, [org?.$id, purchaseProduct, refreshOrganizationProducts, user]);
+  }, [org?.$id, purchaseProduct, refreshOrganizationProducts]);
 
   const handleSearchStaff = useCallback(
     async (query: string) => {
@@ -2466,6 +2508,16 @@ function OrganizationDetailContent() {
                         value={productPeriod}
                         onChange={(value) => setProductPeriod((value as any) ?? 'month')}
                       />
+                      <Select
+                        label="Tax category"
+                        data={[
+                          { label: 'Subscription', value: 'SUBSCRIPTION' },
+                          { label: 'One-time product', value: 'ONE_TIME_PRODUCT' },
+                          { label: 'Non-taxable', value: 'NON_TAXABLE' },
+                        ]}
+                        value={productTaxCategory}
+                        onChange={(value) => setProductTaxCategory((value as Product['taxCategory']) ?? 'SUBSCRIPTION')}
+                      />
                       <TextInput
                         label="Description"
                         placeholder="Optional description"
@@ -2952,6 +3004,16 @@ function OrganizationDetailContent() {
               value={editProductPeriod}
               onChange={(value) => setEditProductPeriod((value as any) ?? 'month')}
             />
+            <Select
+              label="Tax category"
+              data={[
+                { label: 'Subscription', value: 'SUBSCRIPTION' },
+                { label: 'One-time product', value: 'ONE_TIME_PRODUCT' },
+                { label: 'Non-taxable', value: 'NON_TAXABLE' },
+              ]}
+              value={editProductTaxCategory}
+              onChange={(value) => setEditProductTaxCategory((value as Product['taxCategory']) ?? 'SUBSCRIPTION')}
+            />
             <Textarea
               label="Description"
               placeholder="Optional description"
@@ -2980,6 +3042,22 @@ function OrganizationDetailContent() {
           </Stack>
         )}
       </Modal>
+      <BillingAddressModal
+        opened={showBillingAddressModal}
+        onClose={() => {
+          setShowBillingAddressModal(false);
+          setPurchaseProduct(null);
+        }}
+        onSaved={async (billingAddress) => {
+          if (!purchaseProduct) {
+            setShowBillingAddressModal(false);
+            return;
+          }
+          await startProductSubscriptionCheckout(purchaseProduct, billingAddress);
+        }}
+        title="Billing address required"
+        description="Enter your billing address so tax can be calculated before starting the subscription."
+      />
       <PaymentModal
         isOpen={showPurchaseModal && Boolean(purchaseProduct && purchasePaymentData)}
         onClose={() => {

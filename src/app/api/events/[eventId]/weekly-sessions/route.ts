@@ -11,6 +11,7 @@ import {
 } from '@/server/events/weeklySessionResolver';
 
 export const dynamic = 'force-dynamic';
+const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'PRIVATE', 'DRAFT']);
 
 const requestSchema = z.object({
   sessionStart: z.string(),
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
 
   const isManager = await canManageEvent(session, parent);
   const state = String(parent.state ?? '').toUpperCase();
-  if (state === 'UNPUBLISHED' && !isManager) {
+  if (HIDDEN_EVENT_STATES.has(state) && !isManager) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

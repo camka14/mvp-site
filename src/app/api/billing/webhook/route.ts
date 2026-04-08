@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
+import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +64,14 @@ const sameOrderedIds = (left: string[], right: string[]): boolean => {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
 };
+
+const SUPPORTED_EVENT_TYPES = new Set([
+  'payment_intent.succeeded',
+  'invoice.paid',
+  'customer.subscription.created',
+  'customer.subscription.updated',
+  'customer.subscription.deleted',
+]);
 
 const ensureEventRegistrationFromPurchase = async ({
   purchaseType,
@@ -653,6 +662,14 @@ const createInstantBillAndPayment = async ({
     fallbackAmountCents: amountCents,
     totalChargeCents,
   });
+  const taxCalculationId = toStringOrNull(metadata.tax_calculation_id ?? metadata.taxCalculationId ?? null);
+  const taxAmountCents = toIntOrNull(metadata.tax_cents ?? metadata.taxCents) ?? 0;
+  const stripeProcessingFeeCents = toIntOrNull(
+    metadata.stripe_processing_fee_cents ?? metadata.stripeProcessingFeeCents ?? null,
+  ) ?? 0;
+  const stripeTaxServiceFeeCents = toIntOrNull(
+    metadata.stripe_tax_service_fee_cents ?? metadata.stripeTaxServiceFeeCents ?? null,
+  ) ?? 0;
   const effectiveAmountCents = instantBreakdown.effectiveAmountCents;
   if (effectiveAmountCents <= 0) {
     return { billId: null, billPaymentId: null, created: false };
@@ -709,6 +726,10 @@ const createInstantBillAndPayment = async ({
         paidAt: now,
         paymentIntentId,
         payerUserId: userId ?? null,
+        taxCalculationId,
+        taxAmountCents,
+        stripeProcessingFeeCents,
+        stripeTaxServiceFeeCents,
         createdAt: now,
         updatedAt: now,
       },
@@ -771,8 +792,42 @@ export async function POST(req: NextRequest) {
   }
 
   const eventType = typeof event.type === 'string' ? event.type : '';
-  if (eventType !== 'payment_intent.succeeded') {
+  if (!SUPPORTED_EVENT_TYPES.has(eventType)) {
     return NextResponse.json({ received: true, ignored: true }, { status: 200 });
+  }
+
+  if (
+    eventType === 'customer.subscription.created'
+    || eventType === 'customer.subscription.updated'
+    || eventType === 'customer.subscription.deleted'
+  ) {
+    const subscription = (event.data?.object ?? null) as Stripe.Subscription | null;
+    if (subscription?.id) {
+      await upsertStripeSubscriptionMirror({ subscription });
+    }
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
+  if (eventType === 'invoice.paid') {
+    const invoice = (event.data?.object ?? null) as (Stripe.Invoice & {
+      parent?: {
+        subscription_details?: {
+          subscription?: string | Stripe.Subscription | null;
+        } | null;
+      } | null;
+    }) | null;
+    const invoiceSubscription = invoice?.parent?.subscription_details?.subscription;
+    const stripeSubscriptionId = typeof invoiceSubscription === 'string'
+      ? invoiceSubscription
+      : invoiceSubscription?.id ?? null;
+
+    if (stripeSubscriptionId && stripeForPaymentIntentSync) {
+      await syncStripeSubscriptionMirrorById({
+        stripe: stripeForPaymentIntentSync,
+        stripeSubscriptionId,
+      });
+    }
+    return NextResponse.json({ received: true }, { status: 200 });
   }
 
   const dataObject = (event.data?.object ?? {}) as Stripe.PaymentIntent & Record<string, unknown>;
@@ -828,7 +883,20 @@ export async function POST(req: NextRequest) {
           if (payment.status !== 'PAID') {
             await prisma.billPayments.update({
               where: { id: billPaymentId },
-              data: { status: 'PAID', paidAt: now, payerUserId: userId ?? undefined, updatedAt: now },
+              data: {
+                status: 'PAID',
+                paidAt: now,
+                payerUserId: userId ?? undefined,
+                taxCalculationId: toStringOrNull(metadata.tax_calculation_id ?? metadata.taxCalculationId ?? null),
+                taxAmountCents: toIntOrNull(metadata.tax_cents ?? metadata.taxCents) ?? 0,
+                stripeProcessingFeeCents: toIntOrNull(
+                  metadata.stripe_processing_fee_cents ?? metadata.stripeProcessingFeeCents ?? null,
+                ) ?? 0,
+                stripeTaxServiceFeeCents: toIntOrNull(
+                  metadata.stripe_tax_service_fee_cents ?? metadata.stripeTaxServiceFeeCents ?? null,
+                ) ?? 0,
+                updatedAt: now,
+              },
             });
             shouldSendReceipt = true;
           }
@@ -872,7 +940,12 @@ export async function POST(req: NextRequest) {
     if (purchaseType === 'product') {
       if (productId && userId) {
         const existing = await prisma.subscriptions.findFirst({
-          where: { productId, userId, status: 'ACTIVE' },
+          where: {
+            productId,
+            userId,
+            status: 'ACTIVE',
+            stripeSubscriptionId: null,
+          },
         });
         if (!existing) {
           const product = await prisma.products.findUnique({ where: { id: productId } });

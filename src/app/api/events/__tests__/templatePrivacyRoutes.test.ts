@@ -191,6 +191,31 @@ describe('event template privacy routes', () => {
     expect(requireSessionMock).toHaveBeenCalled();
   });
 
+  it('forbids reading a private event when requester is not a manager', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PRIVATE', hostId: 'host_1' });
+    requireSessionMock.mockResolvedValueOnce({ userId: 'user_2', isAdmin: false });
+
+    const res = await eventGet(
+      new NextRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(403);
+    expect(requireSessionMock).toHaveBeenCalled();
+  });
+
+  it('allows reading a private event when requester is host', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PRIVATE', hostId: 'host_1' });
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+
+    const res = await eventGet(
+      new NextRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+  });
+
   it('allows reading a template event when requester is host', async () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'TEMPLATE', hostId: 'host_1' });
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
@@ -278,7 +303,7 @@ describe('event template privacy routes', () => {
         expect.objectContaining({
           OR: expect.arrayContaining([
             expect.objectContaining({
-              state: 'UNPUBLISHED',
+              state: { in: ['UNPUBLISHED', 'PRIVATE'] },
               OR: expect.arrayContaining([
                 { hostId: 'host_1' },
                 { assistantHostIds: { has: 'host_1' } },
@@ -310,7 +335,7 @@ describe('event template privacy routes', () => {
       expect.arrayContaining([
         expect.objectContaining({
           OR: expect.arrayContaining([
-            { state: 'UNPUBLISHED' },
+            { state: { in: ['UNPUBLISHED', 'PRIVATE'] } },
           ]),
         }),
       ]),
@@ -338,7 +363,7 @@ describe('event template privacy routes', () => {
         expect.objectContaining({
           OR: expect.arrayContaining([
             expect.objectContaining({
-              state: 'UNPUBLISHED',
+              state: { in: ['UNPUBLISHED', 'PRIVATE'] },
               OR: expect.arrayContaining([
                 { hostId: 'host_1' },
                 { assistantHostIds: { has: 'host_1' } },
@@ -366,6 +391,7 @@ describe('event template privacy routes', () => {
         id: 'event_1__division__open',
         key: 'open',
         name: 'Open',
+        price: 3500,
         maxParticipants: 8,
         sportId: 'sport_1',
       },
@@ -374,6 +400,7 @@ describe('event template privacy routes', () => {
         id: 'event_1__division__advanced',
         key: 'advanced',
         name: 'Advanced',
+        price: 5000,
         maxParticipants: 10,
         sportId: 'sport_1',
       },
@@ -384,8 +411,8 @@ describe('event template privacy routes', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.events[0].divisionDetails).toEqual([
-      expect.objectContaining({ id: 'event_1__division__open', maxParticipants: 8 }),
-      expect.objectContaining({ id: 'event_1__division__advanced', maxParticipants: 10 }),
+      expect.objectContaining({ id: 'event_1__division__open', price: 3500, maxParticipants: 8 }),
+      expect.objectContaining({ id: 'event_1__division__advanced', price: 5000, maxParticipants: 10 }),
     ]);
     expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -436,6 +463,7 @@ describe('event template privacy routes', () => {
         id: 'event_2__division__open',
         key: 'open',
         name: 'Open',
+        price: 2500,
         maxParticipants: 6,
         sportId: 'sport_1',
       },
@@ -444,6 +472,7 @@ describe('event template privacy routes', () => {
         id: 'event_2__division__advanced',
         key: 'advanced',
         name: 'Advanced',
+        price: 4500,
         maxParticipants: 8,
         sportId: 'sport_1',
       },
@@ -454,13 +483,34 @@ describe('event template privacy routes', () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.events[0].divisionDetails).toEqual([
-      expect.objectContaining({ id: 'event_2__division__open', maxParticipants: 6 }),
-      expect.objectContaining({ id: 'event_2__division__advanced', maxParticipants: 8 }),
+      expect.objectContaining({ id: 'event_2__division__open', price: 2500, maxParticipants: 6 }),
+      expect.objectContaining({ id: 'event_2__division__advanced', price: 4500, maxParticipants: 8 }),
     ]);
     expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           eventId: { in: ['event_2'] },
+        }),
+      }),
+    );
+  });
+
+  it('allows hosts to explicitly query private events via GET /api/events', async () => {
+    getTokenFromRequestMock.mockReturnValueOnce('token_1');
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events?state=PRIVATE'));
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          state: 'PRIVATE',
+          OR: [
+            { hostId: 'host_1' },
+            { assistantHostIds: { has: 'host_1' } },
+          ],
         }),
       }),
     );

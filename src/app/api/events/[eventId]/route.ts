@@ -36,6 +36,7 @@ import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
 const warnedMissingEventArguments = new Set<string>();
+const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'PRIVATE', 'DRAFT']);
 
 const EVENT_UPDATE_FIELDS = new Set([
   'name',
@@ -1388,7 +1389,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
   if (!event) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  if (event.state === 'TEMPLATE') {
+  if (RESTRICTED_EVENT_STATES.has(String(event.state ?? '').toUpperCase())) {
     const session = await requireSession(_req);
     if (!(await canManageEvent(session, event))) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

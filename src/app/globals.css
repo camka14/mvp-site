@@ -328,6 +328,12 @@ svg {
   border: 1px solid #fecaca;
 }
 
+.discover-badge-private {
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+}
+
 .discover-muted-pill {
   display: inline-flex;
   align-items: center;
@@ -858,6 +864,16 @@ summary::-webkit-details-marker {
   color: var(--landing-text);
 }
 
+.landing-anchor-section {
+  scroll-margin-top: 6.5rem;
+}
+
+@media (min-width: 1024px) {
+  .landing-anchor-section {
+    scroll-margin-top: 7rem;
+  }
+}
+
 .landing-btn-primary {
   border: 1px solid transparent;
   background: var(--mvp-primary);
@@ -1180,6 +1196,12 @@ summary::-webkit-details-marker {
 
 .landing-phone-frame-two-sides {
   --landing-phone-frame-width: clamp(10.5rem, 36vw, 18rem);
+}
+
+@media (min-width: 1024px) {
+  .landing-phone-frame-two-sides {
+    --landing-phone-frame-width: min(22.5%, 9.5rem);
+  }
 }
 
 @keyframes landing-reveal {
