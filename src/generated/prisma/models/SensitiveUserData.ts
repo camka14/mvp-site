@@ -30,6 +30,7 @@ export type SensitiveUserDataMinAggregateOutputType = {
   updatedAt: Date | null
   userId: string | null
   email: string | null
+  appleRefreshToken: string | null
 }
 
 export type SensitiveUserDataMaxAggregateOutputType = {
@@ -38,6 +39,7 @@ export type SensitiveUserDataMaxAggregateOutputType = {
   updatedAt: Date | null
   userId: string | null
   email: string | null
+  appleRefreshToken: string | null
 }
 
 export type SensitiveUserDataCountAggregateOutputType = {
@@ -46,6 +48,7 @@ export type SensitiveUserDataCountAggregateOutputType = {
   updatedAt: number
   userId: number
   email: number
+  appleRefreshToken: number
   _all: number
 }
 
@@ -56,6 +59,7 @@ export type SensitiveUserDataMinAggregateInputType = {
   updatedAt?: true
   userId?: true
   email?: true
+  appleRefreshToken?: true
 }
 
 export type SensitiveUserDataMaxAggregateInputType = {
@@ -64,6 +68,7 @@ export type SensitiveUserDataMaxAggregateInputType = {
   updatedAt?: true
   userId?: true
   email?: true
+  appleRefreshToken?: true
 }
 
 export type SensitiveUserDataCountAggregateInputType = {
@@ -72,6 +77,7 @@ export type SensitiveUserDataCountAggregateInputType = {
   updatedAt?: true
   userId?: true
   email?: true
+  appleRefreshToken?: true
   _all?: true
 }
 
@@ -153,6 +159,7 @@ export type SensitiveUserDataGroupByOutputType = {
   updatedAt: Date | null
   userId: string
   email: string
+  appleRefreshToken: string | null
   _count: SensitiveUserDataCountAggregateOutputType | null
   _min: SensitiveUserDataMinAggregateOutputType | null
   _max: SensitiveUserDataMaxAggregateOutputType | null
@@ -182,6 +189,7 @@ export type SensitiveUserDataWhereInput = {
   updatedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
   userId?: Prisma.StringFilter<"SensitiveUserData"> | string
   email?: Prisma.StringFilter<"SensitiveUserData"> | string
+  appleRefreshToken?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
 }
 
 export type SensitiveUserDataOrderByWithRelationInput = {
@@ -190,6 +198,7 @@ export type SensitiveUserDataOrderByWithRelationInput = {
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   userId?: Prisma.SortOrder
   email?: Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type SensitiveUserDataWhereUniqueInput = Prisma.AtLeast<{
@@ -201,6 +210,7 @@ export type SensitiveUserDataWhereUniqueInput = Prisma.AtLeast<{
   updatedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
   userId?: Prisma.StringFilter<"SensitiveUserData"> | string
   email?: Prisma.StringFilter<"SensitiveUserData"> | string
+  appleRefreshToken?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
 }, "id">
 
 export type SensitiveUserDataOrderByWithAggregationInput = {
@@ -209,6 +219,7 @@ export type SensitiveUserDataOrderByWithAggregationInput = {
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   userId?: Prisma.SortOrder
   email?: Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.SensitiveUserDataCountOrderByAggregateInput
   _max?: Prisma.SensitiveUserDataMaxOrderByAggregateInput
   _min?: Prisma.SensitiveUserDataMinOrderByAggregateInput
@@ -223,6 +234,7 @@ export type SensitiveUserDataScalarWhereWithAggregatesInput = {
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SensitiveUserData"> | Date | string | null
   userId?: Prisma.StringWithAggregatesFilter<"SensitiveUserData"> | string
   email?: Prisma.StringWithAggregatesFilter<"SensitiveUserData"> | string
+  appleRefreshToken?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
 }
 
 export type SensitiveUserDataCreateInput = {
@@ -231,6 +243,7 @@ export type SensitiveUserDataCreateInput = {
   updatedAt?: Date | string | null
   userId: string
   email: string
+  appleRefreshToken?: string | null
 }
 
 export type SensitiveUserDataUncheckedCreateInput = {
@@ -239,6 +252,7 @@ export type SensitiveUserDataUncheckedCreateInput = {
   updatedAt?: Date | string | null
   userId: string
   email: string
+  appleRefreshToken?: string | null
 }
 
 export type SensitiveUserDataUpdateInput = {
@@ -247,6 +261,7 @@ export type SensitiveUserDataUpdateInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
+  appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type SensitiveUserDataUncheckedUpdateInput = {
@@ -255,6 +270,7 @@ export type SensitiveUserDataUncheckedUpdateInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
+  appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type SensitiveUserDataCreateManyInput = {
@@ -263,6 +279,7 @@ export type SensitiveUserDataCreateManyInput = {
   updatedAt?: Date | string | null
   userId: string
   email: string
+  appleRefreshToken?: string | null
 }
 
 export type SensitiveUserDataUpdateManyMutationInput = {
@@ -271,6 +288,7 @@ export type SensitiveUserDataUpdateManyMutationInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
+  appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type SensitiveUserDataUncheckedUpdateManyInput = {
@@ -279,6 +297,7 @@ export type SensitiveUserDataUncheckedUpdateManyInput = {
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   userId?: Prisma.StringFieldUpdateOperationsInput | string
   email?: Prisma.StringFieldUpdateOperationsInput | string
+  appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type SensitiveUserDataCountOrderByAggregateInput = {
@@ -287,6 +306,7 @@ export type SensitiveUserDataCountOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   email?: Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrder
 }
 
 export type SensitiveUserDataMaxOrderByAggregateInput = {
@@ -295,6 +315,7 @@ export type SensitiveUserDataMaxOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   email?: Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrder
 }
 
 export type SensitiveUserDataMinOrderByAggregateInput = {
@@ -303,6 +324,7 @@ export type SensitiveUserDataMinOrderByAggregateInput = {
   updatedAt?: Prisma.SortOrder
   userId?: Prisma.SortOrder
   email?: Prisma.SortOrder
+  appleRefreshToken?: Prisma.SortOrder
 }
 
 
@@ -313,6 +335,7 @@ export type SensitiveUserDataSelect<ExtArgs extends runtime.Types.Extensions.Int
   updatedAt?: boolean
   userId?: boolean
   email?: boolean
+  appleRefreshToken?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -321,6 +344,7 @@ export type SensitiveUserDataSelectCreateManyAndReturn<ExtArgs extends runtime.T
   updatedAt?: boolean
   userId?: boolean
   email?: boolean
+  appleRefreshToken?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -329,6 +353,7 @@ export type SensitiveUserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.T
   updatedAt?: boolean
   userId?: boolean
   email?: boolean
+  appleRefreshToken?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectScalar = {
@@ -337,9 +362,10 @@ export type SensitiveUserDataSelectScalar = {
   updatedAt?: boolean
   userId?: boolean
   email?: boolean
+  appleRefreshToken?: boolean
 }
 
-export type SensitiveUserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "email", ExtArgs["result"]["sensitiveUserData"]>
+export type SensitiveUserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "email" | "appleRefreshToken", ExtArgs["result"]["sensitiveUserData"]>
 
 export type $SensitiveUserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "SensitiveUserData"
@@ -350,6 +376,7 @@ export type $SensitiveUserDataPayload<ExtArgs extends runtime.Types.Extensions.I
     updatedAt: Date | null
     userId: string
     email: string
+    appleRefreshToken: string | null
   }, ExtArgs["result"]["sensitiveUserData"]>
   composites: {}
 }
@@ -778,6 +805,7 @@ export interface SensitiveUserDataFieldRefs {
   readonly updatedAt: Prisma.FieldRef<"SensitiveUserData", 'DateTime'>
   readonly userId: Prisma.FieldRef<"SensitiveUserData", 'String'>
   readonly email: Prisma.FieldRef<"SensitiveUserData", 'String'>
+  readonly appleRefreshToken: Prisma.FieldRef<"SensitiveUserData", 'String'>
 }
     
 

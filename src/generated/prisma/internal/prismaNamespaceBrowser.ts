@@ -221,7 +221,8 @@ export const SensitiveUserDataScalarFieldEnum = {
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   userId: 'userId',
-  email: 'email'
+  email: 'email',
+  appleRefreshToken: 'appleRefreshToken'
 } as const
 
 export type SensitiveUserDataScalarFieldEnum = (typeof SensitiveUserDataScalarFieldEnum)[keyof typeof SensitiveUserDataScalarFieldEnum]
@@ -796,6 +797,7 @@ export const AuthUserScalarFieldEnum = {
   email: 'email',
   passwordHash: 'passwordHash',
   name: 'name',
+  appleSubject: 'appleSubject',
   emailVerifiedAt: 'emailVerifiedAt',
   lastLogin: 'lastLogin',
   createdAt: 'createdAt',

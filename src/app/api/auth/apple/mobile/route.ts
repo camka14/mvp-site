@@ -1,39 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import jwt, { JwtHeader, JwtPayload } from 'jsonwebtoken';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import {
+  exchangeAppleAuthorizationCode,
+  verifyAppleIdentityToken,
+} from '@/lib/appleAuth';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const mobileAppleSchema = z.object({
   identityToken: z.string().min(1),
+  authorizationCode: z.string().trim().min(1),
   user: z.string().trim().min(1).optional(),
   email: z.string().trim().email().optional(),
   firstName: z.string().trim().min(1).optional(),
   lastName: z.string().trim().min(1).optional(),
 });
-
-type AppleJsonWebKey = {
-  kty: string;
-  kid: string;
-  use?: string;
-  alg?: string;
-  n: string;
-  e: string;
-};
-
-type AppleKeysResponse = {
-  keys?: AppleJsonWebKey[];
-};
-
-type AppleIdentityTokenPayload = JwtPayload & {
-  sub?: string;
-  email?: string;
-  email_verified?: string | boolean;
-  aud?: string;
-};
 
 const toPublicUser = (user: {
   id: string;
@@ -49,90 +33,6 @@ const toPublicUser = (user: {
   updatedAt: user.updatedAt,
 });
 
-const allowedAudiences = (): string[] => {
-  const values = [process.env.APPLE_MOBILE_BUNDLE_ID, 'com.razumly.mvp']
-    .map((value) => value?.trim())
-    .filter((value): value is string => Boolean(value));
-
-  return Array.from(new Set(values));
-};
-
-const isEmailVerified = (value: AppleIdentityTokenPayload['email_verified']): boolean => {
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'string') return value.toLowerCase() === 'true';
-  return false;
-};
-
-const parseAppleIdentityTokenHeader = (identityToken: string): JwtHeader => {
-  const decoded = jwt.decode(identityToken, { complete: true });
-  if (!decoded || typeof decoded !== 'object' || !decoded.header) {
-    throw new Error('Apple identity token is malformed');
-  }
-
-  return decoded.header as JwtHeader;
-};
-
-const fetchAppleSigningKeys = async (): Promise<AppleJsonWebKey[]> => {
-  const response = await fetch('https://appleid.apple.com/auth/keys', { cache: 'no-store' });
-  const payload = (await response.json().catch(() => ({}))) as AppleKeysResponse;
-
-  if (!response.ok || !Array.isArray(payload.keys)) {
-    throw new Error('Apple signing keys could not be retrieved');
-  }
-
-  return payload.keys;
-};
-
-const verifyAppleIdentityToken = async (
-  identityToken: string,
-  expectedUser: string | undefined,
-): Promise<AppleIdentityTokenPayload> => {
-  const audiences = allowedAudiences();
-  if (audiences.length === 0) {
-    throw new Error('Apple mobile OAuth is not configured. Set APPLE_MOBILE_BUNDLE_ID.');
-  }
-
-  const header = parseAppleIdentityTokenHeader(identityToken);
-  if (header.alg !== 'RS256') {
-    throw new Error('Apple identity token algorithm is invalid');
-  }
-
-  const keyId = header.kid?.trim();
-  if (!keyId) {
-    throw new Error('Apple identity token is missing key id');
-  }
-
-  const signingKeys = await fetchAppleSigningKeys();
-  const signingKey = signingKeys.find((candidate) => candidate.kid === keyId);
-  if (!signingKey) {
-    throw new Error('Apple signing key was not found');
-  }
-
-  const publicKey = crypto.createPublicKey({
-    key: signingKey as JsonWebKey,
-    format: 'jwk',
-  });
-
-  const verified = jwt.verify(identityToken, publicKey, {
-    algorithms: ['RS256'],
-    issuer: 'https://appleid.apple.com',
-    audience: audiences,
-  }) as AppleIdentityTokenPayload;
-
-  if (!verified.sub) {
-    throw new Error('Apple identity token is missing subject');
-  }
-
-  if (expectedUser && verified.sub !== expectedUser) {
-    throw new Error('Apple identity token subject does not match credential user');
-  }
-
-  if (verified.email && !isEmailVerified(verified.email_verified)) {
-    throw new Error('Apple account email is not verified');
-  }
-
-  return verified;
-};
 
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -141,9 +41,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { identityToken, user, email, firstName, lastName } = parsed.data;
+  const { identityToken, authorizationCode, user, email, firstName, lastName } = parsed.data;
 
-  let tokenInfo: AppleIdentityTokenPayload;
+  let tokenInfo: Awaited<ReturnType<typeof verifyAppleIdentityToken>>;
   try {
     tokenInfo = await verifyAppleIdentityToken(identityToken, user);
   } catch (error) {
@@ -151,26 +51,61 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 401 });
   }
 
+  let exchangedTokenInfo: Awaited<ReturnType<typeof verifyAppleIdentityToken>>;
+  let exchangedRefreshToken: string | null;
+  try {
+    const exchange = await exchangeAppleAuthorizationCode(authorizationCode);
+    exchangedTokenInfo = await verifyAppleIdentityToken(exchange.idToken);
+    if (exchangedTokenInfo.sub !== tokenInfo.sub) {
+      throw new Error('Apple authorization code subject does not match identity token');
+    }
+    exchangedRefreshToken = exchange.refreshToken;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'invalid_apple_authorization_code';
+    const status = message.toLowerCase().includes('configured') ? 500 : 401;
+    return NextResponse.json({ error: message }, { status });
+  }
+
   const normalizedTokenEmail = tokenInfo.email?.trim().toLowerCase() || null;
+  const normalizedExchangeEmail = exchangedTokenInfo.email?.trim().toLowerCase() || null;
   const normalizedProvidedEmail = email?.trim().toLowerCase() || null;
   if (normalizedTokenEmail && normalizedProvidedEmail && normalizedTokenEmail !== normalizedProvidedEmail) {
     return NextResponse.json({ error: 'Apple email does not match identity token' }, { status: 401 });
   }
 
-  const normalizedEmail = normalizedTokenEmail ?? normalizedProvidedEmail;
+  if (normalizedTokenEmail && normalizedExchangeEmail && normalizedTokenEmail !== normalizedExchangeEmail) {
+    return NextResponse.json({ error: 'Apple token exchange email does not match identity token' }, { status: 401 });
+  }
+
+  const now = new Date();
+  const existingAuthByAppleSubject = await prisma.authUser.findUnique({ where: { appleSubject: tokenInfo.sub } });
+  const candidateEmail = normalizedTokenEmail ?? normalizedExchangeEmail ?? normalizedProvidedEmail;
+  const existingAuthByEmail = !existingAuthByAppleSubject && candidateEmail
+    ? await prisma.authUser.findUnique({ where: { email: candidateEmail } })
+    : null;
+  const existingAuth = existingAuthByAppleSubject ?? existingAuthByEmail;
+  const existingSensitive = existingAuth
+    ? await prisma.sensitiveUserData.findFirst({ where: { userId: existingAuth.id } })
+    : candidateEmail
+      ? await prisma.sensitiveUserData.findFirst({ where: { email: candidateEmail } })
+      : null;
+  const normalizedEmail = existingAuth?.email?.trim().toLowerCase()
+    || candidateEmail
+    || existingSensitive?.email?.trim().toLowerCase()
+    || null;
+
   if (!normalizedEmail) {
     return NextResponse.json({ error: 'Apple sign-in did not provide an email address' }, { status: 401 });
   }
 
-  if (!normalizedTokenEmail && !isEmailVerified(tokenInfo.email_verified)) {
-    return NextResponse.json({ error: 'Apple account email is not verified' }, { status: 401 });
+  const refreshToken = exchangedRefreshToken || existingSensitive?.appleRefreshToken?.trim() || null;
+  if (!refreshToken) {
+    return NextResponse.json(
+      { error: 'Apple sign-in did not return a refresh token. Remove the app from Apple ID settings and try again.' },
+      { status: 401 },
+    );
   }
 
-  const now = new Date();
-  const existingAuth = await prisma.authUser.findUnique({ where: { email: normalizedEmail } });
-  const existingSensitive = existingAuth
-    ? null
-    : await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
 
   const normalizedFirstName = normalizeOptionalName(firstName);
@@ -183,6 +118,7 @@ export async function POST(req: NextRequest) {
           where: { id: existingAuth.id },
           data: {
             name: existingAuth.name ?? displayName,
+            appleSubject: tokenInfo.sub,
             emailVerifiedAt: existingAuth.emailVerifiedAt ?? now,
             lastLogin: now,
             updatedAt: now,
@@ -194,6 +130,7 @@ export async function POST(req: NextRequest) {
             email: normalizedEmail,
             passwordHash: await hashPassword(crypto.randomBytes(48).toString('base64url')),
             name: displayName,
+            appleSubject: tokenInfo.sub,
             emailVerifiedAt: now,
             createdAt: now,
             updatedAt: now,
@@ -238,12 +175,14 @@ export async function POST(req: NextRequest) {
       update: {
         email: normalizedEmail,
         userId: createdAuth.id,
+        appleRefreshToken: refreshToken,
         updatedAt: now,
       },
       create: {
         id: createdAuth.id,
         email: normalizedEmail,
         userId: createdAuth.id,
+        appleRefreshToken: refreshToken,
         createdAt: now,
         updatedAt: now,
       },

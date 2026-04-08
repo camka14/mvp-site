@@ -64,9 +64,22 @@ const buildSigningMaterial = () => {
 describe('apple mobile oauth route', () => {
   const originalEnv = process.env;
 
+  const buildAppleClientSecretConfig = () => {
+    const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+    return {
+      APPLE_TEAM_ID: 'TEAM123456',
+      APPLE_KEY_ID: 'KEY123456',
+      APPLE_PRIVATE_KEY: privateKey.export({ format: 'pem', type: 'pkcs8' }).toString(),
+    };
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env = { ...originalEnv, APPLE_MOBILE_BUNDLE_ID: 'com.razumly.mvp' };
+    process.env = {
+      ...originalEnv,
+      APPLE_MOBILE_BUNDLE_ID: 'com.razumly.mvp',
+      ...buildAppleClientSecretConfig(),
+    };
 
     prismaMock.$transaction.mockImplementation(async (fn: any) =>
       fn({
@@ -101,17 +114,65 @@ describe('apple mobile oauth route', () => {
         expiresIn: '10m',
       },
     );
+    const exchangedIdentityToken = jwt.sign(
+      {
+        sub: 'apple-user-1',
+        email: 'apple@example.com',
+        email_verified: 'true',
+      },
+      signingMaterial.privateKey,
+      {
+        algorithm: 'RS256',
+        keyid: signingMaterial.jwk.kid,
+        issuer: 'https://appleid.apple.com',
+        audience: 'com.razumly.mvp',
+        expiresIn: '10m',
+      },
+    );
 
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        keys: [signingMaterial.jwk],
-      }),
+    const fetchMock = jest.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input.toString();
+      if (url === 'https://appleid.apple.com/auth/keys') {
+        return {
+          ok: true,
+          json: async () => ({
+            keys: [signingMaterial.jwk],
+          }),
+        };
+      }
+
+      if (url === 'https://appleid.apple.com/auth/token') {
+        const body = String(init?.body ?? '');
+        expect(init?.method).toBe('POST');
+        expect(body).toContain('grant_type=authorization_code');
+        expect(body).toContain('code=apple.authorization.code');
+        expect(body).toContain('client_id=com.razumly.mvp');
+        expect(body).toContain('client_secret=');
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: 'apple_access_token',
+            refresh_token: 'apple_refresh_token',
+            id_token: exchangedIdentityToken,
+          }),
+        };
+      }
+
+      throw new Error(`Unexpected fetch url ${url}`);
     });
     (globalThis as any).fetch = fetchMock;
 
-    prismaMock.authUser.findUnique.mockResolvedValue(null);
-    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_apple', userId: 'user_apple', email: 'apple@example.com' });
+    prismaMock.authUser.findUnique.mockImplementation(async ({ where }: any) => {
+      if (where.appleSubject === 'apple-user-1') return null;
+      if (where.email === 'apple@example.com') return null;
+      return null;
+    });
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue({
+      id: 'user_apple',
+      userId: 'user_apple',
+      email: 'apple@example.com',
+      appleRefreshToken: null,
+    });
     prismaMock.authUser.create.mockResolvedValue({
       id: 'user_apple',
       email: 'apple@example.com',
@@ -125,6 +186,7 @@ describe('apple mobile oauth route', () => {
 
     const req = buildJsonRequest('http://localhost/api/auth/apple/mobile', {
       identityToken,
+      authorizationCode: 'apple.authorization.code',
       user: 'apple-user-1',
       firstName: 'Apple',
       lastName: 'User',
@@ -136,7 +198,19 @@ describe('apple mobile oauth route', () => {
     expect(json.user.id).toBe('user_apple');
     expect(json.token).toBe('signed-token');
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
-    expect(prismaMock.authUser.create).toHaveBeenCalled();
+    expect(prismaMock.authUser.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        appleSubject: 'apple-user-1',
+      }),
+    }));
+    expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      update: expect.objectContaining({
+        appleRefreshToken: 'apple_refresh_token',
+      }),
+      create: expect.objectContaining({
+        appleRefreshToken: 'apple_refresh_token',
+      }),
+    }));
   });
 
   it('POST /api/auth/apple/mobile rejects mismatched credential user and token subject', async () => {
@@ -167,6 +241,7 @@ describe('apple mobile oauth route', () => {
 
     const req = buildJsonRequest('http://localhost/api/auth/apple/mobile', {
       identityToken,
+      authorizationCode: 'apple.authorization.code',
       user: 'wrong-user',
     });
     const res = await APPLE_POST(req);

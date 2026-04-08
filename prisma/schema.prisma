@@ -233,11 +233,12 @@ model UserData {
 }
 
 model SensitiveUserData {
-  id        String    @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  userId    String
-  email     String
+  id                String    @id
+  createdAt         DateTime?
+  updatedAt         DateTime?
+  userId            String
+  email             String
+  appleRefreshToken String?
 }
 
 model Invites {
@@ -769,6 +770,7 @@ model AuthUser {
   email           String    @unique
   passwordHash    String
   name            String?
+  appleSubject    String?   @unique
   emailVerifiedAt DateTime?
   lastLogin       DateTime?
   createdAt       DateTime?

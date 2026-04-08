@@ -91,7 +91,7 @@ export default function PrivacyPolicyPage() {
                   Some records are retained because they are matters of public, billing, compliance, or historical record. These include the user&apos;s name, username, limited inactive user record, Stripe account association, signed documents, completed-event participation records, and refund workflows that must remain open until resolved.
                 </p>
                 <p>
-                  Messages and files are retained for 90 days before deletion. Pending refund requests owed to the user must be addressed before account deletion can be completed.
+                  Messages and files are retained for 90 days before deletion. Pending refund requests and outstanding bills must be resolved before account deletion can be completed.
                 </p>
               </div>
             </section>
