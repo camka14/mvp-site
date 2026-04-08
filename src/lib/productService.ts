@@ -1,7 +1,8 @@
 'use client';
 
 import { apiRequest } from '@/lib/apiClient';
-import type { BillingAddress, PaymentIntent, Product, ProductPeriod, Subscription, UserData } from '@/types';
+import { deriveProductTypeFromTaxCategory } from '@/lib/productTypes';
+import type { BillingAddress, PaymentIntent, Product, ProductPeriod, ProductType, Subscription, UserData } from '@/types';
 
 
 const normalizeProductPeriod = (value: unknown): ProductPeriod => {
@@ -10,6 +11,9 @@ const normalizeProductPeriod = (value: unknown): ProductPeriod => {
   }
 
   const normalized = value.toLowerCase();
+  if (normalized === 'single' || normalized === 'single_purchase' || normalized === 'one-time' || normalized === 'one_time') {
+    return 'single';
+  }
   if (normalized === 'monthly') return 'month';
   if (normalized === 'weekly') return 'week';
   if (normalized === 'yearly') return 'year';
@@ -26,6 +30,7 @@ type CreateProductInput = {
   priceCents: number;
   period: ProductPeriod;
   description?: string;
+  productType?: ProductType;
   taxCategory?: Product['taxCategory'];
 };
 
@@ -47,6 +52,7 @@ type UpdateProductInput = {
   description?: string;
   priceCents?: number;
   period?: ProductPeriod;
+  productType?: ProductType;
   taxCategory?: Product['taxCategory'];
   isActive?: boolean;
 };
@@ -64,6 +70,7 @@ class ProductService {
       description: row?.description ?? row?.desc ?? undefined,
       priceCents,
       period,
+      productType: row?.productType ?? deriveProductTypeFromTaxCategory(row?.taxCategory, period),
       taxCategory: row?.taxCategory ?? 'ONE_TIME_PRODUCT',
       createdBy: row?.createdBy ?? row?.ownerId,
       isActive: row?.isActive ?? true,
@@ -130,7 +137,8 @@ class ProductService {
         description: input.description,
         priceCents: input.priceCents,
         period: input.period,
-        taxCategory: input.taxCategory,
+        productType: input.productType,
+        taxCategory: input.productType ? undefined : input.taxCategory,
       },
     };
 
@@ -201,6 +209,9 @@ class ProductService {
       delete payload.$createdAt;
       delete payload.updatedAt;
       delete payload.$updatedAt;
+      if (payload.productType) {
+        delete payload.taxCategory;
+      }
       const result = await apiRequest<Product & { error?: string }>(`/api/products/${productId}`, {
         method: 'PATCH',
         body: { product: payload },

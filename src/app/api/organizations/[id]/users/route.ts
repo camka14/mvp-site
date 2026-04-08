@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/permissions';
 import {
   canAccessOrganizationUsers,
   listOrganizationUsersScopeEvents,
+  type OrganizationUsersScopeEvent,
 } from '@/server/organizationUsersAccess';
 
 export const dynamic = 'force-dynamic';
@@ -99,6 +100,11 @@ const getSortTimestamp = (value: string | undefined): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const isRentalScopeEvent = (
+  event: Pick<OrganizationUsersScopeEvent, 'organizationId'>,
+  organizationId: string,
+): boolean => event.organizationId !== organizationId;
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const { id } = await params;
@@ -124,6 +130,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const eventIds = eventRows.map((event) => event.id);
+  const rentalEventIds = eventRows
+    .filter((event) => isRentalScopeEvent(event, id))
+    .map((event) => event.id);
+  const rentalEventIdSet = new Set(rentalEventIds);
   const registrations = eventIds.length
     ? await prisma.eventRegistrations.findMany({
       where: { eventId: { in: eventIds } },
@@ -136,9 +146,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       orderBy: { updatedAt: 'desc' },
     })
     : [];
-  const eventOfficials = eventIds.length
+  const eventOfficials = rentalEventIds.length
     ? await prisma.eventOfficials.findMany({
-      where: { eventId: { in: eventIds } },
+      where: { eventId: { in: rentalEventIds } },
       select: {
         eventId: true,
         userId: true,
@@ -215,6 +225,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const participantUserIds = new Set<string>();
   eventRows.forEach((event) => {
     event.userIds.forEach((userId) => participantUserIds.add(userId));
+    if (!rentalEventIdSet.has(event.id)) {
+      return;
+    }
     if (event.hostId) {
       participantUserIds.add(event.hostId);
     }
@@ -319,6 +332,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         });
       }
     });
+    if (!rentalEventIdSet.has(event.id)) {
+      return;
+    }
     const assignmentUserIds = [
       event.hostId,
       ...event.assistantHostIds,

@@ -52,6 +52,7 @@ enum EventsOfficialSchedulingModeEnum {
 }
 
 enum ProductsPeriodEnum {
+  SINGLE
   WEEK
   MONTH
   YEAR
@@ -59,6 +60,8 @@ enum ProductsPeriodEnum {
 
 enum ProductsTaxCategoryEnum {
   ONE_TIME_PRODUCT
+  DAY_PASS
+  EQUIPMENT_RENTAL
   SUBSCRIPTION
   NON_TAXABLE
 }

@@ -75,6 +75,7 @@ export type EventsOfficialSchedulingModeEnum = (typeof EventsOfficialSchedulingM
 
 
 export const ProductsPeriodEnum = {
+  SINGLE: 'SINGLE',
   WEEK: 'WEEK',
   MONTH: 'MONTH',
   YEAR: 'YEAR'
@@ -85,6 +86,8 @@ export type ProductsPeriodEnum = (typeof ProductsPeriodEnum)[keyof typeof Produc
 
 export const ProductsTaxCategoryEnum = {
   ONE_TIME_PRODUCT: 'ONE_TIME_PRODUCT',
+  DAY_PASS: 'DAY_PASS',
+  EQUIPMENT_RENTAL: 'EQUIPMENT_RENTAL',
   SUBSCRIPTION: 'SUBSCRIPTION',
   NON_TAXABLE: 'NON_TAXABLE'
 } as const

@@ -937,38 +937,6 @@ export async function POST(req: NextRequest) {
       shouldSendReceipt = instantBill.created;
     }
 
-    if (purchaseType === 'product') {
-      if (productId && userId) {
-        const existing = await prisma.subscriptions.findFirst({
-          where: {
-            productId,
-            userId,
-            status: 'ACTIVE',
-            stripeSubscriptionId: null,
-          },
-        });
-        if (!existing) {
-          const product = await prisma.products.findUnique({ where: { id: productId } });
-          if (product) {
-            await prisma.subscriptions.create({
-              data: {
-                id: crypto.randomUUID(),
-                productId: product.id,
-                userId,
-                organizationId: product.organizationId,
-                startDate: new Date(),
-                priceCents: product.priceCents,
-                period: product.period,
-                status: 'ACTIVE',
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              },
-            });
-          }
-        }
-      }
-    }
-
     const receiptLogContext = {
       paymentIntentId,
       purchaseType,

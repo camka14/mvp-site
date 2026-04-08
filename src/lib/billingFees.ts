@@ -2,6 +2,7 @@ export const DEFAULT_MVP_FEE_PERCENTAGE = 0.01;
 export const LEAGUE_OR_TOURNAMENT_MVP_FEE_PERCENTAGE = 0.03;
 export const STRIPE_FIXED_FEE_CENTS = 30;
 export const STRIPE_PERCENT_FEE = 0.029;
+export const DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS = 50;
 
 const normalizeEventType = (eventType: unknown): string => {
   if (typeof eventType !== 'string') {

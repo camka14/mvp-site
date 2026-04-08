@@ -54,6 +54,6 @@ describe('Navigation', () => {
   it('includes an info link back to the landing page', () => {
     render(<Navigation />);
 
-    expect(screen.getByRole('link', { name: /info/i })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: /info/i })).toHaveAttribute('href', '/info');
   });
 });

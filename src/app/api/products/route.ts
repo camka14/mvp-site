@@ -5,7 +5,20 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
-import { syncPlatformRecurringProduct } from '@/lib/stripeProducts';
+import type { Product, ProductType } from '@/types';
+import {
+  defaultProductTypeForPeriod,
+  deriveProductTypeFromTaxCategory,
+  deriveTaxCategoryFromProductType,
+  isStoredTaxCategoryAllowedForPeriod,
+  isProductTypeAllowedForPeriod,
+} from '@/lib/productTypes';
+import {
+  defaultProductTaxCategoryForPeriod,
+  normalizeProductPeriod,
+  normalizeProductTaxCategory,
+  syncPlatformProductCatalog,
+} from '@/lib/stripeProducts';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +30,8 @@ const createSchema = z.object({
     description: z.string().optional(),
     priceCents: z.number(),
     period: z.string(),
-    taxCategory: z.enum(['ONE_TIME_PRODUCT', 'SUBSCRIPTION', 'NON_TAXABLE']).optional(),
+    productType: z.string().optional(),
+    taxCategory: z.string().optional(),
   }),
 }).passthrough();
 
@@ -37,7 +51,15 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json({ products: withLegacyList(products) }, { status: 200 });
+  return NextResponse.json({
+    products: withLegacyList(products).map((product) => ({
+      ...product,
+      productType: deriveProductTypeFromTaxCategory(
+        product.taxCategory as Product['taxCategory'],
+        product.period as Product['period'],
+      ),
+    })),
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
@@ -62,10 +84,33 @@ export async function POST(req: NextRequest) {
   }
 
   const nextProductId = crypto.randomUUID();
-  const normalizedPeriod = parsed.data.product.period.toUpperCase() as any;
-  const normalizedTaxCategory = parsed.data.product.taxCategory ?? 'SUBSCRIPTION';
+  const normalizedPeriod = normalizeProductPeriod(parsed.data.product.period);
+  if (!normalizedPeriod) {
+    return NextResponse.json({ error: 'Invalid product billing period.' }, { status: 400 });
+  }
+
+  const normalizedTaxCategory = parsed.data.product.taxCategory === undefined
+    ? defaultProductTaxCategoryForPeriod(normalizedPeriod)
+    : normalizeProductTaxCategory(parsed.data.product.taxCategory);
+  const requestedProductType = typeof parsed.data.product.productType === 'string'
+    ? parsed.data.product.productType.trim().toUpperCase()
+    : '';
+  const normalizedProductType = (requestedProductType || defaultProductTypeForPeriod(normalizedPeriod)) as ProductType;
+  if (!isProductTypeAllowedForPeriod(normalizedProductType, normalizedPeriod)) {
+    return NextResponse.json({ error: 'Invalid product type for the selected billing period.' }, { status: 400 });
+  }
+  const effectiveTaxCategory = requestedProductType
+    ? deriveTaxCategoryFromProductType(normalizedProductType)
+    : normalizedTaxCategory;
+  if (!effectiveTaxCategory) {
+    return NextResponse.json({ error: 'Invalid product tax category.' }, { status: 400 });
+  }
+  if (!requestedProductType && !isStoredTaxCategoryAllowedForPeriod(effectiveTaxCategory, normalizedPeriod)) {
+    return NextResponse.json({ error: 'Invalid product tax category for the selected billing period.' }, { status: 400 });
+  }
+
   const stripe = new Stripe(secretKey);
-  const stripeCatalog = await syncPlatformRecurringProduct({
+  const stripeCatalog = await syncPlatformProductCatalog({
     stripe,
     product: {
       id: nextProductId,
@@ -74,7 +119,7 @@ export async function POST(req: NextRequest) {
       priceCents: parsed.data.product.priceCents,
       period: normalizedPeriod,
       organizationId: parsed.data.organizationId,
-      taxCategory: normalizedTaxCategory,
+      taxCategory: effectiveTaxCategory,
       stripeProductId: null,
       stripePriceId: null,
     },
@@ -87,7 +132,7 @@ export async function POST(req: NextRequest) {
       description: parsed.data.product.description ?? null,
       priceCents: parsed.data.product.priceCents,
       period: normalizedPeriod,
-      taxCategory: normalizedTaxCategory,
+      taxCategory: effectiveTaxCategory,
       organizationId: parsed.data.organizationId,
       createdBy: session.userId,
       isActive: true,
@@ -98,5 +143,11 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json(withLegacyFields(product), { status: 201 });
+  return NextResponse.json({
+    ...withLegacyFields(product),
+    productType: deriveProductTypeFromTaxCategory(
+      product.taxCategory as Product['taxCategory'],
+      product.period as Product['period'],
+    ),
+  }, { status: 201 });
 }

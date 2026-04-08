@@ -72,6 +72,7 @@ describe('GET /api/organizations/[id]/users', () => {
         name: 'League Night',
         start: new Date('2026-01-10T18:00:00.000Z'),
         end: new Date('2026-01-10T20:00:00.000Z'),
+        organizationId: 'org_1',
         userIds: ['player_1'],
       },
     ]);
@@ -103,6 +104,7 @@ describe('GET /api/organizations/[id]/users', () => {
         name: 'League Night',
         start: new Date('2026-01-10T18:00:00.000Z'),
         end: new Date('2026-01-10T20:00:00.000Z'),
+        organizationId: 'org_1',
         userIds: ['player_1'],
       },
       {
@@ -110,6 +112,7 @@ describe('GET /api/organizations/[id]/users', () => {
         name: 'Weekend Ladder',
         start: new Date('2026-02-14T16:00:00.000Z'),
         end: new Date('2026-02-14T19:00:00.000Z'),
+        organizationId: 'org_1',
         userIds: [],
       },
     ]);
@@ -224,6 +227,7 @@ describe('GET /api/organizations/[id]/users', () => {
         name: 'Test League',
         start: new Date('2026-03-01T18:00:00.000Z'),
         end: new Date('2026-03-01T20:00:00.000Z'),
+        organizationId: 'org_1',
         userIds: [],
         teamIds: ['team_slot_1'],
       },
@@ -300,6 +304,7 @@ describe('GET /api/organizations/[id]/users', () => {
         name: 'Rental Event',
         start: new Date('2026-03-15T18:00:00.000Z'),
         end: new Date('2026-03-15T20:00:00.000Z'),
+        organizationId: 'external_org_1',
         userIds: ['player_1'],
         teamIds: [],
         hostId: 'host_1',
@@ -352,6 +357,54 @@ describe('GET /api/organizations/[id]/users', () => {
         expect.objectContaining({ eventId: 'event_ext_1' }),
       ]));
     });
+  });
+
+  it('does not include host and staff users from organization-owned events', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      email: 'owner@example.com',
+      emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      officialIds: [],
+      hostIds: [],
+    });
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'event_org_1',
+        name: 'Organization Event',
+        start: new Date('2026-03-20T18:00:00.000Z'),
+        end: new Date('2026-03-20T20:00:00.000Z'),
+        organizationId: 'org_1',
+        userIds: ['player_1'],
+        teamIds: [],
+        hostId: 'host_1',
+        assistantHostIds: ['assistant_host_1'],
+        officialIds: ['official_1'],
+      },
+    ]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'player_1', firstName: 'Pat', lastName: 'Lee', userName: 'plee' },
+    ]);
+    prismaMock.templateDocuments.findMany.mockResolvedValue([]);
+    prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1/users'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.eventOfficials.findMany).not.toHaveBeenCalled();
+    expect(payload.users.map((row: { userId: string }) => row.userId)).toEqual(['player_1']);
+    expect(payload.users[0].events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ eventId: 'event_org_1' }),
+    ]));
   });
 
   it('allows verified razumly admins even when they are not org members', async () => {

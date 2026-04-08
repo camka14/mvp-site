@@ -5,7 +5,20 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
-import { normalizeProductTaxCategory, syncPlatformRecurringProduct } from '@/lib/stripeProducts';
+import type { Product, ProductType } from '@/types';
+import {
+  defaultProductTypeForPeriod,
+  deriveProductTypeFromTaxCategory,
+  deriveTaxCategoryFromProductType,
+  isStoredTaxCategoryAllowedForPeriod,
+  isProductTypeAllowedForPeriod,
+} from '@/lib/productTypes';
+import {
+  defaultProductTaxCategoryForPeriod,
+  normalizeProductPeriod,
+  normalizeProductTaxCategory,
+  syncPlatformProductCatalog,
+} from '@/lib/stripeProducts';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +27,7 @@ const PRODUCT_MUTABLE_FIELDS = new Set<string>([
   'description',
   'priceCents',
   'period',
+  'productType',
   'taxCategory',
   'isActive',
   'stripeProductId',
@@ -92,22 +106,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const updateData: Record<string, unknown> = {};
   for (const key of PRODUCT_MUTABLE_FIELDS) {
-    if (Object.prototype.hasOwnProperty.call(payload, key)) {
+    if (key !== 'productType' && Object.prototype.hasOwnProperty.call(payload, key)) {
       updateData[key] = payload[key];
     }
   }
-  if (typeof updateData.period === 'string') {
-    updateData.period = String(updateData.period).toUpperCase();
+  if (payload.period !== undefined) {
+    const normalizedPeriod = normalizeProductPeriod(payload.period);
+    if (!normalizedPeriod) {
+      return NextResponse.json({ error: 'Invalid product billing period.' }, { status: 400 });
+    }
+    updateData.period = normalizedPeriod;
   }
-  if (payload.period) {
-    updateData.period = String(payload.period).toUpperCase();
+  const effectivePeriod = typeof updateData.period === 'string' ? updateData.period : existing.period;
+  if (payload.productType !== undefined) {
+    const normalizedProductType = typeof payload.productType === 'string'
+      ? payload.productType.trim().toUpperCase()
+      : '';
+    if (!normalizedProductType || !isProductTypeAllowedForPeriod(normalizedProductType as ProductType, effectivePeriod)) {
+      return NextResponse.json({ error: 'Invalid product type for the selected billing period.' }, { status: 400 });
+    }
+    updateData.taxCategory = deriveTaxCategoryFromProductType(normalizedProductType as ProductType);
   }
   if (payload.taxCategory !== undefined) {
     const normalizedTaxCategory = normalizeProductTaxCategory(payload.taxCategory);
     if (!normalizedTaxCategory) {
       return NextResponse.json({ error: 'Invalid product tax category.' }, { status: 400 });
     }
+    if (!isStoredTaxCategoryAllowedForPeriod(normalizedTaxCategory, effectivePeriod)) {
+      return NextResponse.json({ error: 'Invalid product tax category for the selected billing period.' }, { status: 400 });
+    }
     updateData.taxCategory = normalizedTaxCategory;
+  }
+  if (
+    payload.period !== undefined
+    && payload.productType === undefined
+    && payload.taxCategory === undefined
+  ) {
+    updateData.taxCategory = deriveTaxCategoryFromProductType(
+      defaultProductTypeForPeriod(effectivePeriod as Product['period']),
+    );
   }
 
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -122,14 +159,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ? (typeof updateData.description === 'string' ? updateData.description : null)
       : existing.description,
     priceCents: typeof updateData.priceCents === 'number' ? updateData.priceCents : existing.priceCents,
-    period: typeof updateData.period === 'string' ? updateData.period : existing.period,
+    period: effectivePeriod,
     organizationId: typeof updateData.organizationId === 'string' ? updateData.organizationId : existing.organizationId,
-    taxCategory: normalizeProductTaxCategory(updateData.taxCategory) ?? normalizeProductTaxCategory(existing.taxCategory),
+    taxCategory:
+      normalizeProductTaxCategory(updateData.taxCategory)
+      ?? normalizeProductTaxCategory(existing.taxCategory)
+      ?? defaultProductTaxCategoryForPeriod(
+        effectivePeriod,
+      ),
     stripeProductId: existing.stripeProductId,
     stripePriceId: existing.stripePriceId,
   };
   const stripe = new Stripe(secretKey);
-  const stripeCatalog = await syncPlatformRecurringProduct({
+  const stripeCatalog = await syncPlatformProductCatalog({
     stripe,
     product: nextProduct,
     forceNewPrice: (
@@ -146,7 +188,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     data: { ...updateData, updatedAt: new Date() } as any,
   });
 
-  return NextResponse.json(withLegacyFields(updated), { status: 200 });
+  return NextResponse.json({
+    ...withLegacyFields(updated),
+    productType: deriveProductTypeFromTaxCategory(
+      updated.taxCategory as Product['taxCategory'],
+      updated.period as Product['period'],
+    ),
+  }, { status: 200 });
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

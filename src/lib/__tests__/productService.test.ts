@@ -41,6 +41,35 @@ describe('productService', () => {
         }),
       ]);
     });
+
+    it('maps single-purchase products and extended tax categories', async () => {
+      apiRequestMock.mockResolvedValue({
+        products: [
+          {
+            $id: 'prod_single_1',
+            organizationId: 'org_1',
+            name: 'Day Pass',
+            priceCents: 1500,
+            period: 'SINGLE',
+            taxCategory: 'DAY_PASS',
+          },
+        ],
+      });
+
+      const products = await productService.listProducts('org_1');
+
+      expect(products).toEqual([
+        expect.objectContaining({
+          $id: 'prod_single_1',
+          organizationId: 'org_1',
+          name: 'Day Pass',
+          priceCents: 1500,
+          period: 'single',
+          productType: 'DAY_PASS',
+          taxCategory: 'DAY_PASS',
+        }),
+      ]);
+    });
   });
 
   describe('createProduct', () => {
@@ -62,6 +91,7 @@ describe('productService', () => {
         name: 'Gold',
         priceCents: 2500,
         period: 'month',
+        productType: 'MEMBERSHIP',
       });
 
       expect(apiRequestMock).toHaveBeenCalledWith(
@@ -76,6 +106,7 @@ describe('productService', () => {
               name: 'Gold',
               priceCents: 2500,
               period: 'month',
+              productType: 'MEMBERSHIP',
             }),
           }),
         }),

@@ -9,11 +9,12 @@ import {
   upsertUserBillingAddress,
   validateUsBillingAddress,
 } from '@/lib/billingAddress';
-import { calculateTaxQuote } from '@/lib/stripeTax';
+import { calculateTaxQuote, resolveTaxCategoryForPurchase } from '@/lib/stripeTax';
 import {
   ensurePlatformFeeProduct,
+  isRecurringProductPeriod,
   normalizeProductTaxCategory,
-  syncPlatformRecurringProduct,
+  syncPlatformProductCatalog,
 } from '@/lib/stripeProducts';
 import { upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 
@@ -22,9 +23,6 @@ export const dynamic = 'force-dynamic';
 const createSchema = z.object({
   billingAddress: z.unknown().optional(),
 }).strict();
-
-const normalizeSubscriptionTaxCategory = (productTaxCategory: string | null | undefined) =>
-  productTaxCategory === 'NON_TAXABLE' ? 'NON_TAXABLE' : 'SUBSCRIPTION';
 
 const normalizeRecurringInterval = (period: string): 'week' | 'month' | 'year' => {
   const normalized = period.trim().toUpperCase();
@@ -58,7 +56,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Product not found' }, { status: 404 });
   }
   if (product.isActive === false) {
-    return NextResponse.json({ error: 'This membership is inactive.' }, { status: 409 });
+    return NextResponse.json({ error: 'This product is inactive.' }, { status: 409 });
+  }
+  if (!isRecurringProductPeriod(product.period)) {
+    return NextResponse.json({
+      error: 'Single-purchase products do not support recurring subscriptions.',
+    }, { status: 409 });
   }
 
   const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -82,13 +85,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const billingEmail = savedBillingProfile?.email ?? billingProfile.email ?? null;
   if (!billingAddress) {
     return NextResponse.json({
-      error: 'Billing address is required before starting a membership checkout.',
+      error: 'Billing address is required before starting recurring billing.',
       billingAddressRequired: true,
     }, { status: 400 });
   }
 
   const stripe = new Stripe(secretKey);
-  const taxCategory = normalizeSubscriptionTaxCategory(product.taxCategory);
+  const normalizedProductTaxCategory = normalizeProductTaxCategory(product.taxCategory);
+  const taxCategory = resolveTaxCategoryForPurchase({
+    purchaseType: 'product',
+    productTaxCategory: normalizedProductTaxCategory,
+  });
   const taxQuote = await calculateTaxQuote({
     stripe,
     userId: session.userId,
@@ -102,7 +109,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     description: product.name,
   });
 
-  const stripeCatalog = await syncPlatformRecurringProduct({
+  const stripeCatalog = await syncPlatformProductCatalog({
     stripe,
     product: {
       id: product.id,
@@ -111,12 +118,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       priceCents: product.priceCents,
       period: product.period,
       organizationId: product.organizationId,
-      taxCategory: normalizeProductTaxCategory(product.taxCategory),
+      taxCategory: normalizedProductTaxCategory,
       stripeProductId: product.stripeProductId,
       stripePriceId: product.stripePriceId,
     },
     overrideTaxCategory: taxCategory,
   });
+  if (!stripeCatalog.stripePriceId) {
+    return NextResponse.json({
+      error: 'Stripe did not return a recurring price for this product.',
+    }, { status: 500 });
+  }
 
   if (
     stripeCatalog.stripeProductId !== product.stripeProductId
@@ -154,7 +166,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         price: stripeCatalog.stripePriceId,
         quantity: 1,
         metadata: {
-          line_type: 'membership_base',
+          line_type: 'product_base',
           local_product_id: product.id,
         },
       },

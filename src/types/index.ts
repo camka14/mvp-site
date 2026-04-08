@@ -589,7 +589,13 @@ export interface TemplateDocument {
   $createdAt?: string;
 }
 
-export type ProductPeriod = 'week' | 'month' | 'year';
+export type ProductPeriod = 'single' | 'week' | 'month' | 'year';
+export type ProductType =
+  | 'MEMBERSHIP'
+  | 'MERCHANDISE'
+  | 'DAY_PASS'
+  | 'EQUIPMENT_RENTAL'
+  | 'NON_TAXABLE_ITEM';
 
 export interface Product {
   $id: string;
@@ -598,7 +604,8 @@ export interface Product {
   description?: string;
   priceCents: number;
   period: ProductPeriod;
-  taxCategory?: 'ONE_TIME_PRODUCT' | 'SUBSCRIPTION' | 'NON_TAXABLE';
+  productType?: ProductType;
+  taxCategory?: 'ONE_TIME_PRODUCT' | 'DAY_PASS' | 'EQUIPMENT_RENTAL' | 'SUBSCRIPTION' | 'NON_TAXABLE';
   createdBy?: string;
   isActive?: boolean;
   stripeProductId?: string | null;

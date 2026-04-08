@@ -319,6 +319,72 @@ describe('POST /api/billing/webhook', () => {
     expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
   });
 
+  it('creates a paid bill for a single-purchase product without creating a subscription record', async () => {
+    prismaMock.billPayments.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prismaMock.bills.create.mockResolvedValueOnce({ id: 'bill_product_1' });
+    prismaMock.billPayments.create.mockResolvedValueOnce({ id: 'bill_payment_product_1' });
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentSucceededEvent({
+        intentId: 'pi_product_1',
+        metadata: {
+          purchase_type: 'product',
+          user_id: 'user_1',
+          organization_id: 'org_1',
+          product_id: 'product_1',
+          product_name: 'Day pass',
+          amount_cents: '2000',
+        },
+        amount: 2150,
+        amountReceived: 2150,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.bills.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ownerType: 'USER',
+          ownerId: 'user_1',
+          organizationId: 'org_1',
+          totalAmountCents: 2150,
+          paidAmountCents: 2150,
+          status: 'PAID',
+          lineItems: expect.arrayContaining([
+            expect.objectContaining({
+              type: 'PRODUCT',
+              label: 'Day pass',
+            }),
+          ]),
+        }),
+      }),
+    );
+    expect(prismaMock.billPayments.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          billId: 'bill_product_1',
+          amountCents: 2150,
+          status: 'PAID',
+          paymentIntentId: 'pi_product_1',
+          payerUserId: 'user_1',
+        }),
+      }),
+    );
+    expect(prismaMock.subscriptions.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.subscriptions.create).not.toHaveBeenCalled();
+    expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
+    expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        purchaseType: 'product',
+        productId: 'product_1',
+        billId: 'bill_product_1',
+        billPaymentId: 'bill_payment_product_1',
+      }),
+    );
+  });
+
   it('marks bill installments paid and sends a receipt on first successful bill payment', async () => {
     prismaMock.billPayments.findUnique.mockResolvedValueOnce({
       id: 'bill_payment_1',

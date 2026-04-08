@@ -12,7 +12,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { BillingAddress, Event, Organization, Product, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
+import type { BillingAddress, Event, Organization, Product, ProductType, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { eventService } from '@/lib/eventService';
@@ -24,6 +24,7 @@ import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
+import CentsInput from '@/components/ui/CentsInput';
 import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
@@ -44,7 +45,15 @@ import {
   normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
+import {
+  defaultProductTypeForPeriod,
+  deriveProductTypeFromTaxCategory,
+  getProductTypeOptionsForPeriod,
+} from '@/lib/productTypes';
+import { normalizePriceCents } from '@/lib/priceUtils';
+import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import { buildOrganizationTabs, type OrganizationTab } from './organizationTabs';
+import { buildOrganizationUsersSubtitle } from './organizationUsersCopy';
 
 export default function OrganizationDetailPage() {
   return (
@@ -59,7 +68,81 @@ const ORG_EVENTS_LIMIT = 18;
 const ORG_EVENTS_DEFAULT_MAX_DISTANCE = 50;
 const ORG_HOSTED_EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const;
 const ORG_EVENT_TYPE_OPTIONS = [...ORG_HOSTED_EVENT_TYPE_OPTIONS, 'RENTAL'] as const;
+const PRODUCT_PERIOD_OPTIONS: Array<{ label: string; value: Product['period'] }> = [
+  { label: 'Single purchase', value: 'single' },
+  { label: 'Month', value: 'month' },
+  { label: 'Week', value: 'week' },
+  { label: 'Year', value: 'year' },
+];
 type OrganizationEventTypeFilter = (typeof ORG_EVENT_TYPE_OPTIONS)[number];
+
+const isSinglePurchasePeriod = (period: Product['period'] | string | null | undefined): boolean =>
+  String(period ?? '').trim().toLowerCase() === 'single';
+
+const resolveProductEditorPeriod = (period: Product['period'] | string | null | undefined): Product['period'] => {
+  const normalized = String(period ?? '').trim().toLowerCase();
+  if (
+    normalized === 'single'
+    || normalized === 'week'
+    || normalized === 'month'
+    || normalized === 'year'
+  ) {
+    return normalized as Product['period'];
+  }
+  return 'month';
+};
+
+const resolveProductEditorType = (
+  productType: ProductType | null | undefined,
+  taxCategory: Product['taxCategory'] | null | undefined,
+  period: Product['period'],
+): ProductType => {
+  if (productType) {
+    return productType;
+  }
+  return deriveProductTypeFromTaxCategory(taxCategory, period);
+};
+
+const maybeCarryDefaultProductType = (
+  currentProductType: ProductType,
+  previousPeriod: Product['period'],
+  nextPeriod: Product['period'],
+): ProductType => (
+  currentProductType === defaultProductTypeForPeriod(previousPeriod)
+    ? defaultProductTypeForPeriod(nextPeriod)
+    : currentProductType
+);
+
+const formatProductPeriodLabel = (period: Product['period'] | string | null | undefined): string => {
+  const normalized = resolveProductEditorPeriod(period);
+  if (normalized === 'single') return 'Single purchase';
+  if (normalized === 'week') return 'Weekly';
+  if (normalized === 'year') return 'Yearly';
+  return 'Monthly';
+};
+
+const formatProductRecurringSuffix = (period: Product['period'] | string | null | undefined): string => {
+  const normalized = resolveProductEditorPeriod(period);
+  if (normalized === 'week') return 'week';
+  if (normalized === 'year') return 'year';
+  return 'month';
+};
+
+const formatProductPriceLabel = (product: Product): string => (
+  isSinglePurchasePeriod(product.period)
+    ? formatPrice(product.priceCents)
+    : `${formatPrice(product.priceCents)} / ${formatProductRecurringSuffix(product.period)}`
+);
+
+const resolveProductCheckoutLabel = (product: Product, isOwner: boolean): string => {
+  if (isSinglePurchasePeriod(product.period)) {
+    return isOwner ? 'Preview purchase' : 'Buy now';
+  }
+  return isOwner ? 'Preview subscription' : 'Subscribe';
+};
+
+const isProductTypeTaxable = (productType: ProductType | null | undefined): boolean =>
+  productType !== 'NON_TAXABLE_ITEM';
 
 const normalizeTemplateType = (value: unknown): TemplateDocument['type'] => {
   if (typeof value === 'string' && value.toUpperCase() === 'TEXT') {
@@ -477,24 +560,26 @@ function OrganizationDetailContent() {
   const [products, setProducts] = useState<Product[]>([]);
   const [productName, setProductName] = useState('');
   const [productDescription, setProductDescription] = useState('');
-  const [productPeriod, setProductPeriod] = useState<'month' | 'week' | 'year'>('month');
-  const [productTaxCategory, setProductTaxCategory] = useState<Product['taxCategory']>('SUBSCRIPTION');
-  const [productPrice, setProductPrice] = useState<number | ''>(10);
+  const [productPeriod, setProductPeriod] = useState<Product['period']>('month');
+  const [productType, setProductType] = useState<ProductType>('MEMBERSHIP');
+  const [productPriceCents, setProductPriceCents] = useState(0);
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [purchaseProduct, setPurchaseProduct] = useState<Product | null>(null);
   const [purchasePaymentData, setPurchasePaymentData] = useState<PaymentIntent | null>(null);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
-  const [subscribing, setSubscribing] = useState(false);
+  const [, setSubscribing] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [editProductName, setEditProductName] = useState('');
   const [editProductDescription, setEditProductDescription] = useState('');
-  const [editProductPeriod, setEditProductPeriod] = useState<'month' | 'week' | 'year'>('month');
-  const [editProductTaxCategory, setEditProductTaxCategory] = useState<Product['taxCategory']>('SUBSCRIPTION');
-  const [editProductPrice, setEditProductPrice] = useState<number | ''>(0);
+  const [editProductPeriod, setEditProductPeriod] = useState<Product['period']>('month');
+  const [editProductType, setEditProductType] = useState<ProductType>('MEMBERSHIP');
+  const [editProductPriceCents, setEditProductPriceCents] = useState(0);
   const [updatingProduct, setUpdatingProduct] = useState(false);
   const [deletingProduct, setDeletingProduct] = useState(false);
+  const canCreateProduct = productName.trim().length > 0 && normalizePriceCents(productPriceCents) > 0;
+  const canUpdateProduct = editProductName.trim().length > 0 && normalizePriceCents(editProductPriceCents) > 0;
   const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -1539,8 +1624,7 @@ function OrganizationDetailContent() {
 
   const handleCreateProduct = useCallback(async () => {
     if (!org || !user || !isOwner) return;
-    const priceNumber = typeof productPrice === 'number' ? productPrice : Number(productPrice);
-    const priceCents = Math.round((Number.isFinite(priceNumber) ? priceNumber : 0) * 100);
+    const priceCents = normalizePriceCents(productPriceCents);
     if (!productName.trim()) {
       notifications.show({ color: 'red', message: 'Product name is required.' });
       return;
@@ -1558,32 +1642,34 @@ function OrganizationDetailContent() {
         description: productDescription.trim() || undefined,
         priceCents,
         period: productPeriod,
-        taxCategory: productTaxCategory,
+        productType,
       });
       notifications.show({ color: 'green', message: `Created product "${created.name}".` });
       setProductName('');
       setProductDescription('');
-      setProductPrice(10);
+      setProductPriceCents(0);
       setProductPeriod('month');
-      setProductTaxCategory('SUBSCRIPTION');
+      setProductType(defaultProductTypeForPeriod('month'));
       await refreshOrganizationProducts(org.$id);
     } catch (error) {
       console.error('Failed to create product', error);
-      notifications.show({ color: 'red', message: 'Failed to create product. Try again.' });
+      notifications.show({
+        color: 'red',
+        message: isApiRequestError(error) ? error.message : 'Failed to create product. Try again.',
+      });
     } finally {
       setCreatingProduct(false);
     }
-  }, [isOwner, org, productDescription, productName, productPeriod, productPrice, productTaxCategory, refreshOrganizationProducts, user]);
+  }, [isOwner, org, productDescription, productName, productPeriod, productPriceCents, productType, refreshOrganizationProducts, user]);
 
   const openProductModal = useCallback((product: Product) => {
     setSelectedProduct(product);
     setEditProductName(product.name);
     setEditProductDescription(product.description ?? '');
-    const normalizedPeriod = (product.period === 'month' ? 'month' : product.period) as 'month' | 'week' | 'year';
-    setEditProductPeriod(normalizedPeriod ?? 'month');
-    setEditProductTaxCategory(product.taxCategory ?? 'SUBSCRIPTION');
-    const priceDollars = (typeof product.priceCents === 'number' ? product.priceCents : Number(product.priceCents) || 0) / 100;
-    setEditProductPrice(Number.isFinite(priceDollars) ? priceDollars : 0);
+    const normalizedPeriod = resolveProductEditorPeriod(product.period);
+    setEditProductPeriod(normalizedPeriod);
+    setEditProductType(resolveProductEditorType(product.productType, product.taxCategory, normalizedPeriod));
+    setEditProductPriceCents(normalizePriceCents(product.priceCents));
     setProductModalOpen(true);
   }, []);
 
@@ -1593,14 +1679,29 @@ function OrganizationDetailContent() {
     setEditProductName('');
     setEditProductDescription('');
     setEditProductPeriod('month');
-    setEditProductTaxCategory('SUBSCRIPTION');
-    setEditProductPrice(0);
+    setEditProductType(defaultProductTypeForPeriod('month'));
+    setEditProductPriceCents(0);
   }, []);
+
+  const handleProductPeriodChange = useCallback((value: string | null) => {
+    const nextPeriod = resolveProductEditorPeriod(value);
+    setProductType((currentProductType) => (
+      maybeCarryDefaultProductType(currentProductType, productPeriod, nextPeriod)
+    ));
+    setProductPeriod(nextPeriod);
+  }, [productPeriod]);
+
+  const handleEditProductPeriodChange = useCallback((value: string | null) => {
+    const nextPeriod = resolveProductEditorPeriod(value);
+    setEditProductType((currentProductType) => (
+      maybeCarryDefaultProductType(currentProductType, editProductPeriod, nextPeriod)
+    ));
+    setEditProductPeriod(nextPeriod);
+  }, [editProductPeriod]);
 
   const handleUpdateProduct = useCallback(async () => {
     if (!org || !selectedProduct || !isOwner) return;
-    const priceNumber = typeof editProductPrice === 'number' ? editProductPrice : Number(editProductPrice);
-    const priceCents = Math.round((Number.isFinite(priceNumber) ? priceNumber : 0) * 100);
+    const priceCents = normalizePriceCents(editProductPriceCents);
     if (!editProductName.trim()) {
       notifications.show({ color: 'red', message: 'Product name is required.' });
       return;
@@ -1616,18 +1717,21 @@ function OrganizationDetailContent() {
         description: editProductDescription.trim() || undefined,
         priceCents,
         period: editProductPeriod,
-        taxCategory: editProductTaxCategory,
+        productType: editProductType,
       });
       notifications.show({ color: 'green', message: 'Product updated.' });
       await refreshOrganizationProducts(org.$id);
       closeProductModal();
     } catch (error) {
       console.error('Failed to update product', error);
-      notifications.show({ color: 'red', message: 'Failed to update product. Try again.' });
+      notifications.show({
+        color: 'red',
+        message: isApiRequestError(error) ? error.message : 'Failed to update product. Try again.',
+      });
     } finally {
       setUpdatingProduct(false);
     }
-  }, [closeProductModal, editProductDescription, editProductName, editProductPeriod, editProductPrice, editProductTaxCategory, isOwner, org, refreshOrganizationProducts, selectedProduct]);
+  }, [closeProductModal, editProductDescription, editProductName, editProductPeriod, editProductPriceCents, editProductType, isOwner, org, refreshOrganizationProducts, selectedProduct]);
 
   const handleDeleteProduct = useCallback(async () => {
     if (!org || !selectedProduct || !isOwner) return;
@@ -1651,15 +1755,20 @@ function OrganizationDetailContent() {
     }
   }, [closeProductModal, isOwner, org, refreshOrganizationProducts, selectedProduct]);
 
-  const startProductSubscriptionCheckout = useCallback(
+  const startProductCheckout = useCallback(
     async (product: Product, billingAddress?: BillingAddress) => {
+      if (!org || !user) {
+        throw new Error('You must be signed in to purchase.');
+      }
       try {
         setPurchaseProduct(product);
         setPurchasePaymentData(null);
-        const intent = await productService.createSubscriptionCheckout({
-          productId: product.$id,
-          billingAddress,
-        });
+        const intent = isSinglePurchasePeriod(product.period)
+          ? await paymentService.createProductPaymentIntent(user, product, org, billingAddress)
+          : await productService.createSubscriptionCheckout({
+              productId: product.$id,
+              billingAddress,
+            });
         setPurchasePaymentData(intent);
         setShowPurchaseModal(true);
         setShowBillingAddressModal(false);
@@ -1677,7 +1786,7 @@ function OrganizationDetailContent() {
         throw error;
       }
     },
-    [],
+    [org, user],
   );
 
   const handlePurchaseProduct = useCallback(
@@ -1687,20 +1796,25 @@ function OrganizationDetailContent() {
         return;
       }
       try {
-        await startProductSubscriptionCheckout(product);
+        await startProductCheckout(product);
       } catch (error) {
         console.error('Failed to start purchase', error);
         notifications.show({ color: 'red', message: 'Unable to start checkout. Please try again.' });
       }
     },
-    [org, startProductSubscriptionCheckout, user],
+    [org, startProductCheckout, user],
   );
 
   const handleProductPaymentSuccess = useCallback(async () => {
     if (!purchaseProduct) return;
     try {
       setSubscribing(true);
-      notifications.show({ color: 'green', message: `Subscription started for ${purchaseProduct.name}.` });
+      notifications.show({
+        color: 'green',
+        message: isSinglePurchasePeriod(purchaseProduct.period)
+          ? `Purchase completed for ${purchaseProduct.name}.`
+          : `Subscription started for ${purchaseProduct.name}.`,
+      });
       if (org?.$id) {
         await refreshOrganizationProducts(org.$id);
       }
@@ -2142,7 +2256,7 @@ function OrganizationDetailContent() {
                   <Stack gap={2}>
                     <Title order={5}>Users</Title>
                     <Text size="sm" c="dimmed">
-                      Members, hosts, and staff from organization events or events using organization fields.
+                      {buildOrganizationUsersSubtitle(org?.name)}
                     </Text>
                   </Stack>
                   <Button
@@ -2475,48 +2589,44 @@ function OrganizationDetailContent() {
                   )}
                 </Group>
 
-                {isOwner && (
-                  <Paper withBorder radius="md" p="md" mb="lg">
-                    <Title order={6} mb="xs">Add membership product</Title>
+                  {isOwner && (
+                    <Paper withBorder radius="md" p="md" mb="lg">
+                    <Title order={6} mb="xs">Add product</Title>
                     <Text size="sm" c="dimmed" mb="md">
-                      Create a recurring membership product that users can purchase.
+                      Create a recurring or one-time product that users can purchase.
                     </Text>
                     <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
                       <TextInput
                         label="Name"
-                        placeholder="Membership"
+                        placeholder="Product"
                         value={productName}
                         onChange={(e) => setProductName(e.currentTarget.value)}
                         required
                       />
-                      <NumberInput
-                        label="Price (USD)"
-                        min={0}
-                        decimalScale={2}
-                        hideControls
-                        value={productPrice}
-                        onChange={(value) => setProductPrice(value === '' ? '' : Number(value))}
-                        leftSection="$"
-                      />
+                      <div>
+                        <CentsInput
+                          label="Price (USD)"
+                          value={productPriceCents}
+                          onChange={setProductPriceCents}
+                          required
+                        />
+                        <PriceWithFeesPreview
+                          amountCents={organizationHasStripeAccount ? productPriceCents : 0}
+                          helperText={isProductTypeTaxable(productType) ? 'Tax is calculated at checkout.' : null}
+                          taxable={organizationHasStripeAccount && isProductTypeTaxable(productType)}
+                        />
+                      </div>
                       <Select
                         label="Billing period"
-                        data={[
-                          { label: 'Month', value: 'month' },
-                          { label: 'Week', value: 'week' },
-                          { label: 'Year', value: 'year' },
-                        ]}
+                        data={PRODUCT_PERIOD_OPTIONS}
                         value={productPeriod}
-                        onChange={(value) => setProductPeriod((value as any) ?? 'month')}
+                        onChange={handleProductPeriodChange}
                       />
                       <Select
-                        label="Tax category"
-                        data={[
-                          { label: 'Subscription', value: 'SUBSCRIPTION' },
-                          { label: 'One-time product', value: 'ONE_TIME_PRODUCT' },
-                          { label: 'Non-taxable', value: 'NON_TAXABLE' },
-                        ]}
-                        value={productTaxCategory}
-                        onChange={(value) => setProductTaxCategory((value as Product['taxCategory']) ?? 'SUBSCRIPTION')}
+                        label="Product type"
+                        data={getProductTypeOptionsForPeriod(productPeriod)}
+                        value={productType}
+                        onChange={(value) => setProductType((value as ProductType) ?? defaultProductTypeForPeriod(productPeriod))}
                       />
                       <TextInput
                         label="Description"
@@ -2526,7 +2636,11 @@ function OrganizationDetailContent() {
                       />
                     </SimpleGrid>
                     <Group justify="flex-end" mt="md">
-                      <Button onClick={handleCreateProduct} loading={creatingProduct} disabled={!organizationHasStripeAccount}>
+                      <Button
+                        onClick={handleCreateProduct}
+                        loading={creatingProduct}
+                        disabled={!organizationHasStripeAccount || !canCreateProduct}
+                      >
                         Add Product
                       </Button>
                     </Group>
@@ -2557,13 +2671,13 @@ function OrganizationDetailContent() {
                             {product.description && <Text size="sm" c="dimmed">{product.description}</Text>}
                           </div>
                           <div style={{ textAlign: 'right' }}>
-                            <Text size="sm" c="dimmed" tt="capitalize">{product.period}</Text>
+                            <Text size="sm" c="dimmed">{formatProductPeriodLabel(product.period)}</Text>
                             {isOwner && (
                               <Text size="xs" c="dimmed">Click card to edit</Text>
                             )}
                           </div>
                         </Group>
-                        <Text fw={700} mb="xs">{formatPrice(product.priceCents)}</Text>
+                        <Text fw={700} mb="xs">{formatProductPriceLabel(product)}</Text>
                         {product.isActive === false && (
                           <Text size="xs" c="red" mb="xs">Inactive</Text>
                         )}
@@ -2578,7 +2692,7 @@ function OrganizationDetailContent() {
                             handlePurchaseProduct(product);
                           }}
                         >
-                          {isOwner ? 'Preview Checkout' : 'Purchase'}
+                          {resolveProductCheckoutLabel(product, isOwner)}
                         </Button>
                       </Paper>
                     ))}
@@ -2985,34 +3099,30 @@ function OrganizationDetailContent() {
               onChange={(e) => setEditProductName(e.currentTarget.value)}
               required
             />
-            <NumberInput
-              label="Price (USD)"
-              min={0}
-              decimalScale={2}
-              hideControls
-              value={editProductPrice}
-              onChange={(value) => setEditProductPrice(value === '' ? '' : Number(value))}
-              leftSection="$"
-            />
+            <div>
+              <CentsInput
+                label="Price (USD)"
+                value={editProductPriceCents}
+                onChange={setEditProductPriceCents}
+                required
+              />
+              <PriceWithFeesPreview
+                amountCents={organizationHasStripeAccount ? editProductPriceCents : 0}
+                helperText={isProductTypeTaxable(editProductType) ? 'Tax is calculated at checkout.' : null}
+                taxable={organizationHasStripeAccount && isProductTypeTaxable(editProductType)}
+              />
+            </div>
             <Select
               label="Billing period"
-              data={[
-                { label: 'Month', value: 'month' },
-                { label: 'Week', value: 'week' },
-                { label: 'Year', value: 'year' },
-              ]}
+              data={PRODUCT_PERIOD_OPTIONS}
               value={editProductPeriod}
-              onChange={(value) => setEditProductPeriod((value as any) ?? 'month')}
+              onChange={handleEditProductPeriodChange}
             />
             <Select
-              label="Tax category"
-              data={[
-                { label: 'Subscription', value: 'SUBSCRIPTION' },
-                { label: 'One-time product', value: 'ONE_TIME_PRODUCT' },
-                { label: 'Non-taxable', value: 'NON_TAXABLE' },
-              ]}
-              value={editProductTaxCategory}
-              onChange={(value) => setEditProductTaxCategory((value as Product['taxCategory']) ?? 'SUBSCRIPTION')}
+              label="Product type"
+              data={getProductTypeOptionsForPeriod(editProductPeriod)}
+              value={editProductType}
+              onChange={(value) => setEditProductType((value as ProductType) ?? defaultProductTypeForPeriod(editProductPeriod))}
             />
             <Textarea
               label="Description"
@@ -3034,7 +3144,7 @@ function OrganizationDetailContent() {
                 <Button variant="default" onClick={closeProductModal}>
                   Cancel
                 </Button>
-                <Button onClick={handleUpdateProduct} loading={updatingProduct}>
+                <Button onClick={handleUpdateProduct} loading={updatingProduct} disabled={!canUpdateProduct}>
                   Save changes
                 </Button>
               </Group>
@@ -3053,10 +3163,10 @@ function OrganizationDetailContent() {
             setShowBillingAddressModal(false);
             return;
           }
-          await startProductSubscriptionCheckout(purchaseProduct, billingAddress);
+          await startProductCheckout(purchaseProduct, billingAddress);
         }}
         title="Billing address required"
-        description="Enter your billing address so tax can be calculated before starting the subscription."
+        description="Enter your billing address so tax can be calculated before checkout."
       />
       <PaymentModal
         isOpen={showPurchaseModal && Boolean(purchaseProduct && purchasePaymentData)}

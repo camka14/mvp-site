@@ -18,6 +18,7 @@ export type OrganizationUsersScopeEvent = {
   name: string;
   start: Date;
   end: Date;
+  organizationId: string | null;
   userIds: string[];
   teamIds: string[];
   hostId: string | null;
@@ -52,6 +53,7 @@ type OrganizationUsersAccessClient = {
         name: true;
         start: true;
         end: true;
+        organizationId: true;
         userIds: true;
         teamIds: true;
         hostId: true;
@@ -64,6 +66,7 @@ type OrganizationUsersAccessClient = {
       name: string;
       start: Date;
       end: Date | null;
+      organizationId: string | null;
       userIds: unknown;
       teamIds: unknown;
       hostId: string | null;
@@ -179,6 +182,7 @@ export const listOrganizationUsersScopeEvents = async (
       name: true,
       start: true,
       end: true,
+      organizationId: true,
       userIds: true,
       teamIds: true,
       hostId: true,
@@ -193,6 +197,7 @@ export const listOrganizationUsersScopeEvents = async (
     name: normalizeEventName(event.name),
     start: event.start,
     end: event.end ?? event.start,
+    organizationId: normalizeId(event.organizationId),
     userIds: normalizeIdList(event.userIds),
     teamIds: normalizeIdList(event.teamIds),
     hostId: normalizeId(event.hostId),

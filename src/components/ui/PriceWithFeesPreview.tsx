@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 
 import {
   calculateMvpAndStripeFees,
+  calculateMvpAndStripeFeesWithTax,
+  DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS,
   STRIPE_FIXED_FEE_CENTS,
   STRIPE_PERCENT_FEE,
 } from '@/lib/billingFees';
@@ -16,6 +18,7 @@ type PriceWithFeesPreviewProps = {
   className?: string;
   eventType?: unknown;
   helperText?: string | null;
+  taxable?: boolean;
   totalLabel?: string;
 };
 
@@ -32,24 +35,46 @@ export default function PriceWithFeesPreview({
   className,
   eventType,
   helperText = null,
+  taxable = false,
   totalLabel = 'Total charged with fees:',
 }: PriceWithFeesPreviewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const normalizedAmountCents = normalizePriceCents(amountCents);
+  const stripeTaxServiceFeeCents = taxable && normalizedAmountCents > 0
+    ? DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS
+    : 0;
   const feeBreakdown = useMemo(
-    () => calculateMvpAndStripeFees({
-      eventAmountCents: normalizedAmountCents,
-      eventType,
-    }),
-    [eventType, normalizedAmountCents],
+    () => (
+      taxable
+        ? calculateMvpAndStripeFeesWithTax({
+            eventAmountCents: normalizedAmountCents,
+            eventType,
+            stripeTaxServiceFeeCents,
+            taxAmountCents: 0,
+          })
+        : calculateMvpAndStripeFees({
+            eventAmountCents: normalizedAmountCents,
+            eventType,
+          })
+    ),
+    [eventType, normalizedAmountCents, stripeTaxServiceFeeCents, taxable],
   );
+  const stripeProcessingFeeCents = 'stripeProcessingFeeCents' in feeBreakdown
+    ? Number(feeBreakdown.stripeProcessingFeeCents)
+    : feeBreakdown.stripeFeeCents;
+  const previewTaxServiceFeeCents = 'stripeTaxServiceFeeCents' in feeBreakdown
+    ? Number(feeBreakdown.stripeTaxServiceFeeCents)
+    : 0;
+  const totalDisplayValue = taxable
+    ? `${formatBillAmount(feeBreakdown.totalChargeCents)} + Tax`
+    : formatBillAmount(feeBreakdown.totalChargeCents);
 
   return (
     <div className={className}>
       <p className="mt-2 text-sm text-gray-600">
         {totalLabel}{' '}
         <span className="font-semibold text-gray-900">
-          {formatBillAmount(feeBreakdown.totalChargeCents)}
+          {totalDisplayValue}
         </span>
       </p>
       {helperText ? (
@@ -81,12 +106,26 @@ export default function PriceWithFeesPreview({
           <div className="flex items-center justify-between gap-4">
             <span>{`Stripe fee (${formatPercentage(STRIPE_PERCENT_FEE)} + ${formatBillAmount(STRIPE_FIXED_FEE_CENTS)})`}</span>
             <span className="font-medium text-slate-900">
-              {formatBillAmount(feeBreakdown.stripeFeeCents)}
+              {formatBillAmount(stripeProcessingFeeCents)}
             </span>
           </div>
+          {taxable ? (
+            <>
+              <div className="flex items-center justify-between gap-4">
+                <span>Stripe tax service fee</span>
+                <span className="font-medium text-slate-900">
+                  {formatBillAmount(previewTaxServiceFeeCents)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-4">
+                <span>Tax</span>
+                <span className="font-medium text-slate-900">Calculated at checkout</span>
+              </div>
+            </>
+          ) : null}
           <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-2 font-semibold text-slate-900">
             <span>Total charged</span>
-            <span>{formatBillAmount(feeBreakdown.totalChargeCents)}</span>
+            <span>{totalDisplayValue}</span>
           </div>
         </div>
       ) : null}

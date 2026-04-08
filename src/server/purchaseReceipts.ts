@@ -119,6 +119,7 @@ const resolveProductPeriodLabel = (period: string | null | undefined): string | 
   if (!period) return null;
   const normalized = period.trim().toLowerCase();
   if (!normalized.length) return null;
+  if (normalized === 'single') return 'Single purchase';
   if (normalized === 'week') return 'Weekly';
   if (normalized === 'month') return 'Monthly';
   if (normalized === 'year') return 'Yearly';

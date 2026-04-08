@@ -1,14 +1,24 @@
 import Stripe from 'stripe';
 import type { BillingAddress } from '@/lib/billingAddress';
-import { calculateMvpAndStripeFeesWithTax } from '@/lib/billingFees';
+import {
+  calculateMvpAndStripeFeesWithTax,
+  DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS,
+} from '@/lib/billingFees';
 import { ensurePlatformStripeCustomer } from '@/lib/stripeCustomer';
 
-export type ProductTaxCategory = 'ONE_TIME_PRODUCT' | 'SUBSCRIPTION' | 'NON_TAXABLE';
+export type ProductTaxCategory =
+  | 'ONE_TIME_PRODUCT'
+  | 'DAY_PASS'
+  | 'EQUIPMENT_RENTAL'
+  | 'SUBSCRIPTION'
+  | 'NON_TAXABLE';
 
 export type InternalTaxCategory =
   | 'EVENT_PARTICIPANT'
   | 'EVENT_SPECTATOR'
   | 'RENTAL'
+  | 'DAY_PASS'
+  | 'EQUIPMENT_RENTAL'
   | 'SUBSCRIPTION'
   | 'ONE_TIME_PRODUCT'
   | 'NON_TAXABLE';
@@ -17,6 +27,8 @@ export const INTERNAL_TAX_CATEGORIES = [
   'EVENT_PARTICIPANT',
   'EVENT_SPECTATOR',
   'RENTAL',
+  'DAY_PASS',
+  'EQUIPMENT_RENTAL',
   'SUBSCRIPTION',
   'ONE_TIME_PRODUCT',
   'NON_TAXABLE',
@@ -38,7 +50,8 @@ export type TaxQuote = {
   customerId: string;
 };
 
-const STRIPE_TAX_SERVICE_FEE_CENTS_DEFAULT = 50;
+const GENERAL_SERVICES_STRIPE_TAX_CODE = 'txcd_20030000';
+const GENERAL_TANGIBLE_GOODS_STRIPE_TAX_CODE = 'txcd_99999999';
 const NON_TAXABLE_STRIPE_TAX_CODE = 'txcd_00000000';
 
 const parseIntEnv = (value: string | undefined, fallback: number): number => {
@@ -47,7 +60,7 @@ const parseIntEnv = (value: string | undefined, fallback: number): number => {
 };
 
 export const resolveStripeTaxServiceFeeCents = (): number =>
-  Math.max(0, parseIntEnv(process.env.STRIPE_TAX_SERVICE_FEE_CENTS, STRIPE_TAX_SERVICE_FEE_CENTS_DEFAULT));
+  Math.max(0, parseIntEnv(process.env.STRIPE_TAX_SERVICE_FEE_CENTS, DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS));
 
 export const resolveTaxCategoryForPurchase = ({
   purchaseType,
@@ -63,6 +76,8 @@ export const resolveTaxCategoryForPurchase = ({
   }
 
   if (purchaseType === 'product') {
+    if (productTaxCategory === 'DAY_PASS') return 'DAY_PASS';
+    if (productTaxCategory === 'EQUIPMENT_RENTAL') return 'EQUIPMENT_RENTAL';
     if (productTaxCategory === 'SUBSCRIPTION') return 'SUBSCRIPTION';
     if (productTaxCategory === 'NON_TAXABLE') return 'NON_TAXABLE';
     return 'ONE_TIME_PRODUCT';
@@ -76,27 +91,19 @@ export const resolveTaxCategoryForPurchase = ({
 };
 
 export const resolveStripeTaxCode = (taxCategory: InternalTaxCategory): string => {
-  const envMapping: Record<InternalTaxCategory, string | undefined> = {
-    EVENT_PARTICIPANT: process.env.STRIPE_TAX_CODE_EVENT_PARTICIPANT,
-    EVENT_SPECTATOR: process.env.STRIPE_TAX_CODE_EVENT_SPECTATOR,
-    RENTAL: process.env.STRIPE_TAX_CODE_RENTAL,
-    SUBSCRIPTION: process.env.STRIPE_TAX_CODE_SUBSCRIPTION,
-    ONE_TIME_PRODUCT: process.env.STRIPE_TAX_CODE_ONE_TIME_PRODUCT,
-    NON_TAXABLE: process.env.STRIPE_TAX_CODE_NON_TAXABLE,
+  // Use Stripe's general service and tangible-goods codes unless we later
+  // introduce a narrower domain model with product-specific legal categories.
+  const hardcodedMapping: Record<InternalTaxCategory, string> = {
+    EVENT_PARTICIPANT: GENERAL_SERVICES_STRIPE_TAX_CODE,
+    EVENT_SPECTATOR: GENERAL_SERVICES_STRIPE_TAX_CODE,
+    RENTAL: GENERAL_SERVICES_STRIPE_TAX_CODE,
+    DAY_PASS: GENERAL_SERVICES_STRIPE_TAX_CODE,
+    EQUIPMENT_RENTAL: GENERAL_SERVICES_STRIPE_TAX_CODE,
+    SUBSCRIPTION: GENERAL_SERVICES_STRIPE_TAX_CODE,
+    ONE_TIME_PRODUCT: GENERAL_TANGIBLE_GOODS_STRIPE_TAX_CODE,
+    NON_TAXABLE: NON_TAXABLE_STRIPE_TAX_CODE,
   };
-
-  const configuredCode = envMapping[taxCategory]?.trim();
-  if (configuredCode) {
-    return configuredCode;
-  }
-  if (taxCategory === 'NON_TAXABLE') {
-    return NON_TAXABLE_STRIPE_TAX_CODE;
-  }
-  if (process.env.NODE_ENV !== 'production') {
-    console.warn(`Missing Stripe tax code mapping for ${taxCategory}; falling back to non-taxable in development.`);
-    return NON_TAXABLE_STRIPE_TAX_CODE;
-  }
-  throw new Error(`Missing Stripe tax code mapping for ${taxCategory}.`);
+  return hardcodedMapping[taxCategory];
 };
 
 export const calculateTaxQuote = async ({

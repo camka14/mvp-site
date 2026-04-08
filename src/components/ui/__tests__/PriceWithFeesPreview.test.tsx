@@ -39,4 +39,20 @@ describe('PriceWithFeesPreview', () => {
     expect(screen.getByText('BracketIQ fee (1%)')).toBeInTheDocument();
     expect(screen.getAllByText('$0.00')).toHaveLength(5);
   });
+
+  it('includes the Stripe tax service fee and marks taxable previews as + Tax', async () => {
+    const user = userEvent.setup();
+
+    renderWithMantine(<PriceWithFeesPreview amountCents={1000} taxable />);
+
+    expect(screen.getByText('$11.23 + Tax')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: /show fee breakdown/i }),
+    );
+
+    expect(screen.getByText('Stripe fee (2.9% + $0.30)')).toBeInTheDocument();
+    expect(screen.getByText('Stripe tax service fee')).toBeInTheDocument();
+    expect(screen.getByText('Calculated at checkout')).toBeInTheDocument();
+  });
 });
