@@ -6,6 +6,7 @@ import { eventService } from '@/lib/eventService';
 import { FamilyChild } from '@/lib/familyService';
 import { useApp } from '@/app/providers';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
+import { getRefundPolicy } from '@/lib/refundPolicy';
 
 interface RefundSectionProps {
   event: Event;
@@ -212,14 +213,7 @@ export default function RefundSection({
   const isHost = user.$id === event.hostId;
   const isFreeForTarget = event.price === 0 || (isHost && selectedTarget.isSelf);
 
-  const now = new Date();
-  const eventStart = new Date(event.start);
-  const refundBufferHours = Number(event.cancellationRefundHours ?? 0);
-  const refundDeadline = new Date(eventStart.getTime() - (refundBufferHours * 60 * 60 * 1000));
-
-  const eventHasStarted = now >= eventStart;
-  const isBeforeRefundDeadline = refundBufferHours > 0 && now < refundDeadline;
-  const canAutoRefund = !eventHasStarted && isBeforeRefundDeadline;
+  const { canAutoRefund, eventHasStarted, refundDeadline } = getRefundPolicy(event);
 
   const leaveSelectedTarget = async () => {
     if (!selectedTarget) {
@@ -255,7 +249,15 @@ export default function RefundSection({
 
     try {
       if (event.teamSignup && selectedTarget.isSelf && registeredTeamForSelf) {
-        await paymentService.leaveEvent(undefined, event, registeredTeamForSelf, selectedTarget.id);
+        await paymentService.leaveEvent(
+          undefined,
+          event,
+          registeredTeamForSelf,
+          selectedTarget.id,
+          canAutoRefund
+            ? { refundMode: 'auto' }
+            : { refundMode: 'request', refundReason: refundReason.trim() },
+        );
         onRefundSuccess();
         return;
       }

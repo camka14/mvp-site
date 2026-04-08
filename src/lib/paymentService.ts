@@ -19,6 +19,11 @@ type StripeOnboardingLinkResult = {
   expiresAt?: number;
 };
 
+type LeaveEventOptions = {
+  refundMode?: 'auto' | 'request';
+  refundReason?: string;
+};
+
 class PaymentService {
   async reserveRentalCheckoutLock(
     event: Event,
@@ -182,6 +187,7 @@ class PaymentService {
     event?: Event,
     team?: Team,
     targetUserId?: string,
+    options?: LeaveEventOptions,
     timeoutMs?: number,
   ): Promise<void> {
     try {
@@ -192,6 +198,8 @@ class PaymentService {
         user,
         userId: targetUserId ?? user?.$id,
         team,
+        refundMode: options?.refundMode,
+        refundReason: options?.refundReason,
       };
 
       const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {

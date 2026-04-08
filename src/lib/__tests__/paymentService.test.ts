@@ -147,6 +147,29 @@ describe('paymentService', () => {
       );
       expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('event');
     });
+
+    it('passes refund intent metadata when leaving through the refund flow', async () => {
+      apiRequestMock.mockResolvedValue({});
+
+      const mockEvent = buildEvent({ $id: 'event_1' }) as Event;
+
+      await paymentService.leaveEvent(undefined, mockEvent, undefined, 'user_1', {
+        refundMode: 'request',
+        refundReason: 'Need a refund',
+      });
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        `/api/events/${mockEvent.$id}/participants`,
+        expect.objectContaining({
+          method: 'DELETE',
+          body: expect.objectContaining({
+            userId: 'user_1',
+            refundMode: 'request',
+            refundReason: 'Need a refund',
+          }),
+        }),
+      );
+    });
   });
 
   describe('requestRefund', () => {

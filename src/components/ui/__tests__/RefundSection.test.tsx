@@ -77,6 +77,46 @@ describe('RefundSection', () => {
     await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
   });
 
+  it('withdraws the registered team with automatic refund intent when within deadline', async () => {
+    const user = { $id: 'user_1' };
+    useAppMock.mockReturnValue({ user });
+    const team = buildTeam({
+      $id: 'team_auto_1',
+      playerIds: [user.$id],
+    });
+    const start = formatLocalDateTime(new Date(Date.now() + 48 * 60 * 60 * 1000));
+    const event = buildEvent({
+      $id: 'event_team_auto',
+      hostId: 'host_2',
+      price: 20,
+      cancellationRefundHours: 24,
+      start,
+      teamSignup: true,
+      teams: [team],
+    });
+
+    paymentServiceMock.leaveEvent.mockResolvedValue(undefined);
+    const onRefundSuccess = jest.fn();
+
+    renderWithMantine(
+      <RefundSection event={event} userRegistered onRefundSuccess={onRefundSuccess} />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Get Refund/i }));
+
+    await waitFor(() =>
+      expect(paymentServiceMock.leaveEvent).toHaveBeenCalledWith(
+        undefined,
+        event,
+        team,
+        user.$id,
+        { refundMode: 'auto' },
+      ),
+    );
+    expect(paymentServiceMock.requestRefund).not.toHaveBeenCalled();
+    await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
+  });
+
   it('requests reason when automatic refund not available', async () => {
     const user = { $id: 'user_1' };
     useAppMock.mockReturnValue({ user });
@@ -183,7 +223,16 @@ describe('RefundSection', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send Request/i }));
 
     await waitFor(() =>
-      expect(paymentServiceMock.leaveEvent).toHaveBeenCalledWith(undefined, event, team, user.$id),
+      expect(paymentServiceMock.leaveEvent).toHaveBeenCalledWith(
+        undefined,
+        event,
+        team,
+        user.$id,
+        {
+          refundMode: 'request',
+          refundReason: 'Team can no longer attend',
+        },
+      ),
     );
     expect(paymentServiceMock.requestRefund).not.toHaveBeenCalled();
     await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());

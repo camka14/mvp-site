@@ -5,6 +5,8 @@ import { withLegacyList } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
+const TEAM_REFUND_FANOUT_REASON = 'team_refund_fanout';
+
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
   const params = req.nextUrl.searchParams;
@@ -21,6 +23,7 @@ export async function GET(req: NextRequest) {
   if (organizationId) where.organizationId = organizationId;
   if (userId) where.userId = userId;
   if (hostId) where.hostId = hostId;
+  where.reason = { not: TEAM_REFUND_FANOUT_REASON };
 
   const refunds = await prisma.refundRequests.findMany({
     where,
