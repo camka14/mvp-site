@@ -1,10 +1,13 @@
 /** @jest-environment node */
 
 import { NextRequest } from 'next/server';
+import { buildBillingAddressFingerprint } from '@/lib/stripeCheckoutReuse';
 
+const mockStripePaymentIntentList = jest.fn();
 const mockStripePaymentIntentCreate = jest.fn();
 const StripeMock = jest.fn(() => ({
   paymentIntents: {
+    list: (...args: unknown[]) => mockStripePaymentIntentList(...args),
     create: (...args: unknown[]) => mockStripePaymentIntentCreate(...args),
   },
 }));
@@ -84,7 +87,7 @@ describe('POST /api/billing/purchase-intent destination charges', () => {
         city: 'Seattle',
         state: 'WA',
         postalCode: '98101',
-        country: 'US',
+        countryCode: 'US',
       },
       email: 'buyer@example.com',
     });
@@ -105,6 +108,7 @@ describe('POST /api/billing/purchase-intent destination charges', () => {
       hostReceivesCents: 2500,
       taxCategory: 'ONE_TIME_PRODUCT',
     });
+    mockStripePaymentIntentList.mockResolvedValue({ data: [] });
     mockStripePaymentIntentCreate.mockResolvedValue({
       id: 'pi_123',
       client_secret: 'pi_123_secret_456',
@@ -151,6 +155,53 @@ describe('POST /api/billing/purchase-intent destination charges', () => {
     const createParams = mockStripePaymentIntentCreate.mock.calls[0]?.[0];
     expect(createParams).toBeTruthy();
     expect(createParams).not.toHaveProperty('transfer_data');
+  });
+
+  it('reuses an existing incomplete payment intent for the same product checkout', async () => {
+    prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_connected_123' });
+    const billingAddressFingerprint = buildBillingAddressFingerprint({
+      line1: '123 Main St',
+      city: 'Seattle',
+      state: 'WA',
+      postalCode: '98101',
+      countryCode: 'US',
+    });
+    mockStripePaymentIntentList.mockResolvedValue({
+      data: [
+        {
+          id: 'pi_existing',
+          status: 'requires_payment_method',
+          amount: 3043,
+          currency: 'usd',
+          client_secret: 'pi_existing_secret_456',
+          transfer_data: {
+            destination: 'acct_connected_123',
+            amount: 2500,
+          },
+          metadata: {
+            purchase_type: 'product',
+            product_id: 'product_1',
+            user_id: 'buyer_1',
+            organization_id: 'org_1',
+            billing_address_fingerprint: billingAddressFingerprint ?? '',
+            total_charge_cents: '3043',
+            tax_calculation_id: 'taxcalc_existing',
+            tax_category: 'ONE_TIME_PRODUCT',
+          },
+        },
+      ],
+    });
+
+    const response = await POST(jsonPost({
+      productId: 'product_1',
+      organization: { $id: 'org_1', name: 'Summit Indoor Volleyball Facility' },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.paymentIntent).toBe('pi_existing_secret_456');
+    expect(payload.taxCalculationId).toBe('taxcalc_existing');
+    expect(mockStripePaymentIntentCreate).not.toHaveBeenCalled();
   });
 
   it('returns an API error instead of a fake client secret when Stripe payment intent creation fails', async () => {

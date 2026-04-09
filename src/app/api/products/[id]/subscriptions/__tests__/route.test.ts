@@ -1,12 +1,15 @@
 /** @jest-environment node */
 
 import { NextRequest } from 'next/server';
+import { buildBillingAddressFingerprint } from '@/lib/stripeCheckoutReuse';
 
+const subscriptionsListMock = jest.fn();
 const subscriptionsCreateMock = jest.fn();
 const invoicesRetrieveMock = jest.fn();
 const paymentIntentsUpdateMock = jest.fn();
 const stripeInstance = {
   subscriptions: {
+    list: subscriptionsListMock,
     create: subscriptionsCreateMock,
   },
   invoices: {
@@ -148,6 +151,7 @@ describe('POST /api/products/[id]/subscriptions', () => {
       stripePriceId: 'stripe_price_1',
     });
     ensurePlatformFeeProductMock.mockResolvedValue('fee_prod_1');
+    subscriptionsListMock.mockResolvedValue({ data: [] });
     subscriptionsCreateMock.mockResolvedValue({
       id: 'sub_123',
       latest_invoice: {
@@ -230,5 +234,64 @@ describe('POST /api/products/[id]/subscriptions', () => {
     }));
     expect(invoicesRetrieveMock).not.toHaveBeenCalled();
     expect(paymentIntentsUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it('reuses an existing incomplete subscription checkout for the same product', async () => {
+    const billingAddressFingerprint = buildBillingAddressFingerprint({
+      line1: '123 Main St',
+      city: 'San Francisco',
+      state: 'CA',
+      postalCode: '94105',
+      countryCode: 'US',
+    });
+    subscriptionsListMock.mockResolvedValue({
+      data: [
+        {
+          id: 'sub_existing',
+          status: 'incomplete',
+          transfer_data: {
+            destination: 'acct_connected_123',
+          },
+          metadata: {
+            purchase_type: 'product_subscription',
+            product_id: 'prod_1',
+            user_id: 'user_1',
+            organization_id: 'org_1',
+            billing_address_fingerprint: billingAddressFingerprint ?? '',
+            total_charge_cents: '2978',
+            tax_calculation_id: 'taxcalc_existing',
+            tax_category: 'SUBSCRIPTION',
+          },
+          items: {
+            data: [
+              {
+                metadata: { line_type: 'product_base' },
+                price: {
+                  id: 'stripe_price_1',
+                },
+              },
+            ],
+          },
+          latest_invoice: {
+            confirmation_secret: {
+              client_secret: 'seti_existing_secret_456',
+            },
+          },
+        },
+      ],
+    });
+
+    const response = await POST(jsonPost({}), { params: Promise.resolve({ id: 'prod_1' }) });
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.paymentIntent).toBe('seti_existing_secret_456');
+    expect(data.taxCalculationId).toBe('taxcalc_existing');
+    expect(subscriptionsCreateMock).not.toHaveBeenCalled();
+    expect(invoicesRetrieveMock).not.toHaveBeenCalled();
+    expect(paymentIntentsUpdateMock).not.toHaveBeenCalled();
+    expect(upsertStripeSubscriptionMirrorMock).toHaveBeenCalledWith(expect.objectContaining({
+      subscription: expect.objectContaining({ id: 'sub_existing' }),
+    }));
   });
 });

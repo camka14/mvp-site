@@ -6,6 +6,7 @@ import { Elements } from '@stripe/react-stripe-js';
 import { BillingAddress, Event, PaymentIntent, formatPrice, getEventImageUrl } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { isStripePaymentIntentClientSecret } from '@/lib/stripeClientSecret';
+import { getPaymentModalCopy } from '@/components/ui/paymentModalCopy';
 import { billingAddressService } from '@/lib/billingAddressService';
 import PaymentForm from './PaymentForm';
 import { Modal, Button, Group, Alert, Loader, Text } from '@mantine/core';
@@ -43,9 +44,13 @@ export default function PaymentModal({
     const [billingEmail, setBillingEmail] = useState<string | null>(null);
     const isMountedRef = useRef(true);
 
+    const purchaseType = paymentData?.feeBreakdown?.purchaseType;
+    const copy = getPaymentModalCopy(purchaseType);
     const eventName = event.name ?? 'Event';
     const eventLocation = event.location ?? '';
-    const eventTypeLabel = formatEnumDisplayLabel(event.eventType, 'Event');
+    const eventTypeLabel = purchaseType === 'event' || !purchaseType
+        ? formatEnumDisplayLabel(event.eventType, 'Event')
+        : copy.summaryTypeLabel;
 
     const resetModal = () => {
         setView('confirm');
@@ -61,7 +66,7 @@ export default function PaymentModal({
             await onPaymentSuccess();
         } catch (error) {
             if (isMountedRef.current) {
-                setError('Payment succeeded but failed to join event. Please contact support.');
+                setError(copy.refreshFailureMessage);
             }
         } finally {
             if (isMountedRef.current) {
@@ -271,10 +276,10 @@ export default function PaymentModal({
                     {reloadingEvent ? (
                         <div className="flex items-center justify-center gap-2 text-sm text-gray-700">
                             <Loader size="sm" />
-                            <span>Reloading event…</span>
+                            <span>{copy.reloadingMessage}</span>
                         </div>
                     ) : (
-                        <Text size="sm" c="dimmed">Event details are up to date.</Text>
+                        <Text size="sm" c="dimmed">{copy.refreshedMessage}</Text>
                     )}
                     <Group justify="center" mt="md">
                         <Button onClick={() => { onClose(); resetModal(); }}>Close</Button>

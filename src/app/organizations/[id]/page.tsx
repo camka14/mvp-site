@@ -568,6 +568,8 @@ function OrganizationDetailContent() {
   const [purchasePaymentData, setPurchasePaymentData] = useState<PaymentIntent | null>(null);
   const [showPurchaseModal, setShowPurchaseModal] = useState(false);
   const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
+  const [startingProductCheckoutId, setStartingProductCheckoutId] = useState<string | null>(null);
+  const startingProductCheckoutRef = useRef<string | null>(null);
   const [, setSubscribing] = useState(false);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -1795,11 +1797,21 @@ function OrganizationDetailContent() {
         notifications.show({ color: 'red', message: 'You must be signed in to purchase.' });
         return;
       }
+      if (startingProductCheckoutRef.current) {
+        return;
+      }
       try {
+        startingProductCheckoutRef.current = product.$id;
+        setStartingProductCheckoutId(product.$id);
         await startProductCheckout(product);
       } catch (error) {
         console.error('Failed to start purchase', error);
         notifications.show({ color: 'red', message: 'Unable to start checkout. Please try again.' });
+      } finally {
+        if (startingProductCheckoutRef.current === product.$id) {
+          startingProductCheckoutRef.current = null;
+        }
+        setStartingProductCheckoutId((current) => (current === product.$id ? null : current));
       }
     },
     [org, startProductCheckout, user],
@@ -2684,7 +2696,12 @@ function OrganizationDetailContent() {
                         <Button
                           fullWidth
                           variant={isOwner ? 'outline' : 'filled'}
-                          disabled={product.isActive === false || (!organizationHasStripeAccount && !isOwner)}
+                          loading={startingProductCheckoutId === product.$id}
+                          disabled={
+                            product.isActive === false
+                            || (!organizationHasStripeAccount && !isOwner)
+                            || startingProductCheckoutId !== null
+                          }
                           onClick={(event) => {
                             if (isOwner) {
                               event.stopPropagation();

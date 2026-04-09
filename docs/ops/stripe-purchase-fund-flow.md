@@ -54,6 +54,19 @@ Renewal invoices are handled in `src/app/api/billing/webhook/route.ts` on `invoi
 
 This matches Stripe’s recommendation for flat recurring platform fees: use destination charges on the subscription and set a flat `application_fee_amount` on each subscription invoice.
 
+## Current product checkout reuse behavior
+
+Organization store buttons are now guarded on the client so only one product checkout-start request can be in flight at a time. The active button shows a loading state, and all product purchase buttons remain disabled until the request resolves.
+
+The backend also reuses matching unfinished Stripe checkouts for products instead of creating duplicates:
+
+- `src/app/api/billing/purchase-intent/route.ts` reuses one-time product `PaymentIntent`s in unfinished statuses when the same customer, product, organization, total charge, billing-address fingerprint, and destination-charge transfer settings still match.
+- `src/app/api/products/[id]/subscriptions/route.ts` reuses incomplete recurring product subscriptions when the same customer, product, organization, Stripe base price, total charge, billing-address fingerprint, and destination-charge transfer settings still match, and when Stripe still has a confirmation secret on the latest invoice.
+
+This reuse is intentionally limited to product checkouts. Event registrations and rentals still create a fresh `PaymentIntent` because those flows also reserve registration slots or rental locks, and reusing them would need additional lock-ownership rules.
+
+The reuse check currently happens after the route computes the current tax quote. That means duplicate clicks no longer create duplicate Stripe checkout objects, but they can still create a fresh Stripe Tax calculation before the route determines that the existing unfinished checkout is safe to reuse.
+
 ## Refund requirement
 
 Any refund path that targets a destination charge must set `reverse_transfer: true` on the Stripe refund request. Otherwise the buyer is refunded from the platform while the connected account keeps the transferred funds.

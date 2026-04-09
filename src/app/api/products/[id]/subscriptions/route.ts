@@ -21,6 +21,12 @@ import {
   resolveConnectedAccountId,
 } from '@/lib/stripeConnectAccounts';
 import { upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
+import {
+  buildBillingAddressFingerprint,
+  findReusableIncompleteProductSubscriptionCheckout,
+  getCheckoutTaxCalculationIdFromMetadata,
+  getCheckoutTaxCategoryFromMetadata,
+} from '@/lib/stripeCheckoutReuse';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,12 +106,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     purchaseType: 'product',
     productTaxCategory: normalizedProductTaxCategory,
   });
+  const validatedBillingAddress = validateUsBillingAddress(billingAddress);
   const taxQuote = await calculateTaxQuote({
     stripe,
     userId: session.userId,
     organizationId: product.organizationId,
     email: billingEmail,
-    billingAddress: validateUsBillingAddress(billingAddress),
+    billingAddress: validatedBillingAddress,
     subtotalCents: product.priceCents,
     purchaseType: 'product',
     taxCategory,
@@ -156,9 +163,46 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const connectedAccountId = await resolveConnectedAccountId({
     organizationId: product.organizationId,
   });
+  const billingAddressFingerprint = buildBillingAddressFingerprint(validatedBillingAddress);
   const platformFeeProductId = recurringFeeAmountCents > 0
     ? await ensurePlatformFeeProduct({ stripe })
     : null;
+
+  const reusableSubscription = await findReusableIncompleteProductSubscriptionCheckout({
+    stripe,
+    customerId: taxQuote.customerId,
+    productId: product.id,
+    userId: session.userId,
+    organizationId: product.organizationId,
+    totalChargeCents: taxQuote.totalChargeCents,
+    stripePriceId: stripeCatalog.stripePriceId,
+    billingAddressFingerprint,
+    connectedAccountId,
+  });
+  if (
+    reusableSubscription?.latest_invoice
+    && typeof reusableSubscription.latest_invoice !== 'string'
+    && reusableSubscription.latest_invoice.confirmation_secret?.client_secret
+  ) {
+    await upsertStripeSubscriptionMirror({
+      subscription: reusableSubscription,
+      fallback: {
+        productId: product.id,
+        userId: session.userId,
+        organizationId: product.organizationId,
+      },
+    });
+    return NextResponse.json({
+      paymentIntent: reusableSubscription.latest_invoice.confirmation_secret.client_secret,
+      publishableKey,
+      taxCalculationId: getCheckoutTaxCalculationIdFromMetadata(reusableSubscription.metadata) ?? taxQuote.calculationId,
+      taxCategory: getCheckoutTaxCategoryFromMetadata(reusableSubscription.metadata) ?? taxQuote.taxCategory,
+      feeBreakdown: toFeeBreakdown(taxQuote),
+      stripeSubscriptionId: reusableSubscription.id,
+      productId: product.id,
+      productPeriod: product.period,
+    }, { status: 200 });
+  }
 
   const subscription = await stripe.subscriptions.create({
     customer: taxQuote.customerId,
@@ -200,8 +244,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       product_id: product.id,
       user_id: session.userId,
       organization_id: product.organizationId ?? '',
+      amount_cents: String(taxQuote.subtotalCents),
+      total_charge_cents: String(taxQuote.totalChargeCents),
+      processing_fee_cents: String(taxQuote.processingFeeCents),
+      stripe_fee_cents: String(taxQuote.stripeFeeCents),
+      stripe_processing_fee_cents: String(taxQuote.stripeProcessingFeeCents),
+      stripe_tax_service_fee_cents: String(taxQuote.stripeTaxServiceFeeCents),
+      tax_cents: String(taxQuote.taxAmountCents),
+      fee_percentage: taxQuote.feePercentage.toFixed(4),
       tax_calculation_id: taxQuote.calculationId,
       tax_category: taxCategory,
+      billing_address_fingerprint: billingAddressFingerprint ?? '',
+      transfer_destination_account_id: connectedAccountId ?? '',
+      transfer_amount_cents: String(taxQuote.subtotalCents),
       purchase_type: 'product_subscription',
     },
     ...(connectedAccountId ? { transfer_data: { destination: connectedAccountId } } : {}),

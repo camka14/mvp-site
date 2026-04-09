@@ -13,6 +13,12 @@ import {
 import { resolvePurchaseContext } from '@/lib/purchaseContext';
 import { calculateTaxQuote, INTERNAL_TAX_CATEGORIES, type InternalTaxCategory } from '@/lib/stripeTax';
 import { buildDestinationTransferData } from '@/lib/stripeConnectAccounts';
+import {
+  buildBillingAddressFingerprint,
+  findReusableIncompleteProductPaymentIntent,
+  getCheckoutTaxCalculationIdFromMetadata,
+  getCheckoutTaxCategoryFromMetadata,
+} from '@/lib/stripeCheckoutReuse';
 import { resolveEventDivisionSelection } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import {
   extractRentalCheckoutWindow,
@@ -574,21 +580,26 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
+  const stripe = new Stripe(secretKey);
+  const validatedBillingAddress = validateUsBillingAddress(billingAddress);
+  const eventIdForReference = extractEntityId(payload.event);
+  const timeSlotIdForReference = extractEntityId(payload.timeSlot);
+  const organizationId =
+    extractEntityId(payload.organization)
+    ?? resolvedPurchase.organizationId
+    ?? normalizeString(payload.event?.organizationId)
+    ?? normalizeString(resolvedPurchase.product?.organizationId)
+    ?? null;
+  const hostUserId = normalizeString(payload.event?.hostId);
+
   let taxQuote: Awaited<ReturnType<typeof calculateTaxQuote>>;
   try {
-    const stripe = new Stripe(secretKey);
-    const eventIdForReference = extractEntityId(payload.event);
-    const timeSlotIdForReference = extractEntityId(payload.timeSlot);
     taxQuote = await calculateTaxQuote({
       stripe,
       userId: session.userId,
-      organizationId:
-        extractEntityId(payload.organization)
-        ?? resolvedPurchase.organizationId
-        ?? normalizeString(payload.event?.organizationId)
-        ?? null,
+      organizationId,
       email: billingEmail,
-      billingAddress: validateUsBillingAddress(billingAddress),
+      billingAddress: validatedBillingAddress,
       subtotalCents: resolvedPurchase.amountCents,
       purchaseType: resolvedPurchase.purchaseType,
       taxCategory: resolvedPurchase.taxCategory,
@@ -621,6 +632,36 @@ export async function POST(req: NextRequest) {
     feePercentage: taxQuote.feePercentage,
     purchaseType: taxQuote.purchaseType,
   };
+
+  const transferData = await buildDestinationTransferData({
+    organizationId,
+    hostUserId,
+    transferAmountCents: taxQuote.subtotalCents,
+  });
+  const billingAddressFingerprint = buildBillingAddressFingerprint(validatedBillingAddress);
+
+  if (resolvedPurchase.purchaseType === 'product') {
+    const productId = payload.productId ?? resolvedPurchase.product?.id ?? '';
+    const reusableIntent = await findReusableIncompleteProductPaymentIntent({
+      stripe,
+      customerId: taxQuote.customerId,
+      productId,
+      userId: session.userId,
+      organizationId,
+      totalChargeCents: taxQuote.totalChargeCents,
+      billingAddressFingerprint,
+      transferData,
+    });
+    if (reusableIntent?.client_secret) {
+      return NextResponse.json({
+        paymentIntent: reusableIntent.client_secret,
+        publishableKey,
+        taxCalculationId: getCheckoutTaxCalculationIdFromMetadata(reusableIntent.metadata) ?? taxQuote.calculationId,
+        taxCategory: getCheckoutTaxCategoryFromMetadata(reusableIntent.metadata) ?? taxQuote.taxCategory,
+        feeBreakdown,
+      }, { status: 200 });
+    }
+  }
 
   const actorUserId = normalizeString(session?.userId) ?? userId ?? 'system:purchase-intent';
   let reservedRegistrationId: string | null = null;
@@ -667,17 +708,6 @@ export async function POST(req: NextRequest) {
     reservedRentalWindow = rentalWindowResult.window;
   }
   try {
-    const stripe = new Stripe(secretKey);
-    const organizationId =
-      extractEntityId(payload.organization)
-      ?? normalizeString(payload.event?.organizationId)
-      ?? (resolvedPurchase.product?.organizationId ?? null);
-    const transferData = await buildDestinationTransferData({
-      organizationId,
-      hostUserId: normalizeString(payload.event?.hostId),
-      transferAmountCents: taxQuote.subtotalCents,
-    });
-
     const metadata: Record<string, string> = {
       purchase_type: resolvedPurchase.purchaseType,
     };
@@ -697,8 +727,10 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'stripe_processing_fee_cents', taxQuote.stripeProcessingFeeCents);
     appendMetadata(metadata, 'stripe_tax_service_fee_cents', taxQuote.stripeTaxServiceFeeCents);
     appendMetadata(metadata, 'tax_cents', taxQuote.taxAmountCents);
+    appendMetadata(metadata, 'fee_percentage', taxQuote.feePercentage.toFixed(4));
     appendMetadata(metadata, 'tax_calculation_id', taxQuote.calculationId);
     appendMetadata(metadata, 'tax_category', taxQuote.taxCategory);
+    appendMetadata(metadata, 'billing_address_fingerprint', billingAddressFingerprint);
     appendMetadata(metadata, 'event_name', payload.event?.name);
     appendMetadata(metadata, 'event_location', payload.event?.location);
     appendMetadata(metadata, 'event_start', payload.event?.start);
