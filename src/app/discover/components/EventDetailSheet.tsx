@@ -1727,6 +1727,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             eventForJoin,
                             joinTeam,
                             undefined,
+                            undefined,
                             JOIN_API_TIMEOUT_MS,
                         );
                     } catch (rollbackError) {
@@ -2542,6 +2543,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 user,
                 currentEvent,
                 selectedTeam,
+                undefined,
                 undefined,
                 JOIN_API_TIMEOUT_MS,
             );

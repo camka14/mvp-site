@@ -52,6 +52,25 @@ const toFeeBreakdown = (taxQuote: Awaited<ReturnType<typeof calculateTaxQuote>>)
   purchaseType: taxQuote.purchaseType,
 });
 
+const getInvoicePaymentIntentId = (
+  invoice: Pick<Stripe.Invoice, 'payments'> | null | undefined,
+): string | null => {
+  const payments = invoice?.payments?.data ?? [];
+  for (const invoicePayment of payments) {
+    if (invoicePayment.payment.type !== 'payment_intent') {
+      continue;
+    }
+    const paymentIntent = invoicePayment.payment.payment_intent;
+    if (typeof paymentIntent === 'string') {
+      return paymentIntent;
+    }
+    if (paymentIntent?.id) {
+      return paymentIntent.id;
+    }
+  }
+  return null;
+};
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -260,7 +279,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       purchase_type: 'product_subscription',
     },
     ...(connectedAccountId ? { transfer_data: { destination: connectedAccountId } } : {}),
-    expand: ['latest_invoice.confirmation_secret', 'latest_invoice.payment_intent', 'items.data.price'],
+    expand: ['latest_invoice.confirmation_secret', 'latest_invoice.payments.data.payment.payment_intent', 'items.data.price'],
   });
 
   const latestInvoice = typeof subscription.latest_invoice === 'object' && subscription.latest_invoice
@@ -268,22 +287,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     : null;
   let firstInvoicePaymentIntentId: string | null = null;
   if (connectedAccountId && latestInvoice?.id) {
-    const invoiceWithPaymentIntent = await stripe.invoices.retrieve(latestInvoice.id, {
-      expand: ['payment_intent'],
+    const invoiceWithPayments = await stripe.invoices.retrieve(latestInvoice.id, {
+      expand: ['payments.data.payment.payment_intent'],
     });
-    firstInvoicePaymentIntentId = typeof invoiceWithPaymentIntent.payment_intent === 'string'
-      ? invoiceWithPaymentIntent.payment_intent
-      : invoiceWithPaymentIntent.payment_intent?.id ?? null;
+    firstInvoicePaymentIntentId = getInvoicePaymentIntentId(invoiceWithPayments);
   }
   if (connectedAccountId && firstInvoicePaymentIntentId) {
     await stripe.paymentIntents.update(firstInvoicePaymentIntentId, {
+      // The destination account comes from the subscription's transfer_data.
       application_fee_amount: calculatePlatformApplicationFeeAmount({
         totalChargeCents: taxQuote.totalChargeCents,
         connectedAccountAmountCents: taxQuote.subtotalCents,
       }),
-      transfer_data: {
-        destination: connectedAccountId,
-      },
     });
   }
 

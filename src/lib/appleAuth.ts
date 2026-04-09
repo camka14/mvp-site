@@ -1,9 +1,9 @@
-import crypto from 'crypto';
+import crypto, { type JsonWebKey as CryptoJsonWebKey } from 'crypto';
 import jwt, { JwtHeader, JwtPayload } from 'jsonwebtoken';
 
-type AppleJsonWebKey = {
-  kty: string;
+type AppleJsonWebKey = CryptoJsonWebKey & {
   kid: string;
+  kty: string;
   use?: string;
   alg?: string;
   n: string;
@@ -147,16 +147,20 @@ export const verifyAppleIdentityToken = async (
   if (!signingKey) {
     throw new Error('Apple signing key was not found');
   }
+  const [firstAudience, ...additionalAudiences] = audiences;
+  const audience = additionalAudiences.length > 0
+    ? [firstAudience, ...additionalAudiences] as [string, ...string[]]
+    : firstAudience;
 
   const publicKey = crypto.createPublicKey({
-    key: signingKey as JsonWebKey,
+    key: signingKey,
     format: 'jwk',
   });
 
   const verified = jwt.verify(identityToken, publicKey, {
     algorithms: ['RS256'],
     issuer: APPLE_ISSUER,
-    audience: audiences,
+    audience,
   }) as AppleIdentityTokenPayload;
 
   if (!verified.sub) {

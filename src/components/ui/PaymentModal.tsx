@@ -241,7 +241,7 @@ export default function PaymentModal({
                         <PaymentForm
                             onSuccess={handlePaymentSuccess}
                             onError={setError}
-                            amount={paymentData.feeBreakdown?.totalCharge || 0}
+                            amount={paymentData?.feeBreakdown?.totalCharge ?? 0}
                             eventName={eventName}
                             billingAddress={billingAddress}
                             billingEmail={billingEmail}
