@@ -31,6 +31,7 @@ export type UserDataMinAggregateOutputType = {
   firstName: string | null
   lastName: string | null
   dateOfBirth: Date | null
+  requiredProfileFieldsCompletedAt: Date | null
   dobVerified: boolean | null
   dobVerifiedAt: Date | null
   ageVerificationProvider: string | null
@@ -47,6 +48,7 @@ export type UserDataMaxAggregateOutputType = {
   firstName: string | null
   lastName: string | null
   dateOfBirth: Date | null
+  requiredProfileFieldsCompletedAt: Date | null
   dobVerified: boolean | null
   dobVerifiedAt: Date | null
   ageVerificationProvider: string | null
@@ -63,6 +65,7 @@ export type UserDataCountAggregateOutputType = {
   firstName: number
   lastName: number
   dateOfBirth: number
+  requiredProfileFieldsCompletedAt: number
   dobVerified: number
   dobVerifiedAt: number
   ageVerificationProvider: number
@@ -87,6 +90,7 @@ export type UserDataMinAggregateInputType = {
   firstName?: true
   lastName?: true
   dateOfBirth?: true
+  requiredProfileFieldsCompletedAt?: true
   dobVerified?: true
   dobVerifiedAt?: true
   ageVerificationProvider?: true
@@ -103,6 +107,7 @@ export type UserDataMaxAggregateInputType = {
   firstName?: true
   lastName?: true
   dateOfBirth?: true
+  requiredProfileFieldsCompletedAt?: true
   dobVerified?: true
   dobVerifiedAt?: true
   ageVerificationProvider?: true
@@ -119,6 +124,7 @@ export type UserDataCountAggregateInputType = {
   firstName?: true
   lastName?: true
   dateOfBirth?: true
+  requiredProfileFieldsCompletedAt?: true
   dobVerified?: true
   dobVerifiedAt?: true
   ageVerificationProvider?: true
@@ -214,6 +220,7 @@ export type UserDataGroupByOutputType = {
   firstName: string | null
   lastName: string | null
   dateOfBirth: Date
+  requiredProfileFieldsCompletedAt: Date | null
   dobVerified: boolean | null
   dobVerifiedAt: Date | null
   ageVerificationProvider: string | null
@@ -257,6 +264,7 @@ export type UserDataWhereInput = {
   firstName?: Prisma.StringNullableFilter<"UserData"> | string | null
   lastName?: Prisma.StringNullableFilter<"UserData"> | string | null
   dateOfBirth?: Prisma.DateTimeFilter<"UserData"> | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   dobVerified?: Prisma.BoolNullableFilter<"UserData"> | boolean | null
   dobVerifiedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   ageVerificationProvider?: Prisma.StringNullableFilter<"UserData"> | string | null
@@ -279,6 +287,7 @@ export type UserDataOrderByWithRelationInput = {
   firstName?: Prisma.SortOrderInput | Prisma.SortOrder
   lastName?: Prisma.SortOrderInput | Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dobVerified?: Prisma.SortOrderInput | Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -304,6 +313,7 @@ export type UserDataWhereUniqueInput = Prisma.AtLeast<{
   firstName?: Prisma.StringNullableFilter<"UserData"> | string | null
   lastName?: Prisma.StringNullableFilter<"UserData"> | string | null
   dateOfBirth?: Prisma.DateTimeFilter<"UserData"> | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   dobVerified?: Prisma.BoolNullableFilter<"UserData"> | boolean | null
   dobVerifiedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   ageVerificationProvider?: Prisma.StringNullableFilter<"UserData"> | string | null
@@ -326,6 +336,7 @@ export type UserDataOrderByWithAggregationInput = {
   firstName?: Prisma.SortOrderInput | Prisma.SortOrder
   lastName?: Prisma.SortOrderInput | Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dobVerified?: Prisma.SortOrderInput | Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -354,6 +365,7 @@ export type UserDataScalarWhereWithAggregatesInput = {
   firstName?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
   lastName?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
   dateOfBirth?: Prisma.DateTimeWithAggregatesFilter<"UserData"> | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"UserData"> | Date | string | null
   dobVerified?: Prisma.BoolNullableWithAggregatesFilter<"UserData"> | boolean | null
   dobVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"UserData"> | Date | string | null
   ageVerificationProvider?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
@@ -376,6 +388,7 @@ export type UserDataCreateInput = {
   firstName?: string | null
   lastName?: string | null
   dateOfBirth: Date | string
+  requiredProfileFieldsCompletedAt?: Date | string | null
   dobVerified?: boolean | null
   dobVerifiedAt?: Date | string | null
   ageVerificationProvider?: string | null
@@ -398,6 +411,7 @@ export type UserDataUncheckedCreateInput = {
   firstName?: string | null
   lastName?: string | null
   dateOfBirth: Date | string
+  requiredProfileFieldsCompletedAt?: Date | string | null
   dobVerified?: boolean | null
   dobVerifiedAt?: Date | string | null
   ageVerificationProvider?: string | null
@@ -420,6 +434,7 @@ export type UserDataUpdateInput = {
   firstName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dateOfBirth?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dobVerified?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   dobVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -442,6 +457,7 @@ export type UserDataUncheckedUpdateInput = {
   firstName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dateOfBirth?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dobVerified?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   dobVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -464,6 +480,7 @@ export type UserDataCreateManyInput = {
   firstName?: string | null
   lastName?: string | null
   dateOfBirth: Date | string
+  requiredProfileFieldsCompletedAt?: Date | string | null
   dobVerified?: boolean | null
   dobVerifiedAt?: Date | string | null
   ageVerificationProvider?: string | null
@@ -486,6 +503,7 @@ export type UserDataUpdateManyMutationInput = {
   firstName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dateOfBirth?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dobVerified?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   dobVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -508,6 +526,7 @@ export type UserDataUncheckedUpdateManyInput = {
   firstName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dateOfBirth?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dobVerified?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   dobVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -530,6 +549,7 @@ export type UserDataCountOrderByAggregateInput = {
   firstName?: Prisma.SortOrder
   lastName?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrder
   dobVerified?: Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrder
@@ -552,6 +572,7 @@ export type UserDataMaxOrderByAggregateInput = {
   firstName?: Prisma.SortOrder
   lastName?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrder
   dobVerified?: Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrder
@@ -568,6 +589,7 @@ export type UserDataMinOrderByAggregateInput = {
   firstName?: Prisma.SortOrder
   lastName?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrder
   dobVerified?: Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrder
@@ -644,6 +666,7 @@ export type UserDataSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   firstName?: boolean
   lastName?: boolean
   dateOfBirth?: boolean
+  requiredProfileFieldsCompletedAt?: boolean
   dobVerified?: boolean
   dobVerifiedAt?: boolean
   ageVerificationProvider?: boolean
@@ -666,6 +689,7 @@ export type UserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   firstName?: boolean
   lastName?: boolean
   dateOfBirth?: boolean
+  requiredProfileFieldsCompletedAt?: boolean
   dobVerified?: boolean
   dobVerifiedAt?: boolean
   ageVerificationProvider?: boolean
@@ -688,6 +712,7 @@ export type UserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   firstName?: boolean
   lastName?: boolean
   dateOfBirth?: boolean
+  requiredProfileFieldsCompletedAt?: boolean
   dobVerified?: boolean
   dobVerifiedAt?: boolean
   ageVerificationProvider?: boolean
@@ -710,6 +735,7 @@ export type UserDataSelectScalar = {
   firstName?: boolean
   lastName?: boolean
   dateOfBirth?: boolean
+  requiredProfileFieldsCompletedAt?: boolean
   dobVerified?: boolean
   dobVerifiedAt?: boolean
   ageVerificationProvider?: boolean
@@ -725,7 +751,7 @@ export type UserDataSelectScalar = {
   homePageOrganizationId?: boolean
 }
 
-export type UserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "firstName" | "lastName" | "dateOfBirth" | "dobVerified" | "dobVerifiedAt" | "ageVerificationProvider" | "teamIds" | "friendIds" | "userName" | "hasStripeAccount" | "followingIds" | "friendRequestIds" | "friendRequestSentIds" | "uploadedImages" | "profileImageId" | "homePageOrganizationId", ExtArgs["result"]["userData"]>
+export type UserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "firstName" | "lastName" | "dateOfBirth" | "requiredProfileFieldsCompletedAt" | "dobVerified" | "dobVerifiedAt" | "ageVerificationProvider" | "teamIds" | "friendIds" | "userName" | "hasStripeAccount" | "followingIds" | "friendRequestIds" | "friendRequestSentIds" | "uploadedImages" | "profileImageId" | "homePageOrganizationId", ExtArgs["result"]["userData"]>
 
 export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "UserData"
@@ -737,6 +763,7 @@ export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     firstName: string | null
     lastName: string | null
     dateOfBirth: Date
+    requiredProfileFieldsCompletedAt: Date | null
     dobVerified: boolean | null
     dobVerifiedAt: Date | null
     ageVerificationProvider: string | null
@@ -1179,6 +1206,7 @@ export interface UserDataFieldRefs {
   readonly firstName: Prisma.FieldRef<"UserData", 'String'>
   readonly lastName: Prisma.FieldRef<"UserData", 'String'>
   readonly dateOfBirth: Prisma.FieldRef<"UserData", 'DateTime'>
+  readonly requiredProfileFieldsCompletedAt: Prisma.FieldRef<"UserData", 'DateTime'>
   readonly dobVerified: Prisma.FieldRef<"UserData", 'Boolean'>
   readonly dobVerifiedAt: Prisma.FieldRef<"UserData", 'DateTime'>
   readonly ageVerificationProvider: Prisma.FieldRef<"UserData", 'String'>

@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken, setAuthCookie, signSessionToken } from '@/lib/authServer';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { buildProfileCompletionState } from '@/server/profileCompletion';
 
 const toPublicUser = (user: { id: string; email: string; name: string | null; createdAt: Date | null; updatedAt: Date | null }) => ({
   id: user.id,
@@ -46,6 +47,7 @@ export async function GET(req: NextRequest) {
       session: decoded,
       token: refreshed,
       profile: profile ? withLegacyFields(applyNameCaseToUserFields(profile)) : null,
+      ...buildProfileCompletionState({ authUser: user, profile }),
     },
     { status: 200 },
   );

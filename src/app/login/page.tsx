@@ -4,7 +4,6 @@ import { useState, ChangeEvent, FormEvent, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { ApiError, authService } from '@/lib/auth';
-import { userService } from '@/lib/userService';
 import { getHomePathForUser } from '@/lib/homePage';
 import Loading from '@/components/ui/Loading';
 
@@ -26,7 +25,13 @@ function LoginPageContent() {
   const [verificationMessage, setVerificationMessage] = useState('');
   const [verificationMessageType, setVerificationMessageType] = useState<'info' | 'success'>('info');
   const [resendingVerification, setResendingVerification] = useState(false);
-  const { user, setUser, setAuthUser, loading: authLoading } = useApp();
+  const {
+    user,
+    setUser,
+    setAuthUser,
+    loading: authLoading,
+    requiresProfileCompletion,
+  } = useApp();
   const router = useRouter();
   const searchParams = useSearchParams();
   const today = new Date();
@@ -35,9 +40,9 @@ function LoginPageContent() {
   // Redirect if already authenticated
   useEffect(() => {
     if (!authLoading && user) {
-      router.push(getHomePathForUser(user));
+      router.push(requiresProfileCompletion ? '/complete-profile' : getHomePathForUser(user));
     }
-  }, [user, authLoading, router]);
+  }, [authLoading, requiresProfileCompletion, router, user]);
 
   useEffect(() => {
     const oauth = searchParams.get('oauth');
@@ -78,15 +83,15 @@ function LoginPageContent() {
     setVerificationPendingEmail('');
 
     try {
-      let authUser: Awaited<ReturnType<typeof authService.login>> | null = null;
+      let authResult: Awaited<ReturnType<typeof authService.login>> | null = null;
       if (isLogin) {
-        authUser = await authService.login(formData.email, formData.password);
+        authResult = await authService.login(formData.email, formData.password);
       } else {
         // Basic validation for signup fields
         if (!formData.firstName || !formData.lastName || !formData.userName || !formData.dateOfBirth) {
           throw new Error('Please provide first name, last name, username, and date of birth');
         }
-        authUser = await authService.createAccount(
+        authResult = await authService.createAccount(
           formData.email,
           formData.password,
           formData.firstName,
@@ -96,19 +101,18 @@ function LoginPageContent() {
         );
       }
 
-      if (!authUser) {
+      if (!authResult?.user) {
         throw new Error('Authentication failed');
       }
 
-      const extendedUser = await userService.getUserById(authUser.$id);
-
+      const extendedUser = authResult.profile;
       if (!extendedUser) {
         throw new Error('Failed to retrieve user profile data');
       }
 
       setUser(extendedUser);
-      setAuthUser(authUser as any);
-      router.push(getHomePathForUser(extendedUser));
+      setAuthUser(authResult.user);
+      router.push(authResult.requiresProfileCompletion ? '/complete-profile' : getHomePathForUser(extendedUser));
 
     } catch (error: any) {
       console.error('Auth error:', error);

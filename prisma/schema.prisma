@@ -227,6 +227,7 @@ model UserData {
   firstName               String?
   lastName                String?
   dateOfBirth             DateTime
+  requiredProfileFieldsCompletedAt DateTime?
   dobVerified             Boolean?
   dobVerifiedAt           DateTime?
   ageVerificationProvider String?
@@ -790,6 +791,7 @@ model EventRegistrations {
 model AuthUser {
   id              String    @id
   email           String    @unique
+  googleSubject   String?   @unique
   passwordHash    String
   name            String?
   appleSubject    String?   @unique

@@ -3,6 +3,9 @@
 import { NextRequest } from 'next/server';
 
 const prismaMock = {
+  authUser: {
+    findUnique: jest.fn(),
+  },
   userData: {
     findUnique: jest.fn(),
     findFirst: jest.fn(),
@@ -45,6 +48,16 @@ describe('PATCH /api/users/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      appleSubject: null,
+      googleSubject: null,
+    });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      firstName: 'Test',
+      lastName: 'User',
+      dateOfBirth: new Date('2000-01-01T00:00:00.000Z'),
+      requiredProfileFieldsCompletedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
   });

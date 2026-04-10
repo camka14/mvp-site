@@ -123,7 +123,7 @@ describe('google oauth routes', () => {
     const res = await CALLBACK_GET(req);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('http://localhost/discover');
+    expect(res.headers.get('location')).toBe('http://localhost/complete-profile?next=%2Fdiscover');
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
     expect(prismaMock.authUser.create).toHaveBeenCalled();
   });
@@ -158,6 +158,6 @@ describe('google oauth routes', () => {
     const res = await CALLBACK_GET(req);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('http://localhost/discover');
+    expect(res.headers.get('location')).toBe('http://localhost/complete-profile?next=%2Fdiscover');
   });
 });

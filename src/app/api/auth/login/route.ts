@@ -8,6 +8,7 @@ import {
   isInitialEmailVerificationAvailable,
   sendInitialEmailVerification,
 } from '@/server/authEmailVerification';
+import { buildProfileCompletionState } from '@/server/profileCompletion';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -82,7 +83,13 @@ export async function POST(req: NextRequest) {
   const session: SessionToken = { userId: authUser.id, isAdmin: false };
   const token = signSessionToken(session);
   const res = NextResponse.json(
-    { user: toPublicUser(authUser), session, token, profile: profile ? applyNameCaseToUserFields(profile) : null },
+    {
+      user: toPublicUser(authUser),
+      session,
+      token,
+      profile: profile ? applyNameCaseToUserFields(profile) : null,
+      ...buildProfileCompletionState({ authUser, profile }),
+    },
     { status: 200 },
   );
   setAuthCookie(res, token);

@@ -198,6 +198,7 @@ export const UserDataScalarFieldEnum = {
   firstName: 'firstName',
   lastName: 'lastName',
   dateOfBirth: 'dateOfBirth',
+  requiredProfileFieldsCompletedAt: 'requiredProfileFieldsCompletedAt',
   dobVerified: 'dobVerified',
   dobVerifiedAt: 'dobVerifiedAt',
   ageVerificationProvider: 'ageVerificationProvider',
@@ -807,6 +808,7 @@ export type EventRegistrationsScalarFieldEnum = (typeof EventRegistrationsScalar
 export const AuthUserScalarFieldEnum = {
   id: 'id',
   email: 'email',
+  googleSubject: 'googleSubject',
   passwordHash: 'passwordHash',
   name: 'name',
   appleSubject: 'appleSubject',
