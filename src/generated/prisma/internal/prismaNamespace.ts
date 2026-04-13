@@ -3607,7 +3607,10 @@ export const EventRegistrationsScalarFieldEnum = {
   registrantId: 'registrantId',
   parentId: 'parentId',
   registrantType: 'registrantType',
+  rosterRole: 'rosterRole',
   status: 'status',
+  slotId: 'slotId',
+  occurrenceDate: 'occurrenceDate',
   ageAtEvent: 'ageAtEvent',
   divisionId: 'divisionId',
   divisionTypeId: 'divisionTypeId',
@@ -4018,6 +4021,20 @@ export type EnumEventRegistrationsRegistrantTypeEnumFieldRefInput<$PrismaModel> 
  * Reference to a field of type 'EventRegistrationsRegistrantTypeEnum[]'
  */
 export type ListEnumEventRegistrationsRegistrantTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventRegistrationsRegistrantTypeEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'EventRegistrationsRosterRoleEnum'
+ */
+export type EnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventRegistrationsRosterRoleEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'EventRegistrationsRosterRoleEnum[]'
+ */
+export type ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventRegistrationsRosterRoleEnum[]'>
     
 
 

@@ -345,6 +345,56 @@ describe('POST /api/billing/webhook', () => {
     expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
   });
 
+  it('activates an existing weekly team reservation using occurrence-aware registration ids', async () => {
+    prismaMock.billPayments.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prismaMock.bills.create.mockResolvedValueOnce({ id: 'bill_instant_weekly_1' });
+    prismaMock.billPayments.create.mockResolvedValueOnce({ id: 'bill_payment_instant_weekly_1' });
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'weekly_parent',
+        eventType: 'WEEKLY_EVENT',
+        teamSignup: true,
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+      },
+    ]);
+    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({ status: 'STARTED' });
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentSucceededEvent({
+        intentId: 'pi_weekly_team_1',
+        metadata: {
+          purchase_type: 'event',
+          user_id: 'user_1',
+          team_id: 'team_1',
+          event_id: 'weekly_parent',
+          organization_id: 'org_1',
+          registration_id: 'weekly_parent__team__team_1__slot_1__2026-04-14',
+          occurrence_slot_id: 'slot_1',
+          occurrence_date: '2026-04-14',
+          amount_cents: '4500',
+        },
+        amount: 4700,
+        amountReceived: 4700,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'weekly_parent__team__team_1__slot_1__2026-04-14' },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+        }),
+      }),
+    );
+    expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
+  });
+
   it('is idempotent for repeated instant webhook events by payment intent id', async () => {
     prismaMock.billPayments.findFirst.mockResolvedValueOnce({
       id: 'bill_payment_existing_1',

@@ -95,6 +95,12 @@ enum EventRegistrationsRegistrantTypeEnum {
   TEAM
 }
 
+enum EventRegistrationsRosterRoleEnum {
+  PARTICIPANT
+  WAITLIST
+  FREE_AGENT
+}
+
 enum EventRegistrationsStatusEnum {
   STARTED
   PENDINGCONSENT
@@ -775,7 +781,10 @@ model EventRegistrations {
   registrantId      String
   parentId          String?
   registrantType    EventRegistrationsRegistrantTypeEnum
+  rosterRole        EventRegistrationsRosterRoleEnum     @default(PARTICIPANT)
   status            EventRegistrationsStatusEnum
+  slotId            String?
+  occurrenceDate    String?
   ageAtEvent        Int?
   divisionId        String?
   divisionTypeId    String?
@@ -786,6 +795,8 @@ model EventRegistrations {
 
   @@index([eventId])
   @@index([registrantId])
+  @@index([eventId, rosterRole, status])
+  @@index([eventId, slotId, occurrenceDate])
 }
 
 model AuthUser {

@@ -4,6 +4,8 @@ import { renderWithMantine } from '../../../../../../../test/utils/renderWithMan
 import EventForm, { EventFormHandle } from '../EventForm';
 import { userService } from '@/lib/userService';
 import { eventService } from '@/lib/eventService';
+import { organizationService } from '@/lib/organizationService';
+import { fieldService } from '@/lib/fieldService';
 
 jest.setTimeout(20000);
 
@@ -191,11 +193,14 @@ jest.mock('@/lib/userService', () => ({
 jest.mock('@/lib/organizationService', () => ({
   organizationService: {
     getOrganizationById: jest.fn().mockResolvedValue(null),
+    getOrganizationByIdForEventForm: jest.fn().mockResolvedValue(null),
   },
 }));
 
 jest.mock('@/lib/fieldService', () => ({
-  fieldService: {},
+  fieldService: {
+    listFields: jest.fn().mockResolvedValue([]),
+  },
 }));
 
 jest.mock('@/lib/apiClient', () => ({
@@ -213,6 +218,9 @@ describe('EventForm dirty state', () => {
     (userService.searchUsers as jest.Mock).mockResolvedValue([]);
     (userService.lookupEmailMembership as jest.Mock).mockResolvedValue([]);
     (userService.inviteUsersByEmail as jest.Mock).mockResolvedValue({ sent: [], not_sent: [], failed: [] });
+    (organizationService.getOrganizationById as jest.Mock).mockResolvedValue(null);
+    (organizationService.getOrganizationByIdForEventForm as jest.Mock).mockResolvedValue(null);
+    (fieldService.listFields as jest.Mock).mockResolvedValue([]);
   });
 
   const buildEvent = () => ({
@@ -1176,9 +1184,126 @@ describe('EventForm dirty state', () => {
     });
 
     const eventDetailsSection = document.getElementById('section-event-details-content');
+    const teamSignupSwitch = screen.getByTestId('team-signup-switch');
 
     expect(eventDetailsSection).not.toBeNull();
     expect(eventDetailsSection?.textContent).toContain('Team Sign Up');
+    expect(teamSignupSwitch).toBeInTheDocument();
+  });
+
+  it('keeps weekly event team signup in Event Details and out of Division Settings', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      teamSignup: false,
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const eventDetailsSection = document.getElementById('section-event-details-content');
+    const divisionSettingsSection = document.getElementById('section-division-settings-content');
+
+    expect(eventDetailsSection).not.toBeNull();
+    expect(eventDetailsSection?.textContent).toContain('Team Sign Up');
+    expect(divisionSettingsSection?.textContent).not.toContain('Team Event (teams compete rather than individuals)');
+  });
+
+  it('renders organization fields next to required documents in Event Details for managed events', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(
+      onDirtyStateChange,
+      undefined,
+      {
+        eventType: 'EVENT',
+        organizationId: 'org_1',
+      },
+      buildOrganization(),
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const eventDetailsSection = document.getElementById('section-event-details');
+    const divisionSettingsSection = document.getElementById('section-division-settings-content');
+
+    expect(eventDetailsSection).not.toBeNull();
+    expect(eventDetailsSection?.textContent).toContain('Required Documents');
+    expect(eventDetailsSection?.textContent).toContain('Organization Fields');
+    expect(divisionSettingsSection?.textContent).not.toContain('Organization Fields');
+  });
+
+  it('hides organization fields for weekly events', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(
+      onDirtyStateChange,
+      undefined,
+      {
+        eventType: 'WEEKLY_EVENT',
+        organizationId: 'org_1',
+        parentEvent: null,
+      },
+      buildOrganization(),
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.queryByLabelText('Organization Fields')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Required Documents')).toBeInTheDocument();
+  });
+
+  it('hydrates organization fields once during create mode without refetch looping', async () => {
+    const onDirtyStateChange = jest.fn();
+    const organization = {
+      ...buildOrganization(),
+      fields: [],
+    };
+    let fieldFetchCount = 0;
+
+    (organizationService.getOrganizationByIdForEventForm as jest.Mock).mockResolvedValue(organization);
+    (organizationService.getOrganizationById as jest.Mock).mockResolvedValue(organization);
+    (fieldService.listFields as jest.Mock).mockImplementation(async () => {
+      fieldFetchCount += 1;
+      if (fieldFetchCount > 1) {
+        throw new Error('Organization fields refetched more than once');
+      }
+      return [
+        {
+          $id: 'field_1',
+          name: 'Field 1',
+          fieldNumber: 1,
+          location: 'Main Gym',
+        },
+      ];
+    });
+
+    renderForm(
+      onDirtyStateChange,
+      undefined,
+      {
+        organizationId: organization.$id,
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      expect(fieldService.listFields).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(fieldService.listFields).toHaveBeenCalledTimes(1);
   });
 
 });

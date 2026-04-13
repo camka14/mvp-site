@@ -38,6 +38,28 @@ export interface LeagueGenerationOptions {
     userId?: string;
 }
 
+export type WeeklyOccurrenceSelection = {
+    slotId?: string | null;
+    occurrenceDate?: string | null;
+};
+
+export type EventParticipantsResponse = {
+    event?: Event;
+    participants: {
+        teams: Array<{ registrantId: string }>;
+        users: Array<{ registrantId: string }>;
+        children: Array<{ registrantId: string }>;
+        waitlist: Array<{ registrantId: string }>;
+        freeAgents: Array<{ registrantId: string }>;
+    };
+    teams: Team[];
+    users: UserData[];
+    participantCount: number;
+    participantCapacity: number | null;
+    occurrence: { slotId: string; occurrenceDate: string } | null;
+    weeklySelectionRequired?: boolean;
+};
+
 export interface LeagueGenerationMatchResult {
     id?: string | number | null;
     matchId?: string | number | null;
@@ -188,13 +210,54 @@ class EventService {
         }
     }
 
-    async addTeamParticipant(eventId: string, params: { teamId: string; divisionId?: string | null }): Promise<Event> {
+    async getEventParticipants(eventId: string, occurrence?: WeeklyOccurrenceSelection): Promise<EventParticipantsResponse> {
+        const params = new URLSearchParams();
+        const slotId = typeof occurrence?.slotId === 'string' ? occurrence.slotId.trim() : '';
+        const occurrenceDate = typeof occurrence?.occurrenceDate === 'string' ? occurrence.occurrenceDate.trim() : '';
+        if (slotId) {
+            params.set('slotId', slotId);
+        }
+        if (occurrenceDate) {
+            params.set('occurrenceDate', occurrenceDate);
+        }
+        const query = params.toString();
+        const response = await apiRequest<any>(`/api/events/${eventId}/participants${query ? `?${query}` : ''}`);
+        const eventPayload = response?.event ? this.mapRowToEvent(response.event) : undefined;
+        return {
+            event: eventPayload,
+            participants: response?.participants ?? {
+                teams: [],
+                users: [],
+                children: [],
+                waitlist: [],
+                freeAgents: [],
+            },
+            teams: Array.isArray(response?.teams) ? response.teams.map((row: any) => row as Team) : [],
+            users: Array.isArray(response?.users) ? response.users.map((row: any) => row as UserData) : [],
+            participantCount: typeof response?.participantCount === 'number' ? response.participantCount : 0,
+            participantCapacity: typeof response?.participantCapacity === 'number' ? response.participantCapacity : null,
+            occurrence: response?.occurrence ?? null,
+            weeklySelectionRequired: Boolean(response?.weeklySelectionRequired),
+        };
+    }
+
+    async addTeamParticipant(
+        eventId: string,
+        params: {
+            teamId: string;
+            divisionId?: string | null;
+            slotId?: string | null;
+            occurrenceDate?: string | null;
+        },
+    ): Promise<Event> {
         try {
             await apiRequest<any>(`/api/events/${eventId}/participants`, {
                 method: 'POST',
                 body: {
                     teamId: params.teamId,
                     ...(params.divisionId ? { divisionId: params.divisionId } : {}),
+                    ...(params.slotId ? { slotId: params.slotId } : {}),
+                    ...(params.occurrenceDate ? { occurrenceDate: params.occurrenceDate } : {}),
                 },
             });
             const hydrated = await this.getEventById(eventId);
@@ -229,11 +292,19 @@ class EventService {
         return this.mapRowToEvent(payload);
     }
 
-    async removeTeamParticipant(eventId: string, teamId: string): Promise<Event> {
+    async removeTeamParticipant(
+        eventId: string,
+        teamId: string,
+        occurrence?: WeeklyOccurrenceSelection,
+    ): Promise<Event> {
         try {
             await apiRequest<any>(`/api/events/${eventId}/participants`, {
                 method: 'DELETE',
-                body: { teamId },
+                body: {
+                    teamId,
+                    ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+                    ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+                },
             });
             const hydrated = await this.getEventById(eventId);
             if (!hydrated) {
@@ -991,11 +1062,30 @@ class EventService {
             installmentDueDates: row.installmentDueDates,
             installmentAmounts: row.installmentAmounts,
             allowTeamSplitDefault: row.allowTeamSplitDefault,
+            participantCount: typeof row.participantCount === 'number'
+                ? row.participantCount
+                : Number.isFinite(Number(row.participantCount))
+                    ? Number(row.participantCount)
+                    : null,
+            participantCapacity: typeof row.participantCapacity === 'number'
+                ? row.participantCapacity
+                : Number.isFinite(Number(row.participantCapacity))
+                    ? Number(row.participantCapacity)
+                    : null,
 
             // Computed properties
             organization,
             // Computed properties
             attendees: (() => {
+                const explicitParticipantCount =
+                    typeof row.participantCount === 'number'
+                        ? row.participantCount
+                        : Number.isFinite(Number(row.participantCount))
+                            ? Number(row.participantCount)
+                            : null;
+                if (explicitParticipantCount !== null) {
+                    return Math.max(0, Math.trunc(explicitParticipantCount));
+                }
                 const explicitAttendees =
                     typeof row.attendees === 'number'
                         ? row.attendees
@@ -2056,12 +2146,21 @@ class EventService {
         eventId: string,
         participantId: string,
         participantType: 'user' | 'team' = 'user',
+        occurrence?: WeeklyOccurrenceSelection,
     ): Promise<Event> {
         const response = await apiRequest<any>(`/api/events/${eventId}/waitlist`, {
             method: 'POST',
             body: participantType === 'team'
-                ? { teamId: participantId }
-                : { userId: participantId },
+                ? {
+                    teamId: participantId,
+                    ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+                    ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+                }
+                : {
+                    userId: participantId,
+                    ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+                    ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+                },
         });
         const payload = response?.event ?? response;
         await this.ensureSportRelationship(payload);
@@ -2073,12 +2172,21 @@ class EventService {
         eventId: string,
         participantId: string,
         participantType: 'user' | 'team' = 'user',
+        occurrence?: WeeklyOccurrenceSelection,
     ): Promise<Event> {
         const response = await apiRequest<any>(`/api/events/${eventId}/waitlist`, {
             method: 'DELETE',
             body: participantType === 'team'
-                ? { teamId: participantId }
-                : { userId: participantId },
+                ? {
+                    teamId: participantId,
+                    ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+                    ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+                }
+                : {
+                    userId: participantId,
+                    ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+                    ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+                },
         });
         const payload = response?.event ?? response;
         await this.ensureSportRelationship(payload);
@@ -2086,10 +2194,14 @@ class EventService {
         return this.mapRowToEvent(payload);
     }
 
-    async addFreeAgent(eventId: string, userId: string): Promise<Event> {
+    async addFreeAgent(eventId: string, userId: string, occurrence?: WeeklyOccurrenceSelection): Promise<Event> {
         const response = await apiRequest<any>(`/api/events/${eventId}/free-agents`, {
             method: 'POST',
-            body: { userId },
+            body: {
+                userId,
+                ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+                ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+            },
         });
         const payload = response?.event ?? response;
         await this.ensureSportRelationship(payload);
@@ -2097,10 +2209,14 @@ class EventService {
         return this.mapRowToEvent(payload);
     }
 
-    async removeFreeAgent(eventId: string, userId: string): Promise<Event> {
+    async removeFreeAgent(eventId: string, userId: string, occurrence?: WeeklyOccurrenceSelection): Promise<Event> {
         const response = await apiRequest<any>(`/api/events/${eventId}/free-agents`, {
             method: 'DELETE',
-            body: { userId },
+            body: {
+                userId,
+                ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+                ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+            },
         });
         const payload = response?.event ?? response;
         await this.ensureSportRelationship(payload);

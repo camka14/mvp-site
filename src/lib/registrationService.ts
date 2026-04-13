@@ -47,6 +47,8 @@ export type DivisionRegistrationSelection = {
   divisionId?: string;
   divisionTypeId?: string;
   divisionTypeKey?: string;
+  slotId?: string;
+  occurrenceDate?: string;
 };
 
 class RegistrationService {

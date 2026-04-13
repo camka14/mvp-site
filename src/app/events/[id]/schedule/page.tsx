@@ -6,6 +6,7 @@ import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 import { ListChecks, Megaphone } from 'lucide-react';
+import type { View } from 'react-big-calendar';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
@@ -197,6 +198,223 @@ const normalizeIdToken = (value: unknown): string | null => {
   }
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : null;
+};
+
+type WeeklyOccurrenceOption = {
+  id: string;
+  slotId: string;
+  occurrenceDate: string;
+  label: string;
+  start: string;
+  end: string;
+  startMinutes: number;
+  endMinutes: number;
+  fieldIds: string[];
+  divisionIds: string[];
+};
+
+type WeeklyOccurrenceSelection = {
+  slotId: string;
+  occurrenceDate: string;
+};
+
+const parseDateValue = (value?: string | null): Date | null => {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const [year, month, day] = trimmed.split('-').map(Number);
+    if (![year, month, day].some(Number.isNaN)) {
+      return new Date(year, (month ?? 1) - 1, day ?? 1);
+    }
+  }
+
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const toLocalIsoDate = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const toMondayIndex = (value: Date): number => (value.getDay() + 6) % 7;
+
+const startOfDay = (value: Date): Date => {
+  const copy = new Date(value.getTime());
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+};
+
+const startOfMonth = (value: Date): Date => new Date(value.getFullYear(), value.getMonth(), 1);
+
+const endOfMonth = (value: Date): Date => new Date(value.getFullYear(), value.getMonth() + 1, 0);
+
+const startOfCalendarWeek = (value: Date): Date => {
+  const copy = startOfDay(value);
+  copy.setDate(copy.getDate() - copy.getDay());
+  return copy;
+};
+
+const addDays = (value: Date, days: number): Date => {
+  const copy = new Date(value.getTime());
+  copy.setDate(copy.getDate() + days);
+  return copy;
+};
+
+const formatWeeklyOccurrenceLabel = (occurrence: Date, startMinutes: number, endMinutes: number): string => {
+  const start = new Date(occurrence.getTime());
+  start.setHours(0, startMinutes, 0, 0);
+  const end = new Date(occurrence.getTime());
+  end.setHours(0, endMinutes, 0, 0);
+  const dayLabel = start.toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'numeric',
+    day: 'numeric',
+    year: '2-digit',
+  });
+  const timeLabel = `${start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}-${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}`;
+  return `${dayLabel} · ${timeLabel}`;
+};
+
+const getWeeklyScheduleCalendarRange = (value: Date, calendarView: View): { start: Date; end: Date } => {
+  const safeDate = Number.isNaN(value.getTime()) ? new Date() : value;
+  if (calendarView === 'day') {
+    const day = startOfDay(safeDate);
+    return { start: day, end: day };
+  }
+  if (calendarView === 'week') {
+    const start = startOfCalendarWeek(safeDate);
+    return { start, end: addDays(start, 6) };
+  }
+  return {
+    start: startOfMonth(safeDate),
+    end: endOfMonth(safeDate),
+  };
+};
+
+const buildWeeklyOccurrenceOptionsInRange = (
+  event: Event | null,
+  rangeStart: Date,
+  rangeEnd: Date,
+): WeeklyOccurrenceOption[] => {
+  if (
+    !event
+    || event.eventType !== 'WEEKLY_EVENT'
+    || event.parentEvent
+    || !Array.isArray(event.timeSlots)
+  ) {
+    return [];
+  }
+
+  const normalizedRangeStart = startOfDay(rangeStart);
+  const normalizedRangeEnd = startOfDay(rangeEnd);
+  if (normalizedRangeEnd.getTime() < normalizedRangeStart.getTime()) {
+    return [];
+  }
+
+  const options: WeeklyOccurrenceOption[] = [];
+
+  event.timeSlots.forEach((slot) => {
+    const slotId = normalizeIdToken(slot.$id ?? (slot as { id?: string }).id);
+    const slotStartDate = parseDateValue(slot.startDate ?? null);
+    if (!slotId || !slotStartDate) {
+      return;
+    }
+    slotStartDate.setHours(0, 0, 0, 0);
+    const slotEndDate = parseDateValue(slot.endDate ?? null);
+    if (slotEndDate) {
+      slotEndDate.setHours(0, 0, 0, 0);
+    }
+
+    const startMinutes = typeof slot.startTimeMinutes === 'number' ? slot.startTimeMinutes : null;
+    const endMinutes = typeof slot.endTimeMinutes === 'number' ? slot.endTimeMinutes : null;
+    const weekdays = Array.from(new Set(
+      (Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
+        ? slot.daysOfWeek
+        : typeof slot.dayOfWeek === 'number'
+          ? [slot.dayOfWeek]
+          : [])
+        .map((entry) => Number(entry))
+        .filter((entry) => Number.isInteger(entry) && entry >= 0 && entry <= 6),
+    )).sort((left, right) => left - right);
+    if (!weekdays.length || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+      return;
+    }
+
+    const fieldIds = Array.from(new Set(
+      (Array.isArray(slot.scheduledFieldIds) ? slot.scheduledFieldIds : [])
+        .concat(typeof slot.scheduledFieldId === 'string' ? [slot.scheduledFieldId] : [])
+        .map((entry) => normalizeIdToken(entry))
+        .filter((entry): entry is string => Boolean(entry)),
+    ));
+    const divisionIds = Array.from(new Set(
+      (Array.isArray(slot.divisions) ? slot.divisions : [])
+        .map((entry) => normalizeIdToken(typeof entry === 'string' ? entry : null))
+        .filter((entry): entry is string => Boolean(entry)),
+    ));
+
+    const searchStart = startOfDay(new Date(Math.max(normalizedRangeStart.getTime(), slotStartDate.getTime())));
+    const searchEnd = startOfDay(new Date(
+      Math.min(normalizedRangeEnd.getTime(), slotEndDate?.getTime() ?? normalizedRangeEnd.getTime()),
+    ));
+
+    if (searchEnd.getTime() < searchStart.getTime()) {
+      return;
+    }
+
+    for (let occurrence = new Date(searchStart.getTime()); occurrence.getTime() <= searchEnd.getTime(); occurrence = addDays(occurrence, 1)) {
+      if (!weekdays.includes(toMondayIndex(occurrence))) {
+        continue;
+      }
+
+      const occurrenceStart = new Date(occurrence.getTime());
+      occurrenceStart.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
+      const occurrenceEnd = new Date(occurrence.getTime());
+      occurrenceEnd.setHours(Math.floor(endMinutes / 60), endMinutes % 60, 0, 0);
+      options.push({
+        id: `${slotId}:${toLocalIsoDate(occurrence)}`,
+        slotId,
+        occurrenceDate: toLocalIsoDate(occurrence),
+        label: formatWeeklyOccurrenceLabel(occurrence, startMinutes, endMinutes),
+        start: formatLocalDateTime(occurrenceStart),
+        end: formatLocalDateTime(occurrenceEnd),
+        startMinutes,
+        endMinutes,
+        fieldIds,
+        divisionIds,
+      });
+    }
+  });
+
+  return options.sort((left, right) => (
+    left.occurrenceDate.localeCompare(right.occurrenceDate)
+    || left.startMinutes - right.startMinutes
+    || left.slotId.localeCompare(right.slotId)
+  ));
+};
+
+const resolveSelectedWeeklyOccurrenceOption = (
+  event: Event | null,
+  selection: WeeklyOccurrenceSelection | null,
+): WeeklyOccurrenceOption | null => {
+  if (!selection) {
+    return null;
+  }
+
+  const occurrenceDate = parseDateValue(selection.occurrenceDate);
+  if (!occurrenceDate) {
+    return null;
+  }
+
+  const resolvedDate = startOfDay(occurrenceDate);
+  return buildWeeklyOccurrenceOptionsInRange(event, resolvedDate, resolvedDate).find((option) => (
+    option.slotId === selection.slotId
+    && option.occurrenceDate === selection.occurrenceDate
+  )) ?? null;
 };
 
 const collectMatchAssignmentUserIds = (match: Match): string[] => {
@@ -1403,6 +1621,49 @@ function EventScheduleContent() {
 
   const usingChangeCopies = Boolean(changesEvent);
   const activeEvent = usingChangeCopies ? changesEvent : event;
+  const isWeeklyParentEvent = Boolean(
+    activeEvent?.eventType === 'WEEKLY_EVENT'
+      && !normalizeIdToken(activeEvent?.parentEvent),
+  );
+  const selectedOccurrenceSlotId = normalizeIdToken(searchParams?.get('slotId'));
+  const selectedOccurrenceDate = normalizeIdToken(searchParams?.get('occurrenceDate'));
+  const selectedOccurrence = useMemo<WeeklyOccurrenceSelection | null>(
+    () => (
+      selectedOccurrenceSlotId && selectedOccurrenceDate
+        ? {
+          slotId: selectedOccurrenceSlotId,
+          occurrenceDate: selectedOccurrenceDate,
+        }
+        : null
+    ),
+    [selectedOccurrenceDate, selectedOccurrenceSlotId],
+  );
+  const initialWeeklyScheduleDate = useMemo(() => {
+    const selectedDate = parseDateValue(selectedOccurrence?.occurrenceDate ?? null);
+    return selectedDate ?? parseDateValue(activeEvent?.start ?? null) ?? new Date();
+  }, [activeEvent?.start, selectedOccurrence?.occurrenceDate]);
+  const [weeklyScheduleCalendarView, setWeeklyScheduleCalendarView] = useState<View>('month');
+  const [weeklyScheduleCalendarDate, setWeeklyScheduleCalendarDate] = useState<Date>(initialWeeklyScheduleDate);
+  useEffect(() => {
+    setWeeklyScheduleCalendarDate(initialWeeklyScheduleDate);
+  }, [activeEvent?.$id, initialWeeklyScheduleDate]);
+  const weeklyScheduleCalendarRange = useMemo(
+    () => getWeeklyScheduleCalendarRange(weeklyScheduleCalendarDate, weeklyScheduleCalendarView),
+    [weeklyScheduleCalendarDate, weeklyScheduleCalendarView],
+  );
+  const weeklyScheduleOccurrenceOptions = useMemo(
+    () => buildWeeklyOccurrenceOptionsInRange(
+      activeEvent ?? null,
+      weeklyScheduleCalendarRange.start,
+      weeklyScheduleCalendarRange.end,
+    ),
+    [activeEvent, weeklyScheduleCalendarRange.end, weeklyScheduleCalendarRange.start],
+  );
+  const selectedWeeklyOccurrenceOption = useMemo(
+    () => resolveSelectedWeeklyOccurrenceOption(activeEvent ?? null, selectedOccurrence),
+    [activeEvent, selectedOccurrence],
+  );
+  const weeklyParticipantSelectionRequired = isWeeklyParentEvent && !selectedOccurrence;
   const hasPendingUnsavedChanges = hasUnsavedChanges || formHasUnsavedChanges;
   const isTemplateEvent = (activeEvent?.state ?? '').toUpperCase() === 'TEMPLATE';
   const isHiddenEvent = HIDDEN_EVENT_STATES.has(String(activeEvent?.state ?? 'PUBLISHED').toUpperCase());
@@ -1499,6 +1760,57 @@ function EventScheduleContent() {
 
     return labels;
   }, [activeEvent?.divisionDetails, activeEvent?.divisions, activeEvent?.playoffDivisionDetails]);
+
+  const weeklyOccurrenceMatches = useMemo<Match[]>(() => {
+    if (!isWeeklyParentEvent) {
+      return [];
+    }
+
+    const fieldLookup = new Map<string, Field>();
+    if (Array.isArray(activeEvent?.fields)) {
+      activeEvent.fields.forEach((field) => {
+        if (field?.$id) {
+          fieldLookup.set(field.$id, field);
+        }
+      });
+    }
+
+    return weeklyScheduleOccurrenceOptions.map((occurrence, index) => {
+      const primaryFieldId = occurrence.fieldIds[0] ?? null;
+      const primaryField = primaryFieldId ? fieldLookup.get(primaryFieldId) : undefined;
+      const divisionLabel = occurrence.divisionIds
+        .map((divisionId) => {
+          const divisionKey = toDivisionKey(divisionId);
+          return (divisionKey ? divisionLabelsByKey.get(divisionKey) : null) ?? divisionId;
+        })
+        .filter((label, labelIndex, labels) => label.trim().length > 0 && labels.indexOf(label) === labelIndex)
+        .join(' • ');
+      const isSelected = selectedOccurrence?.slotId === occurrence.slotId
+        && selectedOccurrence?.occurrenceDate === occurrence.occurrenceDate;
+
+      return {
+        $id: `weekly-occurrence:${occurrence.slotId}:${occurrence.occurrenceDate}`,
+        matchId: index + 1,
+        eventId: activeEvent?.$id,
+        fieldId: primaryFieldId,
+        field: primaryField,
+        start: occurrence.start,
+        end: occurrence.end,
+        locked: isSelected,
+        team1Points: [],
+        team2Points: [],
+        setResults: [],
+        division: occurrence.divisionIds[0] ?? null,
+        weeklyOccurrenceMeta: {
+          slotId: occurrence.slotId,
+          occurrenceDate: occurrence.occurrenceDate,
+          label: occurrence.label,
+          divisionLabel: divisionLabel || null,
+          isSelected,
+        },
+      } as Match;
+    });
+  }, [activeEvent?.$id, activeEvent?.fields, divisionLabelsByKey, isWeeklyParentEvent, selectedOccurrence, weeklyScheduleOccurrenceOptions]);
 
   const scheduleDivisionOptions = useMemo<DivisionOption[]>(() => {
     const labels = new Map<string, string>(divisionLabelsByKey);
@@ -3025,46 +3337,41 @@ function EventScheduleContent() {
   ]);
 
   const refreshParticipantTeamsFromServer = useCallback(
-    async (targetEventId: string) => {
-      const refreshedEvent = await eventService.getEventById(targetEventId);
+    async (targetEventId: string, occurrence?: { slotId?: string | null; occurrenceDate?: string | null }) => {
+      const snapshot = await eventService.getEventParticipants(targetEventId, occurrence);
+      const refreshedEvent = snapshot.event ?? await eventService.getEventById(targetEventId);
       if (!refreshedEvent) {
         throw new Error('Failed to refresh event participants.');
       }
 
-      const refreshedTeamIds = Array.from(
-        new Set(
-          (Array.isArray(refreshedEvent.teamIds) ? refreshedEvent.teamIds : [])
-            .map((teamId) => normalizeIdToken(teamId))
-            .filter((teamId): teamId is string => Boolean(teamId)),
-        ),
-      );
-      const refreshedTeams = refreshedTeamIds.length > 0
-        ? await teamService.getTeamsByIds(
-          refreshedTeamIds,
-          true,
-          { eventId: targetEventId },
-        )
-        : [];
-      const refreshedTeamsById = new Map(refreshedTeams.map((team) => [team.$id, team]));
+      const refreshedTeamIds = Array.from(new Set(
+        (snapshot.participants.teams ?? [])
+          .map((entry) => normalizeIdToken(entry.registrantId))
+          .filter((teamId): teamId is string => Boolean(teamId)),
+      ));
+      const participantUserIds = Array.from(new Set(
+        [...(snapshot.participants.users ?? []), ...(snapshot.participants.children ?? [])]
+          .map((entry) => normalizeIdToken(entry.registrantId))
+          .filter((userId): userId is string => Boolean(userId)),
+      ));
+      const waitListIds = Array.from(new Set(
+        (snapshot.participants.waitlist ?? [])
+          .map((entry) => normalizeIdToken(entry.registrantId))
+          .filter((userId): userId is string => Boolean(userId)),
+      ));
+      const freeAgentIds = Array.from(new Set(
+        (snapshot.participants.freeAgents ?? [])
+          .map((entry) => normalizeIdToken(entry.registrantId))
+          .filter((userId): userId is string => Boolean(userId)),
+      ));
+
+      const teamsById = new Map((snapshot.teams ?? []).map((team) => [team.$id, team]));
       const orderedTeams = refreshedTeamIds
-        .map((teamId) => refreshedTeamsById.get(teamId))
+        .map((teamId) => teamsById.get(teamId))
         .filter((team): team is Team => Boolean(team));
-      const refreshedUserIds = Array.from(
-        new Set(
-          (Array.isArray(refreshedEvent.userIds) ? refreshedEvent.userIds : [])
-            .map((userId) => normalizeIdToken(userId))
-            .filter((userId): userId is string => Boolean(userId)),
-        ),
-      );
-      const refreshedUsers = refreshedUserIds.length > 0
-        ? await userService.getUsersByIds(
-          refreshedUserIds,
-          { eventId: targetEventId },
-        )
-        : [];
-      const refreshedUsersById = new Map(refreshedUsers.map((participant) => [participant.$id, participant]));
-      const orderedUsers = refreshedUserIds
-        .map((userId) => refreshedUsersById.get(userId))
+      const usersById = new Map((snapshot.users ?? []).map((participant) => [participant.$id, participant]));
+      const orderedUsers = participantUserIds
+        .map((userId) => usersById.get(userId))
         .filter((participant): participant is UserData => Boolean(participant));
 
       setParticipantTeams(orderedTeams);
@@ -3074,11 +3381,12 @@ function EventScheduleContent() {
             ...prev,
             teamIds: refreshedTeamIds,
             teams: orderedTeams,
-            userIds: refreshedUserIds,
+            userIds: participantUserIds,
             players: orderedUsers,
-            divisions: refreshedEvent.divisions ?? prev.divisions,
-            divisionDetails: refreshedEvent.divisionDetails ?? prev.divisionDetails,
-            playoffDivisionDetails: refreshedEvent.playoffDivisionDetails ?? prev.playoffDivisionDetails,
+            waitListIds,
+            freeAgentIds,
+            participantCount: snapshot.participantCount,
+            participantCapacity: snapshot.participantCapacity,
           }
         : prev));
       setChangesEvent((prev) => (prev
@@ -3086,16 +3394,95 @@ function EventScheduleContent() {
             ...prev,
             teamIds: refreshedTeamIds,
             teams: orderedTeams,
-            userIds: refreshedUserIds,
+            userIds: participantUserIds,
             players: orderedUsers,
-            divisions: refreshedEvent.divisions ?? prev.divisions,
-            divisionDetails: refreshedEvent.divisionDetails ?? prev.divisionDetails,
-            playoffDivisionDetails: refreshedEvent.playoffDivisionDetails ?? prev.playoffDivisionDetails,
+            waitListIds,
+            freeAgentIds,
+            participantCount: snapshot.participantCount,
+            participantCapacity: snapshot.participantCapacity,
           }
         : prev));
     },
     [],
   );
+
+  useEffect(() => {
+    if (isCreateMode) {
+      setParticipantTeams([]);
+      setParticipantUsers([]);
+      setParticipantsError(null);
+      setParticipantsLoading(false);
+      setEvent((prev) => (prev
+        ? {
+            ...prev,
+            teamIds: [],
+            teams: [],
+            userIds: [],
+            players: [],
+            waitListIds: [],
+            freeAgentIds: [],
+            participantCount: 0,
+          }
+        : prev));
+      setChangesEvent((prev) => (prev
+        ? {
+            ...prev,
+            teamIds: [],
+            teams: [],
+            userIds: [],
+            players: [],
+            waitListIds: [],
+            freeAgentIds: [],
+            participantCount: 0,
+          }
+        : prev));
+      return;
+    }
+
+    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+    if (!targetEventId) {
+      return;
+    }
+
+    if (weeklyParticipantSelectionRequired) {
+      setParticipantTeams([]);
+      setParticipantUsers([]);
+      setParticipantsError(null);
+      setParticipantsLoading(false);
+      setEvent((prev) => (prev
+        ? {
+            ...prev,
+            teamIds: [],
+            teams: [],
+            userIds: [],
+            players: [],
+            waitListIds: [],
+            freeAgentIds: [],
+          }
+        : prev));
+      setChangesEvent((prev) => (prev
+        ? {
+            ...prev,
+            teamIds: [],
+            teams: [],
+            userIds: [],
+            players: [],
+            waitListIds: [],
+            freeAgentIds: [],
+          }
+        : prev));
+      return;
+    }
+
+    void refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
+  }, [
+    activeEvent?.$id,
+    eventId,
+    isCreateMode,
+    refreshParticipantTeamsFromServer,
+    selectedOccurrence,
+    weeklyParticipantSelectionRequired,
+  ]);
 
   const mutateTeamParticipantMembership = useCallback(
     async (params: {
@@ -3115,8 +3502,8 @@ function EventScheduleContent() {
       setActionError(null);
       try {
         if (params.mode === 'remove') {
-          await eventService.removeTeamParticipant(targetEventId, params.team.$id);
-          await refreshParticipantTeamsFromServer(targetEventId);
+          await eventService.removeTeamParticipant(targetEventId, params.team.$id, selectedOccurrence ?? undefined);
+          await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
           setInfoMessage(`${params.team.name || 'Team'} removed from participants. A refund has been queued.`);
           return;
         }
@@ -3124,8 +3511,10 @@ function EventScheduleContent() {
         await eventService.addTeamParticipant(targetEventId, {
           teamId: params.team.$id,
           divisionId: params.divisionId ?? undefined,
+          slotId: selectedOccurrence?.slotId,
+          occurrenceDate: selectedOccurrence?.occurrenceDate,
         });
-        await refreshParticipantTeamsFromServer(targetEventId);
+        await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
         if (params.mode === 'move') {
           setInfoMessage(`${params.team.name || 'Team'} moved to a new division.`);
         } else {
@@ -3136,7 +3525,7 @@ function EventScheduleContent() {
         setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
       }
     },
-    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer],
+    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer, selectedOccurrence],
   );
 
   const mutateUserParticipantMembership = useCallback(
@@ -3159,9 +3548,11 @@ function EventScheduleContent() {
           method: params.mode === 'add' ? 'POST' : 'DELETE',
           body: {
             userId: params.user.$id,
+            ...(selectedOccurrence?.slotId ? { slotId: selectedOccurrence.slotId } : {}),
+            ...(selectedOccurrence?.occurrenceDate ? { occurrenceDate: selectedOccurrence.occurrenceDate } : {}),
           },
         });
-        await refreshParticipantTeamsFromServer(targetEventId);
+        await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
         if (Array.isArray(response?.warnings) && response.warnings.length > 0) {
           setWarningMessage(response.warnings[0] ?? null);
         }
@@ -3177,7 +3568,7 @@ function EventScheduleContent() {
         setParticipantsError(updateError instanceof Error ? updateError.message : 'Failed to update participants.');
       }
     },
-    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer],
+    [activeEvent?.$id, eventId, refreshParticipantTeamsFromServer, selectedOccurrence],
   );
 
   const closeAddParticipantModal = useCallback(() => {
@@ -3309,7 +3700,11 @@ function EventScheduleContent() {
           try {
             const response = await apiRequest<{ requiresParentApproval?: boolean; warnings?: string[] }>(`/api/events/${targetEventId}/participants`, {
               method: 'POST',
-              body: { userId },
+              body: {
+                userId,
+                ...(selectedOccurrence?.slotId ? { slotId: selectedOccurrence.slotId } : {}),
+                ...(selectedOccurrence?.occurrenceDate ? { occurrenceDate: selectedOccurrence.occurrenceDate } : {}),
+              },
             });
 
             if (Array.isArray(response?.warnings) && response.warnings.length > 0) {
@@ -3327,7 +3722,7 @@ function EventScheduleContent() {
           }
         }
 
-        await refreshParticipantTeamsFromServer(targetEventId);
+        await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
 
         if (warningMessages.length > 0) {
           const [firstWarning, ...restWarnings] = warningMessages;
@@ -3355,7 +3750,7 @@ function EventScheduleContent() {
         setParticipantsUpdatingTeamId(null);
       }
     },
-    [activeEvent?.$id, eventId, participantUserIdSet, participantsUpdatingTeamId, refreshParticipantTeamsFromServer],
+    [activeEvent?.$id, eventId, participantUserIdSet, participantsUpdatingTeamId, refreshParticipantTeamsFromServer, selectedOccurrence],
   );
 
   const handleAddTeamToParticipants = useCallback(
@@ -5109,14 +5504,15 @@ function EventScheduleContent() {
     () => [{ value: 'all', label: 'All divisions' }, ...scheduleDivisionOptions],
     [scheduleDivisionOptions],
   );
-  const shouldShowScheduleDivisionFilter = scheduleDivisionOptions.length > 1;
+  const shouldShowScheduleDivisionFilter = !isWeeklyParentEvent && scheduleDivisionOptions.length > 1;
   const shouldShowBracketDivisionFilter = bracketDivisionOptions.length > 1;
 
-  const showScheduleTab = isLeague || isTournament;
+  const showScheduleTab = isLeague || isTournament || isWeeklyParentEvent;
   const showStandingsTab = isLeague;
   const showParticipantsTab = !isTemplateEvent
     && Boolean(
-      activeEvent?.teamSignup
+      isWeeklyParentEvent
+      || activeEvent?.teamSignup === true
       || isLeague
       || isTournament
       || (!isCreateMode && activeEvent?.eventType === 'EVENT' && activeEvent?.teamSignup === false)
@@ -5338,6 +5734,20 @@ function EventScheduleContent() {
     router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
   };
 
+  const updateWeeklyOccurrenceSelection = useCallback((occurrence: { slotId: string; occurrenceDate: string } | null) => {
+    if (!pathname) return;
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    if (occurrence) {
+      params.set('slotId', occurrence.slotId);
+      params.set('occurrenceDate', occurrence.occurrenceDate);
+    } else {
+      params.delete('slotId');
+      params.delete('occurrenceDate');
+    }
+    const query = params.toString();
+    router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   const handleDetailsClose = useCallback(() => {
     setActiveTab(defaultTab);
   }, [defaultTab]);
@@ -5363,7 +5773,19 @@ function EventScheduleContent() {
 
       const isValid = await formApi.validate();
       if (!isValid) {
-        setSubmitError('Please fix the highlighted fields before submitting.');
+        const validationMessages = Array.from(
+          new Set(
+            (formApi.getValidationErrors?.() ?? [])
+              .map((issue) => issue.message.trim())
+              .filter((message): message is string => message.length > 0),
+          ),
+        );
+        const validationSummary = validationMessages.slice(0, 3).join(' ');
+        setSubmitError(
+          validationSummary.length > 0
+            ? `Please fix the highlighted fields before submitting. ${validationSummary}`
+            : 'Please fix the highlighted fields before submitting.',
+        );
         return null;
       }
       try {
@@ -7614,6 +8036,25 @@ function EventScheduleContent() {
           <Group justify="space-between" align="flex-start">
             <Group gap="xs" align="center">
               <Title order={2} mb="xs">{activeEvent.name}</Title>
+              {selectedWeeklyOccurrenceOption && (
+                <Badge
+                  variant="light"
+                  color="red"
+                  rightSection={(
+                    <ActionIcon
+                      variant="transparent"
+                      color="red"
+                      size="xs"
+                      aria-label="Clear selected occurrence"
+                      onClick={() => updateWeeklyOccurrenceSelection(null)}
+                    >
+                      ×
+                    </ActionIcon>
+                  )}
+                >
+                  {selectedWeeklyOccurrenceOption.label}
+                </Badge>
+              )}
               {canManageEvent && !isCreateMode && (
                 <ActionIcon
                   variant="subtle"
@@ -7818,6 +8259,8 @@ function EventScheduleContent() {
                   event={activeEvent}
                   isOpen={activeTab === 'details'}
                   renderInline
+                  selectedOccurrence={selectedOccurrence}
+                  onWeeklyOccurrenceChange={updateWeeklyOccurrenceSelection}
                   onClose={handleDetailsClose}
                 />
               )}
@@ -7828,7 +8271,9 @@ function EventScheduleContent() {
                 <Stack gap="md">
                   <Group justify="space-between" align="center">
                     <Text size="sm" c="dimmed">
-                      {activeEvent?.teamSignup === false
+                      {weeklyParticipantSelectionRequired
+                        ? 'Select an occurrence from the Schedule tab to manage weekly participants.'
+                        : activeEvent?.teamSignup === false
                         ? (
                           participantUsers.length === 1
                             ? '1 participant is currently registered.'
@@ -7840,7 +8285,7 @@ function EventScheduleContent() {
                             : `${filledParticipantTeams.length} teams are currently participating.`
                         )}
                     </Text>
-                    {canManageEvent && (
+                    {canManageEvent && !weeklyParticipantSelectionRequired && (
                       activeEvent?.teamSignup === false ? (
                         <Button
                           variant="light"
@@ -7886,7 +8331,11 @@ function EventScheduleContent() {
                     </Alert>
                   )}
 
-                  {participantsLoading ? (
+                  {weeklyParticipantSelectionRequired ? (
+                    <Paper withBorder radius="md" p="xl" ta="center">
+                      <Text>Select an occurrence in the Schedule tab before viewing or managing participants.</Text>
+                    </Paper>
+                  ) : participantsLoading ? (
                     <Paper withBorder radius="md" p="xl">
                       <Group justify="center" gap="sm">
                         <Loader size="sm" />
@@ -8112,6 +8561,59 @@ function EventScheduleContent() {
 
             {showScheduleTab && (
               <Tabs.Panel value="schedule" pt="md">
+                {isWeeklyParentEvent ? (
+                  <Stack gap="sm">
+                    <Group justify="space-between" align="center" wrap="wrap">
+                      <Text size="sm" c="dimmed">
+                        Select a weekly occurrence to scope participants, billing, and compliance.
+                      </Text>
+                      {selectedWeeklyOccurrenceOption && (
+                        <Button variant="subtle" color="red" onClick={() => updateWeeklyOccurrenceSelection(null)}>
+                          Clear Selection
+                        </Button>
+                      )}
+                    </Group>
+                    {weeklyScheduleOccurrenceOptions.length === 0 && (
+                      <Paper withBorder radius="md" p="xl" ta="center">
+                        <Text>No weekly occurrences are available for this calendar range.</Text>
+                      </Paper>
+                    )}
+                    <LeagueCalendarView
+                      matches={weeklyOccurrenceMatches}
+                      teams={[]}
+                      fields={Array.isArray(activeEvent?.fields) ? activeEvent.fields : []}
+                      officials={[]}
+                      eventStart={activeEvent?.start}
+                      eventEnd={activeEvent?.end ?? undefined}
+                      date={weeklyScheduleCalendarDate}
+                      view={weeklyScheduleCalendarView}
+                      onDateChange={setWeeklyScheduleCalendarDate}
+                      onViewChange={setWeeklyScheduleCalendarView}
+                      onMatchClick={(match) => {
+                        const occurrence = (match as Match & {
+                          weeklyOccurrenceMeta?: {
+                            slotId?: string;
+                            occurrenceDate?: string;
+                          };
+                        }).weeklyOccurrenceMeta;
+                        const slotId = normalizeIdToken(occurrence?.slotId);
+                        const occurrenceDate = normalizeIdToken(occurrence?.occurrenceDate);
+                        if (!slotId || !occurrenceDate) {
+                          return;
+                        }
+                        updateWeeklyOccurrenceSelection({
+                          slotId,
+                          occurrenceDate,
+                        });
+                      }}
+                      canManage={false}
+                      showEventOfficialNames={false}
+                      currentUser={user}
+                      childUserIds={childUserIds}
+                      conflictMatchIdsById={{}}
+                    />
+                  </Stack>
+                ) : (
                 <Stack gap="sm">
                   <Group justify="space-between" align="flex-end" wrap="wrap">
                     {shouldShowScheduleDivisionFilter ? (
@@ -8167,6 +8669,7 @@ function EventScheduleContent() {
                     />
                   )}
                 </Stack>
+                )}
               </Tabs.Panel>
             )}
 

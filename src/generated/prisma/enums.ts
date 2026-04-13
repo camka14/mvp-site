@@ -139,6 +139,15 @@ export const EventRegistrationsRegistrantTypeEnum = {
 export type EventRegistrationsRegistrantTypeEnum = (typeof EventRegistrationsRegistrantTypeEnum)[keyof typeof EventRegistrationsRegistrantTypeEnum]
 
 
+export const EventRegistrationsRosterRoleEnum = {
+  PARTICIPANT: 'PARTICIPANT',
+  WAITLIST: 'WAITLIST',
+  FREE_AGENT: 'FREE_AGENT'
+} as const
+
+export type EventRegistrationsRosterRoleEnum = (typeof EventRegistrationsRosterRoleEnum)[keyof typeof EventRegistrationsRosterRoleEnum]
+
+
 export const EventRegistrationsStatusEnum = {
   STARTED: 'STARTED',
   PENDINGCONSENT: 'PENDINGCONSENT',

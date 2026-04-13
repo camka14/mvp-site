@@ -26,6 +26,13 @@ import {
   reserveRentalCheckoutLocks,
   type RentalCheckoutWindow,
 } from '@/server/repositories/rentalCheckoutLocks';
+import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
+import {
+  isWeeklyParentEvent,
+  isWeeklyOccurrenceJoinClosed,
+  resolveWeeklyOccurrence,
+  WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
+} from '@/server/events/weeklyOccurrences';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,6 +42,8 @@ const schema = z.object({
   team: z.record(z.string(), z.any()).optional(),
   timeSlot: z.record(z.string(), z.any()).optional(),
   organization: z.record(z.string(), z.any()).optional(),
+  slotId: z.string().optional(),
+  occurrenceDate: z.string().optional(),
   productId: z.string().optional(),
   billId: z.string().optional(),
   billPaymentId: z.string().optional(),
@@ -122,6 +131,8 @@ const reserveEventRegistrationSlot = async ({
   userId,
   actorUserId,
   divisionSelectionInput,
+  slotId,
+  occurrenceDate,
   now,
 }: {
   eventId: string | null;
@@ -129,6 +140,8 @@ const reserveEventRegistrationSlot = async ({
   userId: string | null;
   actorUserId: string;
   divisionSelectionInput: RegistrationDivisionSelectionInput;
+  slotId?: string | null;
+  occurrenceDate?: string | null;
   now: Date;
 }): Promise<{ ok: true; registrationId: string } | { ok: false; status: number; error: string }> => {
   if (!eventId) {
@@ -138,7 +151,6 @@ const reserveEventRegistrationSlot = async ({
     return { ok: false, status: 400, error: 'User or team id is required for event checkout.' };
   }
 
-  const registrationId = teamId ? `${eventId}__team__${teamId}` : `${eventId}__self__${userId}`;
   const cutoff = new Date(now.getTime() - STARTED_REGISTRATION_TTL_MS);
 
   return prisma.$transaction(async (tx) => {
@@ -152,6 +164,9 @@ const reserveEventRegistrationSlot = async ({
       divisions: unknown;
       maxParticipants: number | null;
       teamSignup: boolean | null;
+      eventType: string | null;
+      parentEvent: string | null;
+      timeSlotIds: string[] | null;
     }>>`
       SELECT
         "id",
@@ -162,7 +177,10 @@ const reserveEventRegistrationSlot = async ({
         "registrationByDivisionType",
         "divisions",
         "maxParticipants",
-        "teamSignup"
+        "teamSignup",
+        "eventType",
+        "parentEvent",
+        "timeSlotIds"
       FROM "Events"
       WHERE "id" = ${eventId}
       FOR UPDATE
@@ -179,6 +197,37 @@ const reserveEventRegistrationSlot = async ({
     if (!expectsTeamRegistration && teamId) {
       return { ok: false, status: 409, error: 'This event requires individual registration.' };
     }
+
+    const hasOccurrenceInput = Boolean(slotId || occurrenceDate);
+    const resolvedOccurrence = isWeeklyParentEvent(event)
+      ? await resolveWeeklyOccurrence({
+        event,
+        occurrence: {
+          slotId: slotId ?? undefined,
+          occurrenceDate: occurrenceDate ?? undefined,
+        },
+      }, tx)
+      : null;
+    if (resolvedOccurrence && !resolvedOccurrence.ok) {
+      return { ok: false, status: 400, error: resolvedOccurrence.error };
+    }
+    if (isWeeklyParentEvent(event) && (!slotId || !occurrenceDate)) {
+      return { ok: false, status: 400, error: 'Weekly event checkout requires slotId and occurrenceDate.' };
+    }
+    if (!isWeeklyParentEvent(event) && hasOccurrenceInput) {
+      return { ok: false, status: 400, error: 'Occurrence selection is only valid for weekly events.' };
+    }
+    const occurrence = resolvedOccurrence?.ok ? resolvedOccurrence.value : null;
+    if (occurrence && isWeeklyOccurrenceJoinClosed(occurrence, now)) {
+      return { ok: false, status: 409, error: WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR };
+    }
+    const registrationId = buildEventRegistrationId({
+      eventId,
+      registrantType: teamId ? 'TEAM' : 'SELF',
+      registrantId: teamId ?? (userId as string),
+      slotId: occurrence?.slotId ?? null,
+      occurrenceDate: occurrence?.occurrenceDate ?? null,
+    });
 
     if (teamId) {
       const team = await tx.teams.findUnique({
@@ -218,7 +267,7 @@ const reserveEventRegistrationSlot = async ({
         divisionTypeKey: true,
       },
     });
-    if (existing?.status === 'ACTIVE') {
+    if (existing && (existing.status === 'ACTIVE' || existing.status === 'STARTED')) {
       return { ok: false, status: 409, error: 'Participant is already registered for this event.' };
     }
 
@@ -281,7 +330,10 @@ const reserveEventRegistrationSlot = async ({
           eventId,
           registrantId: teamId ?? (userId as string),
           registrantType: teamId ? 'TEAM' : 'SELF',
+          rosterRole: 'PARTICIPANT' as any,
           status: 'STARTED' as any,
+          slotId: occurrence?.slotId ?? null,
+          occurrenceDate: occurrence?.occurrenceDate ?? null,
           ageAtEvent: null,
           divisionId: divisionSelection.divisionId,
           divisionTypeId: divisionSelection.divisionTypeId,
@@ -302,7 +354,10 @@ const reserveEventRegistrationSlot = async ({
       await tx.eventRegistrations.update({
         where: { id: registrationId },
         data: {
+          rosterRole: 'PARTICIPANT' as any,
           status: 'STARTED' as any,
+          slotId: occurrence?.slotId ?? null,
+          occurrenceDate: occurrence?.occurrenceDate ?? null,
           divisionId: divisionSelection.divisionId,
           divisionTypeId: divisionSelection.divisionTypeId,
           divisionTypeKey: divisionSelection.divisionTypeKey,
@@ -327,8 +382,18 @@ const reserveEventRegistrationSlot = async ({
       const divisionRegistrations = await tx.eventRegistrations.findMany({
         where: {
           eventId,
-          status: { in: ['STARTED', 'ACTIVE', 'PENDINGCONSENT'] as any[] },
+          status: { in: ['STARTED', 'ACTIVE'] as any[] },
+          rosterRole: 'PARTICIPANT' as any,
           ...registrantScope,
+          ...(occurrence
+            ? {
+              slotId: occurrence.slotId,
+              occurrenceDate: occurrence.occurrenceDate,
+            }
+            : {
+              slotId: null,
+              occurrenceDate: null,
+            }),
           divisionId: divisionIdForCapacity,
         },
         select: { id: true, createdAt: true },
@@ -348,8 +413,18 @@ const reserveEventRegistrationSlot = async ({
       const cappedRegistrations = await tx.eventRegistrations.findMany({
         where: {
           eventId,
-          status: { in: ['STARTED', 'ACTIVE', 'PENDINGCONSENT'] as any[] },
+          status: { in: ['STARTED', 'ACTIVE'] as any[] },
+          rosterRole: 'PARTICIPANT' as any,
           ...registrantScope,
+          ...(occurrence
+            ? {
+              slotId: occurrence.slotId,
+              occurrenceDate: occurrence.occurrenceDate,
+            }
+            : {
+              slotId: null,
+              occurrenceDate: null,
+            }),
         },
         select: { id: true, createdAt: true },
       });
@@ -447,6 +522,8 @@ export async function POST(req: NextRequest) {
   const userId = extractEntityId(payload.user);
   const eventId = extractEntityId(payload.event);
   const teamId = extractEntityId(payload.team);
+  const slotId = normalizeString(payload.slotId);
+  const occurrenceDate = normalizeString(payload.occurrenceDate);
   const divisionSelectionInput = normalizeDivisionInput(payloadRow);
   const hostTemplateSource = (payload.timeSlot as Record<string, unknown> | undefined)?.hostRequiredTemplateIds;
   const hostRequiredTemplateIds = Array.from(
@@ -674,6 +751,8 @@ export async function POST(req: NextRequest) {
       userId,
       actorUserId,
       divisionSelectionInput,
+      slotId,
+      occurrenceDate,
       now: new Date(),
     });
     if (!reservationResult.ok) {
@@ -736,6 +815,8 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'event_start', payload.event?.start);
     appendMetadata(metadata, 'host_id', payload.event?.hostId);
     appendMetadata(metadata, 'time_slot_id', extractEntityId(payload.timeSlot));
+    appendMetadata(metadata, 'occurrence_slot_id', slotId);
+    appendMetadata(metadata, 'occurrence_date', occurrenceDate);
     appendMetadata(metadata, 'time_slot_start', payload.timeSlot?.startDate);
     appendMetadata(metadata, 'time_slot_end', payload.timeSlot?.endDate);
     appendMetadata(metadata, 'rental_template_id', primaryRequiredTemplateId);

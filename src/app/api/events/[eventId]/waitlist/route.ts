@@ -4,12 +4,25 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
+import {
+  deleteEventRegistration,
+  upsertEventRegistration,
+  type RegistrationRegistrantType,
+} from '@/server/events/eventRegistrations';
+import {
+  isWeeklyParentEvent,
+  isWeeklyOccurrenceJoinClosed,
+  resolveWeeklyOccurrence,
+  WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
+} from '@/server/events/weeklyOccurrences';
 
 export const dynamic = 'force-dynamic';
 
 const payloadSchema = z.object({
   userId: z.string().optional(),
   teamId: z.string().optional(),
+  slotId: z.string().optional(),
+  occurrenceDate: z.string().optional(),
 }).passthrough();
 
 const normalizeId = (value: unknown): string | null => {
@@ -19,8 +32,6 @@ const normalizeId = (value: unknown): string | null => {
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
 };
-
-const ensureUnique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
 
 const canManageLinkedChildWaitlist = async (params: {
   parentId: string;
@@ -40,9 +51,7 @@ const canManageLinkedChildWaitlist = async (params: {
 const canManageTeamWaitlist = (params: {
   sessionUserId: string;
   team: { managerId: string | null };
-}): boolean => {
-  return params.team.managerId === params.sessionUserId;
-};
+}): boolean => params.team.managerId === params.sessionUserId;
 
 async function updateWaitlist(
   req: NextRequest,
@@ -59,7 +68,6 @@ async function updateWaitlist(
   const { eventId } = await params;
   const requestedUserId = normalizeId(parsed.data.userId);
   const requestedTeamId = normalizeId(parsed.data.teamId);
-
   if (requestedUserId && requestedTeamId) {
     return NextResponse.json({ error: 'Specify either userId or teamId, not both.' }, { status: 400 });
   }
@@ -70,25 +78,91 @@ async function updateWaitlist(
     return NextResponse.json({ error: 'userId or teamId is required.' }, { status: 400 });
   }
 
-  const targetUser = userId
-    ? await prisma.userData.findUnique({
-      where: { id: userId },
-      select: { id: true, dateOfBirth: true },
-    })
-    : null;
-  if (userId && !targetUser) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  const event = await prisma.events.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      start: true,
+      teamSignup: true,
+      eventType: true,
+      parentEvent: true,
+      timeSlotIds: true,
+      divisions: true,
+    },
+  });
+  if (!event) {
+    return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
+  const hasOccurrenceInput = Boolean(parsed.data.slotId || parsed.data.occurrenceDate);
+  const occurrence = isWeeklyParentEvent(event)
+    ? await resolveWeeklyOccurrence({
+      event,
+      occurrence: parsed.data,
+    })
+    : null;
+  if (occurrence && !occurrence.ok) {
+    return NextResponse.json({ error: occurrence.error }, { status: 400 });
+  }
+  if (!isWeeklyParentEvent(event) && hasOccurrenceInput) {
+    return NextResponse.json({ error: 'Weekly occurrence selection is only valid for weekly events.' }, { status: 400 });
+  }
+  const resolvedOccurrence = occurrence?.ok ? occurrence.value : null;
+  if (mode === 'add' && resolvedOccurrence && isWeeklyOccurrenceJoinClosed(resolvedOccurrence)) {
+    return NextResponse.json({ error: WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR }, { status: 409 });
+  }
+
+  let registrantType: RegistrationRegistrantType = 'SELF';
+  let parentId: string | null = null;
+  let ageAtEvent: number | null = null;
+
   if (userId) {
-    if (!session.isAdmin && userId !== session.userId) {
-      const canManageChild = await canManageLinkedChildWaitlist({
+    const targetUser = await prisma.userData.findUnique({
+      where: { id: userId },
+      select: { id: true, dateOfBirth: true },
+    });
+    if (!targetUser) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    const managingLinkedChild = !session.isAdmin && userId !== session.userId
+      ? await canManageLinkedChildWaitlist({
         parentId: session.userId,
         childId: userId,
+      })
+      : false;
+    if (!session.isAdmin && userId !== session.userId && !managingLinkedChild) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    ageAtEvent = calculateAgeOnDate(targetUser.dateOfBirth, event.start);
+    if (mode === 'add' && userId === session.userId && !session.isAdmin && Number.isFinite(ageAtEvent) && ageAtEvent < 18) {
+      const parentLink = await prisma.parentChildLinks.findFirst({
+        where: {
+          childId: userId,
+          status: 'ACTIVE',
+        },
+        orderBy: { updatedAt: 'desc' },
+        select: { parentId: true },
       });
-      if (!canManageChild) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      if (!parentLink?.parentId) {
+        return NextResponse.json(
+          { error: 'No linked parent/guardian found. Ask a parent to add you first.' },
+          { status: 403 },
+        );
       }
+      return NextResponse.json(
+        {
+          event: withLegacyFields(event),
+          requiresParentApproval: true,
+        },
+        { status: 200 },
+      );
+    }
+
+    if (managingLinkedChild) {
+      registrantType = 'CHILD';
+      parentId = session.userId;
     }
   }
 
@@ -106,77 +180,42 @@ async function updateWaitlist(
     if (!session.isAdmin && !canManageTeamWaitlist({ sessionUserId: session.userId, team })) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-  }
-
-  const event = await prisma.events.findUnique({
-    where: { id: eventId },
-    select: {
-      id: true,
-      start: true,
-      teamSignup: true,
-      waitListIds: true,
-    },
-  });
-  if (!event) {
-    return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-  }
-  if (teamId && !event.teamSignup) {
-    return NextResponse.json(
-      { error: 'Team waitlist is only available for team registration events.' },
-      { status: 403 },
-    );
-  }
-  if (mode === 'add' && userId && targetUser && !session.isAdmin) {
-    const ageAtEvent = calculateAgeOnDate(targetUser.dateOfBirth, event.start);
-    if (!Number.isFinite(ageAtEvent)) {
-      return NextResponse.json({ error: 'Invalid date of birth' }, { status: 400 });
-    }
-    if (ageAtEvent < 18 && userId === session.userId) {
-      const parentLink = await prisma.parentChildLinks.findFirst({
-        where: {
-          childId: userId,
-          status: 'ACTIVE',
-        },
-        orderBy: {
-          updatedAt: 'desc',
-        },
-        select: {
-          parentId: true,
-        },
-      });
-      if (!parentLink?.parentId) {
-        return NextResponse.json(
-          { error: 'No linked parent/guardian found. Ask a parent to add you first.' },
-          { status: 403 },
-        );
-      }
+    if (!event.teamSignup) {
       return NextResponse.json(
-        {
-          event: withLegacyFields(event),
-          requiresParentApproval: true,
-        },
-        { status: 200 },
+        { error: 'Team waitlist is only available for team registration events.' },
+        { status: 403 },
       );
     }
+    registrantType = 'TEAM';
   }
 
-  const waitListIds = Array.isArray(event.waitListIds)
-    ? event.waitListIds.filter((id): id is string => typeof id === 'string' && Boolean(id))
-    : [];
-  const targetId = (userId ?? teamId)!;
-  const nextWaitListIds = mode === 'add'
-    ? ensureUnique([...waitListIds, targetId])
-    : waitListIds.filter((id) => id !== targetId);
+  if (mode === 'add') {
+    const registrantId = (userId ?? teamId)!;
+    await upsertEventRegistration({
+      eventId,
+      registrantType,
+      registrantId,
+      rosterRole: 'WAITLIST',
+      status: 'ACTIVE',
+      createdBy: session.userId,
+      parentId,
+      ageAtEvent,
+      occurrence: resolvedOccurrence,
+    });
+  } else {
+    await deleteEventRegistration({
+      eventId,
+      registrantType,
+      registrantId: (userId ?? teamId)!,
+      occurrence: resolvedOccurrence,
+    });
+  }
 
-  const updated = await prisma.events.update({
-    where: { id: eventId },
-    data: {
-      waitListIds: nextWaitListIds,
-      updatedAt: new Date(),
-    },
-  });
-
-  return NextResponse.json({ event: withLegacyFields(updated) }, { status: 200 });
+  const refreshedEvent = await prisma.events.findUnique({ where: { id: eventId } });
+  return NextResponse.json(
+    { event: refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event) },
+    { status: 200 },
+  );
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {

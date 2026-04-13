@@ -623,6 +623,13 @@ export type EnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel = never>
   not?: Prisma.NestedEnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel> | $Enums.EventRegistrationsRegistrantTypeEnum
 }
 
+export type EnumEventRegistrationsRosterRoleEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.EventRegistrationsRosterRoleEnum | Prisma.EnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.EventRegistrationsRosterRoleEnum[] | Prisma.ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.EventRegistrationsRosterRoleEnum[] | Prisma.ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumEventRegistrationsRosterRoleEnumFilter<$PrismaModel> | $Enums.EventRegistrationsRosterRoleEnum
+}
+
 export type EnumEventRegistrationsStatusEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.EventRegistrationsStatusEnum | Prisma.EnumEventRegistrationsStatusEnumFieldRefInput<$PrismaModel>
   in?: $Enums.EventRegistrationsStatusEnum[] | Prisma.ListEnumEventRegistrationsStatusEnumFieldRefInput<$PrismaModel>
@@ -638,6 +645,16 @@ export type EnumEventRegistrationsRegistrantTypeEnumWithAggregatesFilter<$Prisma
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel>
+}
+
+export type EnumEventRegistrationsRosterRoleEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.EventRegistrationsRosterRoleEnum | Prisma.EnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.EventRegistrationsRosterRoleEnum[] | Prisma.ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.EventRegistrationsRosterRoleEnum[] | Prisma.ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumEventRegistrationsRosterRoleEnumWithAggregatesFilter<$PrismaModel> | $Enums.EventRegistrationsRosterRoleEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumEventRegistrationsRosterRoleEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumEventRegistrationsRosterRoleEnumFilter<$PrismaModel>
 }
 
 export type EnumEventRegistrationsStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
@@ -1207,6 +1224,13 @@ export type NestedEnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel = 
   not?: Prisma.NestedEnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel> | $Enums.EventRegistrationsRegistrantTypeEnum
 }
 
+export type NestedEnumEventRegistrationsRosterRoleEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.EventRegistrationsRosterRoleEnum | Prisma.EnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.EventRegistrationsRosterRoleEnum[] | Prisma.ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.EventRegistrationsRosterRoleEnum[] | Prisma.ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumEventRegistrationsRosterRoleEnumFilter<$PrismaModel> | $Enums.EventRegistrationsRosterRoleEnum
+}
+
 export type NestedEnumEventRegistrationsStatusEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.EventRegistrationsStatusEnum | Prisma.EnumEventRegistrationsStatusEnumFieldRefInput<$PrismaModel>
   in?: $Enums.EventRegistrationsStatusEnum[] | Prisma.ListEnumEventRegistrationsStatusEnumFieldRefInput<$PrismaModel>
@@ -1222,6 +1246,16 @@ export type NestedEnumEventRegistrationsRegistrantTypeEnumWithAggregatesFilter<$
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumEventRegistrationsRosterRoleEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.EventRegistrationsRosterRoleEnum | Prisma.EnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.EventRegistrationsRosterRoleEnum[] | Prisma.ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.EventRegistrationsRosterRoleEnum[] | Prisma.ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumEventRegistrationsRosterRoleEnumWithAggregatesFilter<$PrismaModel> | $Enums.EventRegistrationsRosterRoleEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumEventRegistrationsRosterRoleEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumEventRegistrationsRosterRoleEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumEventRegistrationsStatusEnumWithAggregatesFilter<$PrismaModel = never> = {

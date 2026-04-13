@@ -82,6 +82,7 @@ interface EventFormProps {
 export type EventFormHandle = {
     getDraft: () => Partial<Event>;
     validate: () => Promise<boolean>;
+    getValidationErrors: () => Array<{ path: string; message: string }>;
     validatePendingStaffAssignments: () => Promise<void>;
     commitDirtyBaseline: () => void;
     submitPendingStaffInvites: (eventId: string) => Promise<void>;
@@ -1257,6 +1258,30 @@ const flattenFormErrors = (value: unknown, path: string[] = []): FlattenedFormEr
 
     return flattened;
 };
+
+const dedupeValidationErrors = (issues: FlattenedFormError[]): FlattenedFormError[] => {
+    const seen = new Set<string>();
+    return issues.filter((issue) => {
+        const path = issue.path.trim();
+        const message = issue.message.trim();
+        if (!message) {
+            return false;
+        }
+        const key = `${path}::${message}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+};
+
+const flattenZodIssues = (issues: z.ZodIssue[]): FlattenedFormError[] => issues
+    .map((issue) => ({
+        path: issue.path.length ? issue.path.join('.') : 'form',
+        message: issue.message,
+    }))
+    .filter((issue) => issue.message.trim().length > 0);
 
 const parseEventRange = (event: Event): { start: Date; end: Date } | null => {
     const start = parseLocalDateTime(event.start ?? null);
@@ -3241,6 +3266,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const dirtyBaselineValuesRef = useRef<EventFormValues | null>(null);
     const pendingInitialDirtyRebaseRef = useRef(false);
     const pendingInitialDirtyRebaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastValidationErrorsRef = useRef<FlattenedFormError[]>([]);
     const buildDraftForDirtyTrackingRef = useRef<(values: EventFormValues) => Partial<Event>>(
         () => ({}),
     );
@@ -3905,6 +3931,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const selectedFieldIds = useMemo(
         () => (Array.isArray(formValues.selectedFieldIds) ? formValues.selectedFieldIds : []),
         [formValues.selectedFieldIds],
+    );
+    const resolvedOrganizationFieldSignature = useMemo(
+        () => (
+            Array.isArray(resolvedOrganization?.fields)
+                ? resolvedOrganization.fields
+                    .map((field) => {
+                        const fieldId = normalizeEntityId((field as Field | undefined)?.$id) ?? '';
+                        const fieldNumber = Number((field as Field | undefined)?.fieldNumber ?? '');
+                        const fieldName = String((field as Field | undefined)?.name ?? '').trim();
+                        return `${fieldId}:${Number.isFinite(fieldNumber) ? fieldNumber : ''}:${fieldName}`;
+                    })
+                    .sort()
+                    .join('|')
+                : ''
+        ),
+        [resolvedOrganization?.fields],
     );
     const divisionFieldIds = useMemo(
         () => (
@@ -7315,7 +7357,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             cancelled = true;
         };
     }, [
-        resolvedOrganization?.fields,
+        resolvedOrganizationFieldSignature,
         hasImmutableFields,
         isEditMode,
         organizationHostedEventId,
@@ -8407,7 +8449,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const validateDraft = useCallback(async () => {
         const isFormValid = await trigger();
         if (!isFormValid) {
-            const flattenedErrors = flattenFormErrors(errors);
+            const currentValues = getValues();
+            const schemaResult = eventFormSchema.safeParse(currentValues);
+            const flattenedErrors = dedupeValidationErrors([
+                ...(schemaResult.success ? [] : flattenZodIssues(schemaResult.error.issues)),
+                ...flattenFormErrors(errors),
+            ]);
+            lastValidationErrorsRef.current = flattenedErrors;
             console.warn('Event form validation failed.', {
                 errorCount: flattenedErrors.length,
                 errors: flattenedErrors,
@@ -8416,6 +8464,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         if (officialStaffingCoverageError) {
+            lastValidationErrorsRef.current = [
+                {
+                    path: 'officialSchedulingMode',
+                    message: officialStaffingCoverageError,
+                },
+            ];
             console.warn('Event form submission blocked by official staffing requirements.', {
                 requiredOfficialSlotsPerMatch,
                 assignedActiveOfficialsForStaffing,
@@ -8425,10 +8479,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
+            lastValidationErrorsRef.current = [];
             return true;
         }
 
         if (hasPendingExternalConflictChecks || hasBlockingExternalSlotConflicts) {
+            lastValidationErrorsRef.current = [
+                {
+                    path: 'leagueSlots',
+                    message: hasPendingExternalConflictChecks
+                        ? 'Checking field conflicts for timeslots. Please wait.'
+                        : 'Resolve field scheduling conflicts in the timeslots before submitting.',
+                },
+            ];
             console.warn('Event form submission blocked by timeslot conflicts.', {
                 hasPendingExternalConflictChecks,
                 hasBlockingExternalSlotConflicts,
@@ -8436,6 +8499,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return false;
         }
 
+        lastValidationErrorsRef.current = [];
         return true;
     }, [
         assignedActiveOfficialsForStaffing,
@@ -8443,6 +8507,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.officialSchedulingMode,
         eventData.parentEvent,
         errors,
+        getValues,
         hasBlockingExternalSlotConflicts,
         hasPendingExternalConflictChecks,
         officialStaffingCoverageError,
@@ -8462,6 +8527,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => ({
             getDraft: getDraftSnapshot,
             validate: validateDraft,
+            getValidationErrors: () => lastValidationErrorsRef.current,
             validatePendingStaffAssignments,
             commitDirtyBaseline,
             submitPendingStaffInvites,
@@ -8482,8 +8548,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const splitLeaguePlayoffDivisionsLocked = isImmutableField('splitLeaguePlayoffDivisions') && !hasExternalRentalField;
     const isSchedulableEventType = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     const isWeeklyChildEvent = eventData.eventType === 'WEEKLY_EVENT' && hasParentEventRef(eventData.parentEvent);
+    const supportsEditableTeamSignup = eventData.eventType === 'EVENT' || eventData.eventType === 'WEEKLY_EVENT';
+    const showsFixedTeamEventToggle = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
     const showScheduleConfig = isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent;
+    const showOrganizationFieldsInEventDetails = isOrganizationManagedEvent && eventData.eventType === 'EVENT';
     const sectionNavItems = useMemo(
         () => [
             { id: 'section-basic-information', label: 'Basic Information', visible: true },
@@ -8935,21 +9004,32 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         )}
                                     />
                                 </div>
-                                <AnimatedSection in={eventData.eventType === 'EVENT'} className="md:col-span-3 flex items-end">
+                                <AnimatedSection
+                                    in={supportsEditableTeamSignup}
+                                    collapseClassName="md:col-span-3"
+                                    className="h-full"
+                                >
                                     <Controller
                                         name="teamSignup"
                                         control={control}
                                         render={({ field }) => (
-                                            <Switch
-                                                label="Team Sign Up"
-                                                description="Teams compete rather than individuals."
-                                                checked={field.value}
-                                                disabled={isImmutableField('teamSignup')}
-                                                onChange={(e) => {
-                                                    if (isImmutableField('teamSignup')) return;
-                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
-                                                }}
-                                            />
+                                            <div className="flex h-full flex-col justify-end gap-2" data-testid="team-signup-switch">
+                                                <div className="min-w-0">
+                                                    <Text fw={600} size="sm">Team Sign Up</Text>
+                                                    <Text size="xs" c="dimmed">
+                                                        Teams compete rather than individuals.
+                                                    </Text>
+                                                </div>
+                                                <Switch
+                                                    aria-label="Team Sign Up"
+                                                    checked={field.value}
+                                                    disabled={isImmutableField('teamSignup')}
+                                                    onChange={(e) => {
+                                                        if (isImmutableField('teamSignup')) return;
+                                                        field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                    }}
+                                                />
+                                            </div>
                                         )}
                                     />
                                 </AnimatedSection>
@@ -9046,7 +9126,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             <Controller
                                                 name="end"
                                                 control={control}
-                                                render={({ field }) => (
+                                                render={({ field, fieldState }) => (
                                                     <DateTimePicker
                                                         label={
                                                             supportsNoFixedEndDateTime ? (
@@ -9101,6 +9181,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         }}
                                                         popoverProps={sharedPopoverProps}
                                                         style={{ maxWidth: 280 }}
+                                                        error={fieldState.error?.message as string | undefined}
                                                     />
                                                 )}
                                             />
@@ -9163,37 +9244,68 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                             </div>
 
-                            <Controller
-                                name="requiredTemplateIds"
-                                control={control}
-                                render={({ field }) => (
-                                    <MantineMultiSelect
-                                        label="Required Documents"
-                                        placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
-                                        data={templateOptions}
-                                        value={field.value ?? []}
-                                        maw={560}
-                                        disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
-                                        comboboxProps={sharedComboboxProps}
-                                        onChange={(vals) => {
-                                            if (isImmutableField('requiredTemplateIds')) return;
-                                            field.onChange(vals);
-                                        }}
-                                        clearable
-                                        searchable
+                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
+                                <div className={showOrganizationFieldsInEventDetails ? 'md:col-span-6' : 'md:col-span-12'}>
+                                    <Controller
+                                        name="requiredTemplateIds"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <MantineMultiSelect
+                                                label="Required Documents"
+                                                placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+                                                data={templateOptions}
+                                                value={field.value ?? []}
+                                                w="100%"
+                                                disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
+                                                comboboxProps={sharedComboboxProps}
+                                                onChange={(vals) => {
+                                                    if (isImmutableField('requiredTemplateIds')) return;
+                                                    field.onChange(vals);
+                                                }}
+                                                clearable
+                                                searchable
+                                            />
+                                        )}
                                     />
-                                )}
-                            />
-                            <AnimatedSection in={Boolean(templatesError)}>
-                                <Text size="sm" c="red">
-                                    {templatesError}
-                                </Text>
-                            </AnimatedSection>
-                            <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
-                                <Text size="sm" c="dimmed">
-                                    No templates yet. Create one in your organization Document Templates tab.
-                                </Text>
-                            </AnimatedSection>
+                                    <AnimatedSection in={Boolean(templatesError)}>
+                                        <Text size="sm" c="red">
+                                            {templatesError}
+                                        </Text>
+                                    </AnimatedSection>
+                                    <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
+                                        <Text size="sm" c="dimmed">
+                                            No templates yet. Create one in your organization Document Templates tab.
+                                        </Text>
+                                    </AnimatedSection>
+                                </div>
+                                {showOrganizationFieldsInEventDetails ? (
+                                    <div className="md:col-span-6">
+                                        <Controller
+                                            name="selectedFieldIds"
+                                            control={control}
+                                            render={({ field, fieldState }) => (
+                                                <MantineMultiSelect
+                                                    label="Organization Fields"
+                                                    description="Choose which organization fields this event can use."
+                                                    placeholder={fieldsLoading ? 'Loading organization fields...' : 'Select one or more fields'}
+                                                    data={leagueFieldOptions}
+                                                    value={Array.isArray(field.value) ? field.value : []}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    w="100%"
+                                                    disabled={fieldsLoading || isImmutableField('fieldIds')}
+                                                    onChange={(values) => {
+                                                        if (isImmutableField('fieldIds')) return;
+                                                        field.onChange(values);
+                                                    }}
+                                                    searchable
+                                                    clearable
+                                                    error={fieldState.error?.message}
+                                                />
+                                            )}
+                                        />
+                                    </div>
+                                ) : null}
+                            </div>
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
                                 <div className="md:col-span-4">
@@ -10556,7 +10668,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </div>
 
                             {/* Team Settings */}
-                            {eventData.eventType === 'EVENT' ? (
+                            {supportsEditableTeamSignup ? (
                                 <div className="mt-6 space-y-3">
                                     <Controller
                                         name="singleDivision"
@@ -10589,32 +10701,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
-                                    {isOrganizationManagedEvent && !isWeeklyChildEvent ? (
-                                        <Controller
-                                            name="selectedFieldIds"
-                                            control={control}
-                                            render={({ field, fieldState }) => (
-                                                <MantineMultiSelect
-                                                    label="Organization Fields"
-                                                    description="Choose which organization fields this event can use."
-                                                    placeholder={fieldsLoading ? 'Loading organization fields...' : 'Select one or more fields'}
-                                                    data={leagueFieldOptions}
-                                                    value={Array.isArray(field.value) ? field.value : []}
-                                                    comboboxProps={sharedComboboxProps}
-                                                    disabled={fieldsLoading || isImmutableField('fieldIds')}
-                                                    onChange={(values) => {
-                                                        if (isImmutableField('fieldIds')) return;
-                                                        field.onChange(values);
-                                                    }}
-                                                    searchable
-                                                    clearable
-                                                    error={fieldState.error?.message}
-                                                />
-                                            )}
-                                        />
-                                    ) : null}
                                 </div>
-                            ) : (
+                            ) : showsFixedTeamEventToggle ? (
                                 <div className="mt-6 space-y-2">
                                     <Switch
                                         label="Team Event (teams compete rather than individuals)"
@@ -10694,7 +10782,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         each timeslot is automatically assigned all selected divisions.
                                     </Text>
                                 </div>
-                            )}
+                            ) : null}
                             </Collapse>
                         </Paper>
 

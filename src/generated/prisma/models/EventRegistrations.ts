@@ -42,7 +42,10 @@ export type EventRegistrationsMinAggregateOutputType = {
   registrantId: string | null
   parentId: string | null
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum | null
+  rosterRole: $Enums.EventRegistrationsRosterRoleEnum | null
   status: $Enums.EventRegistrationsStatusEnum | null
+  slotId: string | null
+  occurrenceDate: string | null
   ageAtEvent: number | null
   divisionId: string | null
   divisionTypeId: string | null
@@ -60,7 +63,10 @@ export type EventRegistrationsMaxAggregateOutputType = {
   registrantId: string | null
   parentId: string | null
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum | null
+  rosterRole: $Enums.EventRegistrationsRosterRoleEnum | null
   status: $Enums.EventRegistrationsStatusEnum | null
+  slotId: string | null
+  occurrenceDate: string | null
   ageAtEvent: number | null
   divisionId: string | null
   divisionTypeId: string | null
@@ -78,7 +84,10 @@ export type EventRegistrationsCountAggregateOutputType = {
   registrantId: number
   parentId: number
   registrantType: number
+  rosterRole: number
   status: number
+  slotId: number
+  occurrenceDate: number
   ageAtEvent: number
   divisionId: number
   divisionTypeId: number
@@ -106,7 +115,10 @@ export type EventRegistrationsMinAggregateInputType = {
   registrantId?: true
   parentId?: true
   registrantType?: true
+  rosterRole?: true
   status?: true
+  slotId?: true
+  occurrenceDate?: true
   ageAtEvent?: true
   divisionId?: true
   divisionTypeId?: true
@@ -124,7 +136,10 @@ export type EventRegistrationsMaxAggregateInputType = {
   registrantId?: true
   parentId?: true
   registrantType?: true
+  rosterRole?: true
   status?: true
+  slotId?: true
+  occurrenceDate?: true
   ageAtEvent?: true
   divisionId?: true
   divisionTypeId?: true
@@ -142,7 +157,10 @@ export type EventRegistrationsCountAggregateInputType = {
   registrantId?: true
   parentId?: true
   registrantType?: true
+  rosterRole?: true
   status?: true
+  slotId?: true
+  occurrenceDate?: true
   ageAtEvent?: true
   divisionId?: true
   divisionTypeId?: true
@@ -247,7 +265,10 @@ export type EventRegistrationsGroupByOutputType = {
   registrantId: string
   parentId: string | null
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole: $Enums.EventRegistrationsRosterRoleEnum
   status: $Enums.EventRegistrationsStatusEnum
+  slotId: string | null
+  occurrenceDate: string | null
   ageAtEvent: number | null
   divisionId: string | null
   divisionTypeId: string | null
@@ -288,7 +309,10 @@ export type EventRegistrationsWhereInput = {
   registrantId?: Prisma.StringFilter<"EventRegistrations"> | string
   parentId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsStatusEnum
+  slotId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  occurrenceDate?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   ageAtEvent?: Prisma.IntNullableFilter<"EventRegistrations"> | number | null
   divisionId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   divisionTypeId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
@@ -306,7 +330,10 @@ export type EventRegistrationsOrderByWithRelationInput = {
   registrantId?: Prisma.SortOrder
   parentId?: Prisma.SortOrderInput | Prisma.SortOrder
   registrantType?: Prisma.SortOrder
+  rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  slotId?: Prisma.SortOrderInput | Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrderInput | Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionId?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -327,7 +354,10 @@ export type EventRegistrationsWhereUniqueInput = Prisma.AtLeast<{
   registrantId?: Prisma.StringFilter<"EventRegistrations"> | string
   parentId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsStatusEnum
+  slotId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  occurrenceDate?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   ageAtEvent?: Prisma.IntNullableFilter<"EventRegistrations"> | number | null
   divisionId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   divisionTypeId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
@@ -345,7 +375,10 @@ export type EventRegistrationsOrderByWithAggregationInput = {
   registrantId?: Prisma.SortOrder
   parentId?: Prisma.SortOrderInput | Prisma.SortOrder
   registrantType?: Prisma.SortOrder
+  rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  slotId?: Prisma.SortOrderInput | Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrderInput | Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionId?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -371,7 +404,10 @@ export type EventRegistrationsScalarWhereWithAggregatesInput = {
   registrantId?: Prisma.StringWithAggregatesFilter<"EventRegistrations"> | string
   parentId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumWithAggregatesFilter<"EventRegistrations"> | $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumWithAggregatesFilter<"EventRegistrations"> | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumWithAggregatesFilter<"EventRegistrations"> | $Enums.EventRegistrationsStatusEnum
+  slotId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
+  occurrenceDate?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   ageAtEvent?: Prisma.IntNullableWithAggregatesFilter<"EventRegistrations"> | number | null
   divisionId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   divisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
@@ -389,7 +425,10 @@ export type EventRegistrationsCreateInput = {
   registrantId: string
   parentId?: string | null
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: $Enums.EventRegistrationsRosterRoleEnum
   status: $Enums.EventRegistrationsStatusEnum
+  slotId?: string | null
+  occurrenceDate?: string | null
   ageAtEvent?: number | null
   divisionId?: string | null
   divisionTypeId?: string | null
@@ -407,7 +446,10 @@ export type EventRegistrationsUncheckedCreateInput = {
   registrantId: string
   parentId?: string | null
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: $Enums.EventRegistrationsRosterRoleEnum
   status: $Enums.EventRegistrationsStatusEnum
+  slotId?: string | null
+  occurrenceDate?: string | null
   ageAtEvent?: number | null
   divisionId?: string | null
   divisionTypeId?: string | null
@@ -425,7 +467,10 @@ export type EventRegistrationsUpdateInput = {
   registrantId?: Prisma.StringFieldUpdateOperationsInput | string
   parentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsStatusEnum
+  slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageAtEvent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -443,7 +488,10 @@ export type EventRegistrationsUncheckedUpdateInput = {
   registrantId?: Prisma.StringFieldUpdateOperationsInput | string
   parentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsStatusEnum
+  slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageAtEvent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -461,7 +509,10 @@ export type EventRegistrationsCreateManyInput = {
   registrantId: string
   parentId?: string | null
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: $Enums.EventRegistrationsRosterRoleEnum
   status: $Enums.EventRegistrationsStatusEnum
+  slotId?: string | null
+  occurrenceDate?: string | null
   ageAtEvent?: number | null
   divisionId?: string | null
   divisionTypeId?: string | null
@@ -479,7 +530,10 @@ export type EventRegistrationsUpdateManyMutationInput = {
   registrantId?: Prisma.StringFieldUpdateOperationsInput | string
   parentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsStatusEnum
+  slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageAtEvent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -497,7 +551,10 @@ export type EventRegistrationsUncheckedUpdateManyInput = {
   registrantId?: Prisma.StringFieldUpdateOperationsInput | string
   parentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRegistrantTypeEnum
+  rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsStatusEnum
+  slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageAtEvent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -515,7 +572,10 @@ export type EventRegistrationsCountOrderByAggregateInput = {
   registrantId?: Prisma.SortOrder
   parentId?: Prisma.SortOrder
   registrantType?: Prisma.SortOrder
+  rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  slotId?: Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrder
   divisionId?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -537,7 +597,10 @@ export type EventRegistrationsMaxOrderByAggregateInput = {
   registrantId?: Prisma.SortOrder
   parentId?: Prisma.SortOrder
   registrantType?: Prisma.SortOrder
+  rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  slotId?: Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrder
   divisionId?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -555,7 +618,10 @@ export type EventRegistrationsMinOrderByAggregateInput = {
   registrantId?: Prisma.SortOrder
   parentId?: Prisma.SortOrder
   registrantType?: Prisma.SortOrder
+  rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  slotId?: Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrder
   divisionId?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
@@ -573,6 +639,10 @@ export type EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput =
   set?: $Enums.EventRegistrationsRegistrantTypeEnum
 }
 
+export type EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput = {
+  set?: $Enums.EventRegistrationsRosterRoleEnum
+}
+
 export type EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput = {
   set?: $Enums.EventRegistrationsStatusEnum
 }
@@ -587,7 +657,10 @@ export type EventRegistrationsSelect<ExtArgs extends runtime.Types.Extensions.In
   registrantId?: boolean
   parentId?: boolean
   registrantType?: boolean
+  rosterRole?: boolean
   status?: boolean
+  slotId?: boolean
+  occurrenceDate?: boolean
   ageAtEvent?: boolean
   divisionId?: boolean
   divisionTypeId?: boolean
@@ -605,7 +678,10 @@ export type EventRegistrationsSelectCreateManyAndReturn<ExtArgs extends runtime.
   registrantId?: boolean
   parentId?: boolean
   registrantType?: boolean
+  rosterRole?: boolean
   status?: boolean
+  slotId?: boolean
+  occurrenceDate?: boolean
   ageAtEvent?: boolean
   divisionId?: boolean
   divisionTypeId?: boolean
@@ -623,7 +699,10 @@ export type EventRegistrationsSelectUpdateManyAndReturn<ExtArgs extends runtime.
   registrantId?: boolean
   parentId?: boolean
   registrantType?: boolean
+  rosterRole?: boolean
   status?: boolean
+  slotId?: boolean
+  occurrenceDate?: boolean
   ageAtEvent?: boolean
   divisionId?: boolean
   divisionTypeId?: boolean
@@ -641,7 +720,10 @@ export type EventRegistrationsSelectScalar = {
   registrantId?: boolean
   parentId?: boolean
   registrantType?: boolean
+  rosterRole?: boolean
   status?: boolean
+  slotId?: boolean
+  occurrenceDate?: boolean
   ageAtEvent?: boolean
   divisionId?: boolean
   divisionTypeId?: boolean
@@ -651,7 +733,7 @@ export type EventRegistrationsSelectScalar = {
   createdBy?: boolean
 }
 
-export type EventRegistrationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "registrantId" | "parentId" | "registrantType" | "status" | "ageAtEvent" | "divisionId" | "divisionTypeId" | "divisionTypeKey" | "consentDocumentId" | "consentStatus" | "createdBy", ExtArgs["result"]["eventRegistrations"]>
+export type EventRegistrationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "registrantId" | "parentId" | "registrantType" | "rosterRole" | "status" | "slotId" | "occurrenceDate" | "ageAtEvent" | "divisionId" | "divisionTypeId" | "divisionTypeKey" | "consentDocumentId" | "consentStatus" | "createdBy", ExtArgs["result"]["eventRegistrations"]>
 
 export type $EventRegistrationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "EventRegistrations"
@@ -664,7 +746,10 @@ export type $EventRegistrationsPayload<ExtArgs extends runtime.Types.Extensions.
     registrantId: string
     parentId: string | null
     registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
+    rosterRole: $Enums.EventRegistrationsRosterRoleEnum
     status: $Enums.EventRegistrationsStatusEnum
+    slotId: string | null
+    occurrenceDate: string | null
     ageAtEvent: number | null
     divisionId: string | null
     divisionTypeId: string | null
@@ -1102,7 +1187,10 @@ export interface EventRegistrationsFieldRefs {
   readonly registrantId: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly parentId: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly registrantType: Prisma.FieldRef<"EventRegistrations", 'EventRegistrationsRegistrantTypeEnum'>
+  readonly rosterRole: Prisma.FieldRef<"EventRegistrations", 'EventRegistrationsRosterRoleEnum'>
   readonly status: Prisma.FieldRef<"EventRegistrations", 'EventRegistrationsStatusEnum'>
+  readonly slotId: Prisma.FieldRef<"EventRegistrations", 'String'>
+  readonly occurrenceDate: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly ageAtEvent: Prisma.FieldRef<"EventRegistrations", 'Int'>
   readonly divisionId: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly divisionTypeId: Prisma.FieldRef<"EventRegistrations", 'String'>

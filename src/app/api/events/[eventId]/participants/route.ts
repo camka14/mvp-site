@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import {
@@ -12,9 +12,18 @@ import { canManageEvent } from '@/server/accessControl';
 import { extractDivisionTokenFromId } from '@/lib/divisionTypes';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 import {
-  resolveOrCreateWeeklySessionChild,
-  WeeklySessionResolutionError,
-} from '@/server/events/weeklySessionResolver';
+  buildEventParticipantSnapshot,
+  deleteEventRegistration,
+  findEventRegistration,
+  syncDivisionTeamMembershipFromRegistrations,
+  upsertEventRegistration,
+} from '@/server/events/eventRegistrations';
+import {
+  isWeeklyParentEvent,
+  isWeeklyOccurrenceJoinClosed,
+  resolveWeeklyOccurrence,
+  WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
+} from '@/server/events/weeklyOccurrences';
 import { getRefundPolicy } from '@/lib/refundPolicy';
 import {
   applyRefundAttempts,
@@ -35,9 +44,8 @@ const payloadSchema = z.object({
   divisionId: z.string().optional(),
   divisionTypeId: z.string().optional(),
   divisionTypeKey: z.string().optional(),
-  sessionStart: z.string().optional(),
-  sessionEnd: z.string().optional(),
   slotId: z.string().optional(),
+  occurrenceDate: z.string().optional(),
   refundMode: z.enum(['auto', 'request']).optional(),
   refundReason: z.string().optional(),
 }).strict();
@@ -319,6 +327,95 @@ const hasRefundablePaidTeamEventPayments = async (
   });
 };
 
+export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
+  const session = await requireSession(req);
+  const { eventId } = await params;
+  const event = await prisma.events.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      name: true,
+      state: true,
+      hostId: true,
+      assistantHostIds: true,
+      organizationId: true,
+      teamSignup: true,
+      singleDivision: true,
+      maxParticipants: true,
+      eventType: true,
+      parentEvent: true,
+      timeSlotIds: true,
+      divisions: true,
+    },
+  });
+  if (!event) {
+    return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  }
+
+  const eventState = String(event.state ?? '').toUpperCase();
+  if (HIDDEN_EVENT_STATES.has(eventState) && !(await canManageEvent(session, event))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const slotId = normalizeId(req.nextUrl.searchParams.get('slotId'));
+  const occurrenceDate = normalizeId(req.nextUrl.searchParams.get('occurrenceDate'));
+  if (isWeeklyParentEvent(event) && (!slotId || !occurrenceDate)) {
+    return NextResponse.json({
+      event: withLegacyEvent(event),
+      participants: {
+        teams: [],
+        users: [],
+        children: [],
+        waitlist: [],
+        freeAgents: [],
+      },
+      teams: [],
+      users: [],
+      participantCount: 0,
+      participantCapacity: null,
+      occurrence: null,
+      weeklySelectionRequired: true,
+    }, { status: 200 });
+  }
+  if (!isWeeklyParentEvent(event) && (slotId || occurrenceDate)) {
+    return NextResponse.json({ error: 'Weekly occurrence selection is only valid for weekly events.' }, { status: 400 });
+  }
+  if (isWeeklyParentEvent(event)) {
+    const resolvedOccurrence = await resolveWeeklyOccurrence({
+      event,
+      occurrence: {
+        slotId,
+        occurrenceDate,
+      },
+    });
+    if (!resolvedOccurrence.ok) {
+      return NextResponse.json({ error: resolvedOccurrence.error }, { status: 400 });
+    }
+  }
+
+  try {
+    const snapshot = await buildEventParticipantSnapshot({
+      event,
+      occurrence: slotId && occurrenceDate ? { slotId, occurrenceDate } : null,
+    });
+    return NextResponse.json({
+      event: withLegacyEvent(event),
+      participants: snapshot.participants,
+      teams: snapshot.teams.map((team) => withLegacyFields(team)),
+      users: snapshot.users.map((user) => withLegacyFields(user)),
+      participantCount: snapshot.participantCount,
+      participantCapacity: snapshot.participantCapacity,
+      occurrence: snapshot.occurrence,
+      weeklySelectionRequired: false,
+    }, { status: 200 });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to load participants.' },
+      { status: 400 },
+    );
+  }
+}
+
 const ensureTeamRefundRequest = async (
   params: {
     eventId: string;
@@ -382,68 +479,53 @@ async function updateParticipants(
   }
 
   const { eventId } = await params;
-  let event = await prisma.events.findUnique({
+  const event = await prisma.events.findUnique({
     where: { id: eventId },
   });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
-  const requestedEventId = event.id;
-  const isWeeklyParent = (
-    String(event.eventType ?? '').toUpperCase() === 'WEEKLY_EVENT'
-    && !normalizeId((event as any).parentEvent)
-  );
-  if (mode === 'add' && isWeeklyParent) {
-    const sessionStart = parsed.data.sessionStart ? parseDateInput(parsed.data.sessionStart) : null;
-    const sessionEnd = parsed.data.sessionEnd ? parseDateInput(parsed.data.sessionEnd) : null;
-    const slotId = normalizeId(parsed.data.slotId);
-    if (
-      !(sessionStart instanceof Date)
-      || Number.isNaN(sessionStart.getTime())
-      || !(sessionEnd instanceof Date)
-      || Number.isNaN(sessionEnd.getTime())
-      || sessionEnd.getTime() <= sessionStart.getTime()
-    ) {
-      return NextResponse.json(
-        { error: 'Weekly parent registration requires valid sessionStart/sessionEnd in the request body.' },
-        { status: 400 },
-      );
-    }
-    const canManageParent = await canManageEvent(session, event);
-    const parentState = String(event.state ?? '').toUpperCase();
-    if (HIDDEN_EVENT_STATES.has(parentState) && !canManageParent) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    try {
-      const resolution = await prisma.$transaction((tx) => (
-        resolveOrCreateWeeklySessionChild(
-          {
-            parentEventId: requestedEventId,
-            sessionStart,
-            sessionEnd,
-            slotId,
-          },
-          tx,
-        )
-      ));
-      event = resolution.event;
-    } catch (error) {
-      if (error instanceof WeeklySessionResolutionError) {
-        return NextResponse.json({ error: error.message }, { status: error.status });
-      }
-      console.error('Failed to resolve weekly child event during participant update', error);
-      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-    }
-  }
-  if (!event) {
-    return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-  }
-  const effectiveEventId = event.id;
   const canManageCurrentEvent = await canManageEvent(session, event);
+  const eventState = String(event.state ?? '').toUpperCase();
+  if (HIDDEN_EVENT_STATES.has(eventState) && !canManageCurrentEvent) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const userId = parsed.data.userId ?? extractId(parsed.data.user);
   const teamId = parsed.data.teamId ?? extractId(parsed.data.team);
+  if ((userId && teamId) || (!userId && !teamId)) {
+    return NextResponse.json(
+      { error: 'Specify exactly one participant target via userId or teamId.' },
+      { status: 400 },
+    );
+  }
+
+  const hasOccurrenceInput = Boolean(parsed.data.slotId || parsed.data.occurrenceDate);
+  const weeklyOccurrence = isWeeklyParentEvent(event)
+    ? await resolveWeeklyOccurrence({
+      event,
+      occurrence: parsed.data,
+    })
+    : null;
+  if (weeklyOccurrence && !weeklyOccurrence.ok) {
+    return NextResponse.json({ error: weeklyOccurrence.error }, { status: 400 });
+  }
+  if (isWeeklyParentEvent(event) && (!parsed.data.slotId || !parsed.data.occurrenceDate)) {
+    return NextResponse.json(
+      { error: 'Weekly events require slotId and occurrenceDate for participant changes.' },
+      { status: 400 },
+    );
+  }
+  if (!isWeeklyParentEvent(event) && hasOccurrenceInput) {
+    return NextResponse.json(
+      { error: 'Weekly occurrence selection is only valid for weekly events.' },
+      { status: 400 },
+    );
+  }
+  const resolvedOccurrence = weeklyOccurrence?.ok ? weeklyOccurrence.value : null;
+  if (mode === 'add' && resolvedOccurrence && isWeeklyOccurrenceJoinClosed(resolvedOccurrence)) {
+    return NextResponse.json({ error: WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR }, { status: 409 });
+  }
 
   if (mode === 'add' && userId && !teamId && event.teamSignup) {
     return NextResponse.json(
@@ -453,12 +535,10 @@ async function updateParticipants(
   }
 
   if (userId && !session.isAdmin && session.userId !== userId && !canManageCurrentEvent) {
-    const canManageChild = mode === 'remove'
-      ? await canManageLinkedChildParticipant({
-        parentId: session.userId,
-        childId: userId,
-      })
-      : false;
+    const canManageChild = await canManageLinkedChildParticipant({
+      parentId: session.userId,
+      childId: userId,
+    });
     if (!canManageChild) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
@@ -491,7 +571,7 @@ async function updateParticipants(
     );
   }
 
-  if (mode === 'add' && userId && !teamId) {
+  if (mode === 'add' && userId) {
     const registrant = await prisma.userData.findUnique({
       where: { id: userId },
       select: { dateOfBirth: true },
@@ -525,42 +605,26 @@ async function updateParticipants(
         );
       }
 
-      const existingRequest = await prisma.eventRegistrations.findFirst({
-        where: {
-          eventId: effectiveEventId,
-          registrantId: userId,
-          parentId: parentLink.parentId,
-          registrantType: 'CHILD',
-          status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
-        },
-        orderBy: {
-          updatedAt: 'desc',
-        },
-      });
-
-      const requestRegistration = existingRequest ?? await prisma.eventRegistrations.create({
-        data: {
-          id: crypto.randomUUID(),
-          eventId: effectiveEventId,
-          registrantId: userId,
-          parentId: parentLink.parentId,
-          registrantType: 'CHILD',
-          status: 'PENDINGCONSENT',
-          ageAtEvent,
-          divisionId: divisionSelection.divisionId,
-          divisionTypeId: divisionSelection.divisionTypeId,
-          divisionTypeKey: divisionSelection.divisionTypeKey,
-          consentStatus: 'guardian_approval_required',
-          createdBy: session.userId,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
+      const requestRegistration = await upsertEventRegistration({
+        eventId: event.id,
+        registrantType: 'CHILD',
+        registrantId: userId,
+        parentId: parentLink.parentId,
+        rosterRole: 'PARTICIPANT',
+        status: 'STARTED',
+        ageAtEvent,
+        divisionId: divisionSelection.divisionId,
+        divisionTypeId: divisionSelection.divisionTypeId,
+        divisionTypeKey: divisionSelection.divisionTypeKey,
+        consentStatus: 'guardian_approval_required',
+        createdBy: session.userId,
+        occurrence: resolvedOccurrence,
       });
 
       await prisma.invites?.deleteMany?.({
         where: {
           type: 'EVENT',
-          eventId: effectiveEventId,
+          eventId: event.id,
           userId: session.userId,
         },
       });
@@ -695,371 +759,43 @@ async function updateParticipants(
     });
   }
 
-  let nextUserIds = normalizeUserIdList(event.userIds);
-  let nextTeamIds = normalizeUserIdList(event.teamIds);
-  let nextWaitListIds = normalizeUserIdList(event.waitListIds);
-  let nextFreeAgentIds = normalizeUserIdList(event.freeAgentIds);
+  if (teamId) {
+    const existingRegistration = await findEventRegistration({
+      eventId: event.id,
+      registrantType: 'TEAM',
+      registrantId: teamId,
+      occurrence: resolvedOccurrence,
+    });
 
-  const schedulableTeamEvent = Boolean(
-    teamId
-    && event.teamSignup
-    && ['LEAGUE', 'TOURNAMENT'].includes(String(event.eventType ?? '').toUpperCase()),
-  );
-  if (teamId && schedulableTeamEvent) {
-    try {
-      const result = await prisma.$transaction(async (tx) => {
-        const freshEvent = await tx.events.findUnique({
-          where: { id: effectiveEventId },
-          select: {
-            id: true,
-            eventType: true,
-            teamSignup: true,
-            teamIds: true,
-            waitListIds: true,
-            singleDivision: true,
-            divisions: true,
-            teamSizeLimit: true,
-          },
-        });
-        if (!freshEvent) {
-          return { ok: false as const, status: 404, error: 'Event not found' };
-        }
-
-        const rosterTeamIds = normalizeUserIdList(freshEvent.teamIds);
-        const canonicalTeamId = teamId;
-        const canonical = await tx.teams.findUnique({
-          where: { id: canonicalTeamId },
-          select: {
-            id: true,
-            name: true,
-            playerIds: true,
-            captainId: true,
-            managerId: true,
-            headCoachId: true,
-            coachIds: true,
-            pending: true,
-            teamSize: true,
-            profileImageId: true,
-            sport: true,
-            divisionTypeId: true,
-            divisionTypeName: true,
-          },
-        });
-        if (!canonical) {
-          return { ok: false as const, status: 404, error: 'Team not found' };
-        }
-
-        const slotTeams = await tx.teams.findMany({
-          where: { id: { in: rosterTeamIds } },
-          select: {
-            id: true,
-            captainId: true,
-            division: true,
-            parentTeamId: true,
-            name: true,
-          },
-        });
-        const usesSlotProvisioning = slotTeams.some((team) => isSlotProvisionedTeam(team));
-        if (!usesSlotProvisioning) {
-          return { ok: 'fallback' as const };
-        }
-
-        if (mode === 'add') {
-          if (slotTeams.some((team) => team.parentTeamId === canonicalTeamId)) {
-            return { ok: false as const, status: 409, error: 'Team is already registered for this event.' };
-          }
-
-          const placeholderCandidates = slotTeams
-            .filter((team) => String(team.captainId ?? '').trim().length === 0)
-            .filter((team) => freshEvent.singleDivision ? true : teamDivisionMatchesSelection(team.division, divisionSelection.divisionId))
-            .sort((a, b) => a.id.localeCompare(b.id));
-
-          if (!placeholderCandidates.length) {
-            return { ok: false as const, status: 409, error: 'Event/division is full.' };
-          }
-
-          const now = new Date();
-          const canonicalPlayerIds = normalizeUserIdList(canonical.playerIds);
-          let filledSlotTeamId: string | null = null;
-
-          for (const candidate of placeholderCandidates) {
-            const slotDivisionId = (() => {
-              if (typeof divisionSelection.divisionId === 'string' && divisionSelection.divisionId.trim().length > 0) {
-                return divisionSelection.divisionId.trim();
-              }
-              if (typeof candidate.division === 'string' && candidate.division.trim().length > 0) {
-                return candidate.division.trim();
-              }
-              const fallbackDivisionId = normalizeUserIdList(freshEvent.divisions)[0];
-              return fallbackDivisionId ?? 'open';
-            })();
-            const updateResult = await tx.teams.updateMany({
-              where: {
-                id: candidate.id,
-                captainId: '',
-                parentTeamId: null,
-              },
-              data: {
-                name: canonical.name ?? '',
-                playerIds: canonicalPlayerIds,
-                captainId: canonical.captainId ?? '',
-                managerId: canonical.managerId ?? '',
-                headCoachId: canonical.headCoachId ?? null,
-                coachIds: Array.isArray(canonical.coachIds) ? canonical.coachIds : [],
-                pending: [],
-                teamSize: canonical.teamSize ?? Math.max(0, Math.trunc(freshEvent.teamSizeLimit ?? 0)),
-                profileImageId: canonical.profileImageId ?? null,
-                sport: canonical.sport ?? null,
-                division: slotDivisionId,
-                divisionTypeId: canonical.divisionTypeId ?? null,
-                divisionTypeName: canonical.divisionTypeName ?? null,
-                parentTeamId: canonicalTeamId,
-                updatedAt: now,
-              },
-            });
-            if (updateResult.count === 1) {
-              filledSlotTeamId = candidate.id;
-              break;
-            }
-          }
-
-          if (!filledSlotTeamId) {
-            return { ok: false as const, status: 409, error: 'Event/division is full.' };
-          }
-
-          const nextWaitListIds = normalizeUserIdList(freshEvent.waitListIds).filter((id) => id !== canonicalTeamId);
-          const updatedEvent = await tx.events.update({
-            where: { id: effectiveEventId },
-            data: {
-              waitListIds: nextWaitListIds,
-              updatedAt: now,
-            },
-          });
-
-          const registrationId = `${effectiveEventId}__team__${filledSlotTeamId}`;
-          await tx.eventRegistrations.upsert({
-            where: { id: registrationId },
-            create: {
-              id: registrationId,
-              eventId: effectiveEventId,
-              registrantId: filledSlotTeamId,
-              registrantType: 'TEAM',
-              status: 'ACTIVE',
-              ageAtEvent: null,
-              divisionId: divisionSelection.divisionId,
-              divisionTypeId: divisionSelection.divisionTypeId,
-              divisionTypeKey: divisionSelection.divisionTypeKey,
-              createdBy: session.userId,
-              createdAt: now,
-              updatedAt: now,
-            },
-            update: {
-              status: 'ACTIVE',
-              divisionId: divisionSelection.divisionId,
-              divisionTypeId: divisionSelection.divisionTypeId,
-              divisionTypeKey: divisionSelection.divisionTypeKey,
-              updatedAt: now,
-            },
-          });
-
-          await syncDivisionTeamMembership({
-            event: {
-              id: effectiveEventId,
-              singleDivision: freshEvent.singleDivision,
-              divisions: freshEvent.divisions,
-            },
-            teamId: filledSlotTeamId,
-            mode: 'add',
-            targetDivisionId: divisionSelection.divisionId,
-          }, tx);
-
-          return { ok: true as const, event: updatedEvent };
-        }
-
-        // mode === 'remove'
-        const now = new Date();
-        const inputTeamId = canonicalTeamId;
-        const normalizedRosterTeamIds = new Set(rosterTeamIds);
-
-        const slotFromParent = await tx.teams.findFirst({
-          where: {
-            id: { in: rosterTeamIds },
-            parentTeamId: inputTeamId,
-          },
-          select: { id: true, name: true, parentTeamId: true, captainId: true },
-        });
-        const directRosterTeam = normalizedRosterTeamIds.has(inputTeamId)
-          ? await tx.teams.findUnique({
-            where: { id: inputTeamId },
-            select: { id: true, name: true, parentTeamId: true, captainId: true },
-          })
-          : null;
-        const slotTeam = slotFromParent
-          ?? ((directRosterTeam && isSlotProvisionedTeam(directRosterTeam)) ? directRosterTeam : null);
-
-        if (!slotTeam?.id) {
-          return { ok: false as const, status: 404, error: 'Team is not registered for this event.' };
-        }
-
-        const refundTeamOwnerIds = ensureUnique(
-          [
-            ...teamRefundOwnerIds,
-            slotTeam.id,
-            normalizeId(slotTeam.parentTeamId) ?? '',
-            inputTeamId,
-          ].filter(Boolean),
-        );
-        let autoRefundRequest: RefundRequestRow | null = null;
-        let existingAutoRefundRequest: RefundRequestRow | null = null;
-        let autoRefundAttempts: StripeRefundAttempt[] = [];
-
-        if (requestedRefundMode === 'auto') {
-          existingAutoRefundRequest = await tx.refundRequests.findFirst({
-            where: {
-              eventId: effectiveEventId,
-              teamId: slotTeam.id,
-              status: { in: ['WAITING', 'APPROVED'] },
-            },
-            orderBy: {
-              updatedAt: 'desc',
-            },
-            select: refundRequestSelect,
-          }) as RefundRequestRow | null;
-          autoRefundRequest = existingAutoRefundRequest
-            ? { ...existingAutoRefundRequest, reason: teamRefundReason }
-            : {
-              id: crypto.randomUUID(),
-              eventId: effectiveEventId,
-              userId: session.userId,
-              hostId: event.hostId,
-              teamId: slotTeam.id,
-              organizationId: event.organizationId ?? null,
-              reason: teamRefundReason,
-              status: 'APPROVED',
-            };
-
-          const refundablePayments = await resolveRefundablePaymentsForRequest(tx, autoRefundRequest);
-          autoRefundAttempts = await createStripeRefundAttempts({
-            request: autoRefundRequest,
-            payments: refundablePayments,
-            approvedByUserId: session.userId,
-          });
-
-          if (!autoRefundAttempts.length && existingAutoRefundRequest?.status !== 'APPROVED') {
-            return { ok: false as const, status: 400, error: 'No refundable payment found for automatic refund.' };
-          }
-        }
-
-        await tx.teams.update({
-          where: { id: slotTeam.id },
-          data: {
-            name: slotTeam.name?.startsWith('Place Holder') ? slotTeam.name : 'Place Holder',
-            captainId: '',
-            managerId: '',
-            playerIds: [],
-            parentTeamId: null,
-            divisionTypeId: null,
-            divisionTypeName: null,
-            sport: null,
-            profileImageId: null,
-            headCoachId: null,
-            coachIds: [],
-            pending: [],
-            teamSize: Math.max(0, Math.trunc(freshEvent.teamSizeLimit ?? 0)),
-            updatedAt: now,
-          },
-        });
-
-        await tx.eventRegistrations.deleteMany({
-          where: {
-            eventId: effectiveEventId,
-            registrantId: slotTeam.id,
-            registrantType: 'TEAM',
-          },
-        });
-
-        await syncDivisionTeamMembership({
-          event: {
-            id: effectiveEventId,
-            singleDivision: freshEvent.singleDivision,
-            divisions: freshEvent.divisions,
-          },
-          teamId: slotTeam.id,
-          mode: 'remove',
-          targetDivisionId: null,
-        }, tx);
-
-        const updatedEvent = await tx.events.update({
-          where: { id: effectiveEventId },
-          data: { updatedAt: now },
-        });
-
-        if (requestedRefundMode === 'auto' && autoRefundRequest) {
-          if (existingAutoRefundRequest) {
-            await tx.refundRequests.update({
-              where: { id: existingAutoRefundRequest.id },
-              data: {
-                status: 'APPROVED',
-                updatedAt: now,
-              },
-            });
-          } else {
-            await tx.refundRequests.create({
-              data: {
-                id: autoRefundRequest.id,
-                eventId: autoRefundRequest.eventId,
-                userId: autoRefundRequest.userId,
-                hostId: autoRefundRequest.hostId,
-                teamId: autoRefundRequest.teamId,
-                organizationId: autoRefundRequest.organizationId,
-                reason: autoRefundRequest.reason,
-                status: 'APPROVED',
-                createdAt: now,
-                updatedAt: now,
-              },
-            });
-          }
-          await applyRefundAttempts(tx, autoRefundAttempts, now);
-        } else {
-          await ensureTeamRefundRequest({
-            eventId: effectiveEventId,
-            hostId: event.hostId,
-            organizationId: event.organizationId ?? null,
-            teamId: slotTeam.id,
-            requestedByUserId: session.userId,
-            reason: teamRefundReason,
-            teamOwnerIds: refundTeamOwnerIds,
-            participantUserIds: teamRefundParticipantUserIds,
-          }, tx);
-        }
-
-        return { ok: true as const, event: updatedEvent };
-      });
-
-      if (result.ok === 'fallback') {
-        // Event has no scheduler slot teams yet (or uses direct team IDs), so use legacy direct registration.
-      } else if (!result.ok) {
-        return NextResponse.json({ error: result.error }, { status: result.status });
-      } else {
-        await prisma.invites?.deleteMany?.({
-          where: {
-            type: 'EVENT',
-            eventId: effectiveEventId,
-            userId: session.userId,
-          },
-        });
-        return NextResponse.json({
-          event: withLegacyEvent(result.event),
-          warnings: warnings.length ? warnings : undefined,
-        }, { status: 200 });
-      }
-    } catch (error) {
-      console.error('Event participant update failed', error);
-      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    if (mode === 'add' && existingRegistration && ['STARTED', 'ACTIVE'].includes(String(existingRegistration.status ?? ''))) {
+      return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
     }
-  }
 
-  if (teamId && mode === 'remove') {
+    if (mode === 'add') {
+      await upsertEventRegistration({
+        eventId: event.id,
+        registrantType: 'TEAM',
+        registrantId: teamId,
+        rosterRole: 'PARTICIPANT',
+        status: 'ACTIVE',
+        divisionId: divisionSelection.divisionId,
+        divisionTypeId: divisionSelection.divisionTypeId,
+        divisionTypeKey: divisionSelection.divisionTypeKey,
+        createdBy: session.userId,
+        occurrence: resolvedOccurrence,
+      });
+      await syncDivisionTeamMembershipFromRegistrations(event);
+      const refreshedEvent = await prisma.events.findUnique({ where: { id: event.id } });
+      return NextResponse.json({
+        event: withLegacyEvent(refreshedEvent ?? event),
+        warnings: warnings.length ? warnings : undefined,
+      }, { status: 200 });
+    }
+
+    if (!existingRegistration) {
+      return NextResponse.json({ error: 'Team is not registered for this event.' }, { status: 404 });
+    }
+
     const now = new Date();
     let autoRefundRequest: RefundRequestRow | null = null;
     let existingAutoRefundRequest: RefundRequestRow | null = null;
@@ -1068,20 +804,18 @@ async function updateParticipants(
     if (requestedRefundMode === 'auto') {
       existingAutoRefundRequest = await prisma.refundRequests.findFirst({
         where: {
-          eventId: effectiveEventId,
+          eventId: event.id,
           teamId,
           status: { in: ['WAITING', 'APPROVED'] },
         },
-        orderBy: {
-          updatedAt: 'desc',
-        },
+        orderBy: { updatedAt: 'desc' },
         select: refundRequestSelect,
       }) as RefundRequestRow | null;
       autoRefundRequest = existingAutoRefundRequest
         ? { ...existingAutoRefundRequest, reason: teamRefundReason }
         : {
           id: crypto.randomUUID(),
-          eventId: effectiveEventId,
+          eventId: event.id,
           userId: session.userId,
           hostId: event.hostId,
           teamId,
@@ -1113,35 +847,19 @@ async function updateParticipants(
       }
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedEvent = await tx.events.update({
-        where: { id: effectiveEventId },
-        data: {
-          userIds: nextUserIds,
-          teamIds: nextTeamIds.filter((id) => id !== teamId),
-          waitListIds: nextWaitListIds.filter((id) => id !== teamId),
-          freeAgentIds: nextFreeAgentIds,
-          updatedAt: now,
-        },
-      });
-
-      await tx.eventRegistrations.deleteMany({
-        where: {
-          eventId: effectiveEventId,
-          registrantId: teamId,
-          registrantType: 'TEAM',
-        },
-      });
-      await syncDivisionTeamMembership({
-        event: {
-          id: effectiveEventId,
-          singleDivision: event.singleDivision,
-          divisions: event.divisions,
-        },
-        teamId,
-        mode,
-        targetDivisionId: null,
+    const updatedEvent = await prisma.$transaction(async (tx) => {
+      await deleteEventRegistration({
+        eventId: event.id,
+        registrantType: 'TEAM',
+        registrantId: teamId,
+        occurrence: resolvedOccurrence,
       }, tx);
+
+      await syncDivisionTeamMembershipFromRegistrations(event, tx);
+      const touchedEvent = await tx.events.update({
+        where: { id: event.id },
+        data: { updatedAt: now },
+      });
 
       if (requestedRefundMode === 'auto' && autoRefundRequest) {
         if (existingAutoRefundRequest) {
@@ -1171,7 +889,7 @@ async function updateParticipants(
         await applyRefundAttempts(tx, autoRefundAttempts, now);
       } else {
         await ensureTeamRefundRequest({
-          eventId: effectiveEventId,
+          eventId: event.id,
           hostId: event.hostId,
           organizationId: event.organizationId ?? null,
           teamId,
@@ -1182,127 +900,157 @@ async function updateParticipants(
         }, tx);
       }
 
-      return updatedEvent;
+      return touchedEvent;
+    });
+
+    return NextResponse.json({
+      event: withLegacyEvent(updatedEvent),
+      warnings: warnings.length ? warnings : undefined,
+    }, { status: 200 });
+  }
+
+  const registrant = await prisma.userData.findUnique({
+    where: { id: userId! },
+    select: { dateOfBirth: true },
+  });
+  if (!registrant) {
+    return NextResponse.json({ error: 'User profile not found' }, { status: 404 });
+  }
+
+  const ageAtEvent = calculateAgeOnDate(registrant.dateOfBirth, event.start);
+  if (!Number.isFinite(ageAtEvent)) {
+    return NextResponse.json({ error: 'Invalid date of birth' }, { status: 400 });
+  }
+
+  const canManageLinkedChild = session.userId !== userId && !canManageCurrentEvent
+    ? await canManageLinkedChildParticipant({
+      parentId: session.userId,
+      childId: userId!,
+    })
+    : false;
+  const registrantType = canManageLinkedChild ? 'CHILD' : 'SELF';
+  const parentId = canManageLinkedChild ? session.userId : null;
+
+  if (mode === 'add') {
+    const existingSelf = await findEventRegistration({
+      eventId: event.id,
+      registrantType: 'SELF',
+      registrantId: userId!,
+      occurrence: resolvedOccurrence,
+    });
+    const existingChild = await findEventRegistration({
+      eventId: event.id,
+      registrantType: 'CHILD',
+      registrantId: userId!,
+      occurrence: resolvedOccurrence,
+    });
+    const activeExisting = [existingSelf, existingChild].find((row) => (
+      Boolean(row) && ['STARTED', 'ACTIVE'].includes(String(row?.status ?? ''))
+    ));
+    if (activeExisting) {
+      return NextResponse.json({ error: 'User is already registered for this event.' }, { status: 409 });
+    }
+
+    let consentDocumentId: string | null = null;
+    let consentStatus: string | null = null;
+
+    if (requiredTemplateIds.length > 0) {
+      if (registrantType === 'CHILD' && parentId) {
+        const childSensitive = await prisma.sensitiveUserData.findFirst({
+          where: { userId: userId! },
+          select: { email: true },
+        });
+        const childEmail = normalizeEmail(childSensitive?.email);
+        const consentDispatch = await dispatchRequiredEventDocuments({
+          eventId: event.id,
+          organizationId: event.organizationId ?? null,
+          requiredTemplateIds,
+          parentUserId: parentId,
+          childUserId: userId!,
+        });
+        consentDocumentId = consentDispatch.firstDocumentId ?? null;
+        consentStatus = !childEmail
+          ? 'child_email_required'
+          : (consentDispatch.errors.length > 0 ? 'send_failed' : 'sent');
+        warnings.push(...consentDispatch.errors);
+      } else {
+        const consentDispatch = await dispatchRequiredEventDocuments({
+          eventId: event.id,
+          organizationId: event.organizationId ?? null,
+          requiredTemplateIds,
+          participantUserId: userId!,
+        });
+        consentDocumentId = consentDispatch.firstDocumentId ?? null;
+        consentStatus = consentDispatch.errors.length > 0 ? 'send_failed' : 'sent';
+        warnings.push(...consentDispatch.errors);
+      }
+    }
+
+    const registration = await upsertEventRegistration({
+      eventId: event.id,
+      registrantType,
+      registrantId: userId!,
+      parentId,
+      rosterRole: 'PARTICIPANT',
+      status: requiredTemplateIds.length > 0 ? 'STARTED' : 'ACTIVE',
+      ageAtEvent,
+      divisionId: divisionSelection.divisionId,
+      divisionTypeId: divisionSelection.divisionTypeId,
+      divisionTypeKey: divisionSelection.divisionTypeKey,
+      consentDocumentId,
+      consentStatus,
+      createdBy: session.userId,
+      occurrence: resolvedOccurrence,
     });
 
     await prisma.invites?.deleteMany?.({
       where: {
         type: 'EVENT',
-        eventId: effectiveEventId,
+        eventId: event.id,
         userId: session.userId,
       },
     });
 
     return NextResponse.json({
-      event: withLegacyEvent(updated),
+      event: withLegacyEvent(event),
+      registration: withLegacyFields(registration),
       warnings: warnings.length ? warnings : undefined,
     }, { status: 200 });
   }
 
-  if (mode === 'add' && teamId && nextTeamIds.includes(teamId)) {
-    if (!canManageCurrentEvent) {
-      return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
-    }
-  }
-  if (mode === 'add' && userId && nextUserIds.includes(userId)) {
-    return NextResponse.json({ error: 'User is already registered for this event.' }, { status: 409 });
-  }
-  if (mode === 'add' && userId && nextFreeAgentIds.includes(userId)) {
-    return NextResponse.json(
-      { error: 'User is already registered as a free agent for this event.' },
-      { status: 409 },
-    );
-  }
-
-  if (teamId) {
-    if (mode === 'add') {
-      nextTeamIds = ensureUnique([...nextTeamIds, teamId]);
-      nextWaitListIds = nextWaitListIds.filter((id) => id !== teamId);
-    }
-  } else if (userId) {
-    if (mode === 'add') {
-      nextUserIds = ensureUnique([...nextUserIds, userId]);
-      nextWaitListIds = nextWaitListIds.filter((id) => id !== userId);
-      nextFreeAgentIds = nextFreeAgentIds.filter((id) => id !== userId);
-    } else {
-      nextUserIds = nextUserIds.filter((id) => id !== userId);
-      nextWaitListIds = nextWaitListIds.filter((id) => id !== userId);
-      nextFreeAgentIds = nextFreeAgentIds.filter((id) => id !== userId);
-    }
-  }
-
-  const updated = await prisma.events.update({
-    where: { id: effectiveEventId },
-    data: {
-      userIds: nextUserIds,
-      teamIds: nextTeamIds,
-      waitListIds: nextWaitListIds,
-      freeAgentIds: nextFreeAgentIds,
-      updatedAt: new Date(),
-    },
-  });
-
-  if (mode === 'add' && userId && !teamId && requiredTemplateIds.length > 0) {
-    const consentDispatch = await dispatchRequiredEventDocuments({
-      eventId: effectiveEventId,
-      organizationId: event.organizationId ?? null,
-      requiredTemplateIds,
-      participantUserId: userId,
+  const updatedEvent = await prisma.$transaction(async (tx) => {
+    await tx.eventRegistrations.deleteMany({
+      where: {
+        eventId: event.id,
+        registrantId: userId!,
+        registrantType: { in: ['SELF', 'CHILD'] },
+        ...(resolvedOccurrence
+          ? {
+            slotId: resolvedOccurrence.slotId,
+            occurrenceDate: resolvedOccurrence.occurrenceDate,
+          }
+          : {
+            slotId: null,
+            occurrenceDate: null,
+          }),
+      },
     });
-    warnings.push(...consentDispatch.errors);
-  }
-
-  if (teamId) {
-    if (mode === 'add') {
-      const now = new Date();
-      const registrationId = `${effectiveEventId}__team__${teamId}`;
-      await prisma.eventRegistrations.upsert({
-        where: { id: registrationId },
-        create: {
-          id: registrationId,
-          eventId: effectiveEventId,
-          registrantId: teamId,
-          registrantType: 'TEAM',
-          status: 'ACTIVE',
-          ageAtEvent: null,
-          divisionId: divisionSelection.divisionId,
-          divisionTypeId: divisionSelection.divisionTypeId,
-          divisionTypeKey: divisionSelection.divisionTypeKey,
-          createdBy: session.userId,
-          createdAt: now,
-          updatedAt: now,
-        },
-        update: {
-          status: 'ACTIVE',
-          divisionId: divisionSelection.divisionId,
-          divisionTypeId: divisionSelection.divisionTypeId,
-          divisionTypeKey: divisionSelection.divisionTypeKey,
-          updatedAt: now,
-        },
-      });
-      await syncDivisionTeamMembership({
-        event: {
-          id: effectiveEventId,
-          singleDivision: event.singleDivision,
-          divisions: event.divisions,
-        },
-        teamId,
-        mode,
-        targetDivisionId: divisionSelection.divisionId,
-      });
-    }
-  }
+    return tx.events.update({
+      where: { id: event.id },
+      data: { updatedAt: new Date() },
+    });
+  });
 
   await prisma.invites?.deleteMany?.({
     where: {
       type: 'EVENT',
-      eventId: effectiveEventId,
+      eventId: event.id,
       userId: session.userId,
     },
   });
 
   return NextResponse.json({
-    event: withLegacyEvent(updated),
+    event: withLegacyEvent(updatedEvent),
     warnings: warnings.length ? warnings : undefined,
   }, { status: 200 });
 }

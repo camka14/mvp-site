@@ -264,7 +264,9 @@ export interface TimeSlot {
   scheduledFieldIds?: string[];
 }
 
-export type TimeSlotPayload = Omit<TimeSlot, 'event'>;
+export type TimeSlotPayload = Omit<TimeSlot, 'event' | 'field' | '$id'> & {
+  id: string;
+};
 
 export interface UserData {
   $id: string;
@@ -509,6 +511,8 @@ export interface Event {
   status?: EventStatus;
   leagueConfig?: LeagueConfig;
   leagueScoringConfig?: LeagueScoringConfig | null;
+  participantCount?: number | null;
+  participantCapacity?: number | null;
 
   // Computed properties
   attendees: number;
@@ -921,6 +925,16 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
   return payload;
 }
 
+export function toTimeSlotPayload(slot: TimeSlot): TimeSlotPayload {
+  const { event, field, $id, ...rest } = slot;
+  const id = extractId(slot);
+
+  return {
+    ...rest,
+    id: id ?? '',
+  };
+}
+
 export function toEventPayload(event: Event): EventPayload {
   const { matches, fields, teams, timeSlots, organization, officials, assistantHosts, ...rest } = event;
 
@@ -981,10 +995,9 @@ export function toEventPayload(event: Event): EventPayload {
 
   const timeSlotPayloads = Array.isArray(timeSlots) && timeSlots.length
     ? timeSlots.map((slot) => {
-        const { event: slotEvent, ...slotRest } = slot;
         const normalizedDays = normalizeSlotDays(slot);
         return {
-          ...slotRest,
+          ...toTimeSlotPayload(slot),
           dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
           daysOfWeek: normalizedDays,
         };

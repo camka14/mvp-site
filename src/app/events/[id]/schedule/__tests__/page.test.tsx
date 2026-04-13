@@ -52,6 +52,7 @@ jest.mock('@/lib/eventService', () => ({
     updateEvent: jest.fn(),
     createEvent: jest.fn(),
     scheduleEvent: jest.fn(),
+    getEventParticipants: jest.fn(),
   },
 }));
 
@@ -72,6 +73,7 @@ let capturedEventFormProps: any = null;
 let mockEventFormDraft: any = null;
 let mockEventFormValidateResult = true;
 let mockEventFormDirtyState = false;
+let mockEventFormValidationErrors: Array<{ path: string; message: string }> = [];
 let mockCommitDirtyBaseline = jest.fn();
 let mockValidatePendingStaffAssignments = jest.fn();
 let mockSubmitPendingStaffInvites = jest.fn();
@@ -93,6 +95,7 @@ jest.mock('../components/EventForm', () => {
     useImperativeHandle(ref, () => ({
       getDraft: () => mockEventFormDraft ?? props.event ?? {},
       validate: async () => mockEventFormValidateResult,
+      getValidationErrors: () => mockEventFormValidationErrors,
       validatePendingStaffAssignments: async () => mockValidatePendingStaffAssignments(),
       commitDirtyBaseline: () => mockCommitDirtyBaseline(),
       submitPendingStaffInvites: (eventId: string) => mockSubmitPendingStaffInvites(eventId),
@@ -118,7 +121,8 @@ jest.mock('../components/EventForm', () => {
 });
 
 jest.mock('../components/LeagueCalendarView', () => {
-  return function MockCalendarView({ matches, onMatchClick, canManage, conflictMatchIdsById }: any) {
+  return function MockCalendarView({ matches, onMatchClick, canManage, conflictMatchIdsById, onViewChange, onDateChange, date }: any) {
+    const currentDate = date instanceof Date ? date : new Date();
     return (
       <div data-testid="league-calendar">
         <span>Calendar View</span>
@@ -128,10 +132,39 @@ jest.mock('../components/LeagueCalendarView', () => {
           </span>
         ))}
         <span data-testid="calendar-conflict-count">{Object.keys(conflictMatchIdsById ?? {}).length}</span>
-        {canManage && matches?.length > 0 && (
+        {onMatchClick && matches?.length > 0 && (
           <button type="button" onClick={() => onMatchClick?.(matches[0])}>
-            Edit First Match
+            {canManage ? 'Edit First Match' : 'Select First Match'}
           </button>
+        )}
+        {onViewChange && (
+          <>
+            <button type="button" onClick={() => onViewChange('week')}>
+              Switch To Week View
+            </button>
+            <button type="button" onClick={() => onViewChange('day')}>
+              Switch To Day View
+            </button>
+            <button type="button" onClick={() => onViewChange('agenda')}>
+              Switch To Agenda View
+            </button>
+          </>
+        )}
+        {onDateChange && (
+          <>
+            <button
+              type="button"
+              onClick={() => onDateChange(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))}
+            >
+              Jump To Previous Month
+            </button>
+            <button
+              type="button"
+              onClick={() => onDateChange(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))}
+            >
+              Jump To Next Month
+            </button>
+          </>
         )}
       </div>
     );
@@ -173,6 +206,101 @@ const buildApiEvent = (overrides: Record<string, any> = {}) => {
   return { ...event, ...overrides };
 };
 
+const toIsoDateString = (value: Date): string => {
+  const year = value.getFullYear();
+  const month = `${value.getMonth() + 1}`.padStart(2, '0');
+  const day = `${value.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const toMondayIndex = (value: Date): number => (value.getDay() + 6) % 7;
+
+const buildWeeklyParentEvent = ({
+  occurrenceDate: occurrenceDateInput,
+  slotStartOffsetDays = -1,
+  slotEndOffsetDays = 14,
+}: {
+  occurrenceDate?: Date;
+  slotStartOffsetDays?: number;
+  slotEndOffsetDays?: number;
+} = {}) => {
+  const today = new Date(occurrenceDateInput?.getTime() ?? Date.now());
+  today.setHours(0, 0, 0, 0);
+  const slotId = 'slot_weekly_parent_1';
+  const occurrenceDate = toIsoDateString(today);
+  const weeklyDayIndex = toMondayIndex(today);
+  const slotStartDate = new Date(today.getTime() + slotStartOffsetDays * 24 * 60 * 60 * 1000);
+  const slotEndDate = new Date(today.getTime() + slotEndOffsetDays * 24 * 60 * 60 * 1000);
+
+  const event = buildApiEvent({
+    id: 'event_1',
+    $id: 'event_1',
+    name: 'Weekly Parent Event',
+    eventType: 'WEEKLY_EVENT',
+    parentEvent: null,
+    teamSignup: false,
+    state: 'PUBLISHED',
+    start: formatLocalDateTime(today),
+    end: '',
+    noFixedEndDateTime: true,
+    maxParticipants: 10,
+    teamSizeLimit: 2,
+    divisions: ['division_open'],
+    divisionDetails: [
+      {
+        id: 'division_open',
+        key: 'open',
+        name: 'Open',
+        divisionTypeId: 'skill_open',
+        divisionTypeName: 'Open',
+        divisionTypeKey: 'skill_open',
+        ratingType: 'SKILL',
+        gender: 'C',
+        maxParticipants: 10,
+      },
+    ],
+    teams: [],
+    players: [],
+    teamIds: [],
+    userIds: [],
+    fields: [
+      {
+        $id: 'field_1',
+        name: 'Main Court',
+        fieldNumber: 1,
+        location: 'Main',
+        lat: 0,
+        long: 0,
+      },
+    ],
+    fieldIds: ['field_1'],
+    timeSlotIds: [slotId],
+    timeSlots: [
+      {
+        $id: slotId,
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+        dayOfWeek: weeklyDayIndex,
+        daysOfWeek: [weeklyDayIndex],
+        divisions: ['division_open'],
+        startDate: formatLocalDateTime(slotStartDate),
+        endDate: formatLocalDateTime(slotEndDate),
+        startTimeMinutes: 540,
+        endTimeMinutes: 660,
+        repeating: true,
+        conflicts: [],
+        checking: false,
+      },
+    ],
+  });
+
+  return {
+    event,
+    slotId,
+    occurrenceDate,
+  };
+};
+
 describe('League schedule page', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -184,6 +312,7 @@ describe('League schedule page', () => {
     mockEventFormDraft = null;
     mockEventFormValidateResult = true;
     mockEventFormDirtyState = false;
+    mockEventFormValidationErrors = [];
     mockCommitDirtyBaseline = jest.fn();
     mockValidatePendingStaffAssignments = jest.fn();
     mockSubmitPendingStaffInvites = jest.fn();
@@ -212,6 +341,7 @@ describe('League schedule page', () => {
     (eventService.updateEvent as jest.Mock).mockReset();
     (eventService.createEvent as jest.Mock).mockReset();
     (eventService.scheduleEvent as jest.Mock).mockReset();
+    (eventService.getEventParticipants as jest.Mock).mockReset();
     (leagueService.deleteMatchesByEvent as jest.Mock).mockReset();
     (leagueService.deleteWeeklySchedulesForEvent as jest.Mock).mockReset();
     (organizationService.getOrganizationById as jest.Mock).mockReset();
@@ -241,6 +371,21 @@ describe('League schedule page', () => {
       return event;
     });
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(undefined);
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event: null,
+      participants: {
+        teams: [],
+        users: [],
+        children: [],
+        waitlist: [],
+        freeAgents: [],
+      },
+      teams: [],
+      users: [],
+      participantCount: 0,
+      participantCapacity: 0,
+      occurrence: null,
+    });
     (organizationService.getOrganizationById as jest.Mock).mockResolvedValue(undefined);
   });
 
@@ -1973,6 +2118,54 @@ describe('League schedule page', () => {
       }
       return Promise.resolve({});
     });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teams: [
+          { registrantId: 'team_real' },
+          { registrantId: 'team_placeholder' },
+        ],
+        users: [],
+        children: [],
+        waitlist: [],
+        freeAgents: [],
+      },
+      teams: [
+        {
+          $id: 'team_real',
+          id: 'team_real',
+          name: 'Sand Strikers',
+          division: 'Open',
+          sport: 'Volleyball',
+          playerIds: [],
+          captainId: '',
+          pending: [],
+          teamSize: 2,
+          currentSize: 0,
+          isFull: false,
+          avatarUrl: '',
+          parentTeamId: 'parent_real',
+        },
+        {
+          $id: 'team_placeholder',
+          id: 'team_placeholder',
+          name: 'Place Holder 1',
+          division: 'Open',
+          sport: 'Volleyball',
+          playerIds: [],
+          captainId: '',
+          pending: [],
+          teamSize: 2,
+          currentSize: 0,
+          isFull: false,
+          avatarUrl: '',
+        },
+      ],
+      users: [],
+      participantCount: 2,
+      participantCapacity: null,
+      occurrence: null,
+    });
 
     renderWithMantine(<LeagueSchedulePage />);
 
@@ -2063,6 +2256,36 @@ describe('League schedule page', () => {
         });
       }
       return Promise.resolve({});
+    });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teams: [],
+        users: [{ registrantId: 'user_1' }],
+        children: [],
+        waitlist: [],
+        freeAgents: [],
+      },
+      teams: [],
+      users: [
+        {
+          $id: 'user_1',
+          firstName: 'Casey',
+          lastName: 'Rivers',
+          userName: 'crivers',
+          teamIds: [],
+          friendIds: [],
+          friendRequestIds: [],
+          friendRequestSentIds: [],
+          followingIds: [],
+          uploadedImages: [],
+          fullName: 'Casey Rivers',
+          avatarUrl: '',
+        },
+      ],
+      participantCount: 1,
+      participantCapacity: null,
+      occurrence: null,
     });
 
     try {
@@ -2482,6 +2705,36 @@ describe('League schedule page', () => {
       }
       return Promise.resolve({});
     });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teams: [],
+        users: [{ registrantId: 'user_1' }],
+        children: [],
+        waitlist: [],
+        freeAgents: [],
+      },
+      teams: [],
+      users: [
+        {
+          $id: 'user_1',
+          firstName: 'Casey',
+          lastName: 'Rivers',
+          userName: 'crivers',
+          teamIds: [],
+          friendIds: [],
+          friendRequestIds: [],
+          friendRequestSentIds: [],
+          followingIds: [],
+          uploadedImages: [],
+          fullName: 'Casey Rivers',
+          avatarUrl: '',
+        },
+      ],
+      participantCount: 1,
+      participantCapacity: null,
+      occurrence: null,
+    });
 
     try {
       renderWithMantine(<LeagueSchedulePage />);
@@ -2668,6 +2921,256 @@ describe('League schedule page', () => {
     fireEvent.click(createButton);
 
     expect(await screen.findByText('Please fix the highlighted fields before submitting.')).toBeInTheDocument();
+  });
+
+  it('includes validation summaries from the event form when available', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        return null;
+      },
+    });
+    mockEventFormValidateResult = false;
+    mockEventFormDirtyState = true;
+    mockEventFormValidationErrors = [
+      {
+        path: 'end',
+        message: 'End date/time must be after start date/time when no fixed end date/time is disabled.',
+      },
+      {
+        path: 'leagueSlots.0.daysOfWeek',
+        message: 'Select at least one day',
+      },
+    ];
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByTestId('event-form');
+
+    const createButton = await screen.findByRole('button', { name: /^create event$/i });
+    fireEvent.click(createButton);
+
+    expect(
+      await screen.findByText(
+        'Please fix the highlighted fields before submitting. End date/time must be after start date/time when no fixed end date/time is disabled. Select at least one day',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows schedule and participants tabs for weekly parent events', async () => {
+    const { event } = buildWeeklyParentEvent();
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const payload = { ...event };
+        delete (payload as any).matches;
+        return Promise.resolve({ event: payload });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue({ ...event });
+    (eventService.getEventById as jest.Mock).mockResolvedValue({ ...event });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByText('Weekly Parent Event');
+
+    expect(screen.getByRole('tab', { name: 'Schedule' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Participants' })).toBeInTheDocument();
+  });
+
+  it('reflects selected weekly occurrences from the URL on the schedule tab', async () => {
+    const { event, slotId, occurrenceDate } = buildWeeklyParentEvent({
+      occurrenceDate: new Date(2026, 5, 16),
+      slotEndOffsetDays: 21,
+    });
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'tab') return 'schedule';
+        if (key === 'slotId') return slotId;
+        if (key === 'occurrenceDate') return occurrenceDate;
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const payload = { ...event };
+        delete (payload as any).matches;
+        return Promise.resolve({ event: payload });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue({ ...event });
+    (eventService.getEventById as jest.Mock).mockResolvedValue({ ...event });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByText('Weekly Parent Event');
+
+    expect(await screen.findByRole('button', { name: /clear selection/i })).toBeInTheDocument();
+    expect(screen.getAllByText((content) => content.includes(occurrenceDate)).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('league-calendar')).toBeInTheDocument();
+    expect(screen.getByTestId(`calendar-match-weekly-occurrence:${slotId}:${occurrenceDate}`)).toBeInTheDocument();
+  });
+
+  it('uses the weekly schedule calendar to select an occurrence', async () => {
+    const { event, slotId, occurrenceDate } = buildWeeklyParentEvent();
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'tab') return 'schedule';
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const payload = { ...event };
+        delete (payload as any).matches;
+        return Promise.resolve({ event: payload });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue({ ...event });
+    (eventService.getEventById as jest.Mock).mockResolvedValue({ ...event });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByText('Weekly Parent Event');
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
+
+    await waitFor(() => {
+      expect(mockRouter.replace).toHaveBeenCalledWith(
+        expect.stringContaining(`slotId=${slotId}`),
+        { scroll: false },
+      );
+      expect(mockRouter.replace).toHaveBeenCalledWith(
+        expect.stringContaining(`occurrenceDate=${occurrenceDate}`),
+        { scroll: false },
+      );
+    });
+  });
+
+  it('recomputes weekly schedule occurrences for the visible calendar range', async () => {
+    const { event } = buildWeeklyParentEvent({
+      occurrenceDate: new Date(2026, 3, 7),
+      slotEndOffsetDays: 21,
+    });
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'tab') return 'schedule';
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const payload = { ...event };
+        delete (payload as any).matches;
+        return Promise.resolve({ event: payload });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue({ ...event });
+    (eventService.getEventById as jest.Mock).mockResolvedValue({ ...event });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByText('Weekly Parent Event');
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/calendar-match-weekly-occurrence:/)).toHaveLength(4);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch To Week View' }));
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/calendar-match-weekly-occurrence:/)).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch To Day View' }));
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/calendar-match-weekly-occurrence:/)).toHaveLength(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Switch To Agenda View' }));
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/calendar-match-weekly-occurrence:/)).toHaveLength(4);
+    });
+  });
+
+  it('keeps the weekly calendar visible when the current range has no occurrences', async () => {
+    const { event } = buildWeeklyParentEvent({
+      occurrenceDate: new Date(2026, 3, 7),
+      slotEndOffsetDays: 21,
+    });
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'tab') return 'schedule';
+        if (key === 'occurrenceDate') return '2026-03-01';
+        if (key === 'slotId') return 'slot_weekly_parent_1';
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const payload = { ...event };
+        delete (payload as any).matches;
+        return Promise.resolve({ event: payload });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue({ ...event });
+    (eventService.getEventById as jest.Mock).mockResolvedValue({ ...event });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByText('Weekly Parent Event');
+
+    expect(screen.getByText('No weekly occurrences are available for this calendar range.')).toBeInTheDocument();
+    expect(screen.getByTestId('league-calendar')).toBeInTheDocument();
+    expect(screen.queryAllByTestId(/calendar-match-weekly-occurrence:/)).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jump To Next Month' }));
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId(/calendar-match-weekly-occurrence:/)).toHaveLength(4);
+    });
   });
 
   it('opens rental sign modal in create mode after sign links are created', async () => {

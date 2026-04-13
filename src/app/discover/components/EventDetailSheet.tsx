@@ -20,7 +20,7 @@ import {
     formatPrice,
 } from '@/types';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
-import { eventService } from '@/lib/eventService';
+import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
@@ -61,6 +61,8 @@ interface EventDetailSheetProps {
     isOpen: boolean;
     onClose: () => void;
     renderInline?: boolean;
+    selectedOccurrence?: WeeklyOccurrenceSelection | null;
+    onWeeklyOccurrenceChange?: (occurrence: { slotId: string; occurrenceDate: string } | null) => void;
 }
 
 const SHEET_POPOVER_Z_INDEX = 1800;
@@ -113,13 +115,22 @@ const dedupeSignSteps = (steps: SignStep[], fallbackSignerContext: 'participant'
 
 const parseDateValue = (value?: string | null): Date | null => {
     if (!value) return null;
-    const parsed = new Date(value);
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        const [year, month, day] = trimmed.split('-').map(Number);
+        if (![year, month, day].some(Number.isNaN)) {
+            return new Date(year, (month ?? 1) - 1, day ?? 1);
+        }
+    }
+    const parsed = new Date(trimmed);
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
 type WeeklySessionOption = {
     id: string;
     slotId: string;
+    occurrenceDate: string;
     start: Date;
     end: Date;
     label: string;
@@ -139,6 +150,13 @@ const addDays = (value: Date, days: number): Date => {
     const copy = new Date(value.getTime());
     copy.setDate(copy.getDate() + days);
     return copy;
+};
+
+const toIsoDateString = (value: Date): string => {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, '0');
+    const day = `${value.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
 };
 
 const formatWeeklyTimeLabel = (value: Date): string => (
@@ -262,8 +280,9 @@ const buildWeeklySessionOptions = (event: Event | null, weeks: number = 3): Week
                 sessionEnd.setHours(0, endMinutes, 0, 0);
 
                 sessions.push({
-                    id: `${slot.$id}-${sessionStart.toISOString()}`,
+                    id: `${slot.$id}-${toIsoDateString(occurrence)}`,
                     slotId: String(slot.$id ?? ''),
+                    occurrenceDate: toIsoDateString(occurrence),
                     start: sessionStart,
                     end: sessionEnd,
                     label: formatWeeklySessionLabel(sessionStart, sessionEnd),
@@ -274,6 +293,110 @@ const buildWeeklySessionOptions = (event: Event | null, weeks: number = 3): Week
     });
 
     return sessions.sort((left, right) => left.start.getTime() - right.start.getTime());
+};
+
+const resolveSelectedWeeklySessionOption = (
+    event: Event | null,
+    selection: WeeklyOccurrenceSelection | null,
+): WeeklySessionOption | null => {
+    if (!event || !selection) {
+        return null;
+    }
+    const selectedSlotId = typeof selection.slotId === 'string' ? selection.slotId.trim() : '';
+    const selectedOccurrenceDate = typeof selection.occurrenceDate === 'string' ? selection.occurrenceDate.trim() : '';
+    if (!selectedSlotId || !selectedOccurrenceDate) {
+        return null;
+    }
+
+    const occurrenceDate = parseDateValue(selectedOccurrenceDate);
+    if (!occurrenceDate) {
+        return null;
+    }
+    occurrenceDate.setHours(0, 0, 0, 0);
+
+    const originalTimeSlots = Array.isArray(event.timeSlots) ? event.timeSlots : [];
+    const matchingSlot = originalTimeSlots.find((slot) => String(slot?.$id ?? '').trim() === selectedSlotId);
+    if (!matchingSlot) {
+        return null;
+    }
+
+    const slotStartDate = parseDateValue(matchingSlot.startDate ?? null);
+    const slotEndDate = parseDateValue(matchingSlot.endDate ?? null);
+    if (!slotStartDate) {
+        return null;
+    }
+    slotStartDate.setHours(0, 0, 0, 0);
+    if (slotEndDate) {
+        slotEndDate.setHours(0, 0, 0, 0);
+    }
+
+    const normalizedDays = Array.from(
+        new Set(
+            (Array.isArray(matchingSlot.daysOfWeek) && matchingSlot.daysOfWeek.length
+                ? matchingSlot.daysOfWeek
+                : Number.isInteger(matchingSlot.dayOfWeek)
+                    ? [matchingSlot.dayOfWeek]
+                    : [])
+                .map((value) => Number(value))
+                .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6),
+        ),
+    ).sort((left, right) => left - right);
+    const startMinutes = typeof matchingSlot.startTimeMinutes === 'number' ? matchingSlot.startTimeMinutes : null;
+    const endMinutes = typeof matchingSlot.endTimeMinutes === 'number' ? matchingSlot.endTimeMinutes : null;
+    if (!normalizedDays.length || startMinutes === null || endMinutes === null || endMinutes <= startMinutes) {
+        return null;
+    }
+    if (!normalizedDays.includes(toMondayIndex(occurrenceDate))) {
+        return null;
+    }
+    if (occurrenceDate < slotStartDate) {
+        return null;
+    }
+    if (slotEndDate && occurrenceDate > slotEndDate) {
+        return null;
+    }
+
+    const sportInput = typeof event.sport === 'string'
+        ? event.sport
+        : event.sport?.name ?? event.sportId ?? null;
+    const divisionNameIndex = buildDivisionDisplayNameIndex(event.divisionDetails);
+    const slotDivisionEntries = Array.isArray(matchingSlot.divisions) && matchingSlot.divisions.length
+        ? matchingSlot.divisions
+        : (Array.isArray(event.divisions) ? event.divisions : []);
+    const divisionLabel = slotDivisionEntries
+        .map((entry) => {
+            const resolved = resolveDivisionDisplayName({
+                division: getDivisionIdFromEventEntry(entry) ?? (typeof entry === 'string' ? entry : null),
+                divisionNameIndex,
+                sportInput,
+            });
+            if (resolved) {
+                return resolved;
+            }
+            if (entry && typeof entry === 'object') {
+                const candidate = entry as { name?: unknown };
+                return typeof candidate.name === 'string' ? candidate.name : null;
+            }
+            return null;
+        })
+        .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+        .filter((value, index, values) => values.findIndex((candidate) => candidate.toLowerCase() === value.toLowerCase()) === index)
+        .join(', ') || 'All divisions';
+
+    const start = new Date(occurrenceDate.getTime());
+    start.setHours(0, startMinutes, 0, 0);
+    const end = new Date(occurrenceDate.getTime());
+    end.setHours(0, endMinutes, 0, 0);
+
+    return {
+        id: `${selectedSlotId}-${selectedOccurrenceDate}`,
+        slotId: selectedSlotId,
+        occurrenceDate: selectedOccurrenceDate,
+        start,
+        end,
+        label: formatWeeklySessionLabel(start, end),
+        divisionLabel,
+    };
 };
 
 const normalizeUserId = (value: unknown): string | null => {
@@ -711,7 +834,14 @@ function ReadOnlyDetailsGrid({ items }: { items: ReadOnlyDetailField[] }) {
     );
 }
 
-export default function EventDetailSheet({ event, isOpen, onClose, renderInline = false }: EventDetailSheetProps) {
+export default function EventDetailSheet({
+    event,
+    isOpen,
+    onClose,
+    renderInline = false,
+    selectedOccurrence = null,
+    onWeeklyOccurrenceChange,
+}: EventDetailSheetProps) {
     const { user, authUser } = useApp();
     const router = useRouter();
     const [detailedEvent, setDetailedEvent] = useState<Event | null>(null);
@@ -756,8 +886,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
     const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
     const [paymentPlanPreview, setPaymentPlanPreview] = useState<PaymentPlanPreviewState | null>(null);
-    const [creatingWeeklySessionId, setCreatingWeeklySessionId] = useState<string | null>(null);
     const [hostUser, setHostUser] = useState<UserData | null>(null);
+    const eventRef = React.useRef<Event | null>(event);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -767,6 +897,38 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
 
     const currentEvent = detailedEvent || event;
+    const isWeeklyParentEvent = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
+    const weeklySessionOptions = React.useMemo(
+        () => (isWeeklyParentEvent ? buildWeeklySessionOptions(currentEvent, 3) : []),
+        [currentEvent, isWeeklyParentEvent],
+    );
+    const normalizedSelectedOccurrence = React.useMemo<WeeklyOccurrenceSelection | null>(() => {
+        const slotId = typeof selectedOccurrence?.slotId === 'string' ? selectedOccurrence.slotId.trim() : '';
+        const occurrenceDate = typeof selectedOccurrence?.occurrenceDate === 'string' ? selectedOccurrence.occurrenceDate.trim() : '';
+        if (!slotId || !occurrenceDate) {
+            return null;
+        }
+        return { slotId, occurrenceDate };
+    }, [selectedOccurrence?.occurrenceDate, selectedOccurrence?.slotId]);
+    const selectedWeeklyOccurrenceOption = React.useMemo(
+        () => (
+            normalizedSelectedOccurrence
+                ? weeklySessionOptions.find((option) => (
+                    option.slotId === normalizedSelectedOccurrence.slotId
+                    && option.occurrenceDate === normalizedSelectedOccurrence.occurrenceDate
+                )) ?? resolveSelectedWeeklySessionOption(currentEvent, normalizedSelectedOccurrence)
+                : null
+        ),
+        [currentEvent, normalizedSelectedOccurrence, weeklySessionOptions],
+    );
+    const selectedWeeklyOccurrence = selectedWeeklyOccurrenceOption
+        ? {
+            slotId: selectedWeeklyOccurrenceOption.slotId,
+            occurrenceDate: selectedWeeklyOccurrenceOption.occurrenceDate,
+        }
+        : undefined;
+    const weeklySelectionRequired = isWeeklyParentEvent && !selectedWeeklyOccurrence;
+    const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
         () => getEventImageFallbackUrl({ event: currentEvent, width: 800, height: 200 }),
         [currentEvent],
@@ -890,6 +1052,15 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             divisionTypeKey: selectedDivisionOption.divisionTypeKey,
         };
     }, [registrationByDivisionType, selectedDivisionOption, selectedDivisionTypeKey]);
+    const resolvedDivisionSelectionPayload = React.useMemo<DivisionSelectionPayload>(() => (
+        selectedWeeklyOccurrence
+            ? {
+                ...divisionSelectionPayload,
+                slotId: selectedWeeklyOccurrence.slotId ?? undefined,
+                occurrenceDate: selectedWeeklyOccurrence.occurrenceDate ?? undefined,
+            }
+            : divisionSelectionPayload
+    ), [divisionSelectionPayload, selectedWeeklyOccurrence]);
     const isDivisionSelectionMissing = React.useMemo(() => {
         if (!divisionOptions.length) {
             return false;
@@ -1023,8 +1194,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
     const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
     const hasAgeLimits = typeof eventMinAge === 'number' || typeof eventMaxAge === 'number';
-    const eventStartDate = parseDateValue(currentEvent?.start ?? null);
+    const eventStartDate = effectiveEventStartDate;
     const eventHasStarted = Boolean(eventStartDate && new Date() >= eventStartDate);
+    const joinClosedMessage = isWeeklyParentEvent && selectedWeeklyOccurrenceOption
+        ? 'This weekly occurrence has already started. Joining is closed.'
+        : 'This event has already started. Joining is closed.';
     const userDob = parseDateValue(user?.dateOfBirth ?? null);
     const userAge = userDob ? calculateAgeOnDate(userDob, eventStartDate ?? new Date()) : undefined;
     const hasValidUserAge = typeof userAge === 'number' && Number.isFinite(userAge);
@@ -1046,7 +1220,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const selfRegistrationBlockedReason = (() => {
         if (!user) return null;
         if (eventHasStarted) {
-            return 'This event has already started. Joining is closed.';
+            return joinClosedMessage;
         }
         if (!hasValidUserAge) {
             return 'Add your date of birth to your profile to register for events.';
@@ -1236,59 +1410,162 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     }, [divisionOptions]);
 
     const loadEventDetails = useCallback(async (eventId?: string) => {
-        const targetId = eventId ?? event?.$id;
+        const sourceEvent = eventRef.current ?? event;
+        const targetId = eventId ?? sourceEvent?.$id;
         if (!targetId) return;
 
         setIsLoadingEvent(true);
         try {
             // Fetch full event with relationships for accurate editing context
-            let latest = await eventService.getEventWithRelations(targetId);
-            if (!latest) {
+            let latest = renderInline ? sourceEvent : await eventService.getEventWithRelations(targetId);
+            if (!latest && !renderInline) {
                 latest = await eventService.getEvent(targetId);
             }
-            const baseEvent = latest || event;
+            const baseEvent = latest || sourceEvent;
             if (!baseEvent) {
                 return;
             }
 
-            setDetailedEvent(baseEvent);
+            let resolvedEvent = baseEvent;
+            let eventPlayers: UserData[] = Array.isArray(baseEvent.players) ? (baseEvent.players as UserData[]) : [];
+            let eventTeams: Team[] = Array.isArray(baseEvent.teams) ? (baseEvent.teams as Team[]) : [];
+            let eventFreeAgents: UserData[] = [];
 
-            const eventPlayers: UserData[] = Array.isArray(baseEvent.players) ? (baseEvent.players as UserData[]) : [];
-            const eventTeams: Team[] = Array.isArray(baseEvent.teams) ? (baseEvent.teams as Team[]) : [];
+            if (baseEvent.eventType === 'WEEKLY_EVENT' && !baseEvent.parentEvent) {
+                if (selectedWeeklyOccurrence?.slotId && selectedWeeklyOccurrence?.occurrenceDate) {
+                    try {
+                        const snapshot = await eventService.getEventParticipants(targetId, selectedWeeklyOccurrence);
+                        const refreshedTeamIds = Array.from(new Set(
+                            (snapshot.participants.teams ?? [])
+                                .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                                .filter((teamId): teamId is string => teamId.length > 0),
+                        ));
+                        const participantUserIds = Array.from(new Set(
+                            [...(snapshot.participants.users ?? []), ...(snapshot.participants.children ?? [])]
+                                .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                                .filter((userId): userId is string => userId.length > 0),
+                        ));
+                        const waitListIds = Array.from(new Set(
+                            (snapshot.participants.waitlist ?? [])
+                                .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                                .filter((userId): userId is string => userId.length > 0),
+                        ));
+                        const freeAgentIds = Array.from(new Set(
+                            (snapshot.participants.freeAgents ?? [])
+                                .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                                .filter((userId): userId is string => userId.length > 0),
+                        ));
 
+                        const teamsById = new Map((snapshot.teams ?? []).map((team) => [team.$id, team]));
+                        const orderedTeams = refreshedTeamIds
+                            .map((teamId) => teamsById.get(teamId))
+                            .filter((team): team is Team => Boolean(team));
+                        const usersById = new Map((snapshot.users ?? []).map((participant) => [participant.$id, participant]));
+                        const orderedUsers = participantUserIds
+                            .map((userId) => usersById.get(userId))
+                            .filter((participant): participant is UserData => Boolean(participant));
+                        const orderedFreeAgents = freeAgentIds
+                            .map((userId) => usersById.get(userId))
+                            .filter((participant): participant is UserData => Boolean(participant));
+
+                        resolvedEvent = {
+                            ...baseEvent,
+                            teamIds: refreshedTeamIds,
+                            teams: orderedTeams,
+                            userIds: participantUserIds,
+                            players: orderedUsers,
+                            waitListIds,
+                            freeAgentIds,
+                            participantCount: snapshot.participantCount,
+                            participantCapacity: snapshot.participantCapacity ?? undefined,
+                        } as Event;
+                        eventPlayers = orderedUsers;
+                        eventTeams = orderedTeams;
+                        eventFreeAgents = orderedFreeAgents;
+                    } catch (error) {
+                        console.error('Failed to load weekly occurrence participants:', error);
+                        resolvedEvent = {
+                            ...baseEvent,
+                            teamIds: [],
+                            teams: [],
+                            userIds: [],
+                            players: [],
+                            waitListIds: [],
+                            freeAgentIds: [],
+                        } as Event;
+                        eventPlayers = [];
+                        eventTeams = [];
+                        eventFreeAgents = [];
+                    }
+                } else {
+                    resolvedEvent = {
+                        ...baseEvent,
+                        teamIds: [],
+                        teams: [],
+                        userIds: [],
+                        players: [],
+                        waitListIds: [],
+                        freeAgentIds: [],
+                    } as Event;
+                    eventPlayers = [];
+                    eventTeams = [];
+                    eventFreeAgents = [];
+                }
+            } else {
+                const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
+                const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
+
+                if (shouldLoadFreeAgents) {
+                    try {
+                        eventFreeAgents = await userService.getUsersByIds(freeAgentIds, { eventId: baseEvent.$id });
+                    } catch (error) {
+                        console.error('Failed to load free agents:', error);
+                        eventFreeAgents = [];
+                    }
+                }
+            }
+
+            setDetailedEvent(resolvedEvent);
             setPlayers(eventPlayers);
-            const isSchedulableSlotEvent = baseEvent.eventType === 'LEAGUE' || baseEvent.eventType === 'TOURNAMENT';
+            const isSchedulableSlotEvent = resolvedEvent.eventType === 'LEAGUE' || resolvedEvent.eventType === 'TOURNAMENT';
             const filteredTeams = isSchedulableSlotEvent
                 ? eventTeams.filter((team) => typeof team.parentTeamId === 'string' && team.parentTeamId.trim().length > 0)
                 : eventTeams;
             setTeams(filteredTeams);
-
-            const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
-            const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
-
-            if (shouldLoadFreeAgents) {
-                try {
-                    const agents = await userService.getUsersByIds(freeAgentIds, { eventId: baseEvent.$id });
-                    setFreeAgents(agents);
-                } catch (error) {
-                    console.error('Failed to load free agents:', error);
-                    setFreeAgents([]);
-                }
-            } else {
-                setFreeAgents([]);
-            }
+            setFreeAgents(eventFreeAgents);
 
         } catch (error) {
             console.error('Failed to load event details:', error);
         } finally {
             setIsLoadingEvent(false);
         }
+    }, [renderInline, selectedWeeklyOccurrence?.occurrenceDate, selectedWeeklyOccurrence?.slotId]);
+
+    useEffect(() => {
+        eventRef.current = event;
+        setDetailedEvent((previous) => {
+            if (!event || !previous || previous.$id !== event.$id) {
+                return previous;
+            }
+            return {
+                ...previous,
+                fieldIds: Array.isArray(event.fieldIds) ? event.fieldIds : previous.fieldIds,
+                fields: Array.isArray(event.fields) ? event.fields : previous.fields,
+                timeSlotIds: Array.isArray(event.timeSlotIds) ? event.timeSlotIds : previous.timeSlotIds,
+                timeSlots: Array.isArray(event.timeSlots) ? event.timeSlots : previous.timeSlots,
+                divisions: Array.isArray(event.divisions) ? event.divisions : previous.divisions,
+                divisionDetails: Array.isArray(event.divisionDetails) ? event.divisionDetails : previous.divisionDetails,
+                playoffDivisionDetails: Array.isArray(event.playoffDivisionDetails)
+                    ? event.playoffDivisionDetails
+                    : previous.playoffDivisionDetails,
+            } as Event;
+        });
     }, [event]);
 
     useEffect(() => {
         if (isActive && event) {
             setDetailedEvent(event);
-            void loadEventDetails();
+            void loadEventDetails(event.$id);
         } else {
             setDetailedEvent(null);
             setPlayers([]);
@@ -1321,12 +1598,11 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setChildRegistration(null);
             setChildConsent(null);
             setChildRegistrationChildId(null);
-            setCreatingWeeklySessionId(null);
             setPaymentPlanPreview(null);
             setSelectedDivisionId('');
             setSelectedDivisionTypeKey('');
         }
-    }, [isActive, event, loadEventDetails]);
+    }, [event?.$id, isActive, loadEventDetails]);
 
     const handleViewSchedule = (tab?: string) => {
         const eventPath = `/events/${currentEvent.$id}`;
@@ -1341,8 +1617,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
     };
 
-    const handleWeeklySessionSelect = useCallback(async (session: WeeklySessionOption) => {
+    const handleWeeklySessionSelect = useCallback((session: WeeklySessionOption) => {
         if (!currentEvent || currentEvent.eventType !== 'WEEKLY_EVENT' || currentEvent.parentEvent) {
+            return;
+        }
+        setJoinError(null);
+        setJoinNotice(null);
+        if (onWeeklyOccurrenceChange) {
+            onWeeklyOccurrenceChange({
+                slotId: session.slotId,
+                occurrenceDate: session.occurrenceDate,
+            });
             return;
         }
         if (!user) {
@@ -1350,27 +1635,15 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             return;
         }
 
-        setCreatingWeeklySessionId(session.id);
-        setJoinError(null);
-        setJoinNotice(null);
-
-        try {
-            const createdEvent = await eventService.createWeeklySession(currentEvent.$id, {
-                sessionStart: session.start.toISOString(),
-                sessionEnd: session.end.toISOString(),
-                ...(session.slotId ? { slotId: session.slotId } : {}),
-            });
-            const latest = await eventService.getEventWithRelations(createdEvent.$id);
-            const resolvedEvent = latest ?? createdEvent;
-            setDetailedEvent(resolvedEvent);
-            setJoinNotice('Session selected. Finish registration below.');
-            await loadEventDetails(resolvedEvent.$id);
-        } catch (error) {
-            setJoinError(error instanceof Error ? error.message : 'Failed to load weekly session.');
-        } finally {
-            setCreatingWeeklySessionId(null);
-        }
-    }, [currentEvent, loadEventDetails, user]);
+        setJoinNotice('Occurrence selected. Finish registration on the event page.');
+        const params = new URLSearchParams({
+            tab: 'schedule',
+            slotId: session.slotId,
+            occurrenceDate: session.occurrenceDate,
+        });
+        router.push(`/events/${currentEvent.$id}?${params.toString()}`);
+        onClose();
+    }, [currentEvent, onClose, onWeeklyOccurrenceChange, router, user]);
 
     const createBillForOwner = useCallback(async (ownerType: 'USER' | 'TEAM', ownerId: string) => {
         if (!currentEvent) {
@@ -1415,10 +1688,17 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         if (!currentEvent) {
             throw new Error('Event is not loaded.');
         }
+        const resolvedSelection = selectedWeeklyOccurrence
+            ? {
+                ...selection,
+                slotId: selectedWeeklyOccurrence.slotId ?? undefined,
+                occurrenceDate: selectedWeeklyOccurrence.occurrenceDate ?? undefined,
+            }
+            : selection;
 
         setRegisteringChild(true);
         try {
-            const result = await registrationService.registerChildForEvent(currentEvent.$id, childId, selection);
+            const result = await registrationService.registerChildForEvent(currentEvent.$id, childId, resolvedSelection);
             setChildRegistration(result.registration ?? null);
             setChildConsent(result.consent ?? null);
             setChildRegistrationChildId(childId);
@@ -1452,7 +1732,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         } finally {
             setRegisteringChild(false);
         }
-    }, [currentEvent, loadEventDetails]);
+    }, [currentEvent, loadEventDetails, selectedWeeklyOccurrence]);
 
     const loadRequiredSignLinksForIntent = useCallback(async (intent: JoinIntent): Promise<SignStep[]> => {
         if (!currentEvent || !user || !authUser?.email) {
@@ -1553,6 +1833,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 undefined,
                 selection,
                 billingAddress,
+                selectedWeeklyOccurrence,
             );
             setPaymentData(paymentIntent);
             setShowPaymentModal(true);
@@ -1576,10 +1857,21 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             }
             throw error;
         }
-    }, [user]);
+    }, [selectedWeeklyOccurrence, user]);
+
+    const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly occurrence before continuing.') => {
+        if (!weeklySelectionRequired) {
+            return true;
+        }
+        setJoinError(message);
+        return false;
+    }, [weeklySelectionRequired]);
 
     const finalizeJoin = useCallback(async (intent: JoinIntent) => {
         if (!user || !currentEvent) return;
+        if (!ensureWeeklyOccurrenceSelected()) {
+            return;
+        }
         const requiresDivisionSelection = intent.mode !== 'child_free_agent';
         if (requiresDivisionSelection && isDivisionSelectionMissing) {
             throw new Error(
@@ -1588,7 +1880,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     : 'Select a division before joining.',
             );
         }
-        const selection = divisionSelectionPayload;
+        const selection = resolvedDivisionSelectionPayload;
 
         if (intent.mode === 'child') {
             if (!intent.childId) {
@@ -1601,7 +1893,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             if (!intent.childId) {
                 throw new Error('Select a child to add as a free agent.');
             }
-            await eventService.addFreeAgent(currentEvent.$id, intent.childId);
+            await eventService.addFreeAgent(currentEvent.$id, intent.childId, selectedWeeklyOccurrence);
             setJoinNotice('Child added to free agent list.');
             await loadEventDetails();
             return;
@@ -1610,7 +1902,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             if (!intent.childId) {
                 throw new Error('Select a child to add to waitlist.');
             }
-            await eventService.addToWaitlist(currentEvent.$id, intent.childId, 'user');
+            await eventService.addToWaitlist(currentEvent.$id, intent.childId, 'user', selectedWeeklyOccurrence);
             setJoinNotice('Child added to waitlist.');
             await loadEventDetails();
             return;
@@ -1635,7 +1927,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
 
         if (joinAtCapacity && intent.mode === 'user') {
-            await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user');
+            await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user', selectedWeeklyOccurrence);
             setJoinNotice('Added to waitlist.');
             await loadEventDetails();
             return;
@@ -1645,7 +1937,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             if (!resolvedTeam?.$id) {
                 throw new Error('Team is required to join the waitlist.');
             }
-            await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team');
+            await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team', selectedWeeklyOccurrence);
             setJoinNotice('Team added to waitlist.');
             await loadEventDetails();
             return;
@@ -1663,7 +1955,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         }
 
         if (intent.mode === 'user_waitlist') {
-            await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user');
+            await eventService.addToWaitlist(currentEvent.$id, user.$id, 'user', selectedWeeklyOccurrence);
             setJoinNotice('Added to waitlist.');
             await loadEventDetails();
             return;
@@ -1673,7 +1965,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             if (!resolvedTeam?.$id) {
                 throw new Error('Team is required to join the waitlist.');
             }
-            await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team');
+            await eventService.addToWaitlist(currentEvent.$id, resolvedTeam.$id, 'team', selectedWeeklyOccurrence);
             setJoinNotice('Team added to waitlist.');
             await loadEventDetails();
             return;
@@ -1694,6 +1986,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     joinTeam,
                     selection,
                     JOIN_API_TIMEOUT_MS,
+                    selectedWeeklyOccurrence,
                 );
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'Failed to join event.';
@@ -1729,6 +2022,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             undefined,
                             undefined,
                             JOIN_API_TIMEOUT_MS,
+                            selectedWeeklyOccurrence,
                         );
                     } catch (rollbackError) {
                         console.error('Failed to rollback payment-plan join after billing error', rollbackError);
@@ -1749,6 +2043,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                     resolvedTeam,
                     selection,
                     JOIN_API_TIMEOUT_MS,
+                    selectedWeeklyOccurrence,
                 );
             }
             await loadEventDetails();
@@ -1763,16 +2058,18 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         checkoutEvent,
         createBillForOwner,
         currentEvent,
-        divisionSelectionPayload,
+        ensureWeeklyOccurrenceSelected,
         isDivisionSelectionMissing,
         isFreeForUser,
         loadEventDetails,
         players.length,
         registrationByDivisionType,
         registerChildForEvent,
+        resolvedDivisionSelectionPayload,
         selectedDivisionBilling.allowPaymentPlans,
         selectedDivisionAtCapacity,
         selectedTeamId,
+        selectedWeeklyOccurrence,
         startEventCheckout,
         teams.length,
         user,
@@ -2169,7 +2466,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const handleRegisterChild = async () => {
         if (!user || !currentEvent) return;
         if (eventHasStarted) {
-            setJoinError('This event has already started. Joining is closed.');
+            setJoinError(joinClosedMessage);
+            return;
+        }
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before registering a child.')) {
             return;
         }
         if (!selectedChildId) {
@@ -2187,7 +2487,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             setJoiningChildFreeAgent(true);
             try {
                 if (selectedChildIsFreeAgent) {
-                    await eventService.removeFreeAgent(currentEvent.$id, selectedChildId);
+                    await eventService.removeFreeAgent(currentEvent.$id, selectedChildId, selectedWeeklyOccurrence);
                     setJoinNotice('Child removed from free agent list.');
                 } else {
                     const signingStarted = await beginSigningFlow({
@@ -2221,7 +2521,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             try {
                 if (selectedChildIsWaitlisted) {
                     setRegisteringChild(true);
-                    await eventService.removeFromWaitlist(currentEvent.$id, selectedChildId, 'user');
+                    await eventService.removeFromWaitlist(currentEvent.$id, selectedChildId, 'user', selectedWeeklyOccurrence);
                     setJoinNotice('Child removed from waitlist.');
                     await loadEventDetails();
                     return;
@@ -2271,7 +2571,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             if (signingStarted) {
                 return;
             }
-            await registerChildForEvent(selectedChildId, divisionSelectionPayload);
+            await registerChildForEvent(selectedChildId, resolvedDivisionSelectionPayload);
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to register child.');
         }
@@ -2298,7 +2598,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const handleJoinEvent = async (selection?: 'self' | 'child', skipPaymentPlanPreview = false) => {
         if (!user || !currentEvent) return;
         if (eventHasStarted) {
-            setJoinError('This event has already started. Joining is closed.');
+            setJoinError(joinClosedMessage);
+            return;
+        }
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before joining.')) {
             return;
         }
         if (!selection && canRegisterChild && hasActiveChildren) {
@@ -2343,7 +2646,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         let signingStarted = false;
         try {
             if (isMinor) {
-                const result = await registrationService.registerSelfForEvent(currentEvent.$id, divisionSelectionPayload);
+                const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload);
                 if (result.requiresParentApproval) {
                     setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
                 } else {
@@ -2369,7 +2672,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const handleJoinWaitlist = async () => {
         if (!user || !currentEvent) return;
         if (eventHasStarted) {
-            setJoinError('This event has already started. Joining is closed.');
+            setJoinError(joinClosedMessage);
+            return;
+        }
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before joining the waitlist.')) {
             return;
         }
         if (selfRegistrationBlockedReason) {
@@ -2392,7 +2698,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         let signingStarted = false;
         try {
             if (isMinor) {
-                const result = await registrationService.registerSelfForEvent(currentEvent.$id, divisionSelectionPayload);
+                const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload);
                 if (result.requiresParentApproval) {
                     setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
                 } else {
@@ -2418,7 +2724,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const handleJoinTeamWaitlist = async () => {
         if (!user || !currentEvent || !selectedTeamId) return;
         if (eventHasStarted) {
-            setJoinError('This event has already started. Joining is closed.');
+            setJoinError(joinClosedMessage);
+            return;
+        }
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before joining the waitlist.')) {
             return;
         }
         if (!selectedTeamIsWaitlisted && isDivisionSelectionMissing) {
@@ -2438,7 +2747,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         let signingStarted = false;
         try {
             if (selectedTeamIsWaitlisted) {
-                await eventService.removeFromWaitlist(currentEvent.$id, selectedTeamId, 'team');
+                await eventService.removeFromWaitlist(currentEvent.$id, selectedTeamId, 'team', selectedWeeklyOccurrence);
                 setJoinNotice('Team removed from waitlist.');
                 await loadEventDetails();
                 return;
@@ -2461,7 +2770,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const handleJoinAsTeam = async (skipPaymentPlanPreview = false, teamOverride?: Team) => {
         if (!user || !currentEvent || (!selectedTeamId && !teamOverride?.$id)) return;
         if (eventHasStarted) {
-            setJoinError('This event has already started. Joining is closed.');
+            setJoinError(joinClosedMessage);
+            return;
+        }
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before joining.')) {
             return;
         }
         if (isDivisionSelectionMissing) {
@@ -2528,7 +2840,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const handleWithdrawTeam = async () => {
         if (!user || !currentEvent || !selectedTeamId) return;
         if (eventHasStarted) {
-            setJoinError('This event has already started. Joining is closed.');
+            setJoinError(joinClosedMessage);
+            return;
+        }
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before withdrawing.')) {
             return;
         }
 
@@ -2546,6 +2861,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                 undefined,
                 undefined,
                 JOIN_API_TIMEOUT_MS,
+                selectedWeeklyOccurrence,
             );
 
             setJoinNotice('Team withdrawn from this event.');
@@ -2574,7 +2890,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         setJoinError('Signature process canceled.');
     }, []);
 
-    // After successful payment, poll for up to 30s until the registration is reflected
+    // After successful payment, poll for up to 30s until the webhook-backed registration is reflected
     const confirmRegistrationAfterPayment = async () => {
         if (!user || !currentEvent) return;
         setConfirmingPurchase(true);
@@ -2583,50 +2899,48 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         const deadline = Date.now() + 30_000; // 30 seconds
         const pollIntervalMs = 2000; // 2 seconds
         const targetTeamId = selectedTeamId || null;
-        const selection = divisionSelectionPayload;
 
         try {
-            const joinTeam = currentEvent.teamSignup
-                ? (
-                    targetTeamId
-                        ? userTeams.find((team) => team.$id === targetTeamId) ?? ({ $id: targetTeamId } as Team)
-                        : undefined
-                )
-                : undefined;
-
-            if (currentEvent.teamSignup && !joinTeam?.$id) {
+            if (currentEvent.teamSignup && !targetTeamId) {
                 throw new Error('Team is required to complete registration.');
             }
 
-            try {
-                await paymentService.joinEvent(
-                    user,
-                    checkoutEvent ?? currentEvent,
-                    joinTeam,
-                    selection,
-                    JOIN_API_TIMEOUT_MS,
-                );
-            } catch (error) {
-                const message = error instanceof Error ? error.message : 'Failed to join event after payment.';
-                if (!message.toLowerCase().includes('already registered')) {
-                    throw error;
-                }
-            }
-
             while (Date.now() < deadline) {
-                const latest = await eventService.getEventWithRelations(currentEvent.$id);
-                if (latest) {
-                    // Check registration status depending on signup type using relations
-                    const registered = latest.teamSignup
-                        ? (targetTeamId
-                            ? Object.values(latest.teams || {}).some(t => t.parentTeamId === targetTeamId || t.$id === targetTeamId)
-                            : Object.values(latest.teams || {}).some(t => (t.playerIds || []).includes(user.$id)))
-                        : (latest.players || []).some(p => p.$id === user.$id);
+                if (selectedWeeklyOccurrence) {
+                    const snapshot = await eventService.getEventParticipants(currentEvent.$id, selectedWeeklyOccurrence);
+                    const participantTeamIds = Array.from(new Set(
+                        (snapshot.participants.teams ?? [])
+                            .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                            .filter((teamId): teamId is string => teamId.length > 0),
+                    ));
+                    const participantUserIds = Array.from(new Set(
+                        [...(snapshot.participants.users ?? []), ...(snapshot.participants.children ?? [])]
+                            .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                            .filter((userId): userId is string => userId.length > 0),
+                    ));
+                    const registered = currentEvent.teamSignup
+                        ? Boolean(targetTeamId && participantTeamIds.includes(targetTeamId))
+                        : participantUserIds.includes(user.$id);
 
                     if (registered) {
                         await loadEventDetails();
                         setConfirmingPurchase(false);
                         return;
+                    }
+                } else {
+                    const latest = await eventService.getEventWithRelations(currentEvent.$id);
+                    if (latest) {
+                        const registered = latest.teamSignup
+                            ? (targetTeamId
+                                ? Object.values(latest.teams || {}).some(t => t.parentTeamId === targetTeamId || t.$id === targetTeamId)
+                                : Object.values(latest.teams || {}).some(t => (t.playerIds || []).includes(user.$id)))
+                            : (latest.players || []).some(p => p.$id === user.$id);
+
+                        if (registered) {
+                            await loadEventDetails();
+                            setConfirmingPurchase(false);
+                            return;
+                        }
                     }
                 }
 
@@ -2648,8 +2962,6 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
 
     const { date, time } = getEventDateTime(currentEvent);
     const isTeamSignup = currentEvent.teamSignup;
-    const isWeeklyParentEvent = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
-    const weeklySessionOptions = isWeeklyParentEvent ? buildWeeklySessionOptions(currentEvent, 3) : [];
     const shouldScrollWeeklySessions = weeklySessionOptions.length > WEEKLY_SESSION_VISIBLE_ROWS;
     const startDateValue = parseDateValue(currentEvent.start ?? null);
     const endDateValue = parseDateValue(currentEvent.end ?? null);
@@ -2694,11 +3006,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
         const fromLegacy = collectUniqueUserIds(currentEvent.waitList);
         return Array.from(new Set([...fromEvent, ...fromLegacy]));
     })();
+    const normalizedParticipantUserIds = collectUniqueUserIds(currentEvent.userIds);
     const normalizedFreeAgentIdSet = new Set(normalizedFreeAgentIds);
     const normalizedWaitlistIdSet = new Set(normalizedWaitlistIds);
     // Use expanded relations for registration state
     const isUserRegistered = !!user && (
-        (!isTeamSignup && players.some(p => p.$id === user.$id)) ||
+        (!isTeamSignup && (players.some(p => p.$id === user.$id) || normalizedParticipantUserIds.includes(user.$id))) ||
         (isTeamSignup && teams.some(t => (t.playerIds || []).includes(user.$id)))
     );
     const isUserWaitlisted = !!user && normalizedWaitlistIdSet.has(user.$id);
@@ -2770,7 +3083,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     );
     const selectedChildIsRegistered = Boolean(
         selectedChildId
-        && players.some((participant) => participant.$id === selectedChildId),
+        && (players.some((participant) => participant.$id === selectedChildId) || normalizedParticipantUserIds.includes(selectedChildId)),
     );
     const showChildRegistrationStatus = Boolean(selectedChildId && childRegistrationChildId === selectedChildId);
     const hasCoordinates = Array.isArray(currentEvent.coordinates) && currentEvent.coordinates.length >= 2;
@@ -2930,10 +3243,12 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
     const showSelfWaitlistActions = joinAtCapacity || isUserWaitlisted;
     const childWaitlistMode = !isTeamSignup && (joinAtCapacity || selectedChildIsWaitlisted);
     const showTeamWaitlistActions = !selectedTeamIsRegistered && (joinAtCapacity || selectedTeamIsWaitlisted);
-    const selfJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
-    const selfWaitlistJoinDisabled = Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
+    const selfJoinDisabled = weeklySelectionRequired || Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
+    const selfWaitlistJoinDisabled = weeklySelectionRequired || Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
     const selfWaitlistLeaveDisabled = joining || eventHasStarted;
-    const freeAgentJoinBlockedReason = selfRegistrationBlockedReason;
+    const freeAgentJoinBlockedReason = weeklySelectionRequired
+        ? 'Select a weekly occurrence before joining as a free agent.'
+        : selfRegistrationBlockedReason;
     const childPrimaryActionLabel = isTeamSignup
         ? (joiningChildFreeAgent
             ? 'Updating…'
@@ -2950,9 +3265,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
             : childWaitlistMode
                 ? (
                     registeringChild
-                    || (!selectedChildIsWaitlisted && (!selectedChildEligible || isDivisionSelectionMissing || selectedChildIsRegistered))
+                    || (!selectedChildIsWaitlisted && (weeklySelectionRequired || !selectedChildEligible || isDivisionSelectionMissing || selectedChildIsRegistered))
                 )
-                : (!selectedChildEligible || registeringChild || isDivisionSelectionMissing));
+                : (weeklySelectionRequired || !selectedChildEligible || registeringChild || isDivisionSelectionMissing));
     const childRegistrationPanel = shouldShowChildRegistrationPanel ? (
         <Paper withBorder p="sm" radius="md" className="space-y-3">
             <Text size="sm" fw={600}>
@@ -3723,25 +4038,28 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                             <Paper withBorder p="md" radius="md">
                                 {joinError && <Alert color="red" variant="light" mb="sm">{joinError}</Alert>}
                                 {joinNotice && <Alert color="green" variant="light" mb="sm">{joinNotice}</Alert>}
-                                {isWeeklyParentEvent ? (
-                                    <div className="space-y-3">
-                                        <Text size="sm" fw={600}>
-                                            Select a weekly session
-                                        </Text>
-                                        <Text size="xs" c="dimmed">
-                                            Choose a session to create your registration event.
-                                        </Text>
-                                        {!user && (
-                                            <Button
-                                                fullWidth
-                                                color="blue"
-                                                onClick={() => {
-                                                    window.location.href = '/login';
-                                                }}
-                                            >
-                                                Sign in to join
-                                            </Button>
-                                        )}
+                                {isWeeklyParentEvent && (
+                                    <div className="space-y-3 mb-4">
+                                        <Group justify="space-between" align="center" gap="xs">
+                                            <div>
+                                                <Text size="sm" fw={600}>
+                                                    {selectedWeeklyOccurrenceOption ? 'Selected weekly occurrence' : 'Select a weekly occurrence'}
+                                                </Text>
+                                                <Text size="xs" c="dimmed">
+                                                    Choose the day and slot you want to register for.
+                                                </Text>
+                                            </div>
+                                            {selectedWeeklyOccurrenceOption && onWeeklyOccurrenceChange && (
+                                                <Button
+                                                    variant="subtle"
+                                                    color="red"
+                                                    size="compact-sm"
+                                                    onClick={() => onWeeklyOccurrenceChange(null)}
+                                                >
+                                                    Clear
+                                                </Button>
+                                            )}
+                                        </Group>
                                         {weeklySessionOptions.length === 0 ? (
                                             <Alert color="yellow" variant="light">
                                                 No upcoming weekly sessions are available.
@@ -3752,16 +4070,18 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                 style={shouldScrollWeeklySessions ? { maxHeight: WEEKLY_SESSION_LIST_MAX_HEIGHT_PX } : undefined}
                                             >
                                                 {weeklySessionOptions.map((session) => {
-                                                    const isCreatingThisSession = creatingWeeklySessionId === session.id;
-                                                    const isCreatingOtherSession = Boolean(creatingWeeklySessionId) && !isCreatingThisSession;
-                                                    const isDisabled = isCreatingOtherSession || !user;
+                                                    const isSelected = selectedWeeklyOccurrenceOption?.slotId === session.slotId
+                                                        && selectedWeeklyOccurrenceOption?.occurrenceDate === session.occurrenceDate;
                                                     return (
                                                         <button
                                                             key={session.id}
                                                             type="button"
                                                             onClick={() => { void handleWeeklySessionSelect(session); }}
-                                                            disabled={isDisabled}
-                                                            className={`w-full rounded-lg border border-gray-200 bg-white p-2 text-left transition ${isDisabled ? 'cursor-not-allowed opacity-70' : 'hover:border-blue-400 hover:shadow-sm'}`}
+                                                            className={`w-full rounded-lg border p-2 text-left transition ${
+                                                                isSelected
+                                                                    ? 'border-red-400 bg-red-50 shadow-sm'
+                                                                    : 'border-gray-200 bg-white hover:border-blue-400 hover:shadow-sm'
+                                                            }`}
                                                         >
                                                             <div className="flex items-center gap-3">
                                                                 <div className="relative h-14 w-24 flex-shrink-0 overflow-hidden rounded-md border border-gray-200">
@@ -3781,8 +4101,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                     <Text size="xs" c="dimmed">
                                                                         Divisions: {session.divisionLabel}
                                                                     </Text>
-                                                                    <Text size="xs" c="dimmed">
-                                                                        {isCreatingThisSession ? 'Preparing session...' : 'Tap to continue'}
+                                                                    <Text size="xs" c={isSelected ? 'red' : 'dimmed'}>
+                                                                        {isSelected ? 'Selected' : 'Tap to select'}
                                                                     </Text>
                                                                 </div>
                                                             </div>
@@ -3792,7 +4112,8 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                             </div>
                                         )}
                                     </div>
-                                ) : (
+                                )}
+                                {!isWeeklyParentEvent || !weeklySelectionRequired ? (
                                     <>
                                 {hasAgeLimits && (
                                     <Alert color="yellow" variant="light" mb="sm">
@@ -3916,7 +4237,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                     setJoining(true);
                                                                     setJoinError(null);
                                                                     try {
-                                                                        await eventService.removeFromWaitlist(currentEvent.$id, user.$id, 'user');
+                                                                        await eventService.removeFromWaitlist(currentEvent.$id, user.$id, 'user', selectedWeeklyOccurrence);
                                                                         setJoinNotice('Removed from waitlist.');
                                                                         await loadEventDetails();
                                                                     } catch (e) {
@@ -3982,7 +4303,9 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                             <div className="space-y-6">
                                                 {eventHasStarted && (
                                                     <Alert color="yellow" variant="light">
-                                                        This event has already started. Joining and leaving are no longer available.
+                                                        {isWeeklyParentEvent && selectedWeeklyOccurrenceOption
+                                                            ? 'This weekly occurrence has already started. Joining and leaving are no longer available.'
+                                                            : 'This event has already started. Joining and leaving are no longer available.'}
                                                     </Alert>
                                                 )}
                                                 <Button fullWidth disabled={eventHasStarted} onClick={() => setShowTeamJoinOptions(prev => !prev)}>
@@ -4032,6 +4355,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                             disabled={
                                                                                 joining
                                                                                 || eventHasStarted
+                                                                                || weeklySelectionRequired
                                                                                 || !selectedTeamId
                                                                                 || (!selectedTeamIsWaitlisted && isDivisionSelectionMissing)
                                                                             }
@@ -4049,6 +4373,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                             disabled={
                                                                                 joining
                                                                                 || eventHasStarted
+                                                                                || weeklySelectionRequired
                                                                                 || !selectedTeamId
                                                                                 || confirmingPurchase
                                                                                 || isDivisionSelectionMissing
@@ -4072,7 +4397,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                     {selectedTeamIsRegistered && (
                                                                         <Button
                                                                             onClick={() => { void handleWithdrawTeam(); }}
-                                                                            disabled={joining || eventHasStarted || !selectedTeamId}
+                                                                            disabled={joining || eventHasStarted || weeklySelectionRequired || !selectedTeamId}
                                                                             color={!isFreeForUser && selectedDivisionBilling.priceCents > 0 ? 'orange' : 'red'}
                                                                             variant="light"
                                                                         >
@@ -4123,7 +4448,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 setJoining(true);
                                                                 setJoinError(null);
                                                                 try {
-                                                                    await eventService.removeFreeAgent(currentEvent.$id, user.$id);
+                                                                    await eventService.removeFreeAgent(currentEvent.$id, user.$id, selectedWeeklyOccurrence);
                                                                     await loadEventDetails();
                                                                 } catch (e) {
                                                                     setJoinError(e instanceof Error ? e.message : 'Failed to leave free agents');
@@ -4151,7 +4476,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                 if (isMinor) {
                                                                     const result = await registrationService.registerSelfForEvent(
                                                                         currentEvent.$id,
-                                                                        divisionSelectionPayload,
+                                                                        resolvedDivisionSelectionPayload,
                                                                     );
                                                                     if (result.requiresParentApproval) {
                                                                         setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
@@ -4162,7 +4487,7 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                                                     return;
                                                                 }
                                                                 // Free Agent listing is free; no payment
-                                                                await eventService.addFreeAgent(currentEvent.$id, user.$id);
+                                                                await eventService.addFreeAgent(currentEvent.$id, user.$id, selectedWeeklyOccurrence);
                                                                 await loadEventDetails();
                                                             } catch (e) {
                                                                 setJoinError(e instanceof Error ? e.message : 'Failed to join as free agent');
@@ -4210,6 +4535,10 @@ export default function EventDetailSheet({ event, isOpen, onClose, renderInline 
                                     </div>
                                 )}
                                     </>
+                                ) : (
+                                    <Alert color="blue" variant="light">
+                                        Select a weekly occurrence to see registration options.
+                                    </Alert>
                                 )}
                             </Paper>
 

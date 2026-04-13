@@ -8,6 +8,7 @@ import {
 } from '@/lib/stripeConnectAccounts';
 import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
+import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 
@@ -168,6 +169,8 @@ const ensureEventRegistrationFromPurchase = async ({
   teamId,
   userId,
   registrationId,
+  occurrenceSlotId,
+  occurrenceDate,
   now,
 }: {
   purchaseType: string | null;
@@ -175,6 +178,8 @@ const ensureEventRegistrationFromPurchase = async ({
   teamId: string | null;
   userId: string | null;
   registrationId: string | null;
+  occurrenceSlotId: string | null;
+  occurrenceDate: string | null;
   now: Date;
 }): Promise<{ applied: boolean; reason?: string }> => {
   const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
@@ -225,7 +230,13 @@ const ensureEventRegistrationFromPurchase = async ({
           return { applied: false, reason: 'schedulable_team_event_requires_participant_route' };
         }
 
-        const expectedRegistrationId = `${eventId}__team__${teamId}`;
+        const expectedRegistrationId = buildEventRegistrationId({
+          eventId,
+          registrantType: 'TEAM',
+          registrantId: teamId,
+          slotId: occurrenceSlotId,
+          occurrenceDate,
+        });
         const normalizedRegistrationId = toStringOrNull(registrationId);
         if (normalizedRegistrationId && normalizedRegistrationId !== expectedRegistrationId) {
           return { applied: false, reason: 'registration_id_mismatch' };
@@ -265,7 +276,10 @@ const ensureEventRegistrationFromPurchase = async ({
               eventId,
               registrantId: teamId,
               registrantType: 'TEAM',
+              rosterRole: 'PARTICIPANT',
               status: 'ACTIVE',
+              slotId: occurrenceSlotId,
+              occurrenceDate,
               ageAtEvent: null,
               divisionId: null,
               divisionTypeId: null,
@@ -293,7 +307,13 @@ const ensureEventRegistrationFromPurchase = async ({
       }
 
       const participantUserId = userId as string;
-      const expectedRegistrationId = `${eventId}__self__${participantUserId}`;
+      const expectedRegistrationId = buildEventRegistrationId({
+        eventId,
+        registrantType: 'SELF',
+        registrantId: participantUserId,
+        slotId: occurrenceSlotId,
+        occurrenceDate,
+      });
       const normalizedRegistrationId = toStringOrNull(registrationId);
       if (normalizedRegistrationId && normalizedRegistrationId !== expectedRegistrationId) {
         return { applied: false, reason: 'registration_id_mismatch' };
@@ -338,7 +358,10 @@ const ensureEventRegistrationFromPurchase = async ({
             eventId,
             registrantId: participantUserId,
             registrantType: 'SELF',
+            rosterRole: 'PARTICIPANT',
             status: 'ACTIVE',
+            slotId: occurrenceSlotId,
+            occurrenceDate,
             ageAtEvent: null,
             divisionId: null,
             divisionTypeId: null,
@@ -951,6 +974,10 @@ export async function POST(req: NextRequest) {
   const teamId = toStringOrNull(metadata.team_id ?? metadata.teamId ?? null);
   const eventId = toStringOrNull(metadata.event_id ?? metadata.eventId ?? null);
   const registrationId = toStringOrNull(metadata.registration_id ?? metadata.registrationId ?? null);
+  const occurrenceSlotId = toStringOrNull(
+    metadata.occurrence_slot_id ?? metadata.occurrenceSlotId ?? metadata.slot_id ?? metadata.slotId ?? null,
+  );
+  const occurrenceDate = toStringOrNull(metadata.occurrence_date ?? metadata.occurrenceDate ?? null);
   const productId = toStringOrNull(metadata.product_id ?? metadata.productId ?? null);
   const organizationId = toStringOrNull(metadata.organization_id ?? metadata.organizationId ?? null);
   const paymentIntentId = toStringOrNull(dataObject.id);
@@ -1062,6 +1089,8 @@ export async function POST(req: NextRequest) {
       teamId,
       userId,
       registrationId,
+      occurrenceSlotId,
+      occurrenceDate,
       now,
     });
     if (
