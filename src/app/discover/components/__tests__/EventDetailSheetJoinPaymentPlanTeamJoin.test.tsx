@@ -34,6 +34,7 @@ jest.mock('@/lib/eventService', () => ({
 
 jest.mock('@/lib/userService', () => ({
   userService: {
+    getUserById: jest.fn(),
     getUsersByIds: jest.fn(),
   },
 }));
@@ -110,8 +111,13 @@ import { eventService } from '@/lib/eventService';
 import { familyService } from '@/lib/familyService';
 import { paymentService } from '@/lib/paymentService';
 import { teamService } from '@/lib/teamService';
+import { userService } from '@/lib/userService';
 
 describe('EventDetailSheet payment-plan team join', () => {
+  beforeEach(() => {
+    (userService.getUserById as jest.Mock).mockResolvedValue(undefined);
+  });
+
   it('registers the team immediately, then creates the payment-plan bill', async () => {
     const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
@@ -155,7 +161,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     (billService.createBill as jest.Mock).mockResolvedValue({ bill: { id: 'bill_1' } });
 
     renderWithMantine(
-      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={false} />,
     );
 
     const divisionSelect = await screen.findByPlaceholderText(/Select a division/i);
@@ -192,7 +198,7 @@ describe('EventDetailSheet payment-plan team join', () => {
     expect(paymentService.joinEvent).toHaveBeenCalled();
     expect(billService.createBill).toHaveBeenCalled();
 
-    const joinSelectionArg = (paymentService.joinEvent as jest.Mock).mock.calls[0][5];
+    const joinSelectionArg = (paymentService.joinEvent as jest.Mock).mock.calls[0][3];
     expect(joinSelectionArg).toEqual(expect.objectContaining({ divisionId: 'u17' }));
 
     const joinCallOrder = (paymentService.joinEvent as jest.Mock).mock.invocationCallOrder[0];
@@ -212,10 +218,9 @@ describe('EventDetailSheet payment-plan team join', () => {
       user,
       expect.objectContaining({ $id: event.$id }),
       expect.objectContaining({ $id: team.$id }),
-      undefined,
-      undefined,
       expect.objectContaining({ divisionId: 'u17' }),
       5000,
+      undefined,
     );
   });
 
@@ -413,12 +418,13 @@ describe('EventDetailSheet payment-plan team join', () => {
     });
     const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
 
-    let joined = false;
+    let eventFetchCount = 0;
     (useApp as jest.Mock).mockReturnValue({ user, authUser });
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
-    (eventService.getEventWithRelations as jest.Mock).mockImplementation(async () => (
-      joined ? { ...event, teams: [registeredSlotTeam] } : event
-    ));
+    (eventService.getEventWithRelations as jest.Mock).mockImplementation(async () => {
+      eventFetchCount += 1;
+      return eventFetchCount >= 2 ? { ...event, teams: [registeredSlotTeam] } : event;
+    });
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
     (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([team]);
     (paymentService.createPaymentIntent as jest.Mock).mockResolvedValue({
@@ -434,10 +440,7 @@ describe('EventDetailSheet payment-plan team join', () => {
         purchaseType: 'event',
       },
     });
-    (paymentService.joinEvent as jest.Mock).mockImplementation(async () => {
-      joined = true;
-      return undefined;
-    });
+    (paymentService.joinEvent as jest.Mock).mockResolvedValue(undefined);
 
     renderWithMantine(
       <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
@@ -466,20 +469,15 @@ describe('EventDetailSheet payment-plan team join', () => {
     }
     fireEvent.click(teamOption);
 
+    const baselineEventFetchCount = eventFetchCount;
+
     fireEvent.click(screen.getByRole('button', { name: /Join for/i }));
     fireEvent.click(await screen.findByRole('button', { name: /Complete Mock Payment/i }));
 
     await waitFor(() => {
-      expect(paymentService.joinEvent).toHaveBeenCalledWith(
-        user,
-        expect.objectContaining({ $id: event.$id }),
-        expect.objectContaining({ $id: team.$id }),
-        undefined,
-        undefined,
-        expect.objectContaining({ divisionId: 'open' }),
-        5000,
-      );
-    });
+      expect(eventFetchCount).toBeGreaterThan(baselineEventFetchCount);
+    }, { timeout: 4000 });
+    expect(paymentService.joinEvent).not.toHaveBeenCalled();
   });
 });
 

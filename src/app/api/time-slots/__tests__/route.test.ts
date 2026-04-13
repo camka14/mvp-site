@@ -305,6 +305,7 @@ describe('time-slots routes', () => {
   });
 
   it('PATCH strips legacy and immutable fields before prisma update', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'user_1', isAdmin: true });
     prismaMock.timeSlots.update.mockResolvedValueOnce({
       id: 'slot_patch_guard',
       dayOfWeek: 2,

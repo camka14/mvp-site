@@ -374,11 +374,11 @@ describe('League schedule page', () => {
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       event: null,
       participants: {
-        teams: [],
-        users: [],
-        children: [],
-        waitlist: [],
-        freeAgents: [],
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
       },
       teams: [],
       users: [],
@@ -2121,14 +2121,11 @@ describe('League schedule page', () => {
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       event,
       participants: {
-        teams: [
-          { registrantId: 'team_real' },
-          { registrantId: 'team_placeholder' },
-        ],
-        users: [],
-        children: [],
-        waitlist: [],
-        freeAgents: [],
+        teamIds: ['team_real', 'team_placeholder'],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
       },
       teams: [
         {
@@ -2260,11 +2257,11 @@ describe('League schedule page', () => {
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       event,
       participants: {
-        teams: [],
-        users: [{ registrantId: 'user_1' }],
-        children: [],
-        waitlist: [],
-        freeAgents: [],
+        teamIds: [],
+        userIds: ['user_1'],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
       },
       teams: [],
       users: [
@@ -2708,11 +2705,11 @@ describe('League schedule page', () => {
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       event,
       participants: {
-        teams: [],
-        users: [{ registrantId: 'user_1' }],
-        children: [],
-        waitlist: [],
-        freeAgents: [],
+        teamIds: [],
+        userIds: ['user_1'],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
       },
       teams: [],
       users: [

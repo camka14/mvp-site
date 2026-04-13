@@ -353,22 +353,36 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
   }
 
   const eventState = String(event.state ?? '').toUpperCase();
-  if (HIDDEN_EVENT_STATES.has(eventState) && !(await canManageEvent(session, event))) {
+  const canManageCurrentEvent = await canManageEvent(session, event);
+  if (HIDDEN_EVENT_STATES.has(eventState) && !canManageCurrentEvent) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const slotId = normalizeId(req.nextUrl.searchParams.get('slotId'));
   const occurrenceDate = normalizeId(req.nextUrl.searchParams.get('occurrenceDate'));
+  const manageModeRequested = req.nextUrl.searchParams.get('manage') === 'true';
+  if (manageModeRequested && !canManageCurrentEvent) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   if (isWeeklyParentEvent(event) && (!slotId || !occurrenceDate)) {
     return NextResponse.json({
       event: withLegacyEvent(event),
       participants: {
-        teams: [],
-        users: [],
-        children: [],
-        waitlist: [],
-        freeAgents: [],
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
       },
+      registrations: manageModeRequested
+        ? {
+          teams: [],
+          users: [],
+          children: [],
+          waitlist: [],
+          freeAgents: [],
+        }
+        : undefined,
       teams: [],
       users: [],
       participantCount: 0,
@@ -397,10 +411,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     const snapshot = await buildEventParticipantSnapshot({
       event,
       occurrence: slotId && occurrenceDate ? { slotId, occurrenceDate } : null,
+      includeRegistrations: manageModeRequested,
     });
     return NextResponse.json({
       event: withLegacyEvent(event),
       participants: snapshot.participants,
+      registrations: snapshot.registrations,
       teams: snapshot.teams.map((team) => withLegacyFields(team)),
       users: snapshot.users.map((user) => withLegacyFields(user)),
       participantCount: snapshot.participantCount,
@@ -767,7 +783,12 @@ async function updateParticipants(
       occurrence: resolvedOccurrence,
     });
 
-    if (mode === 'add' && existingRegistration && ['STARTED', 'ACTIVE'].includes(String(existingRegistration.status ?? ''))) {
+    if (
+      mode === 'add'
+      && existingRegistration
+      && ['STARTED', 'ACTIVE'].includes(String(existingRegistration.status ?? ''))
+      && !canManageCurrentEvent
+    ) {
       return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
     }
 

@@ -3,9 +3,13 @@
 import { NextRequest } from 'next/server';
 
 const mockStripeRefundCreate = jest.fn();
+const mockStripePaymentIntentRetrieve = jest.fn();
 
 jest.mock('stripe', () => (
   jest.fn().mockImplementation(() => ({
+    paymentIntents: {
+      retrieve: (...args: unknown[]) => mockStripePaymentIntentRetrieve(...args),
+    },
     refunds: {
       create: (...args: unknown[]) => mockStripeRefundCreate(...args),
     },
@@ -67,6 +71,7 @@ describe('refund request routes', () => {
 
   beforeEach(() => {
     mockStripeRefundCreate.mockReset();
+    mockStripePaymentIntentRetrieve.mockReset();
     requireSessionMock.mockReset();
     canManageEventMock.mockReset();
     prismaMock.refundRequests.findUnique.mockReset();
@@ -111,6 +116,7 @@ describe('refund request routes', () => {
     prismaMock.billPayments.findMany.mockResolvedValue([]);
     prismaMock.billPayments.findUnique.mockResolvedValue(null);
     prismaMock.billPayments.update.mockResolvedValue({ id: 'payment_1', refundedAmountCents: 5000 });
+    mockStripePaymentIntentRetrieve.mockResolvedValue({ id: 'pi_default', transfer_data: null });
 
     prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock));
   });

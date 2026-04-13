@@ -99,7 +99,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ch
           where: {
             registrantId: childId,
             parentId: session.userId,
-            status: 'PENDINGCONSENT',
+            status: 'STARTED',
             consentStatus: 'child_email_required',
           },
           data: {

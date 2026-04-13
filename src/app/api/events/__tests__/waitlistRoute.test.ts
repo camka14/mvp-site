@@ -19,9 +19,15 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const upsertEventRegistrationMock = jest.fn();
+const deleteEventRegistrationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/server/events/eventRegistrations', () => ({
+  upsertEventRegistration: (...args: unknown[]) => upsertEventRegistrationMock(...args),
+  deleteEventRegistration: (...args: unknown[]) => deleteEventRegistrationMock(...args),
+}));
 
 import { DELETE, POST } from '@/app/api/events/[eventId]/waitlist/route';
 
@@ -46,6 +52,8 @@ describe('event waitlist route', () => {
       id: 'event_1',
       waitListIds: ['user_1'],
     });
+    upsertEventRegistrationMock.mockResolvedValue({ id: 'registration_1' });
+    deleteEventRegistrationMock.mockResolvedValue(undefined);
     prismaMock.userData.findUnique.mockResolvedValue({
       id: 'user_1',
       dateOfBirth: new Date('1995-01-01T00:00:00.000Z'),
@@ -59,12 +67,15 @@ describe('event waitlist route', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.events.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'event_1' },
-        data: expect.objectContaining({ waitListIds: ['user_1'] }),
-      }),
-    );
+    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      registrantType: 'SELF',
+      registrantId: 'user_1',
+      rosterRole: 'WAITLIST',
+      status: 'ACTIVE',
+      createdBy: 'user_1',
+      parentId: null,
+    }));
   });
 
   it('allows a parent to add a linked child to waitlist', async () => {
@@ -93,6 +104,15 @@ describe('event waitlist route', () => {
       },
       select: { id: true },
     });
+    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      registrantType: 'CHILD',
+      registrantId: 'child_1',
+      rosterRole: 'WAITLIST',
+      status: 'ACTIVE',
+      createdBy: 'parent_1',
+      parentId: 'parent_1',
+    }));
   });
 
   it('forbids adding an unrelated user to waitlist', async () => {
@@ -106,7 +126,7 @@ describe('event waitlist route', () => {
 
     expect(response.status).toBe(403);
     expect(payload.error).toBe('Forbidden');
-    expect(prismaMock.events.findUnique).not.toHaveBeenCalled();
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
   it('adds a team when session user is the team manager', async () => {
@@ -126,11 +146,14 @@ describe('event waitlist route', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.events.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ waitListIds: ['team_1'] }),
-      }),
-    );
+    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      registrantType: 'TEAM',
+      registrantId: 'team_1',
+      rosterRole: 'WAITLIST',
+      status: 'ACTIVE',
+      createdBy: 'manager_1',
+    }));
   });
 
   it('forbids team waitlist updates for non-managers', async () => {
@@ -148,7 +171,7 @@ describe('event waitlist route', () => {
 
     expect(response.status).toBe(403);
     expect(payload.error).toBe('Forbidden');
-    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
   it('blocks team waitlist joins for non-team events', async () => {
@@ -172,7 +195,7 @@ describe('event waitlist route', () => {
 
     expect(response.status).toBe(403);
     expect(payload.error).toBe('Team waitlist is only available for team registration events.');
-    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
   it('returns parent-approval response when a child self-joins waitlist', async () => {
@@ -191,7 +214,7 @@ describe('event waitlist route', () => {
 
     expect(response.status).toBe(200);
     expect(payload.requiresParentApproval).toBe(true);
-    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
   });
 
   it('removes current user from waitlist', async () => {
@@ -212,10 +235,10 @@ describe('event waitlist route', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.events.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ waitListIds: [] }),
-      }),
-    );
+    expect(deleteEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      registrantType: 'SELF',
+      registrantId: 'user_1',
+    }));
   });
 });

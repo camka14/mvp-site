@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
     where: {
       parentId: session.userId,
       registrantType: 'CHILD',
-      status: 'PENDINGCONSENT',
+      status: 'STARTED',
       consentStatus: {
         in: ['guardian_approval_required'],
       },

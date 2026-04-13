@@ -3345,23 +3345,23 @@ function EventScheduleContent() {
       }
 
       const refreshedTeamIds = Array.from(new Set(
-        (snapshot.participants.teams ?? [])
-          .map((entry) => normalizeIdToken(entry.registrantId))
+        (snapshot.participants.teamIds ?? [])
+          .map((teamId) => normalizeIdToken(teamId))
           .filter((teamId): teamId is string => Boolean(teamId)),
       ));
       const participantUserIds = Array.from(new Set(
-        [...(snapshot.participants.users ?? []), ...(snapshot.participants.children ?? [])]
-          .map((entry) => normalizeIdToken(entry.registrantId))
+        (snapshot.participants.userIds ?? [])
+          .map((userId) => normalizeIdToken(userId))
           .filter((userId): userId is string => Boolean(userId)),
       ));
       const waitListIds = Array.from(new Set(
-        (snapshot.participants.waitlist ?? [])
-          .map((entry) => normalizeIdToken(entry.registrantId))
+        (snapshot.participants.waitListIds ?? [])
+          .map((userId) => normalizeIdToken(userId))
           .filter((userId): userId is string => Boolean(userId)),
       ));
       const freeAgentIds = Array.from(new Set(
-        (snapshot.participants.freeAgents ?? [])
-          .map((entry) => normalizeIdToken(entry.registrantId))
+        (snapshot.participants.freeAgentIds ?? [])
+          .map((userId) => normalizeIdToken(userId))
           .filter((userId): userId is string => Boolean(userId)),
       ));
 

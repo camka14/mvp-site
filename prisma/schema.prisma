@@ -103,7 +103,6 @@ enum EventRegistrationsRosterRoleEnum {
 
 enum EventRegistrationsStatusEnum {
   STARTED
-  PENDINGCONSENT
   ACTIVE
   BLOCKED
   CANCELLED

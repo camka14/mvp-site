@@ -115,7 +115,7 @@ describe('family join requests routes', () => {
       registrantId: 'child_1',
       parentId: 'parent_1',
       registrantType: 'CHILD',
-      status: 'PENDINGCONSENT',
+      status: 'STARTED',
       consentStatus: 'guardian_approval_required',
     });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -134,7 +134,7 @@ describe('family join requests routes', () => {
       registrantId: 'child_1',
       parentId: 'parent_1',
       registrantType: 'CHILD',
-      status: 'PENDINGCONSENT',
+      status: 'STARTED',
       consentStatus: 'child_email_required',
     });
     prismaMock.events.update.mockResolvedValue({ id: 'event_1' });
@@ -161,7 +161,7 @@ describe('family join requests routes', () => {
       registrantId: 'child_2',
       parentId: 'parent_1',
       registrantType: 'CHILD',
-      status: 'PENDINGCONSENT',
+      status: 'STARTED',
       consentStatus: 'guardian_approval_required',
     });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -208,7 +208,7 @@ describe('family join requests routes', () => {
       registrantId: 'child_2',
       parentId: 'parent_1',
       registrantType: 'CHILD',
-      status: 'PENDINGCONSENT',
+      status: 'STARTED',
       consentStatus: 'guardian_approval_required',
     });
     prismaMock.eventRegistrations.update.mockResolvedValue({

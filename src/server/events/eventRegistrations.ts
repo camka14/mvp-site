@@ -16,8 +16,7 @@ export type RegistrationLifecycleStatus =
   | 'ACTIVE'
   | 'BLOCKED'
   | 'CANCELLED'
-  | 'CONSENTFAILED'
-  | 'PENDINGCONSENT';
+  | 'CONSENTFAILED';
 
 type EventLike = {
   id: string;
@@ -56,7 +55,7 @@ export type EventParticipantEntry = {
   registrantId: string;
   registrantType: RegistrationRegistrantType;
   rosterRole: RegistrationRosterRole;
-  status: Exclude<RegistrationLifecycleStatus, 'PENDINGCONSENT'>;
+  status: RegistrationLifecycleStatus;
   parentId: string | null;
   divisionId: string | null;
   divisionTypeId: string | null;
@@ -69,20 +68,43 @@ export type EventParticipantEntry = {
   updatedAt: string | null;
 };
 
+export type EventParticipantDivisionIds = {
+  divisionId: string | null;
+  divisionTypeId: string | null;
+  divisionTypeKey: string | null;
+  teamIds: string[];
+  userIds: string[];
+  waitListIds: string[];
+  freeAgentIds: string[];
+};
+
+export type EventParticipantIdsSnapshot = {
+  teamIds: string[];
+  userIds: string[];
+  waitListIds: string[];
+  freeAgentIds: string[];
+  divisions: EventParticipantDivisionIds[];
+};
+
+export type EventParticipantRegistrationSections = {
+  teams: EventParticipantEntry[];
+  users: EventParticipantEntry[];
+  children: EventParticipantEntry[];
+  waitlist: EventParticipantEntry[];
+  freeAgents: EventParticipantEntry[];
+};
+
 export type EventParticipantSnapshot = {
-  participants: {
-    teams: EventParticipantEntry[];
-    users: EventParticipantEntry[];
-    children: EventParticipantEntry[];
-    waitlist: EventParticipantEntry[];
-    freeAgents: EventParticipantEntry[];
-  };
+  participants: EventParticipantIdsSnapshot;
+  registrations?: EventParticipantRegistrationSections;
   teams: any[];
   users: any[];
   participantCount: number;
   participantCapacity: number | null;
   occurrence: { slotId: string; occurrenceDate: string } | null;
 };
+
+const REGISTERED_MEMBER_STATUSES = new Set<RegistrationLifecycleStatus>(['STARTED', 'ACTIVE', 'BLOCKED']);
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -112,13 +134,10 @@ const normalizeRosterRole = (value: unknown): RegistrationRosterRole => {
   return 'PARTICIPANT';
 };
 
-const normalizeLifecycleStatus = (value: unknown): Exclude<RegistrationLifecycleStatus, 'PENDINGCONSENT'> => {
+const normalizeLifecycleStatus = (value: unknown): RegistrationLifecycleStatus => {
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
   if (normalized === 'ACTIVE' || normalized === 'BLOCKED' || normalized === 'CANCELLED' || normalized === 'CONSENTFAILED') {
     return normalized;
-  }
-  if (normalized === 'PENDINGCONSENT') {
-    return 'STARTED';
   }
   return 'STARTED';
 };
@@ -149,20 +168,22 @@ const toEntry = (row: RegistrationRow): EventParticipantEntry => ({
   updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null,
 });
 
-const isActiveParticipant = (row: RegistrationRow): boolean => (
-  normalizeLifecycleStatus(row.status) === 'ACTIVE'
-  && normalizeRosterRole(row.rosterRole) === 'PARTICIPANT'
+const isRegisteredLifecycleStatus = (value: unknown): boolean => (
+  REGISTERED_MEMBER_STATUSES.has(normalizeLifecycleStatus(value))
+);
+
+const isRegisteredParticipant = (row: RegistrationRow): boolean => (
+  normalizeRosterRole(row.rosterRole) === 'PARTICIPANT'
+  && isRegisteredLifecycleStatus(row.status)
 );
 
 const isCapacityHoldingParticipant = (row: RegistrationRow): boolean => {
-  const status = normalizeLifecycleStatus(row.status);
-  return normalizeRosterRole(row.rosterRole) === 'PARTICIPANT'
-    && (status === 'ACTIVE' || status === 'STARTED');
+  return isRegisteredParticipant(row);
 };
 
 const isDisplayableRole = (row: RegistrationRow, role: RegistrationRosterRole): boolean => (
   normalizeRosterRole(row.rosterRole) === role
-  && normalizeLifecycleStatus(row.status) !== 'CANCELLED'
+  && isRegisteredLifecycleStatus(row.status)
 );
 
 const buildOccurrenceWhere = (occurrence?: { slotId: string; occurrenceDate: string } | null) => (
@@ -196,6 +217,12 @@ const registrationSelect = {
   occurrenceDate: true,
   createdAt: true,
   updatedAt: true,
+} as const;
+
+const participantDivisionSelect = {
+  id: true,
+  key: true,
+  divisionTypeId: true,
 } as const;
 
 const resolveDivisionAliases = (value: string | null): string[] => {
@@ -300,7 +327,7 @@ export const upsertEventRegistration = async (params: {
   registrantType: RegistrationRegistrantType;
   registrantId: string;
   rosterRole: RegistrationRosterRole;
-  status: Exclude<RegistrationLifecycleStatus, 'PENDINGCONSENT'>;
+  status: RegistrationLifecycleStatus;
   createdBy: string;
   parentId?: string | null;
   ageAtEvent?: number | null;
@@ -412,7 +439,7 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
       eventId: event.id,
       registrantType: 'TEAM',
       rosterRole: 'PARTICIPANT',
-      status: 'ACTIVE',
+      status: { in: Array.from(REGISTERED_MEMBER_STATUSES) },
       slotId: null,
       occurrenceDate: null,
     },
@@ -467,6 +494,7 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
 export const buildEventParticipantSnapshot = async (params: {
   event: EventLike;
   occurrence?: WeeklyOccurrenceInput | null;
+  includeRegistrations?: boolean;
 }, client: PrismaLike = prisma): Promise<EventParticipantSnapshot> => {
   const resolvedOccurrence = isWeeklyParentEvent(params.event)
     ? (() => {
@@ -501,6 +529,21 @@ export const buildEventParticipantSnapshot = async (params: {
     ],
   }) as RegistrationRow[];
 
+  const eventDivisionIds = normalizeIdList(params.event.divisions);
+  const divisionRows = eventDivisionIds.length
+    ? await client.divisions.findMany({
+      where: {
+        eventId: params.event.id,
+        OR: [
+          { id: { in: eventDivisionIds } },
+          { key: { in: eventDivisionIds } },
+        ],
+      },
+      select: participantDivisionSelect,
+      orderBy: { createdAt: 'asc' },
+    })
+    : [];
+
   const teamIds = Array.from(new Set(
     registrations
       .filter((row) => row.registrantType === 'TEAM')
@@ -525,7 +568,9 @@ export const buildEventParticipantSnapshot = async (params: {
       : Promise.resolve([]),
   ]);
 
-  const participantEntries = registrations.filter(isActiveParticipant);
+  const participantEntries = registrations.filter(isRegisteredParticipant);
+  const waitlistEntries = registrations.filter((row) => isDisplayableRole(row, 'WAITLIST'));
+  const freeAgentEntries = registrations.filter((row) => isDisplayableRole(row, 'FREE_AGENT'));
   const participantCount = Boolean(params.event.teamSignup)
     ? participantEntries.filter((row) => row.registrantType === 'TEAM').length
     : participantEntries.filter((row) => row.registrantType === 'SELF' || row.registrantType === 'CHILD').length;
@@ -535,24 +580,121 @@ export const buildEventParticipantSnapshot = async (params: {
     divisionIds: occurrence?.divisionIds,
   }, client);
 
+  const uniqueRegistrantIds = (rows: RegistrationRow[], allowedTypes: RegistrationRegistrantType[]) => (
+    Array.from(new Set(
+      rows
+        .filter((row) => allowedTypes.includes(row.registrantType))
+        .map((row) => normalizeId(row.registrantId))
+        .filter((value): value is string => Boolean(value)),
+    ))
+  );
+
+  const resolveDivisionIdentity = (row?: Pick<RegistrationRow, 'divisionId' | 'divisionTypeId' | 'divisionTypeKey'> | null): {
+    divisionId: string | null;
+    divisionTypeId: string | null;
+    divisionTypeKey: string | null;
+  } => {
+    const divisionId = normalizeId(row?.divisionId)
+      ?? normalizeId(divisionRows[0]?.id)
+      ?? normalizeId(eventDivisionIds[0]);
+    const divisionTypeId = normalizeId(row?.divisionTypeId)
+      ?? normalizeId(divisionRows.find((entry) => entry.id === divisionId)?.divisionTypeId);
+    const divisionTypeKey = normalizeId(row?.divisionTypeKey)
+      ?? normalizeId(divisionRows.find((entry) => entry.id === divisionId)?.key)
+      ?? (divisionId ? extractDivisionTokenFromId(divisionId) : null)
+      ?? null;
+    return {
+      divisionId,
+      divisionTypeId,
+      divisionTypeKey,
+    };
+  };
+
+  const divisionGroups = new Map<string, EventParticipantDivisionIds>();
+  const toDivisionKey = (identity: { divisionId: string | null; divisionTypeId: string | null; divisionTypeKey: string | null }) => (
+    `${identity.divisionId ?? ''}::${identity.divisionTypeId ?? ''}::${identity.divisionTypeKey ?? ''}`
+  );
+  const ensureDivisionGroup = (identity: { divisionId: string | null; divisionTypeId: string | null; divisionTypeKey: string | null }) => {
+    const key = toDivisionKey(identity);
+    const existing = divisionGroups.get(key);
+    if (existing) {
+      return existing;
+    }
+    const created: EventParticipantDivisionIds = {
+      divisionId: identity.divisionId,
+      divisionTypeId: identity.divisionTypeId,
+      divisionTypeKey: identity.divisionTypeKey,
+      teamIds: [],
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    };
+    divisionGroups.set(key, created);
+    return created;
+  };
+  const pushUnique = (values: string[], value: string | null) => {
+    if (!value || values.includes(value)) {
+      return;
+    }
+    values.push(value);
+  };
+
+  divisionRows.forEach((row) => {
+    ensureDivisionGroup(resolveDivisionIdentity({
+      divisionId: row.id,
+      divisionTypeId: row.divisionTypeId,
+      divisionTypeKey: row.key ?? extractDivisionTokenFromId(row.id) ?? null,
+    }));
+  });
+
+  participantEntries.forEach((row) => {
+    const group = ensureDivisionGroup(resolveDivisionIdentity(row));
+    if (row.registrantType === 'TEAM') {
+      pushUnique(group.teamIds, normalizeId(row.registrantId));
+    } else {
+      pushUnique(group.userIds, normalizeId(row.registrantId));
+    }
+  });
+  waitlistEntries.forEach((row) => {
+    const group = ensureDivisionGroup(resolveDivisionIdentity(row));
+    pushUnique(group.waitListIds, normalizeId(row.registrantId));
+  });
+  freeAgentEntries.forEach((row) => {
+    const group = ensureDivisionGroup(resolveDivisionIdentity(row));
+    pushUnique(group.freeAgentIds, normalizeId(row.registrantId));
+  });
+
   return {
     participants: {
-      teams: participantEntries
-        .filter((row) => row.registrantType === 'TEAM')
-        .map(toEntry),
-      users: participantEntries
-        .filter((row) => row.registrantType === 'SELF')
-        .map(toEntry),
-      children: participantEntries
-        .filter((row) => row.registrantType === 'CHILD')
-        .map(toEntry),
-      waitlist: registrations
-        .filter((row) => isDisplayableRole(row, 'WAITLIST'))
-        .map(toEntry),
-      freeAgents: registrations
-        .filter((row) => isDisplayableRole(row, 'FREE_AGENT'))
-        .map(toEntry),
+      teamIds: uniqueRegistrantIds(participantEntries, ['TEAM']),
+      userIds: uniqueRegistrantIds(participantEntries, ['SELF', 'CHILD']),
+      waitListIds: Array.from(new Set(
+        waitlistEntries
+          .map((row) => normalizeId(row.registrantId))
+          .filter((value): value is string => Boolean(value)),
+      )),
+      freeAgentIds: Array.from(new Set(
+        freeAgentEntries
+          .map((row) => normalizeId(row.registrantId))
+          .filter((value): value is string => Boolean(value)),
+      )),
+      divisions: Array.from(divisionGroups.values()),
     },
+    registrations: params.includeRegistrations
+      ? {
+        teams: participantEntries
+          .filter((row) => row.registrantType === 'TEAM')
+          .map(toEntry),
+        users: participantEntries
+          .filter((row) => row.registrantType === 'SELF')
+          .map(toEntry),
+        children: participantEntries
+          .filter((row) => row.registrantType === 'CHILD')
+          .map(toEntry),
+        waitlist: waitlistEntries.map(toEntry),
+        freeAgents: freeAgentEntries.map(toEntry),
+      }
+      : undefined,
     teams,
     users,
     participantCount,
@@ -592,7 +734,7 @@ export const getEventParticipantAggregates = async (
   const registrations = await client.eventRegistrations.findMany({
     where: {
       eventId: { in: nonWeeklyIds },
-      status: 'ACTIVE',
+      status: { in: Array.from(REGISTERED_MEMBER_STATUSES) },
     },
     select: {
       eventId: true,

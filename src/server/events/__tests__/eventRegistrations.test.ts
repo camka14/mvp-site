@@ -22,7 +22,7 @@ describe('buildEventParticipantSnapshot', () => {
     },
   ];
 
-  it('returns an active weekly team participant for the selected occurrence', async () => {
+  it('returns a registered weekly team participant for the selected occurrence', async () => {
     const snapshot = await buildEventParticipantSnapshot({
       event: {
         id: 'weekly_parent',
@@ -47,7 +47,7 @@ describe('buildEventParticipantSnapshot', () => {
             parentId: null,
             registrantType: 'TEAM',
             rosterRole: 'PARTICIPANT',
-            status: 'ACTIVE',
+            status: 'STARTED',
             ageAtEvent: null,
             divisionId: 'div_a',
             divisionTypeId: null,
@@ -78,8 +78,7 @@ describe('buildEventParticipantSnapshot', () => {
       },
     } as any);
 
-    expect(snapshot.participants.teams).toHaveLength(1);
-    expect(snapshot.participants.teams[0].registrantId).toBe('team_1');
+    expect(snapshot.participants.teamIds).toEqual(['team_1']);
     expect(snapshot.teams).toEqual([{ id: 'team_1', name: 'Team One' }]);
     expect(snapshot.participantCount).toBe(1);
     expect(snapshot.occurrence).toEqual({
@@ -88,7 +87,7 @@ describe('buildEventParticipantSnapshot', () => {
     });
   });
 
-  it('returns an active weekly self participant for the selected occurrence', async () => {
+  it('returns a registered weekly self participant for the selected occurrence', async () => {
     const snapshot = await buildEventParticipantSnapshot({
       event: {
         id: 'weekly_parent',
@@ -113,7 +112,7 @@ describe('buildEventParticipantSnapshot', () => {
             parentId: null,
             registrantType: 'SELF',
             rosterRole: 'PARTICIPANT',
-            status: 'ACTIVE',
+            status: 'STARTED',
             ageAtEvent: null,
             divisionId: 'div_a',
             divisionTypeId: null,
@@ -144,8 +143,7 @@ describe('buildEventParticipantSnapshot', () => {
       },
     } as any);
 
-    expect(snapshot.participants.users).toHaveLength(1);
-    expect(snapshot.participants.users[0].registrantId).toBe('user_1');
+    expect(snapshot.participants.userIds).toEqual(['user_1']);
     expect(snapshot.users).toEqual([{ id: 'user_1', firstName: 'Sam' }]);
     expect(snapshot.participantCount).toBe(1);
     expect(snapshot.occurrence).toEqual({

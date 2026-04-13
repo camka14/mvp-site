@@ -5,6 +5,8 @@ import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
 
 export const dynamic = 'force-dynamic';
 
+const SCHEDULE_REGISTRATION_STATUSES = ['ACTIVE', 'STARTED', 'BLOCKED'] as const;
+
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
   Array.from(
     new Set(
@@ -50,6 +52,29 @@ export async function GET(req: NextRequest) {
     : [];
   const slotTeamIds = uniqueStrings(slotTeamRows.map((row: { id?: unknown }) => String(row.id ?? '').trim()));
   const relevantTeamIds = uniqueStrings([...teamIds, ...slotTeamIds]);
+  const registrationRows = await prisma.eventRegistrations.findMany({
+    where: {
+      status: { in: [...SCHEDULE_REGISTRATION_STATUSES] },
+      OR: [
+        {
+          registrantId: user.id,
+          registrantType: { in: ['SELF', 'CHILD'] },
+        },
+        ...(relevantTeamIds.length
+          ? [{
+              registrantId: { in: relevantTeamIds },
+              registrantType: 'TEAM' as const,
+            }]
+          : []),
+      ],
+    },
+    select: {
+      eventId: true,
+    },
+  });
+  const registeredEventIds = uniqueStrings(
+    registrationRows.map((row: { eventId?: unknown }) => String(row.eventId ?? '').trim()),
+  );
 
   const involvementFilters: Record<string, unknown>[] = [
     { hostId: user.id },
@@ -60,6 +85,9 @@ export async function GET(req: NextRequest) {
   ];
   if (relevantTeamIds.length) {
     involvementFilters.push({ teamIds: { hasSome: relevantTeamIds } });
+  }
+  if (registeredEventIds.length) {
+    involvementFilters.push({ id: { in: registeredEventIds } });
   }
 
   const where: Record<string, unknown> = {

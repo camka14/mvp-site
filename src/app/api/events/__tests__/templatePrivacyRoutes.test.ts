@@ -10,6 +10,9 @@ const prismaMock = {
   teams: {
     findMany: jest.fn(),
   },
+  eventRegistrations: {
+    findMany: jest.fn(),
+  },
   matches: {
     findMany: jest.fn(),
   },
@@ -65,6 +68,7 @@ describe('event template privacy routes', () => {
     prismaMock.events.findMany.mockReset();
     prismaMock.events.findUnique.mockReset();
     prismaMock.teams.findMany.mockReset();
+    prismaMock.eventRegistrations.findMany.mockReset();
     prismaMock.matches.findMany.mockReset();
     prismaMock.timeSlots.findMany.mockReset();
     prismaMock.fields.findFirst.mockReset();
@@ -74,6 +78,7 @@ describe('event template privacy routes', () => {
     prismaMock.divisions.findMany.mockReset();
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.fields.findFirst.mockResolvedValue(null);
@@ -385,7 +390,7 @@ describe('event template privacy routes', () => {
         userIds: [],
       },
     ]);
-    prismaMock.divisions.findMany.mockResolvedValueOnce([
+    const divisionRows = [
       {
         eventId: 'event_1',
         id: 'event_1__division__open',
@@ -404,7 +409,10 @@ describe('event template privacy routes', () => {
         maxParticipants: 10,
         sportId: 'sport_1',
       },
-    ]);
+    ];
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(divisionRows);
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events'));
 
@@ -435,10 +443,9 @@ describe('event template privacy routes', () => {
         divisions: [],
       },
     ]);
-    prismaMock.teams.findMany.mockResolvedValueOnce([
-      { id: 'slot_1', parentTeamId: 'team_a', name: 'Alpha Team' },
-      { id: 'slot_2', parentTeamId: null, name: 'Place Holder 2' },
-      { id: 'slot_3', parentTeamId: 'team_b', name: 'Bravo Team' },
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      { eventId: 'event_1', registrantType: 'TEAM', rosterRole: 'PARTICIPANT', slotId: null, occurrenceDate: null },
+      { eventId: 'event_1', registrantType: 'TEAM', rosterRole: 'PARTICIPANT', slotId: null, occurrenceDate: null },
     ]);
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events'));
@@ -457,7 +464,7 @@ describe('event template privacy routes', () => {
         sportId: 'sport_1',
       },
     ]);
-    prismaMock.divisions.findMany.mockResolvedValueOnce([
+    const divisionRows = [
       {
         eventId: 'event_2',
         id: 'event_2__division__open',
@@ -476,7 +483,10 @@ describe('event template privacy routes', () => {
         maxParticipants: 8,
         sportId: 'sport_1',
       },
-    ]);
+    ];
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(divisionRows);
 
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
 
@@ -525,7 +535,9 @@ describe('event template privacy routes', () => {
         sportId: 'sport_1',
       },
     ]);
-    prismaMock.divisions.findMany.mockRejectedValueOnce(new Error('divisions table unavailable'));
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('divisions table unavailable'));
 
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
 
@@ -547,10 +559,9 @@ describe('event template privacy routes', () => {
         divisions: [],
       },
     ]);
-    prismaMock.teams.findMany.mockResolvedValueOnce([
-      { id: 'slot_1', parentTeamId: 'team_a', name: 'Alpha Team' },
-      { id: 'slot_2', parentTeamId: null, name: 'Place Holder 2' },
-      { id: 'slot_3', parentTeamId: 'team_b', name: 'Bravo Team' },
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      { eventId: 'event_2', registrantType: 'TEAM', rosterRole: 'PARTICIPANT', slotId: null, occurrenceDate: null },
+      { eventId: 'event_2', registrantType: 'TEAM', rosterRole: 'PARTICIPANT', slotId: null, occurrenceDate: null },
     ]);
 
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
@@ -572,7 +583,7 @@ describe('event template privacy routes', () => {
         divisions: [],
       },
     ]);
-    prismaMock.teams.findMany.mockRejectedValueOnce(new Error('teams table unavailable'));
+    prismaMock.eventRegistrations.findMany.mockRejectedValueOnce(new Error('registrations table unavailable'));
 
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
 
@@ -675,7 +686,9 @@ describe('event template privacy routes', () => {
         sportId: 'sport_1',
       },
     ]);
-    prismaMock.divisions.findMany.mockRejectedValueOnce(new Error('divisions table unavailable'));
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('divisions table unavailable'));
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events'));
 

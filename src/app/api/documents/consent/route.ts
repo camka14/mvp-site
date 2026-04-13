@@ -51,7 +51,7 @@ export async function POST(req: NextRequest) {
     data: {
       consentDocumentId: documentId,
       consentStatus: 'sent',
-      status: 'PENDINGCONSENT',
+      status: 'STARTED',
       updatedAt: now,
     },
   });

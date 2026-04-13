@@ -1436,23 +1436,23 @@ export default function EventDetailSheet({
                     try {
                         const snapshot = await eventService.getEventParticipants(targetId, selectedWeeklyOccurrence);
                         const refreshedTeamIds = Array.from(new Set(
-                            (snapshot.participants.teams ?? [])
-                                .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                            (snapshot.participants.teamIds ?? [])
+                                .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
                                 .filter((teamId): teamId is string => teamId.length > 0),
                         ));
                         const participantUserIds = Array.from(new Set(
-                            [...(snapshot.participants.users ?? []), ...(snapshot.participants.children ?? [])]
-                                .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                            (snapshot.participants.userIds ?? [])
+                                .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
                                 .filter((userId): userId is string => userId.length > 0),
                         ));
                         const waitListIds = Array.from(new Set(
-                            (snapshot.participants.waitlist ?? [])
-                                .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                            (snapshot.participants.waitListIds ?? [])
+                                .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
                                 .filter((userId): userId is string => userId.length > 0),
                         ));
                         const freeAgentIds = Array.from(new Set(
-                            (snapshot.participants.freeAgents ?? [])
-                                .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                            (snapshot.participants.freeAgentIds ?? [])
+                                .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
                                 .filter((userId): userId is string => userId.length > 0),
                         ));
 
@@ -2909,13 +2909,13 @@ export default function EventDetailSheet({
                 if (selectedWeeklyOccurrence) {
                     const snapshot = await eventService.getEventParticipants(currentEvent.$id, selectedWeeklyOccurrence);
                     const participantTeamIds = Array.from(new Set(
-                        (snapshot.participants.teams ?? [])
-                            .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                        (snapshot.participants.teamIds ?? [])
+                            .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
                             .filter((teamId): teamId is string => teamId.length > 0),
                     ));
                     const participantUserIds = Array.from(new Set(
-                        [...(snapshot.participants.users ?? []), ...(snapshot.participants.children ?? [])]
-                            .map((entry) => (typeof entry.registrantId === 'string' ? entry.registrantId.trim() : ''))
+                        (snapshot.participants.userIds ?? [])
+                            .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
                             .filter((userId): userId is string => userId.length > 0),
                     ));
                     const registered = currentEvent.teamSignup

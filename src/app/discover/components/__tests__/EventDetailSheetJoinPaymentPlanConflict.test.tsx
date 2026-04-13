@@ -38,6 +38,7 @@ jest.mock('@/lib/eventService', () => ({
 
 jest.mock('@/lib/userService', () => ({
   userService: {
+    getUserById: jest.fn(),
     getUsersByIds: jest.fn(),
   },
 }));
@@ -100,8 +101,13 @@ import { billService } from '@/lib/billService';
 import { eventService } from '@/lib/eventService';
 import { familyService } from '@/lib/familyService';
 import { registrationService } from '@/lib/registrationService';
+import { userService } from '@/lib/userService';
 
 describe('EventDetailSheet payment-plan join conflicts', () => {
+  beforeEach(() => {
+    (userService.getUserById as jest.Mock).mockResolvedValue(undefined);
+  });
+
   it('surfaces create-bill conflicts (409) and stops loading when no signing links are required', async () => {
     const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();

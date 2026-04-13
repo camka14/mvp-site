@@ -2,6 +2,15 @@
 
 import { NextRequest } from 'next/server';
 
+const mockStripePaymentIntentCreate = jest.fn();
+const mockStripePaymentIntentList = jest.fn();
+const StripeMock = jest.fn().mockImplementation(() => ({
+  paymentIntents: {
+    create: (...args: unknown[]) => mockStripePaymentIntentCreate(...args),
+    list: (...args: unknown[]) => mockStripePaymentIntentList(...args),
+  },
+}));
+
 const prismaMock = {
   products: {
     findUnique: jest.fn(),
@@ -34,13 +43,39 @@ const requireSessionMock = jest.fn();
 const extractRentalCheckoutWindowMock = jest.fn();
 const reserveRentalCheckoutLocksMock = jest.fn();
 const releaseRentalCheckoutLocksMock = jest.fn();
+const loadUserBillingProfileMock = jest.fn();
+const resolveBillingAddressInputMock = jest.fn();
+const upsertUserBillingAddressMock = jest.fn();
+const validateUsBillingAddressMock = jest.fn();
+const calculateTaxQuoteMock = jest.fn();
+const buildDestinationTransferDataMock = jest.fn();
 
+jest.mock('stripe', () => ({
+  __esModule: true,
+  default: StripeMock,
+}));
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
   extractRentalCheckoutWindow: (...args: unknown[]) => extractRentalCheckoutWindowMock(...args),
   reserveRentalCheckoutLocks: (...args: unknown[]) => reserveRentalCheckoutLocksMock(...args),
   releaseRentalCheckoutLocks: (...args: unknown[]) => releaseRentalCheckoutLocksMock(...args),
+}));
+jest.mock('@/lib/billingAddress', () => ({
+  loadUserBillingProfile: (...args: unknown[]) => loadUserBillingProfileMock(...args),
+  resolveBillingAddressInput: (...args: unknown[]) => resolveBillingAddressInputMock(...args),
+  upsertUserBillingAddress: (...args: unknown[]) => upsertUserBillingAddressMock(...args),
+  validateUsBillingAddress: (...args: unknown[]) => validateUsBillingAddressMock(...args),
+}));
+jest.mock('@/lib/stripeTax', () => {
+  const actual = jest.requireActual('@/lib/stripeTax');
+  return {
+    ...actual,
+    calculateTaxQuote: (...args: unknown[]) => calculateTaxQuoteMock(...args),
+  };
+});
+jest.mock('@/lib/stripeConnectAccounts', () => ({
+  buildDestinationTransferData: (...args: unknown[]) => buildDestinationTransferDataMock(...args),
 }));
 
 import { POST } from '@/app/api/billing/purchase-intent/route';
@@ -55,6 +90,12 @@ const jsonPost = (body: unknown) =>
 describe('POST /api/billing/purchase-intent', () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    StripeMock.mockImplementation(() => ({
+      paymentIntents: {
+        create: (...args: unknown[]) => mockStripePaymentIntentCreate(...args),
+        list: (...args: unknown[]) => mockStripePaymentIntentList(...args),
+      },
+    }));
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.products.findUnique.mockResolvedValue(null);
     prismaMock.teams.findUnique.mockResolvedValue({ id: 'team_1' });
@@ -117,7 +158,41 @@ describe('POST /api/billing/purchase-intent', () => {
       expiresAt: new Date('2026-03-18T12:10:00.000Z'),
     });
     releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
-    process.env.STRIPE_SECRET_KEY = '';
+    loadUserBillingProfileMock.mockResolvedValue({
+      billingAddress: {
+        line1: '123 Main St',
+        city: 'Seattle',
+        state: 'WA',
+        postalCode: '98101',
+        countryCode: 'US',
+      },
+      email: 'buyer@example.com',
+    });
+    resolveBillingAddressInputMock.mockReturnValue(null);
+    upsertUserBillingAddressMock.mockResolvedValue(null);
+    validateUsBillingAddressMock.mockImplementation((value: unknown) => value);
+    calculateTaxQuoteMock.mockResolvedValue({
+      customerId: 'cus_123',
+      calculationId: 'taxcalc_123',
+      subtotalCents: 2500,
+      taxAmountCents: 213,
+      totalChargeCents: 3043,
+      processingFeeCents: 250,
+      stripeFeeCents: 80,
+      stripeProcessingFeeCents: 30,
+      stripeTaxServiceFeeCents: 50,
+      feePercentage: 10,
+      purchaseType: 'event',
+      hostReceivesCents: 2500,
+      taxCategory: 'EVENT_REGISTRATION',
+    });
+    buildDestinationTransferDataMock.mockResolvedValue(null);
+    mockStripePaymentIntentList.mockResolvedValue({ data: [] });
+    mockStripePaymentIntentCreate.mockResolvedValue({
+      id: 'pi_123',
+      client_secret: 'pi_123_secret_456',
+    });
+    process.env.STRIPE_SECRET_KEY = 'sk_test_mock';
     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = 'pk_test_mock';
   });
 
@@ -162,7 +237,7 @@ describe('POST /api/billing/purchase-intent', () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(String(data.paymentIntent ?? '')).toContain('pi_mock_');
+    expect(data.paymentIntent).toBe('pi_123_secret_456');
     expect(reserveRentalCheckoutLocksMock).toHaveBeenCalled();
   });
 
@@ -262,7 +337,7 @@ describe('POST /api/billing/purchase-intent', () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(String(data.paymentIntent ?? '')).toContain('pi_mock_');
+    expect(data.paymentIntent).toBe('pi_123_secret_456');
     expect(prismaMock.templateDocuments.findMany).not.toHaveBeenCalled();
     expect(prismaMock.signedDocuments.findMany).not.toHaveBeenCalled();
   });
@@ -282,7 +357,7 @@ describe('POST /api/billing/purchase-intent', () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(String(data.paymentIntent ?? '')).toContain('pi_mock_');
+    expect(data.paymentIntent).toBe('pi_123_secret_456');
     expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -296,7 +371,7 @@ describe('POST /api/billing/purchase-intent', () => {
     );
   });
 
-  it('reuses existing registration reservation when one already exists', async () => {
+  it('rejects purchase-intent creation when a STARTED reservation already exists', async () => {
     const now = new Date('2026-03-18T12:00:00.000Z');
     prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({
       id: 'event_1__self__user_1',
@@ -316,8 +391,10 @@ describe('POST /api/billing/purchase-intent', () => {
       user: { $id: 'user_1' },
       event: { $id: 'event_1', price: 2500, eventType: 'EVENT' },
     }));
+    const payload = await res.json();
 
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
+    expect(payload.error).toBe('Participant is already registered for this event.');
     expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
     expect(prismaMock.eventRegistrations.update).not.toHaveBeenCalled();
   });

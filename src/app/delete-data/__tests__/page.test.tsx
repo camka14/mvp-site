@@ -20,7 +20,7 @@ describe('Delete data page', () => {
       screen.getByText(/signed documents remain on file as a matter of record/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(/pending refund requests owed to you/i),
+      screen.getByText(/pending refund request owed to you/i),
     ).toBeInTheDocument();
   });
 });

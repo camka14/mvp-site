@@ -43,14 +43,47 @@ export type WeeklyOccurrenceSelection = {
     occurrenceDate?: string | null;
 };
 
+export type EventParticipantRegistrationEntry = {
+    registrationId: string;
+    registrantId: string;
+    registrantType: 'SELF' | 'CHILD' | 'TEAM';
+    rosterRole: 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGENT';
+    status: 'STARTED' | 'ACTIVE' | 'BLOCKED' | 'CANCELLED' | 'CONSENTFAILED';
+    parentId: string | null;
+    divisionId: string | null;
+    divisionTypeId: string | null;
+    divisionTypeKey: string | null;
+    consentDocumentId: string | null;
+    consentStatus: string | null;
+    slotId: string | null;
+    occurrenceDate: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+};
+
 export type EventParticipantsResponse = {
     event?: Event;
     participants: {
-        teams: Array<{ registrantId: string }>;
-        users: Array<{ registrantId: string }>;
-        children: Array<{ registrantId: string }>;
-        waitlist: Array<{ registrantId: string }>;
-        freeAgents: Array<{ registrantId: string }>;
+        teamIds: string[];
+        userIds: string[];
+        waitListIds: string[];
+        freeAgentIds: string[];
+        divisions: Array<{
+            divisionId: string | null;
+            divisionTypeId: string | null;
+            divisionTypeKey: string | null;
+            teamIds: string[];
+            userIds: string[];
+            waitListIds: string[];
+            freeAgentIds: string[];
+        }>;
+    };
+    registrations?: {
+        teams: EventParticipantRegistrationEntry[];
+        users: EventParticipantRegistrationEntry[];
+        children: EventParticipantRegistrationEntry[];
+        waitlist: EventParticipantRegistrationEntry[];
+        freeAgents: EventParticipantRegistrationEntry[];
     };
     teams: Team[];
     users: UserData[];
@@ -210,7 +243,11 @@ class EventService {
         }
     }
 
-    async getEventParticipants(eventId: string, occurrence?: WeeklyOccurrenceSelection): Promise<EventParticipantsResponse> {
+    async getEventParticipants(
+        eventId: string,
+        occurrence?: WeeklyOccurrenceSelection,
+        options?: { manage?: boolean },
+    ): Promise<EventParticipantsResponse> {
         const params = new URLSearchParams();
         const slotId = typeof occurrence?.slotId === 'string' ? occurrence.slotId.trim() : '';
         const occurrenceDate = typeof occurrence?.occurrenceDate === 'string' ? occurrence.occurrenceDate.trim() : '';
@@ -220,18 +257,22 @@ class EventService {
         if (occurrenceDate) {
             params.set('occurrenceDate', occurrenceDate);
         }
+        if (options?.manage) {
+            params.set('manage', 'true');
+        }
         const query = params.toString();
         const response = await apiRequest<any>(`/api/events/${eventId}/participants${query ? `?${query}` : ''}`);
         const eventPayload = response?.event ? this.mapRowToEvent(response.event) : undefined;
         return {
             event: eventPayload,
             participants: response?.participants ?? {
-                teams: [],
-                users: [],
-                children: [],
-                waitlist: [],
-                freeAgents: [],
+                teamIds: [],
+                userIds: [],
+                waitListIds: [],
+                freeAgentIds: [],
+                divisions: [],
             },
+            registrations: response?.registrations ?? undefined,
             teams: Array.isArray(response?.teams) ? response.teams.map((row: any) => row as Team) : [],
             users: Array.isArray(response?.users) ? response.users.map((row: any) => row as UserData) : [],
             participantCount: typeof response?.participantCount === 'number' ? response.participantCount : 0,

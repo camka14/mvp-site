@@ -178,7 +178,7 @@ const resolveLinkedParentUserId = async (params: {
       eventId: params.eventId,
       registrantId: params.childId,
       registrantType: 'CHILD',
-      status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
+      status: { in: ['STARTED', 'ACTIVE'] },
       parentId: { not: null },
     },
     orderBy: { updatedAt: 'desc' },
