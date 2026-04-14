@@ -503,6 +503,31 @@ describe('auth routes', () => {
       expect(json.code).toBe('EMAIL_NOT_VERIFIED');
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
     });
+
+    it('clears cookies when the session user has been suspended', async () => {
+      authServerMock.getTokenFromRequest.mockReturnValue('token');
+      authServerMock.verifySessionToken.mockReturnValue({ userId: 'user_1', isAdmin: false });
+
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        emailVerifiedAt: new Date(),
+        disabledAt: new Date('2026-04-14T00:00:00.000Z'),
+        disabledReason: 'abuse',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const req = new NextRequest('http://localhost/api/auth/me');
+      const res = await ME_GET(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.user).toBeNull();
+      expect(json.code).toBe('ACCOUNT_SUSPENDED');
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
+    });
   });
 
   describe('POST /api/auth/logout', () => {

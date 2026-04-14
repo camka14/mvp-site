@@ -18,6 +18,10 @@ const normalizeUserDataNames = (user: UserData): UserData => ({
   ...user,
   firstName: normalizeOptionalName(user.firstName) ?? '',
   lastName: normalizeOptionalName(user.lastName) ?? '',
+  blockedUserIds: Array.isArray(user.blockedUserIds) ? user.blockedUserIds : [],
+  hiddenEventIds: Array.isArray(user.hiddenEventIds) ? user.hiddenEventIds : [],
+  chatTermsAcceptedAt: user.chatTermsAcceptedAt ?? null,
+  chatTermsVersion: user.chatTermsVersion ?? null,
 });
 
 const normalizeUserDataList = (users: UserData[]): UserData[] => users.map(normalizeUserDataNames);
@@ -48,6 +52,7 @@ export interface UserSocialGraph {
   followers: UserData[];
   incomingFriendRequests: UserData[];
   outgoingFriendRequests: UserData[];
+  blocked: UserData[];
 }
 
 class UserService {
@@ -209,6 +214,7 @@ class UserService {
       followers: normalizeUserDataList(response.followers ?? []),
       incomingFriendRequests: normalizeUserDataList(response.incomingFriendRequests ?? []),
       outgoingFriendRequests: normalizeUserDataList(response.outgoingFriendRequests ?? []),
+      blocked: normalizeUserDataList(response.blocked ?? []),
     };
   }
 
@@ -252,6 +258,24 @@ class UserService {
 
   async unfollowUser(targetUserId: string): Promise<UserData> {
     const response = await apiFetch<{ user: UserData }>(`/api/users/social/following/${encodeURIComponent(targetUserId)}`, {
+      method: 'DELETE',
+    });
+    return normalizeUserDataNames(response.user);
+  }
+
+  async blockUser(targetUserId: string, leaveSharedChats: boolean = true): Promise<{ user: UserData; removedChatIds: string[] }> {
+    const response = await apiFetch<{ user: UserData; removedChatIds?: string[] }>('/api/users/social/blocked', {
+      method: 'POST',
+      body: JSON.stringify({ targetUserId, leaveSharedChats }),
+    });
+    return {
+      user: normalizeUserDataNames(response.user),
+      removedChatIds: response.removedChatIds ?? [],
+    };
+  }
+
+  async unblockUser(targetUserId: string): Promise<UserData> {
+    const response = await apiFetch<{ user: UserData }>(`/api/users/social/blocked/${encodeURIComponent(targetUserId)}`, {
       method: 'DELETE',
     });
     return normalizeUserDataNames(response.user);

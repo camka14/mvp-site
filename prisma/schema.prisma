@@ -149,6 +149,19 @@ enum BoldSignSyncOperationStatusEnum {
   TIMED_OUT
 }
 
+enum ModerationReportTargetTypeEnum {
+  CHAT_GROUP
+  EVENT
+  BLOCK_USER
+}
+
+enum ModerationReportStatusEnum {
+  OPEN
+  IN_REVIEW
+  ACTIONED
+  DISMISSED
+}
+
 model Fields {
   id             String    @id
   createdAt      DateTime?
@@ -266,6 +279,10 @@ model UserData {
   uploadedImages          String[]
   profileImageId          String?
   homePageOrganizationId  String?
+  blockedUserIds          String[]  @default([])
+  hiddenEventIds          String[]  @default([])
+  chatTermsAcceptedAt     DateTime?
+  chatTermsVersion        String?
 }
 
 model SensitiveUserData {
@@ -366,18 +383,49 @@ model Messages {
   chatId         String
   readByIds      String[]
   sentTime       DateTime
+  removedAt      DateTime?
+  removedByUserId String?
+  removalReason  String?
+
+  @@index([chatId, removedAt])
 }
 
 model ChatGroup {
-  id        String    @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  name      String?
-  teamId    String?   @unique
+  id              String    @id
+  createdAt       DateTime?
+  updatedAt       DateTime?
+  name            String?
+  teamId          String?   @unique
   // Indexed via a raw SQL GIN migration for array membership lookups.
-  userIds   String[]
-  mutedUserIds String[] @default([])
-  hostId    String
+  userIds         String[]
+  mutedUserIds    String[]  @default([])
+  hostId          String
+  archivedAt      DateTime?
+  archivedReason  String?
+  archivedByUserId String?
+
+  @@index([archivedAt])
+}
+
+model ModerationReport {
+  id               String                         @id
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  reporterUserId   String
+  targetType       ModerationReportTargetTypeEnum
+  targetId         String
+  category         String?
+  notes            String?
+  status           ModerationReportStatusEnum     @default(OPEN)
+  dueAt            DateTime
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  reviewNotes      String?
+  metadata         Json?
+
+  @@index([reporterUserId])
+  @@index([targetType, targetId])
+  @@index([status, dueAt])
 }
 
 model PushDeviceTarget {
@@ -854,8 +902,12 @@ model AuthUser {
   lastLogin       DateTime?
   createdAt       DateTime?
   updatedAt       DateTime?
+  disabledAt      DateTime?
+  disabledByUserId String?
+  disabledReason  String?
 
   @@index([email])
+  @@index([disabledAt])
 }
 
 model File {

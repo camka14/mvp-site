@@ -911,12 +911,13 @@ function OrganizationDetailContent() {
         : Promise.resolve<Event[]>([]);
 
       const [hostedEvents, rentalEvents] = await Promise.all([hostedEventsPromise, rentalEventsPromise]);
+      const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
       const mergedEvents = [...hostedEvents, ...rentalEvents];
       const dedupedEvents = mergedEvents.filter((event, index, all) => (
         all.findIndex((candidate) => candidate.$id === event.$id) === index
       ));
 
-      setEventsTabEvents(dedupedEvents);
+      setEventsTabEvents(dedupedEvents.filter((event) => !hiddenEventIds.has(event.$id)));
       setEventsTabOffset(hostedEvents.length);
       setEventsTabHasMoreEvents(shouldLoadHostedEvents && hostedEvents.length === ORG_EVENTS_LIMIT);
     } catch (error) {
@@ -932,6 +933,7 @@ function OrganizationDetailContent() {
     includeRentalEventType,
     loadRentalEventsForOrganization,
     selectedHostedEventTypes.length,
+    user?.hiddenEventIds,
   ]);
 
   const loadMoreOrganizationEvents = useCallback(async () => {
@@ -942,8 +944,9 @@ function OrganizationDetailContent() {
     try {
       const filters = buildEventFilters();
       const page = await eventService.getEventsPaginated(filters, ORG_EVENTS_LIMIT, eventsTabOffset);
+      const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
       setEventsTabEvents((previous) => {
-        const merged = [...previous, ...page];
+        const merged = [...previous, ...page.filter((event) => !hiddenEventIds.has(event.$id))];
         const seen = new Set<string>();
         return merged.filter((event) => {
           if (seen.has(event.$id)) return false;
@@ -966,7 +969,16 @@ function OrganizationDetailContent() {
     eventsTabLoadingMore,
     eventsTabOffset,
     selectedHostedEventTypes.length,
+    user?.hiddenEventIds,
   ]);
+
+  useEffect(() => {
+    const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
+    if (hiddenEventIds.size === 0) {
+      return;
+    }
+    setEventsTabEvents((previous) => previous.filter((event) => !hiddenEventIds.has(event.$id)));
+  }, [user?.hiddenEventIds]);
 
   const handleSetHomePage = useCallback(async (checked: boolean) => {
     if (!user?.$id || !org || !canToggleHomePagePreference) {

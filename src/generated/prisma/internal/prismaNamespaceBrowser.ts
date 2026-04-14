@@ -62,6 +62,7 @@ export const ModelName = {
   Teams: 'Teams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
+  ModerationReport: 'ModerationReport',
   PushDeviceTarget: 'PushDeviceTarget',
   LockFiles: 'LockFiles',
   PaymentIntents: 'PaymentIntents',
@@ -211,7 +212,11 @@ export const UserDataScalarFieldEnum = {
   friendRequestSentIds: 'friendRequestSentIds',
   uploadedImages: 'uploadedImages',
   profileImageId: 'profileImageId',
-  homePageOrganizationId: 'homePageOrganizationId'
+  homePageOrganizationId: 'homePageOrganizationId',
+  blockedUserIds: 'blockedUserIds',
+  hiddenEventIds: 'hiddenEventIds',
+  chatTermsAcceptedAt: 'chatTermsAcceptedAt',
+  chatTermsVersion: 'chatTermsVersion'
 } as const
 
 export type UserDataScalarFieldEnum = (typeof UserDataScalarFieldEnum)[keyof typeof UserDataScalarFieldEnum]
@@ -315,7 +320,10 @@ export const MessagesScalarFieldEnum = {
   attachmentUrls: 'attachmentUrls',
   chatId: 'chatId',
   readByIds: 'readByIds',
-  sentTime: 'sentTime'
+  sentTime: 'sentTime',
+  removedAt: 'removedAt',
+  removedByUserId: 'removedByUserId',
+  removalReason: 'removalReason'
 } as const
 
 export type MessagesScalarFieldEnum = (typeof MessagesScalarFieldEnum)[keyof typeof MessagesScalarFieldEnum]
@@ -329,10 +337,33 @@ export const ChatGroupScalarFieldEnum = {
   teamId: 'teamId',
   userIds: 'userIds',
   mutedUserIds: 'mutedUserIds',
-  hostId: 'hostId'
+  hostId: 'hostId',
+  archivedAt: 'archivedAt',
+  archivedReason: 'archivedReason',
+  archivedByUserId: 'archivedByUserId'
 } as const
 
 export type ChatGroupScalarFieldEnum = (typeof ChatGroupScalarFieldEnum)[keyof typeof ChatGroupScalarFieldEnum]
+
+
+export const ModerationReportScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  reporterUserId: 'reporterUserId',
+  targetType: 'targetType',
+  targetId: 'targetId',
+  category: 'category',
+  notes: 'notes',
+  status: 'status',
+  dueAt: 'dueAt',
+  reviewedAt: 'reviewedAt',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewNotes: 'reviewNotes',
+  metadata: 'metadata'
+} as const
+
+export type ModerationReportScalarFieldEnum = (typeof ModerationReportScalarFieldEnum)[keyof typeof ModerationReportScalarFieldEnum]
 
 
 export const PushDeviceTargetScalarFieldEnum = {
@@ -834,7 +865,10 @@ export const AuthUserScalarFieldEnum = {
   emailVerifiedAt: 'emailVerifiedAt',
   lastLogin: 'lastLogin',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  disabledAt: 'disabledAt',
+  disabledByUserId: 'disabledByUserId',
+  disabledReason: 'disabledReason'
 } as const
 
 export type AuthUserScalarFieldEnum = (typeof AuthUserScalarFieldEnum)[keyof typeof AuthUserScalarFieldEnum]

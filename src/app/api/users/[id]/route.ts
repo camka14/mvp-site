@@ -10,7 +10,7 @@ import {
   normalizeUserName,
 } from '@/server/userNames';
 import { resolveRequiredProfileFieldsCompletedAt } from '@/server/profileCompletion';
-import { applyUserPrivacy, createVisibilityContext, publicUserSelect } from '@/server/userPrivacy';
+import { applyUserPrivacy, createVisibilityContext, currentUserSelect, publicUserSelect } from '@/server/userPrivacy';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 
 const USER_MUTABLE_FIELDS = new Set<string>([
@@ -63,11 +63,15 @@ const parseDateValue = (value: unknown): Date | null => {
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await prisma.userData.findUnique({ where: { id }, select: publicUserSelect });
+  const session = getOptionalSession(_req);
+  const shouldExposeCurrentUserFields = Boolean(session?.isAdmin || session?.userId === id);
+  const user = await prisma.userData.findUnique({
+    where: { id },
+    select: shouldExposeCurrentUserFields ? currentUserSelect : publicUserSelect,
+  });
   if (!user) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  const session = getOptionalSession(_req);
   const query = _req.nextUrl.searchParams;
   const parseContextId = (value: string | null): string | null => {
     if (!value) return null;

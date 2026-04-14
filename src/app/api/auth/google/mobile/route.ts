@@ -8,6 +8,7 @@ import {
   buildProfileCompletionState,
   resolveRequiredProfileFieldsCompletedAt,
 } from '@/server/profileCompletion';
+import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const mobileGoogleSchema = z.object({
@@ -142,6 +143,12 @@ export async function POST(req: NextRequest) {
     ? await prisma.authUser.findUnique({ where: { email: normalizedEmail } })
     : null;
   const existingAuth = existingAuthByGoogleSubject ?? existingAuthByEmail;
+  if (isAuthUserSuspended(existingAuth)) {
+    return NextResponse.json(
+      { error: 'Account suspended', code: ACCOUNT_SUSPENDED_CODE },
+      { status: 403 },
+    );
+  }
   const existingSensitive = existingAuth
     ? null
     : await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });

@@ -4,6 +4,7 @@ import { getTokenFromRequest, verifySessionToken, setAuthCookie, signSessionToke
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { buildProfileCompletionState } from '@/server/profileCompletion';
+import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 
 const toPublicUser = (user: { id: string; email: string; name: string | null; createdAt: Date | null; updatedAt: Date | null }) => ({
   id: user.id,
@@ -29,6 +30,12 @@ export async function GET(req: NextRequest) {
   const user = await prisma.authUser.findUnique({ where: { id: decoded.userId } });
   if (!user) {
     const res = NextResponse.json({ user: null, session: null }, { status: 200 });
+    setAuthCookie(res, '');
+    return res;
+  }
+
+  if (isAuthUserSuspended(user)) {
+    const res = NextResponse.json({ user: null, session: null, code: ACCOUNT_SUSPENDED_CODE }, { status: 200 });
     setAuthCookie(res, '');
     return res;
   }

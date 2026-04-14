@@ -20,6 +20,7 @@ import { SchedulerContext } from '@/server/scheduler/types';
 import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
 import { evaluateDivisionAgeEligibility, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { notifySocialAudienceOfEventCreation } from '@/server/eventCreationNotifications';
+import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
   buildEventOfficialPositionsFromTemplates,
   deriveEventOfficialsFromLegacyOfficialIds,
@@ -614,6 +615,28 @@ const resolveSessionContext = (
   };
 };
 
+const loadHiddenEventIdsForSessionUser = async (
+  sessionUserId: string | null,
+  isAdmin: boolean,
+): Promise<string[]> => {
+  if (!sessionUserId || isAdmin) {
+    return [];
+  }
+
+  const user = await prisma.userData.findUnique({
+    where: { id: sessionUserId },
+    select: { hiddenEventIds: true },
+  });
+
+  return Array.from(
+    new Set(
+      (user?.hiddenEventIds ?? [])
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  );
+};
+
 const HIDDEN_EVENT_STATES = ['UNPUBLISHED', 'PRIVATE'] as const;
 
 const isHiddenEventStateFilter = (
@@ -668,6 +691,7 @@ export async function GET(req: NextRequest) {
   const sessionContext = resolveSessionContext(req);
   const sessionUserId = sessionContext?.userId ?? null;
   const isAdminSession = sessionContext?.isAdmin === true;
+  const hiddenEventIds = await loadHiddenEventIdsForSessionUser(sessionUserId, isAdminSession);
   if (normalizedState === 'TEMPLATE') {
     templateSession = await requireSession(req);
     if (!templateSession.isAdmin) {
@@ -724,6 +748,9 @@ export async function GET(req: NextRequest) {
   if (sportId) where.sportId = sportId;
   if (eventType) where.eventType = eventType;
   if (state) where.state = normalizedState ?? state;
+  if (hiddenEventIds.length > 0) {
+    where.AND = [...(Array.isArray(where.AND) ? where.AND : []), { id: { notIn: hiddenEventIds } }];
+  }
   if (isHiddenEventStateFilter(normalizedState) && !isAdminSession) {
     if (canViewOrganizationDrafts) {
       // Organization managers can view hidden events within the scoped organization.
@@ -865,6 +892,24 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    assertEventContentAllowed({
+      name: eventPayload.name,
+      description: eventPayload.description,
+    });
+  } catch (error) {
+    if (error instanceof EventContentFilterError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          matches: error.matches,
+        },
+        { status: 400 },
+      );
+    }
+    throw error;
+  }
+
+  try {
     const context = buildContext();
     const event = await prisma.$transaction(async (tx) => {
       await upsertEventFromPayload(eventPayload, tx);
@@ -926,6 +971,15 @@ export async function POST(req: NextRequest) {
     if (isDivisionAssignmentValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid division team assignments';
       return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (error instanceof EventContentFilterError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          matches: error.matches,
+        },
+        { status: 400 },
+      );
     }
     console.error('Create event failed', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

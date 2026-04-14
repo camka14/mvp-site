@@ -2308,6 +2308,20 @@ class EventService {
             throw new Error('Failed to load events');
         }
     }
+
+    async reportEvent(eventId: string, options?: { category?: string; notes?: string }): Promise<{ hiddenEventIds: string[] }> {
+        return apiRequest<{ hiddenEventIds?: string[] }>('/api/moderation/reports', {
+            method: 'POST',
+            body: {
+                targetType: 'EVENT',
+                targetId: eventId,
+                category: options?.category ?? 'report_event',
+                notes: options?.notes,
+            },
+        }).then((response) => ({
+            hiddenEventIds: response.hiddenEventIds ?? [],
+        }));
+    }
 }
 
 export const eventService = new EventService();

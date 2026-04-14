@@ -321,6 +321,7 @@ describe('League schedule page', () => {
       isAuthenticated: true,
       isGuest: false,
       loading: false,
+      setUser: jest.fn(),
     });
 
     useSearchParamsMock.mockReturnValue({
@@ -349,7 +350,25 @@ describe('League schedule page', () => {
     // Mirror production behavior:
     // - `GET /api/events/:id` returns an event row without embedded matches
     // - matches are loaded via `GET /api/events/:id/matches`
-    apiRequestMock.mockImplementation((path: string) => {
+    apiRequestMock.mockImplementation((path: string, options?: any) => {
+      if (path === '/api/chat/terms-consent') {
+        if (options?.method === 'POST') {
+          return Promise.resolve({
+            version: '2026-04-14',
+            url: '/terms',
+            summary: ['Creating chats or events requires agreement to the Bracket IQ Terms and EULA.'],
+            accepted: true,
+            acceptedAt: '2026-04-14T12:00:00.000Z',
+          });
+        }
+        return Promise.resolve({
+          version: '2026-04-14',
+          url: '/terms',
+          summary: ['Creating chats or events requires agreement to the Bracket IQ Terms and EULA.'],
+          accepted: true,
+          acceptedAt: '2026-04-14T12:00:00.000Z',
+        });
+      }
       if (path === '/api/events/event_1') {
         const event = buildApiEvent();
         delete (event as any).matches;
@@ -387,6 +406,85 @@ describe('League schedule page', () => {
       occurrence: null,
     });
     (organizationService.getOrganizationById as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it('shows the terms modal on event creation until consent is accepted', async () => {
+    const setUserMock = jest.fn();
+    useAppMock.mockReturnValue({
+      user: { $id: 'host_1' },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      setUser: setUserMock,
+    });
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string, options?: any) => {
+      if (path === '/api/chat/terms-consent') {
+        if (options?.method === 'POST') {
+          return Promise.resolve({
+            version: '2026-04-14',
+            url: '/terms',
+            summary: ['There is no tolerance for objectionable content or abusive users.'],
+            accepted: true,
+            acceptedAt: '2026-04-14T12:00:00.000Z',
+          });
+        }
+        return Promise.resolve({
+          version: '2026-04-14',
+          url: '/terms',
+          summary: ['There is no tolerance for objectionable content or abusive users.'],
+          accepted: false,
+          acceptedAt: null,
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    expect(await screen.findByText('Agree to the Terms and EULA')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Agree' }));
+
+    await waitFor(() => {
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/chat/terms-consent',
+        expect.objectContaining({
+          method: 'POST',
+          body: { accepted: true },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Agree to the Terms and EULA')).not.toBeInTheDocument();
+    });
+
+    expect(setUserMock).toHaveBeenCalledWith(expect.objectContaining({
+      chatTermsAcceptedAt: '2026-04-14T12:00:00.000Z',
+      chatTermsVersion: '2026-04-14',
+    }));
+  });
+
+  it('skips the terms modal on event creation after consent already exists', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'create') return '1';
+        return null;
+      },
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    expect(await screen.findByText('Create Event')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Agree to the Terms and EULA')).not.toBeInTheDocument();
+    });
   });
 
   it('renders schedule information', async () => {

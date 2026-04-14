@@ -288,11 +288,15 @@ export interface UserData {
   friendRequestIds: string[];
   friendRequestSentIds: string[];
   followingIds: string[];
+  blockedUserIds: string[];
+  hiddenEventIds: string[];
   userName: string;
   hasStripeAccount?: boolean;
   uploadedImages: string[];
   profileImageId?: string;
   homePageOrganizationId?: string | null;
+  chatTermsAcceptedAt?: string | null;
+  chatTermsVersion?: string | null;
   stripeAccountId?: string | null;
   $createdAt?: string;
   $updatedAt?: string;

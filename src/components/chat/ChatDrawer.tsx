@@ -6,6 +6,7 @@ import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
 import { ChatList } from './ChatList';
 import { ChatDetail } from './ChatDetail';
+import { TermsConsentModal } from '@/components/moderation/TermsConsentModal';
 import Lottie, { LottieRefCurrentProps } from 'lottie-react';
 import chatAnimationData from '../../../public/chat.json';
 
@@ -13,7 +14,18 @@ const CHAT_POLL_INTERVAL_MS = 2000;
 const INACTIVE_CHAT_REFRESH_MS = 30000;
 
 export function ChatDrawer() {
-    const { chatGroups, loadMessages, loadChatGroups, markChatViewed } = useChat();
+    const {
+        chatGroups,
+        loadMessages,
+        loadChatGroups,
+        markChatViewed,
+        chatTermsState,
+        chatTermsLoading,
+        chatTermsModalOpen,
+        ensureChatAccess,
+        acceptChatTerms,
+        closeChatTermsModal,
+    } = useChat();
     const { isChatListOpen, openChatWindows, openChatList, isFloatingButtonVisible } = useChatUI();
     const [mounted, setMounted] = useState(false);
     const pollingRef = useRef(false);
@@ -91,6 +103,15 @@ export function ChatDrawer() {
 
     if (!mounted) return null;
 
+    const handleOpenChatList = async () => {
+        const allowed = await ensureChatAccess();
+        if (!allowed) {
+            return;
+        }
+        await loadChatGroups();
+        openChatList();
+    };
+
     const chatWindowWidth = 320; // Width of each chat window
     const chatListWidth = 320; // Width of chat list drawer
 
@@ -130,7 +151,16 @@ export function ChatDrawer() {
             })}
 
             {/* Floating Chat Button (Lottie) */}
-            {isFloatingButtonVisible && <FloatingChatButton onClick={openChatList} unreadCount={totalUnreadCount} />}
+            {isFloatingButtonVisible && <FloatingChatButton onClick={handleOpenChatList} unreadCount={totalUnreadCount} />}
+
+            <TermsConsentModal
+                open={chatTermsModalOpen}
+                state={chatTermsState}
+                loading={chatTermsLoading}
+                onAccept={() => { void acceptChatTerms(); }}
+                onClose={closeChatTermsModal}
+                allowClose
+            />
         </div>
     );
 

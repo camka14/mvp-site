@@ -8,6 +8,7 @@ const messagesGroupByMock = jest.fn();
 const messagesFindManyMock = jest.fn();
 const userDataFindManyMock = jest.fn();
 const requireSessionMock = jest.fn();
+const ensureUserHasAcceptedChatTermsMock = jest.fn();
 const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
 const withLegacyFieldsMock = jest.fn((row: any) => ({ ...row, $id: row.id }));
 
@@ -31,6 +32,10 @@ jest.mock('@/lib/permissions', () => ({
   requireSession: (...args: any[]) => requireSessionMock(...args),
 }));
 
+jest.mock('@/server/chatAccess', () => ({
+  ensureUserHasAcceptedChatTerms: (...args: any[]) => ensureUserHasAcceptedChatTermsMock(...args),
+}));
+
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyList: (rows: any[]) => withLegacyListMock(rows),
   withLegacyFields: (row: any) => withLegacyFieldsMock(row),
@@ -48,6 +53,7 @@ describe('/api/chat/groups GET', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     userDataFindManyMock.mockResolvedValue([]);
+    ensureUserHasAcceptedChatTermsMock.mockResolvedValue(undefined);
   });
 
   it('returns unread counts and last message summary without per-group fanout', async () => {
@@ -82,6 +88,7 @@ describe('/api/chat/groups GET', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
+    expect(ensureUserHasAcceptedChatTermsMock).toHaveBeenCalledWith('user_1');
     expect(messagesGroupByMock).toHaveBeenCalledTimes(1);
     expect(messagesFindManyMock).toHaveBeenCalledTimes(1);
     expect(json.groups).toHaveLength(2);
@@ -107,10 +114,15 @@ describe('/api/chat/groups POST', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     userDataFindManyMock.mockResolvedValue([]);
+    ensureUserHasAcceptedChatTermsMock.mockResolvedValue(undefined);
   });
 
   it('creates a chat group with normalized unique user ids', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    userDataFindManyMock.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
     chatGroupCreateMock.mockResolvedValue({
       id: 'chat_1',
       name: null,
@@ -126,6 +138,7 @@ describe('/api/chat/groups POST', () => {
     const json = await response.json();
 
     expect(response.status).toBe(201);
+    expect(ensureUserHasAcceptedChatTermsMock).toHaveBeenCalledWith('user_1');
     expect(chatGroupCreateMock).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         hostId: 'user_1',
@@ -171,6 +184,25 @@ describe('/api/chat/groups POST', () => {
     }));
 
     expect(response.status).toBe(403);
+    expect(chatGroupCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when any requested participant has blocked another', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    userDataFindManyMock.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: ['user_2'] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+
+    const response = await POST(createPostRequest({
+      id: 'chat_1',
+      hostId: 'user_1',
+      userIds: ['user_1', 'user_2'],
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toContain('blocked');
     expect(chatGroupCreateMock).not.toHaveBeenCalled();
   });
 });

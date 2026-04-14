@@ -95,6 +95,11 @@ export type Messages = Prisma.MessagesModel
  */
 export type ChatGroup = Prisma.ChatGroupModel
 /**
+ * Model ModerationReport
+ * 
+ */
+export type ModerationReport = Prisma.ModerationReportModel
+/**
  * Model PushDeviceTarget
  * 
  */

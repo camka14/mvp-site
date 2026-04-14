@@ -395,6 +395,7 @@ export const ModelName = {
   Teams: 'Teams',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
+  ModerationReport: 'ModerationReport',
   PushDeviceTarget: 'PushDeviceTarget',
   LockFiles: 'LockFiles',
   PaymentIntents: 'PaymentIntents',
@@ -432,7 +433,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "eventOfficials" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "eventOfficials" | "teams" | "messages" | "chatGroup" | "moderationReport" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1247,6 +1248,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.ChatGroupCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.ChatGroupCountAggregateOutputType> | number
+        }
+      }
+    }
+    ModerationReport: {
+      payload: Prisma.$ModerationReportPayload<ExtArgs>
+      fields: Prisma.ModerationReportFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ModerationReportFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ModerationReportFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        findFirst: {
+          args: Prisma.ModerationReportFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ModerationReportFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        findMany: {
+          args: Prisma.ModerationReportFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>[]
+        }
+        create: {
+          args: Prisma.ModerationReportCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        createMany: {
+          args: Prisma.ModerationReportCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ModerationReportCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>[]
+        }
+        delete: {
+          args: Prisma.ModerationReportDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        update: {
+          args: Prisma.ModerationReportUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        deleteMany: {
+          args: Prisma.ModerationReportDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ModerationReportUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ModerationReportUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>[]
+        }
+        upsert: {
+          args: Prisma.ModerationReportUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        aggregate: {
+          args: Prisma.ModerationReportAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateModerationReport>
+        }
+        groupBy: {
+          args: Prisma.ModerationReportGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ModerationReportGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ModerationReportCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ModerationReportCountAggregateOutputType> | number
         }
       }
     }
@@ -3026,7 +3101,11 @@ export const UserDataScalarFieldEnum = {
   friendRequestSentIds: 'friendRequestSentIds',
   uploadedImages: 'uploadedImages',
   profileImageId: 'profileImageId',
-  homePageOrganizationId: 'homePageOrganizationId'
+  homePageOrganizationId: 'homePageOrganizationId',
+  blockedUserIds: 'blockedUserIds',
+  hiddenEventIds: 'hiddenEventIds',
+  chatTermsAcceptedAt: 'chatTermsAcceptedAt',
+  chatTermsVersion: 'chatTermsVersion'
 } as const
 
 export type UserDataScalarFieldEnum = (typeof UserDataScalarFieldEnum)[keyof typeof UserDataScalarFieldEnum]
@@ -3130,7 +3209,10 @@ export const MessagesScalarFieldEnum = {
   attachmentUrls: 'attachmentUrls',
   chatId: 'chatId',
   readByIds: 'readByIds',
-  sentTime: 'sentTime'
+  sentTime: 'sentTime',
+  removedAt: 'removedAt',
+  removedByUserId: 'removedByUserId',
+  removalReason: 'removalReason'
 } as const
 
 export type MessagesScalarFieldEnum = (typeof MessagesScalarFieldEnum)[keyof typeof MessagesScalarFieldEnum]
@@ -3144,10 +3226,33 @@ export const ChatGroupScalarFieldEnum = {
   teamId: 'teamId',
   userIds: 'userIds',
   mutedUserIds: 'mutedUserIds',
-  hostId: 'hostId'
+  hostId: 'hostId',
+  archivedAt: 'archivedAt',
+  archivedReason: 'archivedReason',
+  archivedByUserId: 'archivedByUserId'
 } as const
 
 export type ChatGroupScalarFieldEnum = (typeof ChatGroupScalarFieldEnum)[keyof typeof ChatGroupScalarFieldEnum]
+
+
+export const ModerationReportScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  reporterUserId: 'reporterUserId',
+  targetType: 'targetType',
+  targetId: 'targetId',
+  category: 'category',
+  notes: 'notes',
+  status: 'status',
+  dueAt: 'dueAt',
+  reviewedAt: 'reviewedAt',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewNotes: 'reviewNotes',
+  metadata: 'metadata'
+} as const
+
+export type ModerationReportScalarFieldEnum = (typeof ModerationReportScalarFieldEnum)[keyof typeof ModerationReportScalarFieldEnum]
 
 
 export const PushDeviceTargetScalarFieldEnum = {
@@ -3649,7 +3754,10 @@ export const AuthUserScalarFieldEnum = {
   emailVerifiedAt: 'emailVerifiedAt',
   lastLogin: 'lastLogin',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  disabledAt: 'disabledAt',
+  disabledByUserId: 'disabledByUserId',
+  disabledReason: 'disabledReason'
 } as const
 
 export type AuthUserScalarFieldEnum = (typeof AuthUserScalarFieldEnum)[keyof typeof AuthUserScalarFieldEnum]
@@ -3813,6 +3921,34 @@ export type EnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType
  * Reference to a field of type 'DivisionsKindEnum[]'
  */
 export type ListEnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DivisionsKindEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'ModerationReportTargetTypeEnum'
+ */
+export type EnumModerationReportTargetTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ModerationReportTargetTypeEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'ModerationReportTargetTypeEnum[]'
+ */
+export type ListEnumModerationReportTargetTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ModerationReportTargetTypeEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'ModerationReportStatusEnum'
+ */
+export type EnumModerationReportStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ModerationReportStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'ModerationReportStatusEnum[]'
+ */
+export type ListEnumModerationReportStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ModerationReportStatusEnum[]'>
     
 
 
@@ -4215,6 +4351,7 @@ export type GlobalOmitConfig = {
   teams?: Prisma.TeamsOmit
   messages?: Prisma.MessagesOmit
   chatGroup?: Prisma.ChatGroupOmit
+  moderationReport?: Prisma.ModerationReportOmit
   pushDeviceTarget?: Prisma.PushDeviceTargetOmit
   lockFiles?: Prisma.LockFilesOmit
   paymentIntents?: Prisma.PaymentIntentsOmit

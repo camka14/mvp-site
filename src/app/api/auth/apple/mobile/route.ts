@@ -12,6 +12,7 @@ import {
   buildProfileCompletionState,
   resolveRequiredProfileFieldsCompletedAt,
 } from '@/server/profileCompletion';
+import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const mobileAppleSchema = z.object({
@@ -90,6 +91,12 @@ export async function POST(req: NextRequest) {
     ? await prisma.authUser.findUnique({ where: { email: candidateEmail } })
     : null;
   const existingAuth = existingAuthByAppleSubject ?? existingAuthByEmail;
+  if (isAuthUserSuspended(existingAuth)) {
+    return NextResponse.json(
+      { error: 'Account suspended', code: ACCOUNT_SUSPENDED_CODE },
+      { status: 403 },
+    );
+  }
   const existingSensitive = existingAuth
     ? await prisma.sensitiveUserData.findFirst({ where: { userId: existingAuth.id } })
     : candidateEmail
@@ -224,6 +231,13 @@ export async function POST(req: NextRequest) {
 
     return [createdAuth, profileRow] as const;
   });
+
+  if (isAuthUserSuspended(authUser)) {
+    return NextResponse.json(
+      { error: 'Account suspended', code: ACCOUNT_SUSPENDED_CODE },
+      { status: 403 },
+    );
+  }
 
   const session: SessionToken = { userId: authUser.id, isAdmin: false };
   const token = signSessionToken(session);

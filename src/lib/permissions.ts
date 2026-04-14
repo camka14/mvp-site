@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getTokenFromRequest, verifySessionToken, SessionToken } from './authServer';
+import { prisma } from '@/lib/prisma';
+import { assertAuthUserIsActive } from '@/server/authState';
 
 export type AuthContext = SessionToken & { rawToken: string };
 
@@ -12,6 +14,14 @@ export const requireSession = async (req: NextRequest): Promise<AuthContext> => 
   if (!decoded) {
     throw new Response('Unauthorized', { status: 401 });
   }
+  const authUser = await prisma.authUser.findUnique({
+    where: { id: decoded.userId },
+    select: { disabledAt: true, disabledReason: true },
+  });
+  if (!authUser) {
+    throw new Response('Unauthorized', { status: 401 });
+  }
+  assertAuthUserIsActive(authUser);
   return { ...decoded, rawToken: token };
 };
 

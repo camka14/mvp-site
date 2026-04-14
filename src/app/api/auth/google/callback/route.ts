@@ -7,6 +7,7 @@ import {
   buildProfileCompletionState,
   resolveRequiredProfileFieldsCompletedAt,
 } from '@/server/profileCompletion';
+import { isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const STATE_COOKIE = 'google_oauth_state';
@@ -148,6 +149,11 @@ export async function GET(req: NextRequest) {
     ? await prisma.authUser.findUnique({ where: { email: normalizedEmail } })
     : null;
   const existingAuth = existingAuthByGoogleSubject ?? existingAuthByEmail;
+  if (isAuthUserSuspended(existingAuth)) {
+    const res = NextResponse.redirect(new URL('/login?oauth=google&error=account_suspended', origin), { status: 302 });
+    clearOauthCookies(res);
+    return res;
+  }
   const existingSensitive = existingAuth ? null : await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
 
@@ -260,6 +266,12 @@ export async function GET(req: NextRequest) {
 
     return [createdAuth, profileRow] as const;
   });
+
+  if (isAuthUserSuspended(authUser)) {
+    const res = NextResponse.redirect(new URL('/login?oauth=google&error=account_suspended', origin), { status: 302 });
+    clearOauthCookies(res);
+    return res;
+  }
 
   const session: SessionToken = { userId: authUser.id, isAdmin: false };
   const token = signSessionToken(session);

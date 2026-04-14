@@ -35,6 +35,9 @@ export type AuthUserMinAggregateOutputType = {
   lastLogin: Date | null
   createdAt: Date | null
   updatedAt: Date | null
+  disabledAt: Date | null
+  disabledByUserId: string | null
+  disabledReason: string | null
 }
 
 export type AuthUserMaxAggregateOutputType = {
@@ -48,6 +51,9 @@ export type AuthUserMaxAggregateOutputType = {
   lastLogin: Date | null
   createdAt: Date | null
   updatedAt: Date | null
+  disabledAt: Date | null
+  disabledByUserId: string | null
+  disabledReason: string | null
 }
 
 export type AuthUserCountAggregateOutputType = {
@@ -61,6 +67,9 @@ export type AuthUserCountAggregateOutputType = {
   lastLogin: number
   createdAt: number
   updatedAt: number
+  disabledAt: number
+  disabledByUserId: number
+  disabledReason: number
   _all: number
 }
 
@@ -76,6 +85,9 @@ export type AuthUserMinAggregateInputType = {
   lastLogin?: true
   createdAt?: true
   updatedAt?: true
+  disabledAt?: true
+  disabledByUserId?: true
+  disabledReason?: true
 }
 
 export type AuthUserMaxAggregateInputType = {
@@ -89,6 +101,9 @@ export type AuthUserMaxAggregateInputType = {
   lastLogin?: true
   createdAt?: true
   updatedAt?: true
+  disabledAt?: true
+  disabledByUserId?: true
+  disabledReason?: true
 }
 
 export type AuthUserCountAggregateInputType = {
@@ -102,6 +117,9 @@ export type AuthUserCountAggregateInputType = {
   lastLogin?: true
   createdAt?: true
   updatedAt?: true
+  disabledAt?: true
+  disabledByUserId?: true
+  disabledReason?: true
   _all?: true
 }
 
@@ -188,6 +206,9 @@ export type AuthUserGroupByOutputType = {
   lastLogin: Date | null
   createdAt: Date | null
   updatedAt: Date | null
+  disabledAt: Date | null
+  disabledByUserId: string | null
+  disabledReason: string | null
   _count: AuthUserCountAggregateOutputType | null
   _min: AuthUserMinAggregateOutputType | null
   _max: AuthUserMaxAggregateOutputType | null
@@ -222,6 +243,9 @@ export type AuthUserWhereInput = {
   lastLogin?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   createdAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
+  disabledAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
+  disabledByUserId?: Prisma.StringNullableFilter<"AuthUser"> | string | null
+  disabledReason?: Prisma.StringNullableFilter<"AuthUser"> | string | null
 }
 
 export type AuthUserOrderByWithRelationInput = {
@@ -235,6 +259,9 @@ export type AuthUserOrderByWithRelationInput = {
   lastLogin?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  disabledAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  disabledByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  disabledReason?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type AuthUserWhereUniqueInput = Prisma.AtLeast<{
@@ -251,6 +278,9 @@ export type AuthUserWhereUniqueInput = Prisma.AtLeast<{
   lastLogin?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   createdAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
+  disabledAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
+  disabledByUserId?: Prisma.StringNullableFilter<"AuthUser"> | string | null
+  disabledReason?: Prisma.StringNullableFilter<"AuthUser"> | string | null
 }, "id" | "email" | "googleSubject" | "appleSubject">
 
 export type AuthUserOrderByWithAggregationInput = {
@@ -264,6 +294,9 @@ export type AuthUserOrderByWithAggregationInput = {
   lastLogin?: Prisma.SortOrderInput | Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  disabledAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  disabledByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  disabledReason?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.AuthUserCountOrderByAggregateInput
   _max?: Prisma.AuthUserMaxOrderByAggregateInput
   _min?: Prisma.AuthUserMinOrderByAggregateInput
@@ -283,6 +316,9 @@ export type AuthUserScalarWhereWithAggregatesInput = {
   lastLogin?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
+  disabledAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
+  disabledByUserId?: Prisma.StringNullableWithAggregatesFilter<"AuthUser"> | string | null
+  disabledReason?: Prisma.StringNullableWithAggregatesFilter<"AuthUser"> | string | null
 }
 
 export type AuthUserCreateInput = {
@@ -296,6 +332,9 @@ export type AuthUserCreateInput = {
   lastLogin?: Date | string | null
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  disabledAt?: Date | string | null
+  disabledByUserId?: string | null
+  disabledReason?: string | null
 }
 
 export type AuthUserUncheckedCreateInput = {
@@ -309,6 +348,9 @@ export type AuthUserUncheckedCreateInput = {
   lastLogin?: Date | string | null
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  disabledAt?: Date | string | null
+  disabledByUserId?: string | null
+  disabledReason?: string | null
 }
 
 export type AuthUserUpdateInput = {
@@ -322,6 +364,9 @@ export type AuthUserUpdateInput = {
   lastLogin?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  disabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  disabledByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  disabledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type AuthUserUncheckedUpdateInput = {
@@ -335,6 +380,9 @@ export type AuthUserUncheckedUpdateInput = {
   lastLogin?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  disabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  disabledByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  disabledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type AuthUserCreateManyInput = {
@@ -348,6 +396,9 @@ export type AuthUserCreateManyInput = {
   lastLogin?: Date | string | null
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
+  disabledAt?: Date | string | null
+  disabledByUserId?: string | null
+  disabledReason?: string | null
 }
 
 export type AuthUserUpdateManyMutationInput = {
@@ -361,6 +412,9 @@ export type AuthUserUpdateManyMutationInput = {
   lastLogin?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  disabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  disabledByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  disabledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type AuthUserUncheckedUpdateManyInput = {
@@ -374,6 +428,9 @@ export type AuthUserUncheckedUpdateManyInput = {
   lastLogin?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  disabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  disabledByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  disabledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type AuthUserCountOrderByAggregateInput = {
@@ -387,6 +444,9 @@ export type AuthUserCountOrderByAggregateInput = {
   lastLogin?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  disabledAt?: Prisma.SortOrder
+  disabledByUserId?: Prisma.SortOrder
+  disabledReason?: Prisma.SortOrder
 }
 
 export type AuthUserMaxOrderByAggregateInput = {
@@ -400,6 +460,9 @@ export type AuthUserMaxOrderByAggregateInput = {
   lastLogin?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  disabledAt?: Prisma.SortOrder
+  disabledByUserId?: Prisma.SortOrder
+  disabledReason?: Prisma.SortOrder
 }
 
 export type AuthUserMinOrderByAggregateInput = {
@@ -413,6 +476,9 @@ export type AuthUserMinOrderByAggregateInput = {
   lastLogin?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
+  disabledAt?: Prisma.SortOrder
+  disabledByUserId?: Prisma.SortOrder
+  disabledReason?: Prisma.SortOrder
 }
 
 
@@ -428,6 +494,9 @@ export type AuthUserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   lastLogin?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  disabledAt?: boolean
+  disabledByUserId?: boolean
+  disabledReason?: boolean
 }, ExtArgs["result"]["authUser"]>
 
 export type AuthUserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -441,6 +510,9 @@ export type AuthUserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   lastLogin?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  disabledAt?: boolean
+  disabledByUserId?: boolean
+  disabledReason?: boolean
 }, ExtArgs["result"]["authUser"]>
 
 export type AuthUserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -454,6 +526,9 @@ export type AuthUserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   lastLogin?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  disabledAt?: boolean
+  disabledByUserId?: boolean
+  disabledReason?: boolean
 }, ExtArgs["result"]["authUser"]>
 
 export type AuthUserSelectScalar = {
@@ -467,9 +542,12 @@ export type AuthUserSelectScalar = {
   lastLogin?: boolean
   createdAt?: boolean
   updatedAt?: boolean
+  disabledAt?: boolean
+  disabledByUserId?: boolean
+  disabledReason?: boolean
 }
 
-export type AuthUserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "googleSubject" | "passwordHash" | "name" | "appleSubject" | "emailVerifiedAt" | "lastLogin" | "createdAt" | "updatedAt", ExtArgs["result"]["authUser"]>
+export type AuthUserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "googleSubject" | "passwordHash" | "name" | "appleSubject" | "emailVerifiedAt" | "lastLogin" | "createdAt" | "updatedAt" | "disabledAt" | "disabledByUserId" | "disabledReason", ExtArgs["result"]["authUser"]>
 
 export type $AuthUserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AuthUser"
@@ -485,6 +563,9 @@ export type $AuthUserPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     lastLogin: Date | null
     createdAt: Date | null
     updatedAt: Date | null
+    disabledAt: Date | null
+    disabledByUserId: string | null
+    disabledReason: string | null
   }, ExtArgs["result"]["authUser"]>
   composites: {}
 }
@@ -918,6 +999,9 @@ export interface AuthUserFieldRefs {
   readonly lastLogin: Prisma.FieldRef<"AuthUser", 'DateTime'>
   readonly createdAt: Prisma.FieldRef<"AuthUser", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"AuthUser", 'DateTime'>
+  readonly disabledAt: Prisma.FieldRef<"AuthUser", 'DateTime'>
+  readonly disabledByUserId: Prisma.FieldRef<"AuthUser", 'String'>
+  readonly disabledReason: Prisma.FieldRef<"AuthUser", 'String'>
 }
     
 

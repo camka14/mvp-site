@@ -17,6 +17,7 @@ import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/serve
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
+import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
   buildEventDivisionId,
   evaluateDivisionAgeEligibility,
@@ -1600,6 +1601,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data[key] = value;
       }
 
+      assertEventContentAllowed({
+        name: Object.prototype.hasOwnProperty.call(data, 'name') ? data.name : existing.name,
+        description: Object.prototype.hasOwnProperty.call(data, 'description') ? data.description : existing.description,
+      });
+
       const targetEventTypeRaw = (data.eventType ?? existing.eventType ?? null) as string | null;
       const targetEventType = typeof targetEventTypeRaw === 'string'
         ? targetEventTypeRaw.toUpperCase()
@@ -2238,6 +2244,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     if (error instanceof Response) return error;
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof EventContentFilterError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          matches: error.matches,
+        },
+        { status: 400 },
+      );
     }
     if (isDivisionAssignmentValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid division team assignments';

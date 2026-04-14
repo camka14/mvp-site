@@ -9,6 +9,8 @@ import React, {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useApp } from "@/app/providers";
+import { useChat } from "@/context/ChatContext";
+import { useChatUI } from "@/context/ChatUIContext";
 import { authService } from "@/lib/auth";
 import { billingAddressService } from "@/lib/billingAddressService";
 import { userService, type UserSocialGraph } from "@/lib/userService";
@@ -240,6 +242,8 @@ function ProfilePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user, authUser, loading, setUser, setAuthUser } = useApp();
+  const { hideChatGroups } = useChat();
+  const { closeChatWindow } = useChatUI();
   const [activeTab, setActiveTab] = useState<ProfileViewTab>("overview");
   const [editTab, setEditTab] = useState<ProfileEditTab>("general");
   const [isEditing, setIsEditing] = useState(false);
@@ -732,6 +736,65 @@ function ProfilePageContent() {
       }
     },
     [loadSocialGraph, searchSocialUsers, setUser, socialSearchQuery],
+  );
+
+  const runBlockAction = useCallback(
+    async (targetUser: UserData, currentlyBlocked: boolean) => {
+      const targetUserId = targetUser.$id;
+      const targetName = getUserFullName(targetUser);
+      setSocialActionUserId(targetUserId);
+      setSocialError(null);
+      try {
+        if (currentlyBlocked) {
+          const confirmed = window.confirm(`Unblock ${targetName}?`);
+          if (!confirmed) {
+            return;
+          }
+
+          const updatedUser = await userService.unblockUser(targetUserId);
+          setUser(updatedUser);
+          notifications.show({ color: "green", message: "User unblocked." });
+        } else {
+          const confirmed = window.confirm(
+            `Block ${targetName}? This removes friendships, follows, and pending requests in both directions.`,
+          );
+          if (!confirmed) {
+            return;
+          }
+
+          const leaveSharedChats = window.confirm(
+            "Leave all chats with this user? Select OK to leave shared chats now, or Cancel to keep them.",
+          );
+          const result = await userService.blockUser(targetUserId, leaveSharedChats);
+          setUser(result.user);
+          if (result.removedChatIds.length > 0) {
+            hideChatGroups(result.removedChatIds);
+            result.removedChatIds.forEach((chatId) => closeChatWindow(chatId));
+          }
+          notifications.show({ color: "green", message: "User blocked." });
+        }
+
+        await loadSocialGraph();
+        if (socialSearchQuery.trim().length >= 2) {
+          await searchSocialUsers(socialSearchQuery);
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to update block state.";
+        setSocialError(message);
+        notifications.show({ color: "red", message });
+      } finally {
+        setSocialActionUserId(null);
+      }
+    },
+    [
+      closeChatWindow,
+      hideChatGroups,
+      loadSocialGraph,
+      searchSocialUsers,
+      setUser,
+      socialSearchQuery,
+    ],
   );
 
   useEffect(() => {
@@ -2157,7 +2220,7 @@ function ProfilePageContent() {
             Refresh
           </Button>
         </Group>
-        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+        <div className="mt-5 grid gap-3 sm:grid-cols-5">
           <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Friends
@@ -2188,6 +2251,14 @@ function ProfilePageContent() {
             </Text>
             <Text fw={700} size="xl" mt={2}>
               {socialGraph?.incomingFriendRequests.length ?? 0}
+            </Text>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+              Blocked
+            </Text>
+            <Text fw={700} size="xl" mt={2}>
+              {socialGraph?.blocked.length ?? 0}
             </Text>
           </div>
         </div>
@@ -2237,13 +2308,14 @@ function ProfilePageContent() {
                   user.friendRequestIds.includes(candidateId);
                 const hasOutgoingRequest =
                   user.friendRequestSentIds.includes(candidateId);
+                const isBlocked = user.blockedUserIds.includes(candidateId);
                 const isActing = socialActionUserId === candidateId;
                 const isRestricted =
                   isUserSocialInteractionRestricted(candidate);
                 const candidateDisplayName = getUserFullName(candidate);
                 const candidateHandle = getUserHandle(candidate);
                 const followDisabled =
-                  isActing || (isRestricted && !isFollowing);
+                  isActing || isBlocked || (isRestricted && !isFollowing);
 
                 return (
                   <Paper
@@ -2288,7 +2360,19 @@ function ProfilePageContent() {
                         </div>
                       </Group>
                       <div className="flex flex-wrap justify-end gap-2">
-                        {isFriend ? (
+                        {isBlocked ? (
+                          <Button
+                            size="xs"
+                            variant="light"
+                            color="gray"
+                            loading={isActing}
+                            onClick={() => {
+                              void runBlockAction(candidate, true);
+                            }}
+                          >
+                            Unblock
+                          </Button>
+                        ) : isFriend ? (
                           <Button
                             size="xs"
                             variant="light"
@@ -2380,6 +2464,19 @@ function ProfilePageContent() {
                         >
                           {isFollowing ? "Unfollow" : "Follow"}
                         </Button>
+                        {!isBlocked && (
+                          <Button
+                            size="xs"
+                            variant="light"
+                            color="red"
+                            loading={isActing}
+                            onClick={() => {
+                              void runBlockAction(candidate, false);
+                            }}
+                          >
+                            Block
+                          </Button>
+                        )}
                       </div>
                     </Group>
                   </Paper>
@@ -2574,6 +2671,49 @@ function ProfilePageContent() {
                           </Text>
                         )}
                       </div>
+                    </Group>
+                  </Paper>
+                ))}
+              </div>
+            ),
+          )}
+
+          {renderSocialPeopleList(
+            "Blocked users",
+            "Loading blocked users...",
+            "No blocked users.",
+            (socialGraph?.blocked.length ?? 0) > 0 && (
+              <div className="space-y-2">
+                {socialGraph?.blocked.map((entry) => (
+                  <Paper key={entry.$id} withBorder radius="lg" p="sm">
+                    <Group justify="space-between" gap="sm" wrap="nowrap">
+                      <Group gap="sm" align="center" wrap="nowrap">
+                        <Avatar
+                          src={getUserAvatarUrl(entry, 40)}
+                          alt={getUserFullName(entry)}
+                          size={40}
+                          radius="xl"
+                        />
+                        <div>
+                          <Text fw={600}>{getUserFullName(entry)}</Text>
+                          {getUserHandle(entry) && (
+                            <Text size="sm" c="dimmed">
+                              {getUserHandle(entry)}
+                            </Text>
+                          )}
+                        </div>
+                      </Group>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        color="gray"
+                        loading={socialActionUserId === entry.$id}
+                        onClick={() => {
+                          void runBlockAction(entry, true);
+                        }}
+                      >
+                        Unblock
+                      </Button>
                     </Group>
                   </Paper>
                 ))}

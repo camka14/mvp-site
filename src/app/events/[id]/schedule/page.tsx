@@ -9,9 +9,11 @@ import { ListChecks, Megaphone } from 'lucide-react';
 import type { View } from 'react-big-calendar';
 
 import Navigation from '@/components/layout/Navigation';
+import { TermsConsentModal } from '@/components/moderation/TermsConsentModal';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
+import { chatService, type ChatTermsConsentState } from '@/lib/chatService';
 import { eventService } from '@/lib/eventService';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
@@ -978,7 +980,7 @@ const DEFAULT_SPORT: Sport = {
 
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
-  const { user, authUser, loading: authLoading, isAuthenticated, isGuest } = useApp();
+  const { user, authUser, loading: authLoading, isAuthenticated, isGuest, setUser } = useApp();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1212,7 +1214,11 @@ function EventScheduleContent() {
   const [matchConflictOverrideMessage, setMatchConflictOverrideMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [contentTermsState, setContentTermsState] = useState<ChatTermsConsentState | null>(null);
+  const [contentTermsLoading, setContentTermsLoading] = useState(false);
+  const [contentTermsModalOpen, setContentTermsModalOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [reportingEvent, setReportingEvent] = useState(false);
   const [reschedulingMatches, setReschedulingMatches] = useState(false);
   const [pendingScheduleAction, setPendingScheduleAction] = useState<'reschedule' | 'rebuild' | null>(null);
   const [selectedLifecycleStatus, setSelectedLifecycleStatus] = useState<EventLifecycleStatus | null>(null);
@@ -2320,6 +2326,38 @@ function EventScheduleContent() {
     }
     setIsNotificationModalOpen(false);
   }, [sendingNotification]);
+
+  const handleReportEvent = useCallback(async () => {
+    if (!activeEvent?.$id || !user || reportingEvent) {
+      return;
+    }
+
+    const notes = window.prompt(
+      `Report "${activeEvent.name}". Add details for moderation, or leave the field blank to submit without extra notes.`,
+      '',
+    );
+    if (notes === null) {
+      return;
+    }
+
+    setReportingEvent(true);
+    try {
+      const result = await eventService.reportEvent(activeEvent.$id, {
+        notes: notes.trim() || undefined,
+      });
+      setUser({
+        ...user,
+        hiddenEventIds: result.hiddenEventIds,
+      });
+      window.alert('Event reported. It has been hidden from your event results.');
+      router.push('/discover');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to report event.';
+      window.alert(message);
+    } finally {
+      setReportingEvent(false);
+    }
+  }, [activeEvent, reportingEvent, router, setUser, user]);
 
   const handleNotificationAudienceToggle = useCallback((key: NotificationAudienceKey, checked: boolean) => {
     setNotificationAudience((prev) => ({
@@ -4296,6 +4334,44 @@ function EventScheduleContent() {
   }, [pendingSaveChangeCount]);
 
   useEffect(() => {
+    if (!isCreateMode || !user?.$id || isGuest) {
+      setContentTermsState(null);
+      setContentTermsLoading(false);
+      setContentTermsModalOpen(false);
+      return;
+    }
+
+    let cancelled = false;
+    setContentTermsLoading(true);
+
+    void chatService.getChatTermsConsent()
+      .then((state) => {
+        if (cancelled) {
+          return;
+        }
+        setContentTermsState(state);
+        setContentTermsModalOpen(!state.accepted);
+      })
+      .catch((loadError) => {
+        console.error('Failed to load Terms and EULA consent state for event creation:', loadError);
+        if (cancelled) {
+          return;
+        }
+        setContentTermsState(null);
+        setContentTermsModalOpen(true);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setContentTermsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isCreateMode, isGuest, user?.$id]);
+
+  useEffect(() => {
     if (!isCreateMode || !user) return;
     if (templateIdParam && failedTemplateSeedId !== templateIdParam) {
       return;
@@ -4602,6 +4678,40 @@ function EventScheduleContent() {
     if (isEditingEvent) return 'Cancel Manage';
     return `Cancel ${entityLabel}`;
   })();
+
+  const handleAcceptContentTerms = useCallback(async () => {
+    setContentTermsLoading(true);
+    try {
+      const state = await chatService.acceptChatTermsConsent();
+      setContentTermsState(state);
+      setContentTermsModalOpen(!state.accepted);
+
+      if (user) {
+        setUser({
+          ...user,
+          chatTermsAcceptedAt: state.acceptedAt,
+          chatTermsVersion: state.version,
+        });
+      }
+    } catch (acceptError) {
+      console.error('Failed to save Terms and EULA consent for event creation:', acceptError);
+      setSubmitError('Failed to record Terms and EULA consent.');
+      setContentTermsModalOpen(true);
+    } finally {
+      setContentTermsLoading(false);
+    }
+  }, [setUser, user]);
+
+  const contentTermsModal = isCreateMode ? (
+    <TermsConsentModal
+      open={contentTermsModalOpen}
+      state={contentTermsState}
+      loading={contentTermsLoading}
+      onAccept={() => { void handleAcceptContentTerms(); }}
+      allowClose={false}
+      intro="Creating an event in Bracket IQ requires agreement to the Terms and EULA."
+    />
+  ) : null;
 
   const handleEnterEditMode = useCallback(() => {
     if (!pathname) return;
@@ -7725,6 +7835,7 @@ function EventScheduleContent() {
       <>
         <Navigation />
         <Loading fullScreen belowNavigation text="Loading schedule..." />
+        {contentTermsModal}
       </>
     );
   }
@@ -7733,6 +7844,7 @@ function EventScheduleContent() {
     return (
       <>
         <Navigation />
+        {contentTermsModal}
         <Container fluid py="xl">
           <Stack gap="md">
             <Group justify="space-between" align="center">
@@ -8031,6 +8143,7 @@ function EventScheduleContent() {
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
+      {contentTermsModal}
       <Container fluid pt="xl" pb={0}>
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start">
@@ -8068,8 +8181,18 @@ function EventScheduleContent() {
               )}
             </Group>
 
-            {canManageEvent && (
+            {(canManageEvent || (!isCreateMode && Boolean(user))) && (
               <Group gap="sm" wrap="wrap">
+                {!canManageEvent && !isCreateMode && user && (
+                  <Button
+                    variant="light"
+                    color="red"
+                    onClick={handleReportEvent}
+                    loading={reportingEvent}
+                  >
+                    Report Event
+                  </Button>
+                )}
                 {showEditActionButton && (
                   <Button onClick={handleEnterEditMode} disabled={hasNetworkActionInFlight}>
                     Manage

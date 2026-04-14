@@ -2,11 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList } from '@/server/legacyFormat';
+import { ensureUserHasAcceptedChatTerms } from '@/server/chatAccess';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
+  if (!session.isAdmin) {
+    await ensureUserHasAcceptedChatTerms(session.userId);
+  }
   const { id } = await params;
   const group = await prisma.chatGroup.findUnique({ where: { id } });
   if (!group) {
@@ -14,6 +18,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   if (!session.isAdmin && !group.userIds.includes(session.userId)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (group.archivedAt && !session.isAdmin) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
   const search = req.nextUrl.searchParams;
@@ -25,7 +32,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const index = Math.max(0, normalizedIndex);
   const order = search.get('order') === 'desc' ? 'desc' : 'asc';
 
-  const where = { chatId: id };
+  const where = session.isAdmin
+    ? { chatId: id }
+    : { chatId: id, removedAt: null };
   const [totalCount, messages] = await Promise.all([
     prisma.messages.count({ where }),
     prisma.messages.findMany({

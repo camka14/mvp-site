@@ -27,6 +27,16 @@ export const publicUserSelect = {
 
 export type PublicUser = Prisma.UserDataGetPayload<{ select: typeof publicUserSelect }>;
 
+export const currentUserSelect = {
+  ...publicUserSelect,
+  blockedUserIds: true,
+  hiddenEventIds: true,
+  chatTermsAcceptedAt: true,
+  chatTermsVersion: true,
+} as const;
+
+export type CurrentUser = Prisma.UserDataGetPayload<{ select: typeof currentUserSelect }>;
+
 export type VisibilityUser = PublicUser & {
   isMinor: boolean;
   isIdentityHidden: boolean;

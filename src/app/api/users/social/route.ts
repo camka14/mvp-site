@@ -3,8 +3,9 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import { getSocialGraphForUser } from '@/server/socialGraph';
 import { toSocialErrorResponse } from '@/app/api/users/social/shared';
-import { applyUserPrivacy, applyUserPrivacyList, createVisibilityContext } from '@/server/userPrivacy';
+import { applyUserPrivacyList, createVisibilityContext } from '@/server/userPrivacy';
 import { prisma } from '@/lib/prisma';
+import { applyNameCaseToUserFields } from '@/lib/nameCase';
 
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest) {
     });
     return NextResponse.json(
       {
-        user: withLegacyFields(applyUserPrivacy(socialGraph.user, visibilityContext)),
+        user: withLegacyFields(applyNameCaseToUserFields(socialGraph.user)),
         friends: withLegacyList(applyUserPrivacyList(socialGraph.friends, visibilityContext)),
         following: withLegacyList(applyUserPrivacyList(socialGraph.following, visibilityContext)),
         followers: withLegacyList(applyUserPrivacyList(socialGraph.followers, visibilityContext)),
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
         outgoingFriendRequests: withLegacyList(
           applyUserPrivacyList(socialGraph.outgoingFriendRequests, visibilityContext),
         ),
+        blocked: withLegacyList(applyUserPrivacyList(socialGraph.blocked, visibilityContext)),
       },
       { status: 200 },
     );

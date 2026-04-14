@@ -8,6 +8,7 @@ import {
   isInitialEmailVerificationAvailable,
   sendInitialEmailVerification,
 } from '@/server/authEmailVerification';
+import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { buildProfileCompletionState } from '@/server/profileCompletion';
 
 const loginSchema = z.object({
@@ -35,6 +36,13 @@ export async function POST(req: NextRequest) {
   const authUser = await prisma.authUser.findUnique({ where: { email: normalizedEmail } });
   if (!authUser) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
+  }
+
+  if (isAuthUserSuspended(authUser)) {
+    return NextResponse.json(
+      { error: 'Account suspended', code: ACCOUNT_SUSPENDED_CODE },
+      { status: 403 },
+    );
   }
 
   const ok = await verifyPassword(password, authUser.passwordHash);
