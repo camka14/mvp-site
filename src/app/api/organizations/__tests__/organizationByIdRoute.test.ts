@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
+    update: jest.fn(),
   },
   staffMembers: {
     findMany: jest.fn(),
@@ -35,9 +36,9 @@ const requireSessionMock = jest.fn();
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 
-import { GET } from '@/app/api/organizations/[id]/route';
+import { GET, PATCH } from '@/app/api/organizations/[id]/route';
 
-describe('GET /api/organizations/[id]', () => {
+describe('/api/organizations/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     prismaMock.staffMembers.findMany.mockResolvedValue([]);
@@ -96,5 +97,32 @@ describe('GET /api/organizations/[id]', () => {
     expect(payload.viewerCanManageOrganization).toBe(true);
     expect(payload.viewerCanAccessUsers).toBe(true);
     expect(prismaMock.sensitiveUserData.findMany).toHaveBeenCalled();
+  });
+
+  it('rejects direct hasStripeAccount patch attempts', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          organization: {
+            hasStripeAccount: true,
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Unknown organization patch fields.');
+    expect(payload.unknownKeys).toEqual(['hasStripeAccount']);
+    expect(prismaMock.organizations.update).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import {
   findSubscriptionProductBaseAmountCents,
   resolveConnectedAccountId,
 } from '@/lib/stripeConnectAccounts';
+import { syncManagedOrganizationStripeAccount } from '@/server/organizationStripeVerification';
 import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
@@ -72,6 +73,7 @@ const sameOrderedIds = (left: string[], right: string[]): boolean => {
 };
 
 const SUPPORTED_EVENT_TYPES = new Set([
+  'account.updated',
   'payment_intent.succeeded',
   'invoice.created',
   'invoice.paid',
@@ -906,6 +908,32 @@ export async function POST(req: NextRequest) {
   const eventType = typeof event.type === 'string' ? event.type : '';
   if (!SUPPORTED_EVENT_TYPES.has(eventType)) {
     return NextResponse.json({ received: true, ignored: true }, { status: 200 });
+  }
+
+  if (
+    eventType === 'account.updated'
+    && stripeForPaymentIntentSync
+  ) {
+    const account = (event.data?.object ?? null) as Stripe.Account | null;
+    const accountId = toStringOrNull(account?.id);
+    if (accountId) {
+      const organizationStripeAccount = await prisma.stripeAccounts.findFirst({
+        where: {
+          accountId,
+          accountOrigin: 'PLATFORM_ONBOARDING',
+          organizationId: { not: null },
+        },
+        select: { organizationId: true },
+      });
+      if (organizationStripeAccount?.organizationId) {
+        await syncManagedOrganizationStripeAccount({
+          stripe: stripeForPaymentIntentSync,
+          organizationId: organizationStripeAccount.organizationId,
+          accountId,
+        });
+      }
+    }
+    return NextResponse.json({ received: true }, { status: 200 });
   }
 
   if (

@@ -1,6 +1,10 @@
 import { formatDisplayDate, formatDisplayTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
 import { formatNameParts } from '@/lib/nameCase';
+import type {
+  OrganizationVerificationReviewStatus,
+  OrganizationVerificationStatus,
+} from '@/lib/organizationVerification';
 
 // User types
 export interface UserAccount {
@@ -548,6 +552,11 @@ export interface Organization {
   ownerId?: string;
   hostIds?: string[];
   hasStripeAccount?: boolean;
+  verificationStatus?: OrganizationVerificationStatus;
+  verifiedAt?: string;
+  verificationReviewStatus?: OrganizationVerificationReviewStatus;
+  verificationReviewNotes?: string;
+  verificationReviewUpdatedAt?: string;
   officialIds?: string[];
   staffMembers?: StaffMember[];
   staffInvites?: Invite[];

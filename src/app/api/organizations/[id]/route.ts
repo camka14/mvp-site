@@ -20,7 +20,6 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'website',
   'sports',
   'officialIds',
-  'hasStripeAccount',
   'coordinates',
   'productIds',
   'teamIds',

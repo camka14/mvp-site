@@ -4,6 +4,7 @@ import { NextRequest } from 'next/server';
 
 const stripeInvoicesUpdateMock = jest.fn();
 const stripeSubscriptionsRetrieveMock = jest.fn();
+const syncManagedOrganizationStripeAccountMock = jest.fn();
 const StripeMock = jest.fn(() => ({
   invoices: {
     update: (...args: any[]) => stripeInvoicesUpdateMock(...args),
@@ -61,6 +62,9 @@ jest.mock('stripe', () => ({
 }));
 jest.mock('@/server/purchaseReceipts', () => ({
   sendPurchaseReceiptEmail: (...args: any[]) => sendPurchaseReceiptEmailMock(...args),
+}));
+jest.mock('@/server/organizationStripeVerification', () => ({
+  syncManagedOrganizationStripeAccount: (...args: any[]) => syncManagedOrganizationStripeAccountMock(...args),
 }));
 
 import { POST } from '@/app/api/billing/webhook/route';
@@ -165,6 +169,7 @@ describe('POST /api/billing/webhook', () => {
     prismaMock.eventRegistrations.findUnique.mockResolvedValue({ status: 'ACTIVE' });
     prismaMock.eventRegistrations.create.mockResolvedValue({});
     prismaMock.eventRegistrations.update.mockResolvedValue({});
+    syncManagedOrganizationStripeAccountMock.mockResolvedValue({ verificationStatus: 'PENDING' });
     prismaMock.$queryRaw.mockResolvedValue([
       {
         id: 'event_1',
@@ -298,6 +303,30 @@ describe('POST /api/billing/webhook', () => {
         eventId: 'event_1',
         billId: 'bill_instant_1',
         billPaymentId: 'bill_payment_instant_1',
+      }),
+    );
+  });
+
+  it('syncs managed organization verification when Stripe sends account.updated', async () => {
+    process.env.STRIPE_SECRET_KEY = 'sk_test_123';
+    prismaMock.stripeAccounts.findFirst.mockResolvedValueOnce({ organizationId: 'org_1' });
+
+    const response = await POST(
+      jsonPost({
+        type: 'account.updated',
+        data: {
+          object: {
+            id: 'acct_org_123',
+          },
+        },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(syncManagedOrganizationStripeAccountMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org_1',
+        accountId: 'acct_org_123',
       }),
     );
   });

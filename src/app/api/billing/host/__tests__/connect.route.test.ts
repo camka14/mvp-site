@@ -4,11 +4,23 @@ import { NextRequest } from 'next/server';
 
 const requireSessionMock = jest.fn();
 const canManageOrganizationMock = jest.fn();
+const createOrReuseManagedOrganizationStripeAccountMock = jest.fn();
+const findManagedOrganizationStripeAccountMock = jest.fn();
+const markManagedOrganizationStripeAccountMockVerifiedMock = jest.fn();
+const syncManagedOrganizationStripeAccountMock = jest.fn();
 
 const stripeAuthorizeUrlMock = jest.fn();
+const stripeAccountsCreateMock = jest.fn();
+const stripeAccountLinksCreateMock = jest.fn();
 const stripeInstance = {
   oauth: {
     authorizeUrl: stripeAuthorizeUrlMock,
+  },
+  accounts: {
+    create: stripeAccountsCreateMock,
+  },
+  accountLinks: {
+    create: stripeAccountLinksCreateMock,
   },
 };
 const StripeMock = jest.fn(() => stripeInstance);
@@ -41,6 +53,13 @@ jest.mock('@/lib/permissions', () => ({
 
 jest.mock('@/server/accessControl', () => ({
   canManageOrganization: (...args: unknown[]) => canManageOrganizationMock(...args),
+}));
+
+jest.mock('@/server/organizationStripeVerification', () => ({
+  createOrReuseManagedOrganizationStripeAccount: (...args: unknown[]) => createOrReuseManagedOrganizationStripeAccountMock(...args),
+  findManagedOrganizationStripeAccount: (...args: unknown[]) => findManagedOrganizationStripeAccountMock(...args),
+  markManagedOrganizationStripeAccountMockVerified: (...args: unknown[]) => markManagedOrganizationStripeAccountMockVerifiedMock(...args),
+  syncManagedOrganizationStripeAccount: (...args: unknown[]) => syncManagedOrganizationStripeAccountMock(...args),
 }));
 
 import { POST } from '@/app/api/billing/host/connect/route';
@@ -108,6 +127,12 @@ describe('POST /api/billing/host/connect', () => {
       return `https://connect.stripe.com/oauth/authorize?${params.toString()}`;
     });
     stripeInstance.oauth.authorizeUrl.mockClear();
+    stripeAccountsCreateMock.mockResolvedValue({ id: 'acct_org_123', email: 'org@example.com' });
+    stripeAccountLinksCreateMock.mockResolvedValue({ url: 'https://connect.stripe.test/account-link', expires_at: 12345 });
+    createOrReuseManagedOrganizationStripeAccountMock.mockResolvedValue(undefined);
+    findManagedOrganizationStripeAccountMock.mockResolvedValue(null);
+    markManagedOrganizationStripeAccountMockVerifiedMock.mockResolvedValue(undefined);
+    syncManagedOrganizationStripeAccountMock.mockResolvedValue({ verificationStatus: 'PENDING' });
   });
 
   afterEach(() => {
@@ -230,6 +255,66 @@ describe('POST /api/billing/host/connect', () => {
         state: authorizeUrl.searchParams.get('state'),
       }),
     );
+  });
+
+  it('creates a managed Express account for organization onboarding without OAuth', async () => {
+    delete process.env.STRIPE_CONNECT_CLIENT_ID;
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'user_1',
+      hostIds: [],
+      name: 'Bracket IQ Org',
+      website: 'https://example.com',
+    });
+
+    const res = await POST(
+      jsonPost('http://localhost/api/billing/host/connect', {
+        ...buildStatefulBody({ organization: { id: 'org_1' } }),
+        organizationEmail: 'org@example.com',
+      }),
+    );
+    const payload = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(payload).toEqual({
+      onboardingUrl: 'https://connect.stripe.test/account-link',
+      expiresAt: 12345,
+    });
+    expect(stripeAccountsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'express',
+        email: 'org@example.com',
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true },
+        },
+        metadata: {
+          organization_id: 'org_1',
+        },
+      }),
+    );
+    expect(createOrReuseManagedOrganizationStripeAccountMock).toHaveBeenCalledWith({
+      organizationId: 'org_1',
+      accountId: 'acct_org_123',
+      email: 'org@example.com',
+    });
+    expect(syncManagedOrganizationStripeAccountMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: 'org_1',
+        accountId: 'acct_org_123',
+      }),
+    );
+    expect(stripeAccountLinksCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        account: 'acct_org_123',
+        type: 'account_onboarding',
+        collection_options: {
+          fields: 'eventually_due',
+          future_requirements: 'include',
+        },
+      }),
+    );
+    expect(stripeInstance.oauth.authorizeUrl).not.toHaveBeenCalled();
   });
 
   it('uses STRIPE_CONNECT_REDIRECT_URI when provided', async () => {

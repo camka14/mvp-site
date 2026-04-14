@@ -378,6 +378,23 @@ export type EnumRefundRequestsStatusEnumNullableWithAggregatesFilter<$PrismaMode
   _max?: Prisma.NestedEnumRefundRequestsStatusEnumNullableFilter<$PrismaModel>
 }
 
+export type EnumStripeAccountsAccountOriginEnumNullableFilter<$PrismaModel = never> = {
+  equals?: $Enums.StripeAccountsAccountOriginEnum | Prisma.EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.StripeAccountsAccountOriginEnum[] | Prisma.ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.StripeAccountsAccountOriginEnum[] | Prisma.ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumStripeAccountsAccountOriginEnumNullableFilter<$PrismaModel> | $Enums.StripeAccountsAccountOriginEnum | null
+}
+
+export type EnumStripeAccountsAccountOriginEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.StripeAccountsAccountOriginEnum | Prisma.EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.StripeAccountsAccountOriginEnum[] | Prisma.ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.StripeAccountsAccountOriginEnum[] | Prisma.ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumStripeAccountsAccountOriginEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.StripeAccountsAccountOriginEnum | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumStripeAccountsAccountOriginEnumNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumStripeAccountsAccountOriginEnumNullableFilter<$PrismaModel>
+}
+
 export type JsonFilter<$PrismaModel = never> =
 | Prisma.PatchUndefined<
     Prisma.Either<Required<JsonFilterBase<$PrismaModel>>, Exclude<keyof Required<JsonFilterBase<$PrismaModel>>, 'path'>>,
@@ -478,6 +495,40 @@ export type EnumEventsOfficialSchedulingModeEnumWithAggregatesFilter<$PrismaMode
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumEventsOfficialSchedulingModeEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumEventsOfficialSchedulingModeEnumFilter<$PrismaModel>
+}
+
+export type EnumOrganizationsVerificationStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationsVerificationStatusEnum | Prisma.EnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationsVerificationStatusEnum[] | Prisma.ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationsVerificationStatusEnum[] | Prisma.ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationsVerificationStatusEnumFilter<$PrismaModel> | $Enums.OrganizationsVerificationStatusEnum
+}
+
+export type EnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationsVerificationReviewStatusEnum | Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationsVerificationReviewStatusEnum[] | Prisma.ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationsVerificationReviewStatusEnum[] | Prisma.ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel> | $Enums.OrganizationsVerificationReviewStatusEnum
+}
+
+export type EnumOrganizationsVerificationStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationsVerificationStatusEnum | Prisma.EnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationsVerificationStatusEnum[] | Prisma.ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationsVerificationStatusEnum[] | Prisma.ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationsVerificationStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationsVerificationStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationsVerificationStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationsVerificationStatusEnumFilter<$PrismaModel>
+}
+
+export type EnumOrganizationsVerificationReviewStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationsVerificationReviewStatusEnum | Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationsVerificationReviewStatusEnum[] | Prisma.ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationsVerificationReviewStatusEnum[] | Prisma.ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationsVerificationReviewStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel>
 }
 
 export type EnumProductsPeriodEnumFilter<$PrismaModel = never> = {
@@ -1006,6 +1057,23 @@ export type NestedEnumRefundRequestsStatusEnumNullableWithAggregatesFilter<$Pris
   _max?: Prisma.NestedEnumRefundRequestsStatusEnumNullableFilter<$PrismaModel>
 }
 
+export type NestedEnumStripeAccountsAccountOriginEnumNullableFilter<$PrismaModel = never> = {
+  equals?: $Enums.StripeAccountsAccountOriginEnum | Prisma.EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.StripeAccountsAccountOriginEnum[] | Prisma.ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.StripeAccountsAccountOriginEnum[] | Prisma.ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumStripeAccountsAccountOriginEnumNullableFilter<$PrismaModel> | $Enums.StripeAccountsAccountOriginEnum | null
+}
+
+export type NestedEnumStripeAccountsAccountOriginEnumNullableWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.StripeAccountsAccountOriginEnum | Prisma.EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  in?: $Enums.StripeAccountsAccountOriginEnum[] | Prisma.ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  notIn?: $Enums.StripeAccountsAccountOriginEnum[] | Prisma.ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> | null
+  not?: Prisma.NestedEnumStripeAccountsAccountOriginEnumNullableWithAggregatesFilter<$PrismaModel> | $Enums.StripeAccountsAccountOriginEnum | null
+  _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumStripeAccountsAccountOriginEnumNullableFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumStripeAccountsAccountOriginEnumNullableFilter<$PrismaModel>
+}
+
 export type NestedEnumEventsStateEnumNullableFilter<$PrismaModel = never> = {
   equals?: $Enums.EventsStateEnum | Prisma.EnumEventsStateEnumFieldRefInput<$PrismaModel> | null
   in?: $Enums.EventsStateEnum[] | Prisma.ListEnumEventsStateEnumFieldRefInput<$PrismaModel> | null
@@ -1079,6 +1147,40 @@ export type NestedEnumEventsOfficialSchedulingModeEnumWithAggregatesFilter<$Pris
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumEventsOfficialSchedulingModeEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumEventsOfficialSchedulingModeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationsVerificationStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationsVerificationStatusEnum | Prisma.EnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationsVerificationStatusEnum[] | Prisma.ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationsVerificationStatusEnum[] | Prisma.ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationsVerificationStatusEnumFilter<$PrismaModel> | $Enums.OrganizationsVerificationStatusEnum
+}
+
+export type NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationsVerificationReviewStatusEnum | Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationsVerificationReviewStatusEnum[] | Prisma.ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationsVerificationReviewStatusEnum[] | Prisma.ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel> | $Enums.OrganizationsVerificationReviewStatusEnum
+}
+
+export type NestedEnumOrganizationsVerificationStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationsVerificationStatusEnum | Prisma.EnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationsVerificationStatusEnum[] | Prisma.ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationsVerificationStatusEnum[] | Prisma.ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationsVerificationStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationsVerificationStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationsVerificationStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationsVerificationStatusEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumOrganizationsVerificationReviewStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.OrganizationsVerificationReviewStatusEnum | Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.OrganizationsVerificationReviewStatusEnum[] | Prisma.ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.OrganizationsVerificationReviewStatusEnum[] | Prisma.ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.OrganizationsVerificationReviewStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumOrganizationsVerificationReviewStatusEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumProductsPeriodEnumFilter<$PrismaModel = never> = {

@@ -28,6 +28,7 @@ import { normalizeEnumValue } from '@/lib/enumUtils';
 import { createId } from '@/lib/id';
 import { LeagueScheduleResponse } from './leagueService';
 import { normalizeApiEvent, normalizeApiMatch, normalizeOutgoingEventDocument } from './apiMappers';
+import { resolveOrganizationVerificationStatus } from '@/lib/organizationVerification';
 import { createSport } from '@/types/defaults';
 
 
@@ -1759,6 +1760,26 @@ class EventService {
             hostIds: Array.isArray(row.hostIds) ? row.hostIds.map((id: unknown) => String(id)) : [],
             officialIds: Array.isArray(row.officialIds) ? row.officialIds.map((id: unknown) => String(id)) : [],
             hasStripeAccount: typeof row.hasStripeAccount === 'boolean' ? row.hasStripeAccount : Boolean(row.hasStripeAccount),
+            verificationStatus: resolveOrganizationVerificationStatus({
+                verificationStatus: row.verificationStatus,
+                hasStripeAccount: row.hasStripeAccount,
+            }),
+            verifiedAt: typeof row.verifiedAt === 'string'
+                ? row.verifiedAt
+                : row.verifiedAt instanceof Date
+                    ? row.verifiedAt.toISOString()
+                    : undefined,
+            verificationReviewStatus: typeof row.verificationReviewStatus === 'string'
+                ? row.verificationReviewStatus
+                : undefined,
+            verificationReviewNotes: typeof row.verificationReviewNotes === 'string'
+                ? row.verificationReviewNotes
+                : undefined,
+            verificationReviewUpdatedAt: typeof row.verificationReviewUpdatedAt === 'string'
+                ? row.verificationReviewUpdatedAt
+                : row.verificationReviewUpdatedAt instanceof Date
+                    ? row.verificationReviewUpdatedAt.toISOString()
+                    : undefined,
             $createdAt: row.$createdAt,
             $updatedAt: row.$updatedAt,
         };

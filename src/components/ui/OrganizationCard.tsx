@@ -4,6 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import type { Organization } from '@/types';
 import { formatDisplayDate } from '@/lib/dateUtils';
+import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
 
 interface OrganizationCardProps {
   organization: Organization;
@@ -36,9 +37,12 @@ export default function OrganizationCard({ organization, onClick, actions }: Org
             className="w-14 h-14 rounded-full object-cover border-2 border-slate-200 group-hover:border-slate-300 transition-colors"
           />
           <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-slate-900 mb-1 group-hover:text-slate-950 transition-colors truncate">
-              {organization.name}
-            </h3>
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h3 className="min-w-0 truncate text-lg font-semibold text-slate-900 transition-colors group-hover:text-slate-950">
+                {organization.name}
+              </h3>
+              <OrganizationVerificationBadge organization={organization} />
+            </div>
             {organization.website && (
               <a
                 href={organization.website}

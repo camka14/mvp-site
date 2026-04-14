@@ -1,5 +1,6 @@
 import type { PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
+import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
   buildDivisionName,
@@ -209,9 +210,9 @@ const resolveBillingOwnerHasStripeAccount = async (
   if (organizationId) {
     const organization = await client.organizations.findUnique({
       where: { id: organizationId },
-      select: { hasStripeAccount: true },
+      select: { hasStripeAccount: true, verificationStatus: true },
     });
-    return Boolean(organization?.hasStripeAccount);
+    return canOrganizationUsePaidBilling(organization);
   }
 
   const hostId = normalizeEntityId(params.hostId);

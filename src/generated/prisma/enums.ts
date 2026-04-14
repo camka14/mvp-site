@@ -130,6 +130,35 @@ export const ParentChildLinksStatusEnum = {
 export type ParentChildLinksStatusEnum = (typeof ParentChildLinksStatusEnum)[keyof typeof ParentChildLinksStatusEnum]
 
 
+export const OrganizationsVerificationStatusEnum = {
+  UNVERIFIED: 'UNVERIFIED',
+  LEGACY_CONNECTED: 'LEGACY_CONNECTED',
+  PENDING: 'PENDING',
+  ACTION_REQUIRED: 'ACTION_REQUIRED',
+  VERIFIED: 'VERIFIED'
+} as const
+
+export type OrganizationsVerificationStatusEnum = (typeof OrganizationsVerificationStatusEnum)[keyof typeof OrganizationsVerificationStatusEnum]
+
+
+export const OrganizationsVerificationReviewStatusEnum = {
+  NONE: 'NONE',
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  RESOLVED: 'RESOLVED'
+} as const
+
+export type OrganizationsVerificationReviewStatusEnum = (typeof OrganizationsVerificationReviewStatusEnum)[keyof typeof OrganizationsVerificationReviewStatusEnum]
+
+
+export const StripeAccountsAccountOriginEnum = {
+  LEGACY_OAUTH: 'LEGACY_OAUTH',
+  PLATFORM_ONBOARDING: 'PLATFORM_ONBOARDING'
+} as const
+
+export type StripeAccountsAccountOriginEnum = (typeof StripeAccountsAccountOriginEnum)[keyof typeof StripeAccountsAccountOriginEnum]
+
+
 export const EventRegistrationsRegistrantTypeEnum = {
   SELF: 'SELF',
   CHILD: 'CHILD',

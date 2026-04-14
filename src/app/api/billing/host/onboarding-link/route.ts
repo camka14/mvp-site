@@ -5,6 +5,12 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
 import {
+  findManagedOrganizationStripeAccount,
+  getLegacyOrganizationStripeAccountRowId,
+  syncManagedOrganizationStripeAccount,
+} from '@/server/organizationStripeVerification';
+import {
+  appendStripeResultQuery,
   buildStripeAuthorizeUrl,
   createConnectState,
   getCallbackUrl,
@@ -25,6 +31,27 @@ const getStandardDashboardUrl = (livemode: boolean) =>
   livemode
     ? 'https://dashboard.stripe.com/'
     : 'https://dashboard.stripe.com/test/dashboard';
+
+const createOrganizationAccountLink = async ({
+  stripe,
+  accountId,
+  refreshUrl,
+  returnUrl,
+}: {
+  stripe: Stripe;
+  accountId: string;
+  refreshUrl: string;
+  returnUrl: string;
+}) => stripe.accountLinks.create({
+  account: accountId,
+  refresh_url: refreshUrl,
+  return_url: appendStripeResultQuery(returnUrl, 'return'),
+  type: 'account_onboarding',
+  collection_options: {
+    fields: 'eventually_due',
+    future_requirements: 'include',
+  },
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -71,9 +98,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const accountRecord = await prisma.stripeAccounts.findFirst({
-      where: organizationId ? { organizationId } : { userId: session.userId },
-    });
+    const managedAccountRecord = organizationId
+      ? await findManagedOrganizationStripeAccount(organizationId)
+      : null;
+    const accountRecord = organizationId
+      ? managedAccountRecord ?? await prisma.stripeAccounts.findUnique({
+        where: { id: getLegacyOrganizationStripeAccountRowId(organizationId) },
+      })
+      : await prisma.stripeAccounts.findFirst({
+        where: { userId: session.userId },
+      });
 
     const secretKey = process.env.STRIPE_SECRET_KEY;
     if (!secretKey || !accountRecord?.accountId) {
@@ -86,6 +120,39 @@ export async function POST(req: NextRequest) {
         secretKey.startsWith('sk_test_')
         || secretKey.startsWith('rk_test_')
       );
+      if (organizationId && managedAccountRecord?.accountId) {
+          const syncResult = await syncManagedOrganizationStripeAccount({
+            stripe,
+            organizationId,
+            accountId: managedAccountRecord.accountId,
+          });
+          if (syncResult?.verificationStatus === 'VERIFIED') {
+            try {
+              const loginLink = await stripe.accounts.createLoginLink(
+                managedAccountRecord.accountId,
+              );
+              return NextResponse.json(
+                { onboardingUrl: loginLink.url },
+                { status: 200 },
+              );
+            } catch (loginError) {
+              console.error('Stripe Express login link failed, falling back to account onboarding', loginError);
+            }
+          }
+
+          const link = await createOrganizationAccountLink({
+            stripe,
+            accountId: managedAccountRecord.accountId,
+            refreshUrl,
+            returnUrl,
+          });
+
+          return NextResponse.json(
+            { onboardingUrl: link.url, expiresAt: link.expires_at, verificationStatus: syncResult?.verificationStatus ?? null },
+            { status: 200 },
+          );
+      }
+
       const account = await stripe.accounts.retrieve(accountRecord.accountId);
       const dashboardType = account.controller?.stripe_dashboard?.type;
       const isStandardAccount =
@@ -123,6 +190,11 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({ onboardingUrl: link.url, expiresAt: link.expires_at }, { status: 200 });
     } catch (error) {
+      if (organizationId) {
+        console.error('Stripe onboarding link failed for organization managed account', error);
+        return NextResponse.json({ error: 'Stripe onboarding link failed' }, { status: 500 });
+      }
+
       const connectClientId = process.env.STRIPE_CONNECT_CLIENT_ID;
       if (!connectClientId) {
         console.error('Stripe onboarding link failed and fallback is unavailable', error);

@@ -89,6 +89,26 @@ enum ParentChildLinksStatusEnum {
   INACTIVE
 }
 
+enum OrganizationsVerificationStatusEnum {
+  UNVERIFIED
+  LEGACY_CONNECTED
+  PENDING
+  ACTION_REQUIRED
+  VERIFIED
+}
+
+enum OrganizationsVerificationReviewStatusEnum {
+  NONE
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum StripeAccountsAccountOriginEnum {
+  LEGACY_OAUTH
+  PLATFORM_ONBOARDING
+}
+
 enum EventRegistrationsRegistrantTypeEnum {
   SELF
   CHILD
@@ -444,14 +464,31 @@ model RefundRequests {
 }
 
 model StripeAccounts {
-  id             String    @id
-  createdAt      DateTime?
-  updatedAt      DateTime?
-  customerId     String?
-  accountId      String?
-  userId         String?
-  organizationId String?
-  email          String?
+  id                         String                        @id
+  createdAt                  DateTime?
+  updatedAt                  DateTime?
+  customerId                 String?
+  accountId                  String?
+  userId                     String?
+  organizationId             String?
+  email                      String?
+  accountOrigin              StripeAccountsAccountOriginEnum?
+  accountType                String?
+  isActiveForBilling         Boolean?                      @default(false)
+  detailsSubmitted           Boolean?
+  chargesEnabled             Boolean?
+  payoutsEnabled             Boolean?
+  requirementsCurrentlyDue   String[]                      @default([])
+  requirementsPastDue        String[]                      @default([])
+  requirementsEventuallyDue  String[]                      @default([])
+  requirementsDisabledReason String?
+  verificationLastSyncedAt   DateTime?
+
+  @@index([organizationId, updatedAt])
+  @@index([organizationId, accountOrigin])
+  @@index([organizationId, isActiveForBilling])
+  @@index([userId, updatedAt])
+  @@index([accountId])
 }
 
 model Events {
@@ -531,23 +568,31 @@ model Events {
 }
 
 model Organizations {
-  id               String    @id
-  createdAt        DateTime?
-  updatedAt        DateTime?
-  name             String
-  location         String?
-  address          String?
-  description      String?
-  logoId           String?
-  ownerId          String
-  hostIds          String[]  @default([])
-  website          String?
-  sports           String[]  @default([])
-  officialIds           String[]
-  hasStripeAccount Boolean?
-  coordinates      Json?
-  productIds       String[]
-  teamIds          String[]
+  id                          String                                   @id
+  createdAt                   DateTime?
+  updatedAt                   DateTime?
+  name                        String
+  location                    String?
+  address                     String?
+  description                 String?
+  logoId                      String?
+  ownerId                     String
+  hostIds                     String[]                                 @default([])
+  website                     String?
+  sports                      String[]                                 @default([])
+  officialIds                 String[]
+  hasStripeAccount            Boolean?
+  verificationStatus          OrganizationsVerificationStatusEnum      @default(UNVERIFIED)
+  verifiedAt                  DateTime?
+  verificationReviewStatus    OrganizationsVerificationReviewStatusEnum @default(NONE)
+  verificationReviewNotes     String?
+  verificationReviewUpdatedAt DateTime?
+  coordinates                 Json?
+  productIds                  String[]
+  teamIds                     String[]
+
+  @@index([verificationStatus])
+  @@index([verificationReviewStatus])
 }
 
 model Products {

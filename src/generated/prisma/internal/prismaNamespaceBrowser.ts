@@ -441,7 +441,18 @@ export const StripeAccountsScalarFieldEnum = {
   accountId: 'accountId',
   userId: 'userId',
   organizationId: 'organizationId',
-  email: 'email'
+  email: 'email',
+  accountOrigin: 'accountOrigin',
+  accountType: 'accountType',
+  isActiveForBilling: 'isActiveForBilling',
+  detailsSubmitted: 'detailsSubmitted',
+  chargesEnabled: 'chargesEnabled',
+  payoutsEnabled: 'payoutsEnabled',
+  requirementsCurrentlyDue: 'requirementsCurrentlyDue',
+  requirementsPastDue: 'requirementsPastDue',
+  requirementsEventuallyDue: 'requirementsEventuallyDue',
+  requirementsDisabledReason: 'requirementsDisabledReason',
+  verificationLastSyncedAt: 'verificationLastSyncedAt'
 } as const
 
 export type StripeAccountsScalarFieldEnum = (typeof StripeAccountsScalarFieldEnum)[keyof typeof StripeAccountsScalarFieldEnum]
@@ -536,6 +547,11 @@ export const OrganizationsScalarFieldEnum = {
   sports: 'sports',
   officialIds: 'officialIds',
   hasStripeAccount: 'hasStripeAccount',
+  verificationStatus: 'verificationStatus',
+  verifiedAt: 'verifiedAt',
+  verificationReviewStatus: 'verificationReviewStatus',
+  verificationReviewNotes: 'verificationReviewNotes',
+  verificationReviewUpdatedAt: 'verificationReviewUpdatedAt',
   coordinates: 'coordinates',
   productIds: 'productIds',
   teamIds: 'teamIds'

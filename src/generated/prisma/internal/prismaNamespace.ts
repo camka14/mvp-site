@@ -3256,7 +3256,18 @@ export const StripeAccountsScalarFieldEnum = {
   accountId: 'accountId',
   userId: 'userId',
   organizationId: 'organizationId',
-  email: 'email'
+  email: 'email',
+  accountOrigin: 'accountOrigin',
+  accountType: 'accountType',
+  isActiveForBilling: 'isActiveForBilling',
+  detailsSubmitted: 'detailsSubmitted',
+  chargesEnabled: 'chargesEnabled',
+  payoutsEnabled: 'payoutsEnabled',
+  requirementsCurrentlyDue: 'requirementsCurrentlyDue',
+  requirementsPastDue: 'requirementsPastDue',
+  requirementsEventuallyDue: 'requirementsEventuallyDue',
+  requirementsDisabledReason: 'requirementsDisabledReason',
+  verificationLastSyncedAt: 'verificationLastSyncedAt'
 } as const
 
 export type StripeAccountsScalarFieldEnum = (typeof StripeAccountsScalarFieldEnum)[keyof typeof StripeAccountsScalarFieldEnum]
@@ -3351,6 +3362,11 @@ export const OrganizationsScalarFieldEnum = {
   sports: 'sports',
   officialIds: 'officialIds',
   hasStripeAccount: 'hasStripeAccount',
+  verificationStatus: 'verificationStatus',
+  verifiedAt: 'verifiedAt',
+  verificationReviewStatus: 'verificationReviewStatus',
+  verificationReviewNotes: 'verificationReviewNotes',
+  verificationReviewUpdatedAt: 'verificationReviewUpdatedAt',
   coordinates: 'coordinates',
   productIds: 'productIds',
   teamIds: 'teamIds'
@@ -3857,6 +3873,20 @@ export type ListEnumRefundRequestsStatusEnumFieldRefInput<$PrismaModel> = FieldR
 
 
 /**
+ * Reference to a field of type 'StripeAccountsAccountOriginEnum'
+ */
+export type EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StripeAccountsAccountOriginEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'StripeAccountsAccountOriginEnum[]'
+ */
+export type ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StripeAccountsAccountOriginEnum[]'>
+    
+
+
+/**
  * Reference to a field of type 'EventsStateEnum'
  */
 export type EnumEventsStateEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsStateEnum'>
@@ -3895,6 +3925,34 @@ export type EnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = Fi
  * Reference to a field of type 'EventsOfficialSchedulingModeEnum[]'
  */
 export type ListEnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsOfficialSchedulingModeEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'OrganizationsVerificationStatusEnum'
+ */
+export type EnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsVerificationStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'OrganizationsVerificationStatusEnum[]'
+ */
+export type ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsVerificationStatusEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'OrganizationsVerificationReviewStatusEnum'
+ */
+export type EnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsVerificationReviewStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'OrganizationsVerificationReviewStatusEnum[]'
+ */
+export type ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsVerificationReviewStatusEnum[]'>
     
 
 

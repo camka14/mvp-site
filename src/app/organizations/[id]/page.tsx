@@ -5,7 +5,8 @@ import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import { Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table, Loader } from '@mantine/core';
+import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
+import { Badge, Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table, Loader } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
@@ -51,6 +52,11 @@ import {
   getProductTypeOptionsForPeriod,
 } from '@/lib/productTypes';
 import { normalizePriceCents } from '@/lib/priceUtils';
+import {
+  canOrganizationUsePaidBilling,
+  organizationVerificationStatusLabel,
+  resolveOrganizationVerificationStatus,
+} from '@/lib/organizationVerification';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import { buildOrganizationTabs, type OrganizationTab } from './organizationTabs';
 import { buildOrganizationUsersSubtitle } from './organizationUsersCopy';
@@ -319,6 +325,7 @@ function OrganizationDetailContent() {
   const [eventsTabError, setEventsTabError] = useState<string | null>(null);
   const eventsTabSentinelRef = useRef<HTMLDivElement | null>(null);
   const locationRequestAttemptedRef = useRef(false);
+  const handledStripeStateRef = useRef<string | null>(null);
   const [updatingEventHostId, setUpdatingEventHostId] = useState<string | null>(null);
   const [staffSearch, setStaffSearch] = useState('');
   const [staffResults, setStaffResults] = useState<UserData[]>([]);
@@ -330,9 +337,24 @@ function OrganizationDetailContent() {
   ]);
   const [staffInviteError, setStaffInviteError] = useState<string | null>(null);
   const [invitingStaff, setInvitingStaff] = useState(false);
-  const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
+  const organizationVerificationStatus = resolveOrganizationVerificationStatus(org);
+  const organizationHasStripeAccount = canOrganizationUsePaidBilling(org);
+  const requiresStripeVerificationEmail =
+    organizationVerificationStatus === 'UNVERIFIED'
+    || organizationVerificationStatus === 'LEGACY_CONNECTED';
+  const stripePrimaryActionLabel =
+    organizationVerificationStatus === 'VERIFIED'
+      ? 'Manage Stripe Account'
+      : organizationVerificationStatus === 'ACTION_REQUIRED'
+        ? 'Resolve verification issues'
+        : organizationVerificationStatus === 'PENDING'
+          ? 'Continue verification'
+          : organizationVerificationStatus === 'LEGACY_CONNECTED'
+            ? 'Complete verification'
+            : 'Connect Stripe Account';
   const [connectingStripe, setConnectingStripe] = useState(false);
   const [managingStripe, setManagingStripe] = useState(false);
+  const [syncingOrganizationVerification, setSyncingOrganizationVerification] = useState(false);
   const [stripeEmail, setStripeEmail] = useState('');
   const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
   const [updatingHomePagePreference, setUpdatingHomePagePreference] = useState(false);
@@ -411,6 +433,20 @@ function OrganizationDetailContent() {
     () => Boolean(stripeEmail && EMAIL_REGEX.test(stripeEmail.trim())),
     [stripeEmail],
   );
+
+  useEffect(() => {
+    if (!requiresStripeVerificationEmail || stripeEmail.trim().length > 0) {
+      return;
+    }
+    const fallbackEmail =
+      typeof authUser?.email === 'string' && authUser.email.trim().length > 0
+        ? authUser.email.trim()
+        : '';
+    if (fallbackEmail) {
+      setStripeEmail(fallbackEmail);
+    }
+  }, [authUser?.email, requiresStripeVerificationEmail, stripeEmail]);
+
   const overviewRecentEvents = useMemo(() => {
     const sourceEvents = Array.isArray(org?.events) ? org.events : [];
     return sourceEvents.filter((event) => {
@@ -662,6 +698,23 @@ function OrganizationDetailContent() {
       if (!silent) {
         setLoading(false);
       }
+    }
+  }, []);
+
+  const syncOrganizationVerification = useCallback(async (orgId: string) => {
+    setSyncingOrganizationVerification(true);
+    try {
+      await apiRequest(`/api/organizations/${orgId}/verification/sync`, {
+        method: 'POST',
+      });
+      organizationService.invalidateCachedOrganization(orgId);
+      const latest = await organizationService.getOrganizationById(orgId, true);
+      if (latest) {
+        setOrg(latest);
+      }
+      return latest ?? null;
+    } finally {
+      setSyncingOrganizationVerification(false);
     }
   }, []);
 
@@ -1157,6 +1210,55 @@ function OrganizationDetailContent() {
   }, [authLoading, isAuthenticated, user, router, id, loadOrg]);
 
   useEffect(() => {
+    if (authLoading || !isAuthenticated || !user || !id) {
+      return;
+    }
+
+    const stripeState = searchParams?.get('stripe');
+    if (!stripeState) {
+      handledStripeStateRef.current = null;
+      return;
+    }
+
+    const handledKey = `${id}:${stripeState}`;
+    if (handledStripeStateRef.current === handledKey) {
+      return;
+    }
+    handledStripeStateRef.current = handledKey;
+
+    if (stripeState === 'return') {
+      void (async () => {
+        try {
+          const latest = await syncOrganizationVerification(id);
+          const latestStatus = resolveOrganizationVerificationStatus(latest);
+          notifications.show({
+            color: latestStatus === 'VERIFIED' ? 'green' : latestStatus === 'ACTION_REQUIRED' ? 'yellow' : 'blue',
+            message: latestStatus === 'VERIFIED'
+              ? 'Organization verification is complete.'
+              : latestStatus === 'ACTION_REQUIRED'
+                ? 'Stripe still needs more information to verify this organization.'
+                : 'Stripe onboarding was updated. Verification is still in progress.',
+          });
+        } catch (error) {
+          console.error('Failed to sync organization verification after Stripe return', error);
+          notifications.show({
+            color: 'red',
+            message: error instanceof Error ? error.message : 'Failed to refresh organization verification status.',
+          });
+        }
+      })();
+      return;
+    }
+
+    if (stripeState === 'refresh') {
+      notifications.show({
+        color: 'yellow',
+        message: 'Stripe asked to reopen onboarding. Continue verification to finish setup.',
+      });
+    }
+  }, [authLoading, id, isAuthenticated, searchParams, syncOrganizationVerification, user]);
+
+  useEffect(() => {
     if (location) {
       return;
     }
@@ -1532,7 +1634,7 @@ function OrganizationDetailContent() {
     if (!org || !isOwner) return;
     const trimmedEmail = stripeEmail.trim();
     const isValidEmail = EMAIL_REGEX.test(trimmedEmail);
-    if (!isValidEmail) {
+    if (requiresStripeVerificationEmail && !isValidEmail) {
       setStripeEmailError('Enter a valid email to start Stripe onboarding.');
       return;
     }
@@ -1553,7 +1655,7 @@ function OrganizationDetailContent() {
       const returnUrl = `${origin}${basePath}?stripe=return`;
       const result = await paymentService.connectStripeAccount({
         organization: org,
-        organizationEmail: trimmedEmail,
+        organizationEmail: requiresStripeVerificationEmail ? trimmedEmail : undefined,
         refreshUrl,
         returnUrl,
       });
@@ -1572,7 +1674,7 @@ function OrganizationDetailContent() {
     } finally {
       setConnectingStripe(false);
     }
-  }, [org, isOwner, stripeEmail]);
+  }, [org, isOwner, requiresStripeVerificationEmail, stripeEmail]);
 
   const handleManageStripeAccount = useCallback(async () => {
     if (!org || !isOwner) return;
@@ -2019,6 +2121,7 @@ function OrganizationDetailContent() {
                 <div>
                   <Group gap="md" align="center" mb={2}>
                     <Title order={2} className="discover-title">{org.name}</Title>
+                    <OrganizationVerificationBadge organization={org} />
                     {canToggleHomePagePreference && (
                       <Checkbox
                         label="Set as home page"
@@ -2093,12 +2196,35 @@ function OrganizationDetailContent() {
                     <Paper withBorder p="md" radius="md" mb="md">
                       <Title order={5} mb="sm">Payments</Title>
                       <Text size="sm" c="dimmed" mb="sm">
-                        {organizationHasStripeAccount
-                          ? 'Stripe is connected. Manage your payout details when needed.'
-                          : 'Connect a Stripe account to accept payments for rentals.'}
+                        {organizationVerificationStatus === 'VERIFIED'
+                          ? 'Stripe onboarding is complete. This organization can accept payouts and display the verified badge.'
+                          : organizationVerificationStatus === 'LEGACY_CONNECTED'
+                            ? 'Stripe is connected through the legacy flow. Reconnect through the new verification flow to earn the verified badge.'
+                            : organizationVerificationStatus === 'ACTION_REQUIRED'
+                              ? 'Stripe still needs more information before this organization can be verified.'
+                              : organizationVerificationStatus === 'PENDING'
+                                ? 'Stripe onboarding has started. Finish the remaining steps to complete verification.'
+                                : 'Connect a Stripe account to verify this organization and accept payouts.'}
                       </Text>
+                      <Group gap="xs" mb="sm">
+                        <Badge
+                          color={
+                            organizationVerificationStatus === 'VERIFIED'
+                              ? 'teal'
+                              : organizationVerificationStatus === 'ACTION_REQUIRED'
+                                ? 'yellow'
+                                : organizationVerificationStatus === 'LEGACY_CONNECTED'
+                                  ? 'blue'
+                                  : 'gray'
+                          }
+                          variant="light"
+                        >
+                          {organizationVerificationStatusLabel(organizationVerificationStatus)}
+                        </Badge>
+                        {syncingOrganizationVerification && <Text size="xs" c="dimmed">Refreshing verification…</Text>}
+                      </Group>
                       <Stack gap="xs">
-                        {!organizationHasStripeAccount && (
+                        {requiresStripeVerificationEmail && (
                           <TextInput
                             label="Stripe payout email"
                             type="email"
@@ -2118,15 +2244,15 @@ function OrganizationDetailContent() {
                         )}
                         <Button
                           size="sm"
-                          loading={organizationHasStripeAccount ? managingStripe : connectingStripe}
-                          disabled={!organizationHasStripeAccount && !stripeEmailValid}
-                          onClick={organizationHasStripeAccount ? handleManageStripeAccount : handleConnectStripeAccount}
+                          loading={organizationVerificationStatus === 'VERIFIED' ? managingStripe : connectingStripe}
+                          disabled={requiresStripeVerificationEmail && !stripeEmailValid}
+                          onClick={organizationVerificationStatus === 'VERIFIED' ? handleManageStripeAccount : handleConnectStripeAccount}
                         >
-                          {organizationHasStripeAccount ? 'Manage Stripe Account' : 'Connect Stripe Account'}
+                          {stripePrimaryActionLabel}
                         </Button>
-                        {!organizationHasStripeAccount && (
+                        {organizationVerificationStatus !== 'VERIFIED' && (
                           <Text size="xs" c="dimmed">
-                            Completing onboarding enables paid rentals for this organization.
+                            The verified badge appears only after Stripe finishes all required checks for this organization.
                           </Text>
                         )}
                       </Stack>

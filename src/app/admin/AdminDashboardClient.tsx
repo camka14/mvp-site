@@ -6,6 +6,10 @@ import Navigation from '@/components/layout/Navigation';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
+import {
+  organizationVerificationStatusLabel,
+  resolveOrganizationVerificationStatus,
+} from '@/lib/organizationVerification';
 import type { Event, Field, Organization, UserData } from '@/types';
 import {
   Alert,
@@ -15,15 +19,17 @@ import {
   Group,
   Loader,
   Paper,
+  Select,
   Table,
   Tabs,
   Text,
   TextInput,
+  Textarea,
   Title,
 } from '@mantine/core';
 import { Search } from 'lucide-react';
 
-type AdminTab = 'events' | 'organizations' | 'fields' | 'users';
+type AdminTab = 'events' | 'organizations' | 'verification' | 'fields' | 'users';
 
 type PageState<T> = {
   items: T[];
@@ -43,6 +49,13 @@ type AdminFieldRow = Field & {
 type AdminUserRow = UserData & {
   email?: string | null;
   emailVerifiedAt?: string | null;
+};
+
+type VerificationDraft = {
+  reviewStatus: 'NONE' | 'OPEN' | 'IN_PROGRESS' | 'RESOLVED';
+  reviewNotes: string;
+  saving: boolean;
+  error: string | null;
 };
 
 const DEFAULT_LIMIT = 50;
@@ -68,8 +81,11 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [eventsState, setEventsState] = useState<PageState<Event>>(() => initialPageState<Event>());
   const [organizationsState, setOrganizationsState] =
     useState<PageState<Organization>>(() => initialPageState<Organization>());
+  const [verificationState, setVerificationState] =
+    useState<PageState<Organization>>(() => initialPageState<Organization>());
   const [fieldsState, setFieldsState] = useState<PageState<AdminFieldRow>>(() => initialPageState<AdminFieldRow>());
   const [usersState, setUsersState] = useState<PageState<AdminUserRow>>(() => initialPageState<AdminUserRow>(''));
+  const [verificationDrafts, setVerificationDrafts] = useState<Record<string, VerificationDraft>>({});
   const [userSearchInput, setUserSearchInput] = useState('');
 
   const loadEvents = useCallback(async (offset = 0, query = eventsState.query) => {
@@ -143,6 +159,42 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       }));
     }
   }, [organizationsState.query]);
+
+  const loadVerifications = useCallback(async (offset = 0, query = verificationState.query) => {
+    setVerificationState((previous) => ({ ...previous, loading: true, error: null }));
+    try {
+      const params = new URLSearchParams({
+        limit: String(DEFAULT_LIMIT),
+        offset: String(offset),
+      });
+      const normalizedQuery = query.trim();
+      if (normalizedQuery.length > 0) {
+        params.set('query', normalizedQuery);
+      }
+      const res = await fetch(`/api/admin/organization-verifications?${params.toString()}`, { credentials: 'include' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to load verification queue.');
+      }
+      setVerificationState({
+        items: Array.isArray(payload.organizations) ? payload.organizations : [],
+        total: Number(payload.total ?? 0),
+        limit: Number(payload.limit ?? DEFAULT_LIMIT),
+        offset: Number(payload.offset ?? 0),
+        loading: false,
+        loaded: true,
+        error: null,
+        query: normalizedQuery,
+      });
+    } catch (error) {
+      setVerificationState((previous) => ({
+        ...previous,
+        loading: false,
+        loaded: true,
+        error: error instanceof Error ? error.message : 'Failed to load verification queue.',
+      }));
+    }
+  }, [verificationState.query]);
 
   const loadFields = useCallback(async (offset = 0, query = fieldsState.query) => {
     setFieldsState((previous) => ({ ...previous, loading: true, error: null }));
@@ -223,6 +275,9 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     if (activeTab === 'organizations' && !organizationsState.loaded) {
       void loadOrganizations(0);
     }
+    if (activeTab === 'verification' && !verificationState.loaded) {
+      void loadVerifications(0);
+    }
     if (activeTab === 'fields' && !fieldsState.loaded) {
       void loadFields(0);
     }
@@ -234,10 +289,12 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     eventsState.loaded,
     fieldsState.loaded,
     organizationsState.loaded,
+    verificationState.loaded,
     usersState.loaded,
     usersState.query,
     loadEvents,
     loadOrganizations,
+    loadVerifications,
     loadFields,
     loadUsers,
   ]);
@@ -245,15 +302,18 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const activeState = useMemo(() => {
     if (activeTab === 'events') return eventsState;
     if (activeTab === 'organizations') return organizationsState;
+    if (activeTab === 'verification') return verificationState;
     if (activeTab === 'fields') return fieldsState;
     return usersState;
-  }, [activeTab, eventsState, organizationsState, fieldsState, usersState]);
+  }, [activeTab, eventsState, organizationsState, verificationState, fieldsState, usersState]);
 
   const onRefreshActiveTab = useCallback(() => {
     if (activeTab === 'events') {
       void loadEvents(eventsState.offset, eventsState.query);
     } else if (activeTab === 'organizations') {
       void loadOrganizations(organizationsState.offset, organizationsState.query);
+    } else if (activeTab === 'verification') {
+      void loadVerifications(verificationState.offset, verificationState.query);
     } else if (activeTab === 'fields') {
       void loadFields(fieldsState.offset, fieldsState.query);
     } else {
@@ -265,12 +325,15 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     eventsState.query,
     organizationsState.offset,
     organizationsState.query,
+    verificationState.offset,
+    verificationState.query,
     fieldsState.offset,
     fieldsState.query,
     usersState.offset,
     usersState.query,
     loadEvents,
     loadOrganizations,
+    loadVerifications,
     loadFields,
     loadUsers,
   ]);
@@ -279,6 +342,69 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     const normalizedQuery = userSearchInput.trim();
     void loadUsers(0, normalizedQuery);
   }, [loadUsers, userSearchInput]);
+
+  const getVerificationDraft = useCallback((organization: Organization): VerificationDraft => (
+    verificationDrafts[organization.$id] ?? {
+      reviewStatus: organization.verificationReviewStatus ?? 'NONE',
+      reviewNotes: organization.verificationReviewNotes ?? '',
+      saving: false,
+      error: null,
+    }
+  ), [verificationDrafts]);
+
+  const updateVerificationDraft = useCallback((
+    organization: Organization,
+    patch: Partial<VerificationDraft>,
+  ) => {
+    setVerificationDrafts((previous) => ({
+      ...previous,
+      [organization.$id]: {
+        ...getVerificationDraft(organization),
+        ...patch,
+      },
+    }));
+  }, [getVerificationDraft]);
+
+  const saveVerificationReview = useCallback(async (organization: Organization) => {
+    const draft = getVerificationDraft(organization);
+    updateVerificationDraft(organization, { saving: true, error: null });
+    try {
+      const res = await fetch(`/api/admin/organization-verifications/${organization.$id}`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          reviewStatus: draft.reviewStatus,
+          reviewNotes: draft.reviewNotes,
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to save verification review.');
+      }
+      updateVerificationDraft(organization, { saving: false, error: null });
+      await Promise.all([
+        loadVerifications(verificationState.offset, verificationState.query),
+        loadOrganizations(organizationsState.offset, organizationsState.query),
+      ]);
+    } catch (error) {
+      updateVerificationDraft(organization, {
+        saving: false,
+        error: error instanceof Error ? error.message : 'Failed to save verification review.',
+      });
+    }
+  }, [
+    getVerificationDraft,
+    loadOrganizations,
+    loadVerifications,
+    organizationsState.offset,
+    organizationsState.query,
+    updateVerificationDraft,
+    verificationState.offset,
+    verificationState.query,
+  ]);
 
   return (
     <>
@@ -312,6 +438,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
               <Tabs.List mb="md">
                 <Tabs.Tab value="events">Events ({eventsState.total})</Tabs.Tab>
                 <Tabs.Tab value="organizations">Organizations ({organizationsState.total})</Tabs.Tab>
+                <Tabs.Tab value="verification">Verification ({verificationState.total})</Tabs.Tab>
                 <Tabs.Tab value="fields">Fields ({fieldsState.total})</Tabs.Tab>
                 <Tabs.Tab value="users">Users ({usersState.total})</Tabs.Tab>
               </Tabs.List>
@@ -359,6 +486,100 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                     loading={organizationsState.loading}
                     onChange={(nextOffset) => {
                       void loadOrganizations(nextOffset, organizationsState.query);
+                    }}
+                  />
+                </AdminPanelState>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="verification">
+                <AdminPanelState
+                  loading={verificationState.loading}
+                  error={verificationState.error}
+                  emptyMessage="No organizations currently need verification review."
+                  itemCount={verificationState.items.length}
+                >
+                  <Table striped highlightOnHover withTableBorder withColumnBorders>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Organization</Table.Th>
+                        <Table.Th>Verification</Table.Th>
+                        <Table.Th>Review</Table.Th>
+                        <Table.Th>Notes</Table.Th>
+                        <Table.Th>Actions</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {verificationState.items.map((organization) => {
+                        const draft = getVerificationDraft(organization);
+                        const verificationStatus = resolveOrganizationVerificationStatus(organization);
+                        return (
+                          <Table.Tr key={organization.$id}>
+                            <Table.Td>
+                              <div>
+                                <Text fw={600}>{organization.name}</Text>
+                                <Text size="xs" c="dimmed">{organization.$id}</Text>
+                              </div>
+                            </Table.Td>
+                            <Table.Td>
+                              <Badge
+                                color={verificationStatus === 'VERIFIED' ? 'teal' : verificationStatus === 'ACTION_REQUIRED' ? 'yellow' : verificationStatus === 'LEGACY_CONNECTED' ? 'blue' : 'gray'}
+                                variant="light"
+                              >
+                                {organizationVerificationStatusLabel(verificationStatus)}
+                              </Badge>
+                            </Table.Td>
+                            <Table.Td>
+                              <Select
+                                value={draft.reviewStatus}
+                                data={[
+                                  { value: 'NONE', label: 'None' },
+                                  { value: 'OPEN', label: 'Open' },
+                                  { value: 'IN_PROGRESS', label: 'In progress' },
+                                  { value: 'RESOLVED', label: 'Resolved' },
+                                ]}
+                                onChange={(value) => {
+                                  updateVerificationDraft(organization, {
+                                    reviewStatus: (value as VerificationDraft['reviewStatus'] | null) ?? 'NONE',
+                                  });
+                                }}
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <Textarea
+                                minRows={2}
+                                autosize
+                                value={draft.reviewNotes}
+                                onChange={(event) => {
+                                  updateVerificationDraft(organization, {
+                                    reviewNotes: event.currentTarget.value,
+                                  });
+                                }}
+                                error={draft.error ?? undefined}
+                              />
+                            </Table.Td>
+                            <Table.Td>
+                              <Button
+                                size="xs"
+                                loading={draft.saving}
+                                onClick={() => {
+                                  void saveVerificationReview(organization);
+                                }}
+                              >
+                                Save
+                              </Button>
+                            </Table.Td>
+                          </Table.Tr>
+                        );
+                      })}
+                    </Table.Tbody>
+                  </Table>
+                  <PaginationControls
+                    total={verificationState.total}
+                    limit={verificationState.limit}
+                    offset={verificationState.offset}
+                    loading={verificationState.loading}
+                    onChange={(nextOffset) => {
+                      void loadVerifications(nextOffset, verificationState.query);
                     }}
                   />
                 </AdminPanelState>

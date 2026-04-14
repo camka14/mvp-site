@@ -56,6 +56,7 @@ import {
     getRequiredSignerTypeLabel,
     normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
+import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
@@ -3309,9 +3310,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const resolvedOrganizationId = (resolvedOrganization?.$id ?? '').trim();
     const resolvedOrganizationFields = resolvedOrganization?.fields;
     // Organization events must use org billing; personal events use the current user billing account.
-    const hasStripeAccount = Boolean(
-        resolvedOrganization ? resolvedOrganization.hasStripeAccount : currentUser?.hasStripeAccount,
-    );
+    const hasStripeAccount = resolvedOrganization
+        ? canOrganizationUsePaidBilling(resolvedOrganization)
+        : Boolean(currentUser?.hasStripeAccount);
     const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [templatesError, setTemplatesError] = useState<string | null>(null);

@@ -5,6 +5,13 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
 import {
+  createOrReuseManagedOrganizationStripeAccount,
+  findManagedOrganizationStripeAccount,
+  markManagedOrganizationStripeAccountMockVerified,
+  syncManagedOrganizationStripeAccount,
+} from '@/server/organizationStripeVerification';
+import {
+  appendStripeResultQuery,
   buildStripeAuthorizeUrl,
   createConnectState,
   getCallbackUrl,
@@ -21,6 +28,39 @@ const schema = z.object({
   refreshUrl: z.string(),
   returnUrl: z.string(),
 }).passthrough();
+
+const normalizeAbsoluteUrl = (value: string | null | undefined): string | null => {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    return null;
+  }
+};
+
+const createOrganizationAccountLink = async ({
+  stripe,
+  accountId,
+  refreshUrl,
+  returnUrl,
+}: {
+  stripe: Stripe;
+  accountId: string;
+  refreshUrl: string;
+  returnUrl: string;
+}) => stripe.accountLinks.create({
+  account: accountId,
+  refresh_url: refreshUrl,
+  return_url: appendStripeResultQuery(returnUrl, 'return'),
+  type: 'account_onboarding',
+  collection_options: {
+    fields: 'eventually_due',
+    future_requirements: 'include',
+  },
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -58,10 +98,13 @@ export async function POST(req: NextRequest) {
     const ownerKind = organizationId ? 'organization' : 'user';
     const ownerId = organizationId ?? session.userId;
 
+    let organizationName: string | null = null;
+    let organizationWebsite: string | null = null;
+
     if (organizationId) {
       const organization = await prisma.organizations.findUnique({
         where: { id: organizationId },
-        select: { id: true, ownerId: true },
+        select: { id: true, ownerId: true, name: true, website: true },
       });
 
       if (!organization) {
@@ -71,29 +114,17 @@ export async function POST(req: NextRequest) {
       if (!(await canManageOrganization(session, organization))) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
+
+      organizationName = organization.name;
+      organizationWebsite = normalizeAbsoluteUrl(organization.website ?? null);
     }
 
     if (!secretKey) {
       if (organizationId) {
-        await prisma.organizations.update({
-          where: { id: organizationId },
-          data: { hasStripeAccount: true, updatedAt: new Date() },
-        });
-        await prisma.stripeAccounts.upsert({
-          where: { id: `org_${organizationId}` },
-          create: {
-            id: `org_${organizationId}`,
-            organizationId,
-            accountId: `acct_mock_${organizationId}`,
-            email: targetEmail ?? null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          update: {
-            accountId: `acct_mock_${organizationId}`,
-            email: targetEmail ?? null,
-            updatedAt: new Date(),
-          },
+        await markManagedOrganizationStripeAccountMockVerified({
+          organizationId,
+          accountId: `acct_mock_${organizationId}`,
+          email: targetEmail ?? null,
         });
       } else {
         await prisma.userData.update({
@@ -122,16 +153,69 @@ export async function POST(req: NextRequest) {
     }
 
     if (!connectClientId) {
-      return NextResponse.json({ error: 'STRIPE_CONNECT_CLIENT_ID is not set' }, { status: 500 });
+      if (!organizationId) {
+        return NextResponse.json({ error: 'STRIPE_CONNECT_CLIENT_ID is not set' }, { status: 500 });
+      }
     }
 
     const stripe = new Stripe(secretKey);
-    const callbackUrl = getCallbackUrl(origin);
 
     try {
+      if (organizationId) {
+        const managedAccount = await findManagedOrganizationStripeAccount(organizationId);
+        let accountId = managedAccount?.accountId ?? null;
+
+        if (!accountId) {
+          const account = await stripe.accounts.create({
+            type: 'express',
+            ...(targetEmail ? { email: targetEmail } : {}),
+            ...(organizationWebsite || organizationName
+              ? {
+                business_profile: {
+                  ...(organizationName ? { name: organizationName } : {}),
+                  ...(organizationWebsite ? { url: organizationWebsite } : {}),
+                },
+              }
+              : {}),
+            capabilities: {
+              card_payments: { requested: true },
+              transfers: { requested: true },
+            },
+            metadata: {
+              organization_id: organizationId,
+            },
+          });
+          accountId = account.id;
+          await createOrReuseManagedOrganizationStripeAccount({
+            organizationId,
+            accountId,
+            email: targetEmail ?? account.email ?? null,
+          });
+        }
+
+        await syncManagedOrganizationStripeAccount({
+          stripe,
+          organizationId,
+          accountId,
+        });
+
+        const onboardingLink = await createOrganizationAccountLink({
+          stripe,
+          accountId,
+          refreshUrl,
+          returnUrl,
+        });
+
+        return NextResponse.json(
+          { onboardingUrl: onboardingLink.url, expiresAt: onboardingLink.expires_at },
+          { status: 200 },
+        );
+      }
+
+      const callbackUrl = getCallbackUrl(origin);
       const state = createConnectState(ownerKind, ownerId, returnUrl, refreshUrl);
       const onboardingUrl = buildStripeAuthorizeUrl(stripe, {
-        clientId: connectClientId,
+        clientId: connectClientId as string,
         state,
         redirectUri: callbackUrl,
         email: targetEmail,

@@ -2,6 +2,10 @@
 
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
+import {
+  isOrganizationVerificationReviewStatus,
+  resolveOrganizationVerificationStatus,
+} from '@/lib/organizationVerification';
 import type { Event, Field, Invite, Organization, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
@@ -203,6 +207,26 @@ class OrganizationService {
       ownerId: row.ownerId ?? row.owner_id ?? undefined,
       hostIds: staffMembers.length > 0 ? derivedHostIds : hostIds,
       hasStripeAccount: Boolean(row.hasStripeAccount),
+      verificationStatus: resolveOrganizationVerificationStatus({
+        verificationStatus: row.verificationStatus,
+        hasStripeAccount: row.hasStripeAccount,
+      }),
+      verifiedAt: typeof row.verifiedAt === 'string'
+        ? row.verifiedAt
+        : row.verifiedAt instanceof Date
+          ? row.verifiedAt.toISOString()
+          : undefined,
+      verificationReviewStatus: isOrganizationVerificationReviewStatus(row.verificationReviewStatus)
+        ? row.verificationReviewStatus
+        : undefined,
+      verificationReviewNotes: typeof row.verificationReviewNotes === 'string'
+        ? row.verificationReviewNotes
+        : undefined,
+      verificationReviewUpdatedAt: typeof row.verificationReviewUpdatedAt === 'string'
+        ? row.verificationReviewUpdatedAt
+        : row.verificationReviewUpdatedAt instanceof Date
+          ? row.verificationReviewUpdatedAt.toISOString()
+          : undefined,
       officialIds: staffMembers.length > 0 ? derivedOfficialIds : officialIds,
       staffMembers,
       staffInvites,
@@ -230,10 +254,7 @@ class OrganizationService {
   }
 
   async createOrganization(data: Partial<Organization> & { name: string; ownerId: string }): Promise<Organization> {
-    const payload = buildPayload({
-      ...data,
-      hasStripeAccount: data.hasStripeAccount ?? false,
-    });
+    const payload = buildPayload(data);
 
     if (data.officialIds !== undefined) {
       payload.officialIds = Array.isArray(data.officialIds) ? data.officialIds : [];

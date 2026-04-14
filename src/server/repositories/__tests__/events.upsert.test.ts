@@ -910,7 +910,7 @@ describe('upsertEventFromPayload', () => {
 
   it('uses organization Stripe status for organization events', async () => {
     const client = createMockClient();
-    client.organizations.findUnique.mockResolvedValue({ hasStripeAccount: false });
+    client.organizations.findUnique.mockResolvedValue({ hasStripeAccount: false, verificationStatus: 'UNVERIFIED' });
     client.userData.findUnique.mockResolvedValue({ hasStripeAccount: true });
 
     const payload = {
@@ -923,7 +923,7 @@ describe('upsertEventFromPayload', () => {
 
     expect(client.organizations.findUnique).toHaveBeenCalledWith({
       where: { id: 'org_1' },
-      select: { hasStripeAccount: true },
+      select: { hasStripeAccount: true, verificationStatus: true },
     });
     expect(client.userData.findUnique).not.toHaveBeenCalled();
 
