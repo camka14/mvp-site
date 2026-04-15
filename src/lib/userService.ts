@@ -205,6 +205,7 @@ class UserService {
       followers?: UserData[];
       incomingFriendRequests?: UserData[];
       outgoingFriendRequests?: UserData[];
+      blocked?: UserData[];
     }>('/api/users/social');
 
     return {
