@@ -193,7 +193,7 @@ export type RefundRequestsGroupByOutputType = {
   _max: RefundRequestsMaxAggregateOutputType | null
 }
 
-type GetRefundRequestsGroupByPayload<T extends RefundRequestsGroupByArgs> = Prisma.PrismaPromise<
+export type GetRefundRequestsGroupByPayload<T extends RefundRequestsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<RefundRequestsGroupByOutputType, T['by']> &
       {
@@ -1098,6 +1098,11 @@ export type RefundRequestsFindManyArgs<ExtArgs extends runtime.Types.Extensions.
    * Skip the first `n` RefundRequests.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of RefundRequests.
+   */
   distinct?: Prisma.RefundRequestsScalarFieldEnum | Prisma.RefundRequestsScalarFieldEnum[]
 }
 

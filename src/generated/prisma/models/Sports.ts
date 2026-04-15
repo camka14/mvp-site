@@ -455,7 +455,7 @@ export type SportsGroupByOutputType = {
   _max: SportsMaxAggregateOutputType | null
 }
 
-type GetSportsGroupByPayload<T extends SportsGroupByArgs> = Prisma.PrismaPromise<
+export type GetSportsGroupByPayload<T extends SportsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<SportsGroupByOutputType, T['by']> &
       {
@@ -2152,6 +2152,11 @@ export type SportsFindManyArgs<ExtArgs extends runtime.Types.Extensions.Internal
    * Skip the first `n` Sports.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Sports.
+   */
   distinct?: Prisma.SportsScalarFieldEnum | Prisma.SportsScalarFieldEnum[]
 }
 

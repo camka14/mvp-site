@@ -84,7 +84,7 @@ describe('event template privacy routes', () => {
     prismaMock.staffMembers.findUnique.mockReset();
     prismaMock.invites.findMany.mockReset();
     prismaMock.divisions.findMany.mockReset();
-    prismaMock.authUser.findUnique.mockResolvedValue({ disabledAt: null });
+    prismaMock.authUser.findUnique.mockResolvedValue({ disabledAt: null, sessionVersion: 0 });
     prismaMock.userData.findUnique.mockResolvedValue({ hiddenEventIds: [] });
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
@@ -305,7 +305,7 @@ describe('event template privacy routes', () => {
 
   it('includes user-owned unpublished events in GET /api/events list visibility', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false, sessionVersion: 0 });
     prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: [] });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
@@ -333,7 +333,7 @@ describe('event template privacy routes', () => {
 
   it('includes organization unpublished events when requester can manage the organization', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false, sessionVersion: 0 });
     prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: [] });
     prismaMock.organizations.findUnique.mockResolvedValueOnce({ id: 'org_1', ownerId: 'owner_1' });
     prismaMock.staffMembers.findUnique.mockResolvedValueOnce({
@@ -361,8 +361,8 @@ describe('event template privacy routes', () => {
 
   it('includes user-owned unpublished events in POST /api/events/search visibility', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
-    prismaMock.authUser.findUnique.mockResolvedValueOnce({ disabledAt: null });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false, sessionVersion: 0 });
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ disabledAt: null, sessionVersion: 0 });
     prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: [] });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
@@ -396,7 +396,7 @@ describe('event template privacy routes', () => {
 
   it('excludes hidden events from GET /api/events for the signed-in user', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'user_1', isAdmin: false });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
     prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: ['event_hidden', ' event_hidden ', ''] });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
@@ -414,8 +414,8 @@ describe('event template privacy routes', () => {
 
   it('excludes hidden events from POST /api/events/search for active signed-in users', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'user_1', isAdmin: false });
-    prismaMock.authUser.findUnique.mockResolvedValueOnce({ disabledAt: null });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ disabledAt: null, sessionVersion: 0 });
     prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: ['event_hidden'] });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
@@ -564,7 +564,7 @@ describe('event template privacy routes', () => {
 
   it('allows hosts to explicitly query private events via GET /api/events', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false, sessionVersion: 0 });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events?state=PRIVATE'));

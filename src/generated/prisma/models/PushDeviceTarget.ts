@@ -179,7 +179,7 @@ export type PushDeviceTargetGroupByOutputType = {
   _max: PushDeviceTargetMaxAggregateOutputType | null
 }
 
-type GetPushDeviceTargetGroupByPayload<T extends PushDeviceTargetGroupByArgs> = Prisma.PrismaPromise<
+export type GetPushDeviceTargetGroupByPayload<T extends PushDeviceTargetGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<PushDeviceTargetGroupByOutputType, T['by']> &
       {
@@ -1038,6 +1038,11 @@ export type PushDeviceTargetFindManyArgs<ExtArgs extends runtime.Types.Extension
    * Skip the first `n` PushDeviceTargets.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of PushDeviceTargets.
+   */
   distinct?: Prisma.PushDeviceTargetScalarFieldEnum | Prisma.PushDeviceTargetScalarFieldEnum[]
 }
 

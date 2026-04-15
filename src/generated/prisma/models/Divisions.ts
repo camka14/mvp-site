@@ -374,7 +374,7 @@ export type DivisionsGroupByOutputType = {
   _max: DivisionsMaxAggregateOutputType | null
 }
 
-type GetDivisionsGroupByPayload<T extends DivisionsGroupByArgs> = Prisma.PrismaPromise<
+export type GetDivisionsGroupByPayload<T extends DivisionsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<DivisionsGroupByOutputType, T['by']> &
       {
@@ -1783,6 +1783,11 @@ export type DivisionsFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inter
    * Skip the first `n` Divisions.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Divisions.
+   */
   distinct?: Prisma.DivisionsScalarFieldEnum | Prisma.DivisionsScalarFieldEnum[]
 }
 

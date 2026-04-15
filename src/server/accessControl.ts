@@ -39,10 +39,11 @@ type OrganizationLookupClient = {
   authUser?: {
     findUnique: (args: {
       where: { id: string };
-      select: { email: true; emailVerifiedAt: true };
+      select: { email: true; emailVerifiedAt: true; sessionVersion: true };
     }) => Promise<{
       email: string;
       emailVerifiedAt: Date | null;
+      sessionVersion: number | null;
     } | null>;
   } | undefined;
   organizations: {

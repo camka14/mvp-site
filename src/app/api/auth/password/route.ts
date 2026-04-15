@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, verifyPassword, signSessionToken, setAuthCookie } from '@/lib/authServer';
 import { requireSession } from '@/lib/permissions';
+import { revokeAuthUserSessions } from '@/server/authSessions';
 
 const passwordSchema = z.object({
   currentPassword: z.string().min(8).optional(),
@@ -41,10 +42,19 @@ export async function POST(req: NextRequest) {
   }
 
   const passwordHash = await hashPassword(newPassword);
-  await prisma.authUser.update({ where: { id: targetUserId }, data: { passwordHash, updatedAt: new Date() } });
-
-  const refreshed = signSessionToken({ userId: targetUserId, isAdmin: session.isAdmin });
+  await prisma.authUser.update({
+    where: { id: targetUserId },
+    data: { passwordHash, updatedAt: new Date() },
+  });
+  const nextSessionVersion = await revokeAuthUserSessions(targetUserId);
   const res = NextResponse.json({ ok: true }, { status: 200 });
-  setAuthCookie(res, refreshed);
+  if (targetUserId === session.userId) {
+    const refreshed = signSessionToken({
+      userId: targetUserId,
+      isAdmin: session.isAdmin,
+      sessionVersion: nextSessionVersion ?? authUser.sessionVersion + 1,
+    });
+    setAuthCookie(res, refreshed);
+  }
   return res;
 }

@@ -72,6 +72,17 @@ export class EventFieldConflictError extends Error {
 export const isEventFieldConflictError = (error: unknown): error is EventFieldConflictError =>
   error instanceof EventFieldConflictError;
 
+export class LeaguePlayoffTeamCountValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LeaguePlayoffTeamCountValidationError';
+  }
+}
+
+export const isLeaguePlayoffTeamCountValidationError = (
+  error: unknown,
+): error is LeaguePlayoffTeamCountValidationError => error instanceof LeaguePlayoffTeamCountValidationError;
+
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   const match = message.match(UNKNOWN_PRISMA_ARGUMENT_PATTERN);
@@ -698,6 +709,20 @@ const normalizeDivisionDetailsPayload = (
     unique.push(detail);
   }
   return unique;
+};
+
+const requireExplicitLeaguePlayoffTeamCount = (
+  value: number | null | undefined,
+  message: string,
+): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new LeaguePlayoffTeamCountValidationError(message);
+  }
+  const normalized = Math.trunc(value);
+  if (normalized < 2) {
+    throw new LeaguePlayoffTeamCountValidationError(message);
+  }
+  return normalized;
 };
 
 type DivisionRatingWindow = {
@@ -2283,16 +2308,12 @@ export const saveEventSchedule = async (event: League | Tournament, client: Pris
   });
 };
 
-export const saveTeamRecords = async (teams: Team[], client: PrismaLike = prisma) => {
-  void teams;
-  void client;
-};
-
 export const syncEventDivisions = async (
   params: {
     eventId: string;
     divisionIds: string[];
     fieldIds: string[];
+    includePlayoffs?: boolean;
     singleDivision?: boolean;
     sportId?: string | null;
     referenceDate?: Date | null;
@@ -2394,6 +2415,37 @@ export const syncEventDivisions = async (
     const normalizedKey = normalizeDivisionKey(row.key);
     if (normalizedKey) {
       existingByKey.set(normalizedKey, row);
+    }
+  }
+
+  if (params.includePlayoffs) {
+    requireExplicitLeaguePlayoffTeamCount(
+      params.defaultPlayoffTeamCount,
+      'Playoff team count must be at least 2 when playoffs are enabled.',
+    );
+
+    if (!params.singleDivision) {
+      for (const rawDivisionId of divisionIds) {
+        const normalizedDivisionId = normalizeDivisionKey(rawDivisionId) ?? rawDivisionId;
+        const detail = detailLookup.get(normalizedDivisionId)
+          ?? detailLookup.get(extractDivisionTokenFromId(normalizedDivisionId) ?? '')
+          ?? null;
+        const existing = existingById.get(normalizedDivisionId)
+          ?? existingByKey.get(normalizedDivisionId)
+          ?? existingByKey.get(extractDivisionTokenFromId(normalizedDivisionId) ?? '')
+          ?? null;
+        const divisionLabel = detail?.name
+          ?? existing?.name
+          ?? detail?.key
+          ?? existing?.key
+          ?? extractDivisionTokenFromId(normalizedDivisionId)
+          ?? normalizedDivisionId;
+
+        requireExplicitLeaguePlayoffTeamCount(
+          detail?.playoffTeamCount ?? existing?.playoffTeamCount,
+          `Playoff team count must be at least 2 for division "${divisionLabel}" when playoffs are enabled.`,
+        );
+      }
     }
   }
 
@@ -2549,7 +2601,7 @@ export const syncEventDivisions = async (
       : resolveDivisionValue(
         detail?.playoffTeamCount,
         existing?.playoffTeamCount,
-        params.defaultPlayoffTeamCount ?? undefined,
+        params.singleDivision ? (params.defaultPlayoffTeamCount ?? undefined) : undefined,
       ) ?? null;
     const allowPaymentPlans = kind === 'PLAYOFF'
       ? false
@@ -3248,6 +3300,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     eventId: id,
     divisionIds: normalizedEventDivisionIds,
     fieldIds,
+    includePlayoffs: payload.includePlayoffs ?? false,
     singleDivision: singleDivisionEnabled,
     sportId: payload.sportId ?? null,
     referenceDate: start,

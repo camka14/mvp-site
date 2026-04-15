@@ -150,11 +150,11 @@ export const getSocialGraphForUser = async (userId: string): Promise<SocialGraph
   });
 
   const relatedIds = normalizeIds([
-    ...user.friendIds,
-    ...user.followingIds,
-    ...user.friendRequestIds,
-    ...user.friendRequestSentIds,
-    ...user.blockedUserIds,
+    ...normalizeIds(user.friendIds),
+    ...normalizeIds(user.followingIds),
+    ...normalizeIds(user.friendRequestIds),
+    ...normalizeIds(user.friendRequestSentIds),
+    ...normalizeIds(user.blockedUserIds),
     ...followers.map((row) => row.id),
   ]);
 

@@ -334,6 +334,8 @@ describe('POST /api/billing/host/connect', () => {
   });
 
   it('canonicalizes the Stripe callback host when the request arrives on www.bracket-iq.com', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://www.bracket-iq.com';
+
     const response = await POST(
       jsonPost('https://www.bracket-iq.com/api/billing/host/connect', {
         user: { id: 'user_1', email: 'user@example.com' },

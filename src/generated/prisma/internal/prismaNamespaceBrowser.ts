@@ -864,6 +864,7 @@ export const AuthUserScalarFieldEnum = {
   appleSubject: 'appleSubject',
   emailVerifiedAt: 'emailVerifiedAt',
   lastLogin: 'lastLogin',
+  sessionVersion: 'sessionVersion',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
   disabledAt: 'disabledAt',

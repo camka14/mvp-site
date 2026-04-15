@@ -1187,7 +1187,6 @@ describe('EventForm dirty state', () => {
     const teamSignupSwitch = screen.getByTestId('team-signup-switch');
 
     expect(eventDetailsSection).not.toBeNull();
-    expect(eventDetailsSection?.textContent).toContain('Team Sign Up');
     expect(teamSignupSwitch).toBeInTheDocument();
   });
 
@@ -1206,9 +1205,10 @@ describe('EventForm dirty state', () => {
 
     const eventDetailsSection = document.getElementById('section-event-details-content');
     const divisionSettingsSection = document.getElementById('section-division-settings-content');
+    const teamSignupSwitch = screen.getByTestId('team-signup-switch');
 
     expect(eventDetailsSection).not.toBeNull();
-    expect(eventDetailsSection?.textContent).toContain('Team Sign Up');
+    expect(teamSignupSwitch).toBeInTheDocument();
     expect(divisionSettingsSection?.textContent).not.toContain('Team Event (teams compete rather than individuals)');
   });
 

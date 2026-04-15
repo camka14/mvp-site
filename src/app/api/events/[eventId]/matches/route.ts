@@ -5,7 +5,7 @@ import { createId } from '@/lib/id';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
 import { canManageEvent } from '@/server/accessControl';
-import { loadEventWithRelations, saveMatches, saveTeamRecords } from '@/server/repositories/events';
+import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import { applyMatchUpdates, applyPersistentAutoLock } from '@/server/scheduler/updateMatch';
@@ -612,6 +612,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           now: lockEvaluationTime,
           explicitLockedValue: entry.locked,
         });
+        if (entry.officialCheckedIn === true || target.officialCheckedIn === true) {
+          target.locked = true;
+        }
 
         touchedIds.push(matchId);
       }
@@ -677,7 +680,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       await saveMatches(eventId, Object.values(event.matches), tx);
-      await saveTeamRecords(Object.values(event.teams), tx);
 
       const uniqueTouchedIds = Array.from(new Set(touchedIds));
       const created: Record<string, string> = {};

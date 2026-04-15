@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList } from '@/server/legacyFormat';
+import { canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,18 @@ export async function GET(req: NextRequest) {
 
   if (userId && !session.isAdmin && session.userId !== userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (hostId && !session.isAdmin && session.userId !== hostId) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+  if (organizationId && !session.isAdmin) {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: organizationId },
+      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    });
+    if (!(await canManageOrganization(session, organization))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
   }
 
   const where: any = {};

@@ -217,7 +217,7 @@ export type ModerationReportGroupByOutputType = {
   _max: ModerationReportMaxAggregateOutputType | null
 }
 
-type GetModerationReportGroupByPayload<T extends ModerationReportGroupByArgs> = Prisma.PrismaPromise<
+export type GetModerationReportGroupByPayload<T extends ModerationReportGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<ModerationReportGroupByOutputType, T['by']> &
       {
@@ -1208,6 +1208,11 @@ export type ModerationReportFindManyArgs<ExtArgs extends runtime.Types.Extension
    * Skip the first `n` ModerationReports.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of ModerationReports.
+   */
   distinct?: Prisma.ModerationReportScalarFieldEnum | Prisma.ModerationReportScalarFieldEnum[]
 }
 

@@ -37,7 +37,6 @@ const saveEventScheduleMock = jest.fn();
 const saveMatchesMock = jest.fn();
 const upsertEventFromPayloadMock = jest.fn();
 const deleteMatchesByEventMock = jest.fn();
-const saveTeamRecordsMock = jest.fn();
 const acquireEventLockMock = jest.fn();
 const isEventFieldConflictErrorMock = jest.fn();
 const scheduleEventMock = jest.fn();
@@ -64,7 +63,6 @@ jest.mock('@/server/repositories/events', () => ({
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
   upsertEventFromPayload: (...args: any[]) => upsertEventFromPayloadMock(...args),
   deleteMatchesByEvent: (...args: any[]) => deleteMatchesByEventMock(...args),
-  saveTeamRecords: (...args: any[]) => saveTeamRecordsMock(...args),
   isEventFieldConflictError: (...args: any[]) => isEventFieldConflictErrorMock(...args),
 }));
 
@@ -692,6 +690,46 @@ describe('schedule routes', () => {
     expect(json.match.$id).toBe('match_1');
   });
 
+  it('locks a single match immediately when official check-in is saved', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          locked: false,
+          officialCheckedIn: false,
+        },
+      },
+      teams: {},
+      officials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', locked: true, officialCheckedIn: true }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', { officialCheckedIn: true }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(saveMatchesMock).toHaveBeenCalledWith(
+      'event_1',
+      [expect.objectContaining({ id: 'match_1', locked: true })],
+      prismaMock,
+    );
+  });
+
   it('bulk updates matches atomically when user is host', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -728,6 +766,46 @@ describe('schedule routes', () => {
     expect(applyMatchUpdatesMock.mock.calls.some((call) => call[2]?.locked === true)).toBe(true);
     expect(saveMatchesMock).toHaveBeenCalledTimes(1);
     expect(json.matches).toHaveLength(2);
+  });
+
+  it('locks bulk-updated matches immediately when official check-in is saved', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: { id: 'match_1', locked: false, officialCheckedIn: false },
+      },
+      teams: {},
+      officials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', locked: true, officialCheckedIn: true }]);
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [
+          { id: 'match_1', officialCheckedIn: true },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(saveMatchesMock).toHaveBeenCalledWith(
+      'event_1',
+      [expect.objectContaining({ id: 'match_1', locked: true })],
+      prismaMock,
+    );
   });
 
   it('returns 404 when a bulk match update targets a missing match', async () => {

@@ -207,7 +207,7 @@ export type SensitiveUserDataGroupByOutputType = {
   _max: SensitiveUserDataMaxAggregateOutputType | null
 }
 
-type GetSensitiveUserDataGroupByPayload<T extends SensitiveUserDataGroupByArgs> = Prisma.PrismaPromise<
+export type GetSensitiveUserDataGroupByPayload<T extends SensitiveUserDataGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<SensitiveUserDataGroupByOutputType, T['by']> &
       {
@@ -1150,6 +1150,11 @@ export type SensitiveUserDataFindManyArgs<ExtArgs extends runtime.Types.Extensio
    * Skip the first `n` SensitiveUserData.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of SensitiveUserData.
+   */
   distinct?: Prisma.SensitiveUserDataScalarFieldEnum | Prisma.SensitiveUserDataScalarFieldEnum[]
 }
 

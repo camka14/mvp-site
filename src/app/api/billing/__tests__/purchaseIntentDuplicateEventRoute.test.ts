@@ -218,6 +218,12 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
   });
 
   it('rejects a second weekly team checkout for the same occurrence before creating a payment intent', async () => {
+    const futureOccurrence = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    futureOccurrence.setHours(0, 0, 0, 0);
+    const futureOccurrenceDate = toIsoDateString(futureOccurrence);
+    const slotStartDate = new Date(futureOccurrence.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const slotEndDate = new Date(futureOccurrence.getTime() + 7 * 24 * 60 * 60 * 1000);
+
     resolvePurchaseContextMock.mockResolvedValueOnce({
       purchaseType: 'event',
       amountCents: 2500,
@@ -243,12 +249,21 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
       },
     ]);
     prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({
-      id: 'weekly_parent__team__team_1__slot_1__2026-04-14',
+      id: `weekly_parent__team__team_1__slot_1__${futureOccurrenceDate}`,
       status: 'STARTED',
       createdAt: new Date('2026-03-18T12:00:00.000Z'),
       divisionId: null,
       divisionTypeId: null,
       divisionTypeKey: null,
+    });
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_1',
+      divisions: ['div_a'],
+      daysOfWeek: [toMondayIndex(futureOccurrence)],
+      startDate: toIsoDateString(slotStartDate),
+      endDate: toIsoDateString(slotEndDate),
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 10 * 60,
     });
 
     const response = await POST(jsonPost({
@@ -262,7 +277,7 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
         timeSlotIds: ['slot_1'],
       },
       slotId: 'slot_1',
-      occurrenceDate: '2026-04-14',
+      occurrenceDate: futureOccurrenceDate,
     }));
     const payload = await response.json();
 

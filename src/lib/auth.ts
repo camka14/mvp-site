@@ -37,7 +37,7 @@ type ExistingUserLookup = { userId: string; sensitiveUserId?: string };
 
 type AuthPayload = {
   user: { id: string; email: string; name?: string | null } | null;
-  session?: { userId: string; isAdmin: boolean } | null;
+  session?: { userId: string; isAdmin: boolean; sessionVersion?: number } | null;
   token?: string | null;
   profile?: UserData | null;
   requiresProfileCompletion?: boolean;

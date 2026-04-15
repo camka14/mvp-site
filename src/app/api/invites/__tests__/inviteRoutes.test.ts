@@ -77,6 +77,7 @@ describe('/api/invites', () => {
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       hostId: 'host_1',
+      assistantHostIds: [],
       organizationId: null,
       state: 'DRAFT',
     });
@@ -179,35 +180,45 @@ describe('/api/invites', () => {
   it('uses forwarded request origin when sending EVENT invite emails', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'inviter_1', isAdmin: false });
     ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_1', authUserExisted: false });
+    const originalBaseUrl = process.env.PUBLIC_WEB_BASE_URL;
+    process.env.PUBLIC_WEB_BASE_URL = 'https://bracket-iq.com';
 
-    const createdAt = new Date('2020-01-01T00:00:00.000Z');
-    const createdInvite = {
-      id: 'invite_forwarded',
-      type: 'EVENT',
-      email: 'forwarded@example.com',
-      status: 'PENDING',
-      eventId: 'event_1',
-      organizationId: null,
-      teamId: null,
-      userId: 'user_1',
-      createdBy: 'inviter_1',
-      firstName: null,
-      lastName: null,
-      createdAt,
-      updatedAt: createdAt,
-    };
-    prismaMock.invites.create.mockResolvedValue(createdInvite);
-    sendInviteEmailsMock.mockResolvedValue([createdInvite]);
+    try {
+      const createdAt = new Date('2020-01-01T00:00:00.000Z');
+      const createdInvite = {
+        id: 'invite_forwarded',
+        type: 'EVENT',
+        email: 'forwarded@example.com',
+        status: 'PENDING',
+        eventId: 'event_1',
+        organizationId: null,
+        teamId: null,
+        userId: 'user_1',
+        createdBy: 'inviter_1',
+        firstName: null,
+        lastName: null,
+        createdAt,
+        updatedAt: createdAt,
+      };
+      prismaMock.invites.create.mockResolvedValue(createdInvite);
+      sendInviteEmailsMock.mockResolvedValue([createdInvite]);
 
-    const res = await POST(
-      jsonRequest(
-        { invites: [{ type: 'EVENT', eventId: 'event_1', email: 'forwarded@example.com' }] },
-        { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'bracket-iq.com' },
-      ),
-    );
+      const res = await POST(
+        jsonRequest(
+          { invites: [{ type: 'EVENT', eventId: 'event_1', email: 'forwarded@example.com' }] },
+          { 'x-forwarded-proto': 'https', 'x-forwarded-host': 'bracket-iq.com' },
+        ),
+      );
 
-    expect(res.status).toBe(201);
-    expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'https://bracket-iq.com');
+      expect(res.status).toBe(201);
+      expect(sendInviteEmailsMock).toHaveBeenCalledWith([createdInvite], 'https://bracket-iq.com');
+    } finally {
+      if (originalBaseUrl === undefined) {
+        delete process.env.PUBLIC_WEB_BASE_URL;
+      } else {
+        process.env.PUBLIC_WEB_BASE_URL = originalBaseUrl;
+      }
+    }
   });
 
   it('returns FAILED status when invite email delivery fails', async () => {
@@ -290,11 +301,12 @@ describe('/api/invites', () => {
     expect(json.invites[0].type).toBe('STAFF');
     expect(prismaMock.events.findUnique).toHaveBeenCalledWith({
       where: { id: 'event_1' },
-      select: { id: true, hostId: true, organizationId: true, state: true },
+      select: { id: true, hostId: true, assistantHostIds: true, organizationId: true, state: true },
     });
     expect(canManageEventMock).toHaveBeenCalledWith(
       { userId: 'host_1', isAdmin: false },
       expect.objectContaining({ id: 'event_1' }),
+      prismaMock,
     );
     expect(prismaMock.staffMembers.upsert).not.toHaveBeenCalled();
     expect(prismaMock.invites.create).toHaveBeenCalledWith({
@@ -382,5 +394,67 @@ describe('/api/invites', () => {
     expect(prismaMock.invites.create).not.toHaveBeenCalled();
     expect(prismaMock.invites.update).not.toHaveBeenCalled();
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([], 'http://localhost');
+  });
+
+  it('rolls back earlier staged invites when a later invite in the batch fails validation', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'captain_1', isAdmin: false });
+
+    const stagedInvites: Array<{ id: string }> = [];
+    const committedInviteIds: string[] = [];
+    const txMock = {
+      ...prismaMock,
+      invites: {
+        ...prismaMock.invites,
+        create: jest.fn(),
+      },
+      teams: {
+        ...prismaMock.teams,
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'team_1',
+          playerIds: [],
+          pending: [],
+        }),
+      },
+    };
+
+    ensureAuthUserAndUserDataByEmailMock
+      .mockResolvedValueOnce({ userId: 'user_ok', authUserExisted: false })
+      .mockResolvedValueOnce({ userId: 'user_invalid', authUserExisted: false });
+
+    prismaMock.$transaction.mockImplementationOnce(async (fn: any) => {
+      txMock.invites.create.mockImplementation(async ({ data }: any) => {
+        const record = {
+          ...data,
+          createdAt: new Date('2020-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2020-01-01T00:00:00.000Z'),
+        };
+        stagedInvites.push({ id: record.id });
+        return record;
+      });
+
+      try {
+        const result = await fn(txMock);
+        committedInviteIds.push(...stagedInvites.map((invite) => invite.id));
+        return result;
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    });
+
+    const res = await POST(
+      jsonRequest({
+        invites: [
+          { type: 'TEAM', teamId: 'team_1', email: 'ok@example.com' },
+          { type: 'TEAM', email: 'broken@example.com' },
+        ],
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json).toEqual({ error: 'Team invites require teamId' });
+    expect(txMock.invites.create).toHaveBeenCalledTimes(1);
+    expect(committedInviteIds).toEqual([]);
+    expect(sendInviteEmailsMock).not.toHaveBeenCalled();
   });
 });

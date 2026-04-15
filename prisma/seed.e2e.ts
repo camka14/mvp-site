@@ -1,10 +1,10 @@
-import 'dotenv/config';
-import path from 'node:path';
-import fs from 'node:fs/promises';
-import { execSync } from 'node:child_process';
-import { PrismaClient } from '../src/generated/prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { hashPassword } from '../src/lib/authServer';
+import "dotenv/config";
+import path from "node:path";
+import fs from "node:fs/promises";
+import { execSync } from "node:child_process";
+import { PrismaClient } from "../src/generated/prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { hashPassword } from "../src/lib/authServer";
 import {
   SEED_CAMKA,
   SEED_DEV_USERS,
@@ -19,36 +19,58 @@ import {
   SEED_START,
   SEED_TEAM_IDS,
   SEED_USERS,
-} from '../e2e/fixtures/seed-data';
+} from "../e2e/fixtures/seed-data";
 
-const projectRoot = path.resolve(__dirname, '..');
-const uploadsRoot = path.join(projectRoot, 'uploads');
-const CAMKA_UPLOAD_ID_PREFIX = 'camka_upload_';
+const projectRoot = path.resolve(__dirname, "..");
+const uploadsRoot = path.join(projectRoot, "uploads");
+const CAMKA_UPLOAD_ID_PREFIX = "camka_upload_";
 const IMAGE_MIME_TYPES = new Map<string, string>([
-  ['.jpg', 'image/jpeg'],
-  ['.jpeg', 'image/jpeg'],
-  ['.png', 'image/png'],
-  ['.webp', 'image/webp'],
-  ['.gif', 'image/gif'],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".png", "image/png"],
+  [".webp", "image/webp"],
+  [".gif", "image/gif"],
 ]);
-const seedUserEmails = [SEED_USERS.host.email, SEED_USERS.participant.email, ...SEED_DEV_USERS.map((user) => user.email)].map(
-  (email) => email.toLowerCase(),
-);
-const seedUserIds = [SEED_USERS.host.id, SEED_USERS.participant.id, ...SEED_DEV_USERS.map((user) => user.id)];
-const seedUserNames = [SEED_USERS.host.userName, SEED_USERS.participant.userName, ...SEED_DEV_USERS.map((user) => user.userName)];
+const seedUserEmails = [
+  SEED_USERS.host.email,
+  SEED_USERS.participant.email,
+  ...SEED_DEV_USERS.map((user) => user.email),
+].map((email) => email.toLowerCase());
+const seedUserIds = [
+  SEED_USERS.host.id,
+  SEED_USERS.participant.id,
+  ...SEED_DEV_USERS.map((user) => user.id),
+];
+const seedUserNames = [
+  SEED_USERS.host.userName,
+  SEED_USERS.participant.userName,
+  ...SEED_DEV_USERS.map((user) => user.userName),
+];
 
 const truthyEnv = (value: string | undefined): boolean =>
-  ['1', 'true', 'yes'].includes(String(value || '').toLowerCase());
+  ["1", "true", "yes"].includes(String(value || "").toLowerCase());
 
 const unique = <T>(values: readonly T[]): T[] => Array.from(new Set(values));
 
 const slugify = (value: string): string =>
   value
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
 
-const getMimeType = (filename: string): string | null => IMAGE_MIME_TYPES.get(path.extname(filename).toLowerCase()) ?? null;
+const getMimeType = (filename: string): string | null =>
+  IMAGE_MIME_TYPES.get(path.extname(filename).toLowerCase()) ?? null;
+
+const buildUpcomingEventWindow = () => {
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() + 2);
+  start.setUTCHours(18, 0, 0, 0);
+
+  const end = new Date(start);
+  end.setUTCHours(20, 0, 0, 0);
+
+  return { end, start };
+};
 
 type UploadImageFile = {
   id: string;
@@ -60,28 +82,28 @@ type UploadImageFile = {
 
 const ensureSeedGuard = (): void => {
   const guardEnabled = truthyEnv(process.env.E2E_SEED);
-  const dbUrl = process.env.DATABASE_URL || '';
-  const looksLikeE2E = dbUrl.includes('_e2e') || dbUrl.includes('e2e');
+  const dbUrl = process.env.DATABASE_URL || "";
+  const looksLikeE2E = dbUrl.includes("_e2e") || dbUrl.includes("e2e");
   if (!guardEnabled && !looksLikeE2E) {
     throw new Error(
-      'Refusing to run E2E seed without E2E_SEED=1 or an e2e DATABASE_URL. Set E2E_SEED=1 to proceed.',
+      "Refusing to run E2E seed without E2E_SEED=1 or an e2e DATABASE_URL. Set E2E_SEED=1 to proceed.",
     );
   }
 };
 
 const resetDatabase = (): void => {
-  execSync('npx prisma db push --force-reset', {
+  execSync("npx prisma db push --force-reset", {
     cwd: projectRoot,
-    stdio: 'inherit',
+    stdio: "inherit",
     env: {
       ...process.env,
-      E2E_SEED: process.env.E2E_SEED ?? '1',
+      E2E_SEED: process.env.E2E_SEED ?? "1",
     },
   });
 
-  execSync('npx prisma generate', {
+  execSync("npx prisma generate", {
     cwd: projectRoot,
-    stdio: 'inherit',
+    stdio: "inherit",
   });
 };
 
@@ -105,7 +127,9 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
   await prisma.sports.deleteMany({ where: { id: SEED_SPORT.id } });
   await prisma.divisions.deleteMany({ where: { id: SEED_DIVISION.id } });
   await prisma.file.deleteMany({ where: { id: SEED_IMAGE.id } });
-  await prisma.file.deleteMany({ where: { id: { startsWith: CAMKA_UPLOAD_ID_PREFIX } } });
+  await prisma.file.deleteMany({
+    where: { id: { startsWith: CAMKA_UPLOAD_ID_PREFIX } },
+  });
   await prisma.sensitiveUserData.deleteMany({
     where: {
       OR: [
@@ -117,28 +141,25 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
   });
   await prisma.userData.deleteMany({
     where: {
-      OR: [
-        { id: { in: seedUserIds } },
-        { userName: { in: seedUserNames } },
-      ],
+      OR: [{ id: { in: seedUserIds } }, { userName: { in: seedUserNames } }],
     },
   });
   await prisma.authUser.deleteMany({
     where: {
-      OR: [
-        { id: { in: seedUserIds } },
-        { email: { in: seedUserEmails } },
-      ],
+      OR: [{ id: { in: seedUserIds } }, { email: { in: seedUserEmails } }],
     },
   });
 };
 
-const ensureSeedImage = async (): Promise<{ path: string; sizeBytes: number }> => {
+const ensureSeedImage = async (): Promise<{
+  path: string;
+  sizeBytes: number;
+}> => {
   await fs.mkdir(uploadsRoot, { recursive: true });
   const targetPath = path.join(uploadsRoot, SEED_IMAGE.filename);
   const pngBase64 =
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=';
-  const buffer = Buffer.from(pngBase64, 'base64');
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMAAWgmWQ0AAAAASUVORK5CYII=";
+  const buffer = Buffer.from(pngBase64, "base64");
   await fs.writeFile(targetPath, buffer);
   return { path: SEED_IMAGE.filename, sizeBytes: buffer.length };
 };
@@ -168,10 +189,16 @@ const listUploadImages = async (): Promise<UploadImageFile[]> => {
     });
   }
 
-  return files.sort((left, right) => left.originalName.localeCompare(right.originalName));
+  return files.sort((left, right) =>
+    left.originalName.localeCompare(right.originalName),
+  );
 };
 
-const buildSeedUsers = () => [SEED_USERS.host, SEED_USERS.participant, ...SEED_DEV_USERS];
+const buildSeedUsers = () => [
+  SEED_USERS.host,
+  SEED_USERS.participant,
+  ...SEED_DEV_USERS,
+];
 
 const createSensitiveUserRows = (now: Date) =>
   buildSeedUsers().map((user) => ({
@@ -182,9 +209,12 @@ const createSensitiveUserRows = (now: Date) =>
     updatedAt: now,
   }));
 
-const ensureCamkaUploads = async (prisma: PrismaClient, now: Date): Promise<void> => {
+const ensureCamkaUploads = async (
+  prisma: PrismaClient,
+  now: Date,
+): Promise<void> => {
   const existingCamka = await prisma.userData.findFirst({
-    where: { userName: { equals: SEED_CAMKA.userName, mode: 'insensitive' } },
+    where: { userName: { equals: SEED_CAMKA.userName, mode: "insensitive" } },
   });
   const camkaId = existingCamka?.id ?? SEED_CAMKA.id;
   const [existingAuth, existingSensitive, uploadFiles] = await Promise.all([
@@ -195,9 +225,16 @@ const ensureCamkaUploads = async (prisma: PrismaClient, now: Date): Promise<void
 
   const firstName = existingCamka?.firstName ?? SEED_CAMKA.firstName;
   const lastName = existingCamka?.lastName ?? SEED_CAMKA.lastName;
-  const displayName = [firstName, lastName].filter(Boolean).join(' ') || SEED_CAMKA.userName;
-  const email = (existingAuth?.email ?? existingSensitive?.email ?? SEED_CAMKA.email).toLowerCase();
-  const preservedUploadIds = (existingCamka?.uploadedImages ?? []).filter((id) => !id.startsWith(CAMKA_UPLOAD_ID_PREFIX));
+  const displayName =
+    [firstName, lastName].filter(Boolean).join(" ") || SEED_CAMKA.userName;
+  const email = (
+    existingAuth?.email ??
+    existingSensitive?.email ??
+    SEED_CAMKA.email
+  ).toLowerCase();
+  const preservedUploadIds = (existingCamka?.uploadedImages ?? []).filter(
+    (id) => !id.startsWith(CAMKA_UPLOAD_ID_PREFIX),
+  );
   const camkaUploadIds = uploadFiles.map((file) => file.id);
 
   if (!existingAuth) {
@@ -220,7 +257,9 @@ const ensureCamkaUploads = async (prisma: PrismaClient, now: Date): Promise<void
       data: {
         email,
         name: displayName,
-        emailVerifiedAt: (existingAuth as { emailVerifiedAt?: Date | null } | null)?.emailVerifiedAt ?? now,
+        emailVerifiedAt:
+          (existingAuth as { emailVerifiedAt?: Date | null } | null)
+            ?.emailVerifiedAt ?? now,
         updatedAt: now,
       },
     });
@@ -248,7 +287,8 @@ const ensureCamkaUploads = async (prisma: PrismaClient, now: Date): Promise<void
       firstName,
       lastName,
       userName: SEED_CAMKA.userName,
-      dateOfBirth: existingCamka?.dateOfBirth ?? new Date('1990-01-01T00:00:00Z'),
+      dateOfBirth:
+        existingCamka?.dateOfBirth ?? new Date("1990-01-01T00:00:00Z"),
       hasStripeAccount: existingCamka?.hasStripeAccount ?? false,
       teamIds: existingCamka?.teamIds ?? [],
       friendIds: existingCamka?.friendIds ?? [],
@@ -265,7 +305,7 @@ const ensureCamkaUploads = async (prisma: PrismaClient, now: Date): Promise<void
       firstName,
       lastName,
       userName: SEED_CAMKA.userName,
-      dateOfBirth: new Date('1990-01-01T00:00:00Z'),
+      dateOfBirth: new Date("1990-01-01T00:00:00Z"),
       hasStripeAccount: false,
       teamIds: [],
       friendIds: [],
@@ -305,7 +345,7 @@ const seed = async (): Promise<void> => {
 
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error('DATABASE_URL is not set');
+    throw new Error("DATABASE_URL is not set");
   }
   const adapter = new PrismaPg({ connectionString });
   const prisma = new PrismaClient({ adapter });
@@ -315,7 +355,11 @@ const seed = async (): Promise<void> => {
 
     const seedUsers = buildSeedUsers();
     const passwordHashes = new Map(
-      await Promise.all(seedUsers.map(async (user) => [user.id, await hashPassword(user.password)] as const)),
+      await Promise.all(
+        seedUsers.map(
+          async (user) => [user.id, await hashPassword(user.password)] as const,
+        ),
+      ),
     );
 
     const seedImage = await ensureSeedImage();
@@ -324,7 +368,7 @@ const seed = async (): Promise<void> => {
       data: seedUsers.map((user) => ({
         id: user.id,
         email: user.email.toLowerCase(),
-        passwordHash: passwordHashes.get(user.id) ?? '',
+        passwordHash: passwordHashes.get(user.id) ?? "",
         name: `${user.firstName} ${user.lastName}`,
         emailVerifiedAt: now,
         createdAt: now,
@@ -340,7 +384,7 @@ const seed = async (): Promise<void> => {
           firstName: SEED_USERS.host.firstName,
           lastName: SEED_USERS.host.lastName,
           userName: SEED_USERS.host.userName,
-          dateOfBirth: new Date('1990-01-01T00:00:00Z'),
+          dateOfBirth: new Date("1990-01-01T00:00:00Z"),
           hasStripeAccount: true,
           teamIds: [],
           friendIds: [],
@@ -357,14 +401,14 @@ const seed = async (): Promise<void> => {
           firstName: SEED_USERS.participant.firstName,
           lastName: SEED_USERS.participant.lastName,
           userName: SEED_USERS.participant.userName,
-          dateOfBirth: new Date('2000-01-01T00:00:00Z'),
+          dateOfBirth: new Date("2000-01-01T00:00:00Z"),
           hasStripeAccount: false,
           teamIds: [],
           friendIds: [],
           followingIds: [],
           friendRequestIds: [],
           friendRequestSentIds: [],
-          uploadedImages: [],
+          uploadedImages: [SEED_IMAGE.id],
           profileImageId: null,
           createdAt: now,
           updatedAt: now,
@@ -478,7 +522,7 @@ const seed = async (): Promise<void> => {
     const baseEventData = {
       start: new Date(SEED_START),
       end: new Date(SEED_END),
-      description: 'Seeded event for E2E tests',
+      description: "Seeded event for E2E tests",
       divisions: [SEED_DIVISION.id],
       location: SEED_ORG.location,
       rating: 5,
@@ -502,7 +546,7 @@ const seed = async (): Promise<void> => {
       sportId: SEED_SPORT.id,
       organizationId: SEED_ORG.id,
       autoCancellation: false,
-      eventType: 'EVENT' as const,
+      eventType: "EVENT" as const,
       officialIds: [],
       allowPaymentPlans: false,
       installmentCount: 0,
@@ -514,21 +558,28 @@ const seed = async (): Promise<void> => {
       updatedAt: now,
     };
 
+    const upcomingEventWindow = buildUpcomingEventWindow();
+    const discoverEventData = {
+      ...baseEventData,
+      start: upcomingEventWindow.start,
+      end: upcomingEventWindow.end,
+    };
+
     await prisma.events.createMany({
       data: [
         {
-          ...baseEventData,
+          ...discoverEventData,
           id: SEED_EVENTS.free.id,
           name: SEED_EVENTS.free.name,
           price: SEED_EVENTS.free.price,
-          state: 'PUBLISHED',
+          state: "PUBLISHED",
         },
         {
-          ...baseEventData,
+          ...discoverEventData,
           id: SEED_EVENTS.paid.id,
           name: SEED_EVENTS.paid.name,
           price: SEED_EVENTS.paid.price,
-          state: 'PUBLISHED',
+          state: "PUBLISHED",
         },
       ],
     });
@@ -548,7 +599,7 @@ const seed = async (): Promise<void> => {
         pending: [],
         teamSize: 6,
         profileImageId: null,
-        sport: 'Volleyball',
+        sport: SEED_SPORT.name,
         createdAt: now,
         updatedAt: now,
       })),
@@ -560,10 +611,10 @@ const seed = async (): Promise<void> => {
           ...baseEventData,
           id: SEED_EVENTS.scheduler.tournament8.id,
           name: SEED_EVENTS.scheduler.tournament8.name,
-          eventType: 'TOURNAMENT',
+          eventType: "TOURNAMENT",
           teamIds: SEED_TEAM_IDS.slice(0, 8),
           price: 0,
-          state: 'PUBLISHED',
+          state: "PUBLISHED",
           winnerSetCount: 2,
           loserSetCount: 1,
           winnerBracketPointsToVictory: [21],
@@ -575,10 +626,10 @@ const seed = async (): Promise<void> => {
           ...baseEventData,
           id: SEED_EVENTS.scheduler.tournament6.id,
           name: SEED_EVENTS.scheduler.tournament6.name,
-          eventType: 'TOURNAMENT',
+          eventType: "TOURNAMENT",
           teamIds: SEED_TEAM_IDS.slice(0, 6),
           price: 0,
-          state: 'PUBLISHED',
+          state: "PUBLISHED",
           winnerSetCount: 2,
           loserSetCount: 1,
           winnerBracketPointsToVictory: [21],
@@ -590,10 +641,10 @@ const seed = async (): Promise<void> => {
           ...baseEventData,
           id: SEED_EVENTS.scheduler.tournamentDoubleElim.id,
           name: SEED_EVENTS.scheduler.tournamentDoubleElim.name,
-          eventType: 'TOURNAMENT',
+          eventType: "TOURNAMENT",
           teamIds: SEED_TEAM_IDS.slice(0, 8),
           price: 0,
-          state: 'PUBLISHED',
+          state: "PUBLISHED",
           winnerSetCount: 2,
           loserSetCount: 1,
           winnerBracketPointsToVictory: [21],
@@ -605,27 +656,27 @@ const seed = async (): Promise<void> => {
           ...baseEventData,
           id: SEED_EVENTS.scheduler.leagueNoSlots.id,
           name: SEED_EVENTS.scheduler.leagueNoSlots.name,
-          eventType: 'LEAGUE',
+          eventType: "LEAGUE",
           teamIds: SEED_TEAM_IDS.slice(0, 4),
           timeSlotIds: [],
           gamesPerOpponent: 1,
           includePlayoffs: false,
           price: 0,
-          state: 'PUBLISHED',
+          state: "PUBLISHED",
         },
         {
           ...baseEventData,
           id: SEED_EVENTS.scheduler.leagueSameDay.id,
           name: SEED_EVENTS.scheduler.leagueSameDay.name,
-          eventType: 'LEAGUE',
+          eventType: "LEAGUE",
           teamIds: SEED_TEAM_IDS.slice(0, 4),
-          start: new Date('2026-04-01T10:00:00Z'),
-          end: new Date('2026-04-01T10:00:00Z'),
+          start: new Date("2026-04-01T10:00:00Z"),
+          end: new Date("2026-04-01T10:00:00Z"),
           timeSlotIds: [SEED_RENTAL_SLOT.id],
           gamesPerOpponent: 1,
           includePlayoffs: false,
           price: 0,
-          state: 'PUBLISHED',
+          state: "PUBLISHED",
         },
       ],
     });

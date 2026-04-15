@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import {
   buildProfileCompletionState,
@@ -42,15 +43,6 @@ const getEnv = (key: string): string => {
   const value = process.env[key];
   if (!value) throw new Error(`${key} is not set`);
   return value;
-};
-
-const getRequestOrigin = (req: NextRequest): string => {
-  const proto = (req.headers.get('x-forwarded-proto') || '').split(',')[0]?.trim();
-  const host =
-    (req.headers.get('x-forwarded-host') || '').split(',')[0]?.trim() ||
-    (req.headers.get('host') || '').trim();
-  if (proto && host) return `${proto}://${host}`;
-  return req.nextUrl.origin;
 };
 
 const safeNextPath = (value: string | null): string => {
@@ -273,7 +265,11 @@ export async function GET(req: NextRequest) {
     return res;
   }
 
-  const session: SessionToken = { userId: authUser.id, isAdmin: false };
+  const session: SessionToken = {
+    userId: authUser.id,
+    isAdmin: false,
+    sessionVersion: authUser.sessionVersion ?? 0,
+  };
   const token = signSessionToken(session);
   const profileCompletionState = buildProfileCompletionState({ authUser, profile });
   const destinationUrl = new URL(

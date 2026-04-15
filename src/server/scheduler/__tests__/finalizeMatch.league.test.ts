@@ -59,7 +59,7 @@ const buildWeeklySlot = (dayOfWeek: number) =>
   });
 
 describe('finalizeMatch (league)', () => {
-  it('does not unschedule future regular-season matches when a match is finalized', () => {
+  it('reschedules future regular-season matches around a locked finalized match', () => {
     const division = buildDivision();
     const field = buildField(division);
     const teams = buildTeams(4, division);
@@ -95,28 +95,78 @@ describe('finalizeMatch (league)', () => {
 
     const ordered = [...scheduled.matches].sort((a, b) => (a.matchId ?? 0) - (b.matchId ?? 0));
     const first = ordered[0];
+    const second = ordered[1];
     expect(first.team1).not.toBeNull();
     expect(first.team2).not.toBeNull();
+    expect(second).toBeTruthy();
+    if (!second) {
+      return;
+    }
 
-    // Mark the match as completed.
+    // Match finalization in the route happens after check-in, so the completed match is already locked.
+    first.locked = true;
     first.setResults = [1, 1, 2];
     first.team1Points = [21, 21, 15];
     first.team2Points = [10, 18, 21];
-
-    const team1 = first.team1 as Team;
-    const team2 = first.team2 as Team;
-    const beforeFields = ordered.map((match) => match.field?.id ?? null);
+    first.end = new Date(first.end.getTime() + 30 * 60 * 1000);
+    const originalSecondStart = second.start.getTime();
 
     finalizeMatch(league, first, context, new Date(first.end));
 
-    const afterFields = Object.values(league.matches)
-      .sort((a, b) => (a.matchId ?? 0) - (b.matchId ?? 0))
-      .map((match) => match.field?.id ?? null);
+    expect(second.start.getTime()).toBeGreaterThanOrEqual(first.end.getTime());
+    expect(second.start.getTime()).toBeGreaterThan(originalSecondStart);
+  });
 
-    expect(afterFields).toEqual(beforeFields);
-    // Finalization should not reshuffle already scheduled fields.
-    expect(team1.id).not.toEqual('');
-    expect(team2.id).not.toEqual('');
+  it('preserves locked downstream regular-season matches when a prior league match runs long', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const start = new Date(2026, 0, 1, 9, 0, 0);
+    const end = new Date(2026, 0, 1, 17, 0, 0);
+
+    const league = new League({
+      id: 'league_locked_downstream',
+      name: 'Locked Downstream League',
+      start,
+      end,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      officials: [],
+      fields: { [field.id]: field },
+      timeSlots: [buildWeeklySlot(start.getDay())],
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      restTimeMinutes: 0,
+      usesSets: true,
+      setDurationMinutes: 20,
+      setsPerMatch: 3,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const ordered = [...scheduled.matches].sort((a, b) => (a.matchId ?? 0) - (b.matchId ?? 0));
+    const first = ordered[0];
+    const second = ordered[1];
+    expect(second).toBeTruthy();
+    if (!second) {
+      return;
+    }
+
+    first.locked = true;
+    second.locked = true;
+    first.setResults = [1, 1, 2];
+    first.team1Points = [21, 21, 15];
+    first.team2Points = [10, 18, 21];
+    first.end = new Date(first.end.getTime() + 30 * 60 * 1000);
+    const originalSecondStart = second.start.getTime();
+
+    finalizeMatch(league, first, context, new Date(first.end));
+
+    expect(second.start.getTime()).toBe(originalSecondStart);
   });
 
   it('does not auto-seed playoff teams when regular-season league matches are finalized', () => {
@@ -294,6 +344,7 @@ describe('finalizeMatch (league)', () => {
     playoffMatch.setResults = [1];
     playoffMatch.team1Points = [21];
     playoffMatch.team2Points = [19];
+    playoffMatch.locked = true;
 
     expect(() => finalizeMatch(league, playoffMatch, context, new Date(playoffMatch.end))).not.toThrow();
   });

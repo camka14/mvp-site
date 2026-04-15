@@ -283,7 +283,7 @@ export type EventRegistrationsGroupByOutputType = {
   _max: EventRegistrationsMaxAggregateOutputType | null
 }
 
-type GetEventRegistrationsGroupByPayload<T extends EventRegistrationsGroupByArgs> = Prisma.PrismaPromise<
+export type GetEventRegistrationsGroupByPayload<T extends EventRegistrationsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<EventRegistrationsGroupByOutputType, T['by']> &
       {
@@ -1374,6 +1374,11 @@ export type EventRegistrationsFindManyArgs<ExtArgs extends runtime.Types.Extensi
    * Skip the first `n` EventRegistrations.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of EventRegistrations.
+   */
   distinct?: Prisma.EventRegistrationsScalarFieldEnum | Prisma.EventRegistrationsScalarFieldEnum[]
 }
 

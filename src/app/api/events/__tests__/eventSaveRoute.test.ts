@@ -25,6 +25,7 @@ const saveMatchesMock = jest.fn();
 const saveEventScheduleMock = jest.fn();
 const notifySocialAudienceOfEventCreationMock = jest.fn();
 const isEventFieldConflictErrorMock = jest.fn(() => false);
+const isLeaguePlayoffTeamCountValidationErrorMock = jest.fn(() => false);
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -35,6 +36,7 @@ jest.mock('@/server/repositories/events', () => ({
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
   saveEventSchedule: (...args: any[]) => saveEventScheduleMock(...args),
   isEventFieldConflictError: (...args: any[]) => isEventFieldConflictErrorMock(...args),
+  isLeaguePlayoffTeamCountValidationError: (...args: any[]) => isLeaguePlayoffTeamCountValidationErrorMock(...args),
 }));
 jest.mock('@/server/eventCreationNotifications', () => ({
   notifySocialAudienceOfEventCreation: (...args: any[]) => notifySocialAudienceOfEventCreationMock(...args),
@@ -57,6 +59,7 @@ describe('event save route', () => {
     );
     notifySocialAudienceOfEventCreationMock.mockResolvedValue(undefined);
     isEventFieldConflictErrorMock.mockReturnValue(false);
+    isLeaguePlayoffTeamCountValidationErrorMock.mockReturnValue(false);
   });
 
   it('creates an event and returns divisionFieldIds for the saved response', async () => {

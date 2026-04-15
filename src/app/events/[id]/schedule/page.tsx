@@ -33,6 +33,7 @@ import { calculateMvpAndStripeFees } from '@/lib/billingFees';
 import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
+import { formatStandingsDelta, formatStandingsPoints } from '@/lib/standingsDisplay';
 import { toEventPayload } from '@/types';
 import { formatBillAmount } from '@/types';
 import type { Event, EventState, Field, LeagueConfig, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
@@ -7822,10 +7823,6 @@ function EventScheduleContent() {
     );
   };
 
-  const formatPoints = (value: number): string => {
-    return Number.isInteger(value) ? value.toString() : value.toFixed(2);
-  };
-
   if (authLoading || !eventId) {
     return <Loading fullScreen text="Loading schedule..." />;
   }
@@ -8989,14 +8986,14 @@ function EventScheduleContent() {
                                           size="xs"
                                         />
                                         <Text size="xs" c={deltaColor}>
-                                          ÃƒÅ½Ã¢â‚¬Â {formatPoints(points.pointsDelta)}
+                                          {formatStandingsDelta(points.pointsDelta)}
                                         </Text>
                                       </Group>
                                     ) : (
                                       <Group justify="flex-end" gap="xs" wrap="nowrap">
-                                        <Text size="sm" fw={600}>{formatPoints(points.finalPoints)}</Text>
+                                        <Text size="sm" fw={600}>{formatStandingsPoints(points.finalPoints)}</Text>
                                         <Text size="xs" c={deltaColor}>
-                                          ÃƒÅ½Ã¢â‚¬Â {formatPoints(points.pointsDelta)}
+                                          {formatStandingsDelta(points.pointsDelta)}
                                         </Text>
                                       </Group>
                                     )}

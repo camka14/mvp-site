@@ -251,7 +251,7 @@ export type BoldSignWebhookEventsGroupByOutputType = {
   _max: BoldSignWebhookEventsMaxAggregateOutputType | null
 }
 
-type GetBoldSignWebhookEventsGroupByPayload<T extends BoldSignWebhookEventsGroupByArgs> = Prisma.PrismaPromise<
+export type GetBoldSignWebhookEventsGroupByPayload<T extends BoldSignWebhookEventsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<BoldSignWebhookEventsGroupByOutputType, T['by']> &
       {
@@ -1244,6 +1244,11 @@ export type BoldSignWebhookEventsFindManyArgs<ExtArgs extends runtime.Types.Exte
    * Skip the first `n` BoldSignWebhookEvents.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of BoldSignWebhookEvents.
+   */
   distinct?: Prisma.BoldSignWebhookEventsScalarFieldEnum | Prisma.BoldSignWebhookEventsScalarFieldEnum[]
 }
 

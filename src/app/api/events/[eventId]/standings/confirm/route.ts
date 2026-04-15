@@ -4,7 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
 import { acquireEventLock } from '@/server/repositories/locks';
-import { loadEventWithRelations, saveMatches, saveTeamRecords } from '@/server/repositories/events';
+import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { applyLeagueDivisionPlayoffReassignment, getLeagueDivisionById } from '@/server/scheduler/standings';
 import {
   buildDivisionStandingsResponse,
@@ -109,7 +109,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
             ),
           );
           await saveMatches(eventId, Object.values(league.matches), tx);
-          await saveTeamRecords(Object.values(league.teams), tx);
         }
       }
 

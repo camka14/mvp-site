@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 
 const STATE_COOKIE = 'google_oauth_state';
 const VERIFIER_COOKIE = 'google_oauth_verifier';
@@ -20,15 +21,6 @@ const getEnv = (key: string): string => {
   const value = process.env[key];
   if (!value) throw new Error(`${key} is not set`);
   return value;
-};
-
-const getRequestOrigin = (req: NextRequest): string => {
-  const proto = (req.headers.get('x-forwarded-proto') || '').split(',')[0]?.trim();
-  const host =
-    (req.headers.get('x-forwarded-host') || '').split(',')[0]?.trim() ||
-    (req.headers.get('host') || '').trim();
-  if (proto && host) return `${proto}://${host}`;
-  return req.nextUrl.origin;
 };
 
 const safeNextPath = (value: string | null): string => {

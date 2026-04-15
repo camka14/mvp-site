@@ -20,8 +20,18 @@ export type AuthUserModel = runtime.Types.Result.DefaultSelection<Prisma.$AuthUs
 
 export type AggregateAuthUser = {
   _count: AuthUserCountAggregateOutputType | null
+  _avg: AuthUserAvgAggregateOutputType | null
+  _sum: AuthUserSumAggregateOutputType | null
   _min: AuthUserMinAggregateOutputType | null
   _max: AuthUserMaxAggregateOutputType | null
+}
+
+export type AuthUserAvgAggregateOutputType = {
+  sessionVersion: number | null
+}
+
+export type AuthUserSumAggregateOutputType = {
+  sessionVersion: number | null
 }
 
 export type AuthUserMinAggregateOutputType = {
@@ -33,6 +43,7 @@ export type AuthUserMinAggregateOutputType = {
   appleSubject: string | null
   emailVerifiedAt: Date | null
   lastLogin: Date | null
+  sessionVersion: number | null
   createdAt: Date | null
   updatedAt: Date | null
   disabledAt: Date | null
@@ -49,6 +60,7 @@ export type AuthUserMaxAggregateOutputType = {
   appleSubject: string | null
   emailVerifiedAt: Date | null
   lastLogin: Date | null
+  sessionVersion: number | null
   createdAt: Date | null
   updatedAt: Date | null
   disabledAt: Date | null
@@ -65,6 +77,7 @@ export type AuthUserCountAggregateOutputType = {
   appleSubject: number
   emailVerifiedAt: number
   lastLogin: number
+  sessionVersion: number
   createdAt: number
   updatedAt: number
   disabledAt: number
@@ -73,6 +86,14 @@ export type AuthUserCountAggregateOutputType = {
   _all: number
 }
 
+
+export type AuthUserAvgAggregateInputType = {
+  sessionVersion?: true
+}
+
+export type AuthUserSumAggregateInputType = {
+  sessionVersion?: true
+}
 
 export type AuthUserMinAggregateInputType = {
   id?: true
@@ -83,6 +104,7 @@ export type AuthUserMinAggregateInputType = {
   appleSubject?: true
   emailVerifiedAt?: true
   lastLogin?: true
+  sessionVersion?: true
   createdAt?: true
   updatedAt?: true
   disabledAt?: true
@@ -99,6 +121,7 @@ export type AuthUserMaxAggregateInputType = {
   appleSubject?: true
   emailVerifiedAt?: true
   lastLogin?: true
+  sessionVersion?: true
   createdAt?: true
   updatedAt?: true
   disabledAt?: true
@@ -115,6 +138,7 @@ export type AuthUserCountAggregateInputType = {
   appleSubject?: true
   emailVerifiedAt?: true
   lastLogin?: true
+  sessionVersion?: true
   createdAt?: true
   updatedAt?: true
   disabledAt?: true
@@ -161,6 +185,18 @@ export type AuthUserAggregateArgs<ExtArgs extends runtime.Types.Extensions.Inter
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    * 
+   * Select which fields to average
+  **/
+  _avg?: AuthUserAvgAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
+   * Select which fields to sum
+  **/
+  _sum?: AuthUserSumAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   * 
    * Select which fields to find the minimum value
   **/
   _min?: AuthUserMinAggregateInputType
@@ -191,6 +227,8 @@ export type AuthUserGroupByArgs<ExtArgs extends runtime.Types.Extensions.Interna
   take?: number
   skip?: number
   _count?: AuthUserCountAggregateInputType | true
+  _avg?: AuthUserAvgAggregateInputType
+  _sum?: AuthUserSumAggregateInputType
   _min?: AuthUserMinAggregateInputType
   _max?: AuthUserMaxAggregateInputType
 }
@@ -204,17 +242,20 @@ export type AuthUserGroupByOutputType = {
   appleSubject: string | null
   emailVerifiedAt: Date | null
   lastLogin: Date | null
+  sessionVersion: number
   createdAt: Date | null
   updatedAt: Date | null
   disabledAt: Date | null
   disabledByUserId: string | null
   disabledReason: string | null
   _count: AuthUserCountAggregateOutputType | null
+  _avg: AuthUserAvgAggregateOutputType | null
+  _sum: AuthUserSumAggregateOutputType | null
   _min: AuthUserMinAggregateOutputType | null
   _max: AuthUserMaxAggregateOutputType | null
 }
 
-type GetAuthUserGroupByPayload<T extends AuthUserGroupByArgs> = Prisma.PrismaPromise<
+export type GetAuthUserGroupByPayload<T extends AuthUserGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<AuthUserGroupByOutputType, T['by']> &
       {
@@ -241,6 +282,7 @@ export type AuthUserWhereInput = {
   appleSubject?: Prisma.StringNullableFilter<"AuthUser"> | string | null
   emailVerifiedAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   lastLogin?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
+  sessionVersion?: Prisma.IntFilter<"AuthUser"> | number
   createdAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   disabledAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
@@ -257,6 +299,7 @@ export type AuthUserOrderByWithRelationInput = {
   appleSubject?: Prisma.SortOrderInput | Prisma.SortOrder
   emailVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   lastLogin?: Prisma.SortOrderInput | Prisma.SortOrder
+  sessionVersion?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   disabledAt?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -276,6 +319,7 @@ export type AuthUserWhereUniqueInput = Prisma.AtLeast<{
   name?: Prisma.StringNullableFilter<"AuthUser"> | string | null
   emailVerifiedAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   lastLogin?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
+  sessionVersion?: Prisma.IntFilter<"AuthUser"> | number
   createdAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
   disabledAt?: Prisma.DateTimeNullableFilter<"AuthUser"> | Date | string | null
@@ -292,14 +336,17 @@ export type AuthUserOrderByWithAggregationInput = {
   appleSubject?: Prisma.SortOrderInput | Prisma.SortOrder
   emailVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   lastLogin?: Prisma.SortOrderInput | Prisma.SortOrder
+  sessionVersion?: Prisma.SortOrder
   createdAt?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   disabledAt?: Prisma.SortOrderInput | Prisma.SortOrder
   disabledByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
   disabledReason?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.AuthUserCountOrderByAggregateInput
+  _avg?: Prisma.AuthUserAvgOrderByAggregateInput
   _max?: Prisma.AuthUserMaxOrderByAggregateInput
   _min?: Prisma.AuthUserMinOrderByAggregateInput
+  _sum?: Prisma.AuthUserSumOrderByAggregateInput
 }
 
 export type AuthUserScalarWhereWithAggregatesInput = {
@@ -314,6 +361,7 @@ export type AuthUserScalarWhereWithAggregatesInput = {
   appleSubject?: Prisma.StringNullableWithAggregatesFilter<"AuthUser"> | string | null
   emailVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
   lastLogin?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
+  sessionVersion?: Prisma.IntWithAggregatesFilter<"AuthUser"> | number
   createdAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
   updatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
   disabledAt?: Prisma.DateTimeNullableWithAggregatesFilter<"AuthUser"> | Date | string | null
@@ -330,6 +378,7 @@ export type AuthUserCreateInput = {
   appleSubject?: string | null
   emailVerifiedAt?: Date | string | null
   lastLogin?: Date | string | null
+  sessionVersion?: number
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   disabledAt?: Date | string | null
@@ -346,6 +395,7 @@ export type AuthUserUncheckedCreateInput = {
   appleSubject?: string | null
   emailVerifiedAt?: Date | string | null
   lastLogin?: Date | string | null
+  sessionVersion?: number
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   disabledAt?: Date | string | null
@@ -362,6 +412,7 @@ export type AuthUserUpdateInput = {
   appleSubject?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   emailVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   lastLogin?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sessionVersion?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   disabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -378,6 +429,7 @@ export type AuthUserUncheckedUpdateInput = {
   appleSubject?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   emailVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   lastLogin?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sessionVersion?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   disabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -394,6 +446,7 @@ export type AuthUserCreateManyInput = {
   appleSubject?: string | null
   emailVerifiedAt?: Date | string | null
   lastLogin?: Date | string | null
+  sessionVersion?: number
   createdAt?: Date | string | null
   updatedAt?: Date | string | null
   disabledAt?: Date | string | null
@@ -410,6 +463,7 @@ export type AuthUserUpdateManyMutationInput = {
   appleSubject?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   emailVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   lastLogin?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sessionVersion?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   disabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -426,6 +480,7 @@ export type AuthUserUncheckedUpdateManyInput = {
   appleSubject?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   emailVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   lastLogin?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  sessionVersion?: Prisma.IntFieldUpdateOperationsInput | number
   createdAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   updatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   disabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -442,11 +497,16 @@ export type AuthUserCountOrderByAggregateInput = {
   appleSubject?: Prisma.SortOrder
   emailVerifiedAt?: Prisma.SortOrder
   lastLogin?: Prisma.SortOrder
+  sessionVersion?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   disabledAt?: Prisma.SortOrder
   disabledByUserId?: Prisma.SortOrder
   disabledReason?: Prisma.SortOrder
+}
+
+export type AuthUserAvgOrderByAggregateInput = {
+  sessionVersion?: Prisma.SortOrder
 }
 
 export type AuthUserMaxOrderByAggregateInput = {
@@ -458,6 +518,7 @@ export type AuthUserMaxOrderByAggregateInput = {
   appleSubject?: Prisma.SortOrder
   emailVerifiedAt?: Prisma.SortOrder
   lastLogin?: Prisma.SortOrder
+  sessionVersion?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   disabledAt?: Prisma.SortOrder
@@ -474,11 +535,16 @@ export type AuthUserMinOrderByAggregateInput = {
   appleSubject?: Prisma.SortOrder
   emailVerifiedAt?: Prisma.SortOrder
   lastLogin?: Prisma.SortOrder
+  sessionVersion?: Prisma.SortOrder
   createdAt?: Prisma.SortOrder
   updatedAt?: Prisma.SortOrder
   disabledAt?: Prisma.SortOrder
   disabledByUserId?: Prisma.SortOrder
   disabledReason?: Prisma.SortOrder
+}
+
+export type AuthUserSumOrderByAggregateInput = {
+  sessionVersion?: Prisma.SortOrder
 }
 
 
@@ -492,6 +558,7 @@ export type AuthUserSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   appleSubject?: boolean
   emailVerifiedAt?: boolean
   lastLogin?: boolean
+  sessionVersion?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   disabledAt?: boolean
@@ -508,6 +575,7 @@ export type AuthUserSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   appleSubject?: boolean
   emailVerifiedAt?: boolean
   lastLogin?: boolean
+  sessionVersion?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   disabledAt?: boolean
@@ -524,6 +592,7 @@ export type AuthUserSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   appleSubject?: boolean
   emailVerifiedAt?: boolean
   lastLogin?: boolean
+  sessionVersion?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   disabledAt?: boolean
@@ -540,6 +609,7 @@ export type AuthUserSelectScalar = {
   appleSubject?: boolean
   emailVerifiedAt?: boolean
   lastLogin?: boolean
+  sessionVersion?: boolean
   createdAt?: boolean
   updatedAt?: boolean
   disabledAt?: boolean
@@ -547,7 +617,7 @@ export type AuthUserSelectScalar = {
   disabledReason?: boolean
 }
 
-export type AuthUserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "googleSubject" | "passwordHash" | "name" | "appleSubject" | "emailVerifiedAt" | "lastLogin" | "createdAt" | "updatedAt" | "disabledAt" | "disabledByUserId" | "disabledReason", ExtArgs["result"]["authUser"]>
+export type AuthUserOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "email" | "googleSubject" | "passwordHash" | "name" | "appleSubject" | "emailVerifiedAt" | "lastLogin" | "sessionVersion" | "createdAt" | "updatedAt" | "disabledAt" | "disabledByUserId" | "disabledReason", ExtArgs["result"]["authUser"]>
 
 export type $AuthUserPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "AuthUser"
@@ -561,6 +631,7 @@ export type $AuthUserPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     appleSubject: string | null
     emailVerifiedAt: Date | null
     lastLogin: Date | null
+    sessionVersion: number
     createdAt: Date | null
     updatedAt: Date | null
     disabledAt: Date | null
@@ -997,6 +1068,7 @@ export interface AuthUserFieldRefs {
   readonly appleSubject: Prisma.FieldRef<"AuthUser", 'String'>
   readonly emailVerifiedAt: Prisma.FieldRef<"AuthUser", 'DateTime'>
   readonly lastLogin: Prisma.FieldRef<"AuthUser", 'DateTime'>
+  readonly sessionVersion: Prisma.FieldRef<"AuthUser", 'Int'>
   readonly createdAt: Prisma.FieldRef<"AuthUser", 'DateTime'>
   readonly updatedAt: Prisma.FieldRef<"AuthUser", 'DateTime'>
   readonly disabledAt: Prisma.FieldRef<"AuthUser", 'DateTime'>
@@ -1178,6 +1250,11 @@ export type AuthUserFindManyArgs<ExtArgs extends runtime.Types.Extensions.Intern
    * Skip the first `n` AuthUsers.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of AuthUsers.
+   */
   distinct?: Prisma.AuthUserScalarFieldEnum | Prisma.AuthUserScalarFieldEnum[]
 }
 

@@ -88,7 +88,11 @@ export async function POST(req: NextRequest) {
   await prisma.authUser.update({ where: { id: authUser.id }, data: { lastLogin: now, updatedAt: now } });
   const profile = await prisma.userData.findUnique({ where: { id: authUser.id } });
 
-  const session: SessionToken = { userId: authUser.id, isAdmin: false };
+  const session: SessionToken = {
+    userId: authUser.id,
+    isAdmin: false,
+    sessionVersion: authUser.sessionVersion ?? 0,
+  };
   const token = signSessionToken(session);
   const res = NextResponse.json(
     {

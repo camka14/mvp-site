@@ -63,7 +63,7 @@ const parseDateValue = (value: unknown): Date | null => {
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const session = getOptionalSession(_req);
+  const session = await getOptionalSession(_req);
   const shouldExposeCurrentUserFields = Boolean(session?.isAdmin || session?.userId === id);
   const user = await prisma.userData.findUnique({
     where: { id },

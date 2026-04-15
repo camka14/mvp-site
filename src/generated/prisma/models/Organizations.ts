@@ -253,7 +253,7 @@ export type OrganizationsGroupByOutputType = {
   _max: OrganizationsMaxAggregateOutputType | null
 }
 
-type GetOrganizationsGroupByPayload<T extends OrganizationsGroupByArgs> = Prisma.PrismaPromise<
+export type GetOrganizationsGroupByPayload<T extends OrganizationsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<OrganizationsGroupByOutputType, T['by']> &
       {
@@ -1447,6 +1447,11 @@ export type OrganizationsFindManyArgs<ExtArgs extends runtime.Types.Extensions.I
    * Skip the first `n` Organizations.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Organizations.
+   */
   distinct?: Prisma.OrganizationsScalarFieldEnum | Prisma.OrganizationsScalarFieldEnum[]
 }
 

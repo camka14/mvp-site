@@ -6,6 +6,7 @@ import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAcco
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
   deleteMatchesByEvent,
+  isLeaguePlayoffTeamCountValidationError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
   saveEventSchedule,
@@ -1041,7 +1042,7 @@ const getDivisionDetailsForEvent = async (
         : (typeof eventDefaults?.maxParticipants === 'number' ? eventDefaults.maxParticipants : null),
       playoffTeamCount: typeof row?.playoffTeamCount === 'number'
         ? row.playoffTeamCount
-        : (typeof eventDefaults?.playoffTeamCount === 'number' ? eventDefaults.playoffTeamCount : null),
+        : null,
       playoffPlacementDivisionIds: kind === 'PLAYOFF' ? [] : normalizePlacementDivisionIds((row as any)?.playoffPlacementDivisionIds, eventId),
       standingsOverrides: kind === 'PLAYOFF' ? null : standingsOverrides,
       standingsConfirmedAt: kind === 'PLAYOFF' ? null : standingsConfirmedAt,
@@ -2167,6 +2168,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           eventId,
           divisionIds: nextDivisionKeys,
           fieldIds: nextFieldIds,
+          includePlayoffs: Boolean(data.includePlayoffs ?? existing.includePlayoffs),
           singleDivision: nextSingleDivision,
           sportId: (data.sportId ?? existing.sportId ?? null) as string | null,
           referenceDate: (data.start ?? existing.start ?? null) as Date | null,
@@ -2256,6 +2258,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     }
     if (isDivisionAssignmentValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid division team assignments';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isLeaguePlayoffTeamCountValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid playoff team count';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Update event failed', error);

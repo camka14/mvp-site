@@ -6,6 +6,7 @@ import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { isAuthUserSuspended } from '@/server/authState';
+import { isSessionTokenCurrent } from '@/server/authSessions';
 
 export const dynamic = 'force-dynamic';
 
@@ -236,14 +237,14 @@ const resolveSessionContext = async (
   const [authUser, user] = await Promise.all([
     prisma.authUser.findUnique({
       where: { id: userId },
-      select: { disabledAt: true },
+      select: { disabledAt: true, sessionVersion: true },
     }),
     prisma.userData.findUnique({
       where: { id: userId },
       select: { hiddenEventIds: true },
     }),
   ]);
-  if (!authUser || isAuthUserSuspended(authUser)) {
+  if (!authUser || isAuthUserSuspended(authUser) || !isSessionTokenCurrent(session, authUser.sessionVersion)) {
     return null;
   }
 

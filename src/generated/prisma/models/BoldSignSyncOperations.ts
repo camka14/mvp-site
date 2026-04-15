@@ -314,7 +314,7 @@ export type BoldSignSyncOperationsGroupByOutputType = {
   _max: BoldSignSyncOperationsMaxAggregateOutputType | null
 }
 
-type GetBoldSignSyncOperationsGroupByPayload<T extends BoldSignSyncOperationsGroupByArgs> = Prisma.PrismaPromise<
+export type GetBoldSignSyncOperationsGroupByPayload<T extends BoldSignSyncOperationsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<BoldSignSyncOperationsGroupByOutputType, T['by']> &
       {
@@ -1504,6 +1504,11 @@ export type BoldSignSyncOperationsFindManyArgs<ExtArgs extends runtime.Types.Ext
    * Skip the first `n` BoldSignSyncOperations.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of BoldSignSyncOperations.
+   */
   distinct?: Prisma.BoldSignSyncOperationsScalarFieldEnum | Prisma.BoldSignSyncOperationsScalarFieldEnum[]
 }
 

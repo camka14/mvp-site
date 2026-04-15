@@ -77,6 +77,7 @@ describe('social routes', () => {
       followers: [{ id: 'user_4' }],
       incomingFriendRequests: [{ id: 'user_5' }],
       outgoingFriendRequests: [{ id: 'user_6' }],
+      blocked: [],
     });
 
     const response = await socialGet(new NextRequest('http://localhost/api/users/social'));

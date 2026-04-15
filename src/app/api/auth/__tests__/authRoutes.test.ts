@@ -32,6 +32,10 @@ const authServerMock = {
 
 const requireSessionMock = jest.fn();
 const getRequestOriginMock = jest.fn();
+const authSessionsMock = {
+  revokeAuthUserSessions: jest.fn(),
+  isSessionTokenCurrent: jest.fn(),
+};
 const authEmailVerificationMock = {
   isInitialEmailVerificationAvailable: jest.fn(),
   sendInitialEmailVerification: jest.fn(),
@@ -41,6 +45,7 @@ jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/authServer', () => authServerMock);
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/lib/requestOrigin', () => ({ getRequestOrigin: (...args: any[]) => getRequestOriginMock(...args) }));
+jest.mock('@/server/authSessions', () => authSessionsMock);
 jest.mock('@/server/authEmailVerification', () => ({
   isInitialEmailVerificationAvailable: () => authEmailVerificationMock.isInitialEmailVerificationAvailable(),
   sendInitialEmailVerification: (...args: any[]) => authEmailVerificationMock.sendInitialEmailVerification(...args),
@@ -73,6 +78,8 @@ describe('auth routes', () => {
     authServerMock.verifyPassword.mockResolvedValue(true);
     authServerMock.signSessionToken.mockReturnValue('signed-token');
     getRequestOriginMock.mockReturnValue('http://localhost');
+    authSessionsMock.revokeAuthUserSessions.mockResolvedValue(1);
+    authSessionsMock.isSessionTokenCurrent.mockReturnValue(true);
     authEmailVerificationMock.isInitialEmailVerificationAvailable.mockReturnValue(true);
     authEmailVerificationMock.sendInitialEmailVerification.mockResolvedValue({ sent: true });
   });
@@ -459,7 +466,12 @@ describe('auth routes', () => {
 
     it('returns session and refreshes token', async () => {
       authServerMock.getTokenFromRequest.mockReturnValue('token');
-      authServerMock.verifySessionToken.mockReturnValue({ userId: 'user_1', isAdmin: false });
+      authServerMock.verifySessionToken.mockReturnValue({
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 0,
+        issuedAtSeconds: 1,
+      });
       authServerMock.signSessionToken.mockReturnValue('refreshed-token');
 
       prismaMock.authUser.findUnique.mockResolvedValue({
@@ -483,7 +495,12 @@ describe('auth routes', () => {
 
     it('clears cookies when session user email is not verified', async () => {
       authServerMock.getTokenFromRequest.mockReturnValue('token');
-      authServerMock.verifySessionToken.mockReturnValue({ userId: 'user_1', isAdmin: false });
+      authServerMock.verifySessionToken.mockReturnValue({
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 0,
+        issuedAtSeconds: 1,
+      });
 
       prismaMock.authUser.findUnique.mockResolvedValue({
         id: 'user_1',
@@ -506,7 +523,12 @@ describe('auth routes', () => {
 
     it('clears cookies when the session user has been suspended', async () => {
       authServerMock.getTokenFromRequest.mockReturnValue('token');
-      authServerMock.verifySessionToken.mockReturnValue({ userId: 'user_1', isAdmin: false });
+      authServerMock.verifySessionToken.mockReturnValue({
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 0,
+        issuedAtSeconds: 1,
+      });
 
       prismaMock.authUser.findUnique.mockResolvedValue({
         id: 'user_1',
@@ -532,19 +554,28 @@ describe('auth routes', () => {
 
   describe('POST /api/auth/logout', () => {
     it('clears auth cookie', async () => {
-      const res = await LOGOUT_POST();
+      authServerMock.getTokenFromRequest.mockReturnValue('token');
+      authServerMock.verifySessionToken.mockReturnValue({
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 0,
+        issuedAtSeconds: 1,
+      });
+      const res = await LOGOUT_POST(new NextRequest('http://localhost/api/auth/logout', { method: 'POST' }));
 
       expect(res.status).toBe(200);
+      expect(authSessionsMock.revokeAuthUserSessions).toHaveBeenCalledWith('user_1');
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
     });
   });
 
   describe('POST /api/auth/password', () => {
     it('updates password for current user', async () => {
-      requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+      requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
       prismaMock.authUser.findUnique.mockResolvedValue({
         id: 'user_1',
         passwordHash: 'hashed',
+        sessionVersion: 0,
       });
       authServerMock.hashPassword.mockResolvedValue('new-hash');
       authServerMock.signSessionToken.mockReturnValue('refreshed-token');
@@ -564,6 +595,7 @@ describe('auth routes', () => {
           data: expect.objectContaining({ passwordHash: 'new-hash' }),
         }),
       );
+      expect(authSessionsMock.revokeAuthUserSessions).toHaveBeenCalledWith('user_1');
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'refreshed-token');
     });
   });

@@ -771,6 +771,74 @@ describe('upsertEventFromPayload', () => {
     );
   });
 
+  it('requires an explicit event playoff team count when playoffs are enabled', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+
+    const payload = {
+      ...baseEventPayload(),
+      includePlayoffs: true,
+      singleDivision: true,
+      divisions: ['OPEN'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+        },
+      ],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'Playoff team count must be at least 2 when playoffs are enabled.',
+    );
+    expect(client.divisions.upsert).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit playoff team counts for each division in split leagues', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    const advancedDivisionId = divisionId('advanced');
+
+    const payload = {
+      ...baseEventPayload(),
+      includePlayoffs: true,
+      singleDivision: false,
+      playoffTeamCount: 8,
+      divisions: ['OPEN', 'ADVANCED'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          playoffTeamCount: 4,
+        },
+        {
+          id: advancedDivisionId,
+          key: 'advanced',
+          name: 'Advanced',
+          divisionTypeId: 'advanced',
+          divisionTypeName: 'Advanced',
+          ratingType: 'SKILL',
+          gender: 'C',
+        },
+      ],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'Playoff team count must be at least 2 for division "Advanced" when playoffs are enabled.',
+    );
+    expect(client.divisions.upsert).not.toHaveBeenCalled();
+  });
+
   it('falls back to event-level payment-plan defaults when division payment fields are omitted', async () => {
     const client = createMockClient();
     const openDivisionId = divisionId('open');

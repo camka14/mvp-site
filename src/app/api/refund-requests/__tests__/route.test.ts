@@ -23,6 +23,9 @@ const prismaMock = {
     update: jest.fn(),
     create: jest.fn(),
   },
+  organizations: {
+    findUnique: jest.fn(),
+  },
   events: {
     findUnique: jest.fn(),
   },
@@ -42,10 +45,14 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
+const canManageOrganizationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
-jest.mock('@/server/accessControl', () => ({ canManageEvent: (...args: any[]) => canManageEventMock(...args) }));
+jest.mock('@/server/accessControl', () => ({
+  canManageEvent: (...args: any[]) => canManageEventMock(...args),
+  canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
+}));
 
 import { GET as LIST_GET } from '@/app/api/refund-requests/route';
 import { PATCH } from '@/app/api/refund-requests/[id]/route';
@@ -74,10 +81,12 @@ describe('refund request routes', () => {
     mockStripePaymentIntentRetrieve.mockReset();
     requireSessionMock.mockReset();
     canManageEventMock.mockReset();
+    canManageOrganizationMock.mockReset();
     prismaMock.refundRequests.findUnique.mockReset();
     prismaMock.refundRequests.findMany.mockReset();
     prismaMock.refundRequests.update.mockReset();
     prismaMock.refundRequests.create.mockReset();
+    prismaMock.organizations.findUnique.mockReset();
     prismaMock.events.findUnique.mockReset();
     prismaMock.teams.findUnique.mockReset();
     prismaMock.bills.findMany.mockReset();
@@ -90,8 +99,15 @@ describe('refund request routes', () => {
 
     requireSessionMock.mockResolvedValue({ userId: 'manager_1', isAdmin: false });
     canManageEventMock.mockResolvedValue(true);
+    canManageOrganizationMock.mockResolvedValue(true);
 
     prismaMock.refundRequests.findUnique.mockResolvedValue(existingTeamRequest);
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      hostIds: ['manager_1'],
+      officialIds: [],
+    });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       hostId: 'host_1',
@@ -321,7 +337,36 @@ describe('refund request routes', () => {
   });
 
   describe('GET /api/refund-requests', () => {
+    it('rejects host queries for another host', async () => {
+      const response = await LIST_GET(
+        new NextRequest('http://localhost/api/refund-requests?hostId=host_1'),
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(payload.error).toBe('Forbidden');
+      expect(prismaMock.refundRequests.findMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects organization queries when the caller cannot manage the organization', async () => {
+      canManageOrganizationMock.mockResolvedValueOnce(false);
+
+      const response = await LIST_GET(
+        new NextRequest('http://localhost/api/refund-requests?organizationId=org_1'),
+      );
+      const payload = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(payload.error).toBe('Forbidden');
+      expect(prismaMock.organizations.findUnique).toHaveBeenCalledWith({
+        where: { id: 'org_1' },
+        select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+      });
+      expect(prismaMock.refundRequests.findMany).not.toHaveBeenCalled();
+    });
+
     it('filters legacy team fanout rows from the returned list', async () => {
+      requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
       prismaMock.refundRequests.findMany.mockResolvedValueOnce([]);
 
       const response = await LIST_GET(

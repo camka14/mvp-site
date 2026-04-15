@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { loadEventWithRelations, saveMatches, saveTeamRecords } from '@/server/repositories/events';
+import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import {
   applyMatchUpdates,
@@ -358,6 +358,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       applyMatchUpdates(event, targetMatch, updates);
+      if (updates.officialCheckedIn === true || targetMatch.officialCheckedIn === true) {
+        targetMatch.locked = true;
+      }
 
       const lockEvaluationTime = (() => {
         if (typeof updates.time === 'string' && updates.time.trim().length > 0) {
@@ -399,7 +402,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       });
 
       await saveMatches(eventId, Object.values(event.matches), tx);
-      await saveTeamRecords(Object.values(event.teams), tx);
 
       return targetMatch;
     });

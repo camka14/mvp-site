@@ -41,6 +41,18 @@ const createSchema = z.object({
 const emailSchema = z.string().email();
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
 
+class InviteRouteError extends Error {
+  status: number;
+  details?: unknown;
+
+  constructor(status: number, message: string, details?: unknown) {
+    super(message);
+    this.name = 'InviteRouteError';
+    this.status = status;
+    this.details = details;
+  }
+}
+
 const mapInviteRecord = (invite: Record<string, any>) => withLegacyFields({
   ...invite,
   type: normalizeInviteType(invite.type) ?? invite.type,
@@ -54,7 +66,7 @@ const unionStrings = (left: string[] | null | undefined, right: string[] | null 
   new Set([...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])].filter(Boolean)),
 );
 
-const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date) => {
+const resolveInviteUser = async (client: any, invite: z.infer<typeof inviteSchema>, now: Date) => {
   const inviteUserId = typeof invite.userId === 'string' ? invite.userId.trim() : '';
   let email = typeof invite.email === 'string' ? invite.email.trim().toLowerCase() : '';
   let userId = inviteUserId;
@@ -62,7 +74,7 @@ const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date
   let skipped = false;
 
   if (userId) {
-    const authUser = await prisma.authUser.findUnique({
+    const authUser = await client.authUser.findUnique({
       where: { id: userId },
       select: {
         email: true,
@@ -75,7 +87,7 @@ const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date
       if (authUser?.email) {
         email = authUser.email.trim().toLowerCase();
       } else {
-        const sensitive = await prisma.sensitiveUserData.findFirst({
+        const sensitive = await client.sensitiveUserData.findFirst({
           where: { userId },
           select: { email: true },
         });
@@ -98,10 +110,10 @@ const resolveInviteUser = async (invite: z.infer<typeof inviteSchema>, now: Date
     throw new Error('Invalid email');
   }
 
-  const ensured = await prisma.$transaction(async (tx) => ensureAuthUserAndUserDataByEmail(tx, email, now, {
+  const ensured = await ensureAuthUserAndUserDataByEmail(client, email, now, {
     firstName: normalizeOptionalName(invite.firstName),
     lastName: normalizeOptionalName(invite.lastName),
-  }));
+  });
   userId = ensured.userId;
   shouldSendEmail = !ensured.authUserExisted;
   return { userId, email, shouldSendEmail, skipped };
@@ -147,203 +159,252 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date();
-  const created: any[] = [];
-  const toEmail: any[] = [];
+  try {
+    const { created, toEmail } = await prisma.$transaction(async (tx) => {
+      const createdRecords: any[] = [];
+      const toEmailRecords: any[] = [];
 
-  for (const inviteInput of invitesInput) {
-    const parsedInvite = inviteSchema.safeParse(inviteInput);
-    if (!parsedInvite.success) {
-      return NextResponse.json({ error: 'Invalid invite', details: parsedInvite.error.flatten() }, { status: 400 });
-    }
-
-    const invite = parsedInvite.data;
-    const isUserIdInvite = Boolean(typeof invite.userId === 'string' && invite.userId.trim());
-    const normalizedFirstName = normalizeOptionalName(invite.firstName);
-    const normalizedLastName = normalizeOptionalName(invite.lastName);
-    const inviteType = normalizeInviteType(invite.type);
-    if (!inviteType) {
-      return NextResponse.json({ error: 'Invalid invite type' }, { status: 400 });
-    }
-
-    const normalizedStatus = normalizeInviteStatus(invite.status) ?? 'PENDING';
-    const eventId = typeof invite.eventId === 'string' && invite.eventId.trim() ? invite.eventId.trim() : null;
-    const organizationId = typeof invite.organizationId === 'string' && invite.organizationId.trim()
-      ? invite.organizationId.trim()
-      : null;
-    const teamId = typeof invite.teamId === 'string' && invite.teamId.trim() ? invite.teamId.trim() : null;
-
-    try {
-      const resolvedUser = await resolveInviteUser(invite, now);
-      if (resolvedUser.skipped) {
-        if (inviteType !== 'STAFF') {
-          return NextResponse.json({ error: 'Missing invite email' }, { status: 400 });
+      for (const inviteInput of invitesInput) {
+        const parsedInvite = inviteSchema.safeParse(inviteInput);
+        if (!parsedInvite.success) {
+          throw new InviteRouteError(400, 'Invalid invite', parsedInvite.error.flatten());
         }
-        continue;
-      }
-      const inviteUserId = resolvedUser.userId;
 
-      if (inviteType === 'STAFF') {
-        const organization = await prisma.organizations.findUnique({
-          where: { id: organizationId ?? '__none__' },
-          select: { id: true, ownerId: true },
-        });
-        const event = eventId
-          ? await prisma.events.findUnique({
-            where: { id: eventId },
-            select: { id: true, hostId: true, organizationId: true, state: true },
-          })
+        const invite = parsedInvite.data;
+        const isUserIdInvite = Boolean(typeof invite.userId === 'string' && invite.userId.trim());
+        const normalizedFirstName = normalizeOptionalName(invite.firstName);
+        const normalizedLastName = normalizeOptionalName(invite.lastName);
+        const inviteType = normalizeInviteType(invite.type);
+        if (!inviteType) {
+          throw new InviteRouteError(400, 'Invalid invite type');
+        }
+
+        const normalizedStatus = normalizeInviteStatus(invite.status) ?? 'PENDING';
+        const eventId = typeof invite.eventId === 'string' && invite.eventId.trim() ? invite.eventId.trim() : null;
+        const organizationId = typeof invite.organizationId === 'string' && invite.organizationId.trim()
+          ? invite.organizationId.trim()
           : null;
-        if (!organizationId && !eventId) {
-          return NextResponse.json({ error: 'Staff invites require organizationId or eventId' }, { status: 400 });
-        }
-        if (organizationId) {
-          if (!organization) {
-            return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
-          }
-          if (!(await canManageOrganization(session, organization))) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-          }
-        } else {
-          if (!event) {
-            return NextResponse.json({ error: 'Event not found' }, { status: 404 });
-          }
-          if (!(await canManageEvent(session, event))) {
-            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-          }
-        }
+        const teamId = typeof invite.teamId === 'string' && invite.teamId.trim() ? invite.teamId.trim() : null;
 
-        const staffTypes = normalizeStaffMemberTypes(
-          deriveStaffInviteTypes(
-            { staffTypes: invite.staffTypes },
-            typeof invite.type === 'string' ? invite.type : null,
-          ),
-        );
-        if (!staffTypes.length) {
-          return NextResponse.json({ error: 'Staff invite requires at least one staff type' }, { status: 400 });
+        const resolvedUser = await resolveInviteUser(tx, invite, now);
+        if (resolvedUser.skipped) {
+          if (inviteType !== 'STAFF') {
+            throw new InviteRouteError(400, 'Missing invite email');
+          }
+          continue;
         }
+        const inviteUserId = resolvedUser.userId;
 
-        if (organizationId) {
-          await prisma.staffMembers.upsert({
-            where: {
-              organizationId_userId: {
+        if (inviteType === 'STAFF') {
+          const organization = organizationId
+            ? await tx.organizations.findUnique({
+              where: { id: organizationId },
+              select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+            })
+            : null;
+          const event = eventId
+            ? await tx.events.findUnique({
+              where: { id: eventId },
+              select: { id: true, hostId: true, assistantHostIds: true, organizationId: true, state: true },
+            })
+            : null;
+          if (!organizationId && !eventId) {
+            throw new InviteRouteError(400, 'Staff invites require organizationId or eventId');
+          }
+          if (organizationId) {
+            if (!organization) {
+              throw new InviteRouteError(404, 'Organization not found');
+            }
+            if (!(await canManageOrganization(session, organization, tx))) {
+              throw new InviteRouteError(403, 'Forbidden');
+            }
+          } else {
+            if (!event) {
+              throw new InviteRouteError(404, 'Event not found');
+            }
+            if (!(await canManageEvent(session, event, tx))) {
+              throw new InviteRouteError(403, 'Forbidden');
+            }
+          }
+
+          const staffTypes = normalizeStaffMemberTypes(
+            deriveStaffInviteTypes(
+              { staffTypes: invite.staffTypes },
+              typeof invite.type === 'string' ? invite.type : null,
+            ),
+          );
+          if (!staffTypes.length) {
+            throw new InviteRouteError(400, 'Staff invite requires at least one staff type');
+          }
+
+          if (organizationId) {
+            const existingStaffMember = await tx.staffMembers.findUnique({
+              where: {
+                organizationId_userId: {
+                  organizationId,
+                  userId: inviteUserId,
+                },
+              },
+              select: { types: true },
+            });
+            await tx.staffMembers.upsert({
+              where: {
+                organizationId_userId: {
+                  organizationId,
+                  userId: inviteUserId,
+                },
+              },
+              create: {
+                id: crypto.randomUUID(),
                 organizationId,
                 userId: inviteUserId,
+                types: staffTypes,
+                createdAt: now,
+                updatedAt: now,
               },
-            },
-            create: {
-              id: crypto.randomUUID(),
+              update: {
+                types: {
+                  set: unionStrings(staffTypes, existingStaffMember?.types ?? []),
+                },
+                updatedAt: now,
+              },
+            });
+          }
+
+          const replaceStaffTypes = invite.replaceStaffTypes === true;
+
+          const existingInvite = await tx.invites.findFirst({
+            where: {
+              type: 'STAFF',
               organizationId,
+              eventId,
               userId: inviteUserId,
-              types: staffTypes,
-              createdAt: now,
-              updatedAt: now,
-            },
-            update: {
-              types: {
-                set: unionStrings(staffTypes, (
-                  await prisma.staffMembers.findUnique({
-                    where: {
-                      organizationId_userId: {
-                        organizationId,
-                        userId: inviteUserId,
-                      },
-                    },
-                    select: { types: true },
-                  })
-                )?.types ?? []),
-              },
-              updatedAt: now,
             },
           });
+          const record = existingInvite
+            ? await tx.invites.update({
+              where: { id: existingInvite.id },
+              data: {
+                email: resolvedUser.email,
+                status: normalizedStatus,
+                staffTypes: replaceStaffTypes ? staffTypes : unionStrings(existingInvite.staffTypes, staffTypes),
+                createdBy: invite.createdBy ?? session.userId,
+                firstName: normalizedFirstName ?? existingInvite.firstName,
+                lastName: normalizedLastName ?? existingInvite.lastName,
+                updatedAt: now,
+              },
+            })
+            : await tx.invites.create({
+              data: {
+                id: crypto.randomUUID(),
+                type: 'STAFF',
+                email: resolvedUser.email,
+                status: normalizedStatus,
+                staffTypes,
+                eventId,
+                organizationId,
+                userId: inviteUserId,
+                createdBy: invite.createdBy ?? session.userId,
+                firstName: normalizedFirstName ?? null,
+                lastName: normalizedLastName ?? null,
+                createdAt: now,
+                updatedAt: now,
+              },
+            });
+          createdRecords.push(record);
+          if (isUserIdInvite || resolvedUser.shouldSendEmail) {
+            toEmailRecords.push(record);
+          }
+          continue;
         }
 
-        const replaceStaffTypes = invite.replaceStaffTypes === true;
+        if (inviteType === 'TEAM') {
+          if (!teamId) {
+            throw new InviteRouteError(400, 'Team invites require teamId');
+          }
+          const teamsDelegate = getTeamsDelegate(tx);
+          const team = await teamsDelegate.findUnique({ where: { id: teamId } });
+          if (!team) {
+            throw new InviteRouteError(404, 'Team not found');
+          }
 
-        const existingInvite = await prisma.invites.findFirst({
+          const legacyRole = getLegacyTeamInviteRole(invite.type);
+          if (legacyRole === 'player' && Array.isArray(team.playerIds) && team.playerIds.includes(inviteUserId)) {
+            throw new InviteRouteError(409, 'User is already on this team');
+          }
+
+          const existingInvite = await tx.invites.findFirst({
+            where: {
+              type: 'TEAM',
+              teamId,
+              userId: inviteUserId,
+            },
+          });
+          const record = existingInvite
+            ? await tx.invites.update({
+              where: { id: existingInvite.id },
+              data: {
+                email: resolvedUser.email,
+                status: normalizedStatus,
+                createdBy: invite.createdBy ?? session.userId,
+                firstName: normalizedFirstName ?? existingInvite.firstName,
+                lastName: normalizedLastName ?? existingInvite.lastName,
+                updatedAt: now,
+              },
+            })
+            : await tx.invites.create({
+              data: {
+                id: crypto.randomUUID(),
+                type: 'TEAM',
+                email: resolvedUser.email,
+                status: normalizedStatus,
+                teamId,
+                userId: inviteUserId,
+                createdBy: invite.createdBy ?? session.userId,
+                firstName: normalizedFirstName ?? null,
+                lastName: normalizedLastName ?? null,
+                createdAt: now,
+                updatedAt: now,
+              },
+            });
+          createdRecords.push(record);
+          if (isUserIdInvite || resolvedUser.shouldSendEmail) {
+            toEmailRecords.push(record);
+          }
+          continue;
+        }
+
+        if (!eventId) {
+          throw new InviteRouteError(400, 'Event invites require eventId');
+        }
+
+        const existingInvite = await tx.invites.findFirst({
           where: {
-            type: 'STAFF',
-            organizationId,
+            type: 'EVENT',
             eventId,
             userId: inviteUserId,
           },
         });
         const record = existingInvite
-          ? await prisma.invites.update({
+          ? await tx.invites.update({
             where: { id: existingInvite.id },
             data: {
               email: resolvedUser.email,
               status: normalizedStatus,
-              staffTypes: replaceStaffTypes ? staffTypes : unionStrings(existingInvite.staffTypes, staffTypes),
               createdBy: invite.createdBy ?? session.userId,
               firstName: normalizedFirstName ?? existingInvite.firstName,
               lastName: normalizedLastName ?? existingInvite.lastName,
               updatedAt: now,
             },
           })
-          : await prisma.invites.create({
+          : await tx.invites.create({
             data: {
               id: crypto.randomUUID(),
-              type: 'STAFF',
+              type: 'EVENT',
               email: resolvedUser.email,
               status: normalizedStatus,
-              staffTypes,
               eventId,
               organizationId,
-              userId: inviteUserId,
-              createdBy: invite.createdBy ?? session.userId,
-              firstName: normalizedFirstName ?? null,
-              lastName: normalizedLastName ?? null,
-              createdAt: now,
-              updatedAt: now,
-            },
-          });
-        created.push(record);
-        if (isUserIdInvite || resolvedUser.shouldSendEmail) {
-          toEmail.push(record);
-        }
-        continue;
-      }
-
-      if (inviteType === 'TEAM') {
-        if (!teamId) {
-          return NextResponse.json({ error: 'Team invites require teamId' }, { status: 400 });
-        }
-        const teamsDelegate = getTeamsDelegate(prisma);
-        const team = await teamsDelegate.findUnique({ where: { id: teamId } });
-        if (!team) {
-          return NextResponse.json({ error: 'Team not found' }, { status: 404 });
-        }
-
-        const legacyRole = getLegacyTeamInviteRole(invite.type);
-        if (legacyRole === 'player' && Array.isArray(team.playerIds) && team.playerIds.includes(inviteUserId)) {
-          return NextResponse.json({ error: 'User is already on this team' }, { status: 409 });
-        }
-
-        const existingInvite = await prisma.invites.findFirst({
-          where: {
-            type: 'TEAM',
-            teamId,
-            userId: inviteUserId,
-          },
-        });
-        const record = existingInvite
-          ? await prisma.invites.update({
-            where: { id: existingInvite.id },
-            data: {
-              email: resolvedUser.email,
-              status: normalizedStatus,
-              createdBy: invite.createdBy ?? session.userId,
-              firstName: normalizedFirstName ?? existingInvite.firstName,
-              lastName: normalizedLastName ?? existingInvite.lastName,
-              updatedAt: now,
-            },
-          })
-          : await prisma.invites.create({
-            data: {
-              id: crypto.randomUUID(),
-              type: 'TEAM',
-              email: resolvedUser.email,
-              status: normalizedStatus,
               teamId,
               userId: inviteUserId,
               createdBy: invite.createdBy ?? session.userId,
@@ -353,72 +414,34 @@ export async function POST(req: NextRequest) {
               updatedAt: now,
             },
           });
-        created.push(record);
+        createdRecords.push(record);
         if (isUserIdInvite || resolvedUser.shouldSendEmail) {
-          toEmail.push(record);
+          toEmailRecords.push(record);
         }
-        continue;
       }
 
-      if (!eventId) {
-        return NextResponse.json({ error: 'Event invites require eventId' }, { status: 400 });
-      }
+      return { created: createdRecords, toEmail: toEmailRecords };
+    });
 
-      const existingInvite = await prisma.invites.findFirst({
-        where: {
-          type: 'EVENT',
-          eventId,
-          userId: inviteUserId,
-        },
-      });
-      const record = existingInvite
-        ? await prisma.invites.update({
-          where: { id: existingInvite.id },
-          data: {
-            email: resolvedUser.email,
-            status: normalizedStatus,
-            createdBy: invite.createdBy ?? session.userId,
-            firstName: normalizedFirstName ?? existingInvite.firstName,
-            lastName: normalizedLastName ?? existingInvite.lastName,
-            updatedAt: now,
-          },
-        })
-        : await prisma.invites.create({
-          data: {
-            id: crypto.randomUUID(),
-            type: 'EVENT',
-            email: resolvedUser.email,
-            status: normalizedStatus,
-            eventId,
-            organizationId,
-            teamId,
-            userId: inviteUserId,
-            createdBy: invite.createdBy ?? session.userId,
-            firstName: normalizedFirstName ?? null,
-            lastName: normalizedLastName ?? null,
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
-      created.push(record);
-      if (isUserIdInvite || resolvedUser.shouldSendEmail) {
-        toEmail.push(record);
-      }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create invite';
-      return NextResponse.json({ error: message }, { status: 400 });
+    const baseUrl = getRequestOrigin(req);
+    const emailedInvites = await sendInviteEmails(toEmail, baseUrl);
+    const emailedById = new Map(emailedInvites.map((invite) => [invite.id, invite]));
+    const mergedInvites = created.map((invite) => {
+      const emailed = emailedById.get(invite.id);
+      return emailed ? { ...invite, status: emailed.status ?? invite.status } : invite;
+    });
+
+    return NextResponse.json({ invites: mergedInvites.map((invite) => mapInviteRecord(invite)) }, { status: 201 });
+  } catch (error) {
+    if (error instanceof InviteRouteError) {
+      const payload = error.details === undefined
+        ? { error: error.message }
+        : { error: error.message, details: error.details };
+      return NextResponse.json(payload, { status: error.status });
     }
+    const message = error instanceof Error ? error.message : 'Failed to create invite';
+    return NextResponse.json({ error: message }, { status: 400 });
   }
-
-  const baseUrl = getRequestOrigin(req);
-  const emailedInvites = await sendInviteEmails(toEmail, baseUrl);
-  const emailedById = new Map(emailedInvites.map((invite) => [invite.id, invite]));
-  const mergedInvites = created.map((invite) => {
-    const emailed = emailedById.get(invite.id);
-    return emailed ? { ...invite, status: emailed.status ?? invite.status } : invite;
-  });
-
-  return NextResponse.json({ invites: mergedInvites.map((invite) => mapInviteRecord(invite)) }, { status: 201 });
 }
 
 export async function DELETE(req: NextRequest) {

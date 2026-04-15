@@ -4,10 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
+import { isSessionTokenCurrent } from '@/server/authSessions';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import {
   deleteMatchesByEvent,
   isEventFieldConflictError,
+  isLeaguePlayoffTeamCountValidationError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
   saveEventSchedule,
@@ -314,7 +316,7 @@ const getDivisionDetailsForEvent = async (
         : (typeof eventDefaults?.maxParticipants === 'number' ? eventDefaults.maxParticipants : null),
       playoffTeamCount: typeof row?.playoffTeamCount === 'number'
         ? row.playoffTeamCount
-        : (typeof eventDefaults?.playoffTeamCount === 'number' ? eventDefaults.playoffTeamCount : null),
+        : null,
       allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
         ? row.allowPaymentPlans
         : normalizeOptionalBoolean(eventDefaults?.allowPaymentPlans),
@@ -594,9 +596,9 @@ const isDivisionAssignmentValidationError = (error: unknown): boolean => {
     || normalized.includes('assigned to multiple divisions');
 };
 
-const resolveSessionContext = (
+const resolveSessionContext = async (
   req: NextRequest,
-): { userId: string; isAdmin: boolean } | null => {
+): Promise<{ userId: string; isAdmin: boolean } | null> => {
   const token = getTokenFromRequest(req);
   if (!token) {
     return null;
@@ -607,6 +609,13 @@ const resolveSessionContext = (
   }
   const userId = typeof session.userId === 'string' ? session.userId.trim() : '';
   if (!userId) {
+    return null;
+  }
+  const authUser = await prisma.authUser.findUnique({
+    where: { id: userId },
+    select: { disabledAt: true, sessionVersion: true },
+  });
+  if (!authUser || authUser.disabledAt || !isSessionTokenCurrent(session, authUser.sessionVersion)) {
     return null;
   }
   return {
@@ -688,7 +697,7 @@ export async function GET(req: NextRequest) {
 
   const normalizedStateRaw = typeof state === 'string' ? state.toUpperCase() : undefined;
   const normalizedState = normalizedStateRaw === 'DRAFT' ? 'UNPUBLISHED' : normalizedStateRaw;
-  const sessionContext = resolveSessionContext(req);
+  const sessionContext = await resolveSessionContext(req);
   const sessionUserId = sessionContext?.userId ?? null;
   const isAdminSession = sessionContext?.isAdmin === true;
   const hiddenEventIds = await loadHiddenEventIdsForSessionUser(sessionUserId, isAdminSession);
@@ -970,6 +979,10 @@ export async function POST(req: NextRequest) {
     }
     if (isDivisionAssignmentValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid division team assignments';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isLeaguePlayoffTeamCountValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid playoff team count';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     if (error instanceof EventContentFilterError) {
