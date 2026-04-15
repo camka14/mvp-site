@@ -2836,6 +2836,9 @@ function EventScheduleContent() {
     (team: Team | null | undefined): boolean => {
       if (!team) return true;
       if (!isLeague && !isTournament) return false;
+      if (typeof (team as any).kind === 'string' && (team as any).kind.trim().toUpperCase() === 'PLACEHOLDER') {
+        return true;
+      }
       return typeof team.parentTeamId !== 'string' || team.parentTeamId.trim().length === 0;
     },
     [isLeague, isTournament],

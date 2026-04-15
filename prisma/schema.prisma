@@ -129,6 +129,29 @@ enum EventRegistrationsStatusEnum {
   CONSENTFAILED
 }
 
+enum TeamMembershipStatusEnum {
+  INVITED
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum TeamStaffAssignmentsRoleEnum {
+  MANAGER
+  HEAD_COACH
+  ASSISTANT_COACH
+}
+
+enum EventTeamsKindEnum {
+  REGISTERED
+  PLACEHOLDER
+}
+
+enum EventTeamStaffAssignmentsStatusEnum {
+  ACTIVE
+  CANCELLED
+}
+
 enum DivisionsKindEnum {
   LEAGUE
   PLAYOFF
@@ -349,7 +372,10 @@ model Teams {
   id               String    @id
   createdAt        DateTime?
   updatedAt        DateTime?
+  eventId          String?
+  kind             EventTeamsKindEnum? @default(REGISTERED)
   playerIds        String[]
+  playerRegistrationIds String[] @default([])
   division         String?
   divisionTypeId   String?
   divisionTypeName String?
@@ -360,17 +386,89 @@ model Teams {
   managerId        String
   headCoachId      String?
   coachIds         String[]  @default([])
+  staffAssignmentIds String[] @default([])
   parentTeamId     String?
   pending          String[]
   teamSize         Int
   profileImageId   String?
   sport            String?
 
+  @@index([eventId])
+  @@index([kind])
   @@index([captainId])
   @@index([managerId])
   @@index([headCoachId])
   @@index([parentTeamId])
-  @@map("VolleyBallTeams")
+  @@map("EventTeams")
+}
+
+model CanonicalTeams {
+  id               String    @id
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  name             String
+  division         String?
+  divisionTypeId   String?
+  divisionTypeName String?
+  wins             Int?
+  losses           Int?
+  teamSize         Int
+  profileImageId   String?
+  sport            String?
+  organizationId   String?
+  createdBy        String?
+
+  @@index([organizationId])
+  @@index([createdBy])
+  @@map("Teams")
+}
+
+model TeamRegistrations {
+  id           String                   @id
+  createdAt    DateTime?
+  updatedAt    DateTime?
+  teamId       String
+  userId       String
+  status       TeamMembershipStatusEnum @default(ACTIVE)
+  jerseyNumber String?
+  position     String?
+  isCaptain    Boolean?                @default(false)
+  createdBy    String?
+
+  @@unique([teamId, userId])
+  @@index([teamId, status])
+  @@index([userId, status])
+}
+
+model TeamStaffAssignments {
+  id        String                       @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  teamId    String
+  userId    String
+  role      TeamStaffAssignmentsRoleEnum
+  status    TeamMembershipStatusEnum     @default(ACTIVE)
+  createdBy String?
+
+  @@unique([teamId, userId, role])
+  @@index([teamId, status])
+  @@index([userId, status])
+}
+
+model EventTeamStaffAssignments {
+  id                     String                              @id
+  createdAt              DateTime?
+  updatedAt              DateTime?
+  eventTeamId            String
+  userId                 String
+  role                   TeamStaffAssignmentsRoleEnum
+  status                 EventTeamStaffAssignmentsStatusEnum @default(ACTIVE)
+  sourceStaffAssignmentId String?
+
+  @@unique([eventTeamId, userId, role])
+  @@index([eventTeamId, status])
+  @@index([userId, status])
+  @@index([sourceStaffAssignmentId])
 }
 
 model Messages {
@@ -875,18 +973,25 @@ model EventRegistrations {
   registrantType    EventRegistrationsRegistrantTypeEnum
   rosterRole        EventRegistrationsRosterRoleEnum     @default(PARTICIPANT)
   status            EventRegistrationsStatusEnum
+  eventTeamId       String?
+  sourceTeamRegistrationId String?
   slotId            String?
   occurrenceDate    String?
   ageAtEvent        Int?
   divisionId        String?
   divisionTypeId    String?
   divisionTypeKey   String?
+  jerseyNumber      String?
+  position          String?
+  isCaptain         Boolean?                             @default(false)
   consentDocumentId String?
   consentStatus     String?
   createdBy         String
 
   @@index([eventId])
   @@index([registrantId])
+  @@index([eventTeamId])
+  @@index([sourceTeamRegistrationId])
   @@index([eventId, rosterRole, status])
   @@index([eventId, slotId, occurrenceDate])
 }

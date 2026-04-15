@@ -44,12 +44,17 @@ export type EventRegistrationsMinAggregateOutputType = {
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum | null
   rosterRole: $Enums.EventRegistrationsRosterRoleEnum | null
   status: $Enums.EventRegistrationsStatusEnum | null
+  eventTeamId: string | null
+  sourceTeamRegistrationId: string | null
   slotId: string | null
   occurrenceDate: string | null
   ageAtEvent: number | null
   divisionId: string | null
   divisionTypeId: string | null
   divisionTypeKey: string | null
+  jerseyNumber: string | null
+  position: string | null
+  isCaptain: boolean | null
   consentDocumentId: string | null
   consentStatus: string | null
   createdBy: string | null
@@ -65,12 +70,17 @@ export type EventRegistrationsMaxAggregateOutputType = {
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum | null
   rosterRole: $Enums.EventRegistrationsRosterRoleEnum | null
   status: $Enums.EventRegistrationsStatusEnum | null
+  eventTeamId: string | null
+  sourceTeamRegistrationId: string | null
   slotId: string | null
   occurrenceDate: string | null
   ageAtEvent: number | null
   divisionId: string | null
   divisionTypeId: string | null
   divisionTypeKey: string | null
+  jerseyNumber: string | null
+  position: string | null
+  isCaptain: boolean | null
   consentDocumentId: string | null
   consentStatus: string | null
   createdBy: string | null
@@ -86,12 +96,17 @@ export type EventRegistrationsCountAggregateOutputType = {
   registrantType: number
   rosterRole: number
   status: number
+  eventTeamId: number
+  sourceTeamRegistrationId: number
   slotId: number
   occurrenceDate: number
   ageAtEvent: number
   divisionId: number
   divisionTypeId: number
   divisionTypeKey: number
+  jerseyNumber: number
+  position: number
+  isCaptain: number
   consentDocumentId: number
   consentStatus: number
   createdBy: number
@@ -117,12 +132,17 @@ export type EventRegistrationsMinAggregateInputType = {
   registrantType?: true
   rosterRole?: true
   status?: true
+  eventTeamId?: true
+  sourceTeamRegistrationId?: true
   slotId?: true
   occurrenceDate?: true
   ageAtEvent?: true
   divisionId?: true
   divisionTypeId?: true
   divisionTypeKey?: true
+  jerseyNumber?: true
+  position?: true
+  isCaptain?: true
   consentDocumentId?: true
   consentStatus?: true
   createdBy?: true
@@ -138,12 +158,17 @@ export type EventRegistrationsMaxAggregateInputType = {
   registrantType?: true
   rosterRole?: true
   status?: true
+  eventTeamId?: true
+  sourceTeamRegistrationId?: true
   slotId?: true
   occurrenceDate?: true
   ageAtEvent?: true
   divisionId?: true
   divisionTypeId?: true
   divisionTypeKey?: true
+  jerseyNumber?: true
+  position?: true
+  isCaptain?: true
   consentDocumentId?: true
   consentStatus?: true
   createdBy?: true
@@ -159,12 +184,17 @@ export type EventRegistrationsCountAggregateInputType = {
   registrantType?: true
   rosterRole?: true
   status?: true
+  eventTeamId?: true
+  sourceTeamRegistrationId?: true
   slotId?: true
   occurrenceDate?: true
   ageAtEvent?: true
   divisionId?: true
   divisionTypeId?: true
   divisionTypeKey?: true
+  jerseyNumber?: true
+  position?: true
+  isCaptain?: true
   consentDocumentId?: true
   consentStatus?: true
   createdBy?: true
@@ -267,12 +297,17 @@ export type EventRegistrationsGroupByOutputType = {
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole: $Enums.EventRegistrationsRosterRoleEnum
   status: $Enums.EventRegistrationsStatusEnum
+  eventTeamId: string | null
+  sourceTeamRegistrationId: string | null
   slotId: string | null
   occurrenceDate: string | null
   ageAtEvent: number | null
   divisionId: string | null
   divisionTypeId: string | null
   divisionTypeKey: string | null
+  jerseyNumber: string | null
+  position: string | null
+  isCaptain: boolean | null
   consentDocumentId: string | null
   consentStatus: string | null
   createdBy: string
@@ -311,12 +346,17 @@ export type EventRegistrationsWhereInput = {
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  sourceTeamRegistrationId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   slotId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   occurrenceDate?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   ageAtEvent?: Prisma.IntNullableFilter<"EventRegistrations"> | number | null
   divisionId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   divisionTypeId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   divisionTypeKey?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  jerseyNumber?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  position?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  isCaptain?: Prisma.BoolNullableFilter<"EventRegistrations"> | boolean | null
   consentDocumentId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   consentStatus?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   createdBy?: Prisma.StringFilter<"EventRegistrations"> | string
@@ -332,12 +372,17 @@ export type EventRegistrationsOrderByWithRelationInput = {
   registrantType?: Prisma.SortOrder
   rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  eventTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
+  sourceTeamRegistrationId?: Prisma.SortOrderInput | Prisma.SortOrder
   slotId?: Prisma.SortOrderInput | Prisma.SortOrder
   occurrenceDate?: Prisma.SortOrderInput | Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionId?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeKey?: Prisma.SortOrderInput | Prisma.SortOrder
+  jerseyNumber?: Prisma.SortOrderInput | Prisma.SortOrder
+  position?: Prisma.SortOrderInput | Prisma.SortOrder
+  isCaptain?: Prisma.SortOrderInput | Prisma.SortOrder
   consentDocumentId?: Prisma.SortOrderInput | Prisma.SortOrder
   consentStatus?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrder
@@ -356,12 +401,17 @@ export type EventRegistrationsWhereUniqueInput = Prisma.AtLeast<{
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFilter<"EventRegistrations"> | $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  sourceTeamRegistrationId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   slotId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   occurrenceDate?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   ageAtEvent?: Prisma.IntNullableFilter<"EventRegistrations"> | number | null
   divisionId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   divisionTypeId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   divisionTypeKey?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  jerseyNumber?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  position?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
+  isCaptain?: Prisma.BoolNullableFilter<"EventRegistrations"> | boolean | null
   consentDocumentId?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   consentStatus?: Prisma.StringNullableFilter<"EventRegistrations"> | string | null
   createdBy?: Prisma.StringFilter<"EventRegistrations"> | string
@@ -377,12 +427,17 @@ export type EventRegistrationsOrderByWithAggregationInput = {
   registrantType?: Prisma.SortOrder
   rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  eventTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
+  sourceTeamRegistrationId?: Prisma.SortOrderInput | Prisma.SortOrder
   slotId?: Prisma.SortOrderInput | Prisma.SortOrder
   occurrenceDate?: Prisma.SortOrderInput | Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionId?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeKey?: Prisma.SortOrderInput | Prisma.SortOrder
+  jerseyNumber?: Prisma.SortOrderInput | Prisma.SortOrder
+  position?: Prisma.SortOrderInput | Prisma.SortOrder
+  isCaptain?: Prisma.SortOrderInput | Prisma.SortOrder
   consentDocumentId?: Prisma.SortOrderInput | Prisma.SortOrder
   consentStatus?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrder
@@ -406,12 +461,17 @@ export type EventRegistrationsScalarWhereWithAggregatesInput = {
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumWithAggregatesFilter<"EventRegistrations"> | $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumWithAggregatesFilter<"EventRegistrations"> | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumWithAggregatesFilter<"EventRegistrations"> | $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
+  sourceTeamRegistrationId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   slotId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   occurrenceDate?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   ageAtEvent?: Prisma.IntNullableWithAggregatesFilter<"EventRegistrations"> | number | null
   divisionId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   divisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   divisionTypeKey?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
+  jerseyNumber?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
+  position?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
+  isCaptain?: Prisma.BoolNullableWithAggregatesFilter<"EventRegistrations"> | boolean | null
   consentDocumentId?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   consentStatus?: Prisma.StringNullableWithAggregatesFilter<"EventRegistrations"> | string | null
   createdBy?: Prisma.StringWithAggregatesFilter<"EventRegistrations"> | string
@@ -427,12 +487,17 @@ export type EventRegistrationsCreateInput = {
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: $Enums.EventRegistrationsRosterRoleEnum
   status: $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: string | null
+  sourceTeamRegistrationId?: string | null
   slotId?: string | null
   occurrenceDate?: string | null
   ageAtEvent?: number | null
   divisionId?: string | null
   divisionTypeId?: string | null
   divisionTypeKey?: string | null
+  jerseyNumber?: string | null
+  position?: string | null
+  isCaptain?: boolean | null
   consentDocumentId?: string | null
   consentStatus?: string | null
   createdBy: string
@@ -448,12 +513,17 @@ export type EventRegistrationsUncheckedCreateInput = {
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: $Enums.EventRegistrationsRosterRoleEnum
   status: $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: string | null
+  sourceTeamRegistrationId?: string | null
   slotId?: string | null
   occurrenceDate?: string | null
   ageAtEvent?: number | null
   divisionId?: string | null
   divisionTypeId?: string | null
   divisionTypeKey?: string | null
+  jerseyNumber?: string | null
+  position?: string | null
+  isCaptain?: boolean | null
   consentDocumentId?: string | null
   consentStatus?: string | null
   createdBy: string
@@ -469,12 +539,17 @@ export type EventRegistrationsUpdateInput = {
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sourceTeamRegistrationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageAtEvent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  jerseyNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  position?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isCaptain?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   consentDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   consentStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.StringFieldUpdateOperationsInput | string
@@ -490,12 +565,17 @@ export type EventRegistrationsUncheckedUpdateInput = {
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sourceTeamRegistrationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageAtEvent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  jerseyNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  position?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isCaptain?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   consentDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   consentStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.StringFieldUpdateOperationsInput | string
@@ -511,12 +591,17 @@ export type EventRegistrationsCreateManyInput = {
   registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: $Enums.EventRegistrationsRosterRoleEnum
   status: $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: string | null
+  sourceTeamRegistrationId?: string | null
   slotId?: string | null
   occurrenceDate?: string | null
   ageAtEvent?: number | null
   divisionId?: string | null
   divisionTypeId?: string | null
   divisionTypeKey?: string | null
+  jerseyNumber?: string | null
+  position?: string | null
+  isCaptain?: boolean | null
   consentDocumentId?: string | null
   consentStatus?: string | null
   createdBy: string
@@ -532,12 +617,17 @@ export type EventRegistrationsUpdateManyMutationInput = {
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sourceTeamRegistrationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageAtEvent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  jerseyNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  position?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isCaptain?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   consentDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   consentStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.StringFieldUpdateOperationsInput | string
@@ -553,12 +643,17 @@ export type EventRegistrationsUncheckedUpdateManyInput = {
   registrantType?: Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRegistrantTypeEnum
   rosterRole?: Prisma.EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsRosterRoleEnum
   status?: Prisma.EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput | $Enums.EventRegistrationsStatusEnum
+  eventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  sourceTeamRegistrationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageAtEvent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   divisionId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeKey?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  jerseyNumber?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  position?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isCaptain?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   consentDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   consentStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.StringFieldUpdateOperationsInput | string
@@ -574,12 +669,17 @@ export type EventRegistrationsCountOrderByAggregateInput = {
   registrantType?: Prisma.SortOrder
   rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  eventTeamId?: Prisma.SortOrder
+  sourceTeamRegistrationId?: Prisma.SortOrder
   slotId?: Prisma.SortOrder
   occurrenceDate?: Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrder
   divisionId?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
   divisionTypeKey?: Prisma.SortOrder
+  jerseyNumber?: Prisma.SortOrder
+  position?: Prisma.SortOrder
+  isCaptain?: Prisma.SortOrder
   consentDocumentId?: Prisma.SortOrder
   consentStatus?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
@@ -599,12 +699,17 @@ export type EventRegistrationsMaxOrderByAggregateInput = {
   registrantType?: Prisma.SortOrder
   rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  eventTeamId?: Prisma.SortOrder
+  sourceTeamRegistrationId?: Prisma.SortOrder
   slotId?: Prisma.SortOrder
   occurrenceDate?: Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrder
   divisionId?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
   divisionTypeKey?: Prisma.SortOrder
+  jerseyNumber?: Prisma.SortOrder
+  position?: Prisma.SortOrder
+  isCaptain?: Prisma.SortOrder
   consentDocumentId?: Prisma.SortOrder
   consentStatus?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
@@ -620,12 +725,17 @@ export type EventRegistrationsMinOrderByAggregateInput = {
   registrantType?: Prisma.SortOrder
   rosterRole?: Prisma.SortOrder
   status?: Prisma.SortOrder
+  eventTeamId?: Prisma.SortOrder
+  sourceTeamRegistrationId?: Prisma.SortOrder
   slotId?: Prisma.SortOrder
   occurrenceDate?: Prisma.SortOrder
   ageAtEvent?: Prisma.SortOrder
   divisionId?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
   divisionTypeKey?: Prisma.SortOrder
+  jerseyNumber?: Prisma.SortOrder
+  position?: Prisma.SortOrder
+  isCaptain?: Prisma.SortOrder
   consentDocumentId?: Prisma.SortOrder
   consentStatus?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
@@ -659,12 +769,17 @@ export type EventRegistrationsSelect<ExtArgs extends runtime.Types.Extensions.In
   registrantType?: boolean
   rosterRole?: boolean
   status?: boolean
+  eventTeamId?: boolean
+  sourceTeamRegistrationId?: boolean
   slotId?: boolean
   occurrenceDate?: boolean
   ageAtEvent?: boolean
   divisionId?: boolean
   divisionTypeId?: boolean
   divisionTypeKey?: boolean
+  jerseyNumber?: boolean
+  position?: boolean
+  isCaptain?: boolean
   consentDocumentId?: boolean
   consentStatus?: boolean
   createdBy?: boolean
@@ -680,12 +795,17 @@ export type EventRegistrationsSelectCreateManyAndReturn<ExtArgs extends runtime.
   registrantType?: boolean
   rosterRole?: boolean
   status?: boolean
+  eventTeamId?: boolean
+  sourceTeamRegistrationId?: boolean
   slotId?: boolean
   occurrenceDate?: boolean
   ageAtEvent?: boolean
   divisionId?: boolean
   divisionTypeId?: boolean
   divisionTypeKey?: boolean
+  jerseyNumber?: boolean
+  position?: boolean
+  isCaptain?: boolean
   consentDocumentId?: boolean
   consentStatus?: boolean
   createdBy?: boolean
@@ -701,12 +821,17 @@ export type EventRegistrationsSelectUpdateManyAndReturn<ExtArgs extends runtime.
   registrantType?: boolean
   rosterRole?: boolean
   status?: boolean
+  eventTeamId?: boolean
+  sourceTeamRegistrationId?: boolean
   slotId?: boolean
   occurrenceDate?: boolean
   ageAtEvent?: boolean
   divisionId?: boolean
   divisionTypeId?: boolean
   divisionTypeKey?: boolean
+  jerseyNumber?: boolean
+  position?: boolean
+  isCaptain?: boolean
   consentDocumentId?: boolean
   consentStatus?: boolean
   createdBy?: boolean
@@ -722,18 +847,23 @@ export type EventRegistrationsSelectScalar = {
   registrantType?: boolean
   rosterRole?: boolean
   status?: boolean
+  eventTeamId?: boolean
+  sourceTeamRegistrationId?: boolean
   slotId?: boolean
   occurrenceDate?: boolean
   ageAtEvent?: boolean
   divisionId?: boolean
   divisionTypeId?: boolean
   divisionTypeKey?: boolean
+  jerseyNumber?: boolean
+  position?: boolean
+  isCaptain?: boolean
   consentDocumentId?: boolean
   consentStatus?: boolean
   createdBy?: boolean
 }
 
-export type EventRegistrationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "registrantId" | "parentId" | "registrantType" | "rosterRole" | "status" | "slotId" | "occurrenceDate" | "ageAtEvent" | "divisionId" | "divisionTypeId" | "divisionTypeKey" | "consentDocumentId" | "consentStatus" | "createdBy", ExtArgs["result"]["eventRegistrations"]>
+export type EventRegistrationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "eventId" | "registrantId" | "parentId" | "registrantType" | "rosterRole" | "status" | "eventTeamId" | "sourceTeamRegistrationId" | "slotId" | "occurrenceDate" | "ageAtEvent" | "divisionId" | "divisionTypeId" | "divisionTypeKey" | "jerseyNumber" | "position" | "isCaptain" | "consentDocumentId" | "consentStatus" | "createdBy", ExtArgs["result"]["eventRegistrations"]>
 
 export type $EventRegistrationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "EventRegistrations"
@@ -748,12 +878,17 @@ export type $EventRegistrationsPayload<ExtArgs extends runtime.Types.Extensions.
     registrantType: $Enums.EventRegistrationsRegistrantTypeEnum
     rosterRole: $Enums.EventRegistrationsRosterRoleEnum
     status: $Enums.EventRegistrationsStatusEnum
+    eventTeamId: string | null
+    sourceTeamRegistrationId: string | null
     slotId: string | null
     occurrenceDate: string | null
     ageAtEvent: number | null
     divisionId: string | null
     divisionTypeId: string | null
     divisionTypeKey: string | null
+    jerseyNumber: string | null
+    position: string | null
+    isCaptain: boolean | null
     consentDocumentId: string | null
     consentStatus: string | null
     createdBy: string
@@ -1189,12 +1324,17 @@ export interface EventRegistrationsFieldRefs {
   readonly registrantType: Prisma.FieldRef<"EventRegistrations", 'EventRegistrationsRegistrantTypeEnum'>
   readonly rosterRole: Prisma.FieldRef<"EventRegistrations", 'EventRegistrationsRosterRoleEnum'>
   readonly status: Prisma.FieldRef<"EventRegistrations", 'EventRegistrationsStatusEnum'>
+  readonly eventTeamId: Prisma.FieldRef<"EventRegistrations", 'String'>
+  readonly sourceTeamRegistrationId: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly slotId: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly occurrenceDate: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly ageAtEvent: Prisma.FieldRef<"EventRegistrations", 'Int'>
   readonly divisionId: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly divisionTypeId: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly divisionTypeKey: Prisma.FieldRef<"EventRegistrations", 'String'>
+  readonly jerseyNumber: Prisma.FieldRef<"EventRegistrations", 'String'>
+  readonly position: Prisma.FieldRef<"EventRegistrations", 'String'>
+  readonly isCaptain: Prisma.FieldRef<"EventRegistrations", 'Boolean'>
   readonly consentDocumentId: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly consentStatus: Prisma.FieldRef<"EventRegistrations", 'String'>
   readonly createdBy: Prisma.FieldRef<"EventRegistrations", 'String'>

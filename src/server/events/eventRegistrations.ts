@@ -37,10 +37,15 @@ type RegistrationRow = {
   registrantType: RegistrationRegistrantType;
   rosterRole: RegistrationRosterRole | null;
   status: RegistrationLifecycleStatus | null;
+  eventTeamId: string | null;
+  sourceTeamRegistrationId: string | null;
   ageAtEvent: number | null;
   divisionId: string | null;
   divisionTypeId: string | null;
   divisionTypeKey: string | null;
+  jerseyNumber: string | null;
+  position: string | null;
+  isCaptain: boolean | null;
   consentDocumentId: string | null;
   consentStatus: string | null;
   createdBy: string;
@@ -206,10 +211,15 @@ const registrationSelect = {
   registrantType: true,
   rosterRole: true,
   status: true,
+  eventTeamId: true,
+  sourceTeamRegistrationId: true,
   ageAtEvent: true,
   divisionId: true,
   divisionTypeId: true,
   divisionTypeKey: true,
+  jerseyNumber: true,
+  position: true,
+  isCaptain: true,
   consentDocumentId: true,
   consentStatus: true,
   createdBy: true,
@@ -330,10 +340,15 @@ export const upsertEventRegistration = async (params: {
   status: RegistrationLifecycleStatus;
   createdBy: string;
   parentId?: string | null;
+  eventTeamId?: string | null;
+  sourceTeamRegistrationId?: string | null;
   ageAtEvent?: number | null;
   divisionId?: string | null;
   divisionTypeId?: string | null;
   divisionTypeKey?: string | null;
+  jerseyNumber?: string | null;
+  position?: string | null;
+  isCaptain?: boolean | null;
   consentDocumentId?: string | null;
   consentStatus?: string | null;
   occurrence?: WeeklyOccurrenceInput | null;
@@ -363,12 +378,17 @@ export const upsertEventRegistration = async (params: {
       registrantType: params.registrantType,
       rosterRole: params.rosterRole,
       status: params.status,
+      eventTeamId: normalizeId(params.eventTeamId),
+      sourceTeamRegistrationId: normalizeId(params.sourceTeamRegistrationId),
       slotId: occurrence?.slotId ?? null,
       occurrenceDate: occurrence?.occurrenceDate ?? null,
       ageAtEvent: params.ageAtEvent ?? null,
       divisionId: normalizeId(params.divisionId),
       divisionTypeId: normalizeId(params.divisionTypeId),
       divisionTypeKey: normalizeId(params.divisionTypeKey),
+      jerseyNumber: normalizeId(params.jerseyNumber),
+      position: normalizeId(params.position),
+      isCaptain: params.isCaptain ?? false,
       consentDocumentId: normalizeId(params.consentDocumentId),
       consentStatus: normalizeId(params.consentStatus),
       createdBy: params.createdBy,
@@ -379,12 +399,17 @@ export const upsertEventRegistration = async (params: {
       parentId: normalizeId(params.parentId),
       rosterRole: params.rosterRole,
       status: params.status,
+      eventTeamId: normalizeId(params.eventTeamId),
+      sourceTeamRegistrationId: normalizeId(params.sourceTeamRegistrationId),
       slotId: occurrence?.slotId ?? null,
       occurrenceDate: occurrence?.occurrenceDate ?? null,
       ageAtEvent: params.ageAtEvent ?? null,
       divisionId: normalizeId(params.divisionId),
       divisionTypeId: normalizeId(params.divisionTypeId),
       divisionTypeKey: normalizeId(params.divisionTypeKey),
+      jerseyNumber: normalizeId(params.jerseyNumber),
+      position: normalizeId(params.position),
+      isCaptain: params.isCaptain ?? false,
       consentDocumentId: normalizeId(params.consentDocumentId),
       consentStatus: normalizeId(params.consentStatus),
       updatedAt: now,
@@ -406,8 +431,12 @@ export const deleteEventRegistration = async (params: {
     slotId: params.occurrence?.slotId ?? null,
     occurrenceDate: params.occurrence?.occurrenceDate ?? null,
   });
-  await client.eventRegistrations.deleteMany({
+  await client.eventRegistrations.updateMany({
     where: { id: registrationId },
+    data: {
+      status: 'CANCELLED',
+      updatedAt: new Date(),
+    },
   });
 };
 

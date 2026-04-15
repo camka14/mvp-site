@@ -19,6 +19,11 @@ import {
   upsertEventRegistration,
 } from '@/server/events/eventRegistrations';
 import {
+  claimOrCreateEventTeamSnapshot,
+  findRegisteredEventTeamForCanonical,
+  loadCanonicalTeamById,
+} from '@/server/teams/teamMembership';
+import {
   isWeeklyParentEvent,
   isWeeklyOccurrenceJoinClosed,
   resolveWeeklyOccurrence,
@@ -100,8 +105,9 @@ const normalizeId = (value: unknown): string | null => {
   const normalized = value.trim();
   return normalized.length ? normalized : null;
 };
-const isSlotProvisionedTeam = (team: { captainId?: unknown; parentTeamId?: unknown }): boolean => (
-  String(team.captainId ?? '').trim().length === 0
+const isSlotProvisionedTeam = (team: { kind?: unknown; captainId?: unknown; parentTeamId?: unknown }): boolean => (
+  String(team.kind ?? '').trim().toUpperCase() === 'PLACEHOLDER'
+  || String(team.captainId ?? '').trim().length === 0
   || normalizeId(team.parentTeamId) !== null
 );
 const normalizeSportKey = (value: unknown): string => {
@@ -666,28 +672,20 @@ async function updateParticipants(
   let teamRefundReason = normalizeId(parsed.data.refundReason) ?? 'team_refund_requested';
   let teamRefundOwnerIds: string[] = [];
   let teamRefundParticipantUserIds: string[] = [];
+  let canonicalTeamRow: Record<string, any> | null = null;
 
   if (teamId) {
-    const team = await prisma.teams.findUnique({
-      where: { id: teamId },
-      select: {
-        id: true,
-        division: true,
-        divisionTypeId: true,
-        sport: true,
-        playerIds: true,
-        captainId: true,
-        managerId: true,
-        headCoachId: true,
-        parentTeamId: true,
-      },
-    });
+    const team = await loadCanonicalTeamById(teamId, prisma);
 
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
-    const teamManagerId = normalizeId(team.managerId);
-    const isTeamManager = teamManagerId === session.userId;
+    const registeredEventTeam = await findRegisteredEventTeamForCanonical({
+      eventId: event.id,
+      canonicalTeamId: teamId,
+    }, prisma);
+    const isTeamManager = normalizeId((team as any).managerId) === session.userId
+      || normalizeId((team as any).captainId) === session.userId;
     if (!session.isAdmin && !isTeamManager && !canManageCurrentEvent) {
       return NextResponse.json(
         { error: 'Only the team manager can register or withdraw this team.' },
@@ -698,18 +696,22 @@ async function updateParticipants(
       ? 'team_unregistered_by_host'
       : 'team_refund_requested';
     teamRefundOwnerIds = ensureUnique(
-      [team.id, normalizeId(team.parentTeamId) ?? ''].filter(Boolean),
+      [
+        normalizeId(registeredEventTeam?.id) ?? '',
+        team.id,
+      ].filter(Boolean),
     );
     teamRefundParticipantUserIds = ensureUnique(
       [
-        ...normalizeUserIdList(team.playerIds),
-        ...normalizeUserIdList([team.captainId, team.managerId, team.headCoachId]),
+        ...normalizeUserIdList((team as any).playerIds),
+        ...normalizeUserIdList([(team as any).captainId, (team as any).managerId, (team as any).headCoachId]),
       ],
     );
     if (mode === 'add') {
+      canonicalTeamRow = team as Record<string, any>;
       teamForRegistration = {
-        ...team,
-        playerIds: normalizeUserIdList(team.playerIds),
+        ...(team as any),
+        playerIds: normalizeUserIdList((team as any).playerIds),
       };
     }
   }
@@ -776,12 +778,23 @@ async function updateParticipants(
   }
 
   if (teamId) {
-    const existingRegistration = await findEventRegistration({
+    const registeredEventTeam = await findRegisteredEventTeamForCanonical({
       eventId: event.id,
-      registrantType: 'TEAM',
-      registrantId: teamId,
-      occurrence: resolvedOccurrence,
-    });
+      canonicalTeamId: teamId,
+    }, prisma);
+    const existingRegistration = registeredEventTeam
+      ? await findEventRegistration({
+        eventId: event.id,
+        registrantType: 'TEAM',
+        registrantId: registeredEventTeam.id,
+        occurrence: resolvedOccurrence,
+      })
+      : await findEventRegistration({
+        eventId: event.id,
+        registrantType: 'TEAM',
+        registrantId: teamId,
+        occurrence: resolvedOccurrence,
+      });
 
     if (
       mode === 'add'
@@ -793,19 +806,20 @@ async function updateParticipants(
     }
 
     if (mode === 'add') {
-      await upsertEventRegistration({
-        eventId: event.id,
-        registrantType: 'TEAM',
-        registrantId: teamId,
-        rosterRole: 'PARTICIPANT',
-        status: 'ACTIVE',
-        divisionId: divisionSelection.divisionId,
-        divisionTypeId: divisionSelection.divisionTypeId,
-        divisionTypeKey: divisionSelection.divisionTypeKey,
-        createdBy: session.userId,
-        occurrence: resolvedOccurrence,
+      await prisma.$transaction(async (tx) => {
+        await claimOrCreateEventTeamSnapshot({
+          tx,
+          eventId: event.id,
+          canonicalTeamId: teamId,
+          createdBy: session.userId,
+          canonicalTeam: canonicalTeamRow,
+          divisionId: divisionSelection.divisionId,
+          divisionTypeId: divisionSelection.divisionTypeId,
+          divisionTypeKey: divisionSelection.divisionTypeKey,
+          occurrence: resolvedOccurrence,
+        });
+        await syncDivisionTeamMembershipFromRegistrations(event, tx);
       });
-      await syncDivisionTeamMembershipFromRegistrations(event);
       const refreshedEvent = await prisma.events.findUnique({ where: { id: event.id } });
       return NextResponse.json({
         event: withLegacyEvent(refreshedEvent ?? event),
@@ -872,9 +886,34 @@ async function updateParticipants(
       await deleteEventRegistration({
         eventId: event.id,
         registrantType: 'TEAM',
-        registrantId: teamId,
+        registrantId: normalizeId(existingRegistration.eventTeamId) ?? normalizeId(existingRegistration.registrantId) ?? teamId,
         occurrence: resolvedOccurrence,
       }, tx);
+
+      const existingEventTeamId = normalizeId(existingRegistration.eventTeamId);
+      if (existingEventTeamId) {
+        await tx.eventRegistrations.updateMany({
+          where: {
+            eventTeamId: existingEventTeamId,
+            registrantType: { not: 'TEAM' },
+            status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+          },
+          data: {
+            status: 'CANCELLED',
+            updatedAt: now,
+          },
+        });
+        await tx.eventTeamStaffAssignments?.updateMany?.({
+          where: {
+            eventTeamId: existingEventTeamId,
+            status: 'ACTIVE',
+          },
+          data: {
+            status: 'CANCELLED',
+            updatedAt: now,
+          },
+        });
+      }
 
       await syncDivisionTeamMembershipFromRegistrations(event, tx);
       const touchedEvent = await tx.events.update({
@@ -913,7 +952,7 @@ async function updateParticipants(
           eventId: event.id,
           hostId: event.hostId,
           organizationId: event.organizationId ?? null,
-          teamId,
+          teamId: normalizeId(existingRegistration.eventTeamId) ?? teamId,
           requestedByUserId: session.userId,
           reason: teamRefundReason,
           teamOwnerIds: teamRefundOwnerIds,

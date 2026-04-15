@@ -54,7 +54,6 @@ describe('/api/teams route', () => {
           { playerIds: { has: 'user_1' } },
           { managerId: 'user_1' },
         ],
-        parentTeamId: null,
       },
       take: 25,
       orderBy: { name: 'asc' },

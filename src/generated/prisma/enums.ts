@@ -188,6 +188,41 @@ export const EventRegistrationsStatusEnum = {
 export type EventRegistrationsStatusEnum = (typeof EventRegistrationsStatusEnum)[keyof typeof EventRegistrationsStatusEnum]
 
 
+export const TeamMembershipStatusEnum = {
+  INVITED: 'INVITED',
+  ACTIVE: 'ACTIVE',
+  LEFT: 'LEFT',
+  REMOVED: 'REMOVED'
+} as const
+
+export type TeamMembershipStatusEnum = (typeof TeamMembershipStatusEnum)[keyof typeof TeamMembershipStatusEnum]
+
+
+export const TeamStaffAssignmentsRoleEnum = {
+  MANAGER: 'MANAGER',
+  HEAD_COACH: 'HEAD_COACH',
+  ASSISTANT_COACH: 'ASSISTANT_COACH'
+} as const
+
+export type TeamStaffAssignmentsRoleEnum = (typeof TeamStaffAssignmentsRoleEnum)[keyof typeof TeamStaffAssignmentsRoleEnum]
+
+
+export const EventTeamsKindEnum = {
+  REGISTERED: 'REGISTERED',
+  PLACEHOLDER: 'PLACEHOLDER'
+} as const
+
+export type EventTeamsKindEnum = (typeof EventTeamsKindEnum)[keyof typeof EventTeamsKindEnum]
+
+
+export const EventTeamStaffAssignmentsStatusEnum = {
+  ACTIVE: 'ACTIVE',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type EventTeamStaffAssignmentsStatusEnum = (typeof EventTeamStaffAssignmentsStatusEnum)[keyof typeof EventTeamStaffAssignmentsStatusEnum]
+
+
 export const DivisionsKindEnum = {
   LEAGUE: 'LEAGUE',
   PLAYOFF: 'PLAYOFF'

@@ -87,6 +87,26 @@ export type EventOfficials = Prisma.EventOfficialsModel
  */
 export type Teams = Prisma.TeamsModel
 /**
+ * Model CanonicalTeams
+ * 
+ */
+export type CanonicalTeams = Prisma.CanonicalTeamsModel
+/**
+ * Model TeamRegistrations
+ * 
+ */
+export type TeamRegistrations = Prisma.TeamRegistrationsModel
+/**
+ * Model TeamStaffAssignments
+ * 
+ */
+export type TeamStaffAssignments = Prisma.TeamStaffAssignmentsModel
+/**
+ * Model EventTeamStaffAssignments
+ * 
+ */
+export type EventTeamStaffAssignments = Prisma.EventTeamStaffAssignmentsModel
+/**
  * Model Messages
  * 
  */

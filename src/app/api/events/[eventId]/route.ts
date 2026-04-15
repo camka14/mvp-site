@@ -2383,6 +2383,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
           select: {
             id: true,
             parentTeamId: true,
+            kind: true,
             captainId: true,
             name: true,
           },
@@ -2422,8 +2423,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     }
     const forcedTeamIdsToDelete = new Set(
       linkedTeams
-        .filter((team: { parentTeamId: string | null; captainId: string; name: string | null }) => (
+        .filter((team: { parentTeamId: string | null; kind?: string | null; captainId: string; name: string | null }) => (
           normalizeEntityId(team.parentTeamId) !== null
+          || String(team.kind ?? '').toUpperCase() === 'PLACEHOLDER'
           || normalizeEntityId(team.captainId) === null
           || isPlaceholderTeamName(team.name)
         ))

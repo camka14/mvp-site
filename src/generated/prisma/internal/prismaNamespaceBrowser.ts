@@ -60,6 +60,10 @@ export const ModelName = {
   StaffMembers: 'StaffMembers',
   EventOfficials: 'EventOfficials',
   Teams: 'Teams',
+  CanonicalTeams: 'CanonicalTeams',
+  TeamRegistrations: 'TeamRegistrations',
+  TeamStaffAssignments: 'TeamStaffAssignments',
+  EventTeamStaffAssignments: 'EventTeamStaffAssignments',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
   ModerationReport: 'ModerationReport',
@@ -290,7 +294,10 @@ export const TeamsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  kind: 'kind',
   playerIds: 'playerIds',
+  playerRegistrationIds: 'playerRegistrationIds',
   division: 'division',
   divisionTypeId: 'divisionTypeId',
   divisionTypeName: 'divisionTypeName',
@@ -301,6 +308,7 @@ export const TeamsScalarFieldEnum = {
   managerId: 'managerId',
   headCoachId: 'headCoachId',
   coachIds: 'coachIds',
+  staffAssignmentIds: 'staffAssignmentIds',
   parentTeamId: 'parentTeamId',
   pending: 'pending',
   teamSize: 'teamSize',
@@ -309,6 +317,70 @@ export const TeamsScalarFieldEnum = {
 } as const
 
 export type TeamsScalarFieldEnum = (typeof TeamsScalarFieldEnum)[keyof typeof TeamsScalarFieldEnum]
+
+
+export const CanonicalTeamsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  name: 'name',
+  division: 'division',
+  divisionTypeId: 'divisionTypeId',
+  divisionTypeName: 'divisionTypeName',
+  wins: 'wins',
+  losses: 'losses',
+  teamSize: 'teamSize',
+  profileImageId: 'profileImageId',
+  sport: 'sport',
+  organizationId: 'organizationId',
+  createdBy: 'createdBy'
+} as const
+
+export type CanonicalTeamsScalarFieldEnum = (typeof CanonicalTeamsScalarFieldEnum)[keyof typeof CanonicalTeamsScalarFieldEnum]
+
+
+export const TeamRegistrationsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  teamId: 'teamId',
+  userId: 'userId',
+  status: 'status',
+  jerseyNumber: 'jerseyNumber',
+  position: 'position',
+  isCaptain: 'isCaptain',
+  createdBy: 'createdBy'
+} as const
+
+export type TeamRegistrationsScalarFieldEnum = (typeof TeamRegistrationsScalarFieldEnum)[keyof typeof TeamRegistrationsScalarFieldEnum]
+
+
+export const TeamStaffAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  teamId: 'teamId',
+  userId: 'userId',
+  role: 'role',
+  status: 'status',
+  createdBy: 'createdBy'
+} as const
+
+export type TeamStaffAssignmentsScalarFieldEnum = (typeof TeamStaffAssignmentsScalarFieldEnum)[keyof typeof TeamStaffAssignmentsScalarFieldEnum]
+
+
+export const EventTeamStaffAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventTeamId: 'eventTeamId',
+  userId: 'userId',
+  role: 'role',
+  status: 'status',
+  sourceStaffAssignmentId: 'sourceStaffAssignmentId'
+} as const
+
+export type EventTeamStaffAssignmentsScalarFieldEnum = (typeof EventTeamStaffAssignmentsScalarFieldEnum)[keyof typeof EventTeamStaffAssignmentsScalarFieldEnum]
 
 
 export const MessagesScalarFieldEnum = {
@@ -841,12 +913,17 @@ export const EventRegistrationsScalarFieldEnum = {
   registrantType: 'registrantType',
   rosterRole: 'rosterRole',
   status: 'status',
+  eventTeamId: 'eventTeamId',
+  sourceTeamRegistrationId: 'sourceTeamRegistrationId',
   slotId: 'slotId',
   occurrenceDate: 'occurrenceDate',
   ageAtEvent: 'ageAtEvent',
   divisionId: 'divisionId',
   divisionTypeId: 'divisionTypeId',
   divisionTypeKey: 'divisionTypeKey',
+  jerseyNumber: 'jerseyNumber',
+  position: 'position',
+  isCaptain: 'isCaptain',
   consentDocumentId: 'consentDocumentId',
   consentStatus: 'consentStatus',
   createdBy: 'createdBy'

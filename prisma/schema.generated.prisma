@@ -1,11 +1,11 @@
 generator client {
   provider = "prisma-client"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
 }
-
 
 enum BillsOwnerTypeEnum {
   USER
@@ -45,10 +45,25 @@ enum EventsEventTypeEnum {
   WEEKLY_EVENT
 }
 
+enum EventsOfficialSchedulingModeEnum {
+  STAFFING
+  SCHEDULE
+  OFF
+}
+
 enum ProductsPeriodEnum {
+  SINGLE
   WEEK
   MONTH
   YEAR
+}
+
+enum ProductsTaxCategoryEnum {
+  ONE_TIME_PRODUCT
+  DAY_PASS
+  EQUIPMENT_RENTAL
+  SUBSCRIPTION
+  NON_TAXABLE
 }
 
 enum SubscriptionsPeriodEnum {
@@ -74,10 +89,36 @@ enum ParentChildLinksStatusEnum {
   INACTIVE
 }
 
+enum OrganizationsVerificationStatusEnum {
+  UNVERIFIED
+  LEGACY_CONNECTED
+  PENDING
+  ACTION_REQUIRED
+  VERIFIED
+}
+
+enum OrganizationsVerificationReviewStatusEnum {
+  NONE
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum StripeAccountsAccountOriginEnum {
+  LEGACY_OAUTH
+  PLATFORM_ONBOARDING
+}
+
 enum EventRegistrationsRegistrantTypeEnum {
   SELF
   CHILD
   TEAM
+}
+
+enum EventRegistrationsRosterRoleEnum {
+  PARTICIPANT
+  WAITLIST
+  FREE_AGENT
 }
 
 enum EventRegistrationsStatusEnum {
@@ -88,481 +129,905 @@ enum EventRegistrationsStatusEnum {
   CONSENTFAILED
 }
 
+enum TeamMembershipStatusEnum {
+  INVITED
+  ACTIVE
+  LEFT
+  REMOVED
+}
+
+enum TeamStaffAssignmentsRoleEnum {
+  MANAGER
+  HEAD_COACH
+  ASSISTANT_COACH
+}
+
+enum EventTeamsKindEnum {
+  REGISTERED
+  PLACEHOLDER
+}
+
+enum EventTeamStaffAssignmentsStatusEnum {
+  ACTIVE
+  CANCELLED
+}
+
+enum DivisionsKindEnum {
+  LEAGUE
+  PLAYOFF
+}
+
+enum BoldSignSyncOperationTypeEnum {
+  TEMPLATE_CREATE
+  TEMPLATE_DELETE
+  DOCUMENT_SEND
+}
+
+enum BoldSignSyncOperationStatusEnum {
+  PENDING_WEBHOOK
+  PENDING_RECONCILE
+  CONFIRMED
+  FAILED
+  FAILED_RETRYABLE
+  TIMED_OUT
+}
+
+enum ModerationReportTargetTypeEnum {
+  CHAT_GROUP
+  EVENT
+  BLOCK_USER
+}
+
+enum ModerationReportStatusEnum {
+  OPEN
+  IN_REVIEW
+  ACTIONED
+  DISMISSED
+}
+
 model Fields {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  fieldNumber Int
-  divisions String[]
-  lat Float?
-  long Float?
-  heading Float?
-  inUse Boolean?
-  name String?
-  rentalSlotIds String[]
-  location String?
+  id             String    @id
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  fieldNumber    Int
+  lat            Float?
+  long           Float?
+  heading        Float?
+  inUse          Boolean?
+  name           String?
+  rentalSlotIds  String[]
+  location       String?
   organizationId String?
+  createdBy      String?
+
+  @@index([organizationId])
+  @@index([createdBy])
 }
 
 model Matches {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  start DateTime?
-  end DateTime?
-  division String?
-  team1Points Int[]
-  team2Points Int[]
-  setResults Int[]
-  side String?
-  matchId Int
-  losersBracket Boolean?
-  winnerNextMatchId String?
-  loserNextMatchId String?
-  previousRightId String?
-  previousLeftId String?
-  officialCheckedIn Boolean?
-  officialId String?
-  team1Id String?
-  team2Id String?
-  team1Seed Int?
-  team2Seed Int?
-  eventId String?
-  fieldId String?
-  teamOfficialId String?
+  id                 String    @id
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  start              DateTime?
+  end                DateTime?
+  locked             Boolean   @default(false)
+  division           String?
+  team1Points        Int[]
+  team2Points        Int[]
+  setResults         Int[]
+  side               String?
+  matchId            Int
+  losersBracket      Boolean?
+  winnerNextMatchId  String?
+  loserNextMatchId   String?
+  previousRightId    String?
+  previousLeftId     String?
+  officialCheckedIn  Boolean?
+  officialId         String?
+  officialIds        Json?
+  team1Id            String?
+  team2Id            String?
+  team1Seed          Int?
+  team2Seed          Int?
+  eventId            String?
+  fieldId            String?
+  teamOfficialId     String?
+
+  @@index([eventId])
+  @@index([matchId])
+  @@index([winnerNextMatchId])
+  @@index([loserNextMatchId])
+  @@index([previousLeftId])
+  @@index([previousRightId])
+  @@index([fieldId])
 }
 
 model Divisions {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  name String
+  id                          String             @id
+  createdAt                   DateTime?
+  updatedAt                   DateTime?
+  name                        String
+  key                         String?
+  kind                        DivisionsKindEnum? @default(LEAGUE)
+  eventId                     String?
+  organizationId              String?
+  sportId                     String?
+  price                       Int?
+  maxParticipants             Int?
+  playoffTeamCount            Int?
+  playoffPlacementDivisionIds String[]           @default([])
+  standingsOverrides          Json?
+  standingsConfirmedAt        DateTime?
+  standingsConfirmedBy        String?
+  allowPaymentPlans           Boolean?
+  installmentCount            Int?
+  installmentDueDates         DateTime[]         @default([])
+  installmentAmounts          Int[]              @default([])
+  minRating                   Float?
+  maxRating                   Float?
+  divisionTypeId              String?
+  divisionTypeName            String?
+  ratingType                  String?
+  gender                      String?
+  ageCutoffDate               DateTime?
+  ageCutoffLabel              String?
+  ageCutoffSource             String?
+  fieldIds                    String[]           @default([])
+  teamIds                     String[]           @default([])
+
+  @@index([eventId])
+  @@index([organizationId])
+  @@index([sportId])
+  @@index([key])
 }
 
 model UserData {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  firstName String?
-  lastName String?
-  dateOfBirth DateTime
-  dobVerified Boolean?
-  dobVerifiedAt DateTime?
+  id                      String    @id
+  createdAt               DateTime?
+  updatedAt               DateTime?
+  firstName               String?
+  lastName                String?
+  dateOfBirth             DateTime
+  requiredProfileFieldsCompletedAt DateTime?
+  dobVerified             Boolean?
+  dobVerifiedAt           DateTime?
   ageVerificationProvider String?
-  teamIds String[]
-  friendIds String[]
-  userName String
-  hasStripeAccount Boolean?
-  followingIds String[]
-  friendRequestIds String[]
-  friendRequestSentIds String[]
-  uploadedImages String[]
-  profileImageId String?
+  teamIds                 String[]
+  friendIds               String[]
+  userName                String
+  hasStripeAccount        Boolean?
+  followingIds            String[]
+  friendRequestIds        String[]
+  friendRequestSentIds    String[]
+  uploadedImages          String[]
+  profileImageId          String?
+  homePageOrganizationId  String?
+  blockedUserIds          String[]  @default([])
+  hiddenEventIds          String[]  @default([])
+  chatTermsAcceptedAt     DateTime?
+  chatTermsVersion        String?
 }
 
 model SensitiveUserData {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  userId String
-  email String
+  id                  String    @id
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  userId              String
+  email               String
+  billingAddressLine1 String?
+  billingAddressLine2 String?
+  billingCity         String?
+  billingState        String?
+  billingPostalCode   String?
+  billingCountryCode  String?
+  appleRefreshToken String?
 }
 
 model Invites {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  type String
-  email String
-  status String?
-  eventId String?
+  id             String    @id
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  type           String
+  email          String
+  status         String?
+  staffTypes     String[]  @default([])
+  eventId        String?
   organizationId String?
-  teamId String?
-  userId String?
-  createdBy String?
-  firstName String?
-  lastName String?
+  teamId         String?
+  userId         String?
+  createdBy      String?
+  firstName      String?
+  lastName       String?
+}
+
+model StaffMembers {
+  id             String    @id
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  organizationId String
+  userId         String
+  types          String[]  @default([])
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model EventOfficials {
+  id         String   @id
+  createdAt  DateTime?
+  updatedAt  DateTime?
+  eventId    String
+  userId     String
+  positionIds String[] @default([])
+  fieldIds   String[] @default([])
+  isActive   Boolean? @default(true)
+
+  @@unique([eventId, userId])
+  @@index([eventId])
+  @@index([userId])
 }
 
 model Teams {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  playerIds String[]
-  division String?
-  divisionTypeId String?
+  id               String    @id
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  eventId          String?
+  kind             EventTeamsKindEnum? @default(REGISTERED)
+  playerIds        String[]
+  playerRegistrationIds String[] @default([])
+  division         String?
+  divisionTypeId   String?
   divisionTypeName String?
-  wins Int?
-  losses Int?
-  name String?
-  captainId String
-  managerId String
-  headCoachId String?
-  coachIds String[] @default([])
-  parentTeamId String?
-  pending String[]
-  teamSize Int
-  profileImageId String?
-  sport String?
+  wins             Int?
+  losses           Int?
+  name             String
+  captainId        String
+  managerId        String
+  headCoachId      String?
+  coachIds         String[]  @default([])
+  staffAssignmentIds String[] @default([])
+  parentTeamId     String?
+  pending          String[]
+  teamSize         Int
+  profileImageId   String?
+  sport            String?
 
+  @@index([eventId])
+  @@index([kind])
   @@index([captainId])
   @@index([managerId])
   @@index([headCoachId])
   @@index([parentTeamId])
-  @@map("VolleyBallTeams")
+  @@map("EventTeams")
+}
+
+model CanonicalTeams {
+  id               String    @id
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  name             String
+  division         String?
+  divisionTypeId   String?
+  divisionTypeName String?
+  wins             Int?
+  losses           Int?
+  teamSize         Int
+  profileImageId   String?
+  sport            String?
+  organizationId   String?
+  createdBy        String?
+
+  @@index([organizationId])
+  @@index([createdBy])
+  @@map("Teams")
+}
+
+model TeamRegistrations {
+  id           String                   @id
+  createdAt    DateTime?
+  updatedAt    DateTime?
+  teamId       String
+  userId       String
+  status       TeamMembershipStatusEnum @default(ACTIVE)
+  jerseyNumber String?
+  position     String?
+  isCaptain    Boolean?                @default(false)
+  createdBy    String?
+
+  @@unique([teamId, userId])
+  @@index([teamId, status])
+  @@index([userId, status])
+}
+
+model TeamStaffAssignments {
+  id        String                       @id
+  createdAt DateTime?
+  updatedAt DateTime?
+  teamId    String
+  userId    String
+  role      TeamStaffAssignmentsRoleEnum
+  status    TeamMembershipStatusEnum     @default(ACTIVE)
+  createdBy String?
+
+  @@unique([teamId, userId, role])
+  @@index([teamId, status])
+  @@index([userId, status])
+}
+
+model EventTeamStaffAssignments {
+  id                     String                              @id
+  createdAt              DateTime?
+  updatedAt              DateTime?
+  eventTeamId            String
+  userId                 String
+  role                   TeamStaffAssignmentsRoleEnum
+  status                 EventTeamStaffAssignmentsStatusEnum @default(ACTIVE)
+  sourceStaffAssignmentId String?
+
+  @@unique([eventTeamId, userId, role])
+  @@index([eventTeamId, status])
+  @@index([userId, status])
+  @@index([sourceStaffAssignmentId])
 }
 
 model Messages {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  body String
-  userId String
+  id             String    @id
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  body           String
+  userId         String
   attachmentUrls String[]
-  chatId String
-  readByIds String[]
-  sentTime DateTime
+  chatId         String
+  readByIds      String[]
+  sentTime       DateTime
+  removedAt      DateTime?
+  removedByUserId String?
+  removalReason  String?
+
+  @@index([chatId, removedAt])
 }
 
 model ChatGroup {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  name String?
-  userIds String[]
-  mutedUserIds String[] @default([])
-  hostId String
+  id              String    @id
+  createdAt       DateTime?
+  updatedAt       DateTime?
+  name            String?
+  teamId          String?   @unique
+  // Indexed via a raw SQL GIN migration for array membership lookups.
+  userIds         String[]
+  mutedUserIds    String[]  @default([])
+  hostId          String
+  archivedAt      DateTime?
+  archivedReason  String?
+  archivedByUserId String?
+
+  @@index([archivedAt])
+}
+
+model ModerationReport {
+  id               String                         @id
+  createdAt        DateTime?
+  updatedAt        DateTime?
+  reporterUserId   String
+  targetType       ModerationReportTargetTypeEnum
+  targetId         String
+  category         String?
+  notes            String?
+  status           ModerationReportStatusEnum     @default(OPEN)
+  dueAt            DateTime
+  reviewedAt       DateTime?
+  reviewedByUserId String?
+  reviewNotes      String?
+  metadata         Json?
+
+  @@index([reporterUserId])
+  @@index([targetType, targetId])
+  @@index([status, dueAt])
+}
+
+model PushDeviceTarget {
+  id           String    @id
+  createdAt    DateTime?
+  updatedAt    DateTime?
+  userId       String
+  pushToken    String    @unique
+  pushTarget   String?
+  pushPlatform String?
+  lastSeenAt   DateTime?
+
+  @@index([userId])
+  @@index([pushTarget])
 }
 
 model LockFiles {
-  id String @id
+  id        String    @id
   createdAt DateTime?
   updatedAt DateTime?
-  docId String?
-  expires DateTime
+  docId     String?
+  expires   DateTime
 }
 
 model PaymentIntents {
-  id String @id
+  id        String    @id
   createdAt DateTime?
   updatedAt DateTime?
-  eventId String
-  userId String
+  eventId   String
+  userId    String
 }
 
 model Bills {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  ownerType BillsOwnerTypeEnum
-  ownerId String
-  organizationId String?
-  eventId String?
-  totalAmountCents Int
-  paidAmountCents Int?
-  nextPaymentDue DateTime?
+  id                     String             @id
+  createdAt              DateTime?
+  updatedAt              DateTime?
+  ownerType              BillsOwnerTypeEnum
+  ownerId                String
+  organizationId         String?
+  eventId                String?
+  totalAmountCents       Int
+  paidAmountCents        Int?
+  nextPaymentDue         DateTime?
   nextPaymentAmountCents Int?
-  parentBillId String?
-  allowSplit Boolean?
-  status BillsStatusEnum?
-  paymentPlanEnabled Boolean?
-  createdBy String?
-  lineItems Json?
+  parentBillId           String?
+  allowSplit             Boolean?
+  status                 BillsStatusEnum?
+  paymentPlanEnabled     Boolean?
+  createdBy              String?
+  lineItems              Json?
 }
 
 model BillPayments {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  billId String
-  sequence Int
-  dueDate DateTime
-  amountCents Int
-  status BillPaymentsStatusEnum?
-  paidAt DateTime?
-  paymentIntentId String?
-  payerUserId String?
-  refundedAmountCents Int @default(0)
+  id                       String                  @id
+  createdAt                DateTime?
+  updatedAt                DateTime?
+  billId                   String
+  sequence                 Int
+  dueDate                  DateTime
+  amountCents              Int
+  status                   BillPaymentsStatusEnum?
+  paidAt                   DateTime?
+  paymentIntentId          String?
+  payerUserId              String?
+  refundedAmountCents      Int                     @default(0)
+  taxCalculationId         String?
+  taxTransactionId         String?
+  taxAmountCents           Int                     @default(0)
+  stripeProcessingFeeCents Int                     @default(0)
+  stripeTaxServiceFeeCents Int                     @default(0)
 }
 
 model RefundRequests {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  eventId String
-  userId String
-  hostId String?
-  reason String
+  id             String                    @id
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  eventId        String
+  userId         String
+  hostId         String?
+  teamId         String?
+  reason         String
   organizationId String?
-  status RefundRequestsStatusEnum?
+  status         RefundRequestsStatusEnum?
 }
 
 model StripeAccounts {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  customerId String?
-  accountId String?
-  userId String?
-  organizationId String?
-  email String?
+  id                         String                        @id
+  createdAt                  DateTime?
+  updatedAt                  DateTime?
+  customerId                 String?
+  accountId                  String?
+  userId                     String?
+  organizationId             String?
+  email                      String?
+  accountOrigin              StripeAccountsAccountOriginEnum?
+  accountType                String?
+  isActiveForBilling         Boolean?                      @default(false)
+  detailsSubmitted           Boolean?
+  chargesEnabled             Boolean?
+  payoutsEnabled             Boolean?
+  requirementsCurrentlyDue   String[]                      @default([])
+  requirementsPastDue        String[]                      @default([])
+  requirementsEventuallyDue  String[]                      @default([])
+  requirementsDisabledReason String?
+  verificationLastSyncedAt   DateTime?
+
+  @@index([organizationId, updatedAt])
+  @@index([organizationId, accountOrigin])
+  @@index([organizationId, isActiveForBilling])
+  @@index([userId, updatedAt])
+  @@index([accountId])
 }
 
 model Events {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  name String
-  start DateTime
-  end DateTime?
-  description String?
-  divisions String[]
-  winnerSetCount Int?
-  loserSetCount Int?
-  doubleElimination Boolean?
-  location String
-  address String?
-  rating Float?
-  teamSizeLimit Int
-  maxParticipants Int?
-  minAge Int?
-  maxAge Int?
-  hostId String
-  assistantHostIds String[] @default([])
-  noFixedEndDateTime Boolean @default(true)
-  price Int
-  singleDivision Boolean?
-  waitListIds String[]
-  freeAgentIds String[]
-  cancellationRefundHours Int?
-  teamSignup Boolean?
-  prize String?
-  registrationCutoffHours Int?
-  seedColor Int?
-  imageId String
-  fieldCount Int?
+  id                           String               @id
+  createdAt                    DateTime?
+  updatedAt                    DateTime?
+  name                         String
+  start                        DateTime
+  end                          DateTime?
+  description                  String?
+  divisions                    String[]
+  winnerSetCount               Int?
+  loserSetCount                Int?
+  doubleElimination            Boolean?
+  location                     String
+  address                      String?
+  rating                       Float?
+  teamSizeLimit                Int
+  maxParticipants              Int?
+  minAge                       Int?
+  maxAge                       Int?
+  hostId                       String
+  assistantHostIds             String[]             @default([])
+  noFixedEndDateTime           Boolean              @default(true)
+  price                        Int
+  singleDivision               Boolean?
+  registrationByDivisionType   Boolean?
+  waitListIds                  String[]
+  freeAgentIds                 String[]
+  cancellationRefundHours      Int?
+  teamSignup                   Boolean?
+  prize                        String?
+  registrationCutoffHours      Int?
+  seedColor                    Int?
+  imageId                      String
+  fieldCount                   Int?
   winnerBracketPointsToVictory Int[]
-  loserBracketPointsToVictory Int[]
-  coordinates Json
-  gamesPerOpponent Int?
-  includePlayoffs Boolean?
-  playoffTeamCount Int?
-  usesSets Boolean?
-  matchDurationMinutes Int?
-  setDurationMinutes Int?
-  setsPerMatch Int?
-  restTimeMinutes Int?
-  state EventsStateEnum?
-  pointsToVictory Int[]
-  sportId String?
-  timeSlotIds String[]
-  fieldIds String[]
-  teamIds String[]
-  userIds String[]
-  leagueScoringConfigId String?
-  organizationId String?
-  parentEvent String?
-  autoCancellation Boolean?
-  eventType EventsEventTypeEnum?
-  doTeamsOfficiate Boolean?
-  officialIds String[]
-  allowPaymentPlans Boolean?
-  installmentCount Int?
-  installmentDueDates DateTime[]
-  installmentAmounts Int[]
-  allowTeamSplitDefault Boolean?
-  requiredTemplateIds String[]
+  loserBracketPointsToVictory  Int[]
+  coordinates                  Json
+  gamesPerOpponent             Int?
+  includePlayoffs              Boolean?
+  playoffTeamCount             Int?
+  usesSets                     Boolean?
+  matchDurationMinutes         Int?
+  setDurationMinutes           Int?
+  setsPerMatch                 Int?
+  restTimeMinutes              Int?
+  state                        EventsStateEnum?
+  pointsToVictory              Int[]
+  sportId                      String?
+  timeSlotIds                  String[]
+  fieldIds                     String[]
+  teamIds                      String[]
+  userIds                      String[]
+  leagueScoringConfigId        String?
+  organizationId               String?
+  parentEvent                  String?
+  autoCancellation             Boolean?
+  eventType                    EventsEventTypeEnum?
+  officialSchedulingMode       EventsOfficialSchedulingModeEnum @default(SCHEDULE)
+  doTeamsOfficiate             Boolean?
+  teamOfficialsMaySwap         Boolean?
+  officialIds                  String[]
+  officialPositions            Json?
+  allowPaymentPlans            Boolean?
+  installmentCount             Int?
+  installmentDueDates          DateTime[]
+  installmentAmounts           Int[]
+  allowTeamSplitDefault        Boolean?
+  splitLeaguePlayoffDivisions  Boolean?                         @default(false)
+  requiredTemplateIds          String[]
+
+  @@index([organizationId])
+  @@index([hostId])
+  @@index([sportId])
+  @@index([parentEvent])
 }
 
 model Organizations {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  name String
-  location String?
-  address String?
-  description String?
-  logoId String?
-  ownerId String
-  hostIds String[] @default([])
-  website String?
-  officialIds String[]
-  hasStripeAccount Boolean?
-  coordinates Json?
-  productIds String[]
-  teamIds String[]
+  id                          String                                   @id
+  createdAt                   DateTime?
+  updatedAt                   DateTime?
+  name                        String
+  location                    String?
+  address                     String?
+  description                 String?
+  logoId                      String?
+  ownerId                     String
+  hostIds                     String[]                                 @default([])
+  website                     String?
+  sports                      String[]                                 @default([])
+  officialIds                 String[]
+  hasStripeAccount            Boolean?
+  verificationStatus          OrganizationsVerificationStatusEnum      @default(UNVERIFIED)
+  verifiedAt                  DateTime?
+  verificationReviewStatus    OrganizationsVerificationReviewStatusEnum @default(NONE)
+  verificationReviewNotes     String?
+  verificationReviewUpdatedAt DateTime?
+  coordinates                 Json?
+  productIds                  String[]
+  teamIds                     String[]
+
+  @@index([verificationStatus])
+  @@index([verificationReviewStatus])
 }
 
 model Products {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  name String
-  description String?
-  priceCents Int
-  period ProductsPeriodEnum
-  organizationId String
-  createdBy String?
-  isActive Boolean?
+  id              String             @id
+  createdAt       DateTime?
+  updatedAt       DateTime?
+  name            String
+  description     String?
+  priceCents      Int
+  period          ProductsPeriodEnum
+  taxCategory     ProductsTaxCategoryEnum @default(ONE_TIME_PRODUCT)
+  organizationId  String
+  createdBy       String?
+  isActive        Boolean?
   stripeProductId String?
-  stripePriceId String?
+  stripePriceId   String?
 }
 
 model Subscriptions {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  productId String
-  userId String
-  organizationId String?
-  startDate DateTime
-  priceCents Int
-  period SubscriptionsPeriodEnum
-  status SubscriptionsStatusEnum?
+  id                   String                   @id
+  createdAt            DateTime?
+  updatedAt            DateTime?
+  productId            String
+  userId               String
+  organizationId       String?
+  startDate            DateTime
+  priceCents           Int
+  period               SubscriptionsPeriodEnum
+  status               SubscriptionsStatusEnum?
   stripeSubscriptionId String?
 }
 
 model TimeSlots {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  dayOfWeek Int?
-  startTimeMinutes Int?
-  endTimeMinutes Int?
-  startDate DateTime
-  repeating Boolean
-  endDate DateTime?
-  scheduledFieldId String?
-  price Int?
+  id                  String    @id
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  dayOfWeek           Int?
+  daysOfWeek          Int[]     @default([])
+  startTimeMinutes    Int?
+  endTimeMinutes      Int?
+  startDate           DateTime
+  repeating           Boolean
+  endDate             DateTime?
+  scheduledFieldId    String?
+  scheduledFieldIds   String[]  @default([])
+  price               Int?
+  divisions           String[]  @default([])
+  requiredTemplateIds String[]  @default([])
+  hostRequiredTemplateIds String[] @default([])
+
+  @@index([scheduledFieldId])
 }
 
 model LeagueScoringConfigs {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  pointsForWin Int?
-  pointsForDraw Int?
-  pointsForLoss Int?
-  pointsPerSetWin Float?
-  pointsPerSetLoss Float?
-  pointsPerGameWin Float?
-  pointsPerGameLoss Float?
-  pointsPerGoalScored Float?
-  pointsPerGoalConceded Float?
+  id                                 String    @id
+  createdAt                          DateTime?
+  updatedAt                          DateTime?
+  pointsForWin                       Int?
+  pointsForDraw                      Int?
+  pointsForLoss                      Int?
+  pointsPerSetWin                    Float?
+  pointsPerSetLoss                   Float?
+  pointsPerGameWin                   Float?
+  pointsPerGameLoss                  Float?
+  pointsPerGoalScored                Float?
+  pointsPerGoalConceded              Float?
 }
 
 model Sports {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  name String
-  usePointsForWin Boolean?
-  usePointsForDraw Boolean?
-  usePointsForLoss Boolean?
-  usePointsForForfeitWin Boolean?
-  usePointsForForfeitLoss Boolean?
-  usePointsPerSetWin Boolean?
-  usePointsPerSetLoss Boolean?
-  usePointsPerGameWin Boolean?
-  usePointsPerGameLoss Boolean?
-  usePointsPerGoalScored Boolean?
-  usePointsPerGoalConceded Boolean?
-  useMaxGoalBonusPoints Boolean?
-  useMinGoalBonusThreshold Boolean?
-  usePointsForShutout Boolean?
-  usePointsForCleanSheet Boolean?
-  useApplyShutoutOnlyIfWin Boolean?
-  usePointsPerGoalDifference Boolean?
-  useMaxGoalDifferencePoints Boolean?
+  id                                String    @id
+  createdAt                         DateTime?
+  updatedAt                         DateTime?
+  name                              String
+  usePointsForWin                   Boolean?
+  usePointsForDraw                  Boolean?
+  usePointsForLoss                  Boolean?
+  usePointsForForfeitWin            Boolean?
+  usePointsForForfeitLoss           Boolean?
+  usePointsPerSetWin                Boolean?
+  usePointsPerSetLoss               Boolean?
+  usePointsPerGameWin               Boolean?
+  usePointsPerGameLoss              Boolean?
+  usePointsPerGoalScored            Boolean?
+  usePointsPerGoalConceded          Boolean?
+  useMaxGoalBonusPoints             Boolean?
+  useMinGoalBonusThreshold          Boolean?
+  usePointsForShutout               Boolean?
+  usePointsForCleanSheet            Boolean?
+  useApplyShutoutOnlyIfWin          Boolean?
+  usePointsPerGoalDifference        Boolean?
+  useMaxGoalDifferencePoints        Boolean?
   usePointsPenaltyPerGoalDifference Boolean?
-  usePointsForParticipation Boolean?
-  usePointsForNoShow Boolean?
-  usePointsForWinStreakBonus Boolean?
-  useWinStreakThreshold Boolean?
-  usePointsForOvertimeWin Boolean?
-  usePointsForOvertimeLoss Boolean?
-  useOvertimeEnabled Boolean?
-  usePointsPerRedCard Boolean?
-  usePointsPerYellowCard Boolean?
-  usePointsPerPenalty Boolean?
-  useMaxPenaltyDeductions Boolean?
-  useMaxPointsPerMatch Boolean?
-  useMinPointsPerMatch Boolean?
-  useGoalDifferenceTiebreaker Boolean?
-  useHeadToHeadTiebreaker Boolean?
-  useTotalGoalsTiebreaker Boolean?
-  useEnableBonusForComebackWin Boolean?
-  useBonusPointsForComebackWin Boolean?
+  usePointsForParticipation         Boolean?
+  usePointsForNoShow                Boolean?
+  usePointsForWinStreakBonus        Boolean?
+  useWinStreakThreshold             Boolean?
+  usePointsForOvertimeWin           Boolean?
+  usePointsForOvertimeLoss          Boolean?
+  useOvertimeEnabled                Boolean?
+  usePointsPerRedCard               Boolean?
+  usePointsPerYellowCard            Boolean?
+  usePointsPerPenalty               Boolean?
+  useMaxPenaltyDeductions           Boolean?
+  useMaxPointsPerMatch              Boolean?
+  useMinPointsPerMatch              Boolean?
+  useGoalDifferenceTiebreaker       Boolean?
+  useHeadToHeadTiebreaker           Boolean?
+  useTotalGoalsTiebreaker           Boolean?
+  useEnableBonusForComebackWin      Boolean?
+  useBonusPointsForComebackWin      Boolean?
   useEnableBonusForHighScoringMatch Boolean?
-  useHighScoringThreshold Boolean?
+  useHighScoringThreshold           Boolean?
   useBonusPointsForHighScoringMatch Boolean?
-  useEnablePenaltyUnsporting Boolean?
-  usePenaltyPointsUnsporting Boolean?
-  usePointPrecision Boolean?
+  useEnablePenaltyUnsporting        Boolean?
+  usePenaltyPointsUnsporting        Boolean?
+  usePointPrecision                 Boolean?
+  officialPositionTemplates         Json?
 }
 
 model TemplateDocuments {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  templateId String?
-  type TemplateDocumentsTypeEnum?
-  organizationId String
-  title String
-  description String?
-  signOnce Boolean?
-  status String?
-  createdBy String?
-  roleIndex Int?
-  roleIndexes Int[]
-  signerRoles String[]
-  content String?
+  id                 String                     @id
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  templateId         String?
+  type               TemplateDocumentsTypeEnum?
+  organizationId     String
+  title              String
+  description        String?
+  signOnce           Boolean?
+  requiredSignerType String                     @default("PARTICIPANT")
+  status             String?
+  createdBy          String?
+  roleIndex          Int?
+  roleIndexes        Int[]
+  signerRoles        String[]
+  content            String?
 }
 
 model SignedDocuments {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
+  id               String    @id
+  createdAt        DateTime?
+  updatedAt        DateTime?
   signedDocumentId String
-  templateId String
-  userId String
-  documentName String
-  hostId String?
-  organizationId String?
-  eventId String?
-  status String?
-  signedAt String?
-  signerEmail String?
-  roleIndex Int?
-  signerRole String?
-  ipAddress String?
-  requestId String?
+  templateId       String
+  userId           String
+  documentName     String
+  hostId           String?
+  organizationId   String?
+  eventId          String?
+  status           String?
+  signedAt         String?
+  signerEmail      String?
+  roleIndex        Int?
+  signerRole       String?
+  ipAddress        String?
+  requestId        String?
+}
+
+model BoldSignWebhookEvents {
+  id                 String    @id
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  boldSignEventId    String    @unique
+  eventType          String
+  objectType         String?
+  templateId         String?
+  documentId         String?
+  eventTimestamp     Int?
+  signatureTimestamp Int?
+  processingStatus   String
+  processingError    String?
+  payload            Json
+  headers            Json?
+
+  @@index([eventType])
+  @@index([templateId])
+  @@index([documentId])
+  @@index([processingStatus])
+}
+
+model BoldSignSyncOperations {
+  id                     String                          @id
+  createdAt              DateTime?
+  updatedAt              DateTime?
+  operationType          BoldSignSyncOperationTypeEnum
+  status                 BoldSignSyncOperationStatusEnum
+  idempotencyKey         String                          @unique
+  organizationId         String?
+  eventId                String?
+  templateDocumentId     String?
+  signedDocumentRecordId String?
+  templateId             String?
+  documentId             String?
+  userId                 String?
+  childUserId            String?
+  signerRole             String?
+  signerEmail            String?
+  roleIndex              Int?
+  requestId              String?
+  ipAddress              String?
+  payload                Json?
+  lastError              String?
+  completedAt            DateTime?
+  expiresAt              DateTime?
+
+  @@index([status, updatedAt])
+  @@index([templateId])
+  @@index([documentId])
+  @@index([eventId])
 }
 
 model ParentChildLinks {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  parentId String
-  childId String
-  status ParentChildLinksStatusEnum
+  id           String                     @id
+  createdAt    DateTime?
+  updatedAt    DateTime?
+  parentId     String
+  childId      String
+  status       ParentChildLinksStatusEnum
   relationship String?
-  linkMethod String?
-  createdBy String
-  endedAt DateTime?
+  linkMethod   String?
+  createdBy    String
+  endedAt      DateTime?
 }
 
 model EventRegistrations {
-  id String @id
-  createdAt DateTime?
-  updatedAt DateTime?
-  eventId String
-  registrantId String
-  parentId String?
-  registrantType EventRegistrationsRegistrantTypeEnum
-  status EventRegistrationsStatusEnum
-  ageAtEvent Int?
+  id                String                               @id
+  createdAt         DateTime?
+  updatedAt         DateTime?
+  eventId           String
+  registrantId      String
+  parentId          String?
+  registrantType    EventRegistrationsRegistrantTypeEnum
+  rosterRole        EventRegistrationsRosterRoleEnum     @default(PARTICIPANT)
+  status            EventRegistrationsStatusEnum
+  eventTeamId       String?
+  sourceTeamRegistrationId String?
+  slotId            String?
+  occurrenceDate    String?
+  ageAtEvent        Int?
+  divisionId        String?
+  divisionTypeId    String?
+  divisionTypeKey   String?
+  jerseyNumber      String?
+  position          String?
+  isCaptain         Boolean?                             @default(false)
   consentDocumentId String?
-  consentStatus String?
-  createdBy String
+  consentStatus     String?
+  createdBy         String
+
+  @@index([eventId])
+  @@index([registrantId])
+  @@index([eventTeamId])
+  @@index([sourceTeamRegistrationId])
+  @@index([eventId, rosterRole, status])
+  @@index([eventId, slotId, occurrenceDate])
+}
+
+model AuthUser {
+  id              String    @id
+  email           String    @unique
+  googleSubject   String?   @unique
+  passwordHash    String
+  name            String?
+  appleSubject    String?   @unique
+  emailVerifiedAt DateTime?
+  lastLogin       DateTime?
+  sessionVersion  Int       @default(0)
+  createdAt       DateTime?
+  updatedAt       DateTime?
+  disabledAt      DateTime?
+  disabledByUserId String?
+  disabledReason  String?
+
+  @@index([email])
+  @@index([disabledAt])
+}
+
+model File {
+  id             String    @id
+  uploaderId     String?
+  organizationId String?
+  bucket         String?
+  originalName   String
+  mimeType       String?
+  sizeBytes      Int?
+  path           String
+  createdAt      DateTime?
+  updatedAt      DateTime?
+
+  @@index([uploaderId])
+  @@index([organizationId])
 }

@@ -10,6 +10,11 @@ import {
 import { canManageOrganization } from '@/server/accessControl';
 import { deleteTeamChatInTx, getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 import { asRecord, findPresentKeys } from '@/server/http/strictPatch';
+import {
+  canManageCanonicalTeam,
+  loadCanonicalTeamById,
+  syncCanonicalTeamRoster,
+} from '@/server/teams/teamMembership';
 
 export const dynamic = 'force-dynamic';
 
@@ -353,12 +358,7 @@ const hasOrganizationTeamManagementAccess = async (
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const teamsDelegate = getTeamsDelegate(prisma);
-  if (!teamsDelegate?.findUnique) {
-    return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });
-  }
-
-  const team = await teamsDelegate.findUnique({ where: { id } });
+  const team = await loadCanonicalTeamById(id, prisma);
   if (!team) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
@@ -396,6 +396,59 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+  const payload = payloadParsed.data;
+  const now = new Date();
+  const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
+
+  if (canonicalTeamsDelegate?.findUnique && canonicalTeamsDelegate?.update) {
+    const existingCanonical = await loadCanonicalTeamById(id, prisma);
+    if (!existingCanonical) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session);
+    const canManage = await canManageCanonicalTeam({
+      teamId: id,
+      userId: session.userId,
+      isAdmin: session.isAdmin,
+    }, prisma);
+    if (!canManage && !isOrganizationManager) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const nextState = buildTeamState(existingCanonical as Record<string, any>, payload);
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.canonicalTeams.update({
+        where: { id },
+        data: {
+          name: nextState.name,
+          division: nextState.division,
+          divisionTypeId: nextState.divisionTypeId,
+          divisionTypeName: nextState.divisionTypeName,
+          sport: nextState.sport,
+          teamSize: nextState.teamSize,
+          profileImageId: nextState.profileImageId,
+          updatedAt: now,
+        },
+      });
+      await syncCanonicalTeamRoster({
+        teamId: id,
+        captainId: nextState.captainId,
+        playerIds: nextState.playerIds,
+        pendingPlayerIds: nextState.pending,
+        managerId: nextState.managerId,
+        headCoachId: nextState.headCoachId,
+        assistantCoachIds: nextState.coachIds,
+        actingUserId: session.userId,
+        now,
+      }, tx);
+      await syncTeamChatInTx(tx, id, {
+        previousMemberIds: getTeamChatBaseMemberIds(existingCanonical as Record<string, any>),
+      });
+    });
+    const refreshed = await loadCanonicalTeamById(id, prisma);
+    return NextResponse.json(withTeamRoleAliases((refreshed ?? updated) as any), { status: 200 });
+  }
+
   const teamsDelegate = getTeamsDelegate(prisma);
   if (!teamsDelegate?.findUnique || !teamsDelegate?.update) {
     return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });
@@ -415,9 +468,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const payload = payloadParsed.data;
   const nextState = buildTeamState(existing as Record<string, any>, payload);
-  const now = new Date();
 
   const updated = await prisma.$transaction(async (tx) => {
     const txTeams = getTeamsDelegate(tx);
@@ -512,6 +563,43 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const { id } = await params;
+  const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
+  if (canonicalTeamsDelegate?.findUnique && canonicalTeamsDelegate?.delete) {
+    const existingCanonical = await loadCanonicalTeamById(id, prisma);
+    if (!existingCanonical) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session);
+    const canManage = await canManageCanonicalTeam({
+      teamId: id,
+      userId: session.userId,
+      isAdmin: session.isAdmin,
+    }, prisma);
+    if (!canManage && !isOrganizationManager) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await deleteTeamChatInTx(tx, id);
+      await tx.teamRegistrations?.updateMany?.({
+        where: { teamId: id },
+        data: {
+          status: 'REMOVED',
+          updatedAt: new Date(),
+        },
+      });
+      await tx.teamStaffAssignments?.updateMany?.({
+        where: { teamId: id },
+        data: {
+          status: 'REMOVED',
+          updatedAt: new Date(),
+        },
+      });
+      await tx.canonicalTeams.delete({ where: { id } });
+    });
+    return NextResponse.json({ deleted: true }, { status: 200 });
+  }
+
   const teamsDelegate = getTeamsDelegate(prisma);
   if (!teamsDelegate?.findUnique || !teamsDelegate?.delete) {
     return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });

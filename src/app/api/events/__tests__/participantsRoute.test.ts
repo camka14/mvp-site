@@ -454,10 +454,15 @@ describe('POST /api/events/[eventId]/participants', () => {
 
     expect(response.status).toBe(200);
     expect(payload.error).toBeUndefined();
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    const teamRegistrationCall = upsertEventRegistrationMock.mock.calls.find(
+      ([params]) => (params as Record<string, unknown>).registrantType === 'TEAM',
+    )?.[0] as Record<string, unknown> | undefined;
+    expect(teamRegistrationCall).toEqual(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
-      registrantId: 'team_1',
+      registrantId: 'slot_1',
+      eventTeamId: 'slot_1',
+      parentId: 'team_1',
       rosterRole: 'PARTICIPANT',
       divisionId: 'div_a',
       divisionTypeId: 'open',
@@ -558,10 +563,15 @@ describe('POST /api/events/[eventId]/participants', () => {
 
     expect(response.status).toBe(200);
     expect(payload.error).toBeUndefined();
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    const teamRegistrationCall = upsertEventRegistrationMock.mock.calls.find(
+      ([params]) => (params as Record<string, unknown>).registrantType === 'TEAM',
+    )?.[0] as Record<string, unknown> | undefined;
+    expect(teamRegistrationCall).toEqual(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
       registrantId: 'team_1',
+      eventTeamId: 'team_1',
+      parentId: 'team_1',
     }));
   });
 
@@ -667,10 +677,15 @@ describe('POST /api/events/[eventId]/participants', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    const teamRegistrationCall = upsertEventRegistrationMock.mock.calls.find(
+      ([params]) => (params as Record<string, unknown>).registrantType === 'TEAM',
+    )?.[0] as Record<string, unknown> | undefined;
+    expect(teamRegistrationCall).toEqual(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
       registrantId: 'team_1',
+      eventTeamId: 'team_1',
+      parentId: 'team_1',
       divisionId: 'div_b',
       divisionTypeId: 'advanced',
       divisionTypeKey: 'c_skill_advanced',
@@ -707,10 +722,15 @@ describe('POST /api/events/[eventId]/participants', () => {
 
     expect(response.status).toBe(200);
     expect(payload.error).toBeUndefined();
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    const teamRegistrationCall = upsertEventRegistrationMock.mock.calls.find(
+      ([params]) => (params as Record<string, unknown>).registrantType === 'TEAM',
+    )?.[0] as Record<string, unknown> | undefined;
+    expect(teamRegistrationCall).toEqual(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
       registrantId: 'team_1',
+      eventTeamId: 'team_1',
+      parentId: 'team_1',
     }));
   });
 
@@ -765,10 +785,15 @@ describe('POST /api/events/[eventId]/participants', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    const teamRegistrationCall = upsertEventRegistrationMock.mock.calls.find(
+      ([params]) => (params as Record<string, unknown>).registrantType === 'TEAM',
+    )?.[0] as Record<string, unknown> | undefined;
+    expect(teamRegistrationCall).toEqual(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
       registrantId: 'team_1',
+      eventTeamId: 'team_1',
+      parentId: 'team_1',
       divisionId: 'div_a',
       divisionTypeId: 'open',
       divisionTypeKey: 'c_skill_open',
@@ -826,10 +851,15 @@ describe('POST /api/events/[eventId]/participants', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    const teamRegistrationCall = upsertEventRegistrationMock.mock.calls.find(
+      ([params]) => (params as Record<string, unknown>).registrantType === 'TEAM',
+    )?.[0] as Record<string, unknown> | undefined;
+    expect(teamRegistrationCall).toEqual(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
       registrantId: 'team_1',
+      eventTeamId: 'team_1',
+      parentId: 'team_1',
     }));
     expect(payload.warnings).toEqual([
       expect.stringContaining('Under-13 player Kid Player is missing an email'),
