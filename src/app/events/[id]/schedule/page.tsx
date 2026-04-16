@@ -36,7 +36,24 @@ import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplate
 import { formatStandingsDelta, formatStandingsPoints } from '@/lib/standingsDisplay';
 import { toEventPayload } from '@/types';
 import { formatBillAmount } from '@/types';
-import type { Event, EventState, Field, LeagueConfig, Match, Team, TournamentBracket, Organization, Sport, PaymentIntent, TimeSlot, UserData } from '@/types';
+import type {
+  Event,
+  EventState,
+  Field,
+  LeagueConfig,
+  Match,
+  MatchIncidentOperation,
+  MatchOfficialCheckInOperation,
+  MatchSegment,
+  MatchSegmentOperation,
+  Team,
+  TournamentBracket,
+  Organization,
+  Sport,
+  PaymentIntent,
+  TimeSlot,
+  UserData,
+} from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import type {
   EventTeamComplianceResponse,
@@ -7491,24 +7508,67 @@ function EventScheduleContent() {
     [isOfficialCheckedIn, resolveTeam, user?.$id, userOnTeam],
   );
 
+  type MatchOperationPayload = {
+    matchId: string;
+    segments?: MatchSegment[];
+    segmentOperations?: MatchSegmentOperation[];
+    incidentOperations?: MatchIncidentOperation[];
+    officialCheckIn?: MatchOfficialCheckInOperation;
+    team1Points: number[];
+    team2Points: number[];
+    setResults: number[];
+  };
+
   const handleScoreChange = useCallback(
-    async ({ matchId, team1Points, team2Points, setResults }: { matchId: string; team1Points: number[]; team2Points: number[]; setResults: number[] }) => {
+    async ({
+      matchId,
+      team1Points,
+      team2Points,
+      setResults,
+      segmentOperations,
+      incidentOperations,
+      officialCheckIn,
+    }: MatchOperationPayload) => {
       const targetEventId = activeEvent?.$id ?? eventId;
       if (!targetEventId) return;
       try {
-        await tournamentService.updateMatchScores(targetEventId, matchId, { team1Points, team2Points, setResults });
+        const hasOperations =
+          Boolean(segmentOperations?.length)
+          || Boolean(incidentOperations?.length)
+          || Boolean(officialCheckIn);
+        const updated = hasOperations
+          ? await tournamentService.updateMatchOperations(targetEventId, matchId, {
+              segmentOperations,
+              incidentOperations,
+              officialCheckIn,
+            })
+          : await tournamentService.updateMatchScores(targetEventId, matchId, { team1Points, team2Points, setResults });
+        applyMatchUpdate(updated as Match);
       } catch (err) {
-        console.warn('Non-blocking score sync failed:', err);
+        console.warn('Non-blocking match operation sync failed:', err);
       }
     },
-    [activeEvent?.$id, eventId],
+    [activeEvent?.$id, applyMatchUpdate, eventId],
   );
 
   const handleSetComplete = useCallback(
-    async ({ matchId, team1Points, team2Points, setResults }: { matchId: string; team1Points: number[]; team2Points: number[]; setResults: number[] }) => {
+    async ({
+      matchId,
+      team1Points,
+      team2Points,
+      setResults,
+      segmentOperations,
+      incidentOperations,
+    }: MatchOperationPayload) => {
       const targetEventId = activeEvent?.$id ?? eventId;
       if (!targetEventId) return;
-      const updated = await tournamentService.updateMatch(targetEventId, matchId, { team1Points, team2Points, setResults });
+      const hasOperations = Boolean(segmentOperations?.length) || Boolean(incidentOperations?.length);
+      const updated = hasOperations
+        ? await tournamentService.updateMatchOperations(targetEventId, matchId, {
+            segmentOperations,
+            incidentOperations,
+          })
+        : await tournamentService.updateMatch(targetEventId, matchId, { team1Points, team2Points, setResults });
       applyMatchUpdate(updated as Match);
     },
     [applyMatchUpdate, activeEvent?.$id, eventId],
@@ -7521,18 +7581,20 @@ function EventScheduleContent() {
       team2Points,
       setResults,
       eventId,
+      segmentOperations,
     }: {
       matchId: string;
       team1Points: number[];
       team2Points: number[];
       setResults: number[];
       eventId?: string;
+      segmentOperations?: MatchSegmentOperation[];
     }) => {
       const targetEventId = eventId ?? activeEvent?.$id;
       if (!targetEventId || activeEvent?.eventType === 'EVENT') {
         return;
       }
-      await tournamentService.completeMatch(targetEventId, matchId, { team1Points, team2Points, setResults });
+      await tournamentService.completeMatch(targetEventId, matchId, { team1Points, team2Points, setResults, segmentOperations });
     },
     [activeEvent?.$id, activeEvent?.eventType],
   );

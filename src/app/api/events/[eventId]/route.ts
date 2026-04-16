@@ -97,6 +97,8 @@ const EVENT_UPDATE_FIELDS = new Set([
   'officialSchedulingMode',
   'doTeamsOfficiate',
   'teamOfficialsMaySwap',
+  'matchRulesOverride',
+  'autoCreatePointMatchIncidents',
   'officialIds',
   'officialPositions',
   'allowPaymentPlans',

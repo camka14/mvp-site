@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider, Checkbox, Switch } from '@mantine/core';
+import { Modal, Stack, Group, Text, Button, Alert, Select, Divider, Checkbox, Switch } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
@@ -191,33 +191,6 @@ const findTeamById = (id: string | null, allTeams: Team[], fallback?: Match['tea
   return undefined;
 };
 
-const normalizePointsValue = (value: unknown): number => {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || Number.isNaN(numeric)) {
-    return 0;
-  }
-  if (numeric <= 0) {
-    return 0;
-  }
-  return Math.round(numeric);
-};
-
-const extractSetData = (match?: Match | null) => {
-  const rawTeam1 = match && Array.isArray(match.team1Points) ? match.team1Points : [];
-  const rawTeam2 = match && Array.isArray(match.team2Points) ? match.team2Points : [];
-  const rawResults = match && Array.isArray(match.setResults) ? match.setResults : [];
-  const length = Math.max(rawTeam1.length, rawTeam2.length, rawResults.length, 1);
-
-  const team1 = Array.from({ length }, (_, index) => normalizePointsValue(rawTeam1[index]));
-  const team2 = Array.from({ length }, (_, index) => normalizePointsValue(rawTeam2[index]));
-  const results = Array.from({ length }, (_, index) => {
-    const candidate = Number(rawResults[index]);
-    return candidate === 1 || candidate === 2 ? candidate : 0;
-  });
-
-  return { team1, team2, results };
-};
-
 export default function MatchEditModal({
   opened,
   match,
@@ -244,9 +217,6 @@ export default function MatchEditModal({
   const [teamOfficialId, setTeamOfficialId] = useState<string | null>(null);
   const [userOfficialId, setUserOfficialId] = useState<string | null>(null);
   const [officialAssignments, setOfficialAssignments] = useState<MatchOfficialAssignment[]>([]);
-  const [team1Points, setTeam1Points] = useState<number[]>([0]);
-  const [team2Points, setTeam2Points] = useState<number[]>([0]);
-  const [setResults, setSetResults] = useState<number[]>([0]);
   const [winnerNextMatchId, setWinnerNextMatchId] = useState<string | null>(null);
   const [loserNextMatchId, setLoserNextMatchId] = useState<string | null>(null);
   const [losersBracket, setLosersBracket] = useState(false);
@@ -265,9 +235,6 @@ export default function MatchEditModal({
       setTeamOfficialId(null);
       setUserOfficialId(null);
       setOfficialAssignments([]);
-      setTeam1Points([0]);
-      setTeam2Points([0]);
-      setSetResults([0]);
       setWinnerNextMatchId(null);
       setLoserNextMatchId(null);
       setLosersBracket(false);
@@ -312,10 +279,6 @@ export default function MatchEditModal({
       setOfficialAssignments([]);
     }
 
-    const aligned = extractSetData(match);
-    setTeam1Points(aligned.team1);
-    setTeam2Points(aligned.team2);
-    setSetResults(aligned.results);
     setWinnerNextMatchId(normalizeOptionalId(match.winnerNextMatchId) ?? null);
     setLoserNextMatchId(normalizeOptionalId(match.loserNextMatchId) ?? null);
     setLosersBracket(Boolean(match.losersBracket));
@@ -680,18 +643,6 @@ export default function MatchEditModal({
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [eventOfficialById, eventOfficialByUserId, fieldId, normalizedEventOfficials, officialUserById, playerCandidates]);
 
-  const team1DisplayName = selectedTeam1 ? resolveTeamName(selectedTeam1, teams) : 'TBD';
-  const team2DisplayName = selectedTeam2 ? resolveTeamName(selectedTeam2, teams) : 'TBD';
-
-  const resultOptions = useMemo(
-    () => [
-      { value: '0', label: 'Not decided' },
-      { value: '1', label: team1DisplayName === 'TBD' ? 'Team 1' : team1DisplayName },
-      { value: '2', label: team2DisplayName === 'TBD' ? 'Team 2' : team2DisplayName },
-    ],
-    [team1DisplayName, team2DisplayName],
-  );
-
   const handleClose = () => {
     setError(null);
     onClose();
@@ -756,48 +707,6 @@ export default function MatchEditModal({
       return next;
     });
   };
-
-  const handlePointsChange = (team: 'team1' | 'team2', index: number, value: string | number | null) => {
-    const sanitized = normalizePointsValue(value ?? 0);
-    if (team === 'team1') {
-      setTeam1Points((prev) => {
-        const next = [...prev];
-        next[index] = sanitized;
-        return next;
-      });
-    } else {
-      setTeam2Points((prev) => {
-        const next = [...prev];
-        next[index] = sanitized;
-        return next;
-      });
-    }
-  };
-
-  const handleResultChange = (index: number, value: string | null) => {
-    const numeric = value ? Number(value) : 0;
-    setSetResults((prev) => {
-      const next = [...prev];
-      next[index] = numeric === 1 || numeric === 2 ? numeric : 0;
-      return next;
-    });
-  };
-
-  const handleAddSet = () => {
-    setTeam1Points((prev) => [...prev, 0]);
-    setTeam2Points((prev) => [...prev, 0]);
-    setSetResults((prev) => [...prev, 0]);
-  };
-
-  const handleRemoveSet = () => {
-    setTeam1Points((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-    setTeam2Points((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-    setSetResults((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-  };
-
-  const sanitizeResults = (values: number[]): number[] => values.map((value) => (value === 1 || value === 2 ? value : 0));
-
-  const sanitizePoints = (values: number[]): number[] => values.map((value) => normalizePointsValue(value));
 
   const findFieldById = (id: string | null): Field | undefined => {
     if (!id) return undefined;
@@ -870,9 +779,6 @@ export default function MatchEditModal({
       end: endValue ? formatLocalDateTime(endValue) : null,
       locked,
       losersBracket,
-      team1Points: sanitizePoints(team1Points),
-      team2Points: sanitizePoints(team2Points),
-      setResults: sanitizeResults(setResults),
       winnerNextMatchId: selectedWinnerNextMatchId ?? undefined,
       loserNextMatchId: selectedLoserNextMatchId ?? undefined,
     };
@@ -1128,45 +1034,10 @@ export default function MatchEditModal({
           nothingFoundMessage={loserNextOptions.length ? 'No matches' : 'No valid matches'}
         />
 
-        <Divider label="Sets" />
-
-        {setResults.map((result, index) => (
-          <Group key={`set-${index}`} align="flex-end" gap="md" grow>
-            <NumberInput
-              label={`${team1DisplayName === 'TBD' ? 'Team 1' : team1DisplayName} - Set ${index + 1}`}
-              value={team1Points[index]}
-              min={0}
-              step={1}
-              onChange={(value) => handlePointsChange('team1', index, value)}
-            />
-            <NumberInput
-              label={`${team2DisplayName === 'TBD' ? 'Team 2' : team2DisplayName} - Set ${index + 1}`}
-              value={team2Points[index]}
-              min={0}
-              step={1}
-              onChange={(value) => handlePointsChange('team2', index, value)}
-            />
-            <Select
-              label="Set winner"
-              data={resultOptions}
-              value={String(result ?? 0)}
-              onChange={(value) => handleResultChange(index, value)}
-            />
-          </Group>
-        ))}
-
-        <Group justify="space-between">
-          <Group gap="xs">
-            <Button variant="light" onClick={handleAddSet}>
-              Add set
-            </Button>
-            {setResults.length > 1 && (
-              <Button variant="light" color="red" onClick={handleRemoveSet}>
-                Remove last set
-              </Button>
-            )}
-          </Group>
-        </Group>
+        <Divider label="Match Operations" />
+        <Text size="sm" c="dimmed">
+          Scores, segment winners, official check-in, and the match log are handled from Match Details.
+        </Text>
 
         <Group justify="space-between" mt="md">
           <Group>

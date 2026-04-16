@@ -218,6 +218,14 @@ model Matches {
   side               String?
   matchId            Int
   losersBracket      Boolean?
+  status             String?
+  resultStatus       String?
+  resultType         String?
+  actualStart        DateTime?
+  actualEnd          DateTime?
+  statusReason       String?
+  winnerEventTeamId  String?
+  matchRulesSnapshot Json?
   winnerNextMatchId  String?
   loserNextMatchId   String?
   previousRightId    String?
@@ -240,6 +248,58 @@ model Matches {
   @@index([previousLeftId])
   @@index([previousRightId])
   @@index([fieldId])
+  @@index([winnerEventTeamId])
+}
+
+model MatchSegments {
+  id                String    @id
+  createdAt         DateTime?
+  updatedAt         DateTime?
+  eventId           String?
+  matchId           String
+  sequence          Int
+  status            String    @default("NOT_STARTED")
+  scores            Json
+  winnerEventTeamId String?
+  startedAt         DateTime?
+  endedAt           DateTime?
+  resultType        String?
+  statusReason      String?
+  metadata          Json?
+
+  @@unique([matchId, sequence])
+  @@index([eventId])
+  @@index([matchId])
+  @@index([winnerEventTeamId])
+}
+
+model MatchIncidents {
+  id                  String    @id
+  createdAt           DateTime?
+  updatedAt           DateTime?
+  eventId             String?
+  matchId             String
+  segmentId           String?
+  eventTeamId         String?
+  eventRegistrationId String?
+  participantUserId   String?
+  officialUserId      String?
+  incidentType        String
+  sequence            Int
+  minute              Int?
+  clock               String?
+  clockSeconds        Int?
+  linkedPointDelta    Int?
+  note                String?
+  metadata            Json?
+
+  @@index([eventId])
+  @@index([matchId])
+  @@index([segmentId])
+  @@index([eventTeamId])
+  @@index([eventRegistrationId])
+  @@index([participantUserId])
+  @@index([officialUserId])
 }
 
 model Divisions {
@@ -699,6 +759,8 @@ model Events {
   teamOfficialsMaySwap         Boolean?
   officialIds                  String[]
   officialPositions            Json?
+  matchRulesOverride           Json?
+  autoCreatePointMatchIncidents Boolean?                        @default(false)
   allowPaymentPlans            Boolean?
   installmentCount             Int?
   installmentDueDates          DateTime[]
@@ -856,6 +918,7 @@ model Sports {
   usePenaltyPointsUnsporting        Boolean?
   usePointPrecision                 Boolean?
   officialPositionTemplates         Json?
+  matchRulesTemplate                Json?
 }
 
 model TemplateDocuments {

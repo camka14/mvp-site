@@ -46,6 +46,12 @@ import {
   type EventOfficialRecord,
   type MatchOfficialAssignment,
 } from '@/server/officials/config';
+import {
+  buildLegacySegments,
+  resolveMatchRules,
+  serializeMatchIncidentRow,
+  serializeMatchSegmentRow,
+} from '@/server/matches/matchOperations';
 
 type PrismaLike = PrismaClient | any;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -1694,6 +1700,9 @@ const buildMatches = (
   fields: Record<string, PlayingField>,
   divisions: Division[],
   officials: UserData[],
+  segmentRowsByMatchId: Map<string, any[]> = new Map(),
+  incidentRowsByMatchId: Map<string, any[]> = new Map(),
+  resolvedMatchRules: ReturnType<typeof resolveMatchRules> | null = null,
 ) => {
   const divisionLookup = new Map(divisions.map((division) => [division.id, division]));
   const officialLookup = new Map(officials.map((official) => [official.id, official]));
@@ -1730,6 +1739,29 @@ const buildMatches = (
     const primaryOfficialCheckedIn = officialAssignments.length
       ? deriveLegacyOfficialCheckedInFromAssignments(officialAssignments)
       : row.officialCheckedIn ?? false;
+    const persistedSegments = (segmentRowsByMatchId.get(row.id) ?? [])
+      .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
+      .map(serializeMatchSegmentRow);
+    const legacySegments = persistedSegments.length
+      ? []
+      : buildLegacySegments({
+          eventId: row.eventId ?? event.id,
+          matchId: row.id,
+          team1Id: row.team1Id ?? null,
+          team2Id: row.team2Id ?? null,
+          team1Points: ensureArray(row.team1Points),
+          team2Points: ensureArray(row.team2Points),
+          setResults: ensureArray(row.setResults),
+          start,
+          end,
+        });
+    const segments = persistedSegments.length ? persistedSegments : legacySegments;
+    const incidents = (incidentRowsByMatchId.get(row.id) ?? [])
+      .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
+      .map(serializeMatchIncidentRow);
+    const winnerEventTeamId = normalizeEntityId(row.winnerEventTeamId)
+      ?? segments.find((segment) => segment.status === 'COMPLETE' && segment.winnerEventTeamId)?.winnerEventTeamId
+      ?? null;
     const match = new Match({
       id: row.id,
       matchId: row.matchId ?? null,
@@ -1752,6 +1784,17 @@ const buildMatches = (
       division,
       field: row.fieldId ? fields[row.fieldId] ?? null : null,
       setResults: ensureArray(row.setResults),
+      status: row.status ?? null,
+      resultStatus: row.resultStatus ?? null,
+      resultType: row.resultType ?? null,
+      actualStart: toOptionalDate(row.actualStart),
+      actualEnd: toOptionalDate(row.actualEnd),
+      statusReason: row.statusReason ?? null,
+      winnerEventTeamId,
+      matchRulesSnapshot: row.matchRulesSnapshot ?? null,
+      resolvedMatchRules: row.matchRulesSnapshot ?? resolvedMatchRules,
+      segments,
+      incidents,
       bufferMs: matchBufferMs(event),
       side: sideFrom(row.side),
       officialCheckedIn: primaryOfficialCheckedIn,
@@ -1844,7 +1887,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     event.sportId && typeof (client as any).sports?.findUnique === 'function'
       ? (client as any).sports.findUnique({
           where: { id: event.sportId },
-          select: { officialPositionTemplates: true } as any,
+          select: { officialPositionTemplates: true, matchRulesTemplate: true } as any,
         })
       : Promise.resolve(null),
   ]);
@@ -1894,6 +1937,33 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     client.matches.findMany({ where: { eventId: event.id } }),
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
   ]);
+  const matchIds = (matchRows as any[])
+    .map((row) => normalizeEntityId(row.id))
+    .filter((id): id is string => Boolean(id));
+  const [segmentRows, incidentRows] = await Promise.all([
+    matchIds.length && typeof (client as any).matchSegments?.findMany === 'function'
+      ? (client as any).matchSegments.findMany({ where: { matchId: { in: matchIds } } })
+      : Promise.resolve([]),
+    matchIds.length && typeof (client as any).matchIncidents?.findMany === 'function'
+      ? (client as any).matchIncidents.findMany({ where: { matchId: { in: matchIds } } })
+      : Promise.resolve([]),
+  ]);
+  const segmentRowsByMatchId = new Map<string, any[]>();
+  for (const row of segmentRows as any[]) {
+    const rowMatchId = normalizeEntityId(row.matchId);
+    if (!rowMatchId) continue;
+    const list = segmentRowsByMatchId.get(rowMatchId) ?? [];
+    list.push(row);
+    segmentRowsByMatchId.set(rowMatchId, list);
+  }
+  const incidentRowsByMatchId = new Map<string, any[]>();
+  for (const row of incidentRows as any[]) {
+    const rowMatchId = normalizeEntityId(row.matchId);
+    if (!rowMatchId) continue;
+    const list = incidentRowsByMatchId.get(rowMatchId) ?? [];
+    list.push(row);
+    incidentRowsByMatchId.set(rowMatchId, list);
+  }
 
   const fallbackFieldDivisionIds = leagueDivisionIds.length ? leagueDivisionIds : [DEFAULT_DIVISION_KEY];
   const fields = buildFields(fieldRows, divisionMap, fallbackFieldDivisionIds, fieldIdsByDivision);
@@ -1954,6 +2024,15 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     const linkedFieldCount = ensureStringArray(event.fieldIds).length;
     return linkedFieldCount > 0 ? linkedFieldCount : null;
   })();
+  const resolvedMatchRules = resolveMatchRules({
+    sportTemplate: (sportRow as any)?.matchRulesTemplate,
+    eventOverride: (event as any).matchRulesOverride,
+    usesSets: event.usesSets,
+    setsPerMatch: event.setsPerMatch,
+    winnerSetCount: event.winnerSetCount,
+    matchDurationMinutes: event.matchDurationMinutes,
+    officialPositions,
+  });
 
   const baseParams = {
     id: event.id,
@@ -1995,6 +2074,9 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     officialSchedulingMode: normalizeOfficialSchedulingMode((event as any).officialSchedulingMode),
     officialPositions,
     eventOfficials,
+    matchRulesOverride: (event as any).matchRulesOverride ?? null,
+    autoCreatePointMatchIncidents: Boolean((event as any).autoCreatePointMatchIncidents),
+    resolvedMatchRules,
     fieldCount: resolvedFieldCount,
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
@@ -2036,7 +2118,17 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
       })
     : new Tournament(baseParams);
 
-  const matches = buildMatches(matchRows, constructed, teams, fields, allDivisions, officials);
+  const matches = buildMatches(
+    matchRows,
+    constructed,
+    teams,
+    fields,
+    allDivisions,
+    officials,
+    segmentRowsByMatchId,
+    incidentRowsByMatchId,
+    resolvedMatchRules,
+  );
   constructed.matches = matches;
   (constructed as any).parentEvent = normalizedParentEvent;
   return constructed;
@@ -2079,6 +2171,16 @@ export const saveMatches = async (
       team1Points: match.team1Points ?? [],
       team2Points: match.team2Points ?? [],
       setResults: match.setResults ?? [],
+      status: match.status ?? null,
+      resultStatus: match.resultStatus ?? null,
+      resultType: match.resultType ?? null,
+      actualStart: match.actualStart ?? null,
+      actualEnd: match.actualEnd ?? null,
+      statusReason: match.statusReason ?? null,
+      winnerEventTeamId: match.winnerEventTeamId ?? null,
+      matchRulesSnapshot: match.matchRulesSnapshot
+        ? (match.matchRulesSnapshot as unknown as Record<string, unknown>)
+        : null,
       side: match.side ?? null,
       losersBracket: Boolean(match.losersBracket),
       winnerNextMatchId: match.winnerNextMatch?.id ?? null,
@@ -2103,6 +2205,60 @@ export const saveMatches = async (
       create: { ...data, createdAt: now },
       update: updateData,
     });
+    if (typeof (client as any).matchSegments?.upsert === 'function' && Array.isArray(match.segments)) {
+      for (const segment of match.segments) {
+        const segmentId = segment.id || `${match.id}_segment_${segment.sequence}`;
+        const segmentData = {
+          id: segmentId,
+          eventId,
+          matchId: match.id,
+          sequence: segment.sequence,
+          status: segment.status ?? 'NOT_STARTED',
+          scores: segment.scores ?? {},
+          winnerEventTeamId: segment.winnerEventTeamId ?? null,
+          startedAt: segment.startedAt ? new Date(segment.startedAt) : null,
+          endedAt: segment.endedAt ? new Date(segment.endedAt) : null,
+          resultType: segment.resultType ?? null,
+          statusReason: segment.statusReason ?? null,
+          metadata: segment.metadata ?? null,
+          updatedAt: now,
+        };
+        await (client as any).matchSegments.upsert({
+          where: { matchId_sequence: { matchId: match.id, sequence: segment.sequence } },
+          create: { ...segmentData, createdAt: now },
+          update: segmentData,
+        });
+      }
+    }
+    if (typeof (client as any).matchIncidents?.upsert === 'function' && Array.isArray(match.incidents)) {
+      for (const incident of match.incidents) {
+        const incidentId = incident.id || `${match.id}_incident_${incident.sequence}`;
+        const incidentData = {
+          id: incidentId,
+          eventId,
+          matchId: match.id,
+          segmentId: incident.segmentId ?? null,
+          eventTeamId: incident.eventTeamId ?? null,
+          eventRegistrationId: incident.eventRegistrationId ?? null,
+          participantUserId: incident.participantUserId ?? null,
+          officialUserId: incident.officialUserId ?? null,
+          incidentType: incident.incidentType,
+          sequence: incident.sequence,
+          minute: incident.minute ?? null,
+          clock: incident.clock ?? null,
+          clockSeconds: incident.clockSeconds ?? null,
+          linkedPointDelta: incident.linkedPointDelta ?? null,
+          note: incident.note ?? null,
+          metadata: incident.metadata ?? null,
+          updatedAt: now,
+        };
+        await (client as any).matchIncidents.upsert({
+          where: { id: incidentId },
+          create: { ...incidentData, createdAt: now },
+          update: incidentData,
+        });
+      }
+    }
   }
 };
 

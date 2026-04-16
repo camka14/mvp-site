@@ -120,10 +120,131 @@ export interface MatchOfficialAssignment {
   hasConflict?: boolean;
 }
 
+export type MatchScoringModel = 'SETS' | 'PERIODS' | 'INNINGS' | 'POINTS_ONLY';
+export type MatchLifecycleStatus = 'SCHEDULED' | 'READY' | 'IN_PROGRESS' | 'COMPLETE' | 'CANCELLED' | 'FORFEIT' | 'SUSPENDED';
+export type MatchResultStatus = 'PENDING' | 'OFFICIAL' | 'OVERRIDDEN' | 'DISPUTED';
+export type MatchResultType = 'REGULATION' | 'OVERTIME' | 'SHOOTOUT' | 'FORFEIT' | 'NO_CONTEST' | 'DRAW';
+export type MatchSegmentStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'VOID';
+
+export interface MatchRulesConfig {
+  scoringModel?: MatchScoringModel;
+  segmentCount?: number;
+  segmentLabel?: string;
+  supportsDraw?: boolean;
+  supportsOvertime?: boolean;
+  supportsShootout?: boolean;
+  officialRoles?: string[];
+  supportedIncidentTypes?: string[];
+  autoCreatePointIncidentType?: string;
+  pointIncidentRequiresParticipant?: boolean;
+}
+
+export interface ResolvedMatchRules {
+  scoringModel: MatchScoringModel;
+  segmentCount: number;
+  segmentLabel: string;
+  supportsDraw: boolean;
+  supportsOvertime: boolean;
+  supportsShootout: boolean;
+  officialRoles: string[];
+  supportedIncidentTypes: string[];
+  autoCreatePointIncidentType: string | null;
+  pointIncidentRequiresParticipant: boolean;
+}
+
+export interface MatchSegment {
+  id: string;
+  $id?: string;
+  eventId?: string | null;
+  matchId: string;
+  sequence: number;
+  status: MatchSegmentStatus;
+  scores: Record<string, number>;
+  winnerEventTeamId?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  resultType?: MatchResultType | string | null;
+  statusReason?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface MatchIncident {
+  id: string;
+  $id?: string;
+  eventId?: string | null;
+  matchId: string;
+  segmentId?: string | null;
+  eventTeamId?: string | null;
+  eventRegistrationId?: string | null;
+  participantUserId?: string | null;
+  officialUserId?: string | null;
+  incidentType: string;
+  sequence: number;
+  minute?: number | null;
+  clock?: string | null;
+  clockSeconds?: number | null;
+  linkedPointDelta?: number | null;
+  note?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface MatchLifecycleOperation {
+  status?: MatchLifecycleStatus;
+  resultStatus?: MatchResultStatus;
+  resultType?: MatchResultType;
+  actualStart?: string | null;
+  actualEnd?: string | null;
+  statusReason?: string | null;
+  winnerEventTeamId?: string | null;
+}
+
+export interface MatchSegmentOperation {
+  id?: string;
+  sequence: number;
+  status?: MatchSegmentStatus;
+  scores?: Record<string, number>;
+  winnerEventTeamId?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  resultType?: MatchResultType | string | null;
+  statusReason?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface MatchIncidentOperation {
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  id?: string;
+  segmentId?: string | null;
+  eventTeamId?: string | null;
+  eventRegistrationId?: string | null;
+  participantUserId?: string | null;
+  officialUserId?: string | null;
+  incidentType?: string;
+  sequence?: number;
+  minute?: number | null;
+  clock?: string | null;
+  clockSeconds?: number | null;
+  linkedPointDelta?: number | null;
+  note?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface MatchOfficialCheckInOperation {
+  positionId?: string;
+  slotIndex?: number;
+  userId?: string;
+  checkedIn: boolean;
+}
+
 export interface Sport {
   $id: string;
   name: string;
   officialPositionTemplates?: SportOfficialPositionTemplate[];
+  matchRulesTemplate?: MatchRulesConfig | null;
   usePointsForWin: boolean;
   usePointsForDraw: boolean;
   usePointsForLoss: boolean;
@@ -193,6 +314,17 @@ export interface Match {
   eventId?: string;
   fieldId?: string | null;
   locked?: boolean;
+  status?: MatchLifecycleStatus | string | null;
+  resultStatus?: MatchResultStatus | string | null;
+  resultType?: MatchResultType | string | null;
+  actualStart?: string | null;
+  actualEnd?: string | null;
+  statusReason?: string | null;
+  winnerEventTeamId?: string | null;
+  matchRulesSnapshot?: ResolvedMatchRules | MatchRulesConfig | Record<string, unknown> | null;
+  resolvedMatchRules?: ResolvedMatchRules | null;
+  segments?: MatchSegment[];
+  incidents?: MatchIncident[];
   team1Id?: string | null;
   team2Id?: string | null;
   officialId?: string | null;
@@ -514,6 +646,9 @@ export interface Event {
   setsPerMatch?: number;
   doTeamsOfficiate?: boolean;
   teamOfficialsMaySwap?: boolean;
+  matchRulesOverride?: MatchRulesConfig | null;
+  autoCreatePointMatchIncidents?: boolean;
+  resolvedMatchRules?: ResolvedMatchRules | null;
   refType?: string;
   pointsToVictory?: number[];
   status?: EventStatus;

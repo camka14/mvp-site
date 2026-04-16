@@ -1,11 +1,37 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Event, getTeamAvatarUrl, Match } from '@/types';
-import { Modal, Button, Group, Paper, Text, Avatar, Badge, ActionIcon } from '@mantine/core';
+import {
+  ActionIcon,
+  Avatar,
+  Badge,
+  Button,
+  Group,
+  Modal,
+  Paper,
+  Select,
+  Stack,
+  Table,
+  Text,
+  Textarea,
+} from '@mantine/core';
+import {
+  Event,
+  getTeamAvatarUrl,
+  Match,
+  MatchIncidentOperation,
+  MatchOfficialCheckInOperation,
+  MatchSegment,
+  MatchSegmentOperation,
+  ResolvedMatchRules,
+} from '@/types';
 
 type ScorePayload = {
   matchId: string;
+  segments: MatchSegment[];
+  segmentOperations?: MatchSegmentOperation[];
+  incidentOperations?: MatchIncidentOperation[];
+  officialCheckIn?: MatchOfficialCheckInOperation;
   team1Points: number[];
   team2Points: number[];
   setResults: number[];
@@ -23,40 +49,107 @@ interface ScoreUpdateModalProps {
   isOpen: boolean;
 }
 
-const toPositiveInt = (value: unknown): number | null => {
+const entityId = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { $id?: unknown; id?: unknown };
+  const raw = typeof row.$id === 'string' ? row.$id : typeof row.id === 'string' ? row.id : '';
+  return raw.trim() || null;
+};
+
+const positiveInt = (value: unknown, fallback: number): number => {
   const parsed = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(parsed)) {
-    return null;
-  }
-  return Math.max(1, Math.trunc(parsed));
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
 };
 
-const normalizePointArray = (values: number[] | undefined, length: number): number[] => {
-  const source = Array.isArray(values) ? values : [];
-  const next = source
-    .slice(0, length)
-    .map((value) => (Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0));
-  while (next.length < length) {
-    next.push(0);
+const score = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+};
+
+const teamName = (team: any): string => {
+  if (team?.name) return team.name;
+  if (Array.isArray(team?.players) && team.players.length) {
+    return team.players.map((player: any) => [player.firstName, player.lastName].filter(Boolean).join(' ')).join(' & ');
   }
+  return 'TBD';
+};
+
+const dateLabel = (value?: string | null): string => {
+  if (!value) return 'Not set';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+};
+
+const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount: number): ResolvedMatchRules => {
+  const source = (match.matchRulesSnapshot || match.resolvedMatchRules || event.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
+  const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
+  return {
+    scoringModel,
+    segmentCount: positiveInt(source.segmentCount, segmentCount),
+    segmentLabel: source.segmentLabel || (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Total' : 'Period'),
+    supportsDraw: source.supportsDraw === true,
+    supportsOvertime: source.supportsOvertime === true,
+    supportsShootout: source.supportsShootout === true,
+    officialRoles: Array.isArray(source.officialRoles) ? source.officialRoles : [],
+    supportedIncidentTypes: Array.isArray(source.supportedIncidentTypes) && source.supportedIncidentTypes.length
+      ? source.supportedIncidentTypes
+      : ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+    autoCreatePointIncidentType: source.autoCreatePointIncidentType ?? 'POINT',
+    pointIncidentRequiresParticipant: source.pointIncidentRequiresParticipant === true,
+  };
+};
+
+const labelForSegment = (rules: ResolvedMatchRules, sequence: number): string => (
+  rules.scoringModel === 'POINTS_ONLY' ? rules.segmentLabel : `${rules.segmentLabel} ${sequence}`
+);
+
+const matchLogTypeLabel = (type: string): string => {
+  const normalized = type.trim().toUpperCase();
+  if (normalized === 'POINT') return 'Scoring detail';
+  if (normalized === 'DISCIPLINE') return 'Penalty or card';
+  if (normalized === 'NOTE') return 'Match note';
+  if (normalized === 'ADMIN') return 'Admin note';
+  return type
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const legacyArray = (values: number[] | undefined, length: number): number[] => {
+  const next = (Array.isArray(values) ? values : []).slice(0, length).map(score);
+  while (next.length < length) next.push(0);
   return next;
 };
 
-const normalizeResultArray = (values: number[] | undefined, length: number): number[] => {
-  const source = Array.isArray(values) ? values : [];
-  const next = source
-    .slice(0, length)
-    .map((value) => (value === 1 || value === 2 ? value : 0));
-  while (next.length < length) {
-    next.push(0);
+const buildSegments = (match: Match, length: number, team1Id: string | null, team2Id: string | null): MatchSegment[] => {
+  if (Array.isArray(match.segments) && match.segments.length) {
+    return [...match.segments].sort((a, b) => a.sequence - b.sequence).map((segment) => ({ ...segment, scores: { ...(segment.scores ?? {}) } }));
   }
-  return next;
-};
-
-const resolveTimedSetResult = (team1Score: number, team2Score: number): number => {
-  if (team1Score > team2Score) return 1;
-  if (team2Score > team1Score) return 2;
-  return 0;
+  const team1Points = legacyArray(match.team1Points, length);
+  const team2Points = legacyArray(match.team2Points, length);
+  const results = legacyArray(match.setResults, length);
+  return Array.from({ length }, (_, index) => {
+    const sequence = index + 1;
+    const scores: Record<string, number> = {};
+    if (team1Id) scores[team1Id] = team1Points[index] ?? 0;
+    if (team2Id) scores[team2Id] = team2Points[index] ?? 0;
+    const winnerEventTeamId = results[index] === 1 ? team1Id : results[index] === 2 ? team2Id : null;
+    return {
+      id: `${match.$id}_segment_${sequence}`,
+      $id: `${match.$id}_segment_${sequence}`,
+      eventId: match.eventId ?? null,
+      matchId: match.$id,
+      sequence,
+      status: winnerEventTeamId ? 'COMPLETE' : team1Points[index] || team2Points[index] ? 'IN_PROGRESS' : 'NOT_STARTED',
+      scores,
+      winnerEventTeamId,
+      metadata: null,
+    };
+  });
 };
 
 export default function ScoreUpdateModal({
@@ -70,459 +163,446 @@ export default function ScoreUpdateModal({
   onClose,
   isOpen,
 }: ScoreUpdateModalProps) {
-  const [team1Points, setTeam1Points] = useState<number[]>(match.team1Points || []);
-  const [team2Points, setTeam2Points] = useState<number[]>(match.team2Points || []);
-  const [setResults, setSetResults] = useState<number[]>(match.setResults || []);
-  const [currentSet, setCurrentSet] = useState(0);
+  const [segments, setSegments] = useState<MatchSegment[]>([]);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
-  const matchCompletionTriggered = useRef(false);
-  const sportAllowsDraw = Boolean(tournament?.sport?.usePointsForDraw);
-  const eventUsesSets = typeof tournament.usesSets === 'boolean'
-    ? tournament.usesSets
-    : Boolean(tournament.leagueConfig?.usesSets);
-  const isTimedMatch = !eventUsesSets;
+  const [showDetails, setShowDetails] = useState(false);
+  const [incidentType, setIncidentType] = useState('NOTE');
+  const [incidentTeamId, setIncidentTeamId] = useState<string | null>(null);
+  const [incidentNote, setIncidentNote] = useState('');
+  const [pendingPoint, setPendingPoint] = useState<{ teamId: string; delta: number } | null>(null);
+  const finalizedRef = useRef(false);
 
-  const isPlayoffMatch =
-    tournament.eventType === 'TOURNAMENT' ||
-    Boolean(
-      match.losersBracket ||
-      match.previousLeftId ||
-      match.previousRightId ||
-      match.winnerNextMatchId ||
-      match.loserNextMatchId,
-    );
-
-  const targetPointsConfig = isPlayoffMatch
-    ? match.losersBracket
-      ? tournament.loserBracketPointsToVictory
-      : tournament.winnerBracketPointsToVictory
+  const team1Id = match.team1Id ?? entityId(match.team1);
+  const team2Id = match.team2Id ?? entityId(match.team2);
+  const usesSets = typeof tournament.usesSets === 'boolean' ? tournament.usesSets : Boolean(tournament.leagueConfig?.usesSets);
+  const isTimedMatch = !usesSets;
+  const playoff = tournament.eventType === 'TOURNAMENT' || Boolean(match.losersBracket || match.winnerNextMatchId || match.loserNextMatchId);
+  const pointTargets = playoff
+    ? match.losersBracket ? tournament.loserBracketPointsToVictory : tournament.winnerBracketPointsToVictory
     : tournament.pointsToVictory;
-
-  const totalSets = useMemo(() => {
-    if (isTimedMatch) {
-      return 1;
-    }
-
-    const fallbackFromPoints = Array.isArray(targetPointsConfig) && targetPointsConfig.length > 0
-      ? targetPointsConfig.length
-      : 1;
-
-    if (isPlayoffMatch) {
-      const configured = toPositiveInt(match.losersBracket ? tournament.loserSetCount : tournament.winnerSetCount);
-      return configured ?? fallbackFromPoints;
-    }
-
-    const configuredLeagueSets = toPositiveInt(
-      typeof tournament.setsPerMatch === 'number'
-        ? tournament.setsPerMatch
-        : tournament.leagueConfig?.setsPerMatch,
-    );
-    return configuredLeagueSets ?? fallbackFromPoints;
-  }, [
-    isPlayoffMatch,
-    isTimedMatch,
-    match.losersBracket,
-    targetPointsConfig,
-    tournament.leagueConfig?.setsPerMatch,
-    tournament.loserSetCount,
-    tournament.setsPerMatch,
-    tournament.winnerSetCount,
-  ]);
-
-  const getSetTarget = (index: number): number | null => {
-    if (!Array.isArray(targetPointsConfig) || targetPointsConfig.length === 0) return null;
-    const value = targetPointsConfig[index];
-    if (Number.isFinite(value)) return Number(value);
-    const fallback = targetPointsConfig[targetPointsConfig.length - 1];
-    return Number.isFinite(fallback) ? Number(fallback) : null;
-  };
-
-  // Initialize arrays and determine current set
-  useEffect(() => {
-    matchCompletionTriggered.current = false;
-    const length = totalSets;
-    const nextTeam1 = normalizePointArray(match.team1Points, length);
-    const nextTeam2 = normalizePointArray(match.team2Points, length);
-    const nextResults = normalizeResultArray(match.setResults, length);
-
-    setTeam1Points(nextTeam1);
-    setTeam2Points(nextTeam2);
-    setSetResults(nextResults);
-
-    const idx = nextResults.findIndex((r: number) => r === 0);
-    setCurrentSet(idx >= 0 ? idx : 0);
-  }, [match.$id, match.setResults, match.team1Points, match.team2Points, totalSets, tournament.$id]);
+  const fallbackSegmentCount = useMemo(() => {
+    if (isTimedMatch) return 1;
+    const fromTargets = Array.isArray(pointTargets) && pointTargets.length ? pointTargets.length : 1;
+    if (playoff) return positiveInt(match.losersBracket ? tournament.loserSetCount : tournament.winnerSetCount, fromTargets);
+    return positiveInt(tournament.setsPerMatch ?? tournament.leagueConfig?.setsPerMatch, fromTargets);
+  }, [isTimedMatch, match.losersBracket, playoff, pointTargets, tournament.leagueConfig?.setsPerMatch, tournament.loserSetCount, tournament.setsPerMatch, tournament.winnerSetCount]);
+  const rules = useMemo(() => activeRules(match, tournament, usesSets, fallbackSegmentCount), [fallbackSegmentCount, match, tournament, usesSets]);
+  const totalSegments = Math.max(1, rules.segmentCount);
+  const autoPointIncidents = tournament.autoCreatePointMatchIncidents === true;
+  const activeSegment = segments[activeIndex] ?? segments[0];
+  const team1Score = activeSegment && team1Id ? score(activeSegment.scores?.[team1Id]) : 0;
+  const team2Score = activeSegment && team2Id ? score(activeSegment.scores?.[team2Id]) : 0;
+  const teamOptions = [
+    ...(team1Id ? [{ value: team1Id, label: teamName(match.team1) }] : []),
+    ...(team2Id ? [{ value: team2Id, label: teamName(match.team2) }] : []),
+  ];
 
   useEffect(() => {
-    setTeam1Points((prev) => normalizePointArray(prev, totalSets));
-    setTeam2Points((prev) => normalizePointArray(prev, totalSets));
-    setSetResults((prev) => normalizeResultArray(prev, totalSets));
-    setCurrentSet((prev) => Math.min(prev, Math.max(totalSets - 1, 0)));
-  }, [totalSets]);
+    finalizedRef.current = false;
+    const next = buildSegments(match, totalSegments, team1Id, team2Id);
+    setSegments(next);
+    setActiveIndex(Math.max(0, next.findIndex((segment) => segment.status !== 'COMPLETE')));
+    setIncidentType(rules.supportedIncidentTypes.includes('NOTE') ? 'NOTE' : rules.supportedIncidentTypes[0] ?? 'NOTE');
+    setIncidentTeamId(team1Id ?? team2Id ?? null);
+  }, [match.$id, match.incidents, match.segments, match.setResults, match.team1Points, match.team2Points, rules, team1Id, team2Id, totalSegments]);
 
-  const getTeamName = (teamData: any) => {
-    if (teamData?.name) return teamData.name;
-    if (teamData?.players?.length > 0) {
-      return teamData.players.map((p: any) => `${p.firstName} ${p.lastName}`).join(' & ');
+  useEffect(() => {
+    if (!isOpen) {
+      setShowFieldMap(false);
+      setShowDetails(false);
+      setPendingPoint(null);
     }
-    return 'TBD';
+  }, [isOpen, match.$id]);
+
+  const legacyFromSegments = (source: MatchSegment[]) => ({
+    team1Points: source.map((segment) => (team1Id ? score(segment.scores?.[team1Id]) : 0)),
+    team2Points: source.map((segment) => (team2Id ? score(segment.scores?.[team2Id]) : 0)),
+    setResults: source.map((segment) => (segment.winnerEventTeamId === team1Id ? 1 : segment.winnerEventTeamId === team2Id ? 2 : 0)),
+  });
+
+  const payload = (source: MatchSegment[], extra: Partial<ScorePayload>): ScorePayload => ({
+    matchId: match.$id,
+    segments: source,
+    ...legacyFromSegments(source),
+    ...extra,
+  });
+
+  const emit = (nextPayload: ScorePayload) => {
+    Promise.resolve(onScoreChange?.(nextPayload)).catch((error) => console.warn('Match operation update failed:', error));
   };
 
-  const emitScoreChange = (nextTeam1: number[], nextTeam2: number[], nextResults: number[]) => {
-    if (typeof onScoreChange === 'function') {
-      Promise.resolve(
-        onScoreChange({
-          matchId: match.$id,
-          team1Points: nextTeam1,
-          team2Points: nextTeam2,
-          setResults: nextResults,
-        }),
-      ).catch((err) => {
-        console.warn('Non-blocking score update failed:', err);
-      });
+  const updateScore = (eventTeamId: string | null, delta: number, note?: string) => {
+    if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
+    const next = segments.map((segment, index) => {
+      if (index !== activeIndex) return segment;
+      const nextScore = Math.max(0, score(segment.scores?.[eventTeamId]) + delta);
+      return {
+        ...segment,
+        status: nextScore > 0 ? 'IN_PROGRESS' : segment.status,
+        scores: { ...(segment.scores ?? {}), [eventTeamId]: nextScore },
+      } satisfies MatchSegment;
+    });
+    setSegments(next);
+    if (autoPointIncidents) {
+      emit(payload(next, {
+        incidentOperations: [{
+          action: 'CREATE',
+          segmentId: activeSegment.id,
+          eventTeamId,
+          incidentType: rules.autoCreatePointIncidentType ?? 'POINT',
+          linkedPointDelta: delta,
+          note: note?.trim() || null,
+        }],
+      }));
+      return;
     }
+    emit(payload(next, {
+      segmentOperations: [{
+        id: activeSegment.id,
+        sequence: activeSegment.sequence,
+        status: next[activeIndex].status,
+        scores: next[activeIndex].scores,
+      }],
+    }));
   };
 
-  const updateScore = (team: 1 | 2, increment: boolean) => {
-    if (!canManage) return;
-    const target = getSetTarget(currentSet);
-    const current = team === 1 ? (team1Points[currentSet] || 0) : (team2Points[currentSet] || 0);
-    const other = team === 1 ? (team2Points[currentSet] || 0) : (team1Points[currentSet] || 0);
-    const canIncrementWithLimit =
-      (target ? current < target && other < target : true) ||
-      Math.abs(current - other) <= 1;
-
-    if (team === 1) {
-      const next = [...team1Points];
-      const proposed = (next[currentSet] || 0) + (increment ? 1 : -1);
-      if (increment && target && !canIncrementWithLimit && proposed > target) {
-        return;
-      }
-      const nextValue =
-        increment && target && Math.abs(current - other) > 1
-          ? Math.min(target, proposed)
-          : proposed;
-      next[currentSet] = Math.max(0, nextValue);
-      setTeam1Points(next);
-      emitScoreChange(next, team2Points, setResults);
-    } else {
-      const next = [...team2Points];
-      const proposed = (next[currentSet] || 0) + (increment ? 1 : -1);
-      if (increment && target && !canIncrementWithLimit && proposed > target) {
-        return;
-      }
-      const nextValue =
-        increment && target && Math.abs(current - other) > 1
-          ? Math.min(target, proposed)
-          : proposed;
-      next[currentSet] = Math.max(0, nextValue);
-      setTeam2Points(next);
-      emitScoreChange(team1Points, next, setResults);
+  const requestScore = (eventTeamId: string | null, delta: number) => {
+    if (!eventTeamId) return;
+    if (autoPointIncidents && delta > 0) {
+      setPendingPoint({ teamId: eventTeamId, delta });
+      setIncidentType(rules.autoCreatePointIncidentType ?? 'POINT');
+      setIncidentTeamId(eventTeamId);
+      return;
     }
+    updateScore(eventTeamId, delta);
   };
 
-  const isWinConditionMet = (results?: number[]) => {
-    const target = getSetTarget(currentSet);
+  const targetForActive = (): number | null => {
+    if (!Array.isArray(pointTargets) || !pointTargets.length) return null;
+    return Number(pointTargets[activeIndex] ?? pointTargets[pointTargets.length - 1]) || null;
+  };
+
+  const setWinConditionMet = () => {
+    const target = targetForActive();
     if (!target) return false;
-    const t1 = team1Points[currentSet] || 0;
-    const t2 = team2Points[currentSet] || 0;
-    const leader = Math.max(t1, t2);
-    const diff = Math.abs(t1 - t2);
-    const winner = leader === t1 ? 1 : 2;
-    const projectedResults = results ?? setResults;
-    const withCurrent = [...projectedResults];
-    if (withCurrent[currentSet] === 0) {
-      withCurrent[currentSet] = winner;
-    }
-    return leader >= target && diff >= 2;
+    const leader = Math.max(team1Score, team2Score);
+    return leader >= target && Math.abs(team1Score - team2Score) >= 2;
   };
 
-  const isMatchComplete = (results?: number[]) => {
-    const source = results ?? setResults;
-    if (isTimedMatch) {
-      return source.some((result) => result === 1 || result === 2);
+  const matchComplete = (source = segments) => {
+    if (!team1Id || !team2Id) return false;
+    if (rules.scoringModel === 'SETS') {
+      const needed = Math.ceil((rules.segmentCount || source.length || 1) / 2);
+      const t1 = source.filter((segment) => segment.winnerEventTeamId === team1Id).length;
+      const t2 = source.filter((segment) => segment.winnerEventTeamId === team2Id).length;
+      return t1 >= needed || t2 >= needed;
     }
-    if (!sportAllowsDraw && totalSets <= 1) {
-      return isWinConditionMet(source);
-    }
-    const team1Wins = source.filter((r) => r === 1).length;
-    const team2Wins = source.filter((r) => r === 2).length;
-    const setsNeeded = Math.ceil((totalSets || 1) / 2);
-    return team1Wins >= setsNeeded || team2Wins >= setsNeeded;
+    return source.every((segment) => segment.status === 'COMPLETE');
   };
 
-  const confirmSet = async () => {
-    const t1 = team1Points[currentSet] || 0;
-    const t2 = team2Points[currentSet] || 0;
-    const target = getSetTarget(currentSet);
-    const diff = Math.abs(t1 - t2);
-    const leader = Math.max(t1, t2);
-    const winConditionMet = Boolean(target && leader >= target && diff >= 2);
-
-    if (!winConditionMet) {
-       
-      alert('A team must reach the target points and win by 2 to confirm the set.');
+  const confirmSegment = async () => {
+    if (!activeSegment || !team1Id || !team2Id) return;
+    if (rules.scoringModel === 'SETS' && !setWinConditionMet()) {
+      alert('A team must reach the target points and win by 2 to confirm this segment.');
       return;
     }
-    const nextResults = [...setResults];
-    nextResults[currentSet] = t1 > t2 ? 1 : 2;
-
-    const payload: ScorePayload = {
-      matchId: match.$id,
-      team1Points,
-      team2Points,
-      setResults: nextResults,
-    };
-
+    const winnerEventTeamId = team1Score > team2Score ? team1Id : team2Score > team1Score ? team2Id : null;
+    const endedAt = new Date().toISOString();
+    const next = segments.map((segment, index) => (
+      index === activeIndex ? { ...segment, status: 'COMPLETE', winnerEventTeamId, endedAt } satisfies MatchSegment : segment
+    ));
+    const nextPayload = payload(next, {
+      segmentOperations: [{
+        id: activeSegment.id,
+        sequence: activeSegment.sequence,
+        status: 'COMPLETE',
+        scores: activeSegment.scores,
+        winnerEventTeamId,
+        endedAt,
+      }],
+    });
     try {
-      if (onSetComplete) {
-        await onSetComplete(payload);
-      }
-    } catch (err) {
-      console.error('Failed to persist set result:', err);
-       
-      alert('Failed to save set result. Please retry.');
+      if (onSetComplete) await onSetComplete(nextPayload);
+      else emit(nextPayload);
+    } catch (error) {
+      console.error('Failed to persist segment result:', error);
+      alert('Failed to save segment result. Please retry.');
       return;
     }
-
-    setSetResults(nextResults);
-    if (currentSet + 1 < totalSets) {
-      setCurrentSet(currentSet + 1);
-    }
-
-    if (onMatchComplete && !matchCompletionTriggered.current && isMatchComplete(nextResults)) {
-      try {
-        await onMatchComplete({ ...payload, eventId: tournament.$id });
-        matchCompletionTriggered.current = true;
-      } catch (err) {
-        console.error('Failed to finalize match:', err);
-         
-        alert('Failed to finalize match. Please retry.');
-      }
+    setSegments(next);
+    const nextOpen = next.findIndex((segment) => segment.status !== 'COMPLETE');
+    if (nextOpen >= 0) setActiveIndex(nextOpen);
+    if (onMatchComplete && !finalizedRef.current && matchComplete(next)) {
+      await onMatchComplete({ ...nextPayload, eventId: tournament.$id });
+      finalizedRef.current = true;
     }
   };
 
-  const handleSubmit = async () => {
+  const saveMatch = async () => {
     setLoading(true);
-    const submitFn = onSubmit ?? (async () => {});
-    const nextSetResults = isTimedMatch
-      ? [resolveTimedSetResult(team1Points[0] || 0, team2Points[0] || 0)]
-      : setResults;
+    const endedAt = new Date().toISOString();
+    const next = isTimedMatch
+      ? segments.map((segment, index) => {
+          if (index !== 0 || !team1Id || !team2Id) return segment;
+          return {
+            ...segment,
+            status: 'COMPLETE',
+            endedAt,
+            winnerEventTeamId: team1Score > team2Score ? team1Id : team2Score > team1Score ? team2Id : null,
+          } satisfies MatchSegment;
+        })
+      : segments;
+    const nextPayload = payload(next, {
+      segmentOperations: next.map((segment) => ({
+        id: segment.id,
+        sequence: segment.sequence,
+        status: segment.status,
+        scores: segment.scores,
+        winnerEventTeamId: segment.winnerEventTeamId ?? null,
+        endedAt: segment.endedAt ?? (segment.status === 'COMPLETE' ? endedAt : null),
+      })),
+    });
     try {
-      if (isTimedMatch) {
-        setSetResults(nextSetResults);
+      if (onScoreChange) await onScoreChange(nextPayload);
+      else if (onSubmit) await onSubmit(match.$id, nextPayload.team1Points, nextPayload.team2Points, nextPayload.setResults);
+      if (onMatchComplete && !finalizedRef.current && matchComplete(next)) {
+        await onMatchComplete({ ...nextPayload, eventId: tournament.$id });
+        finalizedRef.current = true;
       }
-      await submitFn(match.$id, team1Points, team2Points, nextSetResults);
-
-      if (onMatchComplete && !matchCompletionTriggered.current && isMatchComplete(nextSetResults)) {
-        await onMatchComplete({
-          matchId: match.$id,
-          team1Points,
-          team2Points,
-          setResults: nextSetResults,
-          eventId: tournament.$id,
-        });
-        matchCompletionTriggered.current = true;
-      }
-    } catch (e) {
-      console.error('Failed to update score:', e);
-       
-      alert('Failed to update score. Please try again.');
+    } catch (error) {
+      console.error('Failed to update match:', error);
+      alert('Failed to update match. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const canIncrementScore = () => {
-    if (!canManage) return false;
-    if (isMatchComplete()) return false;
-    return setResults[currentSet] === 0;
+  const addIncident = () => {
+    if (!activeSegment) return;
+    emit(payload(segments, {
+      incidentOperations: [{
+        action: 'CREATE',
+        segmentId: activeSegment.id,
+        eventTeamId: incidentTeamId,
+        incidentType,
+        note: incidentNote.trim() || null,
+      }],
+    }));
+    setIncidentNote('');
   };
 
-  const canConfirmCurrentSet =
-    canManage &&
-    !isTimedMatch &&
-    !sportAllowsDraw &&
-    totalSets > 1 &&
-    setResults[currentSet] === 0 &&
-    isWinConditionMet();
+  const checkIn = (assignment: any) => {
+    emit(payload(segments, {
+      officialCheckIn: {
+        positionId: assignment.positionId,
+        slotIndex: assignment.slotIndex,
+        userId: assignment.userId,
+        checkedIn: true,
+      },
+    }));
+  };
 
   const fieldLat = typeof match.field?.lat === 'number' ? match.field.lat : null;
   const fieldLng = typeof match.field?.long === 'number' ? match.field.long : null;
-  const hasFieldCoords = Number.isFinite(fieldLat) && Number.isFinite(fieldLng);
-
-  const eventLat = Array.isArray(tournament.coordinates) && typeof tournament.coordinates[0] === 'number'
-    ? tournament.coordinates[0]
-    : null;
-  const eventLng = Array.isArray(tournament.coordinates) && typeof tournament.coordinates[1] === 'number'
-    ? tournament.coordinates[1]
-    : null;
-  const hasEventCoords = Number.isFinite(eventLat) && Number.isFinite(eventLng);
-
-  const mapLat = hasFieldCoords ? fieldLat : hasEventCoords ? eventLat : null;
-  const mapLng = hasFieldCoords ? fieldLng : hasEventCoords ? eventLng : null;
-  const hasValidCoords = Number.isFinite(mapLat) && Number.isFinite(mapLng);
-  const locationLabel = (
-    match.field?.location?.trim()
-    || match.field?.name?.trim()
-    || tournament.location?.trim()
-    || ''
-  );
-  const mapQuery = hasValidCoords ? `${mapLat},${mapLng}` : locationLabel;
-  const encodedMapQuery = encodeURIComponent(mapQuery);
-  const googleMapsLink = mapQuery
-    ? `https://www.google.com/maps/search/?api=1&query=${encodedMapQuery}`
-    : null;
-  const mapEmbedSrc = hasValidCoords
-    ? `https://maps.google.com/maps?q=${mapLat},${mapLng}&z=14&output=embed`
-    : mapQuery
-      ? `https://maps.google.com/maps?q=${encodedMapQuery}&z=14&output=embed`
-      : null;
-
-  useEffect(() => {
-    if (!isOpen) {
-      setShowFieldMap(false);
-    }
-  }, [isOpen, match.$id]);
+  const eventLat = Array.isArray(tournament.coordinates) && typeof tournament.coordinates[0] === 'number' ? tournament.coordinates[0] : null;
+  const eventLng = Array.isArray(tournament.coordinates) && typeof tournament.coordinates[1] === 'number' ? tournament.coordinates[1] : null;
+  const mapLat = Number.isFinite(fieldLat) ? fieldLat : eventLat;
+  const mapLng = Number.isFinite(fieldLng) ? fieldLng : eventLng;
+  const locationLabel = match.field?.location?.trim() || match.field?.name?.trim() || tournament.location?.trim() || '';
+  const mapQuery = Number.isFinite(mapLat) && Number.isFinite(mapLng) ? `${mapLat},${mapLng}` : locationLabel;
+  const mapEmbedSrc = mapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=14&output=embed` : null;
+  const googleMapsLink = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : null;
+  const canScore = canManage && activeSegment?.status !== 'COMPLETE' && !matchComplete();
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title={<Text fw={600}>Update Match Score</Text>} centered>
-      <div className="mb-4">
-        <Text c="dimmed" size="sm">
-          Match {match.matchId} • Best of {totalSets}
-        </Text>
-        {match.losersBracket && (
-          <Badge mt={6} color="orange">Loser Bracket</Badge>
-        )}
-      </div>
+    <Modal opened={isOpen} onClose={onClose} title={<Text fw={600}>Match Operations</Text>} centered size="lg">
+      <Stack gap="md">
+        <Group justify="space-between" align="flex-start">
+          <div>
+            <Text c="dimmed" size="sm">Match {match.matchId ?? match.$id}</Text>
+            <Text fw={700}>{teamName(match.team1)} vs {teamName(match.team2)}</Text>
+          </div>
+          <Badge color={match.status === 'COMPLETE' ? 'green' : match.status === 'IN_PROGRESS' ? 'blue' : 'gray'}>
+            {match.status ?? 'SCHEDULED'}
+          </Badge>
+        </Group>
 
-      {googleMapsLink && mapEmbedSrc && (
-        <Paper withBorder p="md" radius="md" mb="md">
+        <Paper withBorder p="md" radius="md">
           <Group justify="space-between" align="center">
             <div>
               <Text c="dimmed" size="sm">Field</Text>
               <Text fw={600}>{locationLabel || 'Field location'}</Text>
             </div>
             <Group gap="xs">
-              <Button
-                variant="light"
-                size="xs"
-                onClick={() => setShowFieldMap((prev) => !prev)}
-              >
+              <Button variant="light" size="xs" disabled={!mapEmbedSrc} onClick={() => setShowFieldMap((value) => !value)}>
                 {showFieldMap ? 'Hide Field Location' : 'View Field Location'}
               </Button>
-              <Button
-                component="a"
-                href={googleMapsLink}
-                target="_blank"
-                rel="noreferrer"
-                variant="subtle"
-                size="xs"
-              >
-                Open in Maps
+              <Button variant={showDetails ? 'filled' : 'light'} size="xs" onClick={() => setShowDetails((value) => !value)}>
+                Match Details
               </Button>
+              {googleMapsLink && (
+                <Button component="a" href={googleMapsLink} target="_blank" rel="noreferrer" variant="subtle" size="xs">
+                  Open in Maps
+                </Button>
+              )}
             </Group>
           </Group>
-          {showFieldMap && (
+          {showFieldMap && mapEmbedSrc && (
             <div className="overflow-hidden rounded-md border border-gray-200 mt-3" style={{ aspectRatio: '16 / 9' }}>
-              <iframe
-                title="Match field location preview"
-                src={mapEmbedSrc}
-                className="w-full h-full"
-                loading="lazy"
-                allowFullScreen
-              />
+              <iframe title="Match field location preview" src={mapEmbedSrc} className="w-full h-full" loading="lazy" allowFullScreen />
             </div>
           )}
         </Paper>
-      )}
 
-      <div className="grid grid-cols-1 gap-6 mb-8">
-        {/* Team 1 */}
-        <Paper withBorder p="md" radius="md">
-          <Group justify="space-between" mb="sm">
-            <Group>
-              {match.team1 && (
-                <Avatar src={getTeamAvatarUrl(match.team1, 40)} radius="xl" size={40} alt={getTeamName(match.team1)} />
-              )}
-              <Text fw={600}>{getTeamName(match.team1)}</Text>
-            </Group>
-            {canIncrementScore() && (
-              <Group gap="xs">
-                <ActionIcon variant="light" color="red" onClick={() => updateScore(1, false)} disabled={(team1Points[currentSet] || 0) === 0}>−</ActionIcon>
-                <ActionIcon variant="light" color="green" onClick={() => updateScore(1, true)}>+</ActionIcon>
+        {showDetails && (
+          <Paper withBorder p="md" radius="md">
+            <Stack gap="md">
+              <Group grow align="flex-start">
+                <div>
+                  <Text c="dimmed" size="sm">Lifecycle</Text>
+                  <Text fw={600}>{match.resultStatus ?? 'Pending'}</Text>
+                  <Text size="sm">{match.statusReason || 'No status reason'}</Text>
+                </div>
+                <div>
+                  <Text c="dimmed" size="sm">Actual Times</Text>
+                  <Text size="sm">Start: {dateLabel(match.actualStart)}</Text>
+                  <Text size="sm">End: {dateLabel(match.actualEnd)}</Text>
+                </div>
+                <div>
+                  <Text c="dimmed" size="sm">Rules</Text>
+                  <Text size="sm">{rules.scoringModel.replace('_', ' ')} - {rules.segmentCount} {rules.segmentLabel.toLowerCase()}</Text>
+                  <Text size="sm">Match log: {rules.supportedIncidentTypes.map(matchLogTypeLabel).join(', ')}</Text>
+                </div>
               </Group>
-            )}
-          </Group>
-          <div style={{ textAlign: 'center' }}>
-            <Text fw={700} size="xl">{team1Points[currentSet] || 0}</Text>
-            <Group justify="center" gap="xs" mt={6}>
-              {team1Points.slice(0, totalSets).map((points, index) => (
-                <Text
-                  key={`t1-${index}`}
-                  size="sm"
-                  className={`${index === currentSet ? 'bg-blue-100 text-blue-800' : setResults[index] === 1 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded`}
-                >
-                  {points}
-                </Text>
-              ))}
-            </Group>
-          </div>
-        </Paper>
 
-        {/* Team 2 */}
-        <Paper withBorder p="md" radius="md">
-          <Group justify="space-between" mb="sm">
-            <Group>
-              {match.team2 && (
-                <Avatar src={getTeamAvatarUrl(match.team2, 40)} radius="xl" size={40} alt={getTeamName(match.team2)} />
+              <Table striped withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Segment</Table.Th>
+                    <Table.Th>{teamName(match.team1)}</Table.Th>
+                    <Table.Th>{teamName(match.team2)}</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Winner</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {segments.map((segment) => (
+                    <Table.Tr key={segment.id}>
+                      <Table.Td>{labelForSegment(rules, segment.sequence)}</Table.Td>
+                      <Table.Td>{team1Id ? score(segment.scores?.[team1Id]) : 0}</Table.Td>
+                      <Table.Td>{team2Id ? score(segment.scores?.[team2Id]) : 0}</Table.Td>
+                      <Table.Td>{segment.status}</Table.Td>
+                      <Table.Td>{segment.winnerEventTeamId === team1Id ? teamName(match.team1) : segment.winnerEventTeamId === team2Id ? teamName(match.team2) : '-'}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+
+              <Stack gap="xs">
+                <Text c="dimmed" size="sm">Officials</Text>
+                {(match.officialIds ?? []).length ? (match.officialIds ?? []).map((assignment, index) => (
+                  <Group key={`${assignment.positionId}:${assignment.slotIndex}:${index}`} justify="space-between">
+                    <Text size="sm">{assignment.positionId} slot {assignment.slotIndex + 1}: {assignment.userId}</Text>
+                    <Group gap="xs">
+                      <Badge color={assignment.checkedIn ? 'green' : 'gray'}>{assignment.checkedIn ? 'Checked in' : 'Not checked in'}</Badge>
+                      {canManage && !assignment.checkedIn && <Button size="xs" variant="light" onClick={() => checkIn(assignment)}>Check in</Button>}
+                    </Group>
+                  </Group>
+                )) : <Text size="sm">No official slots assigned.</Text>}
+              </Stack>
+
+              <Stack gap="xs">
+                <Text c="dimmed" size="sm">Match Log</Text>
+                {(match.incidents ?? []).length ? [...(match.incidents ?? [])].sort((a, b) => a.sequence - b.sequence).map((incident) => (
+                  <Group key={incident.id} justify="space-between" align="flex-start">
+                    <div>
+                      <Text fw={600} size="sm">{matchLogTypeLabel(incident.incidentType)}</Text>
+                      <Text size="sm" c="dimmed">
+                        {incident.eventTeamId === team1Id ? teamName(match.team1) : incident.eventTeamId === team2Id ? teamName(match.team2) : 'Match'}
+                        {incident.linkedPointDelta ? `, point change ${incident.linkedPointDelta > 0 ? '+' : ''}${incident.linkedPointDelta}` : ''}
+                      </Text>
+                    </div>
+                    <Text size="sm">{incident.note || '-'}</Text>
+                  </Group>
+                )) : <Text size="sm">No match details recorded.</Text>}
+              </Stack>
+
+              {canManage && (
+                <Stack gap="xs">
+                  <Group grow>
+                    <Select label="Log type" data={rules.supportedIncidentTypes.map((type) => ({ value: type, label: matchLogTypeLabel(type) }))} value={incidentType} onChange={(value) => setIncidentType(value ?? 'NOTE')} />
+                    <Select label="Team" data={teamOptions} value={incidentTeamId} onChange={setIncidentTeamId} clearable />
+                  </Group>
+                  <Textarea label="Details" placeholder="Time, player, penalty, or note" value={incidentNote} onChange={(event) => setIncidentNote(event.currentTarget.value)} minRows={2} />
+                  <Group justify="flex-end"><Button variant="light" onClick={addIncident}>Add to Match Log</Button></Group>
+                </Stack>
               )}
-              <Text fw={600}>{getTeamName(match.team2)}</Text>
-            </Group>
-            {canIncrementScore() && (
-              <Group gap="xs">
-                <ActionIcon variant="light" color="red" onClick={() => updateScore(2, false)} disabled={(team2Points[currentSet] || 0) === 0}>−</ActionIcon>
-                <ActionIcon variant="light" color="green" onClick={() => updateScore(2, true)}>+</ActionIcon>
-              </Group>
-            )}
-          </Group>
-          <div style={{ textAlign: 'center' }}>
-            <Text fw={700} size="xl">{team2Points[currentSet] || 0}</Text>
-            <Group justify="center" gap="xs" mt={6}>
-              {team2Points.slice(0, totalSets).map((points, index) => (
-                <Text
-                  key={`t2-${index}`}
-                  size="sm"
-                  className={`${index === currentSet ? 'bg-blue-100 text-blue-800' : setResults[index] === 2 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded`}
-                >
-                  {points}
-                </Text>
-              ))}
-            </Group>
-          </div>
-        </Paper>
-      </div>
+            </Stack>
+          </Paper>
+        )}
 
-      <Group justify="space-between">
-        <Button variant="default" onClick={onClose}>Close</Button>
-        <Group>
-          {canConfirmCurrentSet && (
-            <Button onClick={confirmSet}>
-              Confirm Set {currentSet + 1}
+        <Group gap="xs">
+          {segments.map((segment, index) => (
+            <Button key={`tab-${segment.id}`} size="xs" variant={index === activeIndex ? 'filled' : 'light'} onClick={() => setActiveIndex(index)}>
+              {labelForSegment(rules, segment.sequence)}
             </Button>
-          )}
-          {canManage && (
-            <Button
-              onClick={handleSubmit}
-              loading={loading}
-              disabled={!isTimedMatch && !sportAllowsDraw && !isMatchComplete()}
-            >
-              Save Match
-            </Button>
-          )}
+          ))}
         </Group>
-      </Group>
+
+        {pendingPoint && (
+          <Paper withBorder p="md" radius="md">
+            <Stack gap="xs">
+              <Text fw={600}>Record Scoring Details</Text>
+              <Textarea label="Details" placeholder="Time, player, or note" value={incidentNote} onChange={(event) => setIncidentNote(event.currentTarget.value)} minRows={2} />
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setPendingPoint(null)}>Cancel</Button>
+                <Button onClick={() => { updateScore(pendingPoint.teamId, pendingPoint.delta, incidentNote); setPendingPoint(null); setIncidentNote(''); }}>Save Point</Button>
+              </Group>
+            </Stack>
+          </Paper>
+        )}
+
+        <Group grow align="stretch">
+          {[{ team: match.team1, teamId: team1Id, current: team1Score }, { team: match.team2, teamId: team2Id, current: team2Score }].map(({ team, teamId, current }, index) => (
+            <Paper key={teamId ?? index} withBorder p="md" radius="md">
+              <Group justify="space-between" mb="sm">
+                <Group>
+                  {team && <Avatar src={getTeamAvatarUrl(team, 40)} radius="xl" size={40} alt={teamName(team)} />}
+                  <Text fw={600}>{teamName(team)}</Text>
+                </Group>
+                {canScore && (
+                  <Group gap="xs">
+                    <ActionIcon variant="light" color="red" onClick={() => requestScore(teamId, -1)} disabled={current === 0}>-</ActionIcon>
+                    <ActionIcon variant="light" color="green" onClick={() => requestScore(teamId, 1)}>+</ActionIcon>
+                  </Group>
+                )}
+              </Group>
+              <Text ta="center" fw={700} size="xl">{current}</Text>
+              <Group justify="center" gap="xs" mt={6}>
+                {segments.map((segment, segmentIndex) => (
+                  <Text key={`${teamId}-${segment.id}`} size="sm" className={`${segmentIndex === activeIndex ? 'bg-blue-100 text-blue-800' : segment.winnerEventTeamId === teamId ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded`}>
+                    {teamId ? score(segment.scores?.[teamId]) : 0}
+                  </Text>
+                ))}
+              </Group>
+            </Paper>
+          ))}
+        </Group>
+
+        <Group justify="space-between">
+          <Button variant="default" onClick={onClose}>Close</Button>
+          <Group>
+            {canManage && activeSegment?.status !== 'COMPLETE' && (!isTimedMatch || rules.scoringModel !== 'POINTS_ONLY') && (
+              <Button onClick={confirmSegment} disabled={rules.scoringModel === 'SETS' && !setWinConditionMet()}>
+                Confirm {labelForSegment(rules, activeSegment?.sequence ?? 1)}
+              </Button>
+            )}
+            {canManage && <Button onClick={saveMatch} loading={loading} disabled={!isTimedMatch && rules.scoringModel === 'SETS' && !matchComplete()}>Save Match</Button>}
+          </Group>
+        </Group>
+      </Stack>
     </Modal>
   );
 }

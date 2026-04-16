@@ -2109,6 +2109,7 @@ type EventFormState = {
     assistantHostIds: string[];
     doTeamsOfficiate: boolean;
     teamOfficialsMaySwap: boolean;
+    autoCreatePointMatchIncidents: boolean;
     leagueScoringConfig: LeagueScoringConfig;
 };
 
@@ -2721,6 +2722,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsOfficiate: Boolean(event.doTeamsOfficiate),
     teamOfficialsMaySwap: Boolean(event.doTeamsOfficiate) && Boolean((event as any).teamOfficialsMaySwap),
+    autoCreatePointMatchIncidents: Boolean((event as any).autoCreatePointMatchIncidents),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
             ? (event.leagueScoringConfig as Partial<LeagueScoringConfig>)
@@ -2901,6 +2903,7 @@ const eventFormSchema = z
         assistantHostIds: z.array(z.string()).default([]),
         doTeamsOfficiate: z.boolean(),
         teamOfficialsMaySwap: z.boolean().default(false),
+        autoCreatePointMatchIncidents: z.boolean().default(false),
         leagueScoringConfig: z.any(),
         leagueSlots: z.array(leagueSlotSchema),
         leagueData: z.object({
@@ -3445,6 +3448,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         if (typeof (defaults as any).teamOfficialsMaySwap === 'boolean') {
             next.teamOfficialsMaySwap = next.doTeamsOfficiate ? Boolean((defaults as any).teamOfficialsMaySwap) : false;
+        }
+        if (typeof (defaults as any).autoCreatePointMatchIncidents === 'boolean') {
+            next.autoCreatePointMatchIncidents = Boolean((defaults as any).autoCreatePointMatchIncidents);
         }
         if ((defaults as any).officialSchedulingMode !== undefined) {
             next.officialSchedulingMode = normalizeOfficialSchedulingMode((defaults as any).officialSchedulingMode);
@@ -8088,6 +8094,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             assistantHostIds: normalizedAssistantHostIds,
             doTeamsOfficiate: source.doTeamsOfficiate,
             teamOfficialsMaySwap: source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
+            autoCreatePointMatchIncidents: Boolean(source.autoCreatePointMatchIncidents),
             coordinates: baseCoordinates,
         };
 
@@ -8904,35 +8911,49 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         control={control}
                                         rules={{ required: true }}
                                         render={({ field }) => (
-                                            <MantineSelect
-                                                label="Event Type"
-                                                data={eventTypeOptions}
-                                                value={field.value}
-                                                comboboxProps={sharedComboboxProps}
-                                                disabled={isImmutableField('eventType')}
-                                                onChange={(value) => {
-                                                    if (isImmutableField('eventType')) return;
-                                                    if (!value) return;
-                                                    clearErrors('leagueSlots');
-                                                    const nextType = value as EventType;
-                                                    const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
-                                                    field.onChange(nextType);
-                                                    if (enforcingTeamSettings) {
-                                                        setValue('teamSignup', true, { shouldDirty: true });
-                                                        setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
-                                                        setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-                                                    } else {
-                                                        setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
-                                                        const parsedStart = parseLocalDateTime(getValues('start'));
-                                                        const parsedEnd = parseLocalDateTime(getValues('end'));
-                                                        if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                                            const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                                            setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                            <div className="space-y-2">
+                                                <MantineSelect
+                                                    label="Event Type"
+                                                    data={eventTypeOptions}
+                                                    value={field.value}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    disabled={isImmutableField('eventType')}
+                                                    onChange={(value) => {
+                                                        if (isImmutableField('eventType')) return;
+                                                        if (!value) return;
+                                                        clearErrors('leagueSlots');
+                                                        const nextType = value as EventType;
+                                                        const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
+                                                        field.onChange(nextType);
+                                                        if (enforcingTeamSettings) {
+                                                            setValue('teamSignup', true, { shouldDirty: true });
+                                                            setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
+                                                            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+                                                        } else {
+                                                            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+                                                            const parsedStart = parseLocalDateTime(getValues('start'));
+                                                            const parsedEnd = parseLocalDateTime(getValues('end'));
+                                                            if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                                                const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                                                setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                                            }
                                                         }
-                                                    }
-                                                }}
-                                                w="100%"
-                                            />
+                                                    }}
+                                                    w="100%"
+                                                />
+                                                <AnimatedSection in={eventData.eventType === 'LEAGUE'}>
+                                                    <Checkbox
+                                                        size="xs"
+                                                        label="Include playoffs"
+                                                        checked={Boolean(leagueData.includePlayoffs)}
+                                                        disabled={isImmutableField('includePlayoffs')}
+                                                        onChange={(event) => {
+                                                            if (isImmutableField('includePlayoffs')) return;
+                                                            handleIncludePlayoffsToggle(event.currentTarget.checked);
+                                                        }}
+                                                    />
+                                                </AnimatedSection>
+                                            </div>
                                         )}
                                     />
                                 </div>
@@ -8941,28 +8962,78 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         name="maxParticipants"
                                         control={control}
                                         render={({ field, fieldState }) => (
-                                            <NumberInput
-                                                label={eventData.singleDivision
-                                                    ? (eventData.teamSignup ? 'Max Teams' : 'Max Participants')
-                                                    : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
-                                                min={2}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value ?? ''}
-                                                w="100%"
-                                                clampBehavior="blur"
-                                                disabled={isImmutableField('maxParticipants')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('maxParticipants')) return;
-                                                    const numeric = typeof val === 'number' && Number.isFinite(val)
-                                                        ? Math.trunc(val)
-                                                        : null;
-                                                    field.onChange(numeric);
-                                                }}
-                                                error={fieldState.error?.message as string | undefined}
-                                            />
+                                            <div className="space-y-2">
+                                                <NumberInput
+                                                    label={eventData.singleDivision
+                                                        ? (eventData.teamSignup ? 'Max Teams' : 'Max Participants')
+                                                        : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
+                                                    min={2}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={field.value ?? ''}
+                                                    w="100%"
+                                                    clampBehavior="blur"
+                                                    disabled={isImmutableField('maxParticipants')}
+                                                    onChange={(val) => {
+                                                        if (isImmutableField('maxParticipants')) return;
+                                                        const numeric = typeof val === 'number' && Number.isFinite(val)
+                                                            ? Math.trunc(val)
+                                                            : null;
+                                                        field.onChange(numeric);
+                                                    }}
+                                                    error={fieldState.error?.message as string | undefined}
+                                                />
+                                                <AnimatedSection in={supportsEditableTeamSignup}>
+                                                    <Controller
+                                                        name="teamSignup"
+                                                        control={control}
+                                                        render={({ field: teamSignupField }) => (
+                                                            <Checkbox
+                                                                data-testid="team-signup-switch"
+                                                                size="xs"
+                                                                label="Use teams"
+                                                                aria-label="Use teams"
+                                                                checked={Boolean(teamSignupField.value)}
+                                                                disabled={isImmutableField('teamSignup')}
+                                                                onChange={(event) => {
+                                                                    if (isImmutableField('teamSignup')) return;
+                                                                    teamSignupField.onChange(event.currentTarget.checked);
+                                                                }}
+                                                            />
+                                                        )}
+                                                    />
+                                                </AnimatedSection>
+                                            </div>
                                         )}
                                     />
                                 </div>
+                                <AnimatedSection
+                                    in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs}
+                                    collapseClassName="md:col-span-2"
+                                >
+                                    <NumberInput
+                                        label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
+                                        min={2}
+                                        max={MAX_STANDARD_NUMBER}
+                                        w="100%"
+                                        value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                                        disabled={isImmutableField('playoffTeamCount')}
+                                        clampBehavior="strict"
+                                        onChange={(value) => {
+                                            if (isImmutableField('playoffTeamCount')) return;
+                                            const numeric = typeof value === 'number' ? value : Number(value);
+                                            setLeagueData((prev) => ({
+                                                ...prev,
+                                                playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
+                                            }));
+                                        }}
+                                        error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
+                                    />
+                                    <AnimatedSection in={!eventData.singleDivision}>
+                                        <Text size="xs" c="dimmed" mt="xs">
+                                            Used as the default for new divisions.
+                                        </Text>
+                                    </AnimatedSection>
+                                </AnimatedSection>
                                 <div className="md:col-span-2">
                                     <Controller
                                         name="teamSizeLimit"
@@ -8988,7 +9059,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         )}
                                     />
                                 </div>
-                                <div className="md:col-span-3">
+                                <div className="md:col-span-2">
                                     <Controller
                                         name="start"
                                         control={control}
@@ -9017,7 +9088,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                                 <AnimatedSection
                                     in={eventData.eventType === 'EVENT' || supportsNoFixedEndDateTime}
-                                    collapseClassName="md:col-span-3"
+                                    collapseClassName="md:col-span-2"
                                 >
                                     <Controller
                                         name="end"
@@ -9309,36 +9380,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
-                                    <AnimatedSection
-                                        in={supportsEditableTeamSignup}
-                                        collapseClassName="md:col-span-4"
-                                        className="h-full"
-                                    >
-                                        <Controller
-                                            name="teamSignup"
-                                            control={control}
-                                            render={({ field }) => (
-                                                <div className="flex h-full flex-col justify-end gap-2 rounded-lg border border-gray-200 bg-white p-3" data-testid="team-signup-switch">
-                                                    <div className="min-w-0">
-                                                        <Text fw={600} size="sm">Team Sign Up</Text>
-                                                        <Text size="xs" c="dimmed">
-                                                            Teams compete rather than individuals.
-                                                        </Text>
-                                                    </div>
-                                                    <Switch
-                                                        aria-label="Team Sign Up"
-                                                        checked={field.value}
-                                                        disabled={isImmutableField('teamSignup')}
-                                                        onChange={(e) => {
-                                                            if (isImmutableField('teamSignup')) return;
-                                                            field.onChange(e?.currentTarget?.checked ?? field.value);
-                                                        }}
-                                                    />
-                                                </div>
-                                            )}
-                                        />
-                                    </AnimatedSection>
-                                    <div className={supportsEditableTeamSignup ? 'md:col-span-8' : 'md:col-span-12'}>
+                                    <div className="md:col-span-12">
                                         <div className="rounded-lg border border-gray-200 bg-white p-4">
                                             <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
                                                 <div>
@@ -9444,51 +9486,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             </AnimatedSection>
                                         </div>
                                     </div>
-                                    <AnimatedSection in={eventData.eventType === 'LEAGUE'} collapseClassName="md:col-span-4">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-3 transition-all duration-200">
-                                            <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
-                                                <div>
-                                                    <Text fw={600} size="sm">Include Playoffs</Text>
-                                                    <Text size="xs" c="dimmed">
-                                                        Enable a playoff bracket for league standings.
-                                                    </Text>
-                                                </div>
-                                                <Switch
-                                                    checked={leagueData.includePlayoffs}
-                                                    disabled={isImmutableField('includePlayoffs')}
-                                                    onChange={(event) => {
-                                                        if (isImmutableField('includePlayoffs')) return;
-                                                        handleIncludePlayoffsToggle(event.currentTarget.checked);
-                                                    }}
-                                                />
-                                            </Group>
-                                        </div>
-                                    </AnimatedSection>
-                                    <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs} collapseClassName="md:col-span-4">
-                                        <NumberInput
-                                            label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
-                                            min={2}
-                                            max={MAX_STANDARD_NUMBER}
-                                            w="100%"
-                                            value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-                                            disabled={isImmutableField('playoffTeamCount')}
-                                            clampBehavior="strict"
-                                            onChange={(value) => {
-                                                if (isImmutableField('playoffTeamCount')) return;
-                                                const numeric = typeof value === 'number' ? value : Number(value);
-                                                setLeagueData((prev) => ({
-                                                    ...prev,
-                                                    playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
-                                                }));
-                                            }}
-                                            error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
-                                        />
-                                        <AnimatedSection in={!eventData.singleDivision}>
-                                            <Text size="xs" c="dimmed" mt="xs">
-                                                Existing divisions keep their own playoff counts. This value is used as the default for new divisions.
-                                            </Text>
-                                        </AnimatedSection>
-                                    </AnimatedSection>
                                     <AnimatedSection in={hasUnsetTeamCapacityLimits} className="md:col-span-12">
                                         <Alert color="yellow" variant="light" radius="md">
                                             <Text size="sm" fw={600}>Capacity limits are required before save</Text>
@@ -9621,6 +9618,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             )}
                                         />
                                     )}
+                                    <Controller
+                                        name="autoCreatePointMatchIncidents"
+                                        control={control}
+                                        render={({ field }) => (
+                                            <Switch
+                                                label="Record scoring data for each point"
+                                                description="Ask officials for time, player, or note before the score changes."
+                                                checked={field.value}
+                                                onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
+                                            />
+                                        )}
+                                    />
 
                                     <Paper withBorder radius="md" p="md" bg="white">
                                         <Stack gap="sm">

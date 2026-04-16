@@ -1,3 +1,13 @@
+import type {
+  MatchIncident,
+  MatchLifecycleStatus,
+  MatchRulesConfig,
+  MatchResultStatus,
+  MatchResultType,
+  MatchSegment,
+  ResolvedMatchRules,
+} from '@/types';
+
 export const MINUTE_MS = 60 * 1000;
 
 export const TIMES = {
@@ -404,6 +414,17 @@ export class Match implements SchedulableEvent {
   division: Division;
   field: PlayingField | null;
   setResults: number[];
+  status: MatchLifecycleStatus | string | null;
+  resultStatus: MatchResultStatus | string | null;
+  resultType: MatchResultType | string | null;
+  actualStart: Date | null;
+  actualEnd: Date | null;
+  statusReason: string | null;
+  winnerEventTeamId: string | null;
+  matchRulesSnapshot: ResolvedMatchRules | Record<string, unknown> | null;
+  resolvedMatchRules: ResolvedMatchRules | null;
+  segments: MatchSegment[];
+  incidents: MatchIncident[];
   bufferMs: number;
   side: Side | null;
   officialCheckedIn?: boolean | null;
@@ -434,6 +455,17 @@ export class Match implements SchedulableEvent {
     division: Division;
     field?: PlayingField | null;
     setResults?: number[];
+    status?: MatchLifecycleStatus | string | null;
+    resultStatus?: MatchResultStatus | string | null;
+    resultType?: MatchResultType | string | null;
+    actualStart?: Date | null;
+    actualEnd?: Date | null;
+    statusReason?: string | null;
+    winnerEventTeamId?: string | null;
+    matchRulesSnapshot?: ResolvedMatchRules | Record<string, unknown> | null;
+    resolvedMatchRules?: ResolvedMatchRules | null;
+    segments?: MatchSegment[];
+    incidents?: MatchIncident[];
     bufferMs: number;
     side?: Side | null;
     officialCheckedIn?: boolean | null;
@@ -463,6 +495,17 @@ export class Match implements SchedulableEvent {
     this.division = params.division;
     this.field = params.field ?? null;
     this.setResults = params.setResults ?? [];
+    this.status = params.status ?? null;
+    this.resultStatus = params.resultStatus ?? null;
+    this.resultType = params.resultType ?? null;
+    this.actualStart = params.actualStart ?? null;
+    this.actualEnd = params.actualEnd ?? null;
+    this.statusReason = params.statusReason ?? null;
+    this.winnerEventTeamId = params.winnerEventTeamId ?? null;
+    this.matchRulesSnapshot = params.matchRulesSnapshot ?? null;
+    this.resolvedMatchRules = params.resolvedMatchRules ?? null;
+    this.segments = params.segments ?? [];
+    this.incidents = params.incidents ?? [];
     this.bufferMs = params.bufferMs;
     this.side = params.side ?? null;
     this.officialCheckedIn = params.officialCheckedIn ?? false;
@@ -646,6 +689,9 @@ export class Tournament {
   officialSchedulingMode: OfficialSchedulingMode;
   officialPositions: EventOfficialPosition[];
   eventOfficials: EventOfficial[];
+  matchRulesOverride: MatchRulesConfig | Record<string, unknown> | null;
+  autoCreatePointMatchIncidents: boolean;
+  resolvedMatchRules: ResolvedMatchRules | null;
   fieldCount: number | null;
   prize: string | null;
   hostId: string;
@@ -716,6 +762,9 @@ export class Tournament {
     officialSchedulingMode?: OfficialSchedulingMode;
     officialPositions?: EventOfficialPosition[];
     eventOfficials?: EventOfficial[];
+    matchRulesOverride?: MatchRulesConfig | Record<string, unknown> | null;
+    autoCreatePointMatchIncidents?: boolean;
+    resolvedMatchRules?: ResolvedMatchRules | null;
     fieldCount?: number | null;
     prize?: string | null;
     hostId?: string;
@@ -785,6 +834,9 @@ export class Tournament {
     this.officialSchedulingMode = params.officialSchedulingMode ?? 'SCHEDULE';
     this.officialPositions = params.officialPositions ?? [];
     this.eventOfficials = params.eventOfficials ?? [];
+    this.matchRulesOverride = params.matchRulesOverride ?? null;
+    this.autoCreatePointMatchIncidents = params.autoCreatePointMatchIncidents ?? false;
+    this.resolvedMatchRules = params.resolvedMatchRules ?? null;
     const configuredFieldCount = Object.keys(params.fields ?? {}).length;
     if (configuredFieldCount > 0) {
       this.fieldCount = configuredFieldCount;

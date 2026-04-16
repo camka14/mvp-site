@@ -266,12 +266,74 @@ const getUpcomingMatchesInTimeRange = (
   return matchesInRange;
 };
 
-const isMatchOver = (match: Match | null): boolean => {
-  if (!match) return false;
+const completedSegmentWinnerIds = (match: Match): string[] => (
+  (Array.isArray(match.segments) ? match.segments : [])
+    .filter((segment) => segment.status === 'COMPLETE' || Boolean(segment.winnerEventTeamId))
+    .map((segment) => segment.winnerEventTeamId)
+    .filter((winnerId): winnerId is string => typeof winnerId === 'string' && winnerId.length > 0)
+);
+
+const segmentScoreTotal = (match: Match, teamId: string): number => (
+  (Array.isArray(match.segments) ? match.segments : []).reduce((total, segment) => {
+    const score = Number(segment.scores?.[teamId] ?? 0);
+    return Number.isFinite(score) ? total + score : total;
+  }, 0)
+);
+
+const resolveWinnerFromLegacyResults = (match: Match): Team | null => {
+  const teamOne = match.team1;
+  const teamTwo = match.team2;
+  if (!teamOne || !teamTwo) return null;
   const team1Wins = match.setResults.filter((result) => result === 1).length;
   const team2Wins = match.setResults.filter((result) => result === 2).length;
-  const setsToWin = Math.ceil(match.setResults.length / 2);
-  return team1Wins >= setsToWin || team2Wins >= setsToWin;
+  if (team1Wins === 0 && team2Wins === 0) return null;
+  return team1Wins >= team2Wins ? teamOne : teamTwo;
+};
+
+const resolveMatchWinner = (match: Match): Team | null => {
+  const teamOne = match.team1;
+  const teamTwo = match.team2;
+  if (!teamOne || !teamTwo) return null;
+
+  if (match.winnerEventTeamId === teamOne.id) return teamOne;
+  if (match.winnerEventTeamId === teamTwo.id) return teamTwo;
+
+  const rules = (match.matchRulesSnapshot ?? match.resolvedMatchRules ?? {}) as { scoringModel?: string; segmentCount?: number };
+  const scoringModel = typeof rules.scoringModel === 'string' ? rules.scoringModel : null;
+  const segments = Array.isArray(match.segments) ? match.segments : [];
+
+  if (segments.length) {
+    if (scoringModel === 'SETS') {
+      const winners = completedSegmentWinnerIds(match);
+      const team1Wins = winners.filter((winnerId) => winnerId === teamOne.id).length;
+      const team2Wins = winners.filter((winnerId) => winnerId === teamTwo.id).length;
+      const configuredSegmentCount = Number(rules.segmentCount);
+      const segmentCount = Number.isFinite(configuredSegmentCount) && configuredSegmentCount > 0
+        ? Math.trunc(configuredSegmentCount)
+        : Math.max(segments.length, match.setResults.length, 1);
+      const setsToWin = Math.max(1, Math.ceil(segmentCount / 2));
+      if (team1Wins >= setsToWin || team2Wins >= setsToWin) {
+        return team1Wins >= team2Wins ? teamOne : teamTwo;
+      }
+      return null;
+    }
+
+    const allScoredSegmentsComplete = segments.every((segment) => segment.status === 'COMPLETE');
+    if (allScoredSegmentsComplete) {
+      const team1Score = segmentScoreTotal(match, teamOne.id);
+      const team2Score = segmentScoreTotal(match, teamTwo.id);
+      if (team1Score !== team2Score) {
+        return team1Score > team2Score ? teamOne : teamTwo;
+      }
+    }
+  }
+
+  return resolveWinnerFromLegacyResults(match);
+};
+
+const isMatchOver = (match: Match | null): boolean => {
+  if (!match) return false;
+  return Boolean(resolveMatchWinner(match));
 };
 
 const teamsWaitingToStart = (teams: Team[], currentTime: Date): Team[] => {
@@ -363,7 +425,8 @@ const processMatches = (
 
   for (const match of [...matches].reverse()) {
     if (!match.locked && !match.field) {
-      bracketSchedule.scheduleEvent(match, match.team1Points.length * TIMES.SET);
+        const segmentDurationCount = Math.max(match.segments?.length ?? 0, match.team1Points.length, 1);
+        bracketSchedule.scheduleEvent(match, segmentDurationCount * TIMES.SET);
       attachMatchToParticipants(match);
     }
   }
@@ -386,10 +449,16 @@ export const finalizeMatch = (
     return { updatedMatch, seededTeamIds };
   }
 
-  const team1Wins = updatedMatch.setResults.filter((result) => result === 1).length;
-  const team2Wins = updatedMatch.setResults.filter((result) => result === 2).length;
-  const winner = team1Wins > team2Wins ? teamOne : teamTwo;
+  const winner = resolveMatchWinner(updatedMatch);
+  if (!winner) {
+    return { updatedMatch, seededTeamIds };
+  }
   const loser = winner === teamOne ? teamTwo : teamOne;
+
+  updatedMatch.winnerEventTeamId = winner.id;
+  updatedMatch.status = 'COMPLETE';
+  updatedMatch.resultStatus = updatedMatch.resultStatus ?? 'OFFICIAL';
+  updatedMatch.actualEnd = updatedMatch.actualEnd ?? currentTime;
 
   updatedMatch.advanceTeams(winner, loser);
 
