@@ -52,6 +52,16 @@ export type Fields = Prisma.FieldsModel
  */
 export type Matches = Prisma.MatchesModel
 /**
+ * Model MatchSegments
+ * 
+ */
+export type MatchSegments = Prisma.MatchSegmentsModel
+/**
+ * Model MatchIncidents
+ * 
+ */
+export type MatchIncidents = Prisma.MatchIncidentsModel
+/**
  * Model Divisions
  * 
  */

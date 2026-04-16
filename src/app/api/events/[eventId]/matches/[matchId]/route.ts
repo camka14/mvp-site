@@ -20,6 +20,7 @@ import { sendPushToUsers } from '@/server/pushNotifications';
 import {
   normalizeMatchOfficialAssignments,
 } from '@/server/officials/config';
+import { shouldFreezeMatchRulesSnapshot } from '@/server/matches/matchOperations';
 import type { MatchIncident, MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -174,12 +175,137 @@ const parseNullableDate = (value: string | null | undefined): Date | null | unde
   return parsed;
 };
 
-const hasOperationalUpdate = (data: z.infer<typeof updateSchema>): boolean => Boolean(
-  data.lifecycle
-  || (Array.isArray(data.segmentOperations) && data.segmentOperations.length > 0)
-  || (Array.isArray(data.incidentOperations) && data.incidentOperations.length > 0)
-  || data.officialCheckIn,
-);
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['ACTIVE', 'STARTED'] as const;
+
+type EventRegistrationLookupRow = {
+  id: string;
+  eventTeamId: string | null;
+  registrantId: string;
+};
+
+const buildIncidentValidationState = (params: {
+  matchId: string;
+  match: any;
+  participantRegistrationRows: EventRegistrationLookupRow[];
+  pendingSegmentOperations?: Array<z.infer<typeof segmentOperationSchema>>;
+}) => {
+  const teamIds = Array.from(new Set([
+    normalizeIdToken(params.match.team1?.id ?? params.match.team1?.$id),
+    normalizeIdToken(params.match.team2?.id ?? params.match.team2?.$id),
+  ].filter((value): value is string => Boolean(value))));
+  const segmentIds = new Set<string>();
+  (Array.isArray(params.match.segments) ? params.match.segments : []).forEach((segment: MatchSegment) => {
+    const segmentId = normalizeIdToken(segment.id ?? segment.$id);
+    if (segmentId) {
+      segmentIds.add(segmentId);
+    }
+  });
+  (params.pendingSegmentOperations ?? []).forEach((operation) => {
+    const segmentId = normalizeIdToken(operation.id) ?? `${params.matchId}_segment_${operation.sequence}`;
+    segmentIds.add(segmentId);
+  });
+
+  const registrationById = new Map<string, EventRegistrationLookupRow>();
+  const registrationIdsByTeamId = new Map<string, Set<string>>();
+  const participantUserIdsByTeamId = new Map<string, Set<string>>();
+
+  params.participantRegistrationRows.forEach((row) => {
+    const registrationId = normalizeIdToken(row.id);
+    const eventTeamId = normalizeIdToken(row.eventTeamId);
+    const registrantId = normalizeIdToken(row.registrantId);
+    if (!registrationId || !eventTeamId || !registrantId) {
+      return;
+    }
+    registrationById.set(registrationId, { id: registrationId, eventTeamId, registrantId });
+    const registrationIds = registrationIdsByTeamId.get(eventTeamId) ?? new Set<string>();
+    registrationIds.add(registrationId);
+    registrationIdsByTeamId.set(eventTeamId, registrationIds);
+    const participantIds = participantUserIdsByTeamId.get(eventTeamId) ?? new Set<string>();
+    participantIds.add(registrantId);
+    participantUserIdsByTeamId.set(eventTeamId, participantIds);
+  });
+
+  return {
+    teamIds,
+    segmentIds,
+    registrationById,
+    registrationIdsByTeamId,
+    participantUserIdsByTeamId,
+  };
+};
+
+const sanitizeIncidentOperationsOrThrow = (params: {
+  operations: Array<z.infer<typeof incidentOperationSchema>> | undefined;
+  matchId: string;
+  matchRules: { pointIncidentRequiresParticipant?: boolean } | null | undefined;
+  validationState: ReturnType<typeof buildIncidentValidationState>;
+  sessionUserId: string;
+  isHostOrAdmin: boolean;
+}) => {
+  if (!Array.isArray(params.operations) || params.operations.length === 0) {
+    return params.operations;
+  }
+
+  return params.operations.map((operation) => {
+    if (operation.action === 'DELETE') {
+      return operation;
+    }
+
+    const linkedPointDelta = typeof operation.linkedPointDelta === 'number' ? operation.linkedPointDelta : null;
+    const scoringIncident = linkedPointDelta !== null && linkedPointDelta !== 0;
+    const requiresParticipant = scoringIncident && params.matchRules?.pointIncidentRequiresParticipant === true;
+
+    const segmentId = normalizeIdToken(operation.segmentId);
+    if (segmentId && !params.validationState.segmentIds.has(segmentId)) {
+      throw new Response('Incident segment must belong to the current match.', { status: 400 });
+    }
+
+    const explicitEventRegistrationId = normalizeIdToken(operation.eventRegistrationId);
+    const explicitParticipantUserId = normalizeIdToken(operation.participantUserId);
+    const explicitEventTeamId = normalizeIdToken(operation.eventTeamId);
+    const registrationRow = explicitEventRegistrationId
+      ? params.validationState.registrationById.get(explicitEventRegistrationId) ?? null
+      : null;
+    if (explicitEventRegistrationId && !registrationRow) {
+      throw new Response('Incident participant must belong to the current match roster.', { status: 400 });
+    }
+
+    const derivedEventTeamId = registrationRow?.eventTeamId ?? explicitEventTeamId ?? null;
+    if (derivedEventTeamId && !params.validationState.teamIds.includes(derivedEventTeamId)) {
+      throw new Response('Incident team must be one of the match participants.', { status: 400 });
+    }
+
+    const derivedParticipantUserId = registrationRow?.registrantId ?? explicitParticipantUserId ?? null;
+    if (derivedParticipantUserId && derivedEventTeamId) {
+      const participantIds = params.validationState.participantUserIdsByTeamId.get(derivedEventTeamId) ?? new Set<string>();
+      if (!participantIds.has(derivedParticipantUserId)) {
+        throw new Response('Incident participant must belong to the selected team.', { status: 400 });
+      }
+    }
+
+    if (requiresParticipant && !registrationRow) {
+      throw new Response('This scoring rule requires selecting a player from the event roster.', { status: 400 });
+    }
+
+    if (scoringIncident && (!segmentId || !derivedEventTeamId)) {
+      throw new Response('Scoring incidents must reference both a segment and a team.', { status: 400 });
+    }
+
+    const officialUserId = normalizeIdToken(operation.officialUserId);
+    if (officialUserId && officialUserId !== params.sessionUserId && !params.isHostOrAdmin) {
+      throw new Response('Officials may only record incidents as themselves.', { status: 400 });
+    }
+
+    return {
+      ...operation,
+      segmentId: segmentId ?? null,
+      eventTeamId: derivedEventTeamId,
+      eventRegistrationId: registrationRow?.id ?? explicitEventRegistrationId ?? null,
+      participantUserId: derivedParticipantUserId,
+      officialUserId: officialUserId ?? null,
+    };
+  });
+};
 
 const syncLegacyArraysFromSegments = (match: any) => {
   const segments = Array.isArray(match.segments)
@@ -645,6 +771,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Match not found', { status: 404 });
       }
 
+      const participantTeamIds = Array.from(new Set([
+        normalizeIdToken((targetMatch as any).team1?.id ?? (targetMatch as any).team1?.$id),
+        normalizeIdToken((targetMatch as any).team2?.id ?? (targetMatch as any).team2?.$id),
+      ].filter((value): value is string => Boolean(value))));
+      const participantRegistrationRows: EventRegistrationLookupRow[] =
+        participantTeamIds.length && typeof (tx as any).eventRegistrations?.findMany === 'function'
+          ? await (tx as any).eventRegistrations.findMany({
+              where: {
+                eventId,
+                eventTeamId: { in: participantTeamIds },
+                rosterRole: 'PARTICIPANT',
+                status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
+              },
+              select: {
+                id: true,
+                eventTeamId: true,
+                registrantId: true,
+              },
+            })
+          : [];
+
       const eventTeams = Array.isArray((event as any).teams)
         ? ((event as any).teams as unknown[])
         : Object.values(((event as any).teams ?? {}) as Record<string, unknown>);
@@ -747,9 +894,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         });
       }
 
+      const sanitizedIncidentOperations = sanitizeIncidentOperationsOrThrow({
+        operations: parsed.data.incidentOperations,
+        matchId: targetMatch.id,
+        matchRules: (targetMatch.matchRulesSnapshot ?? (event as any).resolvedMatchRules ?? null) as { pointIncidentRequiresParticipant?: boolean } | null,
+        validationState: buildIncidentValidationState({
+          matchId: targetMatch.id,
+          match: targetMatch,
+          participantRegistrationRows,
+          pendingSegmentOperations: parsed.data.segmentOperations,
+        }),
+        sessionUserId: session.userId,
+        isHostOrAdmin,
+      });
+
       applyMatchUpdates(event, targetMatch, updates);
-      const operationalUpdate = hasOperationalUpdate(parsed.data);
-      if (operationalUpdate && !targetMatch.matchRulesSnapshot) {
+      if (shouldFreezeMatchRulesSnapshot({
+        segmentOperations: parsed.data.segmentOperations,
+        incidentOperations: sanitizedIncidentOperations,
+      }) && !targetMatch.matchRulesSnapshot) {
         targetMatch.matchRulesSnapshot = (event as any).resolvedMatchRules ?? null;
         targetMatch.resolvedMatchRules = (event as any).resolvedMatchRules ?? null;
       }
@@ -763,7 +926,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         applyOfficialCheckInOperation(targetMatch, parsed.data.officialCheckIn, session.userId);
       }
       applySegmentOperations(targetMatch, event, parsed.data.segmentOperations);
-      applyIncidentOperations(targetMatch, event, parsed.data.incidentOperations);
+      applyIncidentOperations(targetMatch, event, sanitizedIncidentOperations);
 
       if (updates.officialCheckedIn === true || targetMatch.officialCheckedIn === true) {
         targetMatch.locked = true;
@@ -808,7 +971,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         explicitLockedValue: updates.locked,
       });
 
-      const incidentDeleteIds = (parsed.data.incidentOperations ?? [])
+      const incidentDeleteIds = (sanitizedIncidentOperations ?? [])
         .filter((operation) => operation.action === 'DELETE' && operation.id)
         .map((operation) => operation.id as string);
       if (incidentDeleteIds.length && typeof (tx as any).matchIncidents?.deleteMany === 'function') {

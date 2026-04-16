@@ -97,6 +97,19 @@ export const resolveMatchRules = (params: {
   };
 };
 
+export const shouldFreezeMatchRulesSnapshot = (params: {
+  segmentOperations?: Array<{ scores?: Record<string, number> | null | undefined }>;
+  incidentOperations?: unknown[];
+}): boolean => {
+  if (Array.isArray(params.incidentOperations) && params.incidentOperations.length > 0) {
+    return true;
+  }
+  return Array.isArray(params.segmentOperations) && params.segmentOperations.some((operation) => {
+    const scores = operation?.scores;
+    return Boolean(scores && Object.keys(scores).length > 0);
+  });
+};
+
 const isoOrNull = (value: unknown): string | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString();
@@ -217,4 +230,3 @@ export const buildLegacySegments = (params: {
     };
   });
 };
-

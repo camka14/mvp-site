@@ -440,7 +440,7 @@ describe('POST /api/events/[eventId]/participants', () => {
     prismaMock.teams.findUnique
       .mockResolvedValueOnce(canonicalTeam)
       .mockResolvedValueOnce(canonicalTeam);
-    prismaMock.teams.findMany.mockResolvedValueOnce([
+    prismaMock.teams.findMany.mockResolvedValue([
       { id: 'slot_1', seed: 1, captainId: '', division: 'div_a', parentTeamId: null },
       { id: 'slot_2', seed: 2, captainId: '', division: 'div_a', parentTeamId: null },
     ]);

@@ -60,6 +60,16 @@ export type MatchOfficialAssignment = {
   hasConflict: boolean;
 };
 
+export type TeamPlayerRegistration = {
+  id: string;
+  teamId?: string | null;
+  userId: string;
+  status: string;
+  jerseyNumber?: string | null;
+  position?: string | null;
+  isCaptain?: boolean;
+};
+
 export const sideFrom = (value?: string | null): Side | null => {
   if (!value) return null;
   if (value === Side.LEFT) return Side.LEFT;
@@ -324,6 +334,8 @@ export class Team implements Participant {
   division: Division;
   matches: Match[];
   playerIds: string[];
+  players: UserData[];
+  playerRegistrations: TeamPlayerRegistration[];
 
   constructor(params: {
     id: string;
@@ -332,6 +344,8 @@ export class Team implements Participant {
     name?: string;
     matches?: Match[];
     playerIds?: string[];
+    players?: UserData[];
+    playerRegistrations?: TeamPlayerRegistration[];
   }) {
     this.id = params.id;
     this.captainId = params.captainId;
@@ -339,6 +353,8 @@ export class Team implements Participant {
     this.name = params.name ?? '';
     this.matches = params.matches ?? [];
     this.playerIds = params.playerIds ?? [];
+    this.players = params.players ?? [];
+    this.playerRegistrations = params.playerRegistrations ?? [];
   }
 
   getGroups(): Group[] {

@@ -1038,6 +1038,16 @@ const buildTeams = (
   divisionMap: Map<string, Division>,
   fallbackDivision: Division,
   divisionByTeamId: Map<string, Division> = new Map<string, Division>(),
+  playerLookup: Map<string, UserData> = new Map<string, UserData>(),
+  playerRegistrationsByTeamId: Map<string, Array<{
+    id: string;
+    teamId?: string | null;
+    userId: string;
+    status: string;
+    jerseyNumber?: string | null;
+    position?: string | null;
+    isCaptain?: boolean;
+  }>> = new Map(),
 ) => {
   const teams: Record<string, Team> = {};
   for (const row of rows) {
@@ -1056,6 +1066,10 @@ const buildTeams = (
       name: row.name ?? '',
       matches: [],
       playerIds: ensureArray(row.playerIds),
+      players: ensureArray(row.playerIds)
+        .map((playerId) => playerLookup.get(String(playerId)))
+        .filter((player): player is UserData => Boolean(player)),
+      playerRegistrations: playerRegistrationsByTeamId.get(row.id) ?? [],
     });
   }
   return teams;
@@ -1937,6 +1951,69 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     client.matches.findMany({ where: { eventId: event.id } }),
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
   ]);
+  const teamPlayerIds = Array.from(new Set(
+    (teamRows as any[]).flatMap((row) => ensureStringArray((row as any).playerIds)),
+  ));
+  const [teamPlayerRows, eventRegistrationRows] = await Promise.all([
+    teamPlayerIds.length ? client.userData.findMany({ where: { id: { in: teamPlayerIds } } }) : Promise.resolve([]),
+    teamIdsToLoad.length && typeof (client as any).eventRegistrations?.findMany === 'function'
+      ? (client as any).eventRegistrations.findMany({
+          where: {
+            eventId: event.id,
+            eventTeamId: { in: teamIdsToLoad },
+            rosterRole: 'PARTICIPANT',
+            status: { in: ['ACTIVE', 'STARTED'] },
+          },
+          select: {
+            id: true,
+            eventTeamId: true,
+            registrantId: true,
+            status: true,
+            jerseyNumber: true,
+            position: true,
+            isCaptain: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  const teamPlayerLookup = new Map<string, UserData>();
+  for (const row of teamPlayerRows as any[]) {
+    const normalizedId = normalizeEntityId((row as any).id);
+    if (!normalizedId) continue;
+    teamPlayerLookup.set(normalizedId, new UserData({
+      id: normalizedId,
+      firstName: (row as any).firstName ?? '',
+      lastName: (row as any).lastName ?? '',
+      userName: (row as any).userName ?? '',
+      divisions: allDivisions,
+    }));
+  }
+  const playerRegistrationsByTeamId = new Map<string, Array<{
+    id: string;
+    teamId?: string | null;
+    userId: string;
+    status: string;
+    jerseyNumber?: string | null;
+    position?: string | null;
+    isCaptain?: boolean;
+  }>>();
+  for (const row of eventRegistrationRows as any[]) {
+    const eventTeamId = normalizeEntityId((row as any).eventTeamId);
+    const userId = normalizeEntityId((row as any).registrantId);
+    const registrationId = normalizeEntityId((row as any).id);
+    if (!eventTeamId || !userId || !registrationId) continue;
+    const list = playerRegistrationsByTeamId.get(eventTeamId) ?? [];
+    list.push({
+      id: registrationId,
+      teamId: eventTeamId,
+      userId,
+      status: String((row as any).status ?? 'ACTIVE'),
+      jerseyNumber: (row as any).jerseyNumber ?? null,
+      position: (row as any).position ?? null,
+      isCaptain: Boolean((row as any).isCaptain),
+    });
+    playerRegistrationsByTeamId.set(eventTeamId, list);
+  }
   const matchIds = (matchRows as any[])
     .map((row) => normalizeEntityId(row.id))
     .filter((id): id is string => Boolean(id));
@@ -1981,7 +2058,14 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
       }
     }
   }
-  const teams = buildTeams(teamRows, divisionMap, fallbackDivision, divisionByTeamId);
+  const teams = buildTeams(
+    teamRows,
+    divisionMap,
+    fallbackDivision,
+    divisionByTeamId,
+    teamPlayerLookup,
+    playerRegistrationsByTeamId,
+  );
   const timeSlots = buildTimeSlots(timeSlotRows, divisionMap, divisions);
   const officials = buildOfficials(officialRows, allDivisions);
   attachTimeSlotsToFields(fields, timeSlots);
@@ -2368,7 +2452,7 @@ export const persistScheduledRosterTeams = async (
           id: teamId,
           createdAt: now,
           updatedAt: now,
-          eventId: event.id,
+          eventId: params.eventId,
           kind: captainId ? 'REGISTERED' : 'PLACEHOLDER',
           playerIds,
           playerRegistrationIds: [],
@@ -3573,7 +3657,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: teamId },
       create: {
         id: teamId,
-        eventId: payload.id,
+        eventId: id,
         kind: (team.captainId ?? '') ? 'REGISTERED' : 'PLACEHOLDER',
         playerIds: ensureArray(team.playerIds),
         playerRegistrationIds: ensureArray((team as any).playerRegistrationIds),
@@ -3595,7 +3679,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         updatedAt: new Date(),
       },
       update: {
-        eventId: payload.id,
+        eventId: id,
         kind: (team.captainId ?? '') ? 'REGISTERED' : 'PLACEHOLDER',
         playerIds: ensureArray(team.playerIds),
         playerRegistrationIds: ensureArray((team as any).playerRegistrationIds),

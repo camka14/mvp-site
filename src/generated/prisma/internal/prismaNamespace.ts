@@ -386,6 +386,8 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   Fields: 'Fields',
   Matches: 'Matches',
+  MatchSegments: 'MatchSegments',
+  MatchIncidents: 'MatchIncidents',
   Divisions: 'Divisions',
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
@@ -437,7 +439,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -586,6 +588,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.MatchesCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.MatchesCountAggregateOutputType> | number
+        }
+      }
+    }
+    MatchSegments: {
+      payload: Prisma.$MatchSegmentsPayload<ExtArgs>
+      fields: Prisma.MatchSegmentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.MatchSegmentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.MatchSegmentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        findFirst: {
+          args: Prisma.MatchSegmentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.MatchSegmentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        findMany: {
+          args: Prisma.MatchSegmentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>[]
+        }
+        create: {
+          args: Prisma.MatchSegmentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        createMany: {
+          args: Prisma.MatchSegmentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.MatchSegmentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>[]
+        }
+        delete: {
+          args: Prisma.MatchSegmentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        update: {
+          args: Prisma.MatchSegmentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.MatchSegmentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.MatchSegmentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.MatchSegmentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.MatchSegmentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        aggregate: {
+          args: Prisma.MatchSegmentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateMatchSegments>
+        }
+        groupBy: {
+          args: Prisma.MatchSegmentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchSegmentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.MatchSegmentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchSegmentsCountAggregateOutputType> | number
+        }
+      }
+    }
+    MatchIncidents: {
+      payload: Prisma.$MatchIncidentsPayload<ExtArgs>
+      fields: Prisma.MatchIncidentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.MatchIncidentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.MatchIncidentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        findFirst: {
+          args: Prisma.MatchIncidentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.MatchIncidentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        findMany: {
+          args: Prisma.MatchIncidentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>[]
+        }
+        create: {
+          args: Prisma.MatchIncidentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        createMany: {
+          args: Prisma.MatchIncidentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.MatchIncidentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>[]
+        }
+        delete: {
+          args: Prisma.MatchIncidentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        update: {
+          args: Prisma.MatchIncidentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.MatchIncidentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.MatchIncidentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.MatchIncidentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.MatchIncidentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        aggregate: {
+          args: Prisma.MatchIncidentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateMatchIncidents>
+        }
+        groupBy: {
+          args: Prisma.MatchIncidentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchIncidentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.MatchIncidentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchIncidentsCountAggregateOutputType> | number
         }
       }
     }
@@ -3325,6 +3475,14 @@ export const MatchesScalarFieldEnum = {
   side: 'side',
   matchId: 'matchId',
   losersBracket: 'losersBracket',
+  status: 'status',
+  resultStatus: 'resultStatus',
+  resultType: 'resultType',
+  actualStart: 'actualStart',
+  actualEnd: 'actualEnd',
+  statusReason: 'statusReason',
+  winnerEventTeamId: 'winnerEventTeamId',
+  matchRulesSnapshot: 'matchRulesSnapshot',
   winnerNextMatchId: 'winnerNextMatchId',
   loserNextMatchId: 'loserNextMatchId',
   previousRightId: 'previousRightId',
@@ -3342,6 +3500,50 @@ export const MatchesScalarFieldEnum = {
 } as const
 
 export type MatchesScalarFieldEnum = (typeof MatchesScalarFieldEnum)[keyof typeof MatchesScalarFieldEnum]
+
+
+export const MatchSegmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  sequence: 'sequence',
+  status: 'status',
+  scores: 'scores',
+  winnerEventTeamId: 'winnerEventTeamId',
+  startedAt: 'startedAt',
+  endedAt: 'endedAt',
+  resultType: 'resultType',
+  statusReason: 'statusReason',
+  metadata: 'metadata'
+} as const
+
+export type MatchSegmentsScalarFieldEnum = (typeof MatchSegmentsScalarFieldEnum)[keyof typeof MatchSegmentsScalarFieldEnum]
+
+
+export const MatchIncidentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  segmentId: 'segmentId',
+  eventTeamId: 'eventTeamId',
+  eventRegistrationId: 'eventRegistrationId',
+  participantUserId: 'participantUserId',
+  officialUserId: 'officialUserId',
+  incidentType: 'incidentType',
+  sequence: 'sequence',
+  minute: 'minute',
+  clock: 'clock',
+  clockSeconds: 'clockSeconds',
+  linkedPointDelta: 'linkedPointDelta',
+  note: 'note',
+  metadata: 'metadata'
+} as const
+
+export type MatchIncidentsScalarFieldEnum = (typeof MatchIncidentsScalarFieldEnum)[keyof typeof MatchIncidentsScalarFieldEnum]
 
 
 export const DivisionsScalarFieldEnum = {
@@ -3808,6 +4010,8 @@ export const EventsScalarFieldEnum = {
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
   officialIds: 'officialIds',
   officialPositions: 'officialPositions',
+  matchRulesOverride: 'matchRulesOverride',
+  autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
   installmentDueDates: 'installmentDueDates',
@@ -3972,7 +4176,8 @@ export const SportsScalarFieldEnum = {
   useEnablePenaltyUnsporting: 'useEnablePenaltyUnsporting',
   usePenaltyPointsUnsporting: 'usePenaltyPointsUnsporting',
   usePointPrecision: 'usePointPrecision',
-  officialPositionTemplates: 'officialPositionTemplates'
+  officialPositionTemplates: 'officialPositionTemplates',
+  matchRulesTemplate: 'matchRulesTemplate'
 } as const
 
 export type SportsScalarFieldEnum = (typeof SportsScalarFieldEnum)[keyof typeof SportsScalarFieldEnum]
@@ -4772,6 +4977,8 @@ export type PrismaClientOptions = ({
 export type GlobalOmitConfig = {
   fields?: Prisma.FieldsOmit
   matches?: Prisma.MatchesOmit
+  matchSegments?: Prisma.MatchSegmentsOmit
+  matchIncidents?: Prisma.MatchIncidentsOmit
   divisions?: Prisma.DivisionsOmit
   userData?: Prisma.UserDataOmit
   sensitiveUserData?: Prisma.SensitiveUserDataOmit

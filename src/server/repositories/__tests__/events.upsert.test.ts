@@ -1234,6 +1234,40 @@ describe('upsertEventFromPayload', () => {
       }),
     });
   });
+
+  it('persists event teams with the resolved event id when payload only provides $id', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      teams: [
+        {
+          $id: 'team_1',
+          name: 'Place Holder 1',
+          captainId: '',
+          playerIds: [],
+          division: 'OPEN',
+          teamSize: 2,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.teams.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'team_1' },
+        create: expect.objectContaining({
+          eventId: 'event_1',
+          kind: 'PLACEHOLDER',
+        }),
+        update: expect.objectContaining({
+          eventId: 'event_1',
+          kind: 'PLACEHOLDER',
+        }),
+      }),
+    );
+  });
 });
 
 describe('persistScheduledRosterTeams', () => {
@@ -1312,6 +1346,7 @@ describe('persistScheduledRosterTeams', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           id: 'slot_1',
+          eventId: 'event_1',
           division: divisionA,
         }),
       }),
@@ -1321,6 +1356,7 @@ describe('persistScheduledRosterTeams', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           id: 'slot_2',
+          eventId: 'event_1',
           division: divisionB,
         }),
       }),

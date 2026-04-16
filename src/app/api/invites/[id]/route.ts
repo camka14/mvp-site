@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
+import { canManageEvent, canManageOrganization } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,8 +18,32 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   if (!session.isAdmin) {
-    const allowed = (invite.userId && invite.userId === session.userId)
+    let allowed = (invite.userId && invite.userId === session.userId)
       || (invite.createdBy && invite.createdBy === session.userId);
+    if (!allowed && normalizeInviteType(invite.type) === 'STAFF') {
+      if (invite.eventId) {
+        const event = await prisma.events.findUnique({
+          where: { id: invite.eventId },
+          select: {
+            hostId: true,
+            assistantHostIds: true,
+            organizationId: true,
+          },
+        });
+        allowed = await canManageEvent(session, event, prisma);
+      } else if (invite.organizationId) {
+        const organization = await prisma.organizations.findUnique({
+          where: { id: invite.organizationId },
+          select: {
+            id: true,
+            ownerId: true,
+            hostIds: true,
+            officialIds: true,
+          },
+        });
+        allowed = await canManageOrganization(session, organization, prisma);
+      }
+    }
     if (!allowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }

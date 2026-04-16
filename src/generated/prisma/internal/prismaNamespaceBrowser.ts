@@ -53,6 +53,8 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   Fields: 'Fields',
   Matches: 'Matches',
+  MatchSegments: 'MatchSegments',
+  MatchIncidents: 'MatchIncidents',
   Divisions: 'Divisions',
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
@@ -140,6 +142,14 @@ export const MatchesScalarFieldEnum = {
   side: 'side',
   matchId: 'matchId',
   losersBracket: 'losersBracket',
+  status: 'status',
+  resultStatus: 'resultStatus',
+  resultType: 'resultType',
+  actualStart: 'actualStart',
+  actualEnd: 'actualEnd',
+  statusReason: 'statusReason',
+  winnerEventTeamId: 'winnerEventTeamId',
+  matchRulesSnapshot: 'matchRulesSnapshot',
   winnerNextMatchId: 'winnerNextMatchId',
   loserNextMatchId: 'loserNextMatchId',
   previousRightId: 'previousRightId',
@@ -157,6 +167,50 @@ export const MatchesScalarFieldEnum = {
 } as const
 
 export type MatchesScalarFieldEnum = (typeof MatchesScalarFieldEnum)[keyof typeof MatchesScalarFieldEnum]
+
+
+export const MatchSegmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  sequence: 'sequence',
+  status: 'status',
+  scores: 'scores',
+  winnerEventTeamId: 'winnerEventTeamId',
+  startedAt: 'startedAt',
+  endedAt: 'endedAt',
+  resultType: 'resultType',
+  statusReason: 'statusReason',
+  metadata: 'metadata'
+} as const
+
+export type MatchSegmentsScalarFieldEnum = (typeof MatchSegmentsScalarFieldEnum)[keyof typeof MatchSegmentsScalarFieldEnum]
+
+
+export const MatchIncidentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  segmentId: 'segmentId',
+  eventTeamId: 'eventTeamId',
+  eventRegistrationId: 'eventRegistrationId',
+  participantUserId: 'participantUserId',
+  officialUserId: 'officialUserId',
+  incidentType: 'incidentType',
+  sequence: 'sequence',
+  minute: 'minute',
+  clock: 'clock',
+  clockSeconds: 'clockSeconds',
+  linkedPointDelta: 'linkedPointDelta',
+  note: 'note',
+  metadata: 'metadata'
+} as const
+
+export type MatchIncidentsScalarFieldEnum = (typeof MatchIncidentsScalarFieldEnum)[keyof typeof MatchIncidentsScalarFieldEnum]
 
 
 export const DivisionsScalarFieldEnum = {
@@ -623,6 +677,8 @@ export const EventsScalarFieldEnum = {
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
   officialIds: 'officialIds',
   officialPositions: 'officialPositions',
+  matchRulesOverride: 'matchRulesOverride',
+  autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
   installmentDueDates: 'installmentDueDates',
@@ -787,7 +843,8 @@ export const SportsScalarFieldEnum = {
   useEnablePenaltyUnsporting: 'useEnablePenaltyUnsporting',
   usePenaltyPointsUnsporting: 'usePenaltyPointsUnsporting',
   usePointPrecision: 'usePointPrecision',
-  officialPositionTemplates: 'officialPositionTemplates'
+  officialPositionTemplates: 'officialPositionTemplates',
+  matchRulesTemplate: 'matchRulesTemplate'
 } as const
 
 export type SportsScalarFieldEnum = (typeof SportsScalarFieldEnum)[keyof typeof SportsScalarFieldEnum]

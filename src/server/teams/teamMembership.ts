@@ -90,6 +90,7 @@ export const normalizeIdList = (value: unknown): string[] => (
 
 const ACTIVE_TEAM_MEMBER_STATUSES = new Set(['ACTIVE']);
 const INVITED_TEAM_MEMBER_STATUSES = new Set(['INVITED']);
+const ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE'];
 
 const getCanonicalTeamsDelegate = (client: PrismaLike) => client?.canonicalTeams ?? null;
 export const getEventTeamsDelegate = (client: PrismaLike) => client?.teams ?? client?.volleyBallTeams ?? null;
@@ -627,21 +628,6 @@ export const findRegisteredEventTeamForCanonical = async (params: {
   canonicalTeamId: string;
 }, client: PrismaLike = prisma) => {
   const eventTeamsDelegate = getEventTeamsDelegate(client);
-  if (eventTeamsDelegate?.findFirst) {
-    return eventTeamsDelegate.findFirst({
-      where: {
-        eventId: params.eventId,
-        parentTeamId: params.canonicalTeamId,
-        kind: 'REGISTERED',
-      },
-      orderBy: [
-        { updatedAt: 'desc' },
-        { createdAt: 'asc' },
-        { id: 'asc' },
-      ],
-    }) as Promise<EventTeamRow | null>;
-  }
-
   const rows = await eventTeamsDelegate?.findMany?.({
     where: {
       eventId: params.eventId,
@@ -654,7 +640,42 @@ export const findRegisteredEventTeamForCanonical = async (params: {
       { id: 'asc' },
     ],
   }) as EventTeamRow[] | undefined;
-  return (rows ?? []).find((row) => normalizeId(row.parentTeamId) === params.canonicalTeamId) ?? null;
+  const candidates = (rows ?? []).filter((row) => normalizeId(row.parentTeamId) === params.canonicalTeamId);
+  if (!candidates.length) {
+    return null;
+  }
+
+  if (client?.eventRegistrations?.findMany) {
+    const candidateIds = candidates.map((row) => row.id).filter(Boolean);
+    if (candidateIds.length) {
+      const activeRegistrations = await client.eventRegistrations.findMany({
+        where: {
+          eventId: params.eventId,
+          registrantType: 'TEAM',
+          status: { in: ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES },
+          OR: [
+            { registrantId: { in: candidateIds } },
+            { eventTeamId: { in: candidateIds } },
+          ],
+        },
+        select: {
+          registrantId: true,
+          eventTeamId: true,
+        },
+      }) as Array<{ registrantId?: string | null; eventTeamId?: string | null }>;
+      const activeCandidateIds = new Set<string>(
+        activeRegistrations.flatMap((row) => (
+          [normalizeId(row.eventTeamId), normalizeId(row.registrantId)].filter((value): value is string => Boolean(value))
+        )),
+      );
+      const activeCandidate = candidates.find((row) => activeCandidateIds.has(row.id));
+      if (activeCandidate) {
+        return activeCandidate;
+      }
+    }
+  }
+
+  return candidates[0] ?? null;
 };
 
 const updateEventTeamSnapshotReferences = async (params: {
@@ -761,8 +782,15 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
       }
       return String(left.id).localeCompare(String(right.id));
     })[0] ?? null;
+  const existingRegisteredEventTeam = matchingPlaceholder
+    ? null
+    : await findRegisteredEventTeamForCanonical({
+      eventId: params.eventId,
+      canonicalTeamId: params.canonicalTeamId,
+    }, params.tx);
 
   const eventTeamId = normalizeId(matchingPlaceholder?.id)
+    ?? normalizeId(existingRegisteredEventTeam?.id)
     ?? (eventTeamsDelegate.create ? crypto.randomUUID() : params.canonicalTeamId);
   const teamData = {
     eventId: params.eventId,
@@ -788,7 +816,7 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
     updatedAt: now,
   };
 
-  const eventTeam = matchingPlaceholder
+  const eventTeam = await ((matchingPlaceholder || existingRegisteredEventTeam)
     ? (() => {
       if (!eventTeamsDelegate.update) {
         throw new Error('Event team update storage is unavailable.');
@@ -812,7 +840,7 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
           ...teamData,
         },
       });
-    })();
+    })());
 
   await upsertEventRegistration({
     eventId: params.eventId,

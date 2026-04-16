@@ -7,7 +7,7 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -38,6 +38,7 @@ import { resolveTournamentSetMode } from './tournamentSetMode';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import { hasExternalRentalFieldForEvent } from './externalRentalField';
+import MatchRulesSection from './MatchRulesSection';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import UserCard from '@/components/ui/UserCard';
@@ -183,6 +184,7 @@ const SECTION_ANIMATION_DURATION_MS = 220;
 const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
     'section-basic-information': false,
     'section-event-details': true,
+    'section-match-rules': true,
     'section-officials': true,
     'section-division-settings': true,
     'section-league-scoring-config': true,
@@ -2109,6 +2111,7 @@ type EventFormState = {
     assistantHostIds: string[];
     doTeamsOfficiate: boolean;
     teamOfficialsMaySwap: boolean;
+    matchRulesOverride: MatchRulesConfig | null;
     autoCreatePointMatchIncidents: boolean;
     leagueScoringConfig: LeagueScoringConfig;
 };
@@ -2722,6 +2725,10 @@ const mapEventToFormState = (event: Event): EventFormState => {
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsOfficiate: Boolean(event.doTeamsOfficiate),
     teamOfficialsMaySwap: Boolean(event.doTeamsOfficiate) && Boolean((event as any).teamOfficialsMaySwap),
+    matchRulesOverride: (event as any).matchRulesOverride && typeof (event as any).matchRulesOverride === 'object'
+        && !Array.isArray((event as any).matchRulesOverride)
+        ? { ...((event as any).matchRulesOverride as MatchRulesConfig) }
+        : null,
     autoCreatePointMatchIncidents: Boolean((event as any).autoCreatePointMatchIncidents),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
@@ -2770,6 +2777,19 @@ const leagueConfigSchema = z.object({
     setsPerMatch: z.number().optional(),
     pointsToVictory: z.array(z.number()).optional(),
 });
+
+const matchRulesConfigSchema = z.object({
+    scoringModel: z.enum(['SETS', 'PERIODS', 'INNINGS', 'POINTS_ONLY']).optional(),
+    segmentCount: z.number().int().min(1).max(20).optional(),
+    segmentLabel: z.string().trim().optional(),
+    supportsDraw: z.boolean().optional(),
+    supportsOvertime: z.boolean().optional(),
+    supportsShootout: z.boolean().optional(),
+    officialRoles: z.array(z.string()).optional(),
+    supportedIncidentTypes: z.array(z.string()).optional(),
+    autoCreatePointIncidentType: z.string().trim().optional(),
+    pointIncidentRequiresParticipant: z.boolean().optional(),
+}).nullable().optional();
 
 const tournamentConfigSchema = z.object({
     doubleElimination: z.boolean(),
@@ -2903,6 +2923,7 @@ const eventFormSchema = z
         assistantHostIds: z.array(z.string()).default([]),
         doTeamsOfficiate: z.boolean(),
         teamOfficialsMaySwap: z.boolean().default(false),
+        matchRulesOverride: matchRulesConfigSchema.default(null),
         autoCreatePointMatchIncidents: z.boolean().default(false),
         leagueScoringConfig: z.any(),
         leagueSlots: z.array(leagueSlotSchema),
@@ -3448,6 +3469,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         if (typeof (defaults as any).teamOfficialsMaySwap === 'boolean') {
             next.teamOfficialsMaySwap = next.doTeamsOfficiate ? Boolean((defaults as any).teamOfficialsMaySwap) : false;
+        }
+        if ((defaults as any).matchRulesOverride && typeof (defaults as any).matchRulesOverride === 'object') {
+            next.matchRulesOverride = { ...((defaults as any).matchRulesOverride as MatchRulesConfig) };
+        } else if ((defaults as any).matchRulesOverride === null) {
+            next.matchRulesOverride = null;
         }
         if (typeof (defaults as any).autoCreatePointMatchIncidents === 'boolean') {
             next.autoCreatePointMatchIncidents = Boolean((defaults as any).autoCreatePointMatchIncidents);
@@ -8094,6 +8120,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             assistantHostIds: normalizedAssistantHostIds,
             doTeamsOfficiate: source.doTeamsOfficiate,
             teamOfficialsMaySwap: source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
+            matchRulesOverride: source.matchRulesOverride ?? null,
             autoCreatePointMatchIncidents: Boolean(source.autoCreatePointMatchIncidents),
             coordinates: baseCoordinates,
         };
@@ -8573,6 +8600,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => [
             { id: 'section-basic-information', label: 'Basic Information', visible: true },
             { id: 'section-event-details', label: 'Event Details', visible: true },
+            { id: 'section-match-rules', label: 'Match Rules', visible: true },
             { id: 'section-officials', label: 'Officials', visible: true },
             { id: 'section-division-settings', label: 'Division Settings', visible: true },
             { id: 'section-league-scoring-config', label: 'League Scoring Config', visible: eventData.eventType === 'LEAGUE' },
@@ -8834,6 +8862,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         next ? (sportsById.get(next) ?? null) : null,
                                                         { shouldDirty: false, shouldValidate: false },
                                                     );
+                                                    setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: false });
                                                     field.onChange(next);
                                                 }}
                                                 searchable
@@ -9564,6 +9593,51 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         </Paper>
 
                         <Paper
+                            id="section-match-rules"
+                            shadow="xs"
+                            radius="md"
+                            withBorder
+                            p="lg"
+                            className="scroll-mt-28 bg-gray-50"
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-lg font-semibold">Match Rules</h3>
+                                <Button
+                                    type="button"
+                                    variant="subtle"
+                                    size="xs"
+                                    aria-expanded={!collapsedSections['section-match-rules']}
+                                    aria-controls="section-match-rules-content"
+                                    onClick={() => toggleSectionCollapse('section-match-rules')}
+                                >
+                                    {collapsedSections['section-match-rules'] ? 'Expand' : 'Collapse'}
+                                </Button>
+                            </div>
+                            <Collapse in={!collapsedSections['section-match-rules']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                <div id="section-match-rules-content" className="mt-4">
+                                    <MatchRulesSection
+                                        sport={eventData.sportConfig ?? sportsById.get(String(eventData.sportId ?? '').trim()) ?? undefined}
+                                        usesSets={eventData.eventType === 'LEAGUE'
+                                            ? Boolean(leagueData.usesSets)
+                                            : eventData.eventType === 'TOURNAMENT'
+                                                ? Boolean(tournamentData.usesSets)
+                                                : Boolean((eventData.sportConfig ?? sportsById.get(String(eventData.sportId ?? '').trim()))?.usePointsPerSetWin)}
+                                        setsPerMatch={eventData.eventType === 'LEAGUE' ? leagueData.setsPerMatch : undefined}
+                                        winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
+                                        officialPositions={eventData.officialPositions}
+                                        value={eventData.matchRulesOverride}
+                                        onChange={(nextValue) => setValue('matchRulesOverride', nextValue, { shouldDirty: true, shouldValidate: false })}
+                                        autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
+                                        onAutoCreatePointMatchIncidentsChange={(checked) => setValue('autoCreatePointMatchIncidents', checked, { shouldDirty: true, shouldValidate: false })}
+                                        disabled={isImmutableField('matchRulesOverride')}
+                                        incidentToggleDisabled={isImmutableField('matchRulesOverride') || isImmutableField('autoCreatePointMatchIncidents')}
+                                        comboboxProps={sharedComboboxProps}
+                                    />
+                                </div>
+                            </Collapse>
+                        </Paper>
+
+                        <Paper
                             id="section-officials"
                             shadow="xs"
                             radius="md"
@@ -9618,19 +9692,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             )}
                                         />
                                     )}
-                                    <Controller
-                                        name="autoCreatePointMatchIncidents"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <Switch
-                                                label="Record scoring data for each point"
-                                                description="Ask officials for time, player, or note before the score changes."
-                                                checked={field.value}
-                                                onChange={(e) => field.onChange(e?.currentTarget?.checked ?? false)}
-                                            />
-                                        )}
-                                    />
-
                                     <Paper withBorder radius="md" p="md" bg="white">
                                         <Stack gap="sm">
                                             <MantineSelect

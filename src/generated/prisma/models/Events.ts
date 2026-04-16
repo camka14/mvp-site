@@ -126,6 +126,7 @@ export type EventsMinAggregateOutputType = {
   officialSchedulingMode: $Enums.EventsOfficialSchedulingModeEnum | null
   doTeamsOfficiate: boolean | null
   teamOfficialsMaySwap: boolean | null
+  autoCreatePointMatchIncidents: boolean | null
   allowPaymentPlans: boolean | null
   installmentCount: number | null
   allowTeamSplitDefault: boolean | null
@@ -180,6 +181,7 @@ export type EventsMaxAggregateOutputType = {
   officialSchedulingMode: $Enums.EventsOfficialSchedulingModeEnum | null
   doTeamsOfficiate: boolean | null
   teamOfficialsMaySwap: boolean | null
+  autoCreatePointMatchIncidents: boolean | null
   allowPaymentPlans: boolean | null
   installmentCount: number | null
   allowTeamSplitDefault: boolean | null
@@ -248,6 +250,8 @@ export type EventsCountAggregateOutputType = {
   teamOfficialsMaySwap: number
   officialIds: number
   officialPositions: number
+  matchRulesOverride: number
+  autoCreatePointMatchIncidents: number
   allowPaymentPlans: number
   installmentCount: number
   installmentDueDates: number
@@ -359,6 +363,7 @@ export type EventsMinAggregateInputType = {
   officialSchedulingMode?: true
   doTeamsOfficiate?: true
   teamOfficialsMaySwap?: true
+  autoCreatePointMatchIncidents?: true
   allowPaymentPlans?: true
   installmentCount?: true
   allowTeamSplitDefault?: true
@@ -413,6 +418,7 @@ export type EventsMaxAggregateInputType = {
   officialSchedulingMode?: true
   doTeamsOfficiate?: true
   teamOfficialsMaySwap?: true
+  autoCreatePointMatchIncidents?: true
   allowPaymentPlans?: true
   installmentCount?: true
   allowTeamSplitDefault?: true
@@ -481,6 +487,8 @@ export type EventsCountAggregateInputType = {
   teamOfficialsMaySwap?: true
   officialIds?: true
   officialPositions?: true
+  matchRulesOverride?: true
+  autoCreatePointMatchIncidents?: true
   allowPaymentPlans?: true
   installmentCount?: true
   installmentDueDates?: true
@@ -639,6 +647,8 @@ export type EventsGroupByOutputType = {
   teamOfficialsMaySwap: boolean | null
   officialIds: string[]
   officialPositions: runtime.JsonValue | null
+  matchRulesOverride: runtime.JsonValue | null
+  autoCreatePointMatchIncidents: boolean | null
   allowPaymentPlans: boolean | null
   installmentCount: number | null
   installmentDueDates: Date[]
@@ -733,6 +743,8 @@ export type EventsWhereInput = {
   teamOfficialsMaySwap?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   officialIds?: Prisma.StringNullableListFilter<"Events">
   officialPositions?: Prisma.JsonNullableFilter<"Events">
+  matchRulesOverride?: Prisma.JsonNullableFilter<"Events">
+  autoCreatePointMatchIncidents?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableFilter<"Events"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Events">
@@ -804,6 +816,8 @@ export type EventsOrderByWithRelationInput = {
   teamOfficialsMaySwap?: Prisma.SortOrderInput | Prisma.SortOrder
   officialIds?: Prisma.SortOrder
   officialPositions?: Prisma.SortOrderInput | Prisma.SortOrder
+  matchRulesOverride?: Prisma.SortOrderInput | Prisma.SortOrder
+  autoCreatePointMatchIncidents?: Prisma.SortOrderInput | Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
@@ -878,6 +892,8 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   teamOfficialsMaySwap?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   officialIds?: Prisma.StringNullableListFilter<"Events">
   officialPositions?: Prisma.JsonNullableFilter<"Events">
+  matchRulesOverride?: Prisma.JsonNullableFilter<"Events">
+  autoCreatePointMatchIncidents?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableFilter<"Events"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Events">
@@ -949,6 +965,8 @@ export type EventsOrderByWithAggregationInput = {
   teamOfficialsMaySwap?: Prisma.SortOrderInput | Prisma.SortOrder
   officialIds?: Prisma.SortOrder
   officialPositions?: Prisma.SortOrderInput | Prisma.SortOrder
+  matchRulesOverride?: Prisma.SortOrderInput | Prisma.SortOrder
+  autoCreatePointMatchIncidents?: Prisma.SortOrderInput | Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
@@ -1028,6 +1046,8 @@ export type EventsScalarWhereWithAggregatesInput = {
   teamOfficialsMaySwap?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   officialIds?: Prisma.StringNullableListFilter<"Events">
   officialPositions?: Prisma.JsonNullableWithAggregatesFilter<"Events">
+  matchRulesOverride?: Prisma.JsonNullableWithAggregatesFilter<"Events">
+  autoCreatePointMatchIncidents?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   allowPaymentPlans?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Events">
@@ -1099,6 +1119,8 @@ export type EventsCreateInput = {
   teamOfficialsMaySwap?: boolean | null
   officialIds?: Prisma.EventsCreateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  autoCreatePointMatchIncidents?: boolean | null
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.EventsCreateinstallmentDueDatesInput | Date[] | string[]
@@ -1170,6 +1192,8 @@ export type EventsUncheckedCreateInput = {
   teamOfficialsMaySwap?: boolean | null
   officialIds?: Prisma.EventsCreateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  autoCreatePointMatchIncidents?: boolean | null
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.EventsCreateinstallmentDueDatesInput | Date[] | string[]
@@ -1241,6 +1265,8 @@ export type EventsUpdateInput = {
   teamOfficialsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   officialIds?: Prisma.EventsUpdateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  autoCreatePointMatchIncidents?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.EventsUpdateinstallmentDueDatesInput | Date[] | string[]
@@ -1312,6 +1338,8 @@ export type EventsUncheckedUpdateInput = {
   teamOfficialsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   officialIds?: Prisma.EventsUpdateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  autoCreatePointMatchIncidents?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.EventsUpdateinstallmentDueDatesInput | Date[] | string[]
@@ -1383,6 +1411,8 @@ export type EventsCreateManyInput = {
   teamOfficialsMaySwap?: boolean | null
   officialIds?: Prisma.EventsCreateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  autoCreatePointMatchIncidents?: boolean | null
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.EventsCreateinstallmentDueDatesInput | Date[] | string[]
@@ -1454,6 +1484,8 @@ export type EventsUpdateManyMutationInput = {
   teamOfficialsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   officialIds?: Prisma.EventsUpdateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  autoCreatePointMatchIncidents?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.EventsUpdateinstallmentDueDatesInput | Date[] | string[]
@@ -1525,6 +1557,8 @@ export type EventsUncheckedUpdateManyInput = {
   teamOfficialsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   officialIds?: Prisma.EventsUpdateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  autoCreatePointMatchIncidents?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.EventsUpdateinstallmentDueDatesInput | Date[] | string[]
@@ -1596,6 +1630,8 @@ export type EventsCountOrderByAggregateInput = {
   teamOfficialsMaySwap?: Prisma.SortOrder
   officialIds?: Prisma.SortOrder
   officialPositions?: Prisma.SortOrder
+  matchRulesOverride?: Prisma.SortOrder
+  autoCreatePointMatchIncidents?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
@@ -1679,6 +1715,7 @@ export type EventsMaxOrderByAggregateInput = {
   officialSchedulingMode?: Prisma.SortOrder
   doTeamsOfficiate?: Prisma.SortOrder
   teamOfficialsMaySwap?: Prisma.SortOrder
+  autoCreatePointMatchIncidents?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   allowTeamSplitDefault?: Prisma.SortOrder
@@ -1733,6 +1770,7 @@ export type EventsMinOrderByAggregateInput = {
   officialSchedulingMode?: Prisma.SortOrder
   doTeamsOfficiate?: Prisma.SortOrder
   teamOfficialsMaySwap?: Prisma.SortOrder
+  autoCreatePointMatchIncidents?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   allowTeamSplitDefault?: Prisma.SortOrder
@@ -1976,6 +2014,8 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   teamOfficialsMaySwap?: boolean
   officialIds?: boolean
   officialPositions?: boolean
+  matchRulesOverride?: boolean
+  autoCreatePointMatchIncidents?: boolean
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
@@ -2047,6 +2087,8 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   teamOfficialsMaySwap?: boolean
   officialIds?: boolean
   officialPositions?: boolean
+  matchRulesOverride?: boolean
+  autoCreatePointMatchIncidents?: boolean
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
@@ -2118,6 +2160,8 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   teamOfficialsMaySwap?: boolean
   officialIds?: boolean
   officialPositions?: boolean
+  matchRulesOverride?: boolean
+  autoCreatePointMatchIncidents?: boolean
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
@@ -2189,6 +2233,8 @@ export type EventsSelectScalar = {
   teamOfficialsMaySwap?: boolean
   officialIds?: boolean
   officialPositions?: boolean
+  matchRulesOverride?: boolean
+  autoCreatePointMatchIncidents?: boolean
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
@@ -2198,7 +2244,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialIds" | "officialPositions" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialIds" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2265,6 +2311,8 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     teamOfficialsMaySwap: boolean | null
     officialIds: string[]
     officialPositions: runtime.JsonValue | null
+    matchRulesOverride: runtime.JsonValue | null
+    autoCreatePointMatchIncidents: boolean | null
     allowPaymentPlans: boolean | null
     installmentCount: number | null
     installmentDueDates: Date[]
@@ -2756,6 +2804,8 @@ export interface EventsFieldRefs {
   readonly teamOfficialsMaySwap: Prisma.FieldRef<"Events", 'Boolean'>
   readonly officialIds: Prisma.FieldRef<"Events", 'String[]'>
   readonly officialPositions: Prisma.FieldRef<"Events", 'Json'>
+  readonly matchRulesOverride: Prisma.FieldRef<"Events", 'Json'>
+  readonly autoCreatePointMatchIncidents: Prisma.FieldRef<"Events", 'Boolean'>
   readonly allowPaymentPlans: Prisma.FieldRef<"Events", 'Boolean'>
   readonly installmentCount: Prisma.FieldRef<"Events", 'Int'>
   readonly installmentDueDates: Prisma.FieldRef<"Events", 'DateTime[]'>

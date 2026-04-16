@@ -10,6 +10,8 @@
  */
 export type * from './models/Fields'
 export type * from './models/Matches'
+export type * from './models/MatchSegments'
+export type * from './models/MatchIncidents'
 export type * from './models/Divisions'
 export type * from './models/UserData'
 export type * from './models/SensitiveUserData'

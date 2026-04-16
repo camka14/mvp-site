@@ -416,6 +416,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const nextState = buildTeamState(existingCanonical as Record<string, any>, payload);
+    const shouldSyncDerivedTeams = hasVersionedProfileChanges(payload, existingCanonical as Record<string, any>, nextState);
     const updated = await prisma.$transaction(async (tx) => {
       await tx.canonicalTeams.update({
         where: { id },
@@ -441,9 +442,86 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         actingUserId: session.userId,
         now,
       }, tx);
-      await syncTeamChatInTx(tx, id, {
-        previousMemberIds: getTeamChatBaseMemberIds(existingCanonical as Record<string, any>),
-      });
+      const teamsToSync = new Set<string>([id]);
+      const previousMemberIdsByTeamId = new Map<string, string[]>([
+        [id, getTeamChatBaseMemberIds(existingCanonical as Record<string, any>)],
+      ]);
+
+      if (shouldSyncDerivedTeams) {
+        const txTeams = getTeamsDelegate(tx);
+        if (!txTeams?.findMany || !txTeams?.update || !tx.events?.findMany) {
+          throw new Error('Team storage is unavailable in transaction.');
+        }
+
+        const derivedTeams = await txTeams.findMany({
+          where: { parentTeamId: id },
+          select: {
+            id: true,
+            captainId: true,
+            managerId: true,
+            headCoachId: true,
+            coachIds: true,
+            playerIds: true,
+          },
+        });
+        const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
+        const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
+        if (derivedTeamIds.length) {
+          const events = await tx.events.findMany({
+            where: {
+              end: { gte: now },
+              teamIds: { hasSome: derivedTeamIds },
+            },
+            select: { id: true, teamIds: true },
+          });
+
+          if (events.length) {
+            const derivedSet = new Set(derivedTeamIds);
+            const teamIdsToUpdate = new Set<string>();
+            for (const event of events) {
+              const teamIds = Array.isArray(event.teamIds) ? event.teamIds : [];
+              for (const teamId of teamIds) {
+                if (derivedSet.has(teamId)) {
+                  teamIdsToUpdate.add(teamId);
+                }
+              }
+            }
+
+            const updatePayload = {
+              name: nextState.name,
+              playerIds: nextState.playerIds,
+              captainId: nextState.captainId,
+              managerId: nextState.managerId,
+              headCoachId: nextState.headCoachId,
+              coachIds: nextState.coachIds,
+              teamSize: nextState.teamSize,
+              profileImageId: nextState.profileImageId,
+              sport: nextState.sport,
+              divisionTypeId: nextState.divisionTypeId,
+              divisionTypeName: nextState.divisionTypeName,
+              updatedAt: now,
+            };
+
+            for (const teamId of teamIdsToUpdate) {
+              const previousTeam = derivedTeamById.get(teamId);
+              if (previousTeam) {
+                previousMemberIdsByTeamId.set(teamId, getTeamChatBaseMemberIds(previousTeam));
+              }
+              await txTeams.update({
+                where: { id: teamId },
+                data: updatePayload,
+              });
+              teamsToSync.add(teamId);
+            }
+          }
+        }
+      }
+
+      for (const teamId of teamsToSync) {
+        await syncTeamChatInTx(tx, teamId, {
+          previousMemberIds: previousMemberIdsByTeamId.get(teamId),
+        });
+      }
     });
     const refreshed = await loadCanonicalTeamById(id, prisma);
     return NextResponse.json(withTeamRoleAliases((refreshed ?? updated) as any), { status: 200 });

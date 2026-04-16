@@ -240,6 +240,16 @@ export interface MatchOfficialCheckInOperation {
   checkedIn: boolean;
 }
 
+export interface TeamPlayerRegistration {
+  id: string;
+  teamId?: string | null;
+  userId: string;
+  status: string;
+  jerseyNumber?: string | null;
+  position?: string | null;
+  isCaptain?: boolean;
+}
+
 export interface Sport {
   $id: string;
   name: string;
@@ -538,6 +548,7 @@ export interface Team {
   $updatedAt?: string;
   // Expanded relationships
   players?: UserData[];
+  playerRegistrations?: TeamPlayerRegistration[];
   captain?: UserData;
   manager?: UserData;
   headCoach?: UserData;
