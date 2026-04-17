@@ -19,6 +19,10 @@ const prismaMock = {
     update: jest.fn(),
     findUnique: jest.fn(),
   },
+  eventRegistrations: {
+    findMany: jest.fn(),
+    deleteMany: jest.fn(),
+  },
   organizations: {
     findUnique: jest.fn(),
   },
@@ -136,6 +140,8 @@ describe('schedule routes', () => {
     );
     prismaMock.userData.findUnique.mockResolvedValue({ firstName: 'Host', lastName: 'User', userName: 'host_user' });
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'host@example.test' });
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.divisions.update.mockResolvedValue(null);
     isEventFieldConflictErrorMock.mockReturnValue(false);
@@ -728,6 +734,110 @@ describe('schedule routes', () => {
       [expect.objectContaining({ id: 'match_1', locked: true })],
       prismaMock,
     );
+  });
+
+  it('records first scoring incident with a generated segment and team roster registration id', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        id: 'event_1__self__player_1',
+        eventTeamId: 'team_1',
+        registrantId: 'player_1',
+        sourceTeamRegistrationId: 'team_1__player__active__player_1',
+      },
+    ]);
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: ['player_1'] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: ['player_2'] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      resolvedMatchRules: {
+        scoringModel: 'POINTS_ONLY',
+        segmentCount: 1,
+        pointIncidentRequiresParticipant: true,
+      },
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          team1,
+          team2,
+          team1Points: [],
+          team2Points: [],
+          setResults: [],
+          segments: [],
+          incidents: [],
+          matchRulesSnapshot: null,
+          resolvedMatchRules: {
+            scoringModel: 'POINTS_ONLY',
+            segmentCount: 1,
+            pointIncidentRequiresParticipant: true,
+          },
+        },
+      },
+      teams: {
+        team_1: team1,
+        team_2: team2,
+      },
+      officials: [{ id: 'official_1' }],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        incidentOperations: [
+          {
+            action: 'CREATE',
+            segmentId: 'match_1_segment_1',
+            eventTeamId: 'team_1',
+            eventRegistrationId: 'team_1__player__active__player_1',
+            participantUserId: 'player_1',
+            officialUserId: 'official_1',
+            incidentType: 'POINT',
+            linkedPointDelta: 1,
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.eventRegistrations.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ sourceTeamRegistrationId: true }),
+    }));
+    const savedMatch = saveMatchesMock.mock.calls[0][1][0];
+    expect(savedMatch.segments).toEqual([
+      expect.objectContaining({
+        id: 'match_1_segment_1',
+        sequence: 1,
+        status: 'IN_PROGRESS',
+        scores: { team_1: 1, team_2: 0 },
+      }),
+    ]);
+    expect(savedMatch.team1Points).toEqual([1]);
+    expect(savedMatch.team2Points).toEqual([0]);
+    expect(savedMatch.incidents).toEqual([
+      expect.objectContaining({
+        segmentId: 'match_1_segment_1',
+        eventTeamId: 'team_1',
+        eventRegistrationId: 'event_1__self__player_1',
+        participantUserId: 'player_1',
+        officialUserId: 'official_1',
+        linkedPointDelta: 1,
+      }),
+    ]);
   });
 
   it('bulk updates matches atomically when user is host', async () => {

@@ -141,13 +141,16 @@ const dateLabel = (value?: string | null): string => {
 const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount: number): ResolvedMatchRules => {
   const source = (match.matchRulesSnapshot || match.resolvedMatchRules || event.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
   const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
+  const supportsShootout = source.supportsShootout === true;
   return {
     scoringModel,
     segmentCount: positiveInt(source.segmentCount, segmentCount),
     segmentLabel: source.segmentLabel || (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Total' : 'Period'),
-    supportsDraw: source.supportsDraw === true,
+    supportsDraw: source.supportsDraw === true && !supportsShootout,
     supportsOvertime: source.supportsOvertime === true,
-    supportsShootout: source.supportsShootout === true,
+    supportsShootout,
+    canUseOvertime: source.canUseOvertime === true || source.supportsOvertime === true,
+    canUseShootout: source.canUseShootout === true || source.supportsShootout === true,
     officialRoles: Array.isArray(source.officialRoles) ? source.officialRoles : [],
     supportedIncidentTypes: Array.isArray(source.supportedIncidentTypes) && source.supportedIncidentTypes.length
       ? source.supportedIncidentTypes

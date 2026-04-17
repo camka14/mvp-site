@@ -9,6 +9,8 @@ import { fieldService } from '@/lib/fieldService';
 
 jest.setTimeout(20000);
 
+let mockDateTimePickerValuesByLabel: Record<string, string> = {};
+
 jest.mock('@mantine/core', () => {
   const actual = jest.requireActual('@mantine/core');
   return {
@@ -60,15 +62,28 @@ jest.mock('@mantine/core', () => {
 });
 
 jest.mock('@mantine/dates', () => ({
-  DateTimePicker: ({ label, onChange }: { label?: React.ReactNode; onChange?: (value: Date) => void }) => (
-    <button
-      type="button"
-      aria-label={typeof label === 'string' ? label : 'Date Time Picker'}
-      onClick={() => onChange?.(new Date('2026-03-12T15:30:00'))}
-    >
-      {typeof label === 'string' ? label : 'Date Time Picker'}
-    </button>
-  ),
+  DateTimePicker: ({ label, onChange, value, disabled }: {
+    label?: React.ReactNode;
+    onChange?: (value: Date) => void;
+    value?: Date | null;
+    disabled?: boolean;
+  }) => {
+    const labelText = typeof label === 'string' ? label : 'Date Time Picker';
+    const valueText = value instanceof Date && !Number.isNaN(value.getTime())
+      ? `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}T${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
+      : '';
+    return (
+      <button
+        type="button"
+        aria-label={labelText}
+        data-value={valueText}
+        disabled={disabled}
+        onClick={() => onChange?.(new Date(mockDateTimePickerValuesByLabel[labelText] ?? '2026-03-12T15:30:00'))}
+      >
+        {labelText}
+      </button>
+    );
+  },
 }));
 
 jest.mock('@/components/location/LocationSelector', () => {
@@ -96,8 +111,15 @@ jest.mock('@/app/discover/components/TournamentFields', () => {
   return MockTournamentFields;
 });
 jest.mock('@/app/discover/components/LeagueFields', () => {
-  function MockLeagueFields() {
-    return <div data-testid="league-fields" />;
+  function MockLeagueFields(props: any) {
+    const conflictCount = Array.isArray(props?.slots)
+      ? props.slots.reduce((count: number, slot: any) => count + (Array.isArray(slot?.conflicts) ? slot.conflicts.length : 0), 0)
+      : 0;
+    return (
+      <div data-testid="league-fields">
+        <span data-testid="league-conflict-count">{conflictCount}</span>
+      </div>
+    );
   }
   MockLeagueFields.displayName = 'MockLeagueFields';
   return MockLeagueFields;
@@ -210,6 +232,7 @@ jest.mock('@/lib/apiClient', () => ({
 describe('EventForm dirty state', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDateTimePickerValuesByLabel = {};
     mockUseSportsState = buildMockUseSportsState();
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(null);
     (eventService.getEventsForFieldInRange as jest.Mock).mockResolvedValue([]);
@@ -712,6 +735,110 @@ describe('EventForm dirty state', () => {
 
     await waitForStableDirtyState(onDirtyStateChange, false);
     expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
+  });
+
+  it('rechecks recurring slot conflicts from the updated event start when the saved slot start mirrored the original event start', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    mockDateTimePickerValuesByLabel['Start Date & Time'] = '2026-05-04T09:00:00';
+    (eventService.getBlockingForFieldInRange as jest.Mock).mockResolvedValue({
+      events: [
+        {
+          $id: 'event_blocking_1',
+          name: 'TEST DOC',
+          eventType: 'EVENT',
+          start: '2026-04-20T09:00:00',
+          end: '2026-04-20T17:00:00',
+        },
+      ],
+      rentalSlots: [],
+    });
+
+    renderForm(onDirtyStateChange, formRef, {
+      state: 'UNPUBLISHED',
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      start: '2026-04-20T09:00:00',
+      end: '2026-06-01T17:00:00',
+      noFixedEndDateTime: false,
+      fields: [{ $id: 'field_1', name: 'Field 1', fieldNumber: 1, location: 'Main Gym' }],
+      fieldIds: ['field_1'],
+      selectedFieldIds: ['field_1'],
+      timeSlots: [
+        {
+          $id: 'slot_1',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          dayOfWeek: 0,
+          daysOfWeek: [0],
+          divisions: ['open'],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 21 * 60,
+          repeating: true,
+          startDate: '2026-04-20T09:00:00',
+          endDate: '2026-06-01T17:00:00',
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('league-conflict-count')).toHaveTextContent('1');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start Date & Time' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('league-conflict-count')).toHaveTextContent('0');
+    });
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
+      expect(draft?.timeSlots?.[0]?.startDate).toBe('2026-05-04T09:00:00');
+    });
+  });
+
+  it('keeps the end date value visible and serialized when no fixed end datetime scheduling is enabled', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(onDirtyStateChange, formRef, {
+      state: 'UNPUBLISHED',
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      start: '2026-04-20T09:00:00',
+      end: '2026-05-03T01:20:00',
+      noFixedEndDateTime: true,
+      fields: [{ $id: 'field_1', name: 'Field 1', fieldNumber: 1, location: 'Main Gym' }],
+      fieldIds: ['field_1'],
+      selectedFieldIds: ['field_1'],
+      timeSlots: [
+        {
+          $id: 'slot_1',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          dayOfWeek: 5,
+          daysOfWeek: [5],
+          divisions: ['open'],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 17 * 60,
+          repeating: true,
+          startDate: '2026-04-20T09:00:00',
+          endDate: null,
+        },
+      ],
+    });
+
+    const endDateButton = screen.getByRole('button', { name: 'End Date & Time' });
+    expect(endDateButton).toBeDisabled();
+    expect(endDateButton).toHaveAttribute('data-value', '2026-05-03T01:20');
+    expect(screen.getByRole('checkbox', { name: 'No fixed end datetime scheduling' })).toBeChecked();
+    expect(screen.getByText('Scheduling can extend past the displayed end date/time. Turn this off to enforce the end date/time.')).toBeInTheDocument();
+
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
+      expect(draft?.noFixedEndDateTime).toBe(true);
+      expect(draft?.end).toBe('2026-05-03T01:20:00');
+      expect(draft?.timeSlots?.[0]?.endDate).toBeUndefined();
+    });
   });
 
   it('marks the form dirty when a official is removed', async () => {

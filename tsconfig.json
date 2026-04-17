@@ -24,28 +24,27 @@
     "types": [
       "node"
     ],
-    "baseUrl": "./src",
     "paths": {
       "@/*": [
-        "./*"
+        "./src/*"
       ],
       "@/components/*": [
-        "./components/*"
+        "./src/components/*"
       ],
       "@/lib/*": [
-        "./lib/*"
+        "./src/lib/*"
       ],
       "@/types": [
-        "./types"
+        "./src/types"
       ],
       "@/types/*": [
-        "./types/*"
+        "./src/types/*"
       ],
       "@/utils/*": [
-        "./utils/*"
+        "./src/utils/*"
       ],
       "@/app/*": [
-        "./app/*"
+        "./src/app/*"
       ]
     },
     "target": "ES2017"

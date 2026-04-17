@@ -771,12 +771,51 @@ describe('event template privacy routes', () => {
         where: expect.objectContaining({
           start: { lte: new Date(endIso) },
           OR: [
+            { noFixedEndDateTime: true },
             { end: null },
             { end: { gte: new Date(startIso) } },
           ],
         }),
       }),
     );
+  });
+
+  it('uses noFixedEndDateTime to keep slot-based field conflicts open after the displayed end', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_open_ended',
+        eventType: 'LEAGUE',
+        parentEvent: null,
+        start: new Date('2026-04-20T09:00:00.000Z'),
+        end: new Date('2026-05-03T01:20:00.000Z'),
+        noFixedEndDateTime: true,
+        timeSlotIds: ['slot_1'],
+      },
+    ]);
+    prismaMock.timeSlots.findMany.mockResolvedValueOnce([
+      {
+        id: 'slot_1',
+        dayOfWeek: 5,
+        daysOfWeek: [5],
+        repeating: true,
+        startDate: new Date('2026-04-20T09:00:00.000Z'),
+        endDate: null,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 17 * 60,
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+      },
+    ]);
+
+    const res = await eventsByFieldGet(
+      new NextRequest('http://localhost/api/events/field/field_1?start=2026-05-09T00:00:00.000Z&end=2026-05-10T00:00:00.000Z'),
+      { params: Promise.resolve({ fieldId: 'field_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.events).toHaveLength(1);
+    expect(json.events[0].id).toBe('event_open_ended');
   });
 
   it('uses lightweight event selection for GET /api/events/field/:fieldId overlap-only rental queries', async () => {
@@ -796,6 +835,7 @@ describe('event template privacy routes', () => {
           parentEvent: true,
           start: true,
           end: true,
+          noFixedEndDateTime: true,
           timeSlotIds: true,
         }),
       }),

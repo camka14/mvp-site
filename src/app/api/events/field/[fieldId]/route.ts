@@ -27,6 +27,7 @@ type EventRow = {
   parentEvent?: string | null;
   start?: Date | string | null;
   end?: Date | string | null;
+  noFixedEndDateTime?: boolean | null;
   timeSlotIds?: string[] | null;
   [key: string]: unknown;
 };
@@ -116,6 +117,9 @@ const isSchedulableSlotEventType = (eventType: string): boolean =>
 
 const isWeeklyParentEventType = (eventType: string, parentEvent: string | null): boolean =>
   eventType === 'WEEKLY_EVENT' && !parentEvent;
+
+const hasOpenEndedScheduling = (event: EventRow): boolean =>
+  event.noFixedEndDateTime === true;
 
 const shouldIncludeEventType = (eventType: string, parentEvent: string | null): boolean => {
   if (eventType === 'EVENT') {
@@ -226,10 +230,11 @@ const eventOverlapsRange = (
     if (!Array.isArray(event.timeSlots) || event.timeSlots.length === 0) {
       return false;
     }
+    const fallbackEnd = hasOpenEndedScheduling(event) ? null : eventEnd;
 
     return event.timeSlots.some((slot) => (
       slotFieldIds(slot).includes(fieldId)
-      && slotOverlapsRange(slot, rangeStart, rangeEnd, eventStart, eventEnd)
+      && slotOverlapsRange(slot, rangeStart, rangeEnd, eventStart, fallbackEnd)
     ));
   }
 
@@ -346,11 +351,12 @@ const eventOverlapsRentalWindows = (
     if (!Array.isArray(event.timeSlots) || event.timeSlots.length === 0) {
       return false;
     }
+    const fallbackEnd = hasOpenEndedScheduling(event) ? null : eventEnd;
     return event.timeSlots.some((slot) => {
       if (!slotFieldIds(slot).includes(fieldId)) {
         return false;
       }
-      const slotWindows = buildSlotWindowsInRange(slot, rangeStart, rangeEnd, eventStart, eventEnd);
+      const slotWindows = buildSlotWindowsInRange(slot, rangeStart, rangeEnd, eventStart, fallbackEnd);
       return slotWindows.some((window) => rangesOverlapAnyWindow(window.start, window.end, rentalWindows));
     });
   }
@@ -374,6 +380,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
     NOT: { state: 'TEMPLATE' },
     start: { lte: rangeEnd },
     OR: [
+      { noFixedEndDateTime: true },
       { end: null },
       { end: { gte: rangeStart } },
     ],
@@ -396,6 +403,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
           parentEvent: true,
           start: true,
           end: true,
+          noFixedEndDateTime: true,
           timeSlotIds: true,
         },
       }

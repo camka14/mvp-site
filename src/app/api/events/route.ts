@@ -477,19 +477,7 @@ const withLegacyEvent = (row: any) => {
     (legacy as any).requiredTemplateIds = [];
   }
   if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
-    const start = legacy.start ? new Date(legacy.start) : null;
-    const end = legacy.end ? new Date(legacy.end) : null;
-    (legacy as any).noFixedEndDateTime = Boolean(
-      start
-      && !Number.isNaN(start.getTime())
-      && (
-        !end
-        || (
-          !Number.isNaN(end.getTime())
-          && start.getTime() === end.getTime()
-        )
-      ),
-    );
+    (legacy as any).noFixedEndDateTime = false;
   }
   if ((legacy as any).doTeamsOfficiate !== true) {
     (legacy as any).teamOfficialsMaySwap = false;
@@ -586,6 +574,7 @@ const buildContext = (): SchedulerContext => {
 const isFixedEndValidationError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes('No fixed end date/time')
+    || message.includes('No fixed end datetime scheduling')
     || message.includes('End date/time must be after start date/time');
 };
 

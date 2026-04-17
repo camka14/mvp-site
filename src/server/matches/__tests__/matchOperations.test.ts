@@ -47,19 +47,62 @@ describe('resolveMatchRules', () => {
         scoringModel: 'PERIODS',
         segmentCount: 2,
         segmentLabel: 'Half',
+        canUseOvertime: true,
         supportedIncidentTypes: ['POINT', 'DISCIPLINE'],
       },
       eventOverride: {
         segmentCount: 4,
         segmentLabel: 'Quarter',
+        supportsOvertime: true,
         pointIncidentRequiresParticipant: true,
       },
     })).toEqual(expect.objectContaining({
       scoringModel: 'PERIODS',
       segmentCount: 4,
       segmentLabel: 'Quarter',
+      canUseOvertime: true,
+      supportsOvertime: true,
       supportedIncidentTypes: ['POINT', 'DISCIPLINE'],
       pointIncidentRequiresParticipant: true,
+    }));
+  });
+
+  it('hides unsupported overtime and shootout paths even when stale event overrides are present', () => {
+    expect(resolveMatchRules({
+      sportTemplate: {
+        scoringModel: 'SETS',
+        segmentLabel: 'Set',
+        canUseOvertime: false,
+        canUseShootout: false,
+      },
+      eventOverride: {
+        supportsOvertime: true,
+        supportsShootout: true,
+      },
+    })).toEqual(expect.objectContaining({
+      canUseOvertime: false,
+      supportsOvertime: false,
+      canUseShootout: false,
+      supportsShootout: false,
+    }));
+  });
+
+  it('turns off the draw path when a shootout or tiebreak path is enabled', () => {
+    expect(resolveMatchRules({
+      sportTemplate: {
+        scoringModel: 'PERIODS',
+        segmentCount: 2,
+        segmentLabel: 'Half',
+        supportsDraw: true,
+        canUseShootout: true,
+      },
+      eventOverride: {
+        supportsShootout: true,
+      },
+    })).toEqual(expect.objectContaining({
+      supportsDraw: false,
+      canUseShootout: true,
+      supportsShootout: true,
     }));
   });
 });

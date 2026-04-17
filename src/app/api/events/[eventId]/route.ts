@@ -218,12 +218,7 @@ const withLegacyEvent = (row: any) => {
     (legacy as any).requiredTemplateIds = [];
   }
   if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
-    const start = parseDateInput((legacy as any).start);
-    const end = parseDateInput((legacy as any).end);
-    (legacy as any).noFixedEndDateTime = Boolean(
-      start
-      && (!end || start.getTime() === end.getTime()),
-    );
+    (legacy as any).noFixedEndDateTime = false;
   }
   if ((legacy as any).doTeamsOfficiate !== true) {
     (legacy as any).teamOfficialsMaySwap = false;
@@ -1837,17 +1832,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         : nextEventTypeRaw;
       const nextStart = (data.start ?? existing.start ?? null) as Date | null;
       const nextEnd = (data.end ?? existing.end ?? null) as Date | null;
+      const existingNoFixedEndDateTime = typeof (existing as any).noFixedEndDateTime === 'boolean'
+        ? Boolean((existing as any).noFixedEndDateTime)
+        : false;
       const nextNoFixedEndDateTime = typeof data.noFixedEndDateTime === 'boolean'
         ? data.noFixedEndDateTime
-        : typeof (existing as any).noFixedEndDateTime === 'boolean'
-          ? Boolean((existing as any).noFixedEndDateTime)
-          : false;
+        : existingNoFixedEndDateTime;
+      if (isSchedulableEventType(nextEventType) && nextNoFixedEndDateTime && data.end == null) {
+        const preservedComputedEnd = existing.end instanceof Date
+          ? existing.end
+          : parseDateInput(existing.end);
+        if (preservedComputedEnd) {
+          data.end = preservedComputedEnd;
+        }
+      }
       if (isSchedulableEventType(nextEventType) && !nextNoFixedEndDateTime) {
         if (!(nextStart instanceof Date) || !(nextEnd instanceof Date)) {
-          throw new Response('Start and end date/time are required when no fixed end date/time is disabled.', { status: 400 });
+          throw new Response('Start and end date/time are required when no fixed end datetime scheduling is disabled.', { status: 400 });
         }
         if (nextEnd.getTime() <= nextStart.getTime()) {
-          throw new Response('End date/time must be after start date/time when no fixed end date/time is disabled.', { status: 400 });
+          throw new Response('End date/time must be after start date/time when no fixed end datetime scheduling is disabled.', { status: 400 });
         }
       }
       const existingSlotIds = Array.isArray(existing.timeSlotIds)

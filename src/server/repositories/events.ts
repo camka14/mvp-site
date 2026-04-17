@@ -2080,7 +2080,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   );
   const noFixedEndDateTime = typeof (event as any).noFixedEndDateTime === 'boolean'
     ? (event as any).noFixedEndDateTime
-    : event.end == null || eventStart.getTime() === eventEnd.getTime();
+    : false;
   if (!isWeeklyChild) {
     const conflictWindowEnd = resolveFieldConflictWindowEnd({
       start: eventStart,
@@ -3332,10 +3332,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const noFixedEndDateTime = supportsNoFixedEndDateTime
     ? coerceBoolean(payload.noFixedEndDateTime, fallbackNoFixedEndDateTime)
     : false;
-  const normalizedEnd = noFixedEndDateTime ? null : candidateEnd;
+  const normalizedEnd = noFixedEndDateTime
+    ? (candidateEnd ?? parsedExistingEnd)
+    : candidateEnd;
 
   if (!noFixedEndDateTime && (!normalizedEnd || normalizedEnd.getTime() <= start.getTime())) {
-    throw new Error('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
+    throw new Error('End date/time must be after start date/time when "No fixed end datetime scheduling" is disabled.');
   }
   if (normalizedEnd) {
     await assertNoEventFieldSchedulingConflicts({

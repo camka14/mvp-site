@@ -790,6 +790,77 @@ describe('event PATCH route', () => {
     expect(scheduleEventMock).not.toHaveBeenCalled();
   });
 
+  it('preserves a scheduler-computed end on open-ended schedulable PATCH saves', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    const computedEnd = new Date('2026-05-03T01:20:00.000Z');
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'TOURNAMENT',
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: ['slot_1'],
+        start: new Date('2026-04-20T20:00:00.000Z'),
+        end: computedEnd,
+        singleDivision: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'TOURNAMENT',
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: ['slot_1'],
+        start: new Date('2026-04-20T20:00:00.000Z'),
+        end: computedEnd,
+        singleDivision: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'TOURNAMENT',
+        noFixedEndDateTime: true,
+        divisions: ['open'],
+        end: computedEnd,
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'TOURNAMENT',
+      noFixedEndDateTime: true,
+      divisions: ['open'],
+      end: computedEnd,
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          name: 'Renamed Tournament',
+          eventType: 'TOURNAMENT',
+          noFixedEndDateTime: true,
+          end: null,
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(scheduleEventMock).not.toHaveBeenCalled();
+    expect(prismaMock.events.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1' },
+        data: expect.objectContaining({
+          noFixedEndDateTime: true,
+          end: computedEnd,
+        }),
+      }),
+    );
+  });
+
   it('rejects fixed schedulable windows when persisted end equals start', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     const equalBoundary = new Date('2026-03-01T10:00:00.000Z');
@@ -819,7 +890,7 @@ describe('event PATCH route', () => {
     expect(res.status).toBe(400);
     expect(prismaMock.events.update).not.toHaveBeenCalled();
     await expect(res.text()).resolves.toBe(
-      'End date/time must be after start date/time when no fixed end date/time is disabled.',
+      'End date/time must be after start date/time when no fixed end datetime scheduling is disabled.',
     );
   });
 

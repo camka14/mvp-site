@@ -65,6 +65,7 @@ export const resolveMatchRules = (params: {
   const sportTemplate = normalizeRulesConfig(params.sportTemplate);
   const eventOverride = normalizeRulesConfig(params.eventOverride);
   const merged: MatchRulesConfig = { ...sportTemplate, ...eventOverride };
+  const hasSportTemplate = Object.keys(sportTemplate).length > 0;
   const fallbackModel = params.usesSets ? 'SETS' : 'POINTS_ONLY';
   const scoringModel = resolveScoringModel(merged.scoringModel, fallbackModel);
   const fallbackSegmentCount = scoringModel === 'SETS'
@@ -74,6 +75,14 @@ export const resolveMatchRules = (params: {
   const officialRolesFromPositions = (params.officialPositions ?? [])
     .map((position) => position.name.trim())
     .filter(Boolean);
+  const canUseOvertime = hasSportTemplate
+    ? sportTemplate.canUseOvertime === true || sportTemplate.supportsOvertime === true
+    : eventOverride.canUseOvertime === true || eventOverride.supportsOvertime === true;
+  const canUseShootout = hasSportTemplate
+    ? sportTemplate.canUseShootout === true || sportTemplate.supportsShootout === true
+    : eventOverride.canUseShootout === true || eventOverride.supportsShootout === true;
+  const supportsOvertime = canUseOvertime && merged.supportsOvertime === true;
+  const supportsShootout = canUseShootout && merged.supportsShootout === true;
 
   return {
     scoringModel,
@@ -81,9 +90,11 @@ export const resolveMatchRules = (params: {
     segmentLabel: typeof merged.segmentLabel === 'string' && merged.segmentLabel.trim()
       ? merged.segmentLabel.trim()
       : segmentLabelForModel(scoringModel),
-    supportsDraw: merged.supportsDraw === true,
-    supportsOvertime: merged.supportsOvertime === true,
-    supportsShootout: merged.supportsShootout === true,
+    supportsDraw: merged.supportsDraw === true && !supportsShootout,
+    supportsOvertime,
+    supportsShootout,
+    canUseOvertime,
+    canUseShootout,
     officialRoles: normalizeStringList(merged.officialRoles).length
       ? normalizeStringList(merged.officialRoles)
       : officialRolesFromPositions,

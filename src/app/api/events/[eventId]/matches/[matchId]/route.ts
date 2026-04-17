@@ -181,7 +181,113 @@ type EventRegistrationLookupRow = {
   id: string;
   eventTeamId: string | null;
   registrantId: string;
+  sourceTeamRegistrationId: string | null;
 };
+
+const positiveIntOrNull = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isInteger(numeric) || numeric <= 0) {
+    return null;
+  }
+  return numeric;
+};
+
+const canonicalSegmentSequenceForId = (matchId: string, segmentId: string | null): number | null => {
+  if (!segmentId) {
+    return null;
+  }
+  const prefix = `${matchId}_segment_`;
+  if (!segmentId.startsWith(prefix)) {
+    return null;
+  }
+  return positiveIntOrNull(segmentId.slice(prefix.length));
+};
+
+const resolveDefaultSegmentCount = (match: any): number => {
+  const rules = (match.matchRulesSnapshot ?? match.resolvedMatchRules ?? {}) as { segmentCount?: unknown };
+  const configuredSegmentCount = positiveIntOrNull(rules.segmentCount);
+  const persistedSegmentCount = Array.isArray(match.segments) ? match.segments.length : 0;
+  const legacyTeam1Count = Array.isArray(match.team1Points) ? match.team1Points.length : 0;
+  const legacyTeam2Count = Array.isArray(match.team2Points) ? match.team2Points.length : 0;
+  const legacyResultCount = Array.isArray(match.setResults) ? match.setResults.length : 0;
+  return Math.max(configuredSegmentCount ?? 0, persistedSegmentCount, legacyTeam1Count, legacyTeam2Count, legacyResultCount, 1);
+};
+
+const resolveMatchTeamId = (match: any, side: 'team1' | 'team2'): string | null => {
+  const directKey = side === 'team1' ? 'team1Id' : 'team2Id';
+  return normalizeIdToken(match[side]?.id ?? match[side]?.$id ?? match[directKey]);
+};
+
+const addCanonicalSegmentIds = (match: any, segmentIds: Set<string>) => {
+  const matchId = normalizeIdToken(match.id);
+  if (!matchId) {
+    return;
+  }
+  const segmentCount = resolveDefaultSegmentCount(match);
+  for (let sequence = 1; sequence <= segmentCount; sequence += 1) {
+    segmentIds.add(`${matchId}_segment_${sequence}`);
+  }
+};
+
+const ensureCanonicalSegmentForIncident = (match: any, segmentId: string | null): boolean => {
+  const matchId = normalizeIdToken(match.id);
+  if (!matchId) {
+    return false;
+  }
+  const sequence = canonicalSegmentSequenceForId(matchId, segmentId);
+  if (!sequence || sequence > resolveDefaultSegmentCount(match)) {
+    return false;
+  }
+  const segments: MatchSegment[] = Array.isArray(match.segments)
+    ? [...match.segments]
+    : [];
+  if (segments.some((segment) => segment.id === segmentId || segment.$id === segmentId)) {
+    return true;
+  }
+
+  const team1Id = resolveMatchTeamId(match, 'team1');
+  const team2Id = resolveMatchTeamId(match, 'team2');
+  const team1Score = Math.max(0, Math.trunc(Number(match.team1Points?.[sequence - 1] ?? 0)));
+  const team2Score = Math.max(0, Math.trunc(Number(match.team2Points?.[sequence - 1] ?? 0)));
+  const result = Number(match.setResults?.[sequence - 1] ?? 0);
+  const winnerEventTeamId = result === 1
+    ? team1Id
+    : result === 2
+      ? team2Id
+      : null;
+  const scores: Record<string, number> = {};
+  if (team1Id) {
+    scores[team1Id] = team1Score;
+  }
+  if (team2Id) {
+    scores[team2Id] = team2Score;
+  }
+
+  segments.push({
+    id: segmentId!,
+    $id: segmentId!,
+    eventId: normalizeIdToken(match.eventId),
+    matchId,
+    sequence,
+    status: winnerEventTeamId
+      ? 'COMPLETE'
+      : team1Score > 0 || team2Score > 0
+        ? 'IN_PROGRESS'
+        : 'NOT_STARTED',
+    scores,
+    winnerEventTeamId,
+    startedAt: null,
+    endedAt: null,
+    resultType: null,
+    statusReason: null,
+    metadata: null,
+  });
+  match.segments = segments.sort((left, right) => left.sequence - right.sequence);
+  return true;
+};
+
+const eventRegistrationLookupKey = (eventTeamId: string, registrantId: string): string =>
+  `${eventTeamId}\u0000${registrantId}`;
 
 const buildIncidentValidationState = (params: {
   matchId: string;
@@ -200,12 +306,15 @@ const buildIncidentValidationState = (params: {
       segmentIds.add(segmentId);
     }
   });
+  addCanonicalSegmentIds(params.match, segmentIds);
   (params.pendingSegmentOperations ?? []).forEach((operation) => {
     const segmentId = normalizeIdToken(operation.id) ?? `${params.matchId}_segment_${operation.sequence}`;
     segmentIds.add(segmentId);
   });
 
   const registrationById = new Map<string, EventRegistrationLookupRow>();
+  const registrationBySourceTeamRegistrationId = new Map<string, EventRegistrationLookupRow>();
+  const registrationByTeamAndRegistrantId = new Map<string, EventRegistrationLookupRow>();
   const registrationIdsByTeamId = new Map<string, Set<string>>();
   const participantUserIdsByTeamId = new Map<string, Set<string>>();
 
@@ -216,7 +325,13 @@ const buildIncidentValidationState = (params: {
     if (!registrationId || !eventTeamId || !registrantId) {
       return;
     }
-    registrationById.set(registrationId, { id: registrationId, eventTeamId, registrantId });
+    const sourceTeamRegistrationId = normalizeIdToken(row.sourceTeamRegistrationId);
+    const normalizedRow = { id: registrationId, eventTeamId, registrantId, sourceTeamRegistrationId };
+    registrationById.set(registrationId, normalizedRow);
+    if (sourceTeamRegistrationId) {
+      registrationBySourceTeamRegistrationId.set(sourceTeamRegistrationId, normalizedRow);
+    }
+    registrationByTeamAndRegistrantId.set(eventRegistrationLookupKey(eventTeamId, registrantId), normalizedRow);
     const registrationIds = registrationIdsByTeamId.get(eventTeamId) ?? new Set<string>();
     registrationIds.add(registrationId);
     registrationIdsByTeamId.set(eventTeamId, registrationIds);
@@ -229,6 +344,8 @@ const buildIncidentValidationState = (params: {
     teamIds,
     segmentIds,
     registrationById,
+    registrationBySourceTeamRegistrationId,
+    registrationByTeamAndRegistrantId,
     registrationIdsByTeamId,
     participantUserIdsByTeamId,
   };
@@ -263,19 +380,30 @@ const sanitizeIncidentOperationsOrThrow = (params: {
     const explicitEventRegistrationId = normalizeIdToken(operation.eventRegistrationId);
     const explicitParticipantUserId = normalizeIdToken(operation.participantUserId);
     const explicitEventTeamId = normalizeIdToken(operation.eventTeamId);
-    const registrationRow = explicitEventRegistrationId
-      ? params.validationState.registrationById.get(explicitEventRegistrationId) ?? null
+    let registrationRow = explicitEventRegistrationId
+      ? params.validationState.registrationById.get(explicitEventRegistrationId)
+        ?? params.validationState.registrationBySourceTeamRegistrationId.get(explicitEventRegistrationId)
+        ?? null
       : null;
-    if (explicitEventRegistrationId && !registrationRow) {
+
+    let derivedEventTeamId = registrationRow?.eventTeamId ?? explicitEventTeamId ?? null;
+    let derivedParticipantUserId = registrationRow?.registrantId ?? explicitParticipantUserId ?? null;
+    if (!registrationRow && derivedEventTeamId && derivedParticipantUserId) {
+      registrationRow = params.validationState.registrationByTeamAndRegistrantId.get(
+        eventRegistrationLookupKey(derivedEventTeamId, derivedParticipantUserId),
+      ) ?? null;
+      derivedEventTeamId = registrationRow?.eventTeamId ?? derivedEventTeamId;
+      derivedParticipantUserId = registrationRow?.registrantId ?? derivedParticipantUserId;
+    }
+
+    if (explicitEventRegistrationId && !registrationRow && !derivedParticipantUserId) {
       throw new Response('Incident participant must belong to the current match roster.', { status: 400 });
     }
 
-    const derivedEventTeamId = registrationRow?.eventTeamId ?? explicitEventTeamId ?? null;
     if (derivedEventTeamId && !params.validationState.teamIds.includes(derivedEventTeamId)) {
       throw new Response('Incident team must be one of the match participants.', { status: 400 });
     }
 
-    const derivedParticipantUserId = registrationRow?.registrantId ?? explicitParticipantUserId ?? null;
     if (derivedParticipantUserId && derivedEventTeamId) {
       const participantIds = params.validationState.participantUserIdsByTeamId.get(derivedEventTeamId) ?? new Set<string>();
       if (!participantIds.has(derivedParticipantUserId)) {
@@ -374,6 +502,7 @@ const applyIncidentScoreDelta = (match: any, incident: Pick<MatchIncident, 'segm
   if (!segmentId || !eventTeamId || !Number.isFinite(delta) || delta === 0) {
     return;
   }
+  ensureCanonicalSegmentForIncident(match, segmentId);
   const segments: MatchSegment[] = Array.isArray(match.segments)
     ? match.segments.map((segment: MatchSegment) => ({ ...segment, scores: { ...(segment.scores ?? {}) } }))
     : [];
@@ -788,6 +917,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
                 id: true,
                 eventTeamId: true,
                 registrantId: true,
+                sourceTeamRegistrationId: true,
               },
             })
           : [];
@@ -952,7 +1082,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         } catch (error) {
           const noFixedEndDateTime = typeof event.noFixedEndDateTime === 'boolean'
             ? event.noFixedEndDateTime
-            : event.start.getTime() === event.end.getTime();
+            : false;
           if (!noFixedEndDateTime && isScheduleWindowExceededError(error)) {
             throw new AutoRescheduleWindowExceededError({
               eventId: event.id,

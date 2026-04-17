@@ -1096,9 +1096,7 @@ class EventService {
       noFixedEndDateTime:
         typeof row.noFixedEndDateTime === "boolean"
           ? row.noFixedEndDateTime
-          : row.start && row.end
-            ? String(row.start) === String(row.end)
-            : false,
+          : false,
       maxParticipants: row.maxParticipants,
       teamSizeLimit: row.teamSizeLimit,
       restTimeMinutes: row.restTimeMinutes,

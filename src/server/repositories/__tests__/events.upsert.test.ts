@@ -116,9 +116,59 @@ describe('upsertEventFromPayload', () => {
     };
 
     await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
-      'End date/time must be after start date/time when "No fixed end date/time" is disabled.',
+      'End date/time must be after start date/time when "No fixed end datetime scheduling" is disabled.',
     );
     expect(client.events.upsert).not.toHaveBeenCalled();
+  });
+
+  it('preserves an existing scheduler-computed end for open-ended schedulable upserts', async () => {
+    const client = createMockClient();
+    const computedEnd = new Date('2026-05-03T01:20:00.000Z');
+    client.events.findUnique.mockResolvedValueOnce({
+      fieldIds: ['field_1'],
+      timeSlotIds: ['slot_1'],
+      eventType: 'TOURNAMENT',
+      end: computedEnd,
+      noFixedEndDateTime: true,
+      leagueScoringConfigId: null,
+      hostId: 'host_1',
+      organizationId: null,
+      parentEvent: null,
+      officialIds: [],
+      officialPositions: [],
+      officialSchedulingMode: 'SCHEDULE',
+      sportId: 'sport_1',
+    });
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'TOURNAMENT',
+      noFixedEndDateTime: true,
+      end: null,
+      divisions: ['OPEN'],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.end).toEqual(computedEnd);
+    expect(eventUpsertArg.update.end).toEqual(computedEnd);
+  });
+
+  it('persists a provided end date for open-ended schedulable upserts', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'TOURNAMENT',
+      noFixedEndDateTime: true,
+      end: '2026-05-03T01:20:00.000Z',
+      divisions: ['OPEN'],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.end).toEqual(new Date('2026-05-03T01:20:00.000Z'));
+    expect(eventUpsertArg.update.end).toEqual(new Date('2026-05-03T01:20:00.000Z'));
   });
 
   it('persists multi-day slot payloads as one canonical row', async () => {

@@ -58,7 +58,7 @@ const isOpenEndedSchedule = (event: Tournament | League): boolean => {
   if (typeof event.noFixedEndDateTime === 'boolean') {
     return event.noFixedEndDateTime;
   }
-  return event.start.getTime() === event.end.getTime();
+  return false;
 };
 
 const resolveRescheduleEndTime = (event: Tournament | League, currentTime: Date): Date => {

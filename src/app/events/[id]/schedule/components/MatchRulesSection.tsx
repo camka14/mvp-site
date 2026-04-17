@@ -41,9 +41,18 @@ const normalizeRulesConfig = (value: MatchRulesConfig | null | undefined): Match
   }
 
   const normalized: MatchRulesConfig = {};
+  const scoringModel = typeof value.scoringModel === 'string'
+    ? value.scoringModel.trim().toUpperCase()
+    : '';
+  if (scoringModel === 'SETS' || scoringModel === 'PERIODS' || scoringModel === 'INNINGS' || scoringModel === 'POINTS_ONLY') {
+    normalized.scoringModel = scoringModel;
+  }
   const segmentCount = normalizePositiveInt(value.segmentCount);
   if (segmentCount) {
     normalized.segmentCount = segmentCount;
+  }
+  if (typeof value.segmentLabel === 'string' && value.segmentLabel.trim()) {
+    normalized.segmentLabel = value.segmentLabel.trim();
   }
   if (typeof value.supportsDraw === 'boolean') {
     normalized.supportsDraw = value.supportsDraw;
@@ -54,9 +63,22 @@ const normalizeRulesConfig = (value: MatchRulesConfig | null | undefined): Match
   if (typeof value.supportsShootout === 'boolean') {
     normalized.supportsShootout = value.supportsShootout;
   }
+  if (typeof value.canUseOvertime === 'boolean') {
+    normalized.canUseOvertime = value.canUseOvertime;
+  }
+  if (typeof value.canUseShootout === 'boolean') {
+    normalized.canUseShootout = value.canUseShootout;
+  }
+  const officialRoles = normalizeStringList(value.officialRoles);
+  if (officialRoles.length > 0) {
+    normalized.officialRoles = officialRoles;
+  }
   const supportedIncidentTypes = normalizeStringList(value.supportedIncidentTypes);
   if (supportedIncidentTypes.length > 0) {
     normalized.supportedIncidentTypes = supportedIncidentTypes;
+  }
+  if (typeof value.autoCreatePointIncidentType === 'string' && value.autoCreatePointIncidentType.trim()) {
+    normalized.autoCreatePointIncidentType = value.autoCreatePointIncidentType.trim();
   }
   if (typeof value.pointIncidentRequiresParticipant === 'boolean') {
     normalized.pointIncidentRequiresParticipant = value.pointIncidentRequiresParticipant;
@@ -141,6 +163,7 @@ const resolveMatchRules = (params: {
   const sportTemplate = normalizeRulesConfig(params.sportTemplate);
   const eventOverride = normalizeRulesConfig(params.eventOverride);
   const merged: MatchRulesConfig = { ...sportTemplate, ...eventOverride };
+  const hasSportTemplate = Object.keys(sportTemplate).length > 0;
   const fallbackModel: ResolvedMatchRules['scoringModel'] = params.usesSets ? 'SETS' : 'POINTS_ONLY';
   const scoringModel = resolveScoringModel(merged.scoringModel, fallbackModel);
   const fallbackSegmentCount = scoringModel === 'SETS'
@@ -154,6 +177,14 @@ const resolveMatchRules = (params: {
   const autoCreatePointIncidentType = typeof merged.autoCreatePointIncidentType === 'string' && merged.autoCreatePointIncidentType.trim()
     ? merged.autoCreatePointIncidentType.trim()
     : DEFAULT_POINT_INCIDENT_TYPE;
+  const canUseOvertime = hasSportTemplate
+    ? sportTemplate.canUseOvertime === true || sportTemplate.supportsOvertime === true
+    : eventOverride.canUseOvertime === true || eventOverride.supportsOvertime === true;
+  const canUseShootout = hasSportTemplate
+    ? sportTemplate.canUseShootout === true || sportTemplate.supportsShootout === true
+    : eventOverride.canUseShootout === true || eventOverride.supportsShootout === true;
+  const supportsOvertime = canUseOvertime && merged.supportsOvertime === true;
+  const supportsShootout = canUseShootout && merged.supportsShootout === true;
 
   return {
     scoringModel,
@@ -161,9 +192,11 @@ const resolveMatchRules = (params: {
     segmentLabel: typeof merged.segmentLabel === 'string' && merged.segmentLabel.trim()
       ? merged.segmentLabel.trim()
       : segmentLabelForModel(scoringModel),
-    supportsDraw: merged.supportsDraw === true,
-    supportsOvertime: merged.supportsOvertime === true,
-    supportsShootout: merged.supportsShootout === true,
+    supportsDraw: merged.supportsDraw === true && !supportsShootout,
+    supportsOvertime,
+    supportsShootout,
+    canUseOvertime,
+    canUseShootout,
     officialRoles: officialRoles.length > 0 ? officialRoles : officialRolesFromPositions,
     supportedIncidentTypes: supportedIncidentTypes.length > 0 ? supportedIncidentTypes : [...DEFAULT_INCIDENT_TYPES],
     autoCreatePointIncidentType,
@@ -244,7 +277,7 @@ export default function MatchRulesSection({
   }, [normalizedOverride, onChange]);
 
   const setBooleanOverride = useCallback((
-    key: 'supportsDraw' | 'supportsOvertime' | 'supportsShootout' | 'pointIncidentRequiresParticipant',
+    key: 'supportsOvertime' | 'supportsShootout' | 'pointIncidentRequiresParticipant',
     checked: boolean,
     defaultValue: boolean,
   ) => {
@@ -307,7 +340,7 @@ export default function MatchRulesSection({
           <Text fw={600} size="sm">Match format and incident capture</Text>
           <Text size="sm" c="dimmed">
             The sport defines the format. This event can adjust how many segments are played,
-            which result outcomes are allowed, and how much incident detail officials record.
+            which sport-supported result paths are enabled, and how much incident detail officials record.
           </Text>
         </div>
         <Button
@@ -351,39 +384,32 @@ export default function MatchRulesSection({
       />
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-        <Switch
-          label="Allow draws"
-          description="Useful for league play and group-stage matches."
-          checked={resolvedRules.supportsDraw}
-          disabled={disabled}
-          onChange={(event) => setBooleanOverride(
-            'supportsDraw',
-            event.currentTarget.checked,
-            baseRules.supportsDraw,
-          )}
-        />
-        <Switch
-          label="Allow overtime"
-          description="Marks overtime as an available result path."
-          checked={resolvedRules.supportsOvertime}
-          disabled={disabled}
-          onChange={(event) => setBooleanOverride(
-            'supportsOvertime',
-            event.currentTarget.checked,
-            baseRules.supportsOvertime,
-          )}
-        />
-        <Switch
-          label="Allow shootout / tiebreak"
-          description="Use when matches can finish with a final tiebreak phase."
-          checked={resolvedRules.supportsShootout}
-          disabled={disabled}
-          onChange={(event) => setBooleanOverride(
-            'supportsShootout',
-            event.currentTarget.checked,
-            baseRules.supportsShootout,
-          )}
-        />
+        {baseRules.canUseOvertime ? (
+          <Switch
+            label="Allow overtime"
+            description="Marks overtime as an available result path."
+            checked={resolvedRules.supportsOvertime}
+            disabled={disabled}
+            onChange={(event) => setBooleanOverride(
+              'supportsOvertime',
+              event.currentTarget.checked,
+              baseRules.supportsOvertime,
+            )}
+          />
+        ) : null}
+        {baseRules.canUseShootout ? (
+          <Switch
+            label="Allow shootout / tiebreak"
+            description="Use when matches can finish with a final tiebreak phase."
+            checked={resolvedRules.supportsShootout}
+            disabled={disabled}
+            onChange={(event) => setBooleanOverride(
+              'supportsShootout',
+              event.currentTarget.checked,
+              baseRules.supportsShootout,
+            )}
+          />
+        ) : null}
         <Switch
           label="Point incidents require a participant"
           description="Require officials to identify the player when logging a scoring incident."

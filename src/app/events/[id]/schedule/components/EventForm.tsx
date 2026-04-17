@@ -1379,6 +1379,21 @@ const parseExplicitSlotRange = (
     return { start, end };
 };
 
+const normalizeSlotBoundaryOverrideForForm = (
+    slotValue: string | Date | null | undefined,
+    eventBoundary: string | Date | null | undefined,
+): string | undefined => {
+    const normalizedSlotValue = formatLocalDateTime(slotValue ?? null);
+    if (!normalizedSlotValue) {
+        return undefined;
+    }
+
+    const normalizedEventBoundary = formatLocalDateTime(eventBoundary ?? null);
+    return normalizedEventBoundary && normalizedSlotValue === normalizedEventBoundary
+        ? undefined
+        : normalizedSlotValue;
+};
+
 const repeatingSlotsOverlap = (
     slotA: Pick<ComparableConflictSlot, 'dayOfWeek' | 'daysOfWeek' | 'startTimeMinutes' | 'endTimeMinutes' | 'startDate' | 'endDate'>,
     contextA: { eventStart?: string; eventEnd?: string },
@@ -2403,12 +2418,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         if (typeof event.noFixedEndDateTime === 'boolean') {
             return event.noFixedEndDateTime;
         }
-        const parsedStart = parseLocalDateTime(event.start);
-        const parsedEnd = parseLocalDateTime(event.end);
-        if (parsedStart && parsedEnd) {
-            return parsedStart.getTime() === parsedEnd.getTime();
-        }
-        return isSchedulableType;
+        return false;
     })();
 
     const resolvedSportId = (() => {
@@ -2785,6 +2795,8 @@ const matchRulesConfigSchema = z.object({
     supportsDraw: z.boolean().optional(),
     supportsOvertime: z.boolean().optional(),
     supportsShootout: z.boolean().optional(),
+    canUseOvertime: z.boolean().optional(),
+    canUseShootout: z.boolean().optional(),
     officialRoles: z.array(z.string()).optional(),
     supportedIncidentTypes: z.array(z.string()).optional(),
     autoCreatePointIncidentType: z.string().trim().optional(),
@@ -2983,7 +2995,7 @@ const eventFormSchema = z
             if (!parsedStart || !parsedEnd || parsedEnd.getTime() <= parsedStart.getTime()) {
                 ctx.addIssue({
                     code: "custom",
-                    message: 'End date/time must be after start date/time when no fixed end date/time is disabled.',
+                    message: 'End date/time must be after start date/time when no fixed end datetime scheduling is disabled.',
                     path: ['end'],
                 });
             }
@@ -3305,7 +3317,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     );
     const slotConflictRequestRef = useRef(0);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
-    const createSlotForm = useCallback((slot?: Partial<TimeSlot>, fallbackDivisions: string[] = []): LeagueSlotForm => {
+    const createSlotForm = useCallback((
+        slot?: Partial<TimeSlot>,
+        fallbackDivisions: string[] = [],
+        fallbackEventStart?: string | Date | null,
+        fallbackEventEnd?: string | Date | null,
+    ): LeagueSlotForm => {
         const normalizedDays = normalizeWeekdays({
             dayOfWeek: typeof slot?.dayOfWeek === 'number' ? slot.dayOfWeek : undefined,
             daysOfWeek: Array.isArray(slot?.daysOfWeek) ? slot.daysOfWeek : undefined,
@@ -3315,8 +3332,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             scheduledFieldId: slot?.scheduledFieldId,
             scheduledFieldIds: slot?.scheduledFieldIds,
         });
-        const normalizedStartDate = formatLocalDateTime(slot?.startDate ?? null);
-        const normalizedEndDate = formatLocalDateTime(slot?.endDate ?? null);
+        const isRepeating = slot?.repeating ?? true;
+        const normalizedStartDate = isRepeating
+            ? normalizeSlotBoundaryOverrideForForm(slot?.startDate ?? null, fallbackEventStart ?? null)
+            : formatLocalDateTime(slot?.startDate ?? null) || undefined;
+        const normalizedEndDate = isRepeating
+            ? normalizeSlotBoundaryOverrideForForm(slot?.endDate ?? null, fallbackEventEnd ?? null)
+            : formatLocalDateTime(slot?.endDate ?? null) || undefined;
         return {
             key: slot?.$id ?? createClientId(),
             $id: slot?.$id,
@@ -3325,11 +3347,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             dayOfWeek: normalizedDays[0],
             daysOfWeek: normalizedDays,
             divisions: normalizedDivisions.length ? normalizedDivisions : fallbackDivisions,
-            startDate: normalizedStartDate || undefined,
-            endDate: normalizedEndDate || undefined,
+            startDate: normalizedStartDate,
+            endDate: normalizedEndDate,
             startTimeMinutes: slot?.startTimeMinutes,
             endTimeMinutes: slot?.endTimeMinutes,
-            repeating: slot?.repeating ?? true,
+            repeating: isRepeating,
             conflicts: [],
             checking: false,
             error: undefined,
@@ -3781,7 +3803,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultSlots = (() => {
             if (Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
                 return mergeSlotPayloadsForForm(defaults.timeSlots as TimeSlot[], defaultFieldId)
-                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
+                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end));
             }
 
             if (
@@ -3790,7 +3812,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 && activeEditingEvent.timeSlots?.length
             ) {
                 return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
-                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
+                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end));
             }
             return [createSlotForm(undefined, defaultSlotDivisionKeys)];
         })();
@@ -7287,7 +7309,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
             const slots = mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [], fallbackFieldId)
-                .map((slot) => createSlotForm(slot, slotDivisionKeysRef.current));
+                .map((slot) => createSlotForm(
+                    slot,
+                    slotDivisionKeysRef.current,
+                    activeEditingEvent.start,
+                    activeEditingEvent.end,
+                ));
 
             const initialSlots = slots.length > 0
                 ? slots
@@ -7315,10 +7342,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         const fallbackFieldId = immutableFields[0]?.$id;
         const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
-            .map((slot) => createSlotForm(slot, slotDivisionKeysRef.current));
+            .map((slot) => createSlotForm(
+                slot,
+                slotDivisionKeysRef.current,
+                eventData.start,
+                eventData.end,
+            ));
         const normalizedSlots = normalizeSlotState(slotForms, eventData.eventType);
         setLeagueSlots((prev) => (leagueSlotsEqual(prev, normalizedSlots) ? prev : normalizedSlots), { shouldDirty: false });
-    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, setLeagueSlots]);
+    }, [
+        hasImmutableTimeSlots,
+        immutableTimeSlots,
+        immutableFields,
+        createSlotForm,
+        eventData.eventType,
+        eventData.start,
+        eventData.end,
+        setLeagueSlots,
+    ]);
 
     // Pull the organization's full field list so timeslot field options are complete in edit/create mode.
     useEffect(() => {
@@ -7581,7 +7622,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ...(isRentalCreateFlow ? [] : [{ value: 'WEEKLY_EVENT', label: 'Weekly Event' }]),
         ],
         [isRentalCreateFlow],
-    );    const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    );
+    const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     useEffect(() => {
         if (!isRentalCreateFlow) {
             return;
@@ -7600,11 +7642,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!eventData.noFixedEndDateTime) {
             setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
         }
-        const currentEnd = getValues('end');
-        if (typeof currentEnd === 'string' && currentEnd.trim().length > 0) {
-            setValue('end', '', { shouldDirty: true, shouldValidate: true });
-        }
-    }, [eventData.eventType, eventData.parentEvent, getValues, hasExternalRentalField, isEditMode, setValue, supportsNoFixedEndDateTime]);
+    }, [eventData.eventType, eventData.parentEvent, hasExternalRentalField, isEditMode, setValue, supportsNoFixedEndDateTime]);
 
     useEffect(() => {
         if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') &&
@@ -8013,12 +8051,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const normalizedOfficials = normalizedOfficialIds
             .map((id) => officialPoolById.get(id))
             .filter((official): official is UserData => Boolean(official));
-        const shouldClearEndDateTime = supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
-            && Boolean(source.noFixedEndDateTime);
         const normalizedEnd = (() => {
-            if (shouldClearEndDateTime) {
-                return null;
-            }
             if (typeof source.end === 'string') {
                 const trimmed = source.end.trim();
                 return trimmed.length > 0 ? trimmed : null;
@@ -8368,7 +8401,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             serialized.endDate = formatLocalDateTime(explicitEnd);
                         }
                     } else {
-                        const slotStartDateOverride = formatLocalDateTime(slot.startDate ?? null);
+                        const slotStartDateOverride = normalizeSlotBoundaryOverrideForForm(
+                            slot.startDate ?? null,
+                            activeEditingEvent?.start ?? null,
+                        );
                         if (slotStartDateOverride) {
                             serialized.startDate = slotStartDateOverride;
                         } else if (source.start) {
@@ -8406,6 +8442,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [
         activeEditingEvent?.state,
         activeEditingEvent?.$id,
+        activeEditingEvent?.start,
         eventData,
         fields,
         fieldsReferencedInSlots,
@@ -9124,10 +9161,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         control={control}
                                         render={({ field, fieldState }) => (
                                             <div className="space-y-2">
-                                                <DateTimePicker
+                                                    <DateTimePicker
                                                     label="End Date & Time"
                                                     valueFormat="MM/DD/YYYY hh:mm A"
-                                                    value={supportsNoFixedEndDateTime && eventData.noFixedEndDateTime ? null : parseLocalDateTime(field.value)}
+                                                    value={parseLocalDateTime(field.value)}
                                                     disabled={
                                                         isImmutableField('end')
                                                         || hasExternalRentalField
@@ -9152,17 +9189,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     <div className="space-y-1">
                                                         <Checkbox
                                                             size="xs"
-                                                            label="No fixed end date/time"
+                                                            label="No fixed end datetime scheduling"
                                                             checked={Boolean(eventData.noFixedEndDateTime)}
                                                             disabled={isImmutableField('noFixedEndDateTime') || hasExternalRentalField}
                                                             onChange={(event) => {
                                                                 if (isImmutableField('noFixedEndDateTime')) return;
                                                                 const checked = event.currentTarget.checked;
                                                                 setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
-                                                                if (checked) {
-                                                                    setValue('end', '', { shouldDirty: true, shouldValidate: true });
-                                                                    return;
-                                                                }
+                                                                if (checked) return;
                                                                 const parsedStart = parseLocalDateTime(getValues('start'));
                                                                 const parsedEnd = parseLocalDateTime(getValues('end'));
                                                                 if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
@@ -9173,7 +9207,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         />
                                                         {eventData.noFixedEndDateTime ? (
                                                             <Text size="xs" c="dimmed">
-                                                                Open-ended scheduling is enabled. Turn this off to enforce a fixed end date/time.
+                                                                Scheduling can extend past the displayed end date/time. Turn this off to enforce the end date/time.
                                                             </Text>
                                                         ) : null}
                                                     </div>

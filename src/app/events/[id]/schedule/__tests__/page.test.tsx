@@ -3030,7 +3030,7 @@ describe('League schedule page', () => {
     mockEventFormValidationErrors = [
       {
         path: 'end',
-        message: 'End date/time must be after start date/time when no fixed end date/time is disabled.',
+        message: 'End date/time must be after start date/time when no fixed end datetime scheduling is disabled.',
       },
       {
         path: 'leagueSlots.0.daysOfWeek',
@@ -3047,7 +3047,7 @@ describe('League schedule page', () => {
 
     expect(
       await screen.findByText(
-        'Please fix the highlighted fields before submitting. End date/time must be after start date/time when no fixed end date/time is disabled. Select at least one day',
+        'Please fix the highlighted fields before submitting. End date/time must be after start date/time when no fixed end datetime scheduling is disabled. Select at least one day',
       ),
     ).toBeInTheDocument();
   });

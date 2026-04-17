@@ -133,6 +133,8 @@ export interface MatchRulesConfig {
   supportsDraw?: boolean;
   supportsOvertime?: boolean;
   supportsShootout?: boolean;
+  canUseOvertime?: boolean;
+  canUseShootout?: boolean;
   officialRoles?: string[];
   supportedIncidentTypes?: string[];
   autoCreatePointIncidentType?: string;
@@ -146,6 +148,8 @@ export interface ResolvedMatchRules {
   supportsDraw: boolean;
   supportsOvertime: boolean;
   supportsShootout: boolean;
+  canUseOvertime: boolean;
+  canUseShootout: boolean;
   officialRoles: string[];
   supportedIncidentTypes: string[];
   autoCreatePointIncidentType: string | null;
