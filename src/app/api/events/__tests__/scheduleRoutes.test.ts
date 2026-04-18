@@ -108,8 +108,8 @@ jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
 
 import { POST as schedulePost } from '@/app/api/events/schedule/route';
 import { POST as scheduleByIdPost } from '@/app/api/events/[eventId]/schedule/route';
-import { PATCH as matchPatch } from '@/app/api/events/[eventId]/matches/[matchId]/route';
-import { PATCH as matchesPatch } from '@/app/api/events/[eventId]/matches/route';
+import { GET as matchGet, PATCH as matchPatch } from '@/app/api/events/[eventId]/matches/[matchId]/route';
+import { GET as matchesGet, PATCH as matchesPatch } from '@/app/api/events/[eventId]/matches/route';
 
 const jsonRequest = (url: string, body: any) => new NextRequest(url, {
   method: 'POST',
@@ -151,6 +151,66 @@ describe('schedule routes', () => {
       error: 'not_rental_checkout',
     });
     releaseRentalCheckoutLocksMock.mockResolvedValue(undefined);
+  });
+
+  it('returns hydrated match lists with incidents', async () => {
+    const laterMatch = {
+      id: 'match_later',
+      start: new Date('2026-04-17T12:00:00.000Z'),
+      incidents: [],
+    };
+    const earlierMatch = {
+      id: 'match_earlier',
+      start: new Date('2026-04-17T10:00:00.000Z'),
+      incidents: [{ id: 'incident_1', incidentType: 'GOAL' }],
+    };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      matches: {
+        match_later: laterMatch,
+        match_earlier: earlierMatch,
+      },
+    });
+    serializeMatchesLegacyMock.mockReturnValueOnce([
+      { $id: 'match_earlier', incidents: [{ $id: 'incident_1', incidentType: 'GOAL' }] },
+      { $id: 'match_later', incidents: [] },
+    ]);
+
+    const res = await matchesGet(new NextRequest('http://localhost/api/events/event_1/matches'), {
+      params: Promise.resolve({ eventId: 'event_1' }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1');
+    expect(serializeMatchesLegacyMock).toHaveBeenCalledWith([earlierMatch, laterMatch]);
+    expect(json.matches[0].incidents).toEqual([{ $id: 'incident_1', incidentType: 'GOAL' }]);
+  });
+
+  it('returns a hydrated match detail with incidents', async () => {
+    const match = {
+      id: 'match_1',
+      incidents: [{ id: 'incident_1', incidentType: 'GOAL' }],
+    };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      matches: {
+        match_1: match,
+      },
+    });
+    serializeMatchesLegacyMock.mockReturnValueOnce([
+      { $id: 'match_1', incidents: [{ $id: 'incident_1', incidentType: 'GOAL' }] },
+    ]);
+
+    const res = await matchGet(new NextRequest('http://localhost/api/events/event_1/matches/match_1'), {
+      params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1');
+    expect(serializeMatchesLegacyMock).toHaveBeenCalledWith([match]);
+    expect(json.match.incidents).toEqual([{ $id: 'incident_1', incidentType: 'GOAL' }]);
   });
 
   it('schedules an event from an event document payload', async () => {

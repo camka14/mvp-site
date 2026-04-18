@@ -873,6 +873,25 @@ const notifyHostOfAutoRescheduleFailure = async (
   });
 };
 
+export async function GET(_req: NextRequest, { params }: { params: Promise<{ eventId: string; matchId: string }> }) {
+  try {
+    const { eventId, matchId } = await params;
+    const event = await loadEventWithRelations(eventId);
+    const match = event.matches[matchId];
+    if (!match) {
+      return NextResponse.json({ error: 'Match not found' }, { status: 404 });
+    }
+    return NextResponse.json({ match: serializeMatchesLegacy([match])[0] }, { status: 200 });
+  } catch (error) {
+    if (error instanceof Response) return error;
+    if (error instanceof Error && error.message === 'Event not found') {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+    console.error('Match fetch failed', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ eventId: string; matchId: string }> }) {
   try {
     const session = await requireSession(req);

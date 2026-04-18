@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
+import { parseDateInput } from '@/server/legacyFormat';
 import { canManageEvent } from '@/server/accessControl';
 import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
@@ -92,6 +92,18 @@ const bulkUpdateSchema = z.object({
 });
 
 const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
+
+const matchStartTime = (match: SchedulerMatch): number => {
+  const start = (match as { start?: unknown }).start;
+  if (start instanceof Date) {
+    return start.getTime();
+  }
+  if (typeof start === 'string') {
+    const parsed = Date.parse(start);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
 
 const normalizeOptionalString = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -203,12 +215,19 @@ const ensureEventDivisionMembershipForTeam = async (
 };
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
-  const { eventId } = await params;
-  const matches = await prisma.matches.findMany({
-    where: { eventId },
-    orderBy: { start: 'asc' },
-  });
-  return NextResponse.json({ matches: withLegacyList(matches) }, { status: 200 });
+  try {
+    const { eventId } = await params;
+    const event = await loadEventWithRelations(eventId);
+    const matches = Object.values(event.matches)
+      .sort((left, right) => matchStartTime(left) - matchStartTime(right));
+    return NextResponse.json({ matches: serializeMatchesLegacy(matches) }, { status: 200 });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Event not found') {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+    console.error('Match list fetch failed', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
