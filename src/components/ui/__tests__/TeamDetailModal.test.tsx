@@ -1,7 +1,8 @@
 import React from 'react';
+import { screen, waitFor } from '@testing-library/react';
 
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
-import { buildTeam } from '../../../../test/factories';
+import { buildTeam, buildUser } from '../../../../test/factories';
 
 jest.mock('next/image', () => ({
   __esModule: true,
@@ -16,14 +17,34 @@ jest.mock('@/app/providers', () => ({
   useApp: jest.fn(),
 }));
 
+jest.mock('@/lib/userService', () => ({
+  userService: {
+    getUsersByIds: jest.fn(),
+    listInvites: jest.fn(),
+    searchUsers: jest.fn(),
+  },
+}));
+
 import TeamDetailModal from '../TeamDetailModal';
 import { useApp } from '@/app/providers';
+
+const userServiceMock = jest.requireMock('@/lib/userService').userService as {
+  getUsersByIds: jest.Mock;
+  listInvites: jest.Mock;
+  searchUsers: jest.Mock;
+};
 
 describe('TeamDetailModal', () => {
   beforeEach(() => {
     (useApp as jest.Mock).mockReturnValue({
       user: null,
     });
+    userServiceMock.getUsersByIds.mockReset();
+    userServiceMock.listInvites.mockReset();
+    userServiceMock.searchUsers.mockReset();
+    userServiceMock.getUsersByIds.mockResolvedValue([]);
+    userServiceMock.listInvites.mockResolvedValue([]);
+    userServiceMock.searchUsers.mockResolvedValue([]);
   });
 
   it('renders safely when eventFreeAgents prop is omitted', () => {
@@ -43,5 +64,47 @@ describe('TeamDetailModal', () => {
         />,
       );
     }).not.toThrow();
+  });
+
+  it('uses jersey numbers for registered team player avatars', async () => {
+    const player = buildUser({
+      $id: 'player_1',
+      firstName: 'Alex',
+      lastName: 'Stone',
+      fullName: 'Alex Stone',
+    });
+    const team = buildTeam({
+      $id: 'team_1',
+      captainId: 'player_1',
+      managerId: '',
+      playerIds: ['player_1'],
+      pending: [],
+      playerRegistrations: [{
+        id: 'registration_1',
+        teamId: 'team_1',
+        userId: 'player_1',
+        status: 'ACTIVE',
+        jerseyNumber: '12',
+      }],
+      teamSize: 6,
+    });
+    userServiceMock.getUsersByIds.mockResolvedValueOnce([player]);
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Alex Stone')).toBeInTheDocument();
+      expect(screen.getByAltText('Alex Stone')).toHaveAttribute(
+        'src',
+        expect.stringContaining('name=12'),
+      );
+    });
   });
 });

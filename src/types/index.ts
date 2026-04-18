@@ -1468,7 +1468,16 @@ const buildInitialsAvatarUrl = (name: string, size: number): string => {
   return `/api/avatars/initials?${params.toString()}`;
 };
 
-export function getUserAvatarUrl(user: UserData, size: number = 64): string {
+export function getUserAvatarUrl(
+  user: UserData,
+  size: number = 64,
+  jerseyNumber?: string | null,
+): string {
+  const normalizedJerseyNumber = jerseyNumber?.trim();
+  if (normalizedJerseyNumber) {
+    return buildInitialsAvatarUrl(normalizedJerseyNumber, size);
+  }
+
   if (user.profileImageId) {
     return buildPreviewUrl(user.profileImageId, size, size);
   }

@@ -1,6 +1,7 @@
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
 import { Team, UserData, getTeamAvatarUrl } from '@/types';
+import type { TeamPlayerRegistration } from '@/types';
 import { userService, type UserVisibilityContext } from './userService';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 
@@ -219,6 +220,44 @@ class TeamService {
         }
     }
 
+    private mapRowToPlayerRegistrations(value: unknown): TeamPlayerRegistration[] {
+        if (!Array.isArray(value)) {
+            return [];
+        }
+
+        return value
+            .map((row: any): TeamPlayerRegistration | null => {
+                const id = typeof row?.$id === 'string' ? row.$id : (typeof row?.id === 'string' ? row.id : '');
+                const userId = typeof row?.userId === 'string'
+                    ? row.userId
+                    : (typeof row?.registrantId === 'string' ? row.registrantId : '');
+                const teamId = typeof row?.teamId === 'string'
+                    ? row.teamId
+                    : (typeof row?.eventTeamId === 'string' ? row.eventTeamId : null);
+                const jerseyNumber = typeof row?.jerseyNumber === 'string' && row.jerseyNumber.trim().length > 0
+                    ? row.jerseyNumber.trim()
+                    : null;
+                const position = typeof row?.position === 'string' && row.position.trim().length > 0
+                    ? row.position.trim()
+                    : null;
+
+                if (!id || !userId) {
+                    return null;
+                }
+
+                return {
+                    id,
+                    teamId,
+                    userId,
+                    status: typeof row?.status === 'string' ? row.status : '',
+                    jerseyNumber,
+                    position,
+                    isCaptain: Boolean(row?.isCaptain),
+                } satisfies TeamPlayerRegistration;
+            })
+            .filter((row: TeamPlayerRegistration | null): row is TeamPlayerRegistration => Boolean(row));
+    }
+
     private mapRowToTeam(row: any): Team {
         const playerIds = Array.isArray(row.playerIds)
             ? row.playerIds.filter((value: any): value is string => typeof value === 'string')
@@ -226,6 +265,7 @@ class TeamService {
         const pending = Array.isArray(row.pending)
             ? row.pending.filter((value: any): value is string => typeof value === 'string')
             : [];
+        const playerRegistrations = this.mapRowToPlayerRegistrations(row.playerRegistrations);
         const teamSize = typeof row.teamSize === 'number' ? row.teamSize : playerIds.length;
 
         const team: Team = {
@@ -264,6 +304,7 @@ class TeamService {
                 ? row.parentTeamId
                 : null,
             pending,
+            playerRegistrations,
             teamSize,
             profileImageId: row.profileImageId || row.profileImage || row.profileImageID,
             $createdAt: row.$createdAt,

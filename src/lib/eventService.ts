@@ -20,6 +20,7 @@ import {
   getTeamAvatarUrl,
   toEventPayload,
 } from "@/types";
+import type { TeamPlayerRegistration } from "@/types";
 import { ensureLocalDateTimeString } from "@/lib/dateUtils";
 import { sportsService } from "@/lib/sportsService";
 import { userService } from "@/lib/userService";
@@ -1759,6 +1760,47 @@ class EventService {
       ? row.playerIds.map(String)
       : [];
     const pending = Array.isArray(row.pending) ? row.pending.map(String) : [];
+    const playerRegistrations = Array.isArray(row.playerRegistrations)
+      ? (row.playerRegistrations as unknown[])
+        .map((registration: any): TeamPlayerRegistration | null => {
+          const id = typeof registration?.$id === "string"
+            ? registration.$id
+            : typeof registration?.id === "string"
+              ? registration.id
+              : "";
+          const userId = typeof registration?.userId === "string"
+            ? registration.userId
+            : typeof registration?.registrantId === "string"
+              ? registration.registrantId
+              : "";
+          const teamId = typeof registration?.teamId === "string"
+            ? registration.teamId
+            : typeof registration?.eventTeamId === "string"
+              ? registration.eventTeamId
+              : null;
+          if (!id || !userId) {
+            return null;
+          }
+          return {
+            id,
+            teamId,
+            userId,
+            status: typeof registration?.status === "string" ? registration.status : "",
+            jerseyNumber:
+              typeof registration?.jerseyNumber === "string" &&
+              registration.jerseyNumber.trim().length > 0
+                ? registration.jerseyNumber.trim()
+                : null,
+            position:
+              typeof registration?.position === "string" &&
+              registration.position.trim().length > 0
+                ? registration.position.trim()
+                : null,
+            isCaptain: Boolean(registration?.isCaptain),
+          };
+        })
+        .filter((registration: TeamPlayerRegistration | null): registration is TeamPlayerRegistration => Boolean(registration))
+      : [];
     const teamSize =
       typeof row.teamSize === "number"
         ? row.teamSize
@@ -1828,6 +1870,7 @@ class EventService {
           ? row.parentTeamId
           : null,
       pending,
+      playerRegistrations,
       teamSize,
       profileImageId:
         row.profileImage || row.profileImageId || row.profileImageID,

@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect } from '@mantine/core';
 import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle } from '@/types';
+import type { TeamPlayerRegistration } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
@@ -121,6 +122,12 @@ const getPendingInviteRole = (
     return 'team_assistant_coach';
 };
 
+const ACTIVE_PLAYER_REGISTRATION_STATUSES = new Set(['ACTIVE', 'STARTED']);
+
+const isActivePlayerRegistration = (registration: TeamPlayerRegistration): boolean => (
+    ACTIVE_PLAYER_REGISTRATION_STATUSES.has(String(registration.status ?? '').trim().toUpperCase())
+);
+
 export default function TeamDetailModal({
     currentTeam,
     isOpen,
@@ -181,6 +188,19 @@ export default function TeamDetailModal({
             user: usersById.get(assistantCoachId),
         }));
     }, [assistantCoachIds, assistantCoachUsers]);
+    const activePlayerRegistrationByUserId = useMemo(() => {
+        const registrations = Array.isArray(currentTeam.playerRegistrations)
+            ? currentTeam.playerRegistrations
+            : [];
+        const byUserId = new Map<string, TeamPlayerRegistration>();
+        registrations.forEach((registration) => {
+            if (!registration.userId || !isActivePlayerRegistration(registration)) {
+                return;
+            }
+            byUserId.set(registration.userId, registration);
+        });
+        return byUserId;
+    }, [currentTeam.playerRegistrations]);
     const selectedRoleLabel = (() => {
         switch (selectedInviteRole) {
             case 'team_manager':
@@ -1100,28 +1120,36 @@ export default function TeamDetailModal({
                         {teamPlayers.length > 0 ? (
                             <ScrollArea.Autosize mah={240} type="auto">
                                 <div className="space-y-3">
-                                    {teamPlayers.map(player => (
-                                        <Paper key={player.$id} withBorder radius="md" p="sm">
-                                            <Group justify="space-between">
-                                                <Group>
-                                                    <Avatar src={getUserAvatarUrl(player, 40)} alt={getUserFullName(player)} size={40} radius="xl" />
-                                                    <div>
-                                                        <Text fw={500}>{getUserFullName(player)}</Text>
-                                                        {getUserHandle(player) && <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>}
-                                                        {player.$id === currentTeam.captainId && (
-                                                            <Badge color="blue" variant="light" size="xs">Captain</Badge>
-                                                        )}
-                                                    </div>
+                                    {teamPlayers.map(player => {
+                                        const playerRegistration = activePlayerRegistrationByUserId.get(player.$id);
+                                        return (
+                                            <Paper key={player.$id} withBorder radius="md" p="sm">
+                                                <Group justify="space-between">
+                                                    <Group>
+                                                        <Avatar
+                                                            src={getUserAvatarUrl(player, 40, playerRegistration?.jerseyNumber)}
+                                                            alt={getUserFullName(player)}
+                                                            size={40}
+                                                            radius="xl"
+                                                        />
+                                                        <div>
+                                                            <Text fw={500}>{getUserFullName(player)}</Text>
+                                                            {getUserHandle(player) && <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>}
+                                                            {player.$id === currentTeam.captainId && (
+                                                                <Badge color="blue" variant="light" size="xs">Captain</Badge>
+                                                            )}
+                                                        </div>
+                                                    </Group>
+                                                    {canManageTeam && (
+                                                        (player.$id !== currentTeam.captainId)
+                                                        || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
+                                                    ) && (
+                                                        <Button color="red" variant="subtle" size="xs" onClick={() => handleRemovePlayer(player.$id)}>Remove</Button>
+                                                    )}
                                                 </Group>
-                                                {canManageTeam && (
-                                                    (player.$id !== currentTeam.captainId)
-                                                    || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
-                                                ) && (
-                                                    <Button color="red" variant="subtle" size="xs" onClick={() => handleRemovePlayer(player.$id)}>Remove</Button>
-                                                )}
-                                            </Group>
-                                        </Paper>
-                                    ))}
+                                            </Paper>
+                                        );
+                                    })}
                                 </div>
                             </ScrollArea.Autosize>
                         ) : (

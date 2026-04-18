@@ -62,6 +62,13 @@ describe('teamService', () => {
         sport: 'Volleyball',
         division: 'Open',
         playerIds: ['user_1'],
+        playerRegistrations: [{
+          id: 'registration_1',
+          teamId: 'team_1',
+          userId: 'user_1',
+          status: 'ACTIVE',
+          jerseyNumber: '12',
+        }],
         pending: ['user_2'],
         teamSize: 6,
         captainId: 'user_1',
@@ -89,6 +96,11 @@ describe('teamService', () => {
       expect(team?.players?.[0].$id).toBe('user_1');
       expect(team?.pendingPlayers?.[0].$id).toBe('user_2');
       expect(team?.captain?.$id).toBe('user_1');
+      expect(team?.playerRegistrations?.[0]).toEqual(expect.objectContaining({
+        id: 'registration_1',
+        userId: 'user_1',
+        jerseyNumber: '12',
+      }));
     });
 
     it('fetches missing captain when not returned in initial hydration', async () => {
