@@ -7489,6 +7489,9 @@ function EventScheduleContent() {
       if (!prev) return prev;
       return { ...prev, matches: replaceInList(prev.matches as Match[] | undefined) as Match[] };
     });
+    setScoreUpdateMatch((current) => (
+      current?.$id === cloned.$id ? (cloneValue(cloned) as Match) : current
+    ));
   }, []);
 
   const isOfficialCheckedIn = useCallback(
@@ -7546,6 +7549,7 @@ function EventScheduleContent() {
         applyMatchUpdate(updated as Match);
       } catch (err) {
         console.warn('Non-blocking match operation sync failed:', err);
+        throw err;
       }
     },
     [activeEvent?.$id, applyMatchUpdate, eventId],

@@ -81,9 +81,12 @@ jest.mock('../components/EventForm', () => {
   const React = require('react');
   const { forwardRef, useEffect, useImperativeHandle, useState } = React;
   const MockEventForm = forwardRef(function MockEventForm(props: any, ref: any) {
-    capturedEventFormProps = props;
     const [mockInputValue, setMockInputValue] = useState('');
     const [isDirty, setIsDirty] = useState(mockEventFormDirtyState);
+    useEffect(() => {
+      capturedEventFormProps = props;
+    }, [props]);
+
     useEffect(() => {
       props.onDirtyStateChange?.(isDirty);
     }, [isDirty, props]);
@@ -508,6 +511,266 @@ describe('League schedule page', () => {
     expect(screen.queryByText(/Edit Match/)).not.toBeInTheDocument();
     expect(capturedEventFormProps?.event?.$id).toBe('event_1');
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
+  });
+
+  it('renders match incidents loaded with schedule matches', async () => {
+    useAppMock.mockReturnValue({
+      user: { $id: 'official_1' },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      setUser: jest.fn(),
+    });
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const rules = {
+      scoringModel: 'POINTS_ONLY',
+      segmentCount: 1,
+      segmentLabel: 'Total',
+      supportedIncidentTypes: ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+      autoCreatePointIncidentType: 'GOAL',
+      pointIncidentRequiresParticipant: false,
+    };
+    const baseEvent = buildApiEvent({
+      hostId: 'host_1',
+      assistantHostIds: [],
+      autoCreatePointMatchIncidents: true,
+      resolvedMatchRules: rules,
+    });
+    const matchWithIncident = {
+      ...(baseEvent.matches?.[0] ?? {}),
+      id: 'match_1',
+      $id: 'match_1',
+      eventId: 'event_1',
+      team1Id: 'team_a',
+      team2Id: 'team_b',
+      team1: { id: 'team_a', $id: 'team_a', name: 'Aces' },
+      team2: { id: 'team_b', $id: 'team_b', name: 'Diggers' },
+      officialId: 'official_1',
+      officialCheckedIn: true,
+      officialIds: [{ positionId: 'official', slotIndex: 0, userId: 'official_1', checkedIn: true }],
+      matchRulesSnapshot: rules,
+      resolvedMatchRules: rules,
+      team1Points: [1],
+      team2Points: [0],
+      setResults: [0],
+      segments: [{
+        id: 'match_1_segment_1',
+        $id: 'match_1_segment_1',
+        eventId: 'event_1',
+        matchId: 'match_1',
+        sequence: 1,
+        status: 'IN_PROGRESS',
+        scores: { team_a: 1, team_b: 0 },
+        winnerEventTeamId: null,
+        metadata: null,
+      }],
+      incidents: [{
+        id: 'incident_1',
+        $id: 'incident_1',
+        eventId: 'event_1',
+        matchId: 'match_1',
+        segmentId: 'match_1_segment_1',
+        eventTeamId: 'team_a',
+        eventRegistrationId: null,
+        participantUserId: null,
+        officialUserId: 'official_1',
+        incidentType: 'GOAL',
+        sequence: 1,
+        minute: 5,
+        clock: null,
+        clockSeconds: null,
+        linkedPointDelta: 1,
+        note: null,
+        metadata: null,
+      }],
+    };
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/chat/terms-consent') {
+        return Promise.resolve({
+          version: '2026-04-14',
+          url: '/terms',
+          summary: [],
+          accepted: true,
+          acceptedAt: '2026-04-14T12:00:00.000Z',
+        });
+      }
+      if (path === '/api/events/event_1') {
+        const event = { ...baseEvent };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [matchWithIncident] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockImplementation(async () => {
+      const event = { ...baseEvent };
+      delete (event as any).matches;
+      return event;
+    });
+    (eventService.getEventById as jest.Mock).mockImplementation(async () => {
+      const event = { ...baseEvent };
+      delete (event as any).matches;
+      return event;
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Match Details' }));
+
+    expect(await screen.findByText('Aces, point change +1')).toBeInTheDocument();
+    expect(screen.queryByText('No match details recorded.')).not.toBeInTheDocument();
+  });
+
+  it('updates the open score modal when a scoring incident is saved', async () => {
+    useAppMock.mockReturnValue({
+      user: { $id: 'official_1' },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      setUser: jest.fn(),
+    });
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const rules = {
+      scoringModel: 'POINTS_ONLY',
+      segmentCount: 1,
+      segmentLabel: 'Total',
+      supportedIncidentTypes: ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+      autoCreatePointIncidentType: 'GOAL',
+      pointIncidentRequiresParticipant: false,
+    };
+    const baseEvent = buildApiEvent({
+      hostId: 'host_1',
+      assistantHostIds: [],
+      autoCreatePointMatchIncidents: true,
+      resolvedMatchRules: rules,
+    });
+    const baseMatch = {
+      ...(baseEvent.matches?.[0] ?? {}),
+      id: 'match_1',
+      $id: 'match_1',
+      eventId: 'event_1',
+      team1Id: 'team_a',
+      team2Id: 'team_b',
+      officialId: 'official_1',
+      officialCheckedIn: true,
+      officialIds: [{ positionId: 'official', slotIndex: 0, userId: 'official_1', checkedIn: true }],
+      matchRulesSnapshot: rules,
+      resolvedMatchRules: rules,
+      team1Points: [0],
+      team2Points: [0],
+      setResults: [0],
+      segments: [{
+        id: 'match_1_segment_1',
+        $id: 'match_1_segment_1',
+        eventId: 'event_1',
+        matchId: 'match_1',
+        sequence: 1,
+        status: 'NOT_STARTED',
+        scores: { team_a: 0, team_b: 0 },
+        winnerEventTeamId: null,
+        metadata: null,
+      }],
+      incidents: [],
+    };
+    const updatedMatch = {
+      ...baseMatch,
+      team1Points: [1],
+      segments: [{
+        ...baseMatch.segments[0],
+        status: 'IN_PROGRESS',
+        scores: { team_a: 1, team_b: 0 },
+      }],
+      incidents: [{
+        id: 'incident_1',
+        $id: 'incident_1',
+        eventId: 'event_1',
+        matchId: 'match_1',
+        segmentId: 'match_1_segment_1',
+        eventTeamId: 'team_a',
+        eventRegistrationId: null,
+        participantUserId: null,
+        officialUserId: 'official_1',
+        incidentType: 'GOAL',
+        sequence: 1,
+        minute: null,
+        clock: null,
+        clockSeconds: null,
+        linkedPointDelta: 1,
+        note: null,
+        metadata: null,
+      }],
+    };
+
+    apiRequestMock.mockImplementation((path: string, options?: any) => {
+      if (path === '/api/chat/terms-consent') {
+        return Promise.resolve({
+          version: '2026-04-14',
+          url: '/terms',
+          summary: [],
+          accepted: true,
+          acceptedAt: '2026-04-14T12:00:00.000Z',
+        });
+      }
+      if (path === '/api/events/event_1') {
+        const event = { ...baseEvent };
+        delete (event as any).matches;
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [baseMatch] });
+      }
+      if (path === '/api/events/event_1/matches/match_1' && options?.method === 'PATCH') {
+        return Promise.resolve({ match: updatedMatch });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockImplementation(async () => {
+      const event = { ...baseEvent };
+      delete (event as any).matches;
+      return event;
+    });
+    (eventService.getEventById as jest.Mock).mockImplementation(async () => {
+      const event = { ...baseEvent };
+      delete (event as any).matches;
+      return event;
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Match Details' }));
+    expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
+
+    const plusButton = screen.getAllByRole('button', { name: '+' })[0];
+    fireEvent.click(plusButton);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Point' }));
+
+    await waitFor(() => {
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/events/event_1/matches/match_1',
+        expect.objectContaining({ method: 'PATCH' }),
+      );
+    });
+    expect((await screen.findAllByText('Goal')).length).toBeGreaterThan(0);
+    expect(screen.getByText('Aces, point change +1')).toBeInTheDocument();
   });
 
   it('keeps the create button enabled in create mode when a seeded draft has no pending changes', async () => {

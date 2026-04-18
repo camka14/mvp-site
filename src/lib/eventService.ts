@@ -2347,6 +2347,28 @@ class EventService {
           : undefined),
       field: fieldId ? context?.fieldsById?.get(fieldId) : undefined,
       officialIds: this.normalizeMatchOfficialAssignments(input.officialIds),
+      status: input.status ?? null,
+      resultStatus: input.resultStatus ?? null,
+      resultType: input.resultType ?? null,
+      actualStart: input.actualStart ?? null,
+      actualEnd: input.actualEnd ?? null,
+      statusReason: input.statusReason ?? null,
+      winnerEventTeamId: input.winnerEventTeamId ?? null,
+      matchRulesSnapshot: input.matchRulesSnapshot ?? null,
+      resolvedMatchRules: input.resolvedMatchRules ?? input.matchRulesSnapshot ?? null,
+      segments: Array.isArray(input.segments)
+        ? input.segments.map((segment: any) => ({
+            ...segment,
+            $id: segment.$id ?? segment.id,
+            scores: { ...(segment.scores ?? {}) },
+          }))
+        : [],
+      incidents: Array.isArray(input.incidents)
+        ? input.incidents.map((incident: any) => ({
+            ...incident,
+            $id: incident.$id ?? incident.id,
+          }))
+        : [],
     };
 
     if (input.division) {

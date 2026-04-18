@@ -203,6 +203,65 @@ const legacyArray = (values: number[] | undefined, length: number): number[] => 
   return next;
 };
 
+const pendingIncidentStorageKey = (eventId: string | null | undefined, matchId: string) => (
+  `bracketiq:pending-match-incidents:${eventId ?? 'unknown'}:${matchId}`
+);
+
+const readPendingIncidentRetries = (key: string): MatchIncidentOperation[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(key) ?? '[]');
+    return Array.isArray(parsed)
+      ? parsed.filter((operation): operation is MatchIncidentOperation => (
+          operation?.action === 'CREATE' && typeof operation.id === 'string' && operation.id.trim().length > 0
+        ))
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const writePendingIncidentRetries = (key: string, operations: MatchIncidentOperation[]) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (operations.length) {
+      window.localStorage.setItem(key, JSON.stringify(operations));
+    } else {
+      window.localStorage.removeItem(key);
+    }
+  } catch {
+    // Keep the in-memory retry queue even if storage is unavailable.
+  }
+};
+
+const applyPendingIncidentDeltas = (
+  source: MatchSegment[],
+  operations: MatchIncidentOperation[],
+): MatchSegment[] => {
+  if (!operations.length) return source;
+  return source.map((segment) => {
+    const segmentId = segment.id ?? segment.$id;
+    const scoringOperations = operations.filter((operation) => (
+      operation.action === 'CREATE'
+      && operation.segmentId === segmentId
+      && operation.eventTeamId
+      && typeof operation.linkedPointDelta === 'number'
+      && Number.isFinite(operation.linkedPointDelta)
+    ));
+    if (!scoringOperations.length) return segment;
+    const scores = { ...(segment.scores ?? {}) };
+    scoringOperations.forEach((operation) => {
+      const eventTeamId = operation.eventTeamId!;
+      scores[eventTeamId] = Math.max(0, score(scores[eventTeamId]) + Math.trunc(operation.linkedPointDelta ?? 0));
+    });
+    return {
+      ...segment,
+      status: segment.status === 'NOT_STARTED' ? 'IN_PROGRESS' : segment.status,
+      scores,
+    };
+  });
+};
+
 const buildSegments = (match: Match, length: number, team1Id: string | null, team2Id: string | null): MatchSegment[] => {
   if (Array.isArray(match.segments) && match.segments.length) {
     const sorted = [...match.segments]
@@ -266,6 +325,7 @@ export default function ScoreUpdateModal({
   const [incidentNote, setIncidentNote] = useState('');
   const [pendingPoint, setPendingPoint] = useState<{ teamId: string; delta: number } | null>(null);
   const finalizedRef = useRef(false);
+  const incidentRetryRef = useRef<MatchIncidentOperation[]>([]);
 
   const team1Id = match.team1Id ?? entityId(match.team1);
   const team2Id = match.team2Id ?? entityId(match.team2);
@@ -287,6 +347,15 @@ export default function ScoreUpdateModal({
   const activeSegment = segments[activeIndex] ?? segments[0];
   const team1Score = scoreForSegment(activeSegment, activeIndex, team1Id, match.team1Points);
   const team2Score = scoreForSegment(activeSegment, activeIndex, team2Id, match.team2Points);
+  const matchSegmentSnapshot = useMemo(() => ({
+    $id: match.$id,
+    eventId: match.eventId,
+    segments: match.segments,
+    team1Points: match.team1Points,
+    team2Points: match.team2Points,
+    setResults: match.setResults,
+  }) as Match, [match.$id, match.eventId, match.segments, match.setResults, match.team1Points, match.team2Points]);
+  const incidentRetryStorageKey = pendingIncidentStorageKey(tournament.$id ?? match.eventId, match.$id);
   const teamOptions = [
     ...(team1Id ? [{ value: team1Id, label: teamName(match.team1) }] : []),
     ...(team2Id ? [{ value: team2Id, label: teamName(match.team2) }] : []),
@@ -305,10 +374,42 @@ export default function ScoreUpdateModal({
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
   };
+  const nextIncidentId = () => {
+    const randomId = globalThis.crypto?.randomUUID?.();
+    if (randomId) return randomId;
+    return `${match.$id}_incident_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+  };
+  const rememberIncidentRetry = (operation: MatchIncidentOperation) => {
+    if (operation.action !== 'CREATE' || !operation.id) return;
+    incidentRetryRef.current = [
+      ...incidentRetryRef.current.filter((queued) => queued.id !== operation.id),
+      { ...operation },
+    ];
+    writePendingIncidentRetries(incidentRetryStorageKey, incidentRetryRef.current);
+  };
+  const forgetIncidentRetries = (operations: MatchIncidentOperation[]) => {
+    const ids = new Set(operations.map((operation) => operation.id).filter((id): id is string => Boolean(id)));
+    if (!ids.size) return;
+    incidentRetryRef.current = incidentRetryRef.current.filter((operation) => !operation.id || !ids.has(operation.id));
+    writePendingIncidentRetries(incidentRetryStorageKey, incidentRetryRef.current);
+  };
+  const pendingIncidentRetries = () => incidentRetryRef.current.map((operation) => ({ ...operation }));
 
   useEffect(() => {
     finalizedRef.current = false;
-    const next = buildSegments(match, totalSegments, team1Id, team2Id);
+    const persistedIncidentIds = new Set(
+      (Array.isArray(match.incidents) ? match.incidents : [])
+        .map((incident) => entityId(incident))
+        .filter((id): id is string => Boolean(id)),
+    );
+    const queuedRetries = readPendingIncidentRetries(incidentRetryStorageKey)
+      .filter((operation) => !persistedIncidentIds.has(operation.id ?? ''));
+    incidentRetryRef.current = queuedRetries;
+    writePendingIncidentRetries(incidentRetryStorageKey, queuedRetries);
+    const next = applyPendingIncidentDeltas(
+      buildSegments(matchSegmentSnapshot, totalSegments, team1Id, team2Id),
+      queuedRetries,
+    );
     setSegments(next);
     setActiveIndex(Math.max(0, next.findIndex((segment) => segment.status !== 'COMPLETE')));
     setIncidentType(rules.supportedIncidentTypes.includes('NOTE') ? 'NOTE' : rules.supportedIncidentTypes[0] ?? 'NOTE');
@@ -316,7 +417,7 @@ export default function ScoreUpdateModal({
     setIncidentParticipantId((team1Id && participantOptionsByTeam[team1Id]?.[0]?.value) ?? (team2Id && participantOptionsByTeam[team2Id]?.[0]?.value) ?? null);
     setIncidentMinute('');
     setIncidentNote('');
-  }, [match.$id, match.incidents, match.segments, match.setResults, match.team1Points, match.team2Points, participantOptionsByTeam, rules, team1Id, team2Id, totalSegments]);
+  }, [incidentRetryStorageKey, match.$id, match.incidents, matchSegmentSnapshot, participantOptionsByTeam, rules, team1Id, team2Id, totalSegments]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -361,8 +462,14 @@ export default function ScoreUpdateModal({
     ...extra,
   });
 
-  const emit = (nextPayload: ScorePayload) => {
-    Promise.resolve(onScoreChange?.(nextPayload)).catch((error) => console.warn('Match operation update failed:', error));
+  const emit = async (nextPayload: ScorePayload): Promise<boolean> => {
+    try {
+      await onScoreChange?.(nextPayload);
+      return true;
+    } catch (error) {
+      console.warn('Match operation update failed:', error);
+      return false;
+    }
   };
 
   const updateScore = (eventTeamId: string | null, delta: number, note?: string) => {
@@ -378,22 +485,27 @@ export default function ScoreUpdateModal({
     });
     setSegments(next);
     if (autoPointIncidents) {
-      emit(payload(next, {
-        incidentOperations: [{
-          action: 'CREATE',
-          segmentId: activeSegment.id,
-          eventTeamId,
-          eventRegistrationId: selectedParticipant?.eventRegistrationId ?? null,
-          participantUserId: selectedParticipant?.participantUserId ?? null,
-          incidentType: rules.autoCreatePointIncidentType ?? 'POINT',
-          linkedPointDelta: delta,
-          minute: parseIncidentMinute(),
-          note: note?.trim() || null,
-        }],
-      }));
+      const incidentOperation: MatchIncidentOperation = {
+        action: 'CREATE',
+        id: nextIncidentId(),
+        segmentId: activeSegment.id,
+        eventTeamId,
+        eventRegistrationId: selectedParticipant?.eventRegistrationId ?? null,
+        participantUserId: selectedParticipant?.participantUserId ?? null,
+        incidentType: rules.autoCreatePointIncidentType ?? 'POINT',
+        linkedPointDelta: delta,
+        minute: parseIncidentMinute(),
+        note: note?.trim() || null,
+      };
+      rememberIncidentRetry(incidentOperation);
+      void emit(payload(next, {
+        incidentOperations: [incidentOperation],
+      })).then((success) => {
+        if (success) forgetIncidentRetries([incidentOperation]);
+      });
       return;
     }
-    emit(payload(next, {
+    void emit(payload(next, {
       segmentOperations: [{
         id: activeSegment.id,
         sequence: activeSegment.sequence,
@@ -450,6 +562,7 @@ export default function ScoreUpdateModal({
     const next = segments.map((segment, index) => (
       index === activeIndex ? { ...segment, status: 'COMPLETE', winnerEventTeamId, endedAt } satisfies MatchSegment : segment
     ));
+    const retryIncidentOperations = pendingIncidentRetries();
     const nextPayload = payload(next, {
       segmentOperations: [{
         id: activeSegment.id,
@@ -459,10 +572,12 @@ export default function ScoreUpdateModal({
         winnerEventTeamId,
         endedAt,
       }],
+      ...(retryIncidentOperations.length ? { incidentOperations: retryIncidentOperations } : {}),
     });
     try {
       if (onSetComplete) await onSetComplete(nextPayload);
-      else emit(nextPayload);
+      else if (!(await emit(nextPayload))) return;
+      forgetIncidentRetries(retryIncidentOperations);
     } catch (error) {
       console.error('Failed to persist segment result:', error);
       alert('Failed to save segment result. Please retry.');
@@ -491,6 +606,7 @@ export default function ScoreUpdateModal({
           } satisfies MatchSegment;
         })
       : segments;
+    const retryIncidentOperations = pendingIncidentRetries();
     const nextPayload = payload(next, {
       segmentOperations: next.map((segment) => ({
         id: segment.id,
@@ -500,10 +616,12 @@ export default function ScoreUpdateModal({
         winnerEventTeamId: segment.winnerEventTeamId ?? null,
         endedAt: segment.endedAt ?? (segment.status === 'COMPLETE' ? endedAt : null),
       })),
+      ...(retryIncidentOperations.length ? { incidentOperations: retryIncidentOperations } : {}),
     });
     try {
       if (onScoreChange) await onScoreChange(nextPayload);
       else if (onSubmit) await onSubmit(match.$id, nextPayload.team1Points, nextPayload.team2Points, nextPayload.setResults);
+      forgetIncidentRetries(retryIncidentOperations);
       if (onMatchComplete && !finalizedRef.current && matchComplete(next)) {
         await onMatchComplete({ ...nextPayload, eventId: tournament.$id });
         finalizedRef.current = true;
@@ -518,24 +636,29 @@ export default function ScoreUpdateModal({
 
   const addIncident = () => {
     if (!activeSegment) return;
-    emit(payload(segments, {
-      incidentOperations: [{
-        action: 'CREATE',
-        segmentId: activeSegment.id,
-        eventTeamId: incidentTeamId,
-        eventRegistrationId: selectedParticipant?.eventRegistrationId ?? null,
-        participantUserId: selectedParticipant?.participantUserId ?? null,
-        incidentType,
-        minute: parseIncidentMinute(),
-        note: incidentNote.trim() || null,
-      }],
-    }));
+    const incidentOperation: MatchIncidentOperation = {
+      action: 'CREATE',
+      id: nextIncidentId(),
+      segmentId: activeSegment.id,
+      eventTeamId: incidentTeamId,
+      eventRegistrationId: selectedParticipant?.eventRegistrationId ?? null,
+      participantUserId: selectedParticipant?.participantUserId ?? null,
+      incidentType,
+      minute: parseIncidentMinute(),
+      note: incidentNote.trim() || null,
+    };
+    rememberIncidentRetry(incidentOperation);
+    void emit(payload(segments, {
+      incidentOperations: [incidentOperation],
+    })).then((success) => {
+      if (success) forgetIncidentRetries([incidentOperation]);
+    });
     setIncidentMinute('');
     setIncidentNote('');
   };
 
   const checkIn = (assignment: any) => {
-    emit(payload(segments, {
+    void emit(payload(segments, {
       officialCheckIn: {
         positionId: assignment.positionId,
         slotIndex: assignment.slotIndex,

@@ -699,6 +699,7 @@ const applyIncidentOperations = (
       continue;
     }
     if (operation.action === 'CREATE') {
+      const existingIndex = operation.id ? incidents.findIndex((incident) => incident.id === operation.id) : -1;
       const sequence = operation.sequence ?? (
         incidents.length ? Math.max(...incidents.map((incident) => Number(incident.sequence) || 0)) + 1 : 1
       );
@@ -720,6 +721,16 @@ const applyIncidentOperations = (
         note: operation.note ?? null,
         metadata: operation.metadata ?? null,
       };
+      if (existingIndex >= 0) {
+        applyIncidentScoreDelta(match, incidents[existingIndex], -1);
+        incidents[existingIndex] = {
+          ...incidents[existingIndex],
+          ...incident,
+          sequence: operation.sequence ?? incidents[existingIndex].sequence,
+        };
+        applyIncidentScoreDelta(match, incidents[existingIndex], 1);
+        continue;
+      }
       incidents.push(incident);
       applyIncidentScoreDelta(match, incident, 1);
       continue;
@@ -1055,8 +1066,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (parsed.data.officialCheckIn) {
         applyOfficialCheckInOperation(targetMatch, parsed.data.officialCheckIn, session.userId);
       }
-      applySegmentOperations(targetMatch, event, parsed.data.segmentOperations);
       applyIncidentOperations(targetMatch, event, sanitizedIncidentOperations);
+      applySegmentOperations(targetMatch, event, parsed.data.segmentOperations);
 
       if (updates.officialCheckedIn === true || targetMatch.officialCheckedIn === true) {
         targetMatch.locked = true;

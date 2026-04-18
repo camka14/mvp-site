@@ -33,6 +33,10 @@ const buildMatch = (overrides: Partial<Match> = {}): Match => ({
 } as Match);
 
 describe('ScoreUpdateModal', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
   it('uses a single set for timed events and keeps Save Match available', () => {
     renderWithMantine(
       <ScoreUpdateModal
@@ -99,5 +103,186 @@ describe('ScoreUpdateModal', () => {
     expect(screen.getByRole('button', { name: 'View Field Location' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'View Field Location' }));
     expect(screen.getByTitle('Match field location preview')).toBeInTheDocument();
+  });
+
+  it('resends a failed scoring incident create when confirming the segment', async () => {
+    const onScoreChange = jest.fn().mockRejectedValueOnce(new Error('offline'));
+    const onSetComplete = jest.fn().mockResolvedValue(undefined);
+    const rules = {
+      scoringModel: 'PERIODS',
+      segmentCount: 2,
+      segmentLabel: 'Half',
+      supportedIncidentTypes: ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+      autoCreatePointIncidentType: 'GOAL',
+      pointIncidentRequiresParticipant: false,
+    };
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [0, 0],
+          team2Points: [0, 0],
+          setResults: [0, 0],
+          matchRulesSnapshot: rules,
+          segments: [
+            {
+              id: 'match_1_segment_1',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 1,
+              status: 'NOT_STARTED',
+              scores: { team_a: 0, team_b: 0 },
+              winnerEventTeamId: null,
+            },
+            {
+              id: 'match_1_segment_2',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 2,
+              status: 'NOT_STARTED',
+              scores: { team_a: 0, team_b: 0 },
+              winnerEventTeamId: null,
+            },
+          ],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          autoCreatePointMatchIncidents: true,
+          resolvedMatchRules: rules,
+        })}
+        canManage
+        onScoreChange={onScoreChange}
+        onSetComplete={onSetComplete}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Point' }));
+
+    await waitFor(() => {
+      expect(onScoreChange).toHaveBeenCalledTimes(1);
+    });
+    const failedIncidentOperation = onScoreChange.mock.calls[0][0].incidentOperations[0];
+    expect(failedIncidentOperation).toEqual(expect.objectContaining({
+      action: 'CREATE',
+      eventTeamId: 'team_a',
+      incidentType: 'GOAL',
+      linkedPointDelta: 1,
+    }));
+    expect(failedIncidentOperation.id).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Half 1' }));
+
+    await waitFor(() => {
+      expect(onSetComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onSetComplete.mock.calls[0][0].incidentOperations).toEqual([failedIncidentOperation]);
+    expect(onSetComplete.mock.calls[0][0].segmentOperations[0]).toEqual(expect.objectContaining({
+      id: 'match_1_segment_1',
+      status: 'COMPLETE',
+      scores: { team_a: 1, team_b: 0 },
+      winnerEventTeamId: 'team_a',
+    }));
+  });
+
+  it('keeps failed scoring incident creates available after closing and reopening the modal', async () => {
+    const onScoreChange = jest.fn().mockRejectedValueOnce(new Error('offline'));
+    const onSetComplete = jest.fn().mockResolvedValue(undefined);
+    const rules = {
+      scoringModel: 'PERIODS',
+      segmentCount: 2,
+      segmentLabel: 'Half',
+      supportedIncidentTypes: ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+      autoCreatePointIncidentType: 'GOAL',
+      pointIncidentRequiresParticipant: false,
+    };
+    const match = buildMatch({
+      team1Id: 'team_a',
+      team2Id: 'team_b',
+      team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+      team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+      team1Points: [0, 0],
+      team2Points: [0, 0],
+      setResults: [0, 0],
+      matchRulesSnapshot: rules,
+      segments: [
+        {
+          id: 'match_1_segment_1',
+          eventId: 'event_1',
+          matchId: 'match_1',
+          sequence: 1,
+          status: 'NOT_STARTED',
+          scores: { team_a: 0, team_b: 0 },
+          winnerEventTeamId: null,
+        },
+        {
+          id: 'match_1_segment_2',
+          eventId: 'event_1',
+          matchId: 'match_1',
+          sequence: 2,
+          status: 'NOT_STARTED',
+          scores: { team_a: 0, team_b: 0 },
+          winnerEventTeamId: null,
+        },
+      ],
+      incidents: [],
+    });
+    const tournament = buildEvent({
+      autoCreatePointMatchIncidents: true,
+      resolvedMatchRules: rules,
+    });
+
+    const { unmount } = renderWithMantine(
+      <ScoreUpdateModal
+        match={match}
+        tournament={tournament}
+        canManage
+        onScoreChange={onScoreChange}
+        onSetComplete={onSetComplete}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Point' }));
+
+    await waitFor(() => {
+      expect(onScoreChange).toHaveBeenCalledTimes(1);
+    });
+    const failedIncidentOperation = onScoreChange.mock.calls[0][0].incidentOperations[0];
+
+    unmount();
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={match}
+        tournament={tournament}
+        canManage
+        onScoreChange={jest.fn()}
+        onSetComplete={onSetComplete}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Half 1' }));
+
+    await waitFor(() => {
+      expect(onSetComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onSetComplete.mock.calls[0][0].incidentOperations).toEqual([failedIncidentOperation]);
+    expect(onSetComplete.mock.calls[0][0].segmentOperations[0]).toEqual(expect.objectContaining({
+      id: 'match_1_segment_1',
+      status: 'COMPLETE',
+      scores: { team_a: 1, team_b: 0 },
+      winnerEventTeamId: 'team_a',
+    }));
   });
 });
