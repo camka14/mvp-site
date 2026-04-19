@@ -20,6 +20,7 @@ import {
   Event,
   getTeamAvatarUrl,
   Match,
+  MatchIncident,
   MatchIncidentOperation,
   MatchOfficialCheckInOperation,
   MatchSegment,
@@ -33,6 +34,12 @@ import {
 type ScorePayload = {
   matchId: string;
   segments: MatchSegment[];
+  scoreSet?: {
+    segmentId?: string | null;
+    sequence: number;
+    eventTeamId: string;
+    points: number;
+  };
   segmentOperations?: MatchSegmentOperation[];
   incidentOperations?: MatchIncidentOperation[];
   officialCheckIn?: MatchOfficialCheckInOperation;
@@ -44,6 +51,7 @@ type ScorePayload = {
 type MatchRosterParticipantOption = {
   value: string;
   label: string;
+  scoringLabel: string;
   participantUserId: string;
   eventRegistrationId: string | null;
   eventTeamId: string | null;
@@ -108,14 +116,26 @@ const participantLabel = (
   return details ? `${fullName} (${details})` : fullName;
 };
 
+const scoringParticipantLabel = (
+  player?: UserData | null,
+  registration?: TeamPlayerRegistration | null,
+): string => {
+  const fullName = [player?.firstName, player?.lastName].filter(Boolean).join(' ').trim()
+    || player?.userName?.trim()
+    || 'Player';
+  return registration?.jerseyNumber ? `${fullName} #${registration.jerseyNumber}` : fullName;
+};
+
 const buildParticipantOptions = (team: Team | null | undefined, eventTeamId: string | null): MatchRosterParticipantOption[] => {
   const playersById = new Map(teamPlayers(team).map((player) => [player.$id, player]));
   const registrations = teamPlayerRegistrations(team)
     .filter((registration) => ['ACTIVE', 'STARTED'].includes(String(registration.status ?? '').trim().toUpperCase()));
   if (registrations.length) {
+    const registrationPlayer = (registration: TeamPlayerRegistration) => playersById.get(registration.userId);
     return registrations.map((registration) => ({
       value: registration.id,
-      label: participantLabel(playersById.get(registration.userId), registration),
+      label: participantLabel(registrationPlayer(registration), registration),
+      scoringLabel: scoringParticipantLabel(registrationPlayer(registration), registration),
       participantUserId: registration.userId,
       eventRegistrationId: registration.id,
       eventTeamId,
@@ -124,6 +144,7 @@ const buildParticipantOptions = (team: Team | null | undefined, eventTeamId: str
   return teamPlayers(team).map((player) => ({
     value: player.$id,
     label: participantLabel(player, null),
+    scoringLabel: scoringParticipantLabel(player, null),
     participantUserId: player.$id,
     eventRegistrationId: null,
     eventTeamId,
@@ -139,7 +160,10 @@ const dateLabel = (value?: string | null): string => {
 };
 
 const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount: number): ResolvedMatchRules => {
-  const source = (match.matchRulesSnapshot || match.resolvedMatchRules || event.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
+  const eventRules = (event.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
+  const matchResolvedRules = (match.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
+  const matchSnapshotRules = (match.matchRulesSnapshot || {}) as Partial<ResolvedMatchRules>;
+  const source = { ...eventRules, ...matchResolvedRules, ...matchSnapshotRules };
   const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
   const supportsShootout = source.supportsShootout === true;
   return {
@@ -156,7 +180,9 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount
       ? source.supportedIncidentTypes
       : ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
     autoCreatePointIncidentType: source.autoCreatePointIncidentType ?? 'POINT',
-    pointIncidentRequiresParticipant: source.pointIncidentRequiresParticipant === true,
+    pointIncidentRequiresParticipant: eventRules.pointIncidentRequiresParticipant === true
+      || matchResolvedRules.pointIncidentRequiresParticipant === true
+      || matchSnapshotRules.pointIncidentRequiresParticipant === true,
   };
 };
 
@@ -197,11 +223,63 @@ const matchLogTypeLabel = (type: string): string => {
     .join(' ');
 };
 
+const normalizedIncidentType = (type?: string | null): string => String(type ?? '').trim().toUpperCase();
+
+const isScoringIncidentType = (type: string | null | undefined, rules: Pick<ResolvedMatchRules, 'autoCreatePointIncidentType'>): boolean => {
+  const normalized = normalizedIncidentType(type);
+  if (!normalized) return false;
+  const primary = normalizedIncidentType(rules.autoCreatePointIncidentType ?? 'POINT');
+  return normalized === primary || ['POINT', 'GOAL', 'RUN', 'SCORE'].includes(normalized);
+};
+
+const titleCaseValue = (value?: string | null): string => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return 'Scheduled';
+  return normalized
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const userDisplayName = (user?: (Partial<UserData> & { id?: string; name?: string }) | null): string | null => {
+  if (!user) return null;
+  const fullName = typeof user.fullName === 'string' ? user.fullName.trim() : '';
+  const firstLast = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const displayName = typeof user.displayName === 'string' ? user.displayName.trim() : '';
+  const userName = typeof user.userName === 'string' ? user.userName.trim() : '';
+  const name = typeof user.name === 'string' ? user.name.trim() : '';
+  return fullName || firstLast || displayName || userName || name || null;
+};
+
+const userEntityId = (user?: (Partial<UserData> & { id?: string }) | null): string | null => (
+  entityId(user) ?? (typeof user?.id === 'string' && user.id.trim() ? user.id.trim() : null)
+);
+
 const legacyArray = (values: number[] | undefined, length: number): number[] => {
   const next = (Array.isArray(values) ? values : []).slice(0, length).map(score);
   while (next.length < length) next.push(0);
   return next;
 };
+
+const hasPointArrayData = (values: unknown): boolean => Array.isArray(values) && values.length > 0;
+
+const hasSegmentScoreData = (segments: unknown, teamIds: Array<string | null>): boolean => (
+  Array.isArray(segments)
+  && segments.some((segment) => {
+    if (!segment || typeof segment !== 'object') return false;
+    const scores = (segment as { scores?: unknown }).scores;
+    if (!scores || typeof scores !== 'object' || Array.isArray(scores)) return false;
+    return teamIds.some((teamId) => Boolean(teamId && Object.prototype.hasOwnProperty.call(scores, teamId)));
+  })
+);
+
+const hasPersistedScoreData = (match: Match, team1Id: string | null, team2Id: string | null): boolean => (
+  hasSegmentScoreData(match.segments, [team1Id, team2Id])
+  || hasPointArrayData((match as { team1Points?: unknown }).team1Points)
+  || hasPointArrayData((match as { team2Points?: unknown }).team2Points)
+);
 
 const pendingIncidentStorageKey = (eventId: string | null | undefined, matchId: string) => (
   `bracketiq:pending-match-incidents:${eventId ?? 'unknown'}:${matchId}`
@@ -253,6 +331,36 @@ const applyPendingIncidentDeltas = (
     scoringOperations.forEach((operation) => {
       const eventTeamId = operation.eventTeamId!;
       scores[eventTeamId] = Math.max(0, score(scores[eventTeamId]) + Math.trunc(operation.linkedPointDelta ?? 0));
+    });
+    return {
+      ...segment,
+      status: segment.status === 'NOT_STARTED' ? 'IN_PROGRESS' : segment.status,
+      scores,
+    };
+  });
+};
+
+const applyMatchIncidentDeltas = (
+  source: MatchSegment[],
+  incidents: MatchIncident[] | undefined,
+  rules: Pick<ResolvedMatchRules, 'autoCreatePointIncidentType'>,
+): MatchSegment[] => {
+  const scoringIncidents = (incidents ?? []).filter((incident) => (
+    isScoringIncidentType(incident.incidentType, rules)
+    && incident.segmentId
+    && incident.eventTeamId
+    && typeof incident.linkedPointDelta === 'number'
+    && Number.isFinite(incident.linkedPointDelta)
+  ));
+  if (!scoringIncidents.length) return source;
+  return source.map((segment) => {
+    const segmentId = segment.id ?? segment.$id;
+    const segmentIncidents = scoringIncidents.filter((incident) => incident.segmentId === segmentId);
+    if (!segmentIncidents.length) return segment;
+    const scores = { ...(segment.scores ?? {}) };
+    segmentIncidents.forEach((incident) => {
+      const eventTeamId = incident.eventTeamId!;
+      scores[eventTeamId] = Math.max(0, score(scores[eventTeamId]) + Math.trunc(incident.linkedPointDelta ?? 0));
     });
     return {
       ...segment,
@@ -324,8 +432,11 @@ export default function ScoreUpdateModal({
   const [incidentMinute, setIncidentMinute] = useState('');
   const [incidentNote, setIncidentNote] = useState('');
   const [pendingPoint, setPendingPoint] = useState<{ teamId: string; delta: number } | null>(null);
+  const [deletedIncidentIds, setDeletedIncidentIds] = useState<Set<string>>(() => new Set());
+  const [optimisticIncidents, setOptimisticIncidents] = useState<MatchIncident[]>([]);
   const finalizedRef = useRef(false);
   const incidentRetryRef = useRef<MatchIncidentOperation[]>([]);
+  const scoreSetSyncRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const team1Id = match.team1Id ?? entityId(match.team1);
   const team2Id = match.team2Id ?? entityId(match.team2);
@@ -344,6 +455,18 @@ export default function ScoreUpdateModal({
   const rules = useMemo(() => activeRules(match, tournament, usesSets, fallbackSegmentCount), [fallbackSegmentCount, match, tournament, usesSets]);
   const totalSegments = Math.max(1, rules.segmentCount);
   const autoPointIncidents = tournament.autoCreatePointMatchIncidents === true;
+  const scoringIncidentType = rules.autoCreatePointIncidentType ?? 'POINT';
+  const scoringIncidentLabel = matchLogTypeLabel(scoringIncidentType);
+  const scoringActionLabel = normalizedIncidentType(scoringIncidentType) === 'POINT' ? 'Point' : scoringIncidentLabel;
+  const scoringRequiresParticipant = autoPointIncidents && rules.pointIncidentRequiresParticipant === true;
+  const manualIncidentTypes = useMemo(() => (
+    scoringRequiresParticipant
+      ? rules.supportedIncidentTypes
+      : rules.supportedIncidentTypes.filter((type) => !isScoringIncidentType(type, rules))
+  ), [rules, scoringRequiresParticipant]);
+  const defaultIncidentType = manualIncidentTypes.includes('NOTE')
+    ? 'NOTE'
+    : manualIncidentTypes[0] ?? scoringIncidentType;
   const activeSegment = segments[activeIndex] ?? segments[0];
   const team1Score = scoreForSegment(activeSegment, activeIndex, team1Id, match.team1Points);
   const team2Score = scoreForSegment(activeSegment, activeIndex, team2Id, match.team2Points);
@@ -355,6 +478,11 @@ export default function ScoreUpdateModal({
     team2Points: match.team2Points,
     setResults: match.setResults,
   }) as Match, [match.$id, match.eventId, match.segments, match.setResults, match.team1Points, match.team2Points]);
+  const persistedScoreDataAvailable = useMemo(
+    () => hasPersistedScoreData(matchSegmentSnapshot, team1Id, team2Id),
+    [matchSegmentSnapshot, team1Id, team2Id],
+  );
+  const useScoringIncidentsForScore = !scoringRequiresParticipant && !persistedScoreDataAvailable;
   const incidentRetryStorageKey = pendingIncidentStorageKey(tournament.$id ?? match.eventId, match.$id);
   const teamOptions = [
     ...(team1Id ? [{ value: team1Id, label: teamName(match.team1) }] : []),
@@ -364,10 +492,77 @@ export default function ScoreUpdateModal({
     ...(team1Id ? { [team1Id]: buildParticipantOptions(match.team1 as Team | null | undefined, team1Id) } : {}),
     ...(team2Id ? { [team2Id]: buildParticipantOptions(match.team2 as Team | null | undefined, team2Id) } : {}),
   }), [match.team1, match.team2, team1Id, team2Id]);
+  const participantOptions = useMemo(() => Object.values(participantOptionsByTeam).flat(), [participantOptionsByTeam]);
+  const participantLabelsByRegistrationId = useMemo(() => (
+    new Map(participantOptions
+      .filter((option) => option.eventRegistrationId)
+      .map((option) => [option.eventRegistrationId!, option.scoringLabel]))
+  ), [participantOptions]);
+  const participantLabelsByUserId = useMemo(() => (
+    new Map(participantOptions.map((option) => [option.participantUserId, option.scoringLabel]))
+  ), [participantOptions]);
   const activeParticipantOptions = incidentTeamId ? (participantOptionsByTeam[incidentTeamId] ?? []) : [];
   const selectedParticipant = incidentParticipantId
     ? activeParticipantOptions.find((option) => option.value === incidentParticipantId) ?? null
     : null;
+  const allIncidents = useMemo(() => {
+    const byId = new Map<string, MatchIncident>();
+    [...(match.incidents ?? []), ...optimisticIncidents].forEach((incident) => {
+      const incidentId = entityId(incident) ?? incident.id;
+      if (!incidentId || deletedIncidentIds.has(incidentId)) return;
+      byId.set(incidentId, incident);
+    });
+    return Array.from(byId.values()).sort((a, b) => a.sequence - b.sequence);
+  }, [deletedIncidentIds, match.incidents, optimisticIncidents]);
+  const incidentsForDisplay = useMemo(() => (
+    allIncidents.filter((incident) => (
+      scoringRequiresParticipant
+      || useScoringIncidentsForScore
+      || !isScoringIncidentType(incident.incidentType, rules)
+    ))
+  ), [allIncidents, rules, scoringRequiresParticipant, useScoringIncidentsForScore]);
+  const officialUsersById = useMemo(() => {
+    const map = new Map<string, Partial<UserData> & { id?: string; name?: string }>();
+    ((tournament.officials ?? []) as Array<Partial<UserData> & { id?: string; name?: string }>).forEach((official) => {
+      const id = userEntityId(official);
+      if (id) map.set(id, official);
+    });
+    if (match.official) {
+      const id = userEntityId(match.official);
+      if (id) map.set(id, match.official);
+    }
+    return map;
+  }, [match.official, tournament.officials]);
+  const eventOfficialUserIdsById = useMemo(() => (
+    new Map((tournament.eventOfficials ?? []).map((official) => [official.id, official.userId]))
+  ), [tournament.eventOfficials]);
+  const teamLabelForId = (eventTeamId?: string | null): string => (
+    eventTeamId === team1Id ? teamName(match.team1) : eventTeamId === team2Id ? teamName(match.team2) : 'Match'
+  );
+  const participantLabelForIncident = (incident: { eventRegistrationId?: string | null; participantUserId?: string | null }): string | null => {
+    if (incident.eventRegistrationId) {
+      const label = participantLabelsByRegistrationId.get(incident.eventRegistrationId);
+      if (label) return label;
+    }
+    return incident.participantUserId ? participantLabelsByUserId.get(incident.participantUserId) ?? null : null;
+  };
+  const scoringIncidentDescription = (incident: { eventTeamId?: string | null; eventRegistrationId?: string | null; participantUserId?: string | null; minute?: number | null }) => (
+    [
+      teamLabelForId(incident.eventTeamId),
+      participantLabelForIncident(incident),
+      typeof incident.minute === 'number' ? `${incident.minute}'` : null,
+    ].filter(Boolean).join(' | ')
+  );
+  const officialPositionLabel = (assignment: { positionId?: string | null; slotIndex?: number | null }) => {
+    const position = (tournament.officialPositions ?? []).find((item) => item.id === assignment.positionId);
+    const base = position?.name?.trim() || 'Official';
+    const slotIndex = Math.max(0, Number(assignment.slotIndex ?? 0));
+    return position && positiveInt(position.count, 1) > 1 ? `${base} #${slotIndex + 1}` : base;
+  };
+  const officialNameLabel = (assignment: { userId?: string | null; eventOfficialId?: string | null }) => {
+    const userId = assignment.userId || (assignment.eventOfficialId ? eventOfficialUserIdsById.get(assignment.eventOfficialId) : null);
+    return userId ? userDisplayName(officialUsersById.get(userId)) ?? 'TBD' : 'TBD';
+  };
   const parseIncidentMinute = () => {
     const trimmed = incidentMinute.trim();
     if (!trimmed) return null;
@@ -406,18 +601,28 @@ export default function ScoreUpdateModal({
       .filter((operation) => !persistedIncidentIds.has(operation.id ?? ''));
     incidentRetryRef.current = queuedRetries;
     writePendingIncidentRetries(incidentRetryStorageKey, queuedRetries);
-    const next = applyPendingIncidentDeltas(
-      buildSegments(matchSegmentSnapshot, totalSegments, team1Id, team2Id),
-      queuedRetries,
-    );
+    const persistedSegments = buildSegments(matchSegmentSnapshot, totalSegments, team1Id, team2Id);
+    const incidentFallbackSegments = useScoringIncidentsForScore
+      ? applyMatchIncidentDeltas(persistedSegments, match.incidents, rules)
+      : persistedSegments;
+    const next = applyPendingIncidentDeltas(incidentFallbackSegments, queuedRetries);
     setSegments(next);
     setActiveIndex(Math.max(0, next.findIndex((segment) => segment.status !== 'COMPLETE')));
-    setIncidentType(rules.supportedIncidentTypes.includes('NOTE') ? 'NOTE' : rules.supportedIncidentTypes[0] ?? 'NOTE');
+    setDeletedIncidentIds(new Set());
+    setOptimisticIncidents((current) => {
+      const persistedIncidentIds = new Set(
+        (match.incidents ?? [])
+          .map((incident) => entityId(incident) ?? incident.id)
+          .filter((id): id is string => Boolean(id)),
+      );
+      return current.filter((incident) => incident.matchId === match.$id && !persistedIncidentIds.has(entityId(incident) ?? incident.id));
+    });
+    setIncidentType(defaultIncidentType);
     setIncidentTeamId(team1Id ?? team2Id ?? null);
     setIncidentParticipantId((team1Id && participantOptionsByTeam[team1Id]?.[0]?.value) ?? (team2Id && participantOptionsByTeam[team2Id]?.[0]?.value) ?? null);
     setIncidentMinute('');
     setIncidentNote('');
-  }, [incidentRetryStorageKey, match.$id, match.incidents, matchSegmentSnapshot, participantOptionsByTeam, rules, team1Id, team2Id, totalSegments]);
+  }, [defaultIncidentType, incidentRetryStorageKey, match.$id, match.incidents, matchSegmentSnapshot, participantOptionsByTeam, rules, team1Id, team2Id, totalSegments, useScoringIncidentsForScore]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -472,57 +677,190 @@ export default function ScoreUpdateModal({
     }
   };
 
-  const updateScore = (eventTeamId: string | null, delta: number, note?: string) => {
-    if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
-    const next = segments.map((segment, index) => {
-      if (index !== activeIndex) return segment;
+  const applyScoreDelta = (
+    source: MatchSegment[],
+    eventTeamId: string | null,
+    delta: number,
+    segmentId?: string | null,
+  ): MatchSegment[] => {
+    if (!eventTeamId) return source;
+    const targetSegmentId = segmentId ?? activeSegment?.id ?? activeSegment?.$id ?? null;
+    return source.map((segment, index) => {
+      const isTarget = targetSegmentId
+        ? segment.id === targetSegmentId || segment.$id === targetSegmentId
+        : index === activeIndex;
+      if (!isTarget) return segment;
       const nextScore = Math.max(0, score(segment.scores?.[eventTeamId]) + delta);
       return {
         ...segment,
-        status: nextScore > 0 ? 'IN_PROGRESS' : segment.status,
+        status: nextScore > 0 && segment.status === 'NOT_STARTED' ? 'IN_PROGRESS' : segment.status,
         scores: { ...(segment.scores ?? {}), [eventTeamId]: nextScore },
       } satisfies MatchSegment;
     });
+  };
+
+  const updateScore = (eventTeamId: string | null, delta: number) => {
+    if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
+    const next = applyScoreDelta(segments, eventTeamId, delta);
+    const nextSegment = next.find((segment) => {
+      const segmentId = segment.id ?? segment.$id;
+      const activeSegmentId = activeSegment.id ?? activeSegment.$id;
+      return (activeSegmentId && segmentId === activeSegmentId) || segment.sequence === activeSegment.sequence;
+    });
     setSegments(next);
-    if (autoPointIncidents) {
-      const incidentOperation: MatchIncidentOperation = {
-        action: 'CREATE',
-        id: nextIncidentId(),
+    const nextPayload = payload(next, {
+      scoreSet: {
         segmentId: activeSegment.id,
-        eventTeamId,
-        eventRegistrationId: selectedParticipant?.eventRegistrationId ?? null,
-        participantUserId: selectedParticipant?.participantUserId ?? null,
-        incidentType: rules.autoCreatePointIncidentType ?? 'POINT',
-        linkedPointDelta: delta,
-        minute: parseIncidentMinute(),
-        note: note?.trim() || null,
-      };
-      rememberIncidentRetry(incidentOperation);
-      void emit(payload(next, {
-        incidentOperations: [incidentOperation],
-      })).then((success) => {
-        if (success) forgetIncidentRetries([incidentOperation]);
-      });
-      return;
-    }
-    void emit(payload(next, {
-      segmentOperations: [{
-        id: activeSegment.id,
         sequence: activeSegment.sequence,
-        status: next[activeIndex].status,
-        scores: next[activeIndex].scores,
-      }],
-    }));
+        eventTeamId,
+        points: score(nextSegment?.scores?.[eventTeamId]),
+      },
+    });
+    scoreSetSyncRef.current = scoreSetSyncRef.current
+      .catch(() => undefined)
+      .then(() => emit(nextPayload));
+  };
+
+  const createScoringIncident = (
+    eventTeamId: string | null,
+    details: {
+      participant?: MatchRosterParticipantOption | null;
+      minute?: number | null;
+      note?: string | null;
+    } = {},
+  ) => {
+    if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
+    const next = applyScoreDelta(segments, eventTeamId, 1);
+    setSegments(next);
+    const incidentOperation: MatchIncidentOperation = {
+      action: 'CREATE',
+      id: nextIncidentId(),
+      segmentId: activeSegment.id,
+      eventTeamId,
+      eventRegistrationId: details.participant?.eventRegistrationId ?? null,
+      participantUserId: details.participant?.participantUserId ?? null,
+      incidentType: scoringIncidentType,
+      linkedPointDelta: 1,
+      minute: details.minute ?? null,
+      note: details.note?.trim() || null,
+    };
+    const optimisticIncident: MatchIncident = {
+      id: incidentOperation.id!,
+      eventId: tournament.$id ?? match.eventId ?? null,
+      matchId: match.$id,
+      segmentId: incidentOperation.segmentId ?? null,
+      eventTeamId,
+      eventRegistrationId: incidentOperation.eventRegistrationId ?? null,
+      participantUserId: incidentOperation.participantUserId ?? null,
+      officialUserId: null,
+      incidentType: incidentOperation.incidentType ?? scoringIncidentType,
+      sequence: allIncidents.length
+        ? Math.max(...allIncidents.map((incident) => Number(incident.sequence) || 0)) + 1
+        : 1,
+      minute: incidentOperation.minute ?? null,
+      clock: null,
+      clockSeconds: null,
+      linkedPointDelta: 1,
+      note: incidentOperation.note ?? null,
+      metadata: null,
+    };
+    setOptimisticIncidents((current) => [
+      ...current.filter((incident) => (entityId(incident) ?? incident.id) !== optimisticIncident.id),
+      optimisticIncident,
+    ]);
+    rememberIncidentRetry(incidentOperation);
+    void emit(payload(next, {
+      incidentOperations: [incidentOperation],
+    })).then((success) => {
+      if (success) forgetIncidentRetries([incidentOperation]);
+    });
+  };
+
+  const removeQueuedScoringIncident = (eventTeamId: string): boolean => {
+    const activeSegmentId = activeSegment?.id ?? activeSegment?.$id ?? null;
+    let retryIndex = -1;
+    for (let index = incidentRetryRef.current.length - 1; index >= 0; index -= 1) {
+      const operation = incidentRetryRef.current[index];
+      if (
+        operation.action === 'CREATE'
+        && operation.eventTeamId === eventTeamId
+        && operation.segmentId === activeSegmentId
+        && isScoringIncidentType(operation.incidentType, rules)
+        && score(operation.linkedPointDelta) > 0
+      ) {
+        retryIndex = index;
+        break;
+      }
+    }
+    if (retryIndex < 0) return false;
+    const [operation] = incidentRetryRef.current.splice(retryIndex, 1);
+    writePendingIncidentRetries(incidentRetryStorageKey, incidentRetryRef.current);
+    const next = applyScoreDelta(segments, eventTeamId, -score(operation.linkedPointDelta));
+    setSegments(next);
+    if (operation.id) {
+      setDeletedIncidentIds((current) => new Set(current).add(operation.id!));
+      setOptimisticIncidents((current) => current.filter((incident) => (entityId(incident) ?? incident.id) !== operation.id));
+    }
+    return true;
+  };
+
+  const removeIncident = (incident: MatchIncident) => {
+    if (!canManage) return;
+    const incidentId = entityId(incident) ?? incident.id;
+    if (!incidentId) return;
+    const linkedDelta = score(incident.linkedPointDelta);
+    const shouldAdjustScore = isScoringIncidentType(incident.incidentType, rules) && Boolean(incident.eventTeamId) && linkedDelta > 0;
+    const previousSegments = segments;
+    const next = shouldAdjustScore
+      ? applyScoreDelta(segments, incident.eventTeamId ?? null, -linkedDelta, incident.segmentId)
+      : segments;
+    const removedOptimisticIncidents = optimisticIncidents.filter((entry) => (entityId(entry) ?? entry.id) === incidentId);
+    if (shouldAdjustScore) setSegments(next);
+    setDeletedIncidentIds((current) => new Set(current).add(incidentId));
+    setOptimisticIncidents((current) => current.filter((entry) => (entityId(entry) ?? entry.id) !== incidentId));
+    const incidentOperation: MatchIncidentOperation = { action: 'DELETE', id: incidentId };
+    void emit(payload(next, {
+      incidentOperations: [incidentOperation],
+    })).then((success) => {
+      if (success) return;
+      if (shouldAdjustScore) setSegments(previousSegments);
+      setDeletedIncidentIds((current) => {
+        const restored = new Set(current);
+        restored.delete(incidentId);
+        return restored;
+      });
+      if (removedOptimisticIncidents.length) {
+        setOptimisticIncidents((current) => [...current, ...removedOptimisticIncidents]);
+      }
+    });
+  };
+
+  const removeLatestScoringIncident = (eventTeamId: string | null) => {
+    if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
+    if (removeQueuedScoringIncident(eventTeamId)) return;
+    const activeSegmentId = activeSegment.id ?? activeSegment.$id ?? null;
+    const incident = [...allIncidents].reverse().find((entry) => (
+      entry.eventTeamId === eventTeamId
+      && entry.segmentId === activeSegmentId
+      && isScoringIncidentType(entry.incidentType, rules)
+      && score(entry.linkedPointDelta) > 0
+    ));
+    if (incident) removeIncident(incident);
   };
 
   const requestScore = (eventTeamId: string | null, delta: number) => {
     if (!eventTeamId) return;
-    if (autoPointIncidents && delta > 0) {
-      setPendingPoint({ teamId: eventTeamId, delta });
-      setIncidentType(rules.autoCreatePointIncidentType ?? 'POINT');
-      setIncidentTeamId(eventTeamId);
-      setIncidentMinute('');
-      setIncidentNote('');
+    if (autoPointIncidents) {
+      if (delta > 0 && scoringRequiresParticipant) {
+        setPendingPoint({ teamId: eventTeamId, delta });
+        setIncidentType(scoringIncidentType);
+        setIncidentTeamId(eventTeamId);
+        setIncidentParticipantId(participantOptionsByTeam[eventTeamId]?.[0]?.value ?? null);
+        setIncidentMinute('');
+        setIncidentNote('');
+        return;
+      }
+      updateScore(eventTeamId, delta);
       return;
     }
     updateScore(eventTeamId, delta);
@@ -636,6 +974,10 @@ export default function ScoreUpdateModal({
 
   const addIncident = () => {
     if (!activeSegment) return;
+    const isScoring = isScoringIncidentType(incidentType, rules);
+    const next = isScoring && incidentTeamId
+      ? applyScoreDelta(segments, incidentTeamId, 1)
+      : segments;
     const incidentOperation: MatchIncidentOperation = {
       action: 'CREATE',
       id: nextIncidentId(),
@@ -645,10 +987,12 @@ export default function ScoreUpdateModal({
       participantUserId: selectedParticipant?.participantUserId ?? null,
       incidentType,
       minute: parseIncidentMinute(),
+      linkedPointDelta: isScoring ? 1 : null,
       note: incidentNote.trim() || null,
     };
+    if (isScoring) setSegments(next);
     rememberIncidentRetry(incidentOperation);
-    void emit(payload(segments, {
+    void emit(payload(next, {
       incidentOperations: [incidentOperation],
     })).then((success) => {
       if (success) forgetIncidentRetries([incidentOperation]);
@@ -690,7 +1034,7 @@ export default function ScoreUpdateModal({
             <Text c="dimmed" size="sm">{rulesSummary(rules)}</Text>
           </div>
           <Badge color={match.status === 'COMPLETE' ? 'green' : match.status === 'IN_PROGRESS' ? 'blue' : 'gray'}>
-            {match.status ?? 'SCHEDULED'}
+            {titleCaseValue(match.status)}
           </Badge>
         </Group>
 
@@ -727,7 +1071,7 @@ export default function ScoreUpdateModal({
               <Group grow align="flex-start">
                 <div>
                   <Text c="dimmed" size="sm">Lifecycle</Text>
-                  <Text fw={600}>{match.resultStatus ?? 'Pending'}</Text>
+                  <Text fw={600}>{titleCaseValue(match.resultStatus ?? 'Pending')}</Text>
                   <Text size="sm">{match.statusReason || 'No status reason'}</Text>
                 </div>
                 <div>
@@ -735,33 +1079,43 @@ export default function ScoreUpdateModal({
                   <Text size="sm">Start: {dateLabel(match.actualStart)}</Text>
                   <Text size="sm">End: {dateLabel(match.actualEnd)}</Text>
                 </div>
-                <div>
-                  <Text c="dimmed" size="sm">Rules</Text>
-                  <Text size="sm">{rules.scoringModel.replace('_', ' ')} - {rules.segmentCount} {rules.segmentLabel.toLowerCase()}</Text>
-                  <Text size="sm">Match log: {rules.supportedIncidentTypes.map(matchLogTypeLabel).join(', ')}</Text>
-                </div>
               </Group>
 
-              <Table striped withTableBorder>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Segment</Table.Th>
-                    <Table.Th>{teamName(match.team1)}</Table.Th>
-                    <Table.Th>{teamName(match.team2)}</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Winner</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
+              <Table withRowBorders>
                 <Table.Tbody>
-                  {segments.map((segment) => (
-                    <Table.Tr key={segment.id}>
-                      <Table.Td>{labelForSegment(rules, segment.sequence)}</Table.Td>
-                      <Table.Td>{scoreForSegment(segment, segment.sequence - 1, team1Id, match.team1Points)}</Table.Td>
-                      <Table.Td>{scoreForSegment(segment, segment.sequence - 1, team2Id, match.team2Points)}</Table.Td>
-                      <Table.Td>{segment.status}</Table.Td>
-                      <Table.Td>{segment.winnerEventTeamId === team1Id ? teamName(match.team1) : segment.winnerEventTeamId === team2Id ? teamName(match.team2) : '-'}</Table.Td>
-                    </Table.Tr>
-                  ))}
+                  <Table.Tr>
+                    <Table.Th>{rules.segmentLabel}</Table.Th>
+                    {segments.map((segment, index) => (
+                      <Table.Th
+                        key={`segment-label-${segment.id}`}
+                        style={index === activeIndex ? { background: 'var(--mantine-color-blue-light)', color: 'var(--mantine-color-blue-filled)' } : undefined}
+                      >
+                        {labelForSegment(rules, segment.sequence)}
+                      </Table.Th>
+                    ))}
+                  </Table.Tr>
+                  <Table.Tr>
+                    <Table.Th>Home</Table.Th>
+                    {segments.map((segment, index) => (
+                      <Table.Td
+                        key={`segment-home-${segment.id}`}
+                        style={index === activeIndex ? { background: 'var(--mantine-color-blue-light)', color: 'var(--mantine-color-blue-filled)' } : undefined}
+                      >
+                        {scoreForSegment(segment, index, team1Id, match.team1Points)}
+                      </Table.Td>
+                    ))}
+                  </Table.Tr>
+                  <Table.Tr>
+                    <Table.Th>Away</Table.Th>
+                    {segments.map((segment, index) => (
+                      <Table.Td
+                        key={`segment-away-${segment.id}`}
+                        style={index === activeIndex ? { background: 'var(--mantine-color-blue-light)', color: 'var(--mantine-color-blue-filled)' } : undefined}
+                      >
+                        {scoreForSegment(segment, index, team2Id, match.team2Points)}
+                      </Table.Td>
+                    ))}
+                  </Table.Tr>
                 </Table.Tbody>
               </Table>
 
@@ -769,7 +1123,10 @@ export default function ScoreUpdateModal({
                 <Text c="dimmed" size="sm">Officials</Text>
                 {(match.officialIds ?? []).length ? (match.officialIds ?? []).map((assignment, index) => (
                   <Group key={`${assignment.positionId}:${assignment.slotIndex}:${index}`} justify="space-between">
-                    <Text size="sm">{assignment.positionId} slot {assignment.slotIndex + 1}: {assignment.userId}</Text>
+                    <Text size="sm">
+                      {officialPositionLabel(assignment)}: {officialNameLabel(assignment)}
+                      {assignment.checkedIn ? ' (checked in)' : ''}
+                    </Text>
                     <Group gap="xs">
                       <Badge color={assignment.checkedIn ? 'green' : 'gray'}>{assignment.checkedIn ? 'Checked in' : 'Not checked in'}</Badge>
                       {canManage && !assignment.checkedIn && <Button size="xs" variant="light" onClick={() => checkIn(assignment)}>Check in</Button>}
@@ -780,33 +1137,50 @@ export default function ScoreUpdateModal({
 
               <Stack gap="xs">
                 <Text c="dimmed" size="sm">Match Log</Text>
-                {(match.incidents ?? []).length ? [...(match.incidents ?? [])].sort((a, b) => a.sequence - b.sequence).map((incident) => (
-                  <Group key={incident.id} justify="space-between" align="flex-start">
-                    <div>
-                      <Text fw={600} size="sm">{matchLogTypeLabel(incident.incidentType)}</Text>
-                      <Text size="sm" c="dimmed">
-                        {incident.eventTeamId === team1Id ? teamName(match.team1) : incident.eventTeamId === team2Id ? teamName(match.team2) : 'Match'}
-                        {incident.linkedPointDelta ? `, point change ${incident.linkedPointDelta > 0 ? '+' : ''}${incident.linkedPointDelta}` : ''}
-                      </Text>
+                {incidentsForDisplay.length ? incidentsForDisplay.map((incident) => (
+                  <Paper key={incident.id} withBorder p="sm" radius="sm" style={{ position: 'relative' }}>
+                    {canManage && (
+                      <ActionIcon
+                        aria-label={`Remove ${isScoringIncidentType(incident.incidentType, rules) ? scoringIncidentLabel : matchLogTypeLabel(incident.incidentType)}`}
+                        variant="subtle"
+                        color="red"
+                        size="sm"
+                        onClick={() => removeIncident(incident)}
+                        style={{ position: 'absolute', right: 8, top: 8 }}
+                      >
+                        -
+                      </ActionIcon>
+                    )}
+                    <div style={{ paddingRight: canManage ? 32 : 0 }}>
+                      {isScoringIncidentType(incident.incidentType, rules) ? (
+                        <Text fw={600} size="sm">{scoringIncidentDescription(incident)}</Text>
+                      ) : (
+                        <>
+                          <Text fw={600} size="sm">{matchLogTypeLabel(incident.incidentType)}</Text>
+                          <Text size="sm" c="dimmed">
+                            {[teamLabelForId(incident.eventTeamId), typeof incident.minute === 'number' ? `${incident.minute}'` : null].filter(Boolean).join(' | ')}
+                          </Text>
+                        </>
+                      )}
+                      {!isScoringIncidentType(incident.incidentType, rules) && incident.note && <Text size="sm">{incident.note}</Text>}
                     </div>
-                    <Text size="sm">{incident.note || '-'}</Text>
-                  </Group>
+                  </Paper>
                 )) : <Text size="sm">No match details recorded.</Text>}
               </Stack>
 
-              {canManage && (
+              {canManage && manualIncidentTypes.length > 0 && (
                 <Stack gap="xs">
                   <Group grow>
-                    <Select label="Log type" data={rules.supportedIncidentTypes.map((type) => ({ value: type, label: matchLogTypeLabel(type) }))} value={incidentType} onChange={(value) => setIncidentType(value ?? 'NOTE')} />
+                    <Select label="Log type" data={manualIncidentTypes.map((type) => ({ value: type, label: matchLogTypeLabel(type) }))} value={incidentType} onChange={(value) => setIncidentType(value ?? defaultIncidentType)} />
                     <Select label="Team" data={teamOptions} value={incidentTeamId} onChange={setIncidentTeamId} clearable />
                   </Group>
                   <Group grow>
                     <Select
-                      label={rules.pointIncidentRequiresParticipant && incidentType === (rules.autoCreatePointIncidentType ?? 'POINT') ? 'Player' : 'Player (optional)'}
+                      label={rules.pointIncidentRequiresParticipant && isScoringIncidentType(incidentType, rules) ? 'Player' : 'Player (optional)'}
                       data={activeParticipantOptions.map((option) => ({ value: option.value, label: option.label }))}
                       value={incidentParticipantId}
                       onChange={setIncidentParticipantId}
-                      clearable={!rules.pointIncidentRequiresParticipant}
+                      clearable={!(rules.pointIncidentRequiresParticipant && isScoringIncidentType(incidentType, rules))}
                       disabled={!incidentTeamId || activeParticipantOptions.length === 0}
                     />
                     <TextInput
@@ -822,7 +1196,7 @@ export default function ScoreUpdateModal({
                     <Button
                       variant="light"
                       onClick={addIncident}
-                      disabled={rules.pointIncidentRequiresParticipant && incidentType === (rules.autoCreatePointIncidentType ?? 'POINT') && !selectedParticipant}
+                      disabled={rules.pointIncidentRequiresParticipant && isScoringIncidentType(incidentType, rules) && !selectedParticipant}
                     >
                       Add to Match Log
                     </Button>
@@ -844,7 +1218,14 @@ export default function ScoreUpdateModal({
         {pendingPoint && (
           <Paper withBorder p="md" radius="md">
             <Stack gap="xs">
-              <Text fw={600}>Record Scoring Details</Text>
+              <Text fw={600}>Record {scoringActionLabel}</Text>
+              <Select
+                label="Log type"
+                data={[{ value: scoringIncidentType, label: scoringActionLabel }]}
+                value={scoringIncidentType}
+                onChange={() => undefined}
+                disabled
+              />
               <Select
                 label={rules.pointIncidentRequiresParticipant ? 'Player' : 'Player (optional)'}
                 data={activeParticipantOptions.map((option) => ({ value: option.value, label: option.label }))}
@@ -865,14 +1246,18 @@ export default function ScoreUpdateModal({
                 <Button variant="default" onClick={() => { setPendingPoint(null); setIncidentMinute(''); setIncidentNote(''); }}>Cancel</Button>
                 <Button
                   onClick={() => {
-                    updateScore(pendingPoint.teamId, pendingPoint.delta, incidentNote);
+                    createScoringIncident(pendingPoint.teamId, {
+                      participant: selectedParticipant,
+                      minute: parseIncidentMinute(),
+                      note: incidentNote,
+                    });
                     setPendingPoint(null);
                     setIncidentMinute('');
                     setIncidentNote('');
                   }}
                   disabled={rules.pointIncidentRequiresParticipant && !selectedParticipant}
                 >
-                  Save Point
+                  Save {scoringActionLabel}
                 </Button>
               </Group>
             </Stack>
@@ -880,30 +1265,53 @@ export default function ScoreUpdateModal({
         )}
 
         <Group grow align="stretch">
-          {[{ team: match.team1, teamId: team1Id, current: team1Score }, { team: match.team2, teamId: team2Id, current: team2Score }].map(({ team, teamId, current }, index) => (
-            <Paper key={teamId ?? index} withBorder p="md" radius="md">
-              <Group justify="space-between" mb="sm">
-                <Group>
-                  {team && <Avatar src={getTeamAvatarUrl(team, 40)} radius="xl" size={40} alt={teamName(team)} />}
-                  <Text fw={600}>{teamName(team)}</Text>
+          {[{ team: match.team1, teamId: team1Id, current: team1Score }, { team: match.team2, teamId: team2Id, current: team2Score }].map(({ team, teamId, current }, index) => {
+            const displayName = teamName(team);
+
+            return (
+              <Paper key={teamId ?? index} withBorder p="md" radius="md">
+                <Group justify="space-between" mb="sm" wrap="nowrap" align="center">
+                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 0, flex: '1 1 0' }}>
+                    {team && <Avatar src={getTeamAvatarUrl(team, 40)} radius="xl" size={40} alt={displayName} />}
+                    <Text
+                      fw={600}
+                      title={displayName}
+                      style={{
+                        minWidth: 0,
+                        flex: '1 1 auto',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {displayName}
+                    </Text>
+                  </Group>
+                  {canScore && !scoringRequiresParticipant && (
+                    <Group gap="xs" wrap="nowrap" style={{ flex: '0 0 auto' }}>
+                      <ActionIcon variant="light" color="red" onClick={() => requestScore(teamId, -1)} disabled={current === 0}>-</ActionIcon>
+                      <ActionIcon variant="light" color="green" onClick={() => requestScore(teamId, 1)}>+</ActionIcon>
+                    </Group>
+                  )}
                 </Group>
-                {canScore && (
-                  <Group gap="xs">
-                    <ActionIcon variant="light" color="red" onClick={() => requestScore(teamId, -1)} disabled={current === 0}>-</ActionIcon>
-                    <ActionIcon variant="light" color="green" onClick={() => requestScore(teamId, 1)}>+</ActionIcon>
+                <Text ta="center" fw={700} size="xl">{current}</Text>
+                {canScore && scoringRequiresParticipant && teamId && (
+                  <Group justify="center" mt="xs">
+                    <Button size="xs" onClick={() => requestScore(teamId, 1)}>
+                      Add {scoringActionLabel}
+                    </Button>
                   </Group>
                 )}
-              </Group>
-              <Text ta="center" fw={700} size="xl">{current}</Text>
-              <Group justify="center" gap="xs" mt={6}>
-                {segments.map((segment, segmentIndex) => (
-                  <Text key={`${teamId}-${segment.id}`} size="sm" className={`${segmentIndex === activeIndex ? 'bg-blue-100 text-blue-800' : segment.winnerEventTeamId === teamId ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded`}>
-                    {scoreForSegment(segment, segmentIndex, teamId, teamId === team1Id ? match.team1Points : match.team2Points)}
-                  </Text>
-                ))}
-              </Group>
-            </Paper>
-          ))}
+                <Group justify="center" gap="xs" mt={6}>
+                  {segments.map((segment, segmentIndex) => (
+                    <Text key={`${teamId}-${segment.id}`} size="sm" className={`${segmentIndex === activeIndex ? 'bg-blue-100 text-blue-800' : segment.winnerEventTeamId === teamId ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'} px-2 py-1 rounded`}>
+                      {scoreForSegment(segment, segmentIndex, teamId, teamId === team1Id ? match.team1Points : match.team2Points)}
+                    </Text>
+                  ))}
+                </Group>
+              </Paper>
+            );
+          })}
         </Group>
 
         <Group justify="space-between">

@@ -7514,6 +7514,12 @@ function EventScheduleContent() {
   type MatchOperationPayload = {
     matchId: string;
     segments?: MatchSegment[];
+    scoreSet?: {
+      segmentId?: string | null;
+      sequence: number;
+      eventTeamId: string;
+      points: number;
+    };
     segmentOperations?: MatchSegmentOperation[];
     incidentOperations?: MatchIncidentOperation[];
     officialCheckIn?: MatchOfficialCheckInOperation;
@@ -7528,6 +7534,7 @@ function EventScheduleContent() {
       team1Points,
       team2Points,
       setResults,
+      scoreSet,
       segmentOperations,
       incidentOperations,
       officialCheckIn,
@@ -7536,16 +7543,29 @@ function EventScheduleContent() {
       if (!targetEventId) return;
       try {
         const hasOperations =
-          Boolean(segmentOperations?.length)
+          Boolean(scoreSet)
+          || Boolean(segmentOperations?.length)
           || Boolean(incidentOperations?.length)
           || Boolean(officialCheckIn);
-        const updated = hasOperations
-          ? await tournamentService.updateMatchOperations(targetEventId, matchId, {
-              segmentOperations,
-              incidentOperations,
-              officialCheckIn,
-            })
-          : await tournamentService.updateMatchScores(targetEventId, matchId, { team1Points, team2Points, setResults });
+        let updated: Match;
+        if (scoreSet) {
+          updated = await tournamentService.setMatchScore(targetEventId, matchId, scoreSet);
+        } else if (
+          incidentOperations?.length === 1
+          && incidentOperations[0]?.action === 'CREATE'
+          && !segmentOperations?.length
+          && !officialCheckIn
+        ) {
+          updated = await tournamentService.addMatchIncident(targetEventId, matchId, incidentOperations[0]);
+        } else if (hasOperations) {
+          updated = await tournamentService.updateMatchOperations(targetEventId, matchId, {
+            segmentOperations,
+            incidentOperations,
+            officialCheckIn,
+          });
+        } else {
+          updated = await tournamentService.updateMatchScores(targetEventId, matchId, { team1Points, team2Points, setResults });
+        }
         applyMatchUpdate(updated as Match);
       } catch (err) {
         console.warn('Non-blocking match operation sync failed:', err);

@@ -628,8 +628,8 @@ describe('League schedule page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Match Details' }));
 
-    expect(await screen.findByText('Aces, point change +1')).toBeInTheDocument();
-    expect(screen.queryByText('No match details recorded.')).not.toBeInTheDocument();
+    expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
+    expect(screen.queryByText("Aces | 5'")).not.toBeInTheDocument();
   });
 
   it('updates the open score modal when a scoring incident is saved', async () => {
@@ -710,7 +710,7 @@ describe('League schedule page', () => {
         officialUserId: 'official_1',
         incidentType: 'GOAL',
         sequence: 1,
-        minute: null,
+        minute: 5,
         clock: null,
         clockSeconds: null,
         linkedPointDelta: 1,
@@ -737,7 +737,7 @@ describe('League schedule page', () => {
       if (path === '/api/events/event_1/matches') {
         return Promise.resolve({ matches: [baseMatch] });
       }
-      if (path === '/api/events/event_1/matches/match_1' && options?.method === 'PATCH') {
+      if (path === '/api/events/event_1/matches/match_1/score' && options?.method === 'POST') {
         return Promise.resolve({ match: updatedMatch });
       }
       return Promise.resolve({});
@@ -761,16 +761,15 @@ describe('League schedule page', () => {
 
     const plusButton = screen.getAllByRole('button', { name: '+' })[0];
     fireEvent.click(plusButton);
-    fireEvent.click(await screen.findByRole('button', { name: 'Save Point' }));
 
     await waitFor(() => {
-      expect(apiRequestMock).toHaveBeenCalledWith(
-        '/api/events/event_1/matches/match_1',
-        expect.objectContaining({ method: 'PATCH' }),
+        expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/events/event_1/matches/match_1/score',
+        expect.objectContaining({ method: 'POST' }),
       );
     });
-    expect((await screen.findAllByText('Goal')).length).toBeGreaterThan(0);
-    expect(screen.getByText('Aces, point change +1')).toBeInTheDocument();
+    expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
+    expect(screen.queryByText("Aces | 5'")).not.toBeInTheDocument();
   });
 
   it('keeps the create button enabled in create mode when a seeded draft has no pending changes', async () => {

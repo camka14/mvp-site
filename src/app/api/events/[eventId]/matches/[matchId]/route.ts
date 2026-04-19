@@ -371,6 +371,9 @@ const sanitizeIncidentOperationsOrThrow = (params: {
     const linkedPointDelta = typeof operation.linkedPointDelta === 'number' ? operation.linkedPointDelta : null;
     const scoringIncident = linkedPointDelta !== null && linkedPointDelta !== 0;
     const requiresParticipant = scoringIncident && params.matchRules?.pointIncidentRequiresParticipant === true;
+    if (scoringIncident && !requiresParticipant) {
+      throw new Response('Scoring incidents are only allowed when match rules require player-recorded scoring.', { status: 400 });
+    }
 
     const segmentId = normalizeIdToken(operation.segmentId);
     if (segmentId && !params.validationState.segmentIds.has(segmentId)) {
@@ -433,6 +436,53 @@ const sanitizeIncidentOperationsOrThrow = (params: {
       officialUserId: officialUserId ?? null,
     };
   });
+};
+
+const matchRequiresPlayerRecordedScoring = (match: any, event: any): boolean => (
+  (event as any).resolvedMatchRules?.pointIncidentRequiresParticipant === true
+  || match?.resolvedMatchRules?.pointIncidentRequiresParticipant === true
+  || match?.matchRulesSnapshot?.pointIncidentRequiresParticipant === true
+);
+
+const assertSegmentScoreOperationsAllowed = (
+  match: any,
+  event: any,
+  operations: Array<z.infer<typeof segmentOperationSchema>> | undefined,
+) => {
+  if (!matchRequiresPlayerRecordedScoring(match, event) || !Array.isArray(operations)) {
+    return;
+  }
+  const segments: MatchSegment[] = Array.isArray(match.segments) ? match.segments : [];
+  for (const operation of operations) {
+    if (!operation.scores) continue;
+    const existing = segments.find((segment) => (
+      (operation.id && segment.id === operation.id) || segment.sequence === operation.sequence
+    ));
+    for (const [eventTeamId, nextScore] of Object.entries(operation.scores)) {
+      const previousScore = Number(existing?.scores?.[eventTeamId] ?? 0);
+      if (Number(nextScore) !== previousScore) {
+        throw new Response('Player-recorded scoring must use the match incident endpoint.', { status: 400 });
+      }
+    }
+  }
+};
+
+const scoresDiffer = (next: number[] | undefined, current: unknown): boolean => {
+  if (!Array.isArray(next)) return false;
+  const previous = Array.isArray(current) ? current : [];
+  if (next.length !== previous.length) return true;
+  return next.some((value, index) => Number(value) !== Number(previous[index] ?? 0));
+};
+
+const assertLegacyScoreArraysAllowed = (
+  match: any,
+  event: any,
+  data: z.infer<typeof updateSchema>,
+) => {
+  if (!matchRequiresPlayerRecordedScoring(match, event)) return;
+  if (scoresDiffer(data.team1Points, match.team1Points) || scoresDiffer(data.team2Points, match.team2Points)) {
+    throw new Response('Player-recorded scoring must use the match incident endpoint.', { status: 400 });
+  }
 };
 
 const syncLegacyArraysFromSegments = (match: any) => {
@@ -587,9 +637,6 @@ const applySegmentOperations = (
   const segments: MatchSegment[] = Array.isArray(match.segments)
     ? match.segments.map((segment: MatchSegment) => ({ ...segment, scores: { ...(segment.scores ?? {}) } }))
     : [];
-  const pointIncidentType = event.resolvedMatchRules?.autoCreatePointIncidentType ?? 'POINT';
-  const shouldAutoIncident = event.autoCreatePointMatchIncidents === true;
-  const incidents: MatchIncident[] = Array.isArray(match.incidents) ? [...match.incidents] : [];
   for (const operation of operations) {
     const existingIndex = segments.findIndex((segment) => (
       (operation.id && segment.id === operation.id) || segment.sequence === operation.sequence
@@ -606,7 +653,6 @@ const applySegmentOperations = (
           scores: {},
           winnerEventTeamId: null,
         } as MatchSegment;
-    const previousScores = { ...(existing.scores ?? {}) };
     const next: MatchSegment = {
       ...existing,
       id: operation.id ?? existing.id,
@@ -640,40 +686,8 @@ const applySegmentOperations = (
     } else {
       segments.push(next);
     }
-    if (shouldAutoIncident && operation.scores) {
-      for (const [eventTeamId, score] of Object.entries(operation.scores)) {
-        const previous = Number(previousScores[eventTeamId] ?? 0);
-        const delta = Number(score) - previous;
-        if (delta === 0) {
-          continue;
-        }
-        const sequence = incidents.length
-          ? Math.max(...incidents.map((incident) => Number(incident.sequence) || 0)) + 1
-          : 1;
-        incidents.push({
-          id: randomUUID(),
-          $id: undefined,
-          eventId: event.id,
-          matchId: match.id,
-          segmentId: next.id,
-          eventTeamId,
-          eventRegistrationId: null,
-          participantUserId: null,
-          officialUserId: null,
-          incidentType: pointIncidentType,
-          sequence,
-          linkedPointDelta: delta,
-          minute: null,
-          clock: null,
-          clockSeconds: null,
-          note: null,
-          metadata: null,
-        });
-      }
-    }
   }
   match.segments = segments.sort((left, right) => left.sequence - right.sequence);
-  match.incidents = incidents.sort((left, right) => left.sequence - right.sequence);
   match.winnerEventTeamId = resolveWinnerEventTeamIdFromSegments(match) ?? match.winnerEventTeamId ?? null;
   syncLegacyArraysFromSegments(match);
 };
@@ -1057,7 +1071,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const sanitizedIncidentOperations = sanitizeIncidentOperationsOrThrow({
         operations: parsed.data.incidentOperations,
         matchId: targetMatch.id,
-        matchRules: (targetMatch.matchRulesSnapshot ?? (event as any).resolvedMatchRules ?? null) as { pointIncidentRequiresParticipant?: boolean } | null,
+        matchRules: { pointIncidentRequiresParticipant: matchRequiresPlayerRecordedScoring(targetMatch, event) },
         validationState: buildIncidentValidationState({
           matchId: targetMatch.id,
           match: targetMatch,
@@ -1068,6 +1082,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         isHostOrAdmin,
       });
 
+      assertLegacyScoreArraysAllowed(targetMatch, event, parsed.data);
       applyMatchUpdates(event, targetMatch, updates);
       if (shouldFreezeMatchRulesSnapshot({
         segmentOperations: parsed.data.segmentOperations,
@@ -1086,6 +1101,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         applyOfficialCheckInOperation(targetMatch, parsed.data.officialCheckIn, session.userId);
       }
       applyIncidentOperations(targetMatch, event, sanitizedIncidentOperations);
+      assertSegmentScoreOperationsAllowed(targetMatch, event, parsed.data.segmentOperations);
       applySegmentOperations(targetMatch, event, parsed.data.segmentOperations);
 
       if (updates.officialCheckedIn === true || targetMatch.officialCheckedIn === true) {

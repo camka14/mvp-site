@@ -411,6 +411,41 @@ class TournamentService {
         return this.updateMatch(eventId, matchId, updates as Partial<Match>);
     }
 
+    async setMatchScore(
+        eventId: string,
+        matchId: string,
+        update: {
+            segmentId?: string | null;
+            sequence: number;
+            eventTeamId: string;
+            points: number;
+        },
+    ): Promise<Match> {
+        const response = await apiRequest<{ match: Match }>(`/api/events/${eventId}/matches/${matchId}/score`, {
+            method: 'POST',
+            body: update,
+        });
+        if (!response?.match) {
+            throw new Error('Failed to set match score');
+        }
+        return normalizeApiMatch(response.match);
+    }
+
+    async addMatchIncident(
+        eventId: string,
+        matchId: string,
+        operation: Omit<MatchIncidentOperation, 'action'>,
+    ): Promise<Match> {
+        const response = await apiRequest<{ match: Match }>(`/api/events/${eventId}/matches/${matchId}/incidents`, {
+            method: 'POST',
+            body: operation,
+        });
+        if (!response?.match) {
+            throw new Error('Failed to add match incident');
+        }
+        return normalizeApiMatch(response.match);
+    }
+
     async updateMatchScores(
         eventId: string,
         matchId: string,
