@@ -1,0 +1,499 @@
+import { NextRequest, NextResponse } from 'next/server';
+import {
+  getPublicOrganizationCatalog,
+  formatPublicEventTypeLabel,
+  normalizePublicEventTypes,
+  PUBLIC_EVENT_TYPES,
+  type PublicEventDateRule,
+  type PublicOrganizationCatalog,
+  type PublicOrganizationEventCard,
+  type PublicPaginationInfo,
+  type PublicWidgetKind,
+} from '@/server/publicOrganizationCatalog';
+
+export const dynamic = 'force-dynamic';
+
+const WIDGET_KINDS = new Set<PublicWidgetKind>(['all', 'events', 'teams', 'rentals', 'products']);
+const DATE_RULES = new Set<PublicEventDateRule>(['all', 'upcoming', 'today', 'week', 'month']);
+
+type WidgetRenderOptions = {
+  showDateFilter: boolean;
+  showEventTypeFilter: boolean;
+  dateRule: PublicEventDateRule;
+  dateFrom: string | null;
+  dateTo: string | null;
+  eventTypes: string[];
+  includeChildWeeklyEvents: boolean;
+  limit: number;
+  page: number;
+};
+
+const escapeHtml = (value: unknown): string => (
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+);
+
+const formatPrice = (cents: number): string => (
+  cents > 0
+    ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100)
+    : 'Free'
+);
+
+const formatDate = (value: string | null): string => {
+  if (!value) return 'Date TBD';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return 'Date TBD';
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(parsed);
+};
+
+const parseBooleanParam = (value: string | null): boolean => {
+  if (!value) {
+    return false;
+  }
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+};
+
+const parseOptionalBooleanParam = (value: string | null, fallback: boolean): boolean => {
+  if (!value) {
+    return fallback;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (['0', 'false', 'no', 'off'].includes(normalized)) {
+    return false;
+  }
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) {
+    return true;
+  }
+  return fallback;
+};
+
+const parseDateRule = (value: string | null): PublicEventDateRule => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return DATE_RULES.has(normalized as PublicEventDateRule)
+    ? normalized as PublicEventDateRule
+    : 'all';
+};
+
+const parsePositiveIntegerParam = (value: string | null, fallback: number, max?: number): number => {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  const normalized = Math.max(1, Math.trunc(parsed));
+  return typeof max === 'number' ? Math.min(normalized, max) : normalized;
+};
+
+const getWidgetRenderOptions = (req: NextRequest): WidgetRenderOptions => ({
+  showDateFilter: parseBooleanParam(req.nextUrl.searchParams.get('showDateFilter')),
+  showEventTypeFilter: parseBooleanParam(req.nextUrl.searchParams.get('showEventTypeFilter')),
+  dateRule: parseDateRule(req.nextUrl.searchParams.get('dateRule')),
+  dateFrom: req.nextUrl.searchParams.get('dateFrom'),
+  dateTo: req.nextUrl.searchParams.get('dateTo'),
+  eventTypes: normalizePublicEventTypes(req.nextUrl.searchParams.get('eventTypes')),
+  includeChildWeeklyEvents: parseOptionalBooleanParam(req.nextUrl.searchParams.get('includeChildWeeklyEvents'), true),
+  limit: parsePositiveIntegerParam(req.nextUrl.searchParams.get('limit'), 6, 24),
+  page: parsePositiveIntegerParam(req.nextUrl.searchParams.get('page'), 1),
+});
+
+const sectionEnabled = (requested: PublicWidgetKind, section: Exclude<PublicWidgetKind, 'all'>): boolean => (
+  requested === 'all' || requested === section
+);
+
+const getFilterEventTypes = (
+  events: PublicOrganizationEventCard[],
+  lockedEventTypes: string[],
+): string[] => {
+  const eventTypes = Array.from(new Set([
+    ...PUBLIC_EVENT_TYPES,
+    ...lockedEventTypes,
+    ...events
+      .map((event) => event.eventType.trim().toUpperCase())
+      .filter(Boolean),
+  ]));
+  return eventTypes.length ? eventTypes : [...PUBLIC_EVENT_TYPES];
+};
+
+const renderEventFilters = (
+  catalog: PublicOrganizationCatalog,
+  options: WidgetRenderOptions,
+): string => {
+  if (!options.showDateFilter && !options.showEventTypeFilter) {
+    return '';
+  }
+
+  const dateFilters = options.showDateFilter
+    ? `
+      <fieldset class="filter-group" data-filter-group="date">
+        <legend>Date</legend>
+        ${[
+        ['all', 'All dates'],
+        ['upcoming', 'Upcoming'],
+        ['today', 'Today'],
+        ['week', 'This week'],
+        ['month', 'This month'],
+      ].map(([value, label]) => `
+          <label class="filter-option">
+            <input type="radio" name="dateFilter" value="${escapeHtml(value)}" ${value === options.dateRule ? 'checked' : ''} />
+            <span>${escapeHtml(label)}</span>
+          </label>
+        `).join('')}
+      </fieldset>
+    `
+    : '';
+
+  const eventTypeFilters = options.showEventTypeFilter
+    ? `
+      <fieldset class="filter-group" data-filter-group="event-type">
+        <legend>Event type</legend>
+        ${getFilterEventTypes(catalog.events, options.eventTypes).map((eventType) => {
+          const checked = options.eventTypes.length === 0 || options.eventTypes.includes(eventType);
+          return `
+          <label class="filter-option">
+            <input type="checkbox" name="eventTypeFilter" value="${escapeHtml(eventType)}" ${checked ? 'checked' : ''} />
+            <span>${escapeHtml(formatPublicEventTypeLabel(eventType))}</span>
+          </label>
+        `;
+        }).join('')}
+      </fieldset>
+    `
+    : '';
+
+  return `<aside class="filters" aria-label="Event filters">${dateFilters}${eventTypeFilters}</aside>`;
+};
+
+const renderEventPagination = (pageInfo: PublicPaginationInfo | undefined): string => {
+  if (!pageInfo || (!pageInfo.hasPrevious && !pageInfo.hasNext)) {
+    return '';
+  }
+
+  return `
+    <nav class="widget-pagination" aria-label="Event pages">
+      <button type="button" data-widget-page="${Math.max(1, pageInfo.page - 1)}" ${pageInfo.hasPrevious ? '' : 'disabled'}>
+        Previous
+      </button>
+      <span>Page ${escapeHtml(pageInfo.page)}</span>
+      <button type="button" data-widget-page="${pageInfo.page + 1}" ${pageInfo.hasNext ? '' : 'disabled'}>
+        Next
+      </button>
+    </nav>
+  `;
+};
+
+const renderEvents = (catalog: PublicOrganizationCatalog, options: WidgetRenderOptions): string => {
+  const filters = renderEventFilters(catalog, options);
+  const pagination = renderEventPagination(catalog.eventPageInfo);
+  if (!catalog.events.length) {
+    return `
+      <div class="${filters ? 'event-layout' : ''}">
+        ${filters}
+        <div>
+          <p class="empty">${filters ? 'No events match these filters.' : 'No public events are open right now.'}</p>
+          ${pagination}
+        </div>
+      </div>
+    `;
+  }
+
+  const cards = catalog.events.map((event) => {
+    const eventType = event.eventType.trim().toUpperCase();
+    return `
+      <a
+        class="card media-card event-card"
+        href="${escapeHtml(event.detailsUrl)}"
+        target="_top"
+        rel="noopener"
+        data-event-card
+        data-event-type="${escapeHtml(eventType)}"
+        data-event-start="${escapeHtml(event.start)}"
+      >
+        <img src="${escapeHtml(event.imageUrl)}" alt="" class="media" />
+        <span class="label">${escapeHtml(event.eventTypeLabel || formatPublicEventTypeLabel(eventType))}</span>
+        <h3>${escapeHtml(event.name)}</h3>
+        <p>${escapeHtml(formatDate(event.start))} - ${escapeHtml(event.location)}</p>
+        <p>${escapeHtml(event.sportName ?? 'Sport TBD')} - ${escapeHtml(formatPrice(event.priceCents))}</p>
+        <strong>Register</strong>
+      </a>
+    `;
+  }).join('');
+
+  return `
+    <div class="${filters ? 'event-layout' : ''}">
+      ${filters}
+      <div>
+        <div class="grid event-grid" data-events-grid>${cards}</div>
+        <p class="empty" data-events-empty hidden>No events match these filters.</p>
+        ${pagination}
+      </div>
+    </div>
+  `;
+};
+
+const renderTeams = (catalog: PublicOrganizationCatalog): string => {
+  if (!catalog.teams.length) {
+    return '<p class="empty">No public teams are listed yet.</p>';
+  }
+  return catalog.teams.map((team) => `
+    <article class="card media-card">
+      <img src="${escapeHtml(team.imageUrl)}" alt="" class="media" />
+      <span class="label">${escapeHtml(team.sport ?? 'Team')}</span>
+      <h3>${escapeHtml(team.name)}</h3>
+      <p>${escapeHtml(team.division ?? 'Open')}</p>
+    </article>
+  `).join('');
+};
+
+const renderRentals = (catalog: PublicOrganizationCatalog): string => {
+  if (!catalog.rentals.length) {
+    return '<p class="empty">No public rentals are listed yet.</p>';
+  }
+  return catalog.rentals.map((rental) => `
+    <a class="card" href="${escapeHtml(rental.detailsUrl)}" target="_top" rel="noopener">
+      <span class="label">Rental</span>
+      <h3>${escapeHtml(rental.fieldName)}</h3>
+      <p>${escapeHtml(rental.location ?? 'Location TBD')}</p>
+      <p>${escapeHtml(formatDate(rental.start))} - ${escapeHtml(formatPrice(rental.priceCents))}</p>
+      <strong>Book rental</strong>
+    </a>
+  `).join('');
+};
+
+const renderProducts = (catalog: PublicOrganizationCatalog): string => {
+  if (!catalog.products.length) {
+    return '<p class="empty">No public products are listed yet.</p>';
+  }
+  return catalog.products.map((product) => `
+    <a class="card" href="${escapeHtml(product.detailsUrl)}" target="_top" rel="noopener">
+      <span class="label">${escapeHtml(product.period.toLowerCase())}</span>
+      <h3>${escapeHtml(product.name)}</h3>
+      ${product.description ? `<p>${escapeHtml(product.description)}</p>` : ''}
+      <p>${escapeHtml(formatPrice(product.priceCents))}</p>
+      <strong>Buy now</strong>
+    </a>
+  `).join('');
+};
+
+const renderSection = (title: string, body: string): string => `
+  <section>
+    <div class="section-heading">
+      <h2>${escapeHtml(title)}</h2>
+    </div>
+    ${body.includes('data-events-grid') || body.includes('event-layout') ? body : `<div class="grid">${body}</div>`}
+  </section>
+`;
+
+const renderWidgetHtml = (
+  catalog: PublicOrganizationCatalog,
+  kind: PublicWidgetKind,
+  options: WidgetRenderOptions,
+): string => {
+  const { organization } = catalog;
+  const sections = [
+    sectionEnabled(kind, 'events') ? renderSection('Events', renderEvents(catalog, options)) : '',
+    sectionEnabled(kind, 'teams') ? renderSection('Teams', renderTeams(catalog)) : '',
+    sectionEnabled(kind, 'rentals') ? renderSection('Rentals', renderRentals(catalog)) : '',
+    sectionEnabled(kind, 'products') ? renderSection('Products', renderProducts(catalog)) : '',
+  ].filter(Boolean).join('');
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <base target="_top" />
+  <title>${escapeHtml(organization.name)} on BracketIQ</title>
+  <style>
+    :root { --primary: ${escapeHtml(organization.brandPrimaryColor)}; --accent: ${escapeHtml(organization.brandAccentColor)}; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17211d; background: #f7faf8; }
+    .wrap { padding: 18px; }
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+    .logo { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: white; border: 1px solid #d7e3dd; }
+    h1 { margin: 0; font-size: clamp(1.3rem, 4vw, 2rem); line-height: 1.05; letter-spacing: 0; }
+    .intro { margin: 4px 0 0; color: #53645d; line-height: 1.45; }
+    section { padding: 18px 0; border-top: 1px solid #dbe6df; }
+    .section-heading { margin-bottom: 12px; }
+    h2 { margin: 0; font-size: 1.1rem; letter-spacing: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .event-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 500px)); justify-content: start; align-items: stretch; }
+    .event-layout { display: grid; grid-template-columns: minmax(150px, 190px) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .filters { display: grid; gap: 12px; padding: 12px; border: 1px solid #d7e3dd; border-radius: 8px; background: white; }
+    .filter-group { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+    .filter-group legend { margin-bottom: 2px; color: #17211d; font-size: 0.82rem; font-weight: 800; }
+    .filter-option { display: flex; align-items: center; gap: 8px; color: #53645d; font-size: 0.86rem; line-height: 1.35; }
+    .filter-option input { width: 16px; height: 16px; accent-color: var(--primary); }
+    .widget-pagination { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 14px; }
+    .widget-pagination button { min-height: 38px; border: 1px solid #c8d8d0; border-radius: 8px; padding: 0 14px; background: white; color: #17211d; font: inherit; font-weight: 700; cursor: pointer; }
+    .widget-pagination button:not(:disabled):hover { border-color: var(--primary); color: var(--primary); }
+    .widget-pagination button:disabled { cursor: not-allowed; opacity: 0.5; }
+    .widget-pagination span { color: #53645d; font-size: 0.9rem; font-weight: 700; }
+    .card { display: flex; min-height: 100%; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid #d7e3dd; border-radius: 8px; background: white; color: inherit; text-decoration: none; }
+    .card[hidden] { display: none; }
+    .media-card { padding: 0; overflow: hidden; }
+    .media-card > :not(.media) { margin-left: 14px; margin-right: 14px; }
+    .media-card strong { margin-bottom: 14px; }
+    .media { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #e8f0ec; }
+    .label { width: fit-content; border-radius: 8px; padding: 3px 8px; background: color-mix(in srgb, var(--primary) 12%, white); color: var(--primary); font-size: 0.76rem; font-weight: 800; }
+    h3 { margin: 0; font-size: 1rem; line-height: 1.25; letter-spacing: 0; }
+    p { margin: 0; color: #53645d; line-height: 1.45; }
+    strong { margin-top: auto; color: var(--primary); }
+    .empty { grid-column: 1 / -1; }
+    .empty[hidden] { display: none; }
+    .brand-link { color: inherit; text-decoration: none; }
+    @media (max-width: 720px) {
+      .event-layout { grid-template-columns: 1fr; }
+      .event-grid { grid-template-columns: 1fr; }
+      .filters { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header>
+      <img src="${escapeHtml(organization.logoUrl)}" alt="" class="logo" />
+      <div>
+        <a class="brand-link" href="/o/${escapeHtml(organization.slug)}" target="_top" rel="noopener"><h1>${escapeHtml(organization.name)}</h1></a>
+        <p class="intro">${escapeHtml(organization.publicIntroText)}</p>
+      </div>
+    </header>
+    ${sections}
+  </main>
+  <script>
+    const postHeight = () => {
+      parent.postMessage({ type: 'bracketiq:widget-height', height: document.documentElement.scrollHeight }, '*');
+    };
+
+    const getDateRange = (filterValue) => {
+      const now = new Date();
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      if (filterValue === 'today') {
+        return { start, end: new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1) };
+      }
+      if (filterValue === 'week') {
+        return { start, end: new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7) };
+      }
+      if (filterValue === 'month') {
+        return { start, end: new Date(start.getFullYear(), start.getMonth() + 1, start.getDate()) };
+      }
+      if (filterValue === 'upcoming') {
+        return { start, end: null };
+      }
+      return null;
+    };
+
+    const eventMatchesDate = (card, filterValue) => {
+      const range = getDateRange(filterValue);
+      if (!range) return true;
+      const start = new Date(card.dataset.eventStart || '');
+      if (Number.isNaN(start.getTime())) return false;
+      if (range.start && start < range.start) return false;
+      if (range.end && start >= range.end) return false;
+      return true;
+    };
+
+    const applyEventFilters = () => {
+      const cards = Array.from(document.querySelectorAll('[data-event-card]'));
+      if (!cards.length) return;
+      const selectedDate = document.querySelector('input[name="dateFilter"]:checked')?.value || 'all';
+      const checkedTypes = Array.from(document.querySelectorAll('input[name="eventTypeFilter"]:checked'))
+        .map((input) => input.value);
+      const hasTypeControls = document.querySelectorAll('input[name="eventTypeFilter"]').length > 0;
+      let visibleCount = 0;
+      cards.forEach((card) => {
+        const matchesType = !hasTypeControls || checkedTypes.includes(card.dataset.eventType || '');
+        const matchesDate = eventMatchesDate(card, selectedDate);
+        const isVisible = matchesType && matchesDate;
+        card.hidden = !isVisible;
+        if (isVisible) visibleCount += 1;
+      });
+      const empty = document.querySelector('[data-events-empty]');
+      if (empty) empty.hidden = visibleCount > 0;
+      postHeight();
+    };
+
+    const refetchEventsFromFilters = () => {
+      const url = new URL(window.location.href);
+      const selectedDate = document.querySelector('input[name="dateFilter"]:checked')?.value;
+      if (selectedDate) {
+        url.searchParams.set('dateRule', selectedDate);
+        url.searchParams.delete('dateFrom');
+        url.searchParams.delete('dateTo');
+      }
+
+      const typeControls = Array.from(document.querySelectorAll('input[name="eventTypeFilter"]'));
+      if (typeControls.length > 0) {
+        const selectedTypes = typeControls
+          .filter((input) => input.checked)
+          .map((input) => input.value)
+          .filter(Boolean);
+        if (!selectedTypes.length) {
+          applyEventFilters();
+          return;
+        }
+        url.searchParams.set('eventTypes', selectedTypes.join(','));
+      }
+
+      url.searchParams.set('page', '1');
+      window.location.assign(url.toString());
+    };
+
+    document.querySelectorAll('[data-widget-page]').forEach((button) => {
+      button.addEventListener('click', () => {
+        if (button.disabled) return;
+        const page = button.getAttribute('data-widget-page');
+        if (!page) return;
+        const url = new URL(window.location.href);
+        url.searchParams.set('page', page);
+        window.location.assign(url.toString());
+      });
+    });
+
+    document.querySelectorAll('input[name="dateFilter"], input[name="eventTypeFilter"]').forEach((input) => {
+      input.addEventListener('change', refetchEventsFromFilters);
+    });
+    addEventListener('load', postHeight);
+    new ResizeObserver(postHeight).observe(document.body);
+    applyEventFilters();
+    setTimeout(postHeight, 250);
+  </script>
+</body>
+</html>`;
+};
+
+export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string; kind: string }> }) {
+  const { slug, kind: rawKind } = await params;
+  const kind = rawKind as PublicWidgetKind;
+  if (!WIDGET_KINDS.has(kind)) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  const widgetOptions = getWidgetRenderOptions(req);
+  const catalog = await getPublicOrganizationCatalog(slug, {
+    surface: 'widget',
+    limit: widgetOptions.limit,
+    eventPage: widgetOptions.page,
+    eventTypes: widgetOptions.eventTypes,
+    dateRule: widgetOptions.dateRule,
+    dateFrom: widgetOptions.dateFrom,
+    dateTo: widgetOptions.dateTo,
+    includeChildWeeklyEvents: widgetOptions.includeChildWeeklyEvents,
+  });
+  if (!catalog) {
+    return NextResponse.json({ error: 'Widget not available' }, { status: 404 });
+  }
+
+  return new NextResponse(renderWidgetHtml(catalog, kind, widgetOptions), {
+    status: 200,
+    headers: {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Cache-Control': 'no-store',
+    },
+  });
+}

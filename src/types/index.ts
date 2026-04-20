@@ -721,6 +721,15 @@ export interface Organization {
   staffEmailsByUserId?: Record<string, string>;
   productIds?: string[];
   teamIds?: string[];
+  publicSlug?: string | null;
+  publicPageEnabled?: boolean;
+  publicWidgetsEnabled?: boolean;
+  brandPrimaryColor?: string | null;
+  brandAccentColor?: string | null;
+  publicHeadline?: string | null;
+  publicIntroText?: string | null;
+  embedAllowedDomains?: string[];
+  publicCompletionRedirectUrl?: string | null;
   viewerCanManageOrganization?: boolean;
   viewerCanAccessUsers?: boolean;
   $createdAt?: string;

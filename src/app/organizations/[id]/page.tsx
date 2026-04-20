@@ -60,6 +60,7 @@ import {
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import { buildOrganizationTabs, type OrganizationTab } from './organizationTabs';
 import { buildOrganizationUsersSubtitle } from './organizationUsersCopy';
+import OrganizationPublicSettingsPanel from './OrganizationPublicSettingsPanel';
 
 export default function OrganizationDetailPage() {
   return (
@@ -2726,6 +2727,18 @@ function OrganizationDetailContent() {
 
             {isOwner && activeTab === 'refunds' && org && (
               <RefundRequestsList organizationId={org.$id} />
+            )}
+
+            {isOwner && activeTab === 'publicPage' && org && (
+              <OrganizationPublicSettingsPanel
+                organization={org}
+                onUpdated={async (updatedOrg) => {
+                  setOrg(updatedOrg);
+                  if (id) {
+                    await loadOrg(id);
+                  }
+                }}
+              />
             )}
 
             {activeTab === 'store' && org && (

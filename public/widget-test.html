@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BracketIQ Widget Test</title>
+    <style>
+      :root {
+        color: #111827;
+        font-family: Arial, Helvetica, sans-serif;
+      }
+
+      body {
+        margin: 0;
+        background: #f4f7f5;
+      }
+
+      main {
+        margin: 0 auto;
+        max-width: 1080px;
+        padding: 32px 20px 48px;
+      }
+
+      h1 {
+        font-size: 32px;
+        line-height: 1.1;
+        margin: 0 0 8px;
+      }
+
+      p {
+        color: #4b5563;
+        line-height: 1.55;
+        margin: 0 0 18px;
+      }
+
+      form {
+        align-items: end;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        margin: 24px 0;
+      }
+
+      label {
+        color: #374151;
+        display: grid;
+        font-size: 13px;
+        font-weight: 700;
+        gap: 6px;
+      }
+
+      .checkbox-label {
+        align-items: center;
+        display: flex;
+        flex-direction: row;
+        gap: 8px;
+        min-height: 42px;
+      }
+
+      .checkbox-label input {
+        min-height: auto;
+        width: auto;
+      }
+
+      input,
+      select,
+      button {
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font: inherit;
+        min-height: 42px;
+        padding: 8px 10px;
+      }
+
+      button {
+        background: #0f766e;
+        border-color: #0f766e;
+        color: white;
+        cursor: pointer;
+        font-weight: 700;
+      }
+
+      section {
+        background: white;
+        border: 1px solid #dbe4de;
+        border-radius: 8px;
+        margin-top: 20px;
+        padding: 18px;
+      }
+
+      code,
+      pre {
+        background: #eef2ef;
+        border-radius: 8px;
+        color: #111827;
+        font-family: Consolas, Monaco, monospace;
+        font-size: 13px;
+      }
+
+      pre {
+        overflow-x: auto;
+        padding: 12px;
+        white-space: pre-wrap;
+      }
+
+      .preview {
+        border: 1px dashed #94a3b8;
+        border-radius: 8px;
+        padding: 12px;
+      }
+
+      @media (max-width: 760px) {
+        form {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>BracketIQ Widget Test</h1>
+      <p>
+        Use this page to test the same script and iframe snippets clients can paste
+        into Weebly, WordPress, Squarespace, or similar site builders.
+      </p>
+
+      <form id="controls">
+        <label>
+          Organization slug
+          <input id="org" name="org" placeholder="scsoccer" required />
+        </label>
+        <label>
+          Widget kind
+          <select id="kind" name="kind">
+            <option value="all">All</option>
+            <option value="events">Events</option>
+            <option value="teams">Teams</option>
+            <option value="rentals">Rentals</option>
+            <option value="products">Products</option>
+          </select>
+        </label>
+        <label>
+          Limit
+          <input id="limit" name="limit" inputmode="numeric" min="1" max="24" type="number" value="6" />
+        </label>
+        <label>
+          Date rule
+          <select id="date-rule" name="dateRule">
+            <option value="all">All dates</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="today">Starts today</option>
+          </select>
+        </label>
+        <label>
+          Start date
+          <input id="date-from" name="dateFrom" type="date" />
+        </label>
+        <label>
+          End date
+          <input id="date-to" name="dateTo" type="date" />
+        </label>
+        <label>
+          Event types
+          <input id="event-types" name="eventTypes" placeholder="LEAGUE,TOURNAMENT" />
+        </label>
+        <label class="checkbox-label">
+          <input id="show-date-filter" name="showDateFilter" type="checkbox" />
+          Show date filter
+        </label>
+        <label class="checkbox-label">
+          <input id="show-event-type-filter" name="showEventTypeFilter" type="checkbox" />
+          Show event type filter
+        </label>
+        <label class="checkbox-label">
+          <input id="include-child-weekly-events" name="includeChildWeeklyEvents" type="checkbox" checked />
+          Include child weekly events
+        </label>
+        <button type="submit">Load Widget</button>
+      </form>
+
+      <section>
+        <h2>Script Embed</h2>
+        <pre id="script-snippet"></pre>
+        <div class="preview" id="script-preview"></div>
+      </section>
+
+      <section>
+        <h2>Iframe Embed</h2>
+        <pre id="iframe-snippet"></pre>
+        <div class="preview" id="iframe-preview"></div>
+      </section>
+    </main>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const controls = document.querySelector('#controls');
+      const orgInput = document.querySelector('#org');
+      const kindInput = document.querySelector('#kind');
+      const limitInput = document.querySelector('#limit');
+      const dateRuleInput = document.querySelector('#date-rule');
+      const dateFromInput = document.querySelector('#date-from');
+      const dateToInput = document.querySelector('#date-to');
+      const eventTypesInput = document.querySelector('#event-types');
+      const showDateFilterInput = document.querySelector('#show-date-filter');
+      const showEventTypeFilterInput = document.querySelector('#show-event-type-filter');
+      const includeChildWeeklyEventsInput = document.querySelector('#include-child-weekly-events');
+      const scriptSnippet = document.querySelector('#script-snippet');
+      const iframeSnippet = document.querySelector('#iframe-snippet');
+      const scriptPreview = document.querySelector('#script-preview');
+      const iframePreview = document.querySelector('#iframe-preview');
+
+      orgInput.value = params.get('org') || '';
+      kindInput.value = params.get('kind') || 'all';
+      limitInput.value = params.get('limit') || '6';
+      dateRuleInput.value = params.get('dateRule') || 'all';
+      dateFromInput.value = params.get('dateFrom') || '';
+      dateToInput.value = params.get('dateTo') || '';
+      eventTypesInput.value = params.get('eventTypes') || '';
+      showDateFilterInput.checked = ['1', 'true', 'yes', 'on'].includes((params.get('showDateFilter') || '').toLowerCase());
+      showEventTypeFilterInput.checked = ['1', 'true', 'yes', 'on'].includes((params.get('showEventTypeFilter') || '').toLowerCase());
+      includeChildWeeklyEventsInput.checked = !['0', 'false', 'no', 'off'].includes((params.get('includeChildWeeklyEvents') || '').toLowerCase());
+
+      const escapeHtml = (value) => value
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+
+      const render = () => {
+        const origin = window.location.origin;
+        const org = orgInput.value.trim().toLowerCase();
+        const kind = kindInput.value;
+        const limit = limitInput.value || '6';
+        const dateRule = dateRuleInput.value || 'all';
+        const dateFrom = dateFromInput.value;
+        const dateTo = dateToInput.value;
+        const eventTypes = eventTypesInput.value.trim().toUpperCase();
+        const showDateFilter = showDateFilterInput.checked;
+        const showEventTypeFilter = showEventTypeFilterInput.checked;
+        const includeChildWeeklyEvents = includeChildWeeklyEventsInput.checked;
+
+        if (!org) {
+          scriptPreview.innerHTML = '<p>Enter an enabled organization slug.</p>';
+          iframePreview.innerHTML = '<p>Enter an enabled organization slug.</p>';
+          scriptSnippet.textContent = '';
+          iframeSnippet.textContent = '';
+          return;
+        }
+
+        const query = new URLSearchParams();
+        query.set('limit', limit);
+        if (dateFrom) query.set('dateFrom', dateFrom);
+        if (dateTo) query.set('dateTo', dateTo);
+        if (dateRule !== 'all' && !dateFrom && !dateTo) query.set('dateRule', dateRule);
+        if (eventTypes) query.set('eventTypes', eventTypes);
+        if (showDateFilter) query.set('showDateFilter', '1');
+        if (showEventTypeFilter) query.set('showEventTypeFilter', '1');
+        if (!includeChildWeeklyEvents) query.set('includeChildWeeklyEvents', '0');
+
+        const dataAttrs = [
+          `data-bracketiq-widget`,
+          `data-org="${escapeHtml(org)}"`,
+          `data-kind="${escapeHtml(kind)}"`,
+          `data-limit="${escapeHtml(limit)}"`,
+          showDateFilter ? `data-show-date-filter="1"` : '',
+          showEventTypeFilter ? `data-show-event-type-filter="1"` : '',
+          dateFrom ? `data-date-from="${escapeHtml(dateFrom)}"` : '',
+          dateTo ? `data-date-to="${escapeHtml(dateTo)}"` : '',
+          dateRule !== 'all' && !dateFrom && !dateTo ? `data-date-rule="${escapeHtml(dateRule)}"` : '',
+          eventTypes ? `data-event-types="${escapeHtml(eventTypes)}"` : '',
+          !includeChildWeeklyEvents ? `data-include-child-weekly-events="0"` : '',
+        ].filter(Boolean).join(' ');
+
+        const scriptCode = `<div ${dataAttrs}></div>\n<script async src="${origin}/embed.js"><\\/script>`;
+        const iframeCode = `<iframe src="${origin}/embed/${encodeURIComponent(org)}/${encodeURIComponent(kind)}?${query.toString()}" style="border:0;width:100%;min-height:420px;" loading="lazy"></iframe>`;
+
+        scriptSnippet.textContent = scriptCode;
+        iframeSnippet.textContent = iframeCode;
+        scriptPreview.innerHTML = `<div ${dataAttrs}></div>`;
+        iframePreview.innerHTML = iframeCode;
+
+        const existingScript = document.querySelector('script[data-bracketiq-test-loader]');
+        if (existingScript) {
+          existingScript.remove();
+        }
+        const script = document.createElement('script');
+        script.async = true;
+        script.dataset.bracketiqTestLoader = 'true';
+        script.src = `${origin}/embed.js?cacheBust=${Date.now()}`;
+        document.body.appendChild(script);
+
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set('org', org);
+        nextUrl.searchParams.set('kind', kind);
+        nextUrl.searchParams.set('limit', limit);
+        if (dateFrom) {
+          nextUrl.searchParams.set('dateFrom', dateFrom);
+        } else {
+          nextUrl.searchParams.delete('dateFrom');
+        }
+        if (dateTo) {
+          nextUrl.searchParams.set('dateTo', dateTo);
+        } else {
+          nextUrl.searchParams.delete('dateTo');
+        }
+        nextUrl.searchParams.set('dateRule', dateFrom || dateTo ? 'all' : dateRule);
+        if (eventTypes) {
+          nextUrl.searchParams.set('eventTypes', eventTypes);
+        } else {
+          nextUrl.searchParams.delete('eventTypes');
+        }
+        if (showDateFilter) {
+          nextUrl.searchParams.set('showDateFilter', '1');
+        } else {
+          nextUrl.searchParams.delete('showDateFilter');
+        }
+        if (showEventTypeFilter) {
+          nextUrl.searchParams.set('showEventTypeFilter', '1');
+        } else {
+          nextUrl.searchParams.delete('showEventTypeFilter');
+        }
+        if (!includeChildWeeklyEvents) {
+          nextUrl.searchParams.set('includeChildWeeklyEvents', '0');
+        } else {
+          nextUrl.searchParams.delete('includeChildWeeklyEvents');
+        }
+        window.history.replaceState(null, '', nextUrl);
+      };
+
+      controls.addEventListener('submit', (event) => {
+        event.preventDefault();
+        render();
+      });
+
+      render();
+    </script>
+  </body>
+</html>

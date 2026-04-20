@@ -801,6 +801,15 @@ model Organizations {
   coordinates                 Json?
   productIds                  String[]
   teamIds                     String[]
+  publicSlug                  String?                                  @unique
+  publicPageEnabled           Boolean                                  @default(false)
+  publicWidgetsEnabled        Boolean                                  @default(false)
+  brandPrimaryColor           String?
+  brandAccentColor            String?
+  publicHeadline              String?
+  publicIntroText             String?
+  embedAllowedDomains         String[]                                 @default([])
+  publicCompletionRedirectUrl String?
 
   @@index([verificationStatus])
   @@index([verificationReviewStatus])

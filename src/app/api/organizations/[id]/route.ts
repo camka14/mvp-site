@@ -5,6 +5,13 @@ import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { canAccessOrganizationUsers } from '@/server/organizationUsersAccess';
+import {
+  normalizeEmbedAllowedDomains,
+  normalizePublicColor,
+  normalizePublicRedirectUrl,
+  normalizePublicSlug,
+  normalizePublicText,
+} from '@/server/organizationPublicSettings';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -24,6 +31,15 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'productIds',
   'teamIds',
   'ownerId',
+  'publicSlug',
+  'publicPageEnabled',
+  'publicWidgetsEnabled',
+  'brandPrimaryColor',
+  'brandAccentColor',
+  'publicHeadline',
+  'publicIntroText',
+  'embedAllowedDomains',
+  'publicCompletionRedirectUrl',
 ]);
 const ORGANIZATION_HARD_IMMUTABLE_FIELDS = new Set<string>([
   'id',
@@ -171,7 +187,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
-  const existing = await prisma.organizations.findUnique({ where: { id }, select: { id: true, ownerId: true } });
+  const existing = await (prisma as any).organizations.findUnique({
+    where: { id },
+    select: { id: true, ownerId: true, publicSlug: true },
+  });
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
@@ -216,6 +235,57 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (Object.prototype.hasOwnProperty.call(updateData, 'sports')) {
     updateData.sports = sanitizeStringArray(updateData.sports);
+  }
+  try {
+    if (Object.prototype.hasOwnProperty.call(updateData, 'publicSlug')) {
+      updateData.publicSlug = normalizePublicSlug(updateData.publicSlug);
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'brandPrimaryColor')) {
+      updateData.brandPrimaryColor = normalizePublicColor(updateData.brandPrimaryColor, 'Primary brand color');
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'brandAccentColor')) {
+      updateData.brandAccentColor = normalizePublicColor(updateData.brandAccentColor, 'Accent brand color');
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'publicHeadline')) {
+      updateData.publicHeadline = normalizePublicText(updateData.publicHeadline, 'Public headline', 120);
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'publicIntroText')) {
+      updateData.publicIntroText = normalizePublicText(updateData.publicIntroText, 'Public intro text', 600);
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'embedAllowedDomains')) {
+      updateData.embedAllowedDomains = normalizeEmbedAllowedDomains(updateData.embedAllowedDomains);
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'publicCompletionRedirectUrl')) {
+      updateData.publicCompletionRedirectUrl = normalizePublicRedirectUrl(updateData.publicCompletionRedirectUrl);
+    }
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Invalid public organization settings.' },
+      { status: 400 },
+    );
+  }
+
+  const nextPublicSlug = Object.prototype.hasOwnProperty.call(updateData, 'publicSlug')
+    ? updateData.publicSlug
+    : existing.publicSlug;
+  const enablesPublicSurface = updateData.publicPageEnabled === true || updateData.publicWidgetsEnabled === true;
+  if (enablesPublicSurface && !(typeof nextPublicSlug === 'string' && nextPublicSlug.trim().length > 0)) {
+    return NextResponse.json(
+      { error: 'Set a public slug before enabling the public page or widgets.' },
+      { status: 400 },
+    );
+  }
+  if (typeof updateData.publicSlug === 'string') {
+    const slugOwner = await (prisma as any).organizations.findFirst({
+      where: {
+        publicSlug: updateData.publicSlug,
+        id: { not: id },
+      },
+      select: { id: true },
+    });
+    if (slugOwner) {
+      return NextResponse.json({ error: 'Public slug is already in use.' }, { status: 409 });
+    }
   }
   updateData.updatedAt = new Date();
 

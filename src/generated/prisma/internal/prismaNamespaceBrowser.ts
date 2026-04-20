@@ -715,7 +715,16 @@ export const OrganizationsScalarFieldEnum = {
   verificationReviewUpdatedAt: 'verificationReviewUpdatedAt',
   coordinates: 'coordinates',
   productIds: 'productIds',
-  teamIds: 'teamIds'
+  teamIds: 'teamIds',
+  publicSlug: 'publicSlug',
+  publicPageEnabled: 'publicPageEnabled',
+  publicWidgetsEnabled: 'publicWidgetsEnabled',
+  brandPrimaryColor: 'brandPrimaryColor',
+  brandAccentColor: 'brandAccentColor',
+  publicHeadline: 'publicHeadline',
+  publicIntroText: 'publicIntroText',
+  embedAllowedDomains: 'embedAllowedDomains',
+  publicCompletionRedirectUrl: 'publicCompletionRedirectUrl'
 } as const
 
 export type OrganizationsScalarFieldEnum = (typeof OrganizationsScalarFieldEnum)[keyof typeof OrganizationsScalarFieldEnum]

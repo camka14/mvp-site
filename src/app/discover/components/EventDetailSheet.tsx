@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
-import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress } from '@mantine/core';
+import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import {
     BillingAddress,
@@ -20,10 +20,12 @@ import {
     formatPrice,
 } from '@/types';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
+import { ApiError, authService } from '@/lib/auth';
 import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
+import { navigateToPublicCompletion } from '@/lib/publicCompletionRedirect';
 import { billService } from '@/lib/billService';
 import { createId } from '@/lib/id';
 import { boldsignService, SignStep } from '@/lib/boldsignService';
@@ -63,6 +65,10 @@ interface EventDetailSheetProps {
     renderInline?: boolean;
     selectedOccurrence?: WeeklyOccurrenceSelection | null;
     onWeeklyOccurrenceChange?: (occurrence: { slotId: string; occurrenceDate: string } | null) => void;
+    publicCompletion?: {
+        slug: string;
+        redirectUrl?: string | null;
+    };
 }
 
 const SHEET_POPOVER_Z_INDEX = 1800;
@@ -97,6 +103,26 @@ type PendingEventCheckoutState = {
     selection?: DivisionRegistrationSelection;
 };
 
+type AuthModalMode = 'login' | 'signup';
+
+type AuthModalFormState = {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    userName: string;
+    dateOfBirth: string;
+};
+
+const emptyAuthModalForm: AuthModalFormState = {
+    email: '',
+    password: '',
+    firstName: '',
+    lastName: '',
+    userName: '',
+    dateOfBirth: '',
+};
+
 const isChildJoinIntent = (intent: JoinIntent): boolean => (
     intent.mode === 'child' || intent.mode === 'child_free_agent' || intent.mode === 'child_waitlist'
 );
@@ -113,8 +139,15 @@ const dedupeSignSteps = (steps: SignStep[], fallbackSignerContext: 'participant'
     });
 };
 
-const parseDateValue = (value?: string | null): Date | null => {
+const parseDateValue = (value?: string | Date | number | null): Date | null => {
     if (!value) return null;
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : new Date(value.getTime());
+    }
+    if (typeof value === 'number') {
+        const parsedNumber = new Date(value);
+        return Number.isNaN(parsedNumber.getTime()) ? null : parsedNumber;
+    }
     const trimmed = value.trim();
     if (!trimmed) return null;
     if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -841,8 +874,9 @@ export default function EventDetailSheet({
     renderInline = false,
     selectedOccurrence = null,
     onWeeklyOccurrenceChange,
+    publicCompletion,
 }: EventDetailSheetProps) {
-    const { user, authUser } = useApp();
+    const { user, authUser, refreshSession } = useApp();
     const router = useRouter();
     const [detailedEvent, setDetailedEvent] = useState<Event | null>(null);
     const [players, setPlayers] = useState<UserData[]>([]);
@@ -886,6 +920,15 @@ export default function EventDetailSheet({
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
     const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
     const [paymentPlanPreview, setPaymentPlanPreview] = useState<PaymentPlanPreviewState | null>(null);
+    const [showAuthModal, setShowAuthModal] = useState(false);
+    const [authModalMode, setAuthModalMode] = useState<AuthModalMode>('login');
+    const [authModalForm, setAuthModalForm] = useState<AuthModalFormState>(emptyAuthModalForm);
+    const [authModalLoading, setAuthModalLoading] = useState(false);
+    const [authModalError, setAuthModalError] = useState('');
+    const [authVerificationEmail, setAuthVerificationEmail] = useState('');
+    const [authVerificationMessage, setAuthVerificationMessage] = useState('');
+    const [authVerificationMessageType, setAuthVerificationMessageType] = useState<'info' | 'success'>('info');
+    const [authResendingVerification, setAuthResendingVerification] = useState(false);
     const [hostUser, setHostUser] = useState<UserData | null>(null);
     const eventRef = React.useRef<Event | null>(event);
 
@@ -921,12 +964,18 @@ export default function EventDetailSheet({
         ),
         [currentEvent, normalizedSelectedOccurrence, weeklySessionOptions],
     );
-    const selectedWeeklyOccurrence = selectedWeeklyOccurrenceOption
-        ? {
-            slotId: selectedWeeklyOccurrenceOption.slotId,
-            occurrenceDate: selectedWeeklyOccurrenceOption.occurrenceDate,
-        }
-        : undefined;
+    const selectedWeeklyOccurrence = React.useMemo<WeeklyOccurrenceSelection | undefined>(
+        () => {
+            if (!selectedWeeklyOccurrenceOption) {
+                return undefined;
+            }
+            return {
+                slotId: selectedWeeklyOccurrenceOption.slotId,
+                occurrenceDate: selectedWeeklyOccurrenceOption.occurrenceDate,
+            };
+        },
+        [selectedWeeklyOccurrenceOption],
+    );
     const weeklySelectionRequired = isWeeklyParentEvent && !selectedWeeklyOccurrence;
     const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
@@ -1247,6 +1296,103 @@ export default function EventDetailSheet({
     const isFreeForUser = isFreeEvent || shouldBypassHostPayment;
 
     const isActive = renderInline ? Boolean(isOpen) : isOpen;
+    const todayForDob = new Date();
+    const maxAuthDob = `${todayForDob.getFullYear()}-${String(todayForDob.getMonth() + 1).padStart(2, '0')}-${String(todayForDob.getDate()).padStart(2, '0')}`;
+
+    const resetAuthModalFeedback = useCallback(() => {
+        setAuthModalError('');
+        setAuthVerificationEmail('');
+        setAuthVerificationMessage('');
+    }, []);
+
+    const openAuthModal = useCallback(() => {
+        setAuthModalMode('login');
+        resetAuthModalFeedback();
+        setShowAuthModal(true);
+    }, [resetAuthModalFeedback]);
+
+    const handleAuthModalInputChange = useCallback((field: keyof AuthModalFormState, value: string) => {
+        setAuthModalForm((previous) => ({ ...previous, [field]: value }));
+    }, []);
+
+    const handleAuthModalSubmit = useCallback(async (submitEvent: React.FormEvent<HTMLFormElement>) => {
+        submitEvent.preventDefault();
+        setAuthModalLoading(true);
+        resetAuthModalFeedback();
+
+        try {
+            if (
+                authModalMode === 'signup'
+                && (!authModalForm.firstName || !authModalForm.lastName || !authModalForm.userName || !authModalForm.dateOfBirth)
+            ) {
+                throw new Error('Please provide first name, last name, username, and date of birth.');
+            }
+
+            const authResult = authModalMode === 'login'
+                ? await authService.login(authModalForm.email, authModalForm.password)
+                : await authService.createAccount(
+                    authModalForm.email,
+                    authModalForm.password,
+                    authModalForm.firstName,
+                    authModalForm.lastName,
+                    authModalForm.userName,
+                    authModalForm.dateOfBirth,
+                );
+
+            await refreshSession();
+            setShowAuthModal(false);
+            setAuthModalForm(emptyAuthModalForm);
+            setJoinError(null);
+
+            if (authResult.requiresProfileCompletion) {
+                const nextPath = typeof window !== 'undefined'
+                    ? `${window.location.pathname}${window.location.search}${window.location.hash}`
+                    : '/discover';
+                router.push(`/complete-profile?next=${encodeURIComponent(nextPath)}`);
+                return;
+            }
+
+            setJoinNotice('Signed in. Continue registration.');
+        } catch (error) {
+            if (error instanceof ApiError && error.code === 'EMAIL_NOT_VERIFIED') {
+                const pendingEmail = error.email || authModalForm.email.trim().toLowerCase();
+                setAuthVerificationEmail(pendingEmail);
+                setAuthVerificationMessage(error.message || 'Please verify your email before signing in.');
+                setAuthVerificationMessageType('info');
+                setAuthModalError('');
+                return;
+            }
+            setAuthModalError(error instanceof Error ? error.message : 'Authentication failed.');
+        } finally {
+            setAuthModalLoading(false);
+        }
+    }, [authModalForm, authModalMode, refreshSession, resetAuthModalFeedback, router]);
+
+    const handleAuthModalResendVerification = useCallback(async () => {
+        if (!authVerificationEmail) {
+            return;
+        }
+        setAuthResendingVerification(true);
+        setAuthModalError('');
+        try {
+            await authService.resendVerification(authVerificationEmail);
+            setAuthVerificationMessage(`Verification email sent to ${authVerificationEmail}.`);
+            setAuthVerificationMessageType('info');
+        } catch (error) {
+            setAuthModalError(error instanceof Error ? error.message : 'Failed to resend verification email.');
+        } finally {
+            setAuthResendingVerification(false);
+        }
+    }, [authVerificationEmail]);
+
+    const handleAuthModalGoogle = useCallback(async () => {
+        setAuthModalError('');
+        try {
+            await authService.oauthLoginWithGoogle();
+        } catch (error) {
+            setAuthModalError(error instanceof Error ? error.message : 'Google sign-in failed. Please try again.');
+        }
+    }, []);
 
     useEffect(() => {
         if (!isActive || !currentEvent?.hostId) {
@@ -1539,7 +1685,7 @@ export default function EventDetailSheet({
         } finally {
             setIsLoadingEvent(false);
         }
-    }, [renderInline, selectedWeeklyOccurrence?.occurrenceDate, selectedWeeklyOccurrence?.slotId]);
+    }, [event, renderInline, selectedWeeklyOccurrence]);
 
     useEffect(() => {
         eventRef.current = event;
@@ -1602,7 +1748,7 @@ export default function EventDetailSheet({
             setSelectedDivisionId('');
             setSelectedDivisionTypeKey('');
         }
-    }, [event?.$id, isActive, loadEventDetails]);
+    }, [event, event?.$id, isActive, loadEventDetails]);
 
     const handleViewSchedule = (tab?: string) => {
         const eventPath = `/events/${currentEvent.$id}`;
@@ -1631,7 +1777,7 @@ export default function EventDetailSheet({
             return;
         }
         if (!user) {
-            window.location.href = '/login';
+            openAuthModal();
             return;
         }
 
@@ -1643,7 +1789,19 @@ export default function EventDetailSheet({
         });
         router.push(`/events/${currentEvent.$id}?${params.toString()}`);
         onClose();
-    }, [currentEvent, onClose, onWeeklyOccurrenceChange, router, user]);
+    }, [currentEvent, onClose, onWeeklyOccurrenceChange, openAuthModal, router, user]);
+
+    const navigateToPublicEventCompletion = useCallback(() => {
+        if (!publicCompletion?.slug) {
+            return;
+        }
+        navigateToPublicCompletion({
+            router,
+            slug: publicCompletion.slug,
+            kind: 'event',
+            redirectUrl: publicCompletion.redirectUrl,
+        });
+    }, [publicCompletion?.redirectUrl, publicCompletion?.slug, router]);
 
     const createBillForOwner = useCallback(async (ownerType: 'USER' | 'TEAM', ownerId: string) => {
         if (!currentEvent) {
@@ -1729,10 +1887,13 @@ export default function EventDetailSheet({
             }
             setJoinNotice(notices.join(' '));
             await loadEventDetails();
+            if (registrationStatus === 'active') {
+                navigateToPublicEventCompletion();
+            }
         } finally {
             setRegisteringChild(false);
         }
-    }, [currentEvent, loadEventDetails, selectedWeeklyOccurrence]);
+    }, [currentEvent, loadEventDetails, navigateToPublicEventCompletion, selectedWeeklyOccurrence]);
 
     const loadRequiredSignLinksForIntent = useCallback(async (intent: JoinIntent): Promise<SignStep[]> => {
         if (!currentEvent || !user || !authUser?.email) {
@@ -2032,6 +2193,7 @@ export default function EventDetailSheet({
             }
 
             await loadEventDetails();
+            navigateToPublicEventCompletion();
             return;
         }
 
@@ -2047,6 +2209,14 @@ export default function EventDetailSheet({
                 );
             }
             await loadEventDetails();
+            const selfRegistrationPending = Boolean(
+                shouldRegisterSelf
+                && registrationResult?.status
+                && registrationResult.status !== 'active',
+            );
+            if (!selfRegistrationPending) {
+                navigateToPublicEventCompletion();
+            }
         } else {
             await startEventCheckout({
                 event: checkoutEvent ?? currentEvent,
@@ -2062,6 +2232,7 @@ export default function EventDetailSheet({
         isDivisionSelectionMissing,
         isFreeForUser,
         loadEventDetails,
+        navigateToPublicEventCompletion,
         players.length,
         registrationByDivisionType,
         registerChildForEvent,
@@ -2925,6 +3096,7 @@ export default function EventDetailSheet({
                     if (registered) {
                         await loadEventDetails();
                         setConfirmingPurchase(false);
+                        navigateToPublicEventCompletion();
                         return;
                     }
                 } else {
@@ -2939,6 +3111,7 @@ export default function EventDetailSheet({
                         if (registered) {
                             await loadEventDetails();
                             setConfirmingPurchase(false);
+                            navigateToPublicEventCompletion();
                             return;
                         }
                     }
@@ -4172,9 +4345,12 @@ export default function EventDetailSheet({
 
                                 {!user ? (
                                     <div style={{ textAlign: 'center' }}>
-                                        <Button fullWidth color="blue" onClick={() => { window.location.href = '/login'; }}>
-                                            Sign in to join
+                                        <Button fullWidth color="blue" onClick={openAuthModal}>
+                                            Register / Login
                                         </Button>
+                                        <Text size="xs" c="dimmed" mt="xs">
+                                            Sign in or create an account to register or purchase.
+                                        </Text>
                                     </div>
                                 ) : isUserRegistered ? (
                                     <>
@@ -4719,6 +4895,119 @@ export default function EventDetailSheet({
                     emptyMessage="No free agents have listed for this event yet."
                 />
             )}
+
+            <Modal
+                opened={showAuthModal}
+                onClose={() => setShowAuthModal(false)}
+                centered
+                title={authModalMode === 'login' ? 'Sign in to register' : 'Create account'}
+                zIndex={SIGN_MODAL_Z_INDEX}
+            >
+                <form onSubmit={handleAuthModalSubmit}>
+                    <Stack gap="sm">
+                        <Text size="sm" c="dimmed">
+                            {authModalMode === 'login'
+                                ? 'Sign in to continue with registration.'
+                                : 'Create an account to continue with registration.'}
+                        </Text>
+                        {authModalMode === 'signup' && (
+                            <>
+                                <TextInput
+                                    label="First name"
+                                    value={authModalForm.firstName}
+                                    onChange={(changeEvent) => handleAuthModalInputChange('firstName', changeEvent.currentTarget.value)}
+                                    required
+                                />
+                                <TextInput
+                                    label="Last name"
+                                    value={authModalForm.lastName}
+                                    onChange={(changeEvent) => handleAuthModalInputChange('lastName', changeEvent.currentTarget.value)}
+                                    required
+                                />
+                                <TextInput
+                                    label="Username"
+                                    value={authModalForm.userName}
+                                    onChange={(changeEvent) => handleAuthModalInputChange('userName', changeEvent.currentTarget.value)}
+                                    required
+                                />
+                                <TextInput
+                                    label="Date of birth"
+                                    type="date"
+                                    value={authModalForm.dateOfBirth}
+                                    onChange={(changeEvent) => handleAuthModalInputChange('dateOfBirth', changeEvent.currentTarget.value)}
+                                    max={maxAuthDob}
+                                    required
+                                />
+                            </>
+                        )}
+                        <TextInput
+                            label="Email address"
+                            type="email"
+                            value={authModalForm.email}
+                            onChange={(changeEvent) => handleAuthModalInputChange('email', changeEvent.currentTarget.value)}
+                            required
+                        />
+                        <PasswordInput
+                            label="Password"
+                            value={authModalForm.password}
+                            onChange={(changeEvent) => handleAuthModalInputChange('password', changeEvent.currentTarget.value)}
+                            required
+                            minLength={8}
+                        />
+                        {authVerificationMessage && (
+                            <Alert color={authVerificationMessageType === 'success' ? 'green' : 'yellow'} variant="light">
+                                <Text size="sm">{authVerificationMessage}</Text>
+                                {authVerificationEmail && (
+                                    <Button
+                                        type="button"
+                                        variant="subtle"
+                                        size="compact-sm"
+                                        mt="xs"
+                                        loading={authResendingVerification}
+                                        onClick={() => { void handleAuthModalResendVerification(); }}
+                                    >
+                                        Resend verification email
+                                    </Button>
+                                )}
+                            </Alert>
+                        )}
+                        {authModalError && (
+                            <Alert color="red" variant="light">
+                                {authModalError}
+                            </Alert>
+                        )}
+                        <Button type="submit" fullWidth loading={authModalLoading}>
+                            {authModalMode === 'login' ? 'Sign in' : 'Create account'}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="subtle"
+                            onClick={() => {
+                                setAuthModalMode((previous) => (previous === 'login' ? 'signup' : 'login'));
+                                resetAuthModalFeedback();
+                            }}
+                        >
+                            {authModalMode === 'login'
+                                ? "Don't have an account? Sign up"
+                                : 'Already have an account? Sign in'}
+                        </Button>
+                        <Group gap="xs" align="center" wrap="nowrap">
+                            <div className="h-px flex-1 bg-gray-200" />
+                            <Text size="xs" c="dimmed">or</Text>
+                            <div className="h-px flex-1 bg-gray-200" />
+                        </Group>
+                        <Button
+                            type="button"
+                            fullWidth
+                            variant="default"
+                            onClick={() => { void handleAuthModalGoogle(); }}
+                            disabled={authModalLoading}
+                        >
+                            Continue with Google
+                        </Button>
+                    </Stack>
+                </form>
+            </Modal>
 
             <Modal
                 opened={Boolean(selectedFreeAgentActionUser)}

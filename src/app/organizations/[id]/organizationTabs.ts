@@ -7,6 +7,7 @@ export type OrganizationTab =
   | 'fields'
   | 'staff'
   | 'refunds'
+  | 'publicPage'
   | 'store'
   | 'templates';
 
@@ -50,6 +51,7 @@ export const buildOrganizationTabs = ({
     tabs.push({ label: 'Document Templates', value: 'templates' });
     tabs.push({ label: 'Staff', value: 'staff' });
     tabs.push({ label: 'Refunds', value: 'refunds' });
+    tabs.push({ label: 'Public Page', value: 'publicPage' });
   }
 
   if (isOrganizationRoleMember || hasRentals) {
