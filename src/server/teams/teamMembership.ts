@@ -88,6 +88,14 @@ export const normalizeId = (value: unknown): string | null => {
   return normalized.length ? normalized : null;
 };
 
+export const normalizeJerseyNumber = (value: unknown): string | null => {
+  if (typeof value !== 'string' && typeof value !== 'number') {
+    return null;
+  }
+  const normalized = String(value).replace(/\D/g, '').slice(0, 3);
+  return normalized.length ? normalized : null;
+};
+
 export const normalizeIdList = (value: unknown): string[] => (
   Array.from(new Set(
     (Array.isArray(value) ? value : [])
@@ -143,7 +151,7 @@ export const applyCanonicalTeamRegistrationMetadata = async (params: {
 
     const data: Record<string, unknown> = { updatedAt: now };
     if (hasOwn(registration, 'jerseyNumber')) {
-      data.jerseyNumber = normalizeId(registration.jerseyNumber);
+      data.jerseyNumber = normalizeJerseyNumber(registration.jerseyNumber);
     }
     if (hasOwn(registration, 'position')) {
       data.position = normalizeId(registration.position);
@@ -195,7 +203,7 @@ export const serializeCanonicalTeam = (params: {
     assistantCoachIds: assistantCoachAssignments.map((row) => row.userId),
     playerRegistrations: params.playerRegistrations.map((row) => withLegacyFields({
       ...row,
-      jerseyNumber: normalizeId(row.jerseyNumber),
+      jerseyNumber: normalizeJerseyNumber(row.jerseyNumber),
       position: normalizeId(row.position),
       isCaptain: Boolean(row.isCaptain),
     })),
@@ -958,7 +966,7 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
     divisionId: normalizeId(params.divisionId) ?? normalizeId((eventTeam as any).division) ?? null,
     divisionTypeId: normalizeId(params.divisionTypeId) ?? normalizeId((eventTeam as any).divisionTypeId) ?? null,
     divisionTypeKey: normalizeId(params.divisionTypeKey),
-    jerseyNumber: normalizeId(row.jerseyNumber),
+    jerseyNumber: normalizeJerseyNumber(row.jerseyNumber),
     position: normalizeId(row.position),
     isCaptain: Boolean(row.isCaptain),
     createdBy: params.createdBy,

@@ -21,12 +21,14 @@ import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistra
 
 export const dynamic = 'force-dynamic';
 
+const jerseyNumberSchema = z.string().regex(/^\d*$/, 'Jersey number must contain only digits.');
+
 const playerRegistrationInputSchema = z.object({
   id: z.string().optional(),
   teamId: z.string().nullable().optional(),
   userId: z.string(),
   status: z.string().optional(),
-  jerseyNumber: z.string().nullable().optional(),
+  jerseyNumber: jerseyNumberSchema.nullable().optional(),
   position: z.string().nullable().optional(),
   isCaptain: z.boolean().optional(),
 }).strict();

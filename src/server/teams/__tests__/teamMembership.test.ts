@@ -10,7 +10,18 @@ jest.mock('@/server/events/eventRegistrations', () => ({
 import {
   applyCanonicalTeamRegistrationMetadata,
   claimOrCreateEventTeamSnapshot,
+  normalizeJerseyNumber,
 } from '@/server/teams/teamMembership';
+
+describe('normalizeJerseyNumber', () => {
+  it('returns digits or null for blank values', () => {
+    expect(normalizeJerseyNumber('17')).toBe('17');
+    expect(normalizeJerseyNumber(' 17 ')).toBe('17');
+    expect(normalizeJerseyNumber('A17B')).toBe('17');
+    expect(normalizeJerseyNumber('')).toBeNull();
+    expect(normalizeJerseyNumber('ABC')).toBeNull();
+  });
+});
 
 describe('applyCanonicalTeamRegistrationMetadata', () => {
   beforeEach(() => {
