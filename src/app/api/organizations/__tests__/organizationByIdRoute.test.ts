@@ -148,6 +148,7 @@ describe('/api/organizations/[id]', () => {
       publicHeadline: 'Play here',
       publicIntroText: 'Find events and rentals.',
       embedAllowedDomains: ['example.com'],
+      publicCompletionRedirectUrl: 'https://client.example.com/thanks',
     });
 
     const response = await PATCH(
@@ -163,6 +164,7 @@ describe('/api/organizations/[id]', () => {
             publicHeadline: ' Play here ',
             publicIntroText: ' Find events and rentals. ',
             embedAllowedDomains: ['https://example.com/path'],
+            publicCompletionRedirectUrl: ' https://client.example.com/thanks ',
           },
         }),
         headers: { 'content-type': 'application/json' },
@@ -189,8 +191,36 @@ describe('/api/organizations/[id]', () => {
         publicHeadline: 'Play here',
         publicIntroText: 'Find events and rentals.',
         embedAllowedDomains: ['example.com'],
+        publicCompletionRedirectUrl: 'https://client.example.com/thanks',
       }),
     }));
+  });
+
+  it('rejects invalid public completion redirect URLs', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      publicSlug: null,
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          organization: {
+            publicCompletionRedirectUrl: 'javascript:alert(1)',
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain('http or https');
+    expect(prismaMock.organizations.update).not.toHaveBeenCalled();
   });
 
   it('rejects reserved public slugs', async () => {

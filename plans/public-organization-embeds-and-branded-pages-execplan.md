@@ -26,6 +26,11 @@ The first visible outcome should be:
 - [x] (2026-04-20 18:13Z) Added organization manager UI for public slug, color, copy, enable flags, preview links, and snippets.
 - [x] (2026-04-20 18:13Z) Added targeted unit coverage for public catalog behavior and organization public settings PATCH validation.
 - [x] (2026-04-20 18:24Z) Added `public/widget-test.html` as a manual static fixture for script and iframe embed testing.
+- [x] (2026-04-20 19:02Z) Reworked the manager settings panel to default the slug field from the organization name, check slug uniqueness while editing, and use pasteable color pickers for brand colors.
+- [x] (2026-04-20 19:28Z) Added widget query options for left-side date/event-type filters plus locked `dateRule` and `eventTypes` rules for event widgets.
+- [x] (2026-04-20 19:36Z) Added `includeChildWeeklyEvents=0` for widgets and changed event type badges to title-case labels.
+- [x] (2026-04-20 19:48Z) Replaced static snippet helper text with an event-filter-style preset builder for iframe/script snippets, including widget kind, editable limit fields, event type chips, date preset/custom date range, visible filter toggles, and weekly child-session control.
+- [ ] (2026-04-20 20:10Z) Wire public rental cards to a branded field rental selection page, prompt renters to manage in BracketIQ or order the rental only, and send product cards directly into payment checkout.
 - [ ] Add Playwright smoke coverage for live iframe resizing/navigation.
 
 ## Surprises & Discoveries
@@ -59,6 +64,14 @@ The first visible outcome should be:
   Rationale: Auth cookies and payment flows are fragile inside third-party iframes because modern browsers restrict third-party cookies and payment redirects. Opening a first-party BracketIQ page gives the existing auth, Stripe, and signing flows the best chance to work.
   Date/Author: 2026-04-20 / Codex
 
+- Decision: Reuse the existing PaymentIntent and PaymentElement purchase flow for public rental and product checkout rather than introducing Stripe Checkout Sessions in this slice.
+  Rationale: The current app already centralizes tax, connected-account transfers, billing-address capture, product purchases, and rental checkout locks through `/api/billing/purchase-intent` and `PaymentModal`. A targeted public checkout handoff should keep that behavior consistent while a later payment architecture pass can evaluate a Checkout Sessions migration.
+  Date/Author: 2026-04-20 / Codex
+
+- Decision: Public rental-only orders create the private organization-owned event only after payment success.
+  Rationale: The renter should not create inventory-blocking private events before paying. The direct order path can use the rental selector payload for validation, collect payment, then create a private free event capped at 10 participants with the selected rental time slots and fields.
+  Date/Author: 2026-04-20 / Codex
+
 - Decision: Ship raw iframe snippets first and add a small script helper as a convenience layer.
   Rationale: Iframes work in most website builders and are easy to troubleshoot. The script helper can improve automatic height resizing, but the core embed should not depend on custom JavaScript being allowed by every builder.
   Date/Author: 2026-04-20 / Codex
@@ -70,6 +83,14 @@ The first visible outcome should be:
 ## Outcomes & Retrospective
 
 The first implementation slice is complete. Organization managers can configure public page/widget settings, public catalog data is served through a public-safe server module and APIs, branded public organization/event pages exist, iframe/script embeds render public catalog sections, and `public/widget-test.html` provides a local static test harness. Remaining work is deeper browser-level validation in real iframe contexts and any follow-up refinements to rental booking and product checkout handoff.
+
+Follow-up UX pass: the public slug field now starts from the organization's own name instead of a hard-coded example, the UI checks uniqueness through an authenticated slug-check route before save, and primary/accent colors use color picker inputs that still accept pasted hex values.
+
+Widget configuration pass: event widgets now accept `showDateFilter=1` and `showEventTypeFilter=1` to expose filters inside the iframe, plus `dateRule=today` or `eventTypes=LEAGUE,TOURNAMENT` to lock the server query without exposing visitor controls.
+
+Weekly-session filtering pass: event widgets now accept `includeChildWeeklyEvents=0` to exclude generated weekly child sessions by filtering events with a non-empty `parentEvent`. Event type labels render as title-case display text such as "Weekly Event" instead of raw enum values.
+
+Snippet-builder pass: the organization settings panel now builds iframe and script snippets from form controls instead of requiring admins to edit query strings manually. The widget route also accepts `dateFrom` and `dateTo` query parameters for locked custom date ranges.
 
 ## Context and Orientation
 

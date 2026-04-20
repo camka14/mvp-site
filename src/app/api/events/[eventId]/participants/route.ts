@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/permissions';
+import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
@@ -334,7 +334,7 @@ const hasRefundablePaidTeamEventPayments = async (
 };
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
-  const session = await requireSession(req);
+  const session = await getOptionalSession(req);
   const { eventId } = await params;
   const event = await prisma.events.findUnique({
     where: { id: eventId },
@@ -359,7 +359,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
   }
 
   const eventState = String(event.state ?? '').toUpperCase();
-  const canManageCurrentEvent = await canManageEvent(session, event);
+  const canManageCurrentEvent = session ? await canManageEvent(session, event) : false;
   if (HIDDEN_EVENT_STATES.has(eventState) && !canManageCurrentEvent) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
@@ -367,6 +367,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
   const slotId = normalizeId(req.nextUrl.searchParams.get('slotId'));
   const occurrenceDate = normalizeId(req.nextUrl.searchParams.get('occurrenceDate'));
   const manageModeRequested = req.nextUrl.searchParams.get('manage') === 'true';
+  if (manageModeRequested && !session) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
   if (manageModeRequested && !canManageCurrentEvent) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

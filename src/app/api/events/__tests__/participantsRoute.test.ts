@@ -74,6 +74,7 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
 const dispatchRequiredEventDocumentsMock = jest.fn();
 const buildEventParticipantSnapshotMock = jest.fn();
@@ -83,7 +84,10 @@ const deleteEventRegistrationMock = jest.fn();
 const syncDivisionTeamMembershipFromRegistrationsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
+jest.mock('@/lib/permissions', () => ({
+  getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
+  requireSession: requireSessionMock,
+}));
 jest.mock('@/server/accessControl', () => ({ canManageEvent: (...args: any[]) => canManageEventMock(...args) }));
 jest.mock('@/lib/eventConsentDispatch', () => ({
   dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
@@ -96,7 +100,7 @@ jest.mock('@/server/events/eventRegistrations', () => ({
   syncDivisionTeamMembershipFromRegistrations: (...args: any[]) => syncDivisionTeamMembershipFromRegistrationsMock(...args),
 }));
 
-import { DELETE, POST } from '@/app/api/events/[eventId]/participants/route';
+import { DELETE, GET, POST } from '@/app/api/events/[eventId]/participants/route';
 
 const jsonPost = (url: string, body: unknown) =>
   new NextRequest(url, {
@@ -111,6 +115,67 @@ const jsonDelete = (url: string, body: unknown) =>
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+
+describe('GET /api/events/[eventId]/participants', () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    getOptionalSessionMock.mockResolvedValue(null);
+    canManageEventMock.mockResolvedValue(false);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      name: 'Public Event',
+      state: 'PUBLISHED',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      teamSignup: false,
+      singleDivision: true,
+      maxParticipants: 10,
+      eventType: 'EVENT',
+      parentEvent: null,
+      timeSlotIds: [],
+      divisions: [],
+    });
+    buildEventParticipantSnapshotMock.mockResolvedValue({
+      participants: { teamIds: [], userIds: ['user_1'], waitListIds: [], freeAgentIds: [], divisions: [] },
+      teams: [],
+      users: [{ id: 'user_1', firstName: 'Sam', lastName: 'Player' }],
+      participantCount: 1,
+      participantCapacity: 10,
+      occurrence: null,
+    });
+  });
+
+  it('allows guests to load participant snapshots for public events', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost/api/events/event_1/participants'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({
+      participantCount: 1,
+      participantCapacity: 10,
+      weeklySelectionRequired: false,
+    }));
+    expect(getOptionalSessionMock).toHaveBeenCalled();
+    expect(canManageEventMock).not.toHaveBeenCalled();
+    expect(buildEventParticipantSnapshotMock).toHaveBeenCalledWith(expect.objectContaining({
+      includeRegistrations: false,
+    }));
+  });
+
+  it('still requires sign-in for management registration details', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost/api/events/event_1/participants?manage=true'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' });
+    expect(buildEventParticipantSnapshotMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('POST /api/events/[eventId]/participants', () => {
   beforeEach(() => {

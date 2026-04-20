@@ -69,7 +69,7 @@ function RentalItem({ rental }: { rental: PublicOrganizationRentalCard }) {
         <h3 className={styles.itemTitle}>{rental.fieldName}</h3>
         <p className={styles.itemMeta}>{rental.location ?? 'Location TBD'}</p>
         <p className={styles.itemMeta}>{formatDate(rental.start)} · {formatPrice(rental.priceCents)}</p>
-        <span className={styles.itemAction}>View rentals</span>
+        <span className={styles.itemAction}>Book rental</span>
       </div>
     </a>
   );
@@ -82,7 +82,7 @@ function ProductItem({ product }: { product: PublicOrganizationProductCard }) {
         <h3 className={styles.itemTitle}>{product.name}</h3>
         {product.description ? <p className={styles.itemMeta}>{product.description}</p> : null}
         <p className={styles.itemMeta}>{formatPrice(product.priceCents)} · {product.period.toLowerCase()}</p>
-        <span className={styles.itemAction}>View product</span>
+        <span className={styles.itemAction}>Buy now</span>
       </div>
     </a>
   );

@@ -21,6 +21,14 @@ const SCRIPT = `
     const kind = normalizeKind(target.dataset.kind);
     const params = new URLSearchParams();
     if (target.dataset.limit) params.set('limit', target.dataset.limit);
+    if (target.dataset.page) params.set('page', target.dataset.page);
+    if (target.dataset.showDateFilter) params.set('showDateFilter', target.dataset.showDateFilter);
+    if (target.dataset.showEventTypeFilter) params.set('showEventTypeFilter', target.dataset.showEventTypeFilter);
+    if (target.dataset.dateRule) params.set('dateRule', target.dataset.dateRule);
+    if (target.dataset.dateFrom) params.set('dateFrom', target.dataset.dateFrom);
+    if (target.dataset.dateTo) params.set('dateTo', target.dataset.dateTo);
+    if (target.dataset.eventTypes) params.set('eventTypes', target.dataset.eventTypes);
+    if (target.dataset.includeChildWeeklyEvents) params.set('includeChildWeeklyEvents', target.dataset.includeChildWeeklyEvents);
     const iframe = document.createElement('iframe');
     iframe.src = origin + '/embed/' + encodeURIComponent(org) + '/' + encodeURIComponent(kind) + (params.toString() ? '?' + params.toString() : '');
     iframe.title = target.dataset.title || 'BracketIQ widget';

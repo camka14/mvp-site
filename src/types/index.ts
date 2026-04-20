@@ -725,6 +725,7 @@ export interface Organization {
   publicHeadline?: string | null;
   publicIntroText?: string | null;
   embedAllowedDomains?: string[];
+  publicCompletionRedirectUrl?: string | null;
   viewerCanManageOrganization?: boolean;
   viewerCanAccessUsers?: boolean;
   $createdAt?: string;

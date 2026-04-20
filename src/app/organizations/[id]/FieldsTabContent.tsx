@@ -31,6 +31,7 @@ import Loading from '@/components/ui/Loading';
 import type { Field, Organization, TimeSlot, UserData } from '@/types';
 import { formatPrice } from '@/types';
 import { buildFieldCalendarEvents, type FieldCalendarEntry } from './fieldCalendar';
+import { resolveFieldIdsForCalendarHydration } from './fieldCalendarHydration';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { notifications } from '@mantine/notifications';
 import { organizationService } from '@/lib/organizationService';
@@ -70,6 +71,37 @@ type RentalDraftSelection = {
   startDate?: string;
   endDate?: string;
   repeating: boolean;
+};
+
+export type RentalSelectionCheckoutSelection = {
+  key: string;
+  scheduledFieldIds: string[];
+  dayOfWeek: number;
+  daysOfWeek: number[];
+  startTimeMinutes: number;
+  endTimeMinutes: number;
+  startDate: string;
+  endDate: string;
+  repeating: boolean;
+};
+
+export type RentalSelectionCheckoutPayload = {
+  eventId: string;
+  manageEventUrl: string;
+  organizationId: string | null;
+  organizationName: string;
+  totalRentalCents: number;
+  rentalStart: string;
+  rentalEnd: string;
+  rentalSelections: RentalSelectionCheckoutSelection[];
+  fieldIds: string[];
+  primaryFieldId: string | null;
+  primaryFieldName: string | null;
+  primaryFieldNumber: number | null;
+  location: string;
+  coordinates?: [number, number];
+  requiredTemplateIds: string[];
+  hostRequiredTemplateIds: string[];
 };
 
 type RentalSelectionValidation = {
@@ -319,9 +351,21 @@ type FieldsTabContentProps = {
   organization: Organization;
   organizationId: string;
   currentUser: UserData | null;
+  backHref?: string;
+  backLabel?: string;
+  primaryActionLabel?: string;
+  onRentalSelectionReady?: (payload: RentalSelectionCheckoutPayload) => void;
 };
 
-export default function FieldsTabContent({ organization, organizationId, currentUser }: FieldsTabContentProps) {
+export default function FieldsTabContent({
+  organization,
+  organizationId,
+  currentUser,
+  backHref = '/discover',
+  backLabel = 'Back to Discover',
+  primaryActionLabel = 'Create Event',
+  onRentalSelectionReady,
+}: FieldsTabContentProps) {
   const router = useRouter();
   const [org, setOrg] = useState<Organization | null>(organization ?? null);
   const [orgLoading, setOrgLoading] = useState(!organization);
@@ -570,16 +614,13 @@ export default function FieldsTabContent({ organization, organizationId, current
   const calendarRangeStartMs = calendarRange.start.getTime();
   const calendarRangeEndMs = calendarRange.end.getTime();
   const fieldIdsToHydrate = useMemo(
-    () => (
-      canManage
-        ? selectedFieldIds
-        : Array.from(
-          new Set(
-            rentalSelections.flatMap((selectionItem) => normalizeFieldIds(selectionItem.scheduledFieldIds)),
-          ),
-        )
-    ),
-    [canManage, rentalSelections, selectedFieldIds],
+    () => resolveFieldIdsForCalendarHydration({
+      canManage,
+      fields,
+      selectedFieldIds,
+      rentalSelections,
+    }),
+    [canManage, fields, rentalSelections, selectedFieldIds],
   );
   const fieldEventsRequestKey = useMemo(
     () => (
@@ -851,12 +892,6 @@ export default function FieldsTabContent({ organization, organizationId, current
                 start: new Date(calendarRangeStartMs).toISOString(),
                 end: new Date(calendarRangeEndMs).toISOString(),
               },
-              canManage
-                ? undefined
-                : {
-                  rentalOverlapOnly: true,
-                  includeMatches: false,
-                },
             );
           }),
         );
@@ -1483,17 +1518,7 @@ export default function FieldsTabContent({ organization, organizationId, current
           repeating: false,
         };
       })
-      .filter((selectionItem): selectionItem is {
-        key: string;
-        scheduledFieldIds: string[];
-        dayOfWeek: number;
-        daysOfWeek: number[];
-        startTimeMinutes: number;
-        endTimeMinutes: number;
-        startDate: string;
-        endDate: string;
-        repeating: boolean;
-      } => Boolean(selectionItem));
+      .filter((selectionItem): selectionItem is RentalSelectionCheckoutSelection => Boolean(selectionItem));
     if (!serializedSelections.length) {
       notifications.show({ color: 'red', message: 'No valid rental selections were found.' });
       return;
@@ -1565,7 +1590,36 @@ export default function FieldsTabContent({ organization, organizationId, current
     if (hostSelection && hostSelection !== 'self') {
       params.set('hostOrgId', hostSelection);
     }
-    router.push(`/events/${newId}/schedule?${params.toString()}`);
+    const manageEventUrl = `/events/${newId}/schedule?${params.toString()}`;
+    if (onRentalSelectionReady) {
+      onRentalSelectionReady({
+        eventId: newId,
+        manageEventUrl,
+        organizationId: org?.$id ?? null,
+        organizationName: org?.name ?? 'Organization',
+        totalRentalCents: Math.round(totalRentalCents),
+        rentalStart: earliestSelectionStart ? formatLocalDateTime(earliestSelectionStart) : '',
+        rentalEnd: latestSelectionEnd ? formatLocalDateTime(latestSelectionEnd) : '',
+        rentalSelections: serializedSelections,
+        fieldIds: allFieldIds,
+        primaryFieldId: primaryField?.$id ?? null,
+        primaryFieldName: primaryField
+          ? primaryField.name?.trim() || (primaryField.fieldNumber ? `Field ${primaryField.fieldNumber}` : 'Field')
+          : null,
+        primaryFieldNumber: typeof primaryField?.fieldNumber === 'number' ? primaryField.fieldNumber : null,
+        location: primaryField?.location || org?.location || '',
+        coordinates: typeof primaryField?.lat === 'number'
+          && Number.isFinite(primaryField.lat)
+          && typeof primaryField?.long === 'number'
+          && Number.isFinite(primaryField.long)
+          ? [primaryField.long, primaryField.lat]
+          : undefined,
+        requiredTemplateIds: rentalRequiredTemplateIds,
+        hostRequiredTemplateIds: rentalHostRequiredTemplateIds,
+      });
+      return;
+    }
+    router.push(manageEventUrl);
   }, [
     canCreateRentalEvent,
     canManage,
@@ -1573,10 +1627,13 @@ export default function FieldsTabContent({ organization, organizationId, current
     fields,
     hostSelection,
     org?.$id,
+    org?.location,
+    org?.name,
     rentalHostRequiredTemplateIds,
     rentalRequiredTemplateIds,
     rentalSelectionValidations,
     totalRentalCents,
+    onRentalSelectionReady,
     router,
   ]);
 
@@ -2016,8 +2073,8 @@ export default function FieldsTabContent({ organization, organizationId, current
           )}
 
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => router.push('/discover')}>
-              Back to Discover
+            <Button variant="default" onClick={() => router.push(backHref)}>
+              {backLabel}
             </Button>
             {canManage ? (
               <Button disabled={!selectedFieldIds.length || !selection} onClick={handleAddRentalSlotClick}>
@@ -2025,7 +2082,7 @@ export default function FieldsTabContent({ organization, organizationId, current
               </Button>
             ) : (
               <Button disabled={!canCreateRentalEvent || !currentUser} onClick={handleCreateEventClick}>
-                Create Event
+                {primaryActionLabel}
               </Button>
             )}
           </Group>

@@ -164,6 +164,11 @@ describe('reserveRentalCheckoutLocks concurrency', () => {
     expect(rejected[0].status).toBe(409);
     expect(rejected[0].conflictFieldIds).toEqual(['field_1']);
     expect(assertNoEventFieldSchedulingConflictsMock).toHaveBeenCalledTimes(2);
+    assertNoEventFieldSchedulingConflictsMock.mock.calls.forEach(([args]) => {
+      expect(args).toEqual(expect.objectContaining({
+        includeFieldRentalAvailabilityConflicts: false,
+      }));
+    });
 
     const lockId = 'rental-checkout:field_1:2026-03-18T12:00:00.000Z:2026-03-18T13:00:00.000Z';
     const persistedLock = lockRows.get(lockId);

@@ -5,6 +5,13 @@ import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { canAccessOrganizationUsers } from '@/server/organizationUsersAccess';
+import {
+  normalizeEmbedAllowedDomains,
+  normalizePublicColor,
+  normalizePublicRedirectUrl,
+  normalizePublicSlug,
+  normalizePublicText,
+} from '@/server/organizationPublicSettings';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -32,6 +39,7 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'publicHeadline',
   'publicIntroText',
   'embedAllowedDomains',
+  'publicCompletionRedirectUrl',
 ]);
 const ORGANIZATION_HARD_IMMUTABLE_FIELDS = new Set<string>([
   'id',
@@ -53,99 +61,6 @@ const sanitizeStringArray = (value: unknown): string[] => {
     .filter((entry): entry is string => typeof entry === 'string')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
-};
-
-const PUBLIC_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;
-const RESERVED_PUBLIC_SLUGS = new Set([
-  'admin',
-  'api',
-  'app',
-  'auth',
-  'blog',
-  'billing',
-  'discover',
-  'embed',
-  'embed-js',
-  'events',
-  'login',
-  'new',
-  'organizations',
-  'privacy-policy',
-  'profile',
-  'teams',
-  'terms',
-  'www',
-]);
-
-const normalizePublicSlug = (value: unknown): string | null => {
-  if (value === null) {
-    return null;
-  }
-  if (typeof value !== 'string') {
-    throw new Error('Public slug must be a string.');
-  }
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) {
-    return null;
-  }
-  if (!PUBLIC_SLUG_PATTERN.test(normalized) || RESERVED_PUBLIC_SLUGS.has(normalized)) {
-    throw new Error('Public slug must be lowercase letters, numbers, and hyphens, and cannot use a reserved word.');
-  }
-  return normalized;
-};
-
-const normalizePublicColor = (value: unknown, label: string): string | null => {
-  if (value === null || value === undefined || value === '') {
-    return null;
-  }
-  if (typeof value !== 'string') {
-    throw new Error(`${label} must be a hex color.`);
-  }
-  const normalized = value.trim();
-  if (!HEX_COLOR_PATTERN.test(normalized)) {
-    throw new Error(`${label} must be a 6-digit hex color like #0f766e.`);
-  }
-  return normalized.toLowerCase();
-};
-
-const normalizePublicText = (value: unknown, label: string, maxLength: number): string | null => {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  if (typeof value !== 'string') {
-    throw new Error(`${label} must be text.`);
-  }
-  const normalized = value.trim();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized.length > maxLength) {
-    throw new Error(`${label} must be ${maxLength} characters or fewer.`);
-  }
-  return normalized;
-};
-
-const normalizeEmbedAllowedDomains = (value: unknown): string[] => {
-  if (value === undefined) {
-    return [];
-  }
-  if (!Array.isArray(value)) {
-    throw new Error('Embed allowed domains must be a list of domains.');
-  }
-  return Array.from(new Set(
-    value
-      .map((entry) => (typeof entry === 'string' ? entry.trim().toLowerCase() : ''))
-      .filter((entry) => entry.length > 0)
-      .map((entry) => {
-        try {
-          const parsed = entry.includes('://') ? new URL(entry) : new URL(`https://${entry}`);
-          return parsed.hostname;
-        } catch {
-          throw new Error('Embed allowed domains must contain valid hostnames.');
-        }
-      }),
-  ));
 };
 
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
@@ -339,6 +254,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
     if (Object.prototype.hasOwnProperty.call(updateData, 'embedAllowedDomains')) {
       updateData.embedAllowedDomains = normalizeEmbedAllowedDomains(updateData.embedAllowedDomains);
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'publicCompletionRedirectUrl')) {
+      updateData.publicCompletionRedirectUrl = normalizePublicRedirectUrl(updateData.publicCompletionRedirectUrl);
     }
   } catch (error) {
     return NextResponse.json(

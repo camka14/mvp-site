@@ -806,6 +806,7 @@ model Organizations {
   publicHeadline              String?
   publicIntroText             String?
   embedAllowedDomains         String[]                                 @default([])
+  publicCompletionRedirectUrl String?
 
   @@index([verificationStatus])
   @@index([verificationReviewStatus])

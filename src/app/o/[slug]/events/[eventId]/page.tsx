@@ -11,10 +11,16 @@ export const dynamic = 'force-dynamic';
 
 export default async function PublicEventRegistrationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string; eventId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { slug, eventId } = await params;
+  const query = await searchParams;
+  const slotId = typeof query?.slotId === 'string' ? query.slotId.trim() : '';
+  const occurrenceDate = typeof query?.occurrenceDate === 'string' ? query.occurrenceDate.trim() : '';
+  const selectedOccurrence = slotId && occurrenceDate ? { slotId, occurrenceDate } : null;
   const result = await getPublicOrganizationEventForRegistration(slug, eventId);
   if (!result) {
     notFound();
@@ -37,7 +43,14 @@ export default async function PublicEventRegistrationPage({
         </Link>
       </header>
       <div className={styles.registrationContent}>
-        <EventRegistrationClient event={result.event as Event} />
+        <EventRegistrationClient
+          event={result.event as Event}
+          selectedOccurrence={selectedOccurrence}
+          publicCompletion={{
+            slug: result.organization.slug,
+            redirectUrl: result.organization.publicCompletionRedirectUrl,
+          }}
+        />
       </div>
     </main>
   );

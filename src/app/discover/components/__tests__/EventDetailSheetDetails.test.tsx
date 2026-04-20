@@ -198,6 +198,40 @@ describe('EventDetailSheet details layout', () => {
     expect(screen.getByText('Schedule')).toBeInTheDocument();
   });
 
+  it('shows an inline auth modal for guests instead of redirecting away from event details', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const event = buildEvent({
+      $id: 'guest_event_1',
+      eventType: 'EVENT',
+      teamSignup: false,
+      start: futureStart,
+      price: 0,
+      maxParticipants: 10,
+      divisions: [],
+      divisionDetails: [],
+    });
+
+    (useApp as jest.Mock).mockReturnValue({
+      user: null,
+      authUser: null,
+      refreshSession: jest.fn(),
+    });
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (userService.getUsersByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUserById as jest.Mock).mockResolvedValue(null);
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    const authButton = await screen.findByRole('button', { name: /register \/ login/i });
+    fireEvent.click(authButton);
+
+    expect(await screen.findByText('Sign in to register')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /continue with google/i })).toBeInTheDocument();
+  });
+
   it('notifies the parent when an inline weekly occurrence is selected', async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -260,6 +294,53 @@ describe('EventDetailSheet details layout', () => {
       slotId: 'slot_weekly_1',
       occurrenceDate,
     });
+  });
+
+  it('builds weekly occurrence options when timeslot dates are Date objects', async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const occurrence = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const dayIndex = toMondayIndex(occurrence);
+    const event = buildEvent({
+      $id: 'weekly_event_date_objects',
+      eventType: 'WEEKLY_EVENT',
+      teamSignup: false,
+      start: today.toISOString(),
+      end: new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+      maxParticipants: 10,
+      divisions: ['open'],
+      timeSlots: [
+        buildTimeSlot({
+          $id: 'slot_weekly_date',
+          dayOfWeek: dayIndex,
+          daysOfWeek: [dayIndex] as any,
+          startDate: today as any,
+          endDate: new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000) as any,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          repeating: true,
+        }),
+      ],
+      fields: [{ $id: 'field_1', name: 'Court 1' }] as any,
+    });
+    const user = buildUser({ $id: 'user_date_object', dateOfBirth: '1990-01-01' });
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser: { $id: user.$id, email: 'user@example.com' } });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUsersByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUserById as jest.Mock).mockResolvedValue(null);
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Select a weekly occurrence')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('No upcoming weekly sessions are available.')).not.toBeInTheDocument();
   });
 
   it('shows join controls once an inline weekly occurrence is selected', async () => {

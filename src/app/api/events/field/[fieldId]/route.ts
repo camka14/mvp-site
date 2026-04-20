@@ -112,6 +112,14 @@ const slotFieldIds = (slot: Pick<TimeSlotRow, 'scheduledFieldId' | 'scheduledFie
   return fallback ? [fallback] : [];
 };
 
+const fieldLinkedRentalSlotBelongsToField = (
+  slot: Pick<TimeSlotRow, 'scheduledFieldId' | 'scheduledFieldIds'>,
+  fieldId: string,
+): boolean => {
+  const fieldIds = slotFieldIds(slot);
+  return fieldIds.length === 0 || fieldIds.includes(fieldId);
+};
+
 const isSchedulableSlotEventType = (eventType: string): boolean =>
   eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
 
@@ -455,7 +463,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ fiel
     })
     : [];
   const rentalSlotRowsInRange = allFieldRentalSlotRows.filter((slot) => (
-    slotFieldIds(slot).includes(fieldId)
+    fieldLinkedRentalSlotBelongsToField(slot, fieldId)
     && slotOverlapsRange(slot, rangeStart, rangeEnd)
   ));
   const rentalWindows = rentalOverlapOnly
