@@ -43,6 +43,7 @@ import type {
   LeagueConfig,
   Match,
   MatchIncidentOperation,
+  MatchLifecycleOperation,
   MatchOfficialCheckInOperation,
   MatchSegment,
   MatchSegmentOperation,
@@ -7522,6 +7523,7 @@ function EventScheduleContent() {
     };
     segmentOperations?: MatchSegmentOperation[];
     incidentOperations?: MatchIncidentOperation[];
+    lifecycle?: MatchLifecycleOperation;
     officialCheckIn?: MatchOfficialCheckInOperation;
     team1Points: number[];
     team2Points: number[];
@@ -7537,6 +7539,7 @@ function EventScheduleContent() {
       scoreSet,
       segmentOperations,
       incidentOperations,
+      lifecycle,
       officialCheckIn,
     }: MatchOperationPayload) => {
       const targetEventId = activeEvent?.$id ?? eventId;
@@ -7546,6 +7549,7 @@ function EventScheduleContent() {
           Boolean(scoreSet)
           || Boolean(segmentOperations?.length)
           || Boolean(incidentOperations?.length)
+          || Boolean(lifecycle)
           || Boolean(officialCheckIn);
         let updated: Match;
         if (scoreSet) {
@@ -7561,6 +7565,7 @@ function EventScheduleContent() {
           updated = await tournamentService.updateMatchOperations(targetEventId, matchId, {
             segmentOperations,
             incidentOperations,
+            lifecycle,
             officialCheckIn,
           });
         } else {
@@ -7682,7 +7687,7 @@ function EventScheduleContent() {
         const checkedIn = isOfficialCheckedIn(modalMatch);
 
         if (!checkedIn && userIsCurrentOfficial) {
-          const confirmCheckIn = window.confirm('Would you like to check in and start this match?');
+          const confirmCheckIn = window.confirm('Would you like to check in as official?');
           if (confirmCheckIn) {
             modalMatch = await updateMatchOfficialState(
               modalMatch,
@@ -7711,7 +7716,7 @@ function EventScheduleContent() {
                 },
                 'Failed to swap official for this match. Please try again.',
               );
-              const confirmCheckIn = window.confirm('Would you like to check in and start this match?');
+              const confirmCheckIn = window.confirm('Would you like to check in as official?');
               if (confirmCheckIn) {
                 modalMatch = await updateMatchOfficialState(
                   modalMatch,
@@ -9909,6 +9914,7 @@ function EventScheduleContent() {
         <ScoreUpdateModal
           match={scoreUpdateMatch}
           tournament={activeEvent}
+          participantTeams={participantTeams}
           canManage={canUserManageScore(scoreUpdateMatch)}
           onScoreChange={handleScoreChange}
           onSetComplete={handleSetComplete}

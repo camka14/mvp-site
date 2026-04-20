@@ -239,6 +239,16 @@ const serializeTeamLegacy = (team: Team) => ({
   division: team.division?.id ?? team.division,
   name: team.name,
   playerIds: team.playerIds ?? [],
+  players: (team.players ?? []).map(serializeUserLegacy),
+  playerRegistrations: (team.playerRegistrations ?? []).map((registration) => ({
+    id: registration.id,
+    teamId: registration.teamId ?? null,
+    userId: registration.userId,
+    status: registration.status,
+    jerseyNumber: registration.jerseyNumber ?? null,
+    position: registration.position ?? null,
+    isCaptain: registration.isCaptain ?? false,
+  })),
 });
 
 const serializeFieldLegacy = (field: PlayingField) => ({

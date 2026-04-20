@@ -16,12 +16,14 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
 import {
   Event,
   getTeamAvatarUrl,
   Match,
   MatchIncident,
   MatchIncidentOperation,
+  MatchLifecycleOperation,
   MatchOfficialCheckInOperation,
   MatchSegment,
   MatchSegmentOperation,
@@ -42,6 +44,7 @@ type ScorePayload = {
   };
   segmentOperations?: MatchSegmentOperation[];
   incidentOperations?: MatchIncidentOperation[];
+  lifecycle?: MatchLifecycleOperation;
   officialCheckIn?: MatchOfficialCheckInOperation;
   team1Points: number[];
   team2Points: number[];
@@ -60,6 +63,7 @@ type MatchRosterParticipantOption = {
 interface ScoreUpdateModalProps {
   match: Match;
   tournament: Event;
+  participantTeams?: Team[];
   canManage: boolean;
   onSubmit?: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
   onScoreChange?: (payload: ScorePayload) => Promise<void> | void;
@@ -74,6 +78,19 @@ const entityId = (value: unknown): string | null => {
   const row = value as { $id?: unknown; id?: unknown };
   const raw = typeof row.$id === 'string' ? row.$id : typeof row.id === 'string' ? row.id : '';
   return raw.trim() || null;
+};
+
+const MATCH_TIME_PICKER_PROPS = {
+  format: '12h' as const,
+  withDropdown: false,
+  amPmLabels: { am: 'AM', pm: 'PM' },
+};
+
+const coerceActualDate = (value?: string | Date | null): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
 const positiveInt = (value: unknown, fallback: number): number => {
@@ -127,7 +144,12 @@ const scoringParticipantLabel = (
 };
 
 const buildParticipantOptions = (team: Team | null | undefined, eventTeamId: string | null): MatchRosterParticipantOption[] => {
-  const playersById = new Map(teamPlayers(team).map((player) => [player.$id, player]));
+  const playersById = new Map(teamPlayers(team)
+    .map((player) => {
+      const id = entityId(player);
+      return id ? [id, player] as const : null;
+    })
+    .filter((entry): entry is readonly [string, UserData] => Boolean(entry)));
   const registrations = teamPlayerRegistrations(team)
     .filter((registration) => ['ACTIVE', 'STARTED'].includes(String(registration.status ?? '').trim().toUpperCase()));
   if (registrations.length) {
@@ -141,14 +163,20 @@ const buildParticipantOptions = (team: Team | null | undefined, eventTeamId: str
       eventTeamId,
     }));
   }
-  return teamPlayers(team).map((player) => ({
-    value: player.$id,
-    label: participantLabel(player, null),
-    scoringLabel: scoringParticipantLabel(player, null),
-    participantUserId: player.$id,
-    eventRegistrationId: null,
-    eventTeamId,
-  }));
+  return teamPlayers(team).reduce<MatchRosterParticipantOption[]>((options, player) => {
+    const id = entityId(player);
+    if (id) {
+      options.push({
+        value: id,
+        label: participantLabel(player, null),
+        scoringLabel: scoringParticipantLabel(player, null),
+        participantUserId: id,
+        eventRegistrationId: null,
+        eventTeamId,
+      });
+    }
+    return options;
+  }, []);
 };
 
 const dateLabel = (value?: string | null): string => {
@@ -285,13 +313,30 @@ const pendingIncidentStorageKey = (eventId: string | null | undefined, matchId: 
   `bracketiq:pending-match-incidents:${eventId ?? 'unknown'}:${matchId}`
 );
 
-const readPendingIncidentRetries = (key: string): MatchIncidentOperation[] => {
+const INCIDENT_RETRY_DELAYS_MS = [3000, 15000, 30000] as const;
+const INCIDENT_CONFIRM_NO_PROGRESS_TIMEOUT_MS = 10000;
+
+const sleep = (milliseconds: number) => new Promise((resolve) => {
+  window.setTimeout(resolve, milliseconds);
+});
+
+const incidentRetryDelayMs = (attempt: number) => (
+  INCIDENT_RETRY_DELAYS_MS[Math.min(Math.max(attempt, 0), INCIDENT_RETRY_DELAYS_MS.length - 1)]
+);
+
+const incidentOperationId = (operation: MatchIncidentOperation): string | null => (
+  typeof operation.id === 'string' && operation.id.trim() ? operation.id.trim() : null
+);
+
+const readPendingIncidentActions = (key: string): MatchIncidentOperation[] => {
   if (typeof window === 'undefined') return [];
   try {
     const parsed = JSON.parse(window.localStorage.getItem(key) ?? '[]');
     return Array.isArray(parsed)
       ? parsed.filter((operation): operation is MatchIncidentOperation => (
-          operation?.action === 'CREATE' && typeof operation.id === 'string' && operation.id.trim().length > 0
+          ['CREATE', 'UPDATE', 'DELETE'].includes(operation?.action)
+          && typeof operation.id === 'string'
+          && operation.id.trim().length > 0
         ))
       : [];
   } catch {
@@ -299,7 +344,7 @@ const readPendingIncidentRetries = (key: string): MatchIncidentOperation[] => {
   }
 };
 
-const writePendingIncidentRetries = (key: string, operations: MatchIncidentOperation[]) => {
+const writePendingIncidentActions = (key: string, operations: MatchIncidentOperation[]) => {
   if (typeof window === 'undefined') return;
   try {
     if (operations.length) {
@@ -312,6 +357,34 @@ const writePendingIncidentRetries = (key: string, operations: MatchIncidentOpera
   }
 };
 
+const queuedCreateToIncident = (
+  operation: MatchIncidentOperation,
+  match: Match,
+  eventId: string | null | undefined,
+  fallbackSequence: number,
+): MatchIncident | null => {
+  const id = incidentOperationId(operation);
+  if (!id || operation.action !== 'CREATE') return null;
+  return {
+    id,
+    eventId: eventId ?? match.eventId ?? null,
+    matchId: match.$id,
+    segmentId: operation.segmentId ?? null,
+    eventTeamId: operation.eventTeamId ?? null,
+    eventRegistrationId: operation.eventRegistrationId ?? null,
+    participantUserId: operation.participantUserId ?? null,
+    officialUserId: operation.officialUserId ?? null,
+    incidentType: operation.incidentType ?? 'NOTE',
+    sequence: positiveInt(operation.sequence, fallbackSequence),
+    minute: typeof operation.minute === 'number' ? operation.minute : null,
+    clock: operation.clock ?? null,
+    clockSeconds: typeof operation.clockSeconds === 'number' ? operation.clockSeconds : null,
+    linkedPointDelta: typeof operation.linkedPointDelta === 'number' ? operation.linkedPointDelta : null,
+    note: operation.note ?? null,
+    metadata: null,
+  };
+};
+
 const applyPendingIncidentDeltas = (
   source: MatchSegment[],
   operations: MatchIncidentOperation[],
@@ -320,7 +393,7 @@ const applyPendingIncidentDeltas = (
   return source.map((segment) => {
     const segmentId = segment.id ?? segment.$id;
     const scoringOperations = operations.filter((operation) => (
-      operation.action === 'CREATE'
+      (operation.action === 'CREATE' || operation.action === 'DELETE')
       && operation.segmentId === segmentId
       && operation.eventTeamId
       && typeof operation.linkedPointDelta === 'number'
@@ -330,7 +403,8 @@ const applyPendingIncidentDeltas = (
     const scores = { ...(segment.scores ?? {}) };
     scoringOperations.forEach((operation) => {
       const eventTeamId = operation.eventTeamId!;
-      scores[eventTeamId] = Math.max(0, score(scores[eventTeamId]) + Math.trunc(operation.linkedPointDelta ?? 0));
+      const direction = operation.action === 'DELETE' ? -1 : 1;
+      scores[eventTeamId] = Math.max(0, score(scores[eventTeamId]) + (direction * Math.trunc(operation.linkedPointDelta ?? 0)));
     });
     return {
       ...segment,
@@ -413,6 +487,7 @@ const buildSegments = (match: Match, length: number, team1Id: string | null, tea
 export default function ScoreUpdateModal({
   match,
   tournament,
+  participantTeams = [],
   canManage,
   onSubmit,
   onScoreChange,
@@ -424,22 +499,46 @@ export default function ScoreUpdateModal({
   const [segments, setSegments] = useState<MatchSegment[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [actualTimesSaving, setActualTimesSaving] = useState(false);
+  const [segmentConfirming, setSegmentConfirming] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
+  const [editingActualTimes, setEditingActualTimes] = useState(false);
+  const [actualStartValue, setActualStartValue] = useState<Date | null>(null);
+  const [actualEndValue, setActualEndValue] = useState<Date | null>(null);
   const [incidentType, setIncidentType] = useState('NOTE');
   const [incidentTeamId, setIncidentTeamId] = useState<string | null>(null);
   const [incidentParticipantId, setIncidentParticipantId] = useState<string | null>(null);
   const [incidentMinute, setIncidentMinute] = useState('');
   const [incidentNote, setIncidentNote] = useState('');
+  const [editingIncidentId, setEditingIncidentId] = useState<string | null>(null);
   const [pendingPoint, setPendingPoint] = useState<{ teamId: string; delta: number } | null>(null);
   const [deletedIncidentIds, setDeletedIncidentIds] = useState<Set<string>>(() => new Set());
   const [optimisticIncidents, setOptimisticIncidents] = useState<MatchIncident[]>([]);
   const finalizedRef = useRef(false);
-  const incidentRetryRef = useRef<MatchIncidentOperation[]>([]);
+  const incidentQueueRef = useRef<MatchIncidentOperation[]>([]);
+  const incidentQueueTimerRef = useRef<number | null>(null);
+  const incidentRetryAttemptRef = useRef(0);
+  const processingIncidentQueueRef = useRef(false);
+  const segmentsRef = useRef<MatchSegment[]>([]);
   const scoreSetSyncRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const team1Id = match.team1Id ?? entityId(match.team1);
   const team2Id = match.team2Id ?? entityId(match.team2);
+  const eventTeamsById = useMemo(() => {
+    const map = new Map<string, Team>();
+    const addTeam = (team: Team) => {
+      const id = entityId(team);
+      if (id) map.set(id, team);
+    };
+    (Array.isArray(tournament.teams) ? tournament.teams : []).forEach(addTeam);
+    participantTeams.forEach(addTeam);
+    return map;
+  }, [participantTeams, tournament.teams]);
+  const team1 = team1Id ? eventTeamsById.get(team1Id) ?? match.team1 : match.team1;
+  const team2 = team2Id ? eventTeamsById.get(team2Id) ?? match.team2 : match.team2;
+  const teamOfficialId = match.teamOfficialId ?? entityId(match.teamOfficial);
+  const teamOfficial = teamOfficialId ? eventTeamsById.get(teamOfficialId) ?? match.teamOfficial : match.teamOfficial;
   const usesSets = typeof tournament.usesSets === 'boolean' ? tournament.usesSets : Boolean(tournament.leagueConfig?.usesSets);
   const isTimedMatch = !usesSets;
   const playoff = tournament.eventType === 'TOURNAMENT' || Boolean(match.losersBracket || match.winnerNextMatchId || match.loserNextMatchId);
@@ -454,11 +553,10 @@ export default function ScoreUpdateModal({
   }, [isTimedMatch, match.losersBracket, playoff, pointTargets, tournament.leagueConfig?.setsPerMatch, tournament.loserSetCount, tournament.setsPerMatch, tournament.winnerSetCount]);
   const rules = useMemo(() => activeRules(match, tournament, usesSets, fallbackSegmentCount), [fallbackSegmentCount, match, tournament, usesSets]);
   const totalSegments = Math.max(1, rules.segmentCount);
-  const autoPointIncidents = tournament.autoCreatePointMatchIncidents === true;
   const scoringIncidentType = rules.autoCreatePointIncidentType ?? 'POINT';
   const scoringIncidentLabel = matchLogTypeLabel(scoringIncidentType);
   const scoringActionLabel = normalizedIncidentType(scoringIncidentType) === 'POINT' ? 'Point' : scoringIncidentLabel;
-  const scoringRequiresParticipant = autoPointIncidents && rules.pointIncidentRequiresParticipant === true;
+  const scoringRequiresParticipant = rules.pointIncidentRequiresParticipant === true;
   const manualIncidentTypes = useMemo(() => (
     scoringRequiresParticipant
       ? rules.supportedIncidentTypes
@@ -485,13 +583,13 @@ export default function ScoreUpdateModal({
   const useScoringIncidentsForScore = !scoringRequiresParticipant && !persistedScoreDataAvailable;
   const incidentRetryStorageKey = pendingIncidentStorageKey(tournament.$id ?? match.eventId, match.$id);
   const teamOptions = [
-    ...(team1Id ? [{ value: team1Id, label: teamName(match.team1) }] : []),
-    ...(team2Id ? [{ value: team2Id, label: teamName(match.team2) }] : []),
+    ...(team1Id ? [{ value: team1Id, label: teamName(team1) }] : []),
+    ...(team2Id ? [{ value: team2Id, label: teamName(team2) }] : []),
   ];
   const participantOptionsByTeam = useMemo(() => ({
-    ...(team1Id ? { [team1Id]: buildParticipantOptions(match.team1 as Team | null | undefined, team1Id) } : {}),
-    ...(team2Id ? { [team2Id]: buildParticipantOptions(match.team2 as Team | null | undefined, team2Id) } : {}),
-  }), [match.team1, match.team2, team1Id, team2Id]);
+    ...(team1Id ? { [team1Id]: buildParticipantOptions(team1 as Team | null | undefined, team1Id) } : {}),
+    ...(team2Id ? { [team2Id]: buildParticipantOptions(team2 as Team | null | undefined, team2Id) } : {}),
+  }), [team1, team1Id, team2, team2Id]);
   const participantOptions = useMemo(() => Object.values(participantOptionsByTeam).flat(), [participantOptionsByTeam]);
   const participantLabelsByRegistrationId = useMemo(() => (
     new Map(participantOptions
@@ -505,6 +603,8 @@ export default function ScoreUpdateModal({
   const selectedParticipant = incidentParticipantId
     ? activeParticipantOptions.find((option) => option.value === incidentParticipantId) ?? null
     : null;
+  const selectedIncidentIsScoring = isScoringIncidentType(incidentType, rules);
+  const selectedIncidentRequiresParticipant = selectedIncidentIsScoring && rules.pointIncidentRequiresParticipant === true;
   const allIncidents = useMemo(() => {
     const byId = new Map<string, MatchIncident>();
     [...(match.incidents ?? []), ...optimisticIncidents].forEach((incident) => {
@@ -537,7 +637,7 @@ export default function ScoreUpdateModal({
     new Map((tournament.eventOfficials ?? []).map((official) => [official.id, official.userId]))
   ), [tournament.eventOfficials]);
   const teamLabelForId = (eventTeamId?: string | null): string => (
-    eventTeamId === team1Id ? teamName(match.team1) : eventTeamId === team2Id ? teamName(match.team2) : 'Match'
+    eventTeamId === team1Id ? teamName(team1) : eventTeamId === team2Id ? teamName(team2) : 'Match'
   );
   const participantLabelForIncident = (incident: { eventRegistrationId?: string | null; participantUserId?: string | null }): string | null => {
     if (incident.eventRegistrationId) {
@@ -563,32 +663,78 @@ export default function ScoreUpdateModal({
     const userId = assignment.userId || (assignment.eventOfficialId ? eventOfficialUserIdsById.get(assignment.eventOfficialId) : null);
     return userId ? userDisplayName(officialUsersById.get(userId)) ?? 'TBD' : 'TBD';
   };
+  const officialAssignments = match.officialIds ?? [];
+  const hasTeamOfficial = Boolean(teamOfficialId || teamOfficial);
+  const hasOfficials = officialAssignments.length > 0 || hasTeamOfficial;
+  const resultStatus = normalizedIncidentType(match.resultStatus);
+  const resultType = normalizedIncidentType(match.resultType);
+  const lifecycleStatus = normalizedIncidentType(match.status);
+  const statusReason = typeof match.statusReason === 'string' ? match.statusReason.trim() : '';
+  const showStatusBlock = Boolean(statusReason)
+    || (resultStatus.length > 0 && !['PENDING', 'OFFICIAL'].includes(resultStatus))
+    || (resultType.length > 0 && resultType !== 'REGULATION')
+    || ['CANCELLED', 'FORFEIT', 'SUSPENDED'].includes(lifecycleStatus);
   const parseIncidentMinute = () => {
     const trimmed = incidentMinute.trim();
     if (!trimmed) return null;
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
   };
+  const resetIncidentForm = () => {
+    setEditingIncidentId(null);
+    setIncidentType(defaultIncidentType);
+    setIncidentTeamId(team1Id ?? team2Id ?? null);
+    setIncidentParticipantId((team1Id && participantOptionsByTeam[team1Id]?.[0]?.value) ?? (team2Id && participantOptionsByTeam[team2Id]?.[0]?.value) ?? null);
+    setIncidentMinute('');
+    setIncidentNote('');
+  };
   const nextIncidentId = () => {
     const randomId = globalThis.crypto?.randomUUID?.();
     if (randomId) return randomId;
     return `${match.$id}_incident_${Date.now()}_${Math.random().toString(36).slice(2)}`;
   };
-  const rememberIncidentRetry = (operation: MatchIncidentOperation) => {
-    if (operation.action !== 'CREATE' || !operation.id) return;
-    incidentRetryRef.current = [
-      ...incidentRetryRef.current.filter((queued) => queued.id !== operation.id),
-      { ...operation },
-    ];
-    writePendingIncidentRetries(incidentRetryStorageKey, incidentRetryRef.current);
+  const persistIncidentQueue = (operations: MatchIncidentOperation[]) => {
+    incidentQueueRef.current = operations.map((operation) => ({ ...operation }));
+    if (!incidentQueueRef.current.length) {
+      incidentRetryAttemptRef.current = 0;
+    }
+    writePendingIncidentActions(incidentRetryStorageKey, incidentQueueRef.current);
   };
-  const forgetIncidentRetries = (operations: MatchIncidentOperation[]) => {
-    const ids = new Set(operations.map((operation) => operation.id).filter((id): id is string => Boolean(id)));
-    if (!ids.size) return;
-    incidentRetryRef.current = incidentRetryRef.current.filter((operation) => !operation.id || !ids.has(operation.id));
-    writePendingIncidentRetries(incidentRetryStorageKey, incidentRetryRef.current);
+  const enqueueIncidentOperation = (operation: MatchIncidentOperation) => {
+    const id = incidentOperationId(operation);
+    if (!id) return;
+    const existingQueue = incidentQueueRef.current;
+    const existingIndex = existingQueue.findIndex((queued) => incidentOperationId(queued) === id);
+    if (operation.action === 'UPDATE' && existingIndex >= 0 && existingQueue[existingIndex].action === 'CREATE') {
+      persistIncidentQueue(existingQueue.map((queued, index) => (
+        index === existingIndex ? { ...queued, ...operation, action: 'CREATE' } : queued
+      )));
+      return;
+    }
+    if (operation.action === 'DELETE' && existingIndex >= 0 && existingQueue[existingIndex].action === 'CREATE') {
+      persistIncidentQueue(existingQueue.filter((_, index) => index !== existingIndex));
+      return;
+    }
+    persistIncidentQueue([
+      ...existingQueue.filter((queued) => incidentOperationId(queued) !== id),
+      { ...operation, id },
+    ]);
   };
-  const pendingIncidentRetries = () => incidentRetryRef.current.map((operation) => ({ ...operation }));
+  const forgetIncidentAction = (operation: MatchIncidentOperation) => {
+    const id = incidentOperationId(operation);
+    if (!id) return;
+    const next = incidentQueueRef.current.filter((queued, index) => (
+      index !== 0 || incidentOperationId(queued) !== id || queued.action !== operation.action
+    ));
+    persistIncidentQueue(next);
+  };
+  const pendingIncidentActions = () => incidentQueueRef.current.map((operation) => ({ ...operation }));
+  const clearIncidentQueueTimer = () => {
+    if (incidentQueueTimerRef.current) {
+      window.clearTimeout(incidentQueueTimerRef.current);
+      incidentQueueTimerRef.current = null;
+    }
+  };
 
   useEffect(() => {
     finalizedRef.current = false;
@@ -597,40 +743,71 @@ export default function ScoreUpdateModal({
         .map((incident) => entityId(incident))
         .filter((id): id is string => Boolean(id)),
     );
-    const queuedRetries = readPendingIncidentRetries(incidentRetryStorageKey)
-      .filter((operation) => !persistedIncidentIds.has(operation.id ?? ''));
-    incidentRetryRef.current = queuedRetries;
-    writePendingIncidentRetries(incidentRetryStorageKey, queuedRetries);
+    const queuedActions = readPendingIncidentActions(incidentRetryStorageKey)
+      .filter((operation) => operation.action !== 'CREATE' || !persistedIncidentIds.has(operation.id ?? ''));
+    incidentQueueRef.current = queuedActions;
+    writePendingIncidentActions(incidentRetryStorageKey, queuedActions);
     const persistedSegments = buildSegments(matchSegmentSnapshot, totalSegments, team1Id, team2Id);
     const incidentFallbackSegments = useScoringIncidentsForScore
       ? applyMatchIncidentDeltas(persistedSegments, match.incidents, rules)
       : persistedSegments;
-    const next = applyPendingIncidentDeltas(incidentFallbackSegments, queuedRetries);
+    const next = applyPendingIncidentDeltas(incidentFallbackSegments, queuedActions);
     setSegments(next);
     setActiveIndex(Math.max(0, next.findIndex((segment) => segment.status !== 'COMPLETE')));
-    setDeletedIncidentIds(new Set());
+    setDeletedIncidentIds(new Set(
+      queuedActions
+        .filter((operation) => operation.action === 'DELETE')
+        .map((operation) => operation.id)
+        .filter((id): id is string => Boolean(id)),
+    ));
     setOptimisticIncidents((current) => {
       const persistedIncidentIds = new Set(
         (match.incidents ?? [])
           .map((incident) => entityId(incident) ?? incident.id)
           .filter((id): id is string => Boolean(id)),
       );
-      return current.filter((incident) => incident.matchId === match.$id && !persistedIncidentIds.has(entityId(incident) ?? incident.id));
+      const queuedCreateIncidents = queuedActions
+        .map((operation, index) => queuedCreateToIncident(operation, match, tournament.$id, index + 1))
+        .filter((incident): incident is MatchIncident => Boolean(incident));
+      const currentIncidents = current.filter((incident) => (
+        incident.matchId === match.$id
+        && !persistedIncidentIds.has(entityId(incident) ?? incident.id)
+        && !queuedCreateIncidents.some((queued) => queued.id === (entityId(incident) ?? incident.id))
+      ));
+      return [...currentIncidents, ...queuedCreateIncidents];
     });
     setIncidentType(defaultIncidentType);
     setIncidentTeamId(team1Id ?? team2Id ?? null);
     setIncidentParticipantId((team1Id && participantOptionsByTeam[team1Id]?.[0]?.value) ?? (team2Id && participantOptionsByTeam[team2Id]?.[0]?.value) ?? null);
     setIncidentMinute('');
     setIncidentNote('');
-  }, [defaultIncidentType, incidentRetryStorageKey, match.$id, match.incidents, matchSegmentSnapshot, participantOptionsByTeam, rules, team1Id, team2Id, totalSegments, useScoringIncidentsForScore]);
+    setEditingIncidentId(null);
+    setActualStartValue(coerceActualDate(match.actualStart));
+    setActualEndValue(coerceActualDate(match.actualEnd));
+    setEditingActualTimes(false);
+    if (queuedActions.length) {
+      window.setTimeout(() => {
+        void processIncidentQueue();
+      }, 0);
+    }
+  }, [defaultIncidentType, incidentRetryStorageKey, match.$id, match.actualEnd, match.actualStart, match.incidents, matchSegmentSnapshot, participantOptionsByTeam, rules, team1Id, team2Id, totalSegments, useScoringIncidentsForScore]);
 
   useEffect(() => {
     if (!isOpen) {
       setShowFieldMap(false);
       setShowDetails(false);
       setPendingPoint(null);
+      setEditingActualTimes(false);
     }
   }, [isOpen, match.$id]);
+
+  useEffect(() => {
+    segmentsRef.current = segments;
+  }, [segments]);
+
+  useEffect(() => () => {
+    clearIncidentQueueTimer();
+  }, []);
 
   useEffect(() => {
     const options = incidentTeamId ? (participantOptionsByTeam[incidentTeamId] ?? []) : [];
@@ -674,6 +851,83 @@ export default function ScoreUpdateModal({
     } catch (error) {
       console.warn('Match operation update failed:', error);
       return false;
+    }
+  };
+
+  const executeNextIncidentAction = async (): Promise<boolean> => {
+    const operation = incidentQueueRef.current[0];
+    if (!operation) return true;
+    const success = await emit(payload(segmentsRef.current, {
+      incidentOperations: [{ ...operation }],
+    }));
+    if (success) {
+      incidentRetryAttemptRef.current = 0;
+      forgetIncidentAction(operation);
+    }
+    return success;
+  };
+
+  const scheduleIncidentQueueRetry = () => {
+    if (incidentQueueTimerRef.current || !incidentQueueRef.current.length) return;
+    const retryDelayMs = incidentRetryDelayMs(incidentRetryAttemptRef.current);
+    incidentRetryAttemptRef.current += 1;
+    incidentQueueTimerRef.current = window.setTimeout(() => {
+      incidentQueueTimerRef.current = null;
+      void processIncidentQueue();
+    }, retryDelayMs);
+  };
+
+  const processIncidentQueue = async () => {
+    if (processingIncidentQueueRef.current) return;
+    clearIncidentQueueTimer();
+    processingIncidentQueueRef.current = true;
+    try {
+      while (incidentQueueRef.current.length) {
+        const success = await executeNextIncidentAction();
+        if (!success) {
+          scheduleIncidentQueueRetry();
+          return;
+        }
+      }
+    } finally {
+      processingIncidentQueueRef.current = false;
+    }
+  };
+
+  const drainIncidentQueueForConfirmation = async (): Promise<boolean> => {
+    clearIncidentQueueTimer();
+    while (processingIncidentQueueRef.current) {
+      await sleep(50);
+    }
+
+    processingIncidentQueueRef.current = true;
+    let elapsedWithoutReduction = 0;
+    try {
+      while (incidentQueueRef.current.length) {
+        const beforeCount = incidentQueueRef.current.length;
+        const success = await executeNextIncidentAction();
+        const afterCount = incidentQueueRef.current.length;
+        if (success || afterCount < beforeCount) {
+          elapsedWithoutReduction = 0;
+          continue;
+        }
+        const waitMs = Math.min(
+          incidentRetryDelayMs(incidentRetryAttemptRef.current),
+          INCIDENT_CONFIRM_NO_PROGRESS_TIMEOUT_MS - elapsedWithoutReduction,
+        );
+        if (waitMs <= 0) {
+          return false;
+        }
+        incidentRetryAttemptRef.current += 1;
+        await sleep(waitMs);
+        elapsedWithoutReduction += waitMs;
+      }
+      return true;
+    } finally {
+      processingIncidentQueueRef.current = false;
+      if (incidentQueueRef.current.length) {
+        scheduleIncidentQueueRetry();
+      }
     }
   };
 
@@ -732,6 +986,7 @@ export default function ScoreUpdateModal({
     if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
     const next = applyScoreDelta(segments, eventTeamId, 1);
     setSegments(next);
+    segmentsRef.current = next;
     const incidentOperation: MatchIncidentOperation = {
       action: 'CREATE',
       id: nextIncidentId(),
@@ -768,19 +1023,15 @@ export default function ScoreUpdateModal({
       ...current.filter((incident) => (entityId(incident) ?? incident.id) !== optimisticIncident.id),
       optimisticIncident,
     ]);
-    rememberIncidentRetry(incidentOperation);
-    void emit(payload(next, {
-      incidentOperations: [incidentOperation],
-    })).then((success) => {
-      if (success) forgetIncidentRetries([incidentOperation]);
-    });
+    enqueueIncidentOperation(incidentOperation);
+    void processIncidentQueue();
   };
 
   const removeQueuedScoringIncident = (eventTeamId: string): boolean => {
     const activeSegmentId = activeSegment?.id ?? activeSegment?.$id ?? null;
     let retryIndex = -1;
-    for (let index = incidentRetryRef.current.length - 1; index >= 0; index -= 1) {
-      const operation = incidentRetryRef.current[index];
+    for (let index = incidentQueueRef.current.length - 1; index >= 0; index -= 1) {
+      const operation = incidentQueueRef.current[index];
       if (
         operation.action === 'CREATE'
         && operation.eventTeamId === eventTeamId
@@ -793,10 +1044,11 @@ export default function ScoreUpdateModal({
       }
     }
     if (retryIndex < 0) return false;
-    const [operation] = incidentRetryRef.current.splice(retryIndex, 1);
-    writePendingIncidentRetries(incidentRetryStorageKey, incidentRetryRef.current);
+    const [operation] = incidentQueueRef.current.splice(retryIndex, 1);
+    writePendingIncidentActions(incidentRetryStorageKey, incidentQueueRef.current);
     const next = applyScoreDelta(segments, eventTeamId, -score(operation.linkedPointDelta));
     setSegments(next);
+    segmentsRef.current = next;
     if (operation.id) {
       setDeletedIncidentIds((current) => new Set(current).add(operation.id!));
       setOptimisticIncidents((current) => current.filter((incident) => (entityId(incident) ?? incident.id) !== operation.id));
@@ -810,29 +1062,102 @@ export default function ScoreUpdateModal({
     if (!incidentId) return;
     const linkedDelta = score(incident.linkedPointDelta);
     const shouldAdjustScore = isScoringIncidentType(incident.incidentType, rules) && Boolean(incident.eventTeamId) && linkedDelta > 0;
-    const previousSegments = segments;
     const next = shouldAdjustScore
       ? applyScoreDelta(segments, incident.eventTeamId ?? null, -linkedDelta, incident.segmentId)
       : segments;
-    const removedOptimisticIncidents = optimisticIncidents.filter((entry) => (entityId(entry) ?? entry.id) === incidentId);
-    if (shouldAdjustScore) setSegments(next);
+    if (shouldAdjustScore) {
+      setSegments(next);
+      segmentsRef.current = next;
+    }
     setDeletedIncidentIds((current) => new Set(current).add(incidentId));
     setOptimisticIncidents((current) => current.filter((entry) => (entityId(entry) ?? entry.id) !== incidentId));
-    const incidentOperation: MatchIncidentOperation = { action: 'DELETE', id: incidentId };
-    void emit(payload(next, {
-      incidentOperations: [incidentOperation],
-    })).then((success) => {
-      if (success) return;
-      if (shouldAdjustScore) setSegments(previousSegments);
-      setDeletedIncidentIds((current) => {
-        const restored = new Set(current);
-        restored.delete(incidentId);
-        return restored;
-      });
-      if (removedOptimisticIncidents.length) {
-        setOptimisticIncidents((current) => [...current, ...removedOptimisticIncidents]);
-      }
-    });
+    if (editingIncidentId === incidentId) resetIncidentForm();
+    const incidentOperation: MatchIncidentOperation = {
+      action: 'DELETE',
+      id: incidentId,
+      segmentId: incident.segmentId ?? null,
+      eventTeamId: incident.eventTeamId ?? null,
+      incidentType: incident.incidentType,
+      linkedPointDelta: shouldAdjustScore ? linkedDelta : null,
+    };
+    enqueueIncidentOperation(incidentOperation);
+    void processIncidentQueue();
+  };
+
+  const participantValueForIncident = (incident: MatchIncident): string | null => {
+    const options = incident.eventTeamId ? (participantOptionsByTeam[incident.eventTeamId] ?? []) : [];
+    if (incident.eventRegistrationId && options.some((option) => option.value === incident.eventRegistrationId)) {
+      return incident.eventRegistrationId;
+    }
+    if (incident.participantUserId) {
+      return options.find((option) => option.participantUserId === incident.participantUserId || option.value === incident.participantUserId)?.value ?? null;
+    }
+    return null;
+  };
+
+  const editIncident = (incident: MatchIncident) => {
+    if (!canManage) return;
+    const incidentId = entityId(incident) ?? incident.id;
+    if (!incidentId) return;
+    setPendingPoint(null);
+    setEditingIncidentId(incidentId);
+    setIncidentType(incident.incidentType || defaultIncidentType);
+    setIncidentTeamId(incident.eventTeamId ?? null);
+    setIncidentParticipantId(participantValueForIncident(incident));
+    setIncidentMinute(typeof incident.minute === 'number' ? String(incident.minute) : '');
+    setIncidentNote(incident.note ?? '');
+  };
+
+  const updateIncident = () => {
+    if (!editingIncidentId) return;
+    const existing = allIncidents.find((incident) => (entityId(incident) ?? incident.id) === editingIncidentId);
+    if (!existing) return;
+
+    const wasScoring = isScoringIncidentType(existing.incidentType, rules);
+    const nextIsScoring = isScoringIncidentType(incidentType, rules);
+    const previousDelta = wasScoring ? score(existing.linkedPointDelta) : 0;
+    const nextDelta = nextIsScoring ? Math.max(1, score(existing.linkedPointDelta) || 1) : 0;
+    const targetSegmentId = existing.segmentId ?? activeSegment?.id ?? null;
+    let next = segments;
+    if (previousDelta && existing.eventTeamId) {
+      next = applyScoreDelta(next, existing.eventTeamId, -previousDelta, existing.segmentId);
+    }
+    if (nextDelta && incidentTeamId) {
+      next = applyScoreDelta(next, incidentTeamId, nextDelta, targetSegmentId);
+    }
+
+    const incidentOperation: MatchIncidentOperation = {
+      action: incidentQueueRef.current.some((operation) => operation.action === 'CREATE' && operation.id === editingIncidentId) ? 'CREATE' : 'UPDATE',
+      id: editingIncidentId,
+      segmentId: targetSegmentId,
+      eventTeamId: incidentTeamId,
+      eventRegistrationId: selectedParticipant?.eventRegistrationId ?? null,
+      participantUserId: selectedParticipant?.participantUserId ?? null,
+      incidentType,
+      minute: parseIncidentMinute(),
+      linkedPointDelta: nextIsScoring ? nextDelta : null,
+      note: incidentNote.trim() || null,
+    };
+    const optimisticIncident: MatchIncident = {
+      ...existing,
+      segmentId: incidentOperation.segmentId ?? null,
+      eventTeamId: incidentOperation.eventTeamId ?? null,
+      eventRegistrationId: incidentOperation.eventRegistrationId ?? null,
+      participantUserId: incidentOperation.participantUserId ?? null,
+      incidentType: incidentOperation.incidentType ?? existing.incidentType,
+      minute: incidentOperation.minute ?? null,
+      linkedPointDelta: incidentOperation.linkedPointDelta ?? null,
+      note: incidentOperation.note ?? null,
+    };
+    setSegments(next);
+    segmentsRef.current = next;
+    setOptimisticIncidents((current) => [
+      ...current.filter((incident) => (entityId(incident) ?? incident.id) !== editingIncidentId),
+      optimisticIncident,
+    ]);
+    enqueueIncidentOperation(incidentOperation);
+    void processIncidentQueue();
+    resetIncidentForm();
   };
 
   const removeLatestScoringIncident = (eventTeamId: string | null) => {
@@ -850,17 +1175,13 @@ export default function ScoreUpdateModal({
 
   const requestScore = (eventTeamId: string | null, delta: number) => {
     if (!eventTeamId) return;
-    if (autoPointIncidents) {
-      if (delta > 0 && scoringRequiresParticipant) {
-        setPendingPoint({ teamId: eventTeamId, delta });
-        setIncidentType(scoringIncidentType);
-        setIncidentTeamId(eventTeamId);
-        setIncidentParticipantId(participantOptionsByTeam[eventTeamId]?.[0]?.value ?? null);
-        setIncidentMinute('');
-        setIncidentNote('');
-        return;
-      }
-      updateScore(eventTeamId, delta);
+    if (delta > 0 && scoringRequiresParticipant) {
+      setPendingPoint({ teamId: eventTeamId, delta });
+      setIncidentType(scoringIncidentType);
+      setIncidentTeamId(eventTeamId);
+      setIncidentParticipantId(participantOptionsByTeam[eventTeamId]?.[0]?.value ?? null);
+      setIncidentMinute('');
+      setIncidentNote('');
       return;
     }
     updateScore(eventTeamId, delta);
@@ -891,8 +1212,16 @@ export default function ScoreUpdateModal({
 
   const confirmSegment = async () => {
     if (!activeSegment || !team1Id || !team2Id) return;
+    if (segmentConfirming) return;
     if (rules.scoringModel === 'SETS' && !setWinConditionMet()) {
       alert('A team must reach the target points and win by 2 to confirm this segment.');
+      return;
+    }
+    setSegmentConfirming(true);
+    const incidentQueueDrained = await drainIncidentQueueForConfirmation();
+    if (!incidentQueueDrained) {
+      setSegmentConfirming(false);
+      alert('Incident updates are still waiting to sync. Please retry once the queue starts moving.');
       return;
     }
     const winnerEventTeamId = team1Score > team2Score ? team1Id : team2Score > team1Score ? team2Id : null;
@@ -900,7 +1229,6 @@ export default function ScoreUpdateModal({
     const next = segments.map((segment, index) => (
       index === activeIndex ? { ...segment, status: 'COMPLETE', winnerEventTeamId, endedAt } satisfies MatchSegment : segment
     ));
-    const retryIncidentOperations = pendingIncidentRetries();
     const nextPayload = payload(next, {
       segmentOperations: [{
         id: activeSegment.id,
@@ -910,16 +1238,16 @@ export default function ScoreUpdateModal({
         winnerEventTeamId,
         endedAt,
       }],
-      ...(retryIncidentOperations.length ? { incidentOperations: retryIncidentOperations } : {}),
     });
     try {
       if (onSetComplete) await onSetComplete(nextPayload);
       else if (!(await emit(nextPayload))) return;
-      forgetIncidentRetries(retryIncidentOperations);
     } catch (error) {
       console.error('Failed to persist segment result:', error);
       alert('Failed to save segment result. Please retry.');
       return;
+    } finally {
+      setSegmentConfirming(false);
     }
     setSegments(next);
     const nextOpen = next.findIndex((segment) => segment.status !== 'COMPLETE');
@@ -944,7 +1272,12 @@ export default function ScoreUpdateModal({
           } satisfies MatchSegment;
         })
       : segments;
-    const retryIncidentOperations = pendingIncidentRetries();
+    const incidentQueueDrained = await drainIncidentQueueForConfirmation();
+    if (!incidentQueueDrained) {
+      setLoading(false);
+      alert('Incident updates are still waiting to sync. Please retry once the queue starts moving.');
+      return;
+    }
     const nextPayload = payload(next, {
       segmentOperations: next.map((segment) => ({
         id: segment.id,
@@ -954,12 +1287,10 @@ export default function ScoreUpdateModal({
         winnerEventTeamId: segment.winnerEventTeamId ?? null,
         endedAt: segment.endedAt ?? (segment.status === 'COMPLETE' ? endedAt : null),
       })),
-      ...(retryIncidentOperations.length ? { incidentOperations: retryIncidentOperations } : {}),
     });
     try {
       if (onScoreChange) await onScoreChange(nextPayload);
       else if (onSubmit) await onSubmit(match.$id, nextPayload.team1Points, nextPayload.team2Points, nextPayload.setResults);
-      forgetIncidentRetries(retryIncidentOperations);
       if (onMatchComplete && !finalizedRef.current && matchComplete(next)) {
         await onMatchComplete({ ...nextPayload, eventId: tournament.$id });
         finalizedRef.current = true;
@@ -991,12 +1322,33 @@ export default function ScoreUpdateModal({
       note: incidentNote.trim() || null,
     };
     if (isScoring) setSegments(next);
-    rememberIncidentRetry(incidentOperation);
-    void emit(payload(next, {
-      incidentOperations: [incidentOperation],
-    })).then((success) => {
-      if (success) forgetIncidentRetries([incidentOperation]);
-    });
+    segmentsRef.current = next;
+    const optimisticIncident: MatchIncident = {
+      id: incidentOperation.id!,
+      eventId: tournament.$id ?? match.eventId ?? null,
+      matchId: match.$id,
+      segmentId: incidentOperation.segmentId ?? null,
+      eventTeamId: incidentOperation.eventTeamId ?? null,
+      eventRegistrationId: incidentOperation.eventRegistrationId ?? null,
+      participantUserId: incidentOperation.participantUserId ?? null,
+      officialUserId: null,
+      incidentType: incidentOperation.incidentType ?? incidentType,
+      sequence: allIncidents.length
+        ? Math.max(...allIncidents.map((incident) => Number(incident.sequence) || 0)) + 1
+        : 1,
+      minute: incidentOperation.minute ?? null,
+      clock: null,
+      clockSeconds: null,
+      linkedPointDelta: incidentOperation.linkedPointDelta ?? null,
+      note: incidentOperation.note ?? null,
+      metadata: null,
+    };
+    setOptimisticIncidents((current) => [
+      ...current.filter((incident) => (entityId(incident) ?? incident.id) !== optimisticIncident.id),
+      optimisticIncident,
+    ]);
+    enqueueIncidentOperation(incidentOperation);
+    void processIncidentQueue();
     setIncidentMinute('');
     setIncidentNote('');
   };
@@ -1010,6 +1362,37 @@ export default function ScoreUpdateModal({
         checkedIn: true,
       },
     }));
+  };
+
+  const saveActualTimes = async (nextStart: Date | null, nextEnd: Date | null, options?: { markInProgress?: boolean }) => {
+    if (nextStart && nextEnd && nextEnd.getTime() <= nextStart.getTime()) {
+      alert('Actual end time must be after the actual start time.');
+      return false;
+    }
+    const previousStart = actualStartValue;
+    const previousEnd = actualEndValue;
+    setActualTimesSaving(true);
+    setActualStartValue(nextStart);
+    setActualEndValue(nextEnd);
+    const lifecycle: MatchLifecycleOperation = {
+      ...(options?.markInProgress ? { status: 'IN_PROGRESS' } : {}),
+      actualStart: nextStart ? nextStart.toISOString() : null,
+      actualEnd: nextEnd ? nextEnd.toISOString() : null,
+    };
+    const success = await emit(payload(segments, { lifecycle }));
+    setActualTimesSaving(false);
+    if (!success) {
+      setActualStartValue(previousStart);
+      setActualEndValue(previousEnd);
+      return false;
+    }
+    setEditingActualTimes(false);
+    return true;
+  };
+
+  const startMatch = () => {
+    const now = new Date();
+    void saveActualTimes(now, actualEndValue, { markInProgress: true });
   };
 
   const fieldLat = typeof match.field?.lat === 'number' ? match.field.lat : null;
@@ -1030,7 +1413,7 @@ export default function ScoreUpdateModal({
         <Group justify="space-between" align="flex-start">
           <div>
             <Text c="dimmed" size="sm">Match {match.matchId ?? match.$id}</Text>
-            <Text fw={700}>{teamName(match.team1)} vs {teamName(match.team2)}</Text>
+            <Text fw={700}>{teamName(team1)} vs {teamName(team2)}</Text>
             <Text c="dimmed" size="sm">{rulesSummary(rules)}</Text>
           </div>
           <Badge color={match.status === 'COMPLETE' ? 'green' : match.status === 'IN_PROGRESS' ? 'blue' : 'gray'}>
@@ -1069,15 +1452,77 @@ export default function ScoreUpdateModal({
           <Paper withBorder p="md" radius="md">
             <Stack gap="md">
               <Group grow align="flex-start">
+                {showStatusBlock && (
+                  <div>
+                    <Text c="dimmed" size="sm">Status</Text>
+                    <Text fw={600}>{titleCaseValue(match.resultStatus ?? match.status ?? 'Pending')}</Text>
+                    {match.resultType && <Text size="sm">Result: {titleCaseValue(match.resultType)}</Text>}
+                    {statusReason && <Text size="sm">{statusReason}</Text>}
+                  </div>
+                )}
                 <div>
-                  <Text c="dimmed" size="sm">Lifecycle</Text>
-                  <Text fw={600}>{titleCaseValue(match.resultStatus ?? 'Pending')}</Text>
-                  <Text size="sm">{match.statusReason || 'No status reason'}</Text>
-                </div>
-                <div>
-                  <Text c="dimmed" size="sm">Actual Times</Text>
-                  <Text size="sm">Start: {dateLabel(match.actualStart)}</Text>
-                  <Text size="sm">End: {dateLabel(match.actualEnd)}</Text>
+                  <Group justify="space-between" align="center" gap="xs">
+                    <Text c="dimmed" size="sm">Actual Times</Text>
+                    {canManage && !editingActualTimes && (
+                      <Group gap="xs">
+                        <Button
+                          size="xs"
+                          variant="subtle"
+                          onClick={() => setEditingActualTimes(true)}
+                        >
+                          Edit Times
+                        </Button>
+                      </Group>
+                    )}
+                  </Group>
+                  {editingActualTimes ? (
+                    <Stack gap="xs" mt="xs">
+                      <DateTimePicker
+                        label="Actual start"
+                        value={actualStartValue}
+                        onChange={(value) => setActualStartValue(coerceActualDate(value))}
+                        withSeconds
+                        valueFormat="MM/DD/YYYY hh:mm:ss A"
+                        timePickerProps={MATCH_TIME_PICKER_PROPS}
+                        clearable
+                      />
+                      <DateTimePicker
+                        label="Actual end"
+                        value={actualEndValue}
+                        onChange={(value) => setActualEndValue(coerceActualDate(value))}
+                        withSeconds
+                        valueFormat="MM/DD/YYYY hh:mm:ss A"
+                        timePickerProps={MATCH_TIME_PICKER_PROPS}
+                        minDate={actualStartValue ?? undefined}
+                        clearable
+                      />
+                      <Group justify="flex-end" gap="xs">
+                        <Button
+                          size="xs"
+                          variant="default"
+                          onClick={() => {
+                            setActualStartValue(coerceActualDate(match.actualStart));
+                            setActualEndValue(coerceActualDate(match.actualEnd));
+                            setEditingActualTimes(false);
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="xs"
+                          loading={actualTimesSaving}
+                          onClick={() => void saveActualTimes(actualStartValue, actualEndValue)}
+                        >
+                          Save Times
+                        </Button>
+                      </Group>
+                    </Stack>
+                  ) : (
+                    <>
+                      <Text size="sm">Start: {dateLabel(actualStartValue?.toISOString() ?? null)}</Text>
+                      <Text size="sm">End: {dateLabel(actualEndValue?.toISOString() ?? null)}</Text>
+                    </>
+                  )}
                 </div>
               </Group>
 
@@ -1121,18 +1566,31 @@ export default function ScoreUpdateModal({
 
               <Stack gap="xs">
                 <Text c="dimmed" size="sm">Officials</Text>
-                {(match.officialIds ?? []).length ? (match.officialIds ?? []).map((assignment, index) => (
-                  <Group key={`${assignment.positionId}:${assignment.slotIndex}:${index}`} justify="space-between">
-                    <Text size="sm">
-                      {officialPositionLabel(assignment)}: {officialNameLabel(assignment)}
-                      {assignment.checkedIn ? ' (checked in)' : ''}
-                    </Text>
-                    <Group gap="xs">
-                      <Badge color={assignment.checkedIn ? 'green' : 'gray'}>{assignment.checkedIn ? 'Checked in' : 'Not checked in'}</Badge>
-                      {canManage && !assignment.checkedIn && <Button size="xs" variant="light" onClick={() => checkIn(assignment)}>Check in</Button>}
-                    </Group>
-                  </Group>
-                )) : <Text size="sm">No official slots assigned.</Text>}
+                {hasOfficials ? (
+                  <>
+                    {officialAssignments.map((assignment, index) => (
+                      <Group key={`${assignment.positionId}:${assignment.slotIndex}:${index}`} justify="space-between">
+                        <Text size="sm">
+                          {officialPositionLabel(assignment)}: {officialNameLabel(assignment)}
+                          {assignment.checkedIn ? ' (checked in)' : ''}
+                        </Text>
+                        <Group gap="xs">
+                          <Badge color={assignment.checkedIn ? 'green' : 'gray'}>{assignment.checkedIn ? 'Checked in' : 'Not checked in'}</Badge>
+                          {canManage && !assignment.checkedIn && <Button size="xs" variant="light" onClick={() => checkIn(assignment)}>Check in</Button>}
+                        </Group>
+                      </Group>
+                    ))}
+                    {hasTeamOfficial && (
+                      <Group key={`team-official-${teamOfficialId ?? teamName(teamOfficial)}`} justify="space-between">
+                        <Text size="sm">
+                          Team official: {teamName(teamOfficial)}
+                          {match.officialCheckedIn ? ' (checked in)' : ''}
+                        </Text>
+                        <Badge color={match.officialCheckedIn ? 'green' : 'gray'}>{match.officialCheckedIn ? 'Checked in' : 'Not checked in'}</Badge>
+                      </Group>
+                    )}
+                  </>
+                ) : <Text size="sm">No official slots assigned.</Text>}
               </Stack>
 
               <Stack gap="xs">
@@ -1140,18 +1598,28 @@ export default function ScoreUpdateModal({
                 {incidentsForDisplay.length ? incidentsForDisplay.map((incident) => (
                   <Paper key={incident.id} withBorder p="sm" radius="sm" style={{ position: 'relative' }}>
                     {canManage && (
-                      <ActionIcon
-                        aria-label={`Remove ${isScoringIncidentType(incident.incidentType, rules) ? scoringIncidentLabel : matchLogTypeLabel(incident.incidentType)}`}
-                        variant="subtle"
-                        color="red"
-                        size="sm"
-                        onClick={() => removeIncident(incident)}
-                        style={{ position: 'absolute', right: 8, top: 8 }}
-                      >
-                        -
-                      </ActionIcon>
+                      <Group gap={4} style={{ position: 'absolute', right: 8, top: 8 }}>
+                        <Button
+                          aria-label={`Edit ${isScoringIncidentType(incident.incidentType, rules) ? scoringIncidentLabel : matchLogTypeLabel(incident.incidentType)}`}
+                          variant="subtle"
+                          size="xs"
+                          onClick={() => editIncident(incident)}
+                          style={{ height: 24, paddingInline: 8 }}
+                        >
+                          Edit
+                        </Button>
+                        <ActionIcon
+                          aria-label={`Remove ${isScoringIncidentType(incident.incidentType, rules) ? scoringIncidentLabel : matchLogTypeLabel(incident.incidentType)}`}
+                          variant="subtle"
+                          color="red"
+                          size="sm"
+                          onClick={() => removeIncident(incident)}
+                        >
+                          -
+                        </ActionIcon>
+                      </Group>
                     )}
-                    <div style={{ paddingRight: canManage ? 32 : 0 }}>
+                    <div style={{ paddingRight: canManage ? 96 : 0 }}>
                       {isScoringIncidentType(incident.incidentType, rules) ? (
                         <Text fw={600} size="sm">{scoringIncidentDescription(incident)}</Text>
                       ) : (
@@ -1170,6 +1638,7 @@ export default function ScoreUpdateModal({
 
               {canManage && manualIncidentTypes.length > 0 && (
                 <Stack gap="xs">
+                  {editingIncidentId && <Text fw={600}>Edit Match Log</Text>}
                   <Group grow>
                     <Select label="Log type" data={manualIncidentTypes.map((type) => ({ value: type, label: matchLogTypeLabel(type) }))} value={incidentType} onChange={(value) => setIncidentType(value ?? defaultIncidentType)} />
                     <Select label="Team" data={teamOptions} value={incidentTeamId} onChange={setIncidentTeamId} clearable />
@@ -1193,12 +1662,17 @@ export default function ScoreUpdateModal({
                   </Group>
                   <Textarea label="Details" placeholder="Time, player, penalty, or note" value={incidentNote} onChange={(event) => setIncidentNote(event.currentTarget.value)} minRows={2} />
                   <Group justify="flex-end">
+                    {editingIncidentId && (
+                      <Button variant="default" onClick={resetIncidentForm}>
+                        Cancel Edit
+                      </Button>
+                    )}
                     <Button
                       variant="light"
-                      onClick={addIncident}
+                      onClick={editingIncidentId ? updateIncident : addIncident}
                       disabled={rules.pointIncidentRequiresParticipant && isScoringIncidentType(incidentType, rules) && !selectedParticipant}
                     >
-                      Add to Match Log
+                      {editingIncidentId ? 'Save Match Log' : 'Add to Match Log'}
                     </Button>
                   </Group>
                 </Stack>
@@ -1218,20 +1692,19 @@ export default function ScoreUpdateModal({
         {pendingPoint && (
           <Paper withBorder p="md" radius="md">
             <Stack gap="xs">
-              <Text fw={600}>Record {scoringActionLabel}</Text>
+              <Text fw={600}>Record Incident</Text>
               <Select
                 label="Log type"
-                data={[{ value: scoringIncidentType, label: scoringActionLabel }]}
-                value={scoringIncidentType}
-                onChange={() => undefined}
-                disabled
+                data={manualIncidentTypes.map((type) => ({ value: type, label: matchLogTypeLabel(type) }))}
+                value={incidentType}
+                onChange={(value) => setIncidentType(value ?? scoringIncidentType)}
               />
               <Select
-                label={rules.pointIncidentRequiresParticipant ? 'Player' : 'Player (optional)'}
+                label={selectedIncidentRequiresParticipant ? 'Player' : 'Player (optional)'}
                 data={activeParticipantOptions.map((option) => ({ value: option.value, label: option.label }))}
                 value={incidentParticipantId}
                 onChange={setIncidentParticipantId}
-                clearable={!rules.pointIncidentRequiresParticipant}
+                clearable={!selectedIncidentRequiresParticipant}
                 disabled={activeParticipantOptions.length === 0}
               />
               <TextInput
@@ -1246,18 +1719,22 @@ export default function ScoreUpdateModal({
                 <Button variant="default" onClick={() => { setPendingPoint(null); setIncidentMinute(''); setIncidentNote(''); }}>Cancel</Button>
                 <Button
                   onClick={() => {
-                    createScoringIncident(pendingPoint.teamId, {
-                      participant: selectedParticipant,
-                      minute: parseIncidentMinute(),
-                      note: incidentNote,
-                    });
+                    if (selectedIncidentIsScoring) {
+                      createScoringIncident(pendingPoint.teamId, {
+                        participant: selectedParticipant,
+                        minute: parseIncidentMinute(),
+                        note: incidentNote,
+                      });
+                    } else {
+                      addIncident();
+                    }
                     setPendingPoint(null);
                     setIncidentMinute('');
                     setIncidentNote('');
                   }}
-                  disabled={rules.pointIncidentRequiresParticipant && !selectedParticipant}
+                  disabled={selectedIncidentRequiresParticipant && !selectedParticipant}
                 >
-                  Save {scoringActionLabel}
+                  Save Incident
                 </Button>
               </Group>
             </Stack>
@@ -1265,7 +1742,7 @@ export default function ScoreUpdateModal({
         )}
 
         <Group grow align="stretch">
-          {[{ team: match.team1, teamId: team1Id, current: team1Score }, { team: match.team2, teamId: team2Id, current: team2Score }].map(({ team, teamId, current }, index) => {
+          {[{ team: team1, teamId: team1Id, current: team1Score }, { team: team2, teamId: team2Id, current: team2Score }].map(({ team, teamId, current }, index) => {
             const displayName = teamName(team);
 
             return (
@@ -1298,7 +1775,7 @@ export default function ScoreUpdateModal({
                 {canScore && scoringRequiresParticipant && teamId && (
                   <Group justify="center" mt="xs">
                     <Button size="xs" onClick={() => requestScore(teamId, 1)}>
-                      Add {scoringActionLabel}
+                      Add Incident
                     </Button>
                   </Group>
                 )}
@@ -1317,8 +1794,17 @@ export default function ScoreUpdateModal({
         <Group justify="space-between">
           <Button variant="default" onClick={onClose}>Close</Button>
           <Group>
+            {canManage && !actualStartValue && (
+              <Button onClick={startMatch} loading={actualTimesSaving}>
+                Start Match
+              </Button>
+            )}
             {canManage && activeSegment?.status !== 'COMPLETE' && (!isTimedMatch || rules.scoringModel !== 'POINTS_ONLY') && (
-              <Button onClick={confirmSegment} disabled={rules.scoringModel === 'SETS' && !setWinConditionMet()}>
+              <Button
+                onClick={confirmSegment}
+                loading={segmentConfirming}
+                disabled={segmentConfirming || (rules.scoringModel === 'SETS' && !setWinConditionMet())}
+              >
                 Confirm {labelForSegment(rules, activeSegment?.sequence ?? 1)}
               </Button>
             )}

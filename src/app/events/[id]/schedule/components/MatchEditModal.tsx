@@ -35,6 +35,20 @@ const MATCH_TIME_PICKER_PROPS = {
 };
 
 const coerceDate = (value?: string | Date | null): Date | null => parseLocalDateTime(value ?? null);
+const coerceInstantDate = (value?: string | Date | null): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export const actualMatchTimePayload = (
+  actualStart: Date | null,
+  actualEnd: Date | null,
+): Pick<Match, 'actualStart' | 'actualEnd'> => ({
+  actualStart: actualStart ? actualStart.toISOString() : null,
+  actualEnd: actualEnd ? actualEnd.toISOString() : null,
+});
 
 const getEntityId = (value: unknown): string | null => {
   if (!value || typeof value !== 'object') {
@@ -211,6 +225,8 @@ export default function MatchEditModal({
 }: MatchEditModalProps) {
   const [startValue, setStartValue] = useState<Date | null>(null);
   const [endValue, setEndValue] = useState<Date | null>(null);
+  const [actualStartValue, setActualStartValue] = useState<Date | null>(null);
+  const [actualEndValue, setActualEndValue] = useState<Date | null>(null);
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [team1Id, setTeam1Id] = useState<string | null>(null);
   const [team2Id, setTeam2Id] = useState<string | null>(null);
@@ -229,6 +245,8 @@ export default function MatchEditModal({
     if (!match || !opened) {
       setStartValue(null);
       setEndValue(null);
+      setActualStartValue(null);
+      setActualEndValue(null);
       setFieldId(null);
       setTeam1Id(null);
       setTeam2Id(null);
@@ -245,6 +263,8 @@ export default function MatchEditModal({
 
     setStartValue(coerceDate(match.start));
     setEndValue(coerceDate(match.end));
+    setActualStartValue(coerceInstantDate(match.actualStart));
+    setActualEndValue(coerceInstantDate(match.actualEnd));
     setFieldId(getEntityId(match.field));
     setTeam1Id(resolveMatchTeamId(match, 'team1'));
     setTeam2Id(resolveMatchTeamId(match, 'team2'));
@@ -661,6 +681,14 @@ export default function MatchEditModal({
     setEndValue(parseLocalDateTime(value));
   };
 
+  const handleActualStartDateChange = (value: Date | string | null) => {
+    setActualStartValue(parseLocalDateTime(value));
+  };
+
+  const handleActualEndDateChange = (value: Date | string | null) => {
+    setActualEndValue(parseLocalDateTime(value));
+  };
+
   const handleOfficialAssignmentChange = (
     positionId: string,
     slotIndex: number,
@@ -737,6 +765,10 @@ export default function MatchEditModal({
       setError('End time must be after the start time.');
       return;
     }
+    if (actualStartValue && actualEndValue && actualEndValue.getTime() <= actualStartValue.getTime()) {
+      setError('Actual end time must be after the actual start time.');
+      return;
+    }
 
     if (team1Id && team2Id && team1Id === team2Id) {
       setError('Team 1 and Team 2 must be different.');
@@ -777,6 +809,7 @@ export default function MatchEditModal({
       ...match,
       start: startValue ? formatLocalDateTime(startValue) : null,
       end: endValue ? formatLocalDateTime(endValue) : null,
+      ...actualMatchTimePayload(actualStartValue, actualEndValue),
       locked,
       losersBracket,
       winnerNextMatchId: selectedWinnerNextMatchId ?? undefined,
@@ -1009,6 +1042,27 @@ export default function MatchEditModal({
           timePickerProps={MATCH_TIME_PICKER_PROPS}
           required={requiresScheduleFields}
           minDate={startValue ?? undefined}
+        />
+
+        <Divider label="Actual Times" />
+        <DateTimePicker
+          label="Actual start time"
+          value={actualStartValue}
+          onChange={handleActualStartDateChange}
+          withSeconds
+          valueFormat="MM/DD/YYYY hh:mm:ss A"
+          timePickerProps={MATCH_TIME_PICKER_PROPS}
+          clearable
+        />
+        <DateTimePicker
+          label="Actual end time"
+          value={actualEndValue}
+          onChange={handleActualEndDateChange}
+          withSeconds
+          valueFormat="MM/DD/YYYY hh:mm:ss A"
+          timePickerProps={MATCH_TIME_PICKER_PROPS}
+          minDate={actualStartValue ?? undefined}
+          clearable
         />
 
         <Divider label="Bracket Links" />

@@ -1093,7 +1093,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       if (parsed.data.lifecycle) {
         if (!isHostOrAdmin) {
-          throw new Response('Only hosts can update match lifecycle.', { status: 403 });
+          const lifecycleKeys = Object.entries(parsed.data.lifecycle)
+            .filter(([, value]) => value !== undefined)
+            .map(([key]) => key);
+          const officialAllowedKeys = new Set(['actualStart', 'actualEnd', 'status']);
+          const requestedStatus = typeof parsed.data.lifecycle.status === 'string'
+            ? parsed.data.lifecycle.status.trim().toUpperCase()
+            : null;
+          const allowedOfficialLifecycleUpdate = isOfficial
+            && lifecycleKeys.every((key) => officialAllowedKeys.has(key))
+            && (!requestedStatus || requestedStatus === 'IN_PROGRESS')
+            && (!requestedStatus || Boolean(parsed.data.lifecycle.actualStart ?? targetMatch.actualStart));
+          if (!allowedOfficialLifecycleUpdate) {
+            throw new Response('Only hosts can update match lifecycle status.', { status: 403 });
+          }
         }
         applyLifecycleOperation(targetMatch, parsed.data.lifecycle);
       }

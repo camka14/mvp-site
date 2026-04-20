@@ -724,6 +724,101 @@ describe('schedule routes', () => {
     expect(applyMatchUpdatesMock).not.toHaveBeenCalled();
   });
 
+  it('allows an assigned official to update actual match times', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          official: { id: 'official_1' },
+          officialCheckedIn: true,
+          actualStart: null,
+          actualEnd: null,
+        },
+      },
+      teams: {},
+      officials: [{ id: 'official_1' }],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        lifecycle: {
+          actualStart: '2026-04-19T10:00:00.000Z',
+          actualEnd: '2026-04-19T11:00:00.000Z',
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const savedMatch = saveMatchesMock.mock.calls[0][1][0];
+    expect(savedMatch.actualStart).toEqual(new Date('2026-04-19T10:00:00.000Z'));
+    expect(savedMatch.actualEnd).toEqual(new Date('2026-04-19T11:00:00.000Z'));
+  });
+
+  it('allows an assigned official to start a match with an actual start time', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          official: { id: 'official_1' },
+          officialCheckedIn: true,
+          actualStart: null,
+          actualEnd: null,
+          status: 'SCHEDULED',
+        },
+      },
+      teams: {},
+      officials: [{ id: 'official_1' }],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        lifecycle: {
+          status: 'IN_PROGRESS',
+          actualStart: '2026-04-19T10:00:00.000Z',
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const savedMatch = saveMatchesMock.mock.calls[0][1][0];
+    expect(savedMatch.status).toBe('IN_PROGRESS');
+    expect(savedMatch.actualStart).toEqual(new Date('2026-04-19T10:00:00.000Z'));
+  });
+
   it('updates a match when user is host', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
