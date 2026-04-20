@@ -41,6 +41,13 @@ export type OrganizationsMinAggregateOutputType = {
   verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum | null
   verificationReviewNotes: string | null
   verificationReviewUpdatedAt: Date | null
+  publicSlug: string | null
+  publicPageEnabled: boolean | null
+  publicWidgetsEnabled: boolean | null
+  brandPrimaryColor: string | null
+  brandAccentColor: string | null
+  publicHeadline: string | null
+  publicIntroText: string | null
 }
 
 export type OrganizationsMaxAggregateOutputType = {
@@ -60,6 +67,13 @@ export type OrganizationsMaxAggregateOutputType = {
   verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum | null
   verificationReviewNotes: string | null
   verificationReviewUpdatedAt: Date | null
+  publicSlug: string | null
+  publicPageEnabled: boolean | null
+  publicWidgetsEnabled: boolean | null
+  brandPrimaryColor: string | null
+  brandAccentColor: string | null
+  publicHeadline: string | null
+  publicIntroText: string | null
 }
 
 export type OrganizationsCountAggregateOutputType = {
@@ -85,6 +99,14 @@ export type OrganizationsCountAggregateOutputType = {
   coordinates: number
   productIds: number
   teamIds: number
+  publicSlug: number
+  publicPageEnabled: number
+  publicWidgetsEnabled: number
+  brandPrimaryColor: number
+  brandAccentColor: number
+  publicHeadline: number
+  publicIntroText: number
+  embedAllowedDomains: number
   _all: number
 }
 
@@ -106,6 +128,13 @@ export type OrganizationsMinAggregateInputType = {
   verificationReviewStatus?: true
   verificationReviewNotes?: true
   verificationReviewUpdatedAt?: true
+  publicSlug?: true
+  publicPageEnabled?: true
+  publicWidgetsEnabled?: true
+  brandPrimaryColor?: true
+  brandAccentColor?: true
+  publicHeadline?: true
+  publicIntroText?: true
 }
 
 export type OrganizationsMaxAggregateInputType = {
@@ -125,6 +154,13 @@ export type OrganizationsMaxAggregateInputType = {
   verificationReviewStatus?: true
   verificationReviewNotes?: true
   verificationReviewUpdatedAt?: true
+  publicSlug?: true
+  publicPageEnabled?: true
+  publicWidgetsEnabled?: true
+  brandPrimaryColor?: true
+  brandAccentColor?: true
+  publicHeadline?: true
+  publicIntroText?: true
 }
 
 export type OrganizationsCountAggregateInputType = {
@@ -150,6 +186,14 @@ export type OrganizationsCountAggregateInputType = {
   coordinates?: true
   productIds?: true
   teamIds?: true
+  publicSlug?: true
+  publicPageEnabled?: true
+  publicWidgetsEnabled?: true
+  brandPrimaryColor?: true
+  brandAccentColor?: true
+  publicHeadline?: true
+  publicIntroText?: true
+  embedAllowedDomains?: true
   _all?: true
 }
 
@@ -248,6 +292,14 @@ export type OrganizationsGroupByOutputType = {
   coordinates: runtime.JsonValue | null
   productIds: string[]
   teamIds: string[]
+  publicSlug: string | null
+  publicPageEnabled: boolean
+  publicWidgetsEnabled: boolean
+  brandPrimaryColor: string | null
+  brandAccentColor: string | null
+  publicHeadline: string | null
+  publicIntroText: string | null
+  embedAllowedDomains: string[]
   _count: OrganizationsCountAggregateOutputType | null
   _min: OrganizationsMinAggregateOutputType | null
   _max: OrganizationsMaxAggregateOutputType | null
@@ -294,6 +346,14 @@ export type OrganizationsWhereInput = {
   coordinates?: Prisma.JsonNullableFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   teamIds?: Prisma.StringNullableListFilter<"Organizations">
+  publicSlug?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  publicPageEnabled?: Prisma.BoolFilter<"Organizations"> | boolean
+  publicWidgetsEnabled?: Prisma.BoolFilter<"Organizations"> | boolean
+  brandPrimaryColor?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  brandAccentColor?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  publicHeadline?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  publicIntroText?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  embedAllowedDomains?: Prisma.StringNullableListFilter<"Organizations">
 }
 
 export type OrganizationsOrderByWithRelationInput = {
@@ -319,10 +379,19 @@ export type OrganizationsOrderByWithRelationInput = {
   coordinates?: Prisma.SortOrderInput | Prisma.SortOrder
   productIds?: Prisma.SortOrder
   teamIds?: Prisma.SortOrder
+  publicSlug?: Prisma.SortOrderInput | Prisma.SortOrder
+  publicPageEnabled?: Prisma.SortOrder
+  publicWidgetsEnabled?: Prisma.SortOrder
+  brandPrimaryColor?: Prisma.SortOrderInput | Prisma.SortOrder
+  brandAccentColor?: Prisma.SortOrderInput | Prisma.SortOrder
+  publicHeadline?: Prisma.SortOrderInput | Prisma.SortOrder
+  publicIntroText?: Prisma.SortOrderInput | Prisma.SortOrder
+  embedAllowedDomains?: Prisma.SortOrder
 }
 
 export type OrganizationsWhereUniqueInput = Prisma.AtLeast<{
   id?: string
+  publicSlug?: string
   AND?: Prisma.OrganizationsWhereInput | Prisma.OrganizationsWhereInput[]
   OR?: Prisma.OrganizationsWhereInput[]
   NOT?: Prisma.OrganizationsWhereInput | Prisma.OrganizationsWhereInput[]
@@ -347,7 +416,14 @@ export type OrganizationsWhereUniqueInput = Prisma.AtLeast<{
   coordinates?: Prisma.JsonNullableFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   teamIds?: Prisma.StringNullableListFilter<"Organizations">
-}, "id">
+  publicPageEnabled?: Prisma.BoolFilter<"Organizations"> | boolean
+  publicWidgetsEnabled?: Prisma.BoolFilter<"Organizations"> | boolean
+  brandPrimaryColor?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  brandAccentColor?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  publicHeadline?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  publicIntroText?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  embedAllowedDomains?: Prisma.StringNullableListFilter<"Organizations">
+}, "id" | "publicSlug">
 
 export type OrganizationsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -372,6 +448,14 @@ export type OrganizationsOrderByWithAggregationInput = {
   coordinates?: Prisma.SortOrderInput | Prisma.SortOrder
   productIds?: Prisma.SortOrder
   teamIds?: Prisma.SortOrder
+  publicSlug?: Prisma.SortOrderInput | Prisma.SortOrder
+  publicPageEnabled?: Prisma.SortOrder
+  publicWidgetsEnabled?: Prisma.SortOrder
+  brandPrimaryColor?: Prisma.SortOrderInput | Prisma.SortOrder
+  brandAccentColor?: Prisma.SortOrderInput | Prisma.SortOrder
+  publicHeadline?: Prisma.SortOrderInput | Prisma.SortOrder
+  publicIntroText?: Prisma.SortOrderInput | Prisma.SortOrder
+  embedAllowedDomains?: Prisma.SortOrder
   _count?: Prisma.OrganizationsCountOrderByAggregateInput
   _max?: Prisma.OrganizationsMaxOrderByAggregateInput
   _min?: Prisma.OrganizationsMinOrderByAggregateInput
@@ -403,6 +487,14 @@ export type OrganizationsScalarWhereWithAggregatesInput = {
   coordinates?: Prisma.JsonNullableWithAggregatesFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   teamIds?: Prisma.StringNullableListFilter<"Organizations">
+  publicSlug?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  publicPageEnabled?: Prisma.BoolWithAggregatesFilter<"Organizations"> | boolean
+  publicWidgetsEnabled?: Prisma.BoolWithAggregatesFilter<"Organizations"> | boolean
+  brandPrimaryColor?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  brandAccentColor?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  publicHeadline?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  publicIntroText?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  embedAllowedDomains?: Prisma.StringNullableListFilter<"Organizations">
 }
 
 export type OrganizationsCreateInput = {
@@ -428,6 +520,14 @@ export type OrganizationsCreateInput = {
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsCreateteamIdsInput | string[]
+  publicSlug?: string | null
+  publicPageEnabled?: boolean
+  publicWidgetsEnabled?: boolean
+  brandPrimaryColor?: string | null
+  brandAccentColor?: string | null
+  publicHeadline?: string | null
+  publicIntroText?: string | null
+  embedAllowedDomains?: Prisma.OrganizationsCreateembedAllowedDomainsInput | string[]
 }
 
 export type OrganizationsUncheckedCreateInput = {
@@ -453,6 +553,14 @@ export type OrganizationsUncheckedCreateInput = {
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsCreateteamIdsInput | string[]
+  publicSlug?: string | null
+  publicPageEnabled?: boolean
+  publicWidgetsEnabled?: boolean
+  brandPrimaryColor?: string | null
+  brandAccentColor?: string | null
+  publicHeadline?: string | null
+  publicIntroText?: string | null
+  embedAllowedDomains?: Prisma.OrganizationsCreateembedAllowedDomainsInput | string[]
 }
 
 export type OrganizationsUpdateInput = {
@@ -478,6 +586,14 @@ export type OrganizationsUpdateInput = {
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsUpdateteamIdsInput | string[]
+  publicSlug?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicPageEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  publicWidgetsEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  brandPrimaryColor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  brandAccentColor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicHeadline?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicIntroText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  embedAllowedDomains?: Prisma.OrganizationsUpdateembedAllowedDomainsInput | string[]
 }
 
 export type OrganizationsUncheckedUpdateInput = {
@@ -503,6 +619,14 @@ export type OrganizationsUncheckedUpdateInput = {
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsUpdateteamIdsInput | string[]
+  publicSlug?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicPageEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  publicWidgetsEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  brandPrimaryColor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  brandAccentColor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicHeadline?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicIntroText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  embedAllowedDomains?: Prisma.OrganizationsUpdateembedAllowedDomainsInput | string[]
 }
 
 export type OrganizationsCreateManyInput = {
@@ -528,6 +652,14 @@ export type OrganizationsCreateManyInput = {
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsCreateteamIdsInput | string[]
+  publicSlug?: string | null
+  publicPageEnabled?: boolean
+  publicWidgetsEnabled?: boolean
+  brandPrimaryColor?: string | null
+  brandAccentColor?: string | null
+  publicHeadline?: string | null
+  publicIntroText?: string | null
+  embedAllowedDomains?: Prisma.OrganizationsCreateembedAllowedDomainsInput | string[]
 }
 
 export type OrganizationsUpdateManyMutationInput = {
@@ -553,6 +685,14 @@ export type OrganizationsUpdateManyMutationInput = {
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsUpdateteamIdsInput | string[]
+  publicSlug?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicPageEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  publicWidgetsEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  brandPrimaryColor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  brandAccentColor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicHeadline?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicIntroText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  embedAllowedDomains?: Prisma.OrganizationsUpdateembedAllowedDomainsInput | string[]
 }
 
 export type OrganizationsUncheckedUpdateManyInput = {
@@ -578,6 +718,14 @@ export type OrganizationsUncheckedUpdateManyInput = {
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsUpdateteamIdsInput | string[]
+  publicSlug?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicPageEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  publicWidgetsEnabled?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  brandPrimaryColor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  brandAccentColor?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicHeadline?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  publicIntroText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  embedAllowedDomains?: Prisma.OrganizationsUpdateembedAllowedDomainsInput | string[]
 }
 
 export type OrganizationsCountOrderByAggregateInput = {
@@ -603,6 +751,14 @@ export type OrganizationsCountOrderByAggregateInput = {
   coordinates?: Prisma.SortOrder
   productIds?: Prisma.SortOrder
   teamIds?: Prisma.SortOrder
+  publicSlug?: Prisma.SortOrder
+  publicPageEnabled?: Prisma.SortOrder
+  publicWidgetsEnabled?: Prisma.SortOrder
+  brandPrimaryColor?: Prisma.SortOrder
+  brandAccentColor?: Prisma.SortOrder
+  publicHeadline?: Prisma.SortOrder
+  publicIntroText?: Prisma.SortOrder
+  embedAllowedDomains?: Prisma.SortOrder
 }
 
 export type OrganizationsMaxOrderByAggregateInput = {
@@ -622,6 +778,13 @@ export type OrganizationsMaxOrderByAggregateInput = {
   verificationReviewStatus?: Prisma.SortOrder
   verificationReviewNotes?: Prisma.SortOrder
   verificationReviewUpdatedAt?: Prisma.SortOrder
+  publicSlug?: Prisma.SortOrder
+  publicPageEnabled?: Prisma.SortOrder
+  publicWidgetsEnabled?: Prisma.SortOrder
+  brandPrimaryColor?: Prisma.SortOrder
+  brandAccentColor?: Prisma.SortOrder
+  publicHeadline?: Prisma.SortOrder
+  publicIntroText?: Prisma.SortOrder
 }
 
 export type OrganizationsMinOrderByAggregateInput = {
@@ -641,6 +804,13 @@ export type OrganizationsMinOrderByAggregateInput = {
   verificationReviewStatus?: Prisma.SortOrder
   verificationReviewNotes?: Prisma.SortOrder
   verificationReviewUpdatedAt?: Prisma.SortOrder
+  publicSlug?: Prisma.SortOrder
+  publicPageEnabled?: Prisma.SortOrder
+  publicWidgetsEnabled?: Prisma.SortOrder
+  brandPrimaryColor?: Prisma.SortOrder
+  brandAccentColor?: Prisma.SortOrder
+  publicHeadline?: Prisma.SortOrder
+  publicIntroText?: Prisma.SortOrder
 }
 
 export type OrganizationsCreatehostIdsInput = {
@@ -660,6 +830,10 @@ export type OrganizationsCreateproductIdsInput = {
 }
 
 export type OrganizationsCreateteamIdsInput = {
+  set: string[]
+}
+
+export type OrganizationsCreateembedAllowedDomainsInput = {
   set: string[]
 }
 
@@ -696,6 +870,11 @@ export type OrganizationsUpdateteamIdsInput = {
   push?: string | string[]
 }
 
+export type OrganizationsUpdateembedAllowedDomainsInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
 
 
 export type OrganizationsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -721,6 +900,14 @@ export type OrganizationsSelect<ExtArgs extends runtime.Types.Extensions.Interna
   coordinates?: boolean
   productIds?: boolean
   teamIds?: boolean
+  publicSlug?: boolean
+  publicPageEnabled?: boolean
+  publicWidgetsEnabled?: boolean
+  brandPrimaryColor?: boolean
+  brandAccentColor?: boolean
+  publicHeadline?: boolean
+  publicIntroText?: boolean
+  embedAllowedDomains?: boolean
 }, ExtArgs["result"]["organizations"]>
 
 export type OrganizationsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -746,6 +933,14 @@ export type OrganizationsSelectCreateManyAndReturn<ExtArgs extends runtime.Types
   coordinates?: boolean
   productIds?: boolean
   teamIds?: boolean
+  publicSlug?: boolean
+  publicPageEnabled?: boolean
+  publicWidgetsEnabled?: boolean
+  brandPrimaryColor?: boolean
+  brandAccentColor?: boolean
+  publicHeadline?: boolean
+  publicIntroText?: boolean
+  embedAllowedDomains?: boolean
 }, ExtArgs["result"]["organizations"]>
 
 export type OrganizationsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -771,6 +966,14 @@ export type OrganizationsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   coordinates?: boolean
   productIds?: boolean
   teamIds?: boolean
+  publicSlug?: boolean
+  publicPageEnabled?: boolean
+  publicWidgetsEnabled?: boolean
+  brandPrimaryColor?: boolean
+  brandAccentColor?: boolean
+  publicHeadline?: boolean
+  publicIntroText?: boolean
+  embedAllowedDomains?: boolean
 }, ExtArgs["result"]["organizations"]>
 
 export type OrganizationsSelectScalar = {
@@ -796,9 +999,17 @@ export type OrganizationsSelectScalar = {
   coordinates?: boolean
   productIds?: boolean
   teamIds?: boolean
+  publicSlug?: boolean
+  publicPageEnabled?: boolean
+  publicWidgetsEnabled?: boolean
+  brandPrimaryColor?: boolean
+  brandAccentColor?: boolean
+  publicHeadline?: boolean
+  publicIntroText?: boolean
+  embedAllowedDomains?: boolean
 }
 
-export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "hostIds" | "website" | "sports" | "officialIds" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "coordinates" | "productIds" | "teamIds", ExtArgs["result"]["organizations"]>
+export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "hostIds" | "website" | "sports" | "officialIds" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "coordinates" | "productIds" | "teamIds" | "publicSlug" | "publicPageEnabled" | "publicWidgetsEnabled" | "brandPrimaryColor" | "brandAccentColor" | "publicHeadline" | "publicIntroText" | "embedAllowedDomains", ExtArgs["result"]["organizations"]>
 
 export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Organizations"
@@ -826,6 +1037,14 @@ export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.Inter
     coordinates: runtime.JsonValue | null
     productIds: string[]
     teamIds: string[]
+    publicSlug: string | null
+    publicPageEnabled: boolean
+    publicWidgetsEnabled: boolean
+    brandPrimaryColor: string | null
+    brandAccentColor: string | null
+    publicHeadline: string | null
+    publicIntroText: string | null
+    embedAllowedDomains: string[]
   }, ExtArgs["result"]["organizations"]>
   composites: {}
 }
@@ -1271,6 +1490,14 @@ export interface OrganizationsFieldRefs {
   readonly coordinates: Prisma.FieldRef<"Organizations", 'Json'>
   readonly productIds: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly teamIds: Prisma.FieldRef<"Organizations", 'String[]'>
+  readonly publicSlug: Prisma.FieldRef<"Organizations", 'String'>
+  readonly publicPageEnabled: Prisma.FieldRef<"Organizations", 'Boolean'>
+  readonly publicWidgetsEnabled: Prisma.FieldRef<"Organizations", 'Boolean'>
+  readonly brandPrimaryColor: Prisma.FieldRef<"Organizations", 'String'>
+  readonly brandAccentColor: Prisma.FieldRef<"Organizations", 'String'>
+  readonly publicHeadline: Prisma.FieldRef<"Organizations", 'String'>
+  readonly publicIntroText: Prisma.FieldRef<"Organizations", 'String'>
+  readonly embedAllowedDomains: Prisma.FieldRef<"Organizations", 'String[]'>
 }
     
 

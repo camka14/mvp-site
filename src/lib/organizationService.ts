@@ -238,6 +238,19 @@ class OrganizationService {
         : undefined,
       productIds,
       teamIds,
+      publicSlug: typeof row.publicSlug === 'string' ? row.publicSlug : null,
+      publicPageEnabled: Boolean(row.publicPageEnabled),
+      publicWidgetsEnabled: Boolean(row.publicWidgetsEnabled),
+      brandPrimaryColor: typeof row.brandPrimaryColor === 'string' ? row.brandPrimaryColor : null,
+      brandAccentColor: typeof row.brandAccentColor === 'string' ? row.brandAccentColor : null,
+      publicHeadline: typeof row.publicHeadline === 'string' ? row.publicHeadline : null,
+      publicIntroText: typeof row.publicIntroText === 'string' ? row.publicIntroText : null,
+      embedAllowedDomains: Array.isArray(row.embedAllowedDomains)
+        ? row.embedAllowedDomains
+          .filter((value: unknown): value is string => typeof value === 'string')
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+        : [],
       viewerCanManageOrganization: Boolean(row.viewerCanManageOrganization),
       viewerCanAccessUsers: Boolean(row.viewerCanAccessUsers),
       $createdAt: row.$createdAt,
