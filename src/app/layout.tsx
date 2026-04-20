@@ -12,6 +12,7 @@ import { ChatComponents } from '@/components/chat/ChatComponents';
 import ProfileCompletionGate from '@/components/auth/ProfileCompletionGate';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
 import SiteFooter from '@/components/layout/SiteFooter';
+import { getIosSmartAppBannerMetaContent } from '@/lib/mobileAppLinks';
 import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
 import { SITE_URL } from '@/lib/siteUrl';
 
@@ -78,11 +79,13 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   const disableChat = process.env.NEXT_PUBLIC_DISABLE_CHAT === '1';
+  const iosSmartAppBannerContent = getIosSmartAppBannerMetaContent();
 
   return (
     <html lang="en" className={robotoFlex.className}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="apple-itunes-app" content={iosSmartAppBannerContent} />
       </head>
       <body className="min-h-screen bg-background text-foreground">
         <MantineProvider theme={theme} defaultColorScheme="light">

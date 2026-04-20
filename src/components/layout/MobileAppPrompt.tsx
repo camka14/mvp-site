@@ -26,6 +26,23 @@ const isStandaloneDisplayMode = (): boolean => {
   return mediaStandalone || navigatorStandalone;
 };
 
+export const supportsNativeIosSmartAppBanner = (ua: string, maxTouchPoints: number): boolean => {
+  const platform = detectMobilePlatform(ua, maxTouchPoints);
+  if (platform !== 'ios') return false;
+
+  const userAgent = ua.toLowerCase();
+  const isSafariEngine = userAgent.includes('safari');
+  const isOtherIosBrowser =
+    userAgent.includes('crios')
+    || userAgent.includes('fxios')
+    || userAgent.includes('edgios')
+    || userAgent.includes('opios')
+    || userAgent.includes('mercury')
+    || userAgent.includes('gsa');
+
+  return isSafariEngine && !isOtherIosBrowser;
+};
+
 export default function MobileAppPrompt() {
   const [platform, setPlatform] = useState<MobilePlatform>('other');
   const [visible, setVisible] = useState(false);
@@ -48,9 +65,12 @@ export default function MobileAppPrompt() {
     if (process.env.NEXT_PUBLIC_SHOW_APP_PROMPT === '0') return;
     if (typeof window === 'undefined') return;
 
-    const detected = detectMobilePlatform(window.navigator.userAgent || '', window.navigator.maxTouchPoints || 0);
+    const userAgent = window.navigator.userAgent || '';
+    const maxTouchPoints = window.navigator.maxTouchPoints || 0;
+    const detected = detectMobilePlatform(userAgent, maxTouchPoints);
     if (detected === 'other') return;
     if (isStandaloneDisplayMode()) return;
+    if (supportsNativeIosSmartAppBanner(userAgent, maxTouchPoints)) return;
 
     const dismissedUntil = Number(window.localStorage.getItem(DISMISSED_UNTIL_KEY) || '0');
     if (Number.isFinite(dismissedUntil) && dismissedUntil > Date.now()) {
