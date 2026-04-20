@@ -8,7 +8,7 @@
       "preLaunchTask": "mvp: stop stale dev servers",
       "postDebugTask": "mvp: stop stale dev servers",
       "restart": false,
-      "command": "npm run dev:plain",
+      "command": "npm run dev:plain -- --webpack",
       "cwd": "${workspaceFolder}",
       "serverReadyAction": {
         "action": "debugWithChrome",
@@ -24,7 +24,7 @@
       "preLaunchTask": "mvp: stop stale dev servers",
       "postDebugTask": "mvp: stop stale dev servers",
       "restart": false,
-      "command": "npm run dev",
+      "command": "npm run dev -- --webpack",
       "cwd": "${workspaceFolder}",
       "serverReadyAction": {
         "action": "debugWithChrome",
@@ -40,7 +40,7 @@
       "preLaunchTask": "mvp: stop stale dev servers",
       "postDebugTask": "mvp: stop stale dev servers",
       "restart": false,
-      "command": "npm run dev:plain",
+      "command": "npm run dev:plain -- --webpack",
       "cwd": "${workspaceFolder}"
     }
   ]

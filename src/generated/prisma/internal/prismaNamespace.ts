@@ -80,12 +80,12 @@ export type PrismaVersion = {
 }
 
 /**
- * Prisma Client JS version: 7.3.0
- * Query Engine version: 9d6ad21cbbceab97458517b147a6a09ff43aa735
+ * Prisma Client JS version: 7.7.0
+ * Query Engine version: 75cbdc1eb7150937890ad5465d861175c6624711
  */
 export const prismaVersion: PrismaVersion = {
-  client: "7.3.0",
-  engine: "9d6ad21cbbceab97458517b147a6a09ff43aa735"
+  client: "7.7.0",
+  engine: "75cbdc1eb7150937890ad5465d861175c6624711"
 }
 
 /**
@@ -386,6 +386,8 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   Fields: 'Fields',
   Matches: 'Matches',
+  MatchSegments: 'MatchSegments',
+  MatchIncidents: 'MatchIncidents',
   Divisions: 'Divisions',
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
@@ -393,8 +395,13 @@ export const ModelName = {
   StaffMembers: 'StaffMembers',
   EventOfficials: 'EventOfficials',
   Teams: 'Teams',
+  CanonicalTeams: 'CanonicalTeams',
+  TeamRegistrations: 'TeamRegistrations',
+  TeamStaffAssignments: 'TeamStaffAssignments',
+  EventTeamStaffAssignments: 'EventTeamStaffAssignments',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
+  ModerationReport: 'ModerationReport',
   PushDeviceTarget: 'PushDeviceTarget',
   LockFiles: 'LockFiles',
   PaymentIntents: 'PaymentIntents',
@@ -432,7 +439,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "eventOfficials" | "teams" | "messages" | "chatGroup" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -581,6 +588,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.MatchesCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.MatchesCountAggregateOutputType> | number
+        }
+      }
+    }
+    MatchSegments: {
+      payload: Prisma.$MatchSegmentsPayload<ExtArgs>
+      fields: Prisma.MatchSegmentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.MatchSegmentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.MatchSegmentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        findFirst: {
+          args: Prisma.MatchSegmentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.MatchSegmentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        findMany: {
+          args: Prisma.MatchSegmentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>[]
+        }
+        create: {
+          args: Prisma.MatchSegmentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        createMany: {
+          args: Prisma.MatchSegmentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.MatchSegmentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>[]
+        }
+        delete: {
+          args: Prisma.MatchSegmentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        update: {
+          args: Prisma.MatchSegmentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.MatchSegmentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.MatchSegmentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.MatchSegmentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.MatchSegmentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchSegmentsPayload>
+        }
+        aggregate: {
+          args: Prisma.MatchSegmentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateMatchSegments>
+        }
+        groupBy: {
+          args: Prisma.MatchSegmentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchSegmentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.MatchSegmentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchSegmentsCountAggregateOutputType> | number
+        }
+      }
+    }
+    MatchIncidents: {
+      payload: Prisma.$MatchIncidentsPayload<ExtArgs>
+      fields: Prisma.MatchIncidentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.MatchIncidentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.MatchIncidentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        findFirst: {
+          args: Prisma.MatchIncidentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.MatchIncidentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        findMany: {
+          args: Prisma.MatchIncidentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>[]
+        }
+        create: {
+          args: Prisma.MatchIncidentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        createMany: {
+          args: Prisma.MatchIncidentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.MatchIncidentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>[]
+        }
+        delete: {
+          args: Prisma.MatchIncidentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        update: {
+          args: Prisma.MatchIncidentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.MatchIncidentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.MatchIncidentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.MatchIncidentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.MatchIncidentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$MatchIncidentsPayload>
+        }
+        aggregate: {
+          args: Prisma.MatchIncidentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateMatchIncidents>
+        }
+        groupBy: {
+          args: Prisma.MatchIncidentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchIncidentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.MatchIncidentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.MatchIncidentsCountAggregateOutputType> | number
         }
       }
     }
@@ -1102,6 +1257,302 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    CanonicalTeams: {
+      payload: Prisma.$CanonicalTeamsPayload<ExtArgs>
+      fields: Prisma.CanonicalTeamsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.CanonicalTeamsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.CanonicalTeamsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>
+        }
+        findFirst: {
+          args: Prisma.CanonicalTeamsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.CanonicalTeamsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>
+        }
+        findMany: {
+          args: Prisma.CanonicalTeamsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>[]
+        }
+        create: {
+          args: Prisma.CanonicalTeamsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>
+        }
+        createMany: {
+          args: Prisma.CanonicalTeamsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.CanonicalTeamsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>[]
+        }
+        delete: {
+          args: Prisma.CanonicalTeamsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>
+        }
+        update: {
+          args: Prisma.CanonicalTeamsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>
+        }
+        deleteMany: {
+          args: Prisma.CanonicalTeamsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.CanonicalTeamsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.CanonicalTeamsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>[]
+        }
+        upsert: {
+          args: Prisma.CanonicalTeamsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$CanonicalTeamsPayload>
+        }
+        aggregate: {
+          args: Prisma.CanonicalTeamsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateCanonicalTeams>
+        }
+        groupBy: {
+          args: Prisma.CanonicalTeamsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CanonicalTeamsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.CanonicalTeamsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.CanonicalTeamsCountAggregateOutputType> | number
+        }
+      }
+    }
+    TeamRegistrations: {
+      payload: Prisma.$TeamRegistrationsPayload<ExtArgs>
+      fields: Prisma.TeamRegistrationsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.TeamRegistrationsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.TeamRegistrationsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>
+        }
+        findFirst: {
+          args: Prisma.TeamRegistrationsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.TeamRegistrationsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>
+        }
+        findMany: {
+          args: Prisma.TeamRegistrationsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>[]
+        }
+        create: {
+          args: Prisma.TeamRegistrationsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>
+        }
+        createMany: {
+          args: Prisma.TeamRegistrationsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.TeamRegistrationsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>[]
+        }
+        delete: {
+          args: Prisma.TeamRegistrationsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>
+        }
+        update: {
+          args: Prisma.TeamRegistrationsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>
+        }
+        deleteMany: {
+          args: Prisma.TeamRegistrationsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.TeamRegistrationsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.TeamRegistrationsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>[]
+        }
+        upsert: {
+          args: Prisma.TeamRegistrationsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamRegistrationsPayload>
+        }
+        aggregate: {
+          args: Prisma.TeamRegistrationsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTeamRegistrations>
+        }
+        groupBy: {
+          args: Prisma.TeamRegistrationsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamRegistrationsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.TeamRegistrationsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamRegistrationsCountAggregateOutputType> | number
+        }
+      }
+    }
+    TeamStaffAssignments: {
+      payload: Prisma.$TeamStaffAssignmentsPayload<ExtArgs>
+      fields: Prisma.TeamStaffAssignmentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.TeamStaffAssignmentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.TeamStaffAssignmentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>
+        }
+        findFirst: {
+          args: Prisma.TeamStaffAssignmentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.TeamStaffAssignmentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>
+        }
+        findMany: {
+          args: Prisma.TeamStaffAssignmentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>[]
+        }
+        create: {
+          args: Prisma.TeamStaffAssignmentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>
+        }
+        createMany: {
+          args: Prisma.TeamStaffAssignmentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.TeamStaffAssignmentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>[]
+        }
+        delete: {
+          args: Prisma.TeamStaffAssignmentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>
+        }
+        update: {
+          args: Prisma.TeamStaffAssignmentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.TeamStaffAssignmentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.TeamStaffAssignmentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.TeamStaffAssignmentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.TeamStaffAssignmentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffAssignmentsPayload>
+        }
+        aggregate: {
+          args: Prisma.TeamStaffAssignmentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTeamStaffAssignments>
+        }
+        groupBy: {
+          args: Prisma.TeamStaffAssignmentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamStaffAssignmentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.TeamStaffAssignmentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamStaffAssignmentsCountAggregateOutputType> | number
+        }
+      }
+    }
+    EventTeamStaffAssignments: {
+      payload: Prisma.$EventTeamStaffAssignmentsPayload<ExtArgs>
+      fields: Prisma.EventTeamStaffAssignmentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.EventTeamStaffAssignmentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.EventTeamStaffAssignmentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>
+        }
+        findFirst: {
+          args: Prisma.EventTeamStaffAssignmentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.EventTeamStaffAssignmentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>
+        }
+        findMany: {
+          args: Prisma.EventTeamStaffAssignmentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>[]
+        }
+        create: {
+          args: Prisma.EventTeamStaffAssignmentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>
+        }
+        createMany: {
+          args: Prisma.EventTeamStaffAssignmentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.EventTeamStaffAssignmentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>[]
+        }
+        delete: {
+          args: Prisma.EventTeamStaffAssignmentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>
+        }
+        update: {
+          args: Prisma.EventTeamStaffAssignmentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.EventTeamStaffAssignmentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.EventTeamStaffAssignmentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.EventTeamStaffAssignmentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.EventTeamStaffAssignmentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventTeamStaffAssignmentsPayload>
+        }
+        aggregate: {
+          args: Prisma.EventTeamStaffAssignmentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEventTeamStaffAssignments>
+        }
+        groupBy: {
+          args: Prisma.EventTeamStaffAssignmentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTeamStaffAssignmentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.EventTeamStaffAssignmentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventTeamStaffAssignmentsCountAggregateOutputType> | number
+        }
+      }
+    }
     Messages: {
       payload: Prisma.$MessagesPayload<ExtArgs>
       fields: Prisma.MessagesFieldRefs
@@ -1247,6 +1698,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.ChatGroupCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.ChatGroupCountAggregateOutputType> | number
+        }
+      }
+    }
+    ModerationReport: {
+      payload: Prisma.$ModerationReportPayload<ExtArgs>
+      fields: Prisma.ModerationReportFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.ModerationReportFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.ModerationReportFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        findFirst: {
+          args: Prisma.ModerationReportFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.ModerationReportFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        findMany: {
+          args: Prisma.ModerationReportFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>[]
+        }
+        create: {
+          args: Prisma.ModerationReportCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        createMany: {
+          args: Prisma.ModerationReportCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.ModerationReportCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>[]
+        }
+        delete: {
+          args: Prisma.ModerationReportDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        update: {
+          args: Prisma.ModerationReportUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        deleteMany: {
+          args: Prisma.ModerationReportDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.ModerationReportUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.ModerationReportUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>[]
+        }
+        upsert: {
+          args: Prisma.ModerationReportUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$ModerationReportPayload>
+        }
+        aggregate: {
+          args: Prisma.ModerationReportAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateModerationReport>
+        }
+        groupBy: {
+          args: Prisma.ModerationReportGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ModerationReportGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.ModerationReportCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.ModerationReportCountAggregateOutputType> | number
         }
       }
     }
@@ -2950,6 +3475,14 @@ export const MatchesScalarFieldEnum = {
   side: 'side',
   matchId: 'matchId',
   losersBracket: 'losersBracket',
+  status: 'status',
+  resultStatus: 'resultStatus',
+  resultType: 'resultType',
+  actualStart: 'actualStart',
+  actualEnd: 'actualEnd',
+  statusReason: 'statusReason',
+  winnerEventTeamId: 'winnerEventTeamId',
+  matchRulesSnapshot: 'matchRulesSnapshot',
   winnerNextMatchId: 'winnerNextMatchId',
   loserNextMatchId: 'loserNextMatchId',
   previousRightId: 'previousRightId',
@@ -2967,6 +3500,50 @@ export const MatchesScalarFieldEnum = {
 } as const
 
 export type MatchesScalarFieldEnum = (typeof MatchesScalarFieldEnum)[keyof typeof MatchesScalarFieldEnum]
+
+
+export const MatchSegmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  sequence: 'sequence',
+  status: 'status',
+  scores: 'scores',
+  winnerEventTeamId: 'winnerEventTeamId',
+  startedAt: 'startedAt',
+  endedAt: 'endedAt',
+  resultType: 'resultType',
+  statusReason: 'statusReason',
+  metadata: 'metadata'
+} as const
+
+export type MatchSegmentsScalarFieldEnum = (typeof MatchSegmentsScalarFieldEnum)[keyof typeof MatchSegmentsScalarFieldEnum]
+
+
+export const MatchIncidentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  segmentId: 'segmentId',
+  eventTeamId: 'eventTeamId',
+  eventRegistrationId: 'eventRegistrationId',
+  participantUserId: 'participantUserId',
+  officialUserId: 'officialUserId',
+  incidentType: 'incidentType',
+  sequence: 'sequence',
+  minute: 'minute',
+  clock: 'clock',
+  clockSeconds: 'clockSeconds',
+  linkedPointDelta: 'linkedPointDelta',
+  note: 'note',
+  metadata: 'metadata'
+} as const
+
+export type MatchIncidentsScalarFieldEnum = (typeof MatchIncidentsScalarFieldEnum)[keyof typeof MatchIncidentsScalarFieldEnum]
 
 
 export const DivisionsScalarFieldEnum = {
@@ -3013,6 +3590,7 @@ export const UserDataScalarFieldEnum = {
   firstName: 'firstName',
   lastName: 'lastName',
   dateOfBirth: 'dateOfBirth',
+  requiredProfileFieldsCompletedAt: 'requiredProfileFieldsCompletedAt',
   dobVerified: 'dobVerified',
   dobVerifiedAt: 'dobVerifiedAt',
   ageVerificationProvider: 'ageVerificationProvider',
@@ -3025,7 +3603,11 @@ export const UserDataScalarFieldEnum = {
   friendRequestSentIds: 'friendRequestSentIds',
   uploadedImages: 'uploadedImages',
   profileImageId: 'profileImageId',
-  homePageOrganizationId: 'homePageOrganizationId'
+  homePageOrganizationId: 'homePageOrganizationId',
+  blockedUserIds: 'blockedUserIds',
+  hiddenEventIds: 'hiddenEventIds',
+  chatTermsAcceptedAt: 'chatTermsAcceptedAt',
+  chatTermsVersion: 'chatTermsVersion'
 } as const
 
 export type UserDataScalarFieldEnum = (typeof UserDataScalarFieldEnum)[keyof typeof UserDataScalarFieldEnum]
@@ -3099,7 +3681,10 @@ export const TeamsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  kind: 'kind',
   playerIds: 'playerIds',
+  playerRegistrationIds: 'playerRegistrationIds',
   division: 'division',
   divisionTypeId: 'divisionTypeId',
   divisionTypeName: 'divisionTypeName',
@@ -3110,6 +3695,7 @@ export const TeamsScalarFieldEnum = {
   managerId: 'managerId',
   headCoachId: 'headCoachId',
   coachIds: 'coachIds',
+  staffAssignmentIds: 'staffAssignmentIds',
   parentTeamId: 'parentTeamId',
   pending: 'pending',
   teamSize: 'teamSize',
@@ -3118,6 +3704,72 @@ export const TeamsScalarFieldEnum = {
 } as const
 
 export type TeamsScalarFieldEnum = (typeof TeamsScalarFieldEnum)[keyof typeof TeamsScalarFieldEnum]
+
+
+export const CanonicalTeamsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  name: 'name',
+  division: 'division',
+  divisionTypeId: 'divisionTypeId',
+  divisionTypeName: 'divisionTypeName',
+  wins: 'wins',
+  losses: 'losses',
+  teamSize: 'teamSize',
+  profileImageId: 'profileImageId',
+  sport: 'sport',
+  organizationId: 'organizationId',
+  createdBy: 'createdBy',
+  openRegistration: 'openRegistration',
+  registrationPriceCents: 'registrationPriceCents'
+} as const
+
+export type CanonicalTeamsScalarFieldEnum = (typeof CanonicalTeamsScalarFieldEnum)[keyof typeof CanonicalTeamsScalarFieldEnum]
+
+
+export const TeamRegistrationsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  teamId: 'teamId',
+  userId: 'userId',
+  status: 'status',
+  jerseyNumber: 'jerseyNumber',
+  position: 'position',
+  isCaptain: 'isCaptain',
+  createdBy: 'createdBy'
+} as const
+
+export type TeamRegistrationsScalarFieldEnum = (typeof TeamRegistrationsScalarFieldEnum)[keyof typeof TeamRegistrationsScalarFieldEnum]
+
+
+export const TeamStaffAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  teamId: 'teamId',
+  userId: 'userId',
+  role: 'role',
+  status: 'status',
+  createdBy: 'createdBy'
+} as const
+
+export type TeamStaffAssignmentsScalarFieldEnum = (typeof TeamStaffAssignmentsScalarFieldEnum)[keyof typeof TeamStaffAssignmentsScalarFieldEnum]
+
+
+export const EventTeamStaffAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventTeamId: 'eventTeamId',
+  userId: 'userId',
+  role: 'role',
+  status: 'status',
+  sourceStaffAssignmentId: 'sourceStaffAssignmentId'
+} as const
+
+export type EventTeamStaffAssignmentsScalarFieldEnum = (typeof EventTeamStaffAssignmentsScalarFieldEnum)[keyof typeof EventTeamStaffAssignmentsScalarFieldEnum]
 
 
 export const MessagesScalarFieldEnum = {
@@ -3129,7 +3781,10 @@ export const MessagesScalarFieldEnum = {
   attachmentUrls: 'attachmentUrls',
   chatId: 'chatId',
   readByIds: 'readByIds',
-  sentTime: 'sentTime'
+  sentTime: 'sentTime',
+  removedAt: 'removedAt',
+  removedByUserId: 'removedByUserId',
+  removalReason: 'removalReason'
 } as const
 
 export type MessagesScalarFieldEnum = (typeof MessagesScalarFieldEnum)[keyof typeof MessagesScalarFieldEnum]
@@ -3143,10 +3798,33 @@ export const ChatGroupScalarFieldEnum = {
   teamId: 'teamId',
   userIds: 'userIds',
   mutedUserIds: 'mutedUserIds',
-  hostId: 'hostId'
+  hostId: 'hostId',
+  archivedAt: 'archivedAt',
+  archivedReason: 'archivedReason',
+  archivedByUserId: 'archivedByUserId'
 } as const
 
 export type ChatGroupScalarFieldEnum = (typeof ChatGroupScalarFieldEnum)[keyof typeof ChatGroupScalarFieldEnum]
+
+
+export const ModerationReportScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  reporterUserId: 'reporterUserId',
+  targetType: 'targetType',
+  targetId: 'targetId',
+  category: 'category',
+  notes: 'notes',
+  status: 'status',
+  dueAt: 'dueAt',
+  reviewedAt: 'reviewedAt',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewNotes: 'reviewNotes',
+  metadata: 'metadata'
+} as const
+
+export type ModerationReportScalarFieldEnum = (typeof ModerationReportScalarFieldEnum)[keyof typeof ModerationReportScalarFieldEnum]
 
 
 export const PushDeviceTargetScalarFieldEnum = {
@@ -3255,7 +3933,18 @@ export const StripeAccountsScalarFieldEnum = {
   accountId: 'accountId',
   userId: 'userId',
   organizationId: 'organizationId',
-  email: 'email'
+  email: 'email',
+  accountOrigin: 'accountOrigin',
+  accountType: 'accountType',
+  isActiveForBilling: 'isActiveForBilling',
+  detailsSubmitted: 'detailsSubmitted',
+  chargesEnabled: 'chargesEnabled',
+  payoutsEnabled: 'payoutsEnabled',
+  requirementsCurrentlyDue: 'requirementsCurrentlyDue',
+  requirementsPastDue: 'requirementsPastDue',
+  requirementsEventuallyDue: 'requirementsEventuallyDue',
+  requirementsDisabledReason: 'requirementsDisabledReason',
+  verificationLastSyncedAt: 'verificationLastSyncedAt'
 } as const
 
 export type StripeAccountsScalarFieldEnum = (typeof StripeAccountsScalarFieldEnum)[keyof typeof StripeAccountsScalarFieldEnum]
@@ -3323,6 +4012,8 @@ export const EventsScalarFieldEnum = {
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
   officialIds: 'officialIds',
   officialPositions: 'officialPositions',
+  matchRulesOverride: 'matchRulesOverride',
+  autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
   installmentDueDates: 'installmentDueDates',
@@ -3350,6 +4041,11 @@ export const OrganizationsScalarFieldEnum = {
   sports: 'sports',
   officialIds: 'officialIds',
   hasStripeAccount: 'hasStripeAccount',
+  verificationStatus: 'verificationStatus',
+  verifiedAt: 'verifiedAt',
+  verificationReviewStatus: 'verificationReviewStatus',
+  verificationReviewNotes: 'verificationReviewNotes',
+  verificationReviewUpdatedAt: 'verificationReviewUpdatedAt',
   coordinates: 'coordinates',
   productIds: 'productIds',
   teamIds: 'teamIds'
@@ -3482,7 +4178,8 @@ export const SportsScalarFieldEnum = {
   useEnablePenaltyUnsporting: 'useEnablePenaltyUnsporting',
   usePenaltyPointsUnsporting: 'usePenaltyPointsUnsporting',
   usePointPrecision: 'usePointPrecision',
-  officialPositionTemplates: 'officialPositionTemplates'
+  officialPositionTemplates: 'officialPositionTemplates',
+  matchRulesTemplate: 'matchRulesTemplate'
 } as const
 
 export type SportsScalarFieldEnum = (typeof SportsScalarFieldEnum)[keyof typeof SportsScalarFieldEnum]
@@ -3606,11 +4303,19 @@ export const EventRegistrationsScalarFieldEnum = {
   registrantId: 'registrantId',
   parentId: 'parentId',
   registrantType: 'registrantType',
+  rosterRole: 'rosterRole',
   status: 'status',
+  eventTeamId: 'eventTeamId',
+  sourceTeamRegistrationId: 'sourceTeamRegistrationId',
+  slotId: 'slotId',
+  occurrenceDate: 'occurrenceDate',
   ageAtEvent: 'ageAtEvent',
   divisionId: 'divisionId',
   divisionTypeId: 'divisionTypeId',
   divisionTypeKey: 'divisionTypeKey',
+  jerseyNumber: 'jerseyNumber',
+  position: 'position',
+  isCaptain: 'isCaptain',
   consentDocumentId: 'consentDocumentId',
   consentStatus: 'consentStatus',
   createdBy: 'createdBy'
@@ -3622,13 +4327,18 @@ export type EventRegistrationsScalarFieldEnum = (typeof EventRegistrationsScalar
 export const AuthUserScalarFieldEnum = {
   id: 'id',
   email: 'email',
+  googleSubject: 'googleSubject',
   passwordHash: 'passwordHash',
   name: 'name',
   appleSubject: 'appleSubject',
   emailVerifiedAt: 'emailVerifiedAt',
   lastLogin: 'lastLogin',
+  sessionVersion: 'sessionVersion',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  disabledAt: 'disabledAt',
+  disabledByUserId: 'disabledByUserId',
+  disabledReason: 'disabledReason'
 } as const
 
 export type AuthUserScalarFieldEnum = (typeof AuthUserScalarFieldEnum)[keyof typeof AuthUserScalarFieldEnum]
@@ -3796,6 +4506,90 @@ export type ListEnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInput
 
 
 /**
+ * Reference to a field of type 'EventTeamsKindEnum'
+ */
+export type EnumEventTeamsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventTeamsKindEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'EventTeamsKindEnum[]'
+ */
+export type ListEnumEventTeamsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventTeamsKindEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'TeamMembershipStatusEnum'
+ */
+export type EnumTeamMembershipStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamMembershipStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'TeamMembershipStatusEnum[]'
+ */
+export type ListEnumTeamMembershipStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamMembershipStatusEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'TeamStaffAssignmentsRoleEnum'
+ */
+export type EnumTeamStaffAssignmentsRoleEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamStaffAssignmentsRoleEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'TeamStaffAssignmentsRoleEnum[]'
+ */
+export type ListEnumTeamStaffAssignmentsRoleEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamStaffAssignmentsRoleEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'EventTeamStaffAssignmentsStatusEnum'
+ */
+export type EnumEventTeamStaffAssignmentsStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventTeamStaffAssignmentsStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'EventTeamStaffAssignmentsStatusEnum[]'
+ */
+export type ListEnumEventTeamStaffAssignmentsStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventTeamStaffAssignmentsStatusEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'ModerationReportTargetTypeEnum'
+ */
+export type EnumModerationReportTargetTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ModerationReportTargetTypeEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'ModerationReportTargetTypeEnum[]'
+ */
+export type ListEnumModerationReportTargetTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ModerationReportTargetTypeEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'ModerationReportStatusEnum'
+ */
+export type EnumModerationReportStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ModerationReportStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'ModerationReportStatusEnum[]'
+ */
+export type ListEnumModerationReportStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'ModerationReportStatusEnum[]'>
+    
+
+
+/**
  * Reference to a field of type 'BillsOwnerTypeEnum'
  */
 export type EnumBillsOwnerTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'BillsOwnerTypeEnum'>
@@ -3852,6 +4646,20 @@ export type ListEnumRefundRequestsStatusEnumFieldRefInput<$PrismaModel> = FieldR
 
 
 /**
+ * Reference to a field of type 'StripeAccountsAccountOriginEnum'
+ */
+export type EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StripeAccountsAccountOriginEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'StripeAccountsAccountOriginEnum[]'
+ */
+export type ListEnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StripeAccountsAccountOriginEnum[]'>
+    
+
+
+/**
  * Reference to a field of type 'EventsStateEnum'
  */
 export type EnumEventsStateEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsStateEnum'>
@@ -3890,6 +4698,34 @@ export type EnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = Fi
  * Reference to a field of type 'EventsOfficialSchedulingModeEnum[]'
  */
 export type ListEnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsOfficialSchedulingModeEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'OrganizationsVerificationStatusEnum'
+ */
+export type EnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsVerificationStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'OrganizationsVerificationStatusEnum[]'
+ */
+export type ListEnumOrganizationsVerificationStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsVerificationStatusEnum[]'>
+    
+
+
+/**
+ * Reference to a field of type 'OrganizationsVerificationReviewStatusEnum'
+ */
+export type EnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsVerificationReviewStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'OrganizationsVerificationReviewStatusEnum[]'
+ */
+export type ListEnumOrganizationsVerificationReviewStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsVerificationReviewStatusEnum[]'>
     
 
 
@@ -4020,6 +4856,20 @@ export type ListEnumEventRegistrationsRegistrantTypeEnumFieldRefInput<$PrismaMod
 
 
 /**
+ * Reference to a field of type 'EventRegistrationsRosterRoleEnum'
+ */
+export type EnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventRegistrationsRosterRoleEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'EventRegistrationsRosterRoleEnum[]'
+ */
+export type ListEnumEventRegistrationsRosterRoleEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventRegistrationsRosterRoleEnum[]'>
+    
+
+
+/**
  * Reference to a field of type 'EventRegistrationsStatusEnum'
  */
 export type EnumEventRegistrationsStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventRegistrationsStatusEnum'>
@@ -4129,6 +4979,8 @@ export type PrismaClientOptions = ({
 export type GlobalOmitConfig = {
   fields?: Prisma.FieldsOmit
   matches?: Prisma.MatchesOmit
+  matchSegments?: Prisma.MatchSegmentsOmit
+  matchIncidents?: Prisma.MatchIncidentsOmit
   divisions?: Prisma.DivisionsOmit
   userData?: Prisma.UserDataOmit
   sensitiveUserData?: Prisma.SensitiveUserDataOmit
@@ -4136,8 +4988,13 @@ export type GlobalOmitConfig = {
   staffMembers?: Prisma.StaffMembersOmit
   eventOfficials?: Prisma.EventOfficialsOmit
   teams?: Prisma.TeamsOmit
+  canonicalTeams?: Prisma.CanonicalTeamsOmit
+  teamRegistrations?: Prisma.TeamRegistrationsOmit
+  teamStaffAssignments?: Prisma.TeamStaffAssignmentsOmit
+  eventTeamStaffAssignments?: Prisma.EventTeamStaffAssignmentsOmit
   messages?: Prisma.MessagesOmit
   chatGroup?: Prisma.ChatGroupOmit
+  moderationReport?: Prisma.ModerationReportOmit
   pushDeviceTarget?: Prisma.PushDeviceTargetOmit
   lockFiles?: Prisma.LockFilesOmit
   paymentIntents?: Prisma.PaymentIntentsOmit

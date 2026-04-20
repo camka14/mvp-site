@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
+import { markLegacyOrganizationStripeAccountConnected } from '@/server/organizationStripeVerification';
 import {
   appendStripeResultQuery,
   getRequestOrigin,
@@ -69,26 +70,9 @@ export async function GET(req: NextRequest) {
     const now = new Date();
 
     if (state.kind === 'organization') {
-      await prisma.$transaction(async (tx) => {
-        await tx.organizations.update({
-          where: { id: state.ownerId },
-          data: { hasStripeAccount: true, updatedAt: now },
-        });
-        await tx.stripeAccounts.upsert({
-          where: { id: `org_${state.ownerId}` },
-          create: {
-            id: `org_${state.ownerId}`,
-            organizationId: state.ownerId,
-            accountId,
-            createdAt: now,
-            updatedAt: now,
-          },
-          update: {
-            accountId,
-            organizationId: state.ownerId,
-            updatedAt: now,
-          },
-        });
+      await markLegacyOrganizationStripeAccountConnected({
+        organizationId: state.ownerId,
+        accountId,
       });
     } else {
       await prisma.$transaction(async (tx) => {

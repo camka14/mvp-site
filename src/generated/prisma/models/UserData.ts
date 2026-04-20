@@ -31,6 +31,7 @@ export type UserDataMinAggregateOutputType = {
   firstName: string | null
   lastName: string | null
   dateOfBirth: Date | null
+  requiredProfileFieldsCompletedAt: Date | null
   dobVerified: boolean | null
   dobVerifiedAt: Date | null
   ageVerificationProvider: string | null
@@ -38,6 +39,8 @@ export type UserDataMinAggregateOutputType = {
   hasStripeAccount: boolean | null
   profileImageId: string | null
   homePageOrganizationId: string | null
+  chatTermsAcceptedAt: Date | null
+  chatTermsVersion: string | null
 }
 
 export type UserDataMaxAggregateOutputType = {
@@ -47,6 +50,7 @@ export type UserDataMaxAggregateOutputType = {
   firstName: string | null
   lastName: string | null
   dateOfBirth: Date | null
+  requiredProfileFieldsCompletedAt: Date | null
   dobVerified: boolean | null
   dobVerifiedAt: Date | null
   ageVerificationProvider: string | null
@@ -54,6 +58,8 @@ export type UserDataMaxAggregateOutputType = {
   hasStripeAccount: boolean | null
   profileImageId: string | null
   homePageOrganizationId: string | null
+  chatTermsAcceptedAt: Date | null
+  chatTermsVersion: string | null
 }
 
 export type UserDataCountAggregateOutputType = {
@@ -63,6 +69,7 @@ export type UserDataCountAggregateOutputType = {
   firstName: number
   lastName: number
   dateOfBirth: number
+  requiredProfileFieldsCompletedAt: number
   dobVerified: number
   dobVerifiedAt: number
   ageVerificationProvider: number
@@ -76,6 +83,10 @@ export type UserDataCountAggregateOutputType = {
   uploadedImages: number
   profileImageId: number
   homePageOrganizationId: number
+  blockedUserIds: number
+  hiddenEventIds: number
+  chatTermsAcceptedAt: number
+  chatTermsVersion: number
   _all: number
 }
 
@@ -87,6 +98,7 @@ export type UserDataMinAggregateInputType = {
   firstName?: true
   lastName?: true
   dateOfBirth?: true
+  requiredProfileFieldsCompletedAt?: true
   dobVerified?: true
   dobVerifiedAt?: true
   ageVerificationProvider?: true
@@ -94,6 +106,8 @@ export type UserDataMinAggregateInputType = {
   hasStripeAccount?: true
   profileImageId?: true
   homePageOrganizationId?: true
+  chatTermsAcceptedAt?: true
+  chatTermsVersion?: true
 }
 
 export type UserDataMaxAggregateInputType = {
@@ -103,6 +117,7 @@ export type UserDataMaxAggregateInputType = {
   firstName?: true
   lastName?: true
   dateOfBirth?: true
+  requiredProfileFieldsCompletedAt?: true
   dobVerified?: true
   dobVerifiedAt?: true
   ageVerificationProvider?: true
@@ -110,6 +125,8 @@ export type UserDataMaxAggregateInputType = {
   hasStripeAccount?: true
   profileImageId?: true
   homePageOrganizationId?: true
+  chatTermsAcceptedAt?: true
+  chatTermsVersion?: true
 }
 
 export type UserDataCountAggregateInputType = {
@@ -119,6 +136,7 @@ export type UserDataCountAggregateInputType = {
   firstName?: true
   lastName?: true
   dateOfBirth?: true
+  requiredProfileFieldsCompletedAt?: true
   dobVerified?: true
   dobVerifiedAt?: true
   ageVerificationProvider?: true
@@ -132,6 +150,10 @@ export type UserDataCountAggregateInputType = {
   uploadedImages?: true
   profileImageId?: true
   homePageOrganizationId?: true
+  blockedUserIds?: true
+  hiddenEventIds?: true
+  chatTermsAcceptedAt?: true
+  chatTermsVersion?: true
   _all?: true
 }
 
@@ -214,6 +236,7 @@ export type UserDataGroupByOutputType = {
   firstName: string | null
   lastName: string | null
   dateOfBirth: Date
+  requiredProfileFieldsCompletedAt: Date | null
   dobVerified: boolean | null
   dobVerifiedAt: Date | null
   ageVerificationProvider: string | null
@@ -227,12 +250,16 @@ export type UserDataGroupByOutputType = {
   uploadedImages: string[]
   profileImageId: string | null
   homePageOrganizationId: string | null
+  blockedUserIds: string[]
+  hiddenEventIds: string[]
+  chatTermsAcceptedAt: Date | null
+  chatTermsVersion: string | null
   _count: UserDataCountAggregateOutputType | null
   _min: UserDataMinAggregateOutputType | null
   _max: UserDataMaxAggregateOutputType | null
 }
 
-type GetUserDataGroupByPayload<T extends UserDataGroupByArgs> = Prisma.PrismaPromise<
+export type GetUserDataGroupByPayload<T extends UserDataGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<UserDataGroupByOutputType, T['by']> &
       {
@@ -257,6 +284,7 @@ export type UserDataWhereInput = {
   firstName?: Prisma.StringNullableFilter<"UserData"> | string | null
   lastName?: Prisma.StringNullableFilter<"UserData"> | string | null
   dateOfBirth?: Prisma.DateTimeFilter<"UserData"> | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   dobVerified?: Prisma.BoolNullableFilter<"UserData"> | boolean | null
   dobVerifiedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   ageVerificationProvider?: Prisma.StringNullableFilter<"UserData"> | string | null
@@ -270,6 +298,10 @@ export type UserDataWhereInput = {
   uploadedImages?: Prisma.StringNullableListFilter<"UserData">
   profileImageId?: Prisma.StringNullableFilter<"UserData"> | string | null
   homePageOrganizationId?: Prisma.StringNullableFilter<"UserData"> | string | null
+  blockedUserIds?: Prisma.StringNullableListFilter<"UserData">
+  hiddenEventIds?: Prisma.StringNullableListFilter<"UserData">
+  chatTermsAcceptedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
+  chatTermsVersion?: Prisma.StringNullableFilter<"UserData"> | string | null
 }
 
 export type UserDataOrderByWithRelationInput = {
@@ -279,6 +311,7 @@ export type UserDataOrderByWithRelationInput = {
   firstName?: Prisma.SortOrderInput | Prisma.SortOrder
   lastName?: Prisma.SortOrderInput | Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dobVerified?: Prisma.SortOrderInput | Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -292,6 +325,10 @@ export type UserDataOrderByWithRelationInput = {
   uploadedImages?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrderInput | Prisma.SortOrder
   homePageOrganizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  blockedUserIds?: Prisma.SortOrder
+  hiddenEventIds?: Prisma.SortOrder
+  chatTermsAcceptedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  chatTermsVersion?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type UserDataWhereUniqueInput = Prisma.AtLeast<{
@@ -304,6 +341,7 @@ export type UserDataWhereUniqueInput = Prisma.AtLeast<{
   firstName?: Prisma.StringNullableFilter<"UserData"> | string | null
   lastName?: Prisma.StringNullableFilter<"UserData"> | string | null
   dateOfBirth?: Prisma.DateTimeFilter<"UserData"> | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   dobVerified?: Prisma.BoolNullableFilter<"UserData"> | boolean | null
   dobVerifiedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   ageVerificationProvider?: Prisma.StringNullableFilter<"UserData"> | string | null
@@ -317,6 +355,10 @@ export type UserDataWhereUniqueInput = Prisma.AtLeast<{
   uploadedImages?: Prisma.StringNullableListFilter<"UserData">
   profileImageId?: Prisma.StringNullableFilter<"UserData"> | string | null
   homePageOrganizationId?: Prisma.StringNullableFilter<"UserData"> | string | null
+  blockedUserIds?: Prisma.StringNullableListFilter<"UserData">
+  hiddenEventIds?: Prisma.StringNullableListFilter<"UserData">
+  chatTermsAcceptedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
+  chatTermsVersion?: Prisma.StringNullableFilter<"UserData"> | string | null
 }, "id">
 
 export type UserDataOrderByWithAggregationInput = {
@@ -326,6 +368,7 @@ export type UserDataOrderByWithAggregationInput = {
   firstName?: Prisma.SortOrderInput | Prisma.SortOrder
   lastName?: Prisma.SortOrderInput | Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   dobVerified?: Prisma.SortOrderInput | Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -339,6 +382,10 @@ export type UserDataOrderByWithAggregationInput = {
   uploadedImages?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrderInput | Prisma.SortOrder
   homePageOrganizationId?: Prisma.SortOrderInput | Prisma.SortOrder
+  blockedUserIds?: Prisma.SortOrder
+  hiddenEventIds?: Prisma.SortOrder
+  chatTermsAcceptedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  chatTermsVersion?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.UserDataCountOrderByAggregateInput
   _max?: Prisma.UserDataMaxOrderByAggregateInput
   _min?: Prisma.UserDataMinOrderByAggregateInput
@@ -354,6 +401,7 @@ export type UserDataScalarWhereWithAggregatesInput = {
   firstName?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
   lastName?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
   dateOfBirth?: Prisma.DateTimeWithAggregatesFilter<"UserData"> | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"UserData"> | Date | string | null
   dobVerified?: Prisma.BoolNullableWithAggregatesFilter<"UserData"> | boolean | null
   dobVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"UserData"> | Date | string | null
   ageVerificationProvider?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
@@ -367,6 +415,10 @@ export type UserDataScalarWhereWithAggregatesInput = {
   uploadedImages?: Prisma.StringNullableListFilter<"UserData">
   profileImageId?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
   homePageOrganizationId?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
+  blockedUserIds?: Prisma.StringNullableListFilter<"UserData">
+  hiddenEventIds?: Prisma.StringNullableListFilter<"UserData">
+  chatTermsAcceptedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"UserData"> | Date | string | null
+  chatTermsVersion?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
 }
 
 export type UserDataCreateInput = {
@@ -376,6 +428,7 @@ export type UserDataCreateInput = {
   firstName?: string | null
   lastName?: string | null
   dateOfBirth: Date | string
+  requiredProfileFieldsCompletedAt?: Date | string | null
   dobVerified?: boolean | null
   dobVerifiedAt?: Date | string | null
   ageVerificationProvider?: string | null
@@ -389,6 +442,10 @@ export type UserDataCreateInput = {
   uploadedImages?: Prisma.UserDataCreateuploadedImagesInput | string[]
   profileImageId?: string | null
   homePageOrganizationId?: string | null
+  blockedUserIds?: Prisma.UserDataCreateblockedUserIdsInput | string[]
+  hiddenEventIds?: Prisma.UserDataCreatehiddenEventIdsInput | string[]
+  chatTermsAcceptedAt?: Date | string | null
+  chatTermsVersion?: string | null
 }
 
 export type UserDataUncheckedCreateInput = {
@@ -398,6 +455,7 @@ export type UserDataUncheckedCreateInput = {
   firstName?: string | null
   lastName?: string | null
   dateOfBirth: Date | string
+  requiredProfileFieldsCompletedAt?: Date | string | null
   dobVerified?: boolean | null
   dobVerifiedAt?: Date | string | null
   ageVerificationProvider?: string | null
@@ -411,6 +469,10 @@ export type UserDataUncheckedCreateInput = {
   uploadedImages?: Prisma.UserDataCreateuploadedImagesInput | string[]
   profileImageId?: string | null
   homePageOrganizationId?: string | null
+  blockedUserIds?: Prisma.UserDataCreateblockedUserIdsInput | string[]
+  hiddenEventIds?: Prisma.UserDataCreatehiddenEventIdsInput | string[]
+  chatTermsAcceptedAt?: Date | string | null
+  chatTermsVersion?: string | null
 }
 
 export type UserDataUpdateInput = {
@@ -420,6 +482,7 @@ export type UserDataUpdateInput = {
   firstName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dateOfBirth?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dobVerified?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   dobVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -433,6 +496,10 @@ export type UserDataUpdateInput = {
   uploadedImages?: Prisma.UserDataUpdateuploadedImagesInput | string[]
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   homePageOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  blockedUserIds?: Prisma.UserDataUpdateblockedUserIdsInput | string[]
+  hiddenEventIds?: Prisma.UserDataUpdatehiddenEventIdsInput | string[]
+  chatTermsAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  chatTermsVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type UserDataUncheckedUpdateInput = {
@@ -442,6 +509,7 @@ export type UserDataUncheckedUpdateInput = {
   firstName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dateOfBirth?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dobVerified?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   dobVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -455,6 +523,10 @@ export type UserDataUncheckedUpdateInput = {
   uploadedImages?: Prisma.UserDataUpdateuploadedImagesInput | string[]
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   homePageOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  blockedUserIds?: Prisma.UserDataUpdateblockedUserIdsInput | string[]
+  hiddenEventIds?: Prisma.UserDataUpdatehiddenEventIdsInput | string[]
+  chatTermsAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  chatTermsVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type UserDataCreateManyInput = {
@@ -464,6 +536,7 @@ export type UserDataCreateManyInput = {
   firstName?: string | null
   lastName?: string | null
   dateOfBirth: Date | string
+  requiredProfileFieldsCompletedAt?: Date | string | null
   dobVerified?: boolean | null
   dobVerifiedAt?: Date | string | null
   ageVerificationProvider?: string | null
@@ -477,6 +550,10 @@ export type UserDataCreateManyInput = {
   uploadedImages?: Prisma.UserDataCreateuploadedImagesInput | string[]
   profileImageId?: string | null
   homePageOrganizationId?: string | null
+  blockedUserIds?: Prisma.UserDataCreateblockedUserIdsInput | string[]
+  hiddenEventIds?: Prisma.UserDataCreatehiddenEventIdsInput | string[]
+  chatTermsAcceptedAt?: Date | string | null
+  chatTermsVersion?: string | null
 }
 
 export type UserDataUpdateManyMutationInput = {
@@ -486,6 +563,7 @@ export type UserDataUpdateManyMutationInput = {
   firstName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dateOfBirth?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dobVerified?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   dobVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -499,6 +577,10 @@ export type UserDataUpdateManyMutationInput = {
   uploadedImages?: Prisma.UserDataUpdateuploadedImagesInput | string[]
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   homePageOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  blockedUserIds?: Prisma.UserDataUpdateblockedUserIdsInput | string[]
+  hiddenEventIds?: Prisma.UserDataUpdatehiddenEventIdsInput | string[]
+  chatTermsAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  chatTermsVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type UserDataUncheckedUpdateManyInput = {
@@ -508,6 +590,7 @@ export type UserDataUncheckedUpdateManyInput = {
   firstName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   dateOfBirth?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  requiredProfileFieldsCompletedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   dobVerified?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   dobVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   ageVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -521,6 +604,10 @@ export type UserDataUncheckedUpdateManyInput = {
   uploadedImages?: Prisma.UserDataUpdateuploadedImagesInput | string[]
   profileImageId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   homePageOrganizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  blockedUserIds?: Prisma.UserDataUpdateblockedUserIdsInput | string[]
+  hiddenEventIds?: Prisma.UserDataUpdatehiddenEventIdsInput | string[]
+  chatTermsAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  chatTermsVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type UserDataCountOrderByAggregateInput = {
@@ -530,6 +617,7 @@ export type UserDataCountOrderByAggregateInput = {
   firstName?: Prisma.SortOrder
   lastName?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrder
   dobVerified?: Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrder
@@ -543,6 +631,10 @@ export type UserDataCountOrderByAggregateInput = {
   uploadedImages?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
   homePageOrganizationId?: Prisma.SortOrder
+  blockedUserIds?: Prisma.SortOrder
+  hiddenEventIds?: Prisma.SortOrder
+  chatTermsAcceptedAt?: Prisma.SortOrder
+  chatTermsVersion?: Prisma.SortOrder
 }
 
 export type UserDataMaxOrderByAggregateInput = {
@@ -552,6 +644,7 @@ export type UserDataMaxOrderByAggregateInput = {
   firstName?: Prisma.SortOrder
   lastName?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrder
   dobVerified?: Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrder
@@ -559,6 +652,8 @@ export type UserDataMaxOrderByAggregateInput = {
   hasStripeAccount?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
   homePageOrganizationId?: Prisma.SortOrder
+  chatTermsAcceptedAt?: Prisma.SortOrder
+  chatTermsVersion?: Prisma.SortOrder
 }
 
 export type UserDataMinOrderByAggregateInput = {
@@ -568,6 +663,7 @@ export type UserDataMinOrderByAggregateInput = {
   firstName?: Prisma.SortOrder
   lastName?: Prisma.SortOrder
   dateOfBirth?: Prisma.SortOrder
+  requiredProfileFieldsCompletedAt?: Prisma.SortOrder
   dobVerified?: Prisma.SortOrder
   dobVerifiedAt?: Prisma.SortOrder
   ageVerificationProvider?: Prisma.SortOrder
@@ -575,6 +671,8 @@ export type UserDataMinOrderByAggregateInput = {
   hasStripeAccount?: Prisma.SortOrder
   profileImageId?: Prisma.SortOrder
   homePageOrganizationId?: Prisma.SortOrder
+  chatTermsAcceptedAt?: Prisma.SortOrder
+  chatTermsVersion?: Prisma.SortOrder
 }
 
 export type UserDataCreateteamIdsInput = {
@@ -598,6 +696,14 @@ export type UserDataCreatefriendRequestSentIdsInput = {
 }
 
 export type UserDataCreateuploadedImagesInput = {
+  set: string[]
+}
+
+export type UserDataCreateblockedUserIdsInput = {
+  set: string[]
+}
+
+export type UserDataCreatehiddenEventIdsInput = {
   set: string[]
 }
 
@@ -635,6 +741,16 @@ export type UserDataUpdateuploadedImagesInput = {
   push?: string | string[]
 }
 
+export type UserDataUpdateblockedUserIdsInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
+export type UserDataUpdatehiddenEventIdsInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
 
 
 export type UserDataSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -644,6 +760,7 @@ export type UserDataSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   firstName?: boolean
   lastName?: boolean
   dateOfBirth?: boolean
+  requiredProfileFieldsCompletedAt?: boolean
   dobVerified?: boolean
   dobVerifiedAt?: boolean
   ageVerificationProvider?: boolean
@@ -657,6 +774,10 @@ export type UserDataSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   uploadedImages?: boolean
   profileImageId?: boolean
   homePageOrganizationId?: boolean
+  blockedUserIds?: boolean
+  hiddenEventIds?: boolean
+  chatTermsAcceptedAt?: boolean
+  chatTermsVersion?: boolean
 }, ExtArgs["result"]["userData"]>
 
 export type UserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -666,6 +787,7 @@ export type UserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   firstName?: boolean
   lastName?: boolean
   dateOfBirth?: boolean
+  requiredProfileFieldsCompletedAt?: boolean
   dobVerified?: boolean
   dobVerifiedAt?: boolean
   ageVerificationProvider?: boolean
@@ -679,6 +801,10 @@ export type UserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   uploadedImages?: boolean
   profileImageId?: boolean
   homePageOrganizationId?: boolean
+  blockedUserIds?: boolean
+  hiddenEventIds?: boolean
+  chatTermsAcceptedAt?: boolean
+  chatTermsVersion?: boolean
 }, ExtArgs["result"]["userData"]>
 
 export type UserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -688,6 +814,7 @@ export type UserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   firstName?: boolean
   lastName?: boolean
   dateOfBirth?: boolean
+  requiredProfileFieldsCompletedAt?: boolean
   dobVerified?: boolean
   dobVerifiedAt?: boolean
   ageVerificationProvider?: boolean
@@ -701,6 +828,10 @@ export type UserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   uploadedImages?: boolean
   profileImageId?: boolean
   homePageOrganizationId?: boolean
+  blockedUserIds?: boolean
+  hiddenEventIds?: boolean
+  chatTermsAcceptedAt?: boolean
+  chatTermsVersion?: boolean
 }, ExtArgs["result"]["userData"]>
 
 export type UserDataSelectScalar = {
@@ -710,6 +841,7 @@ export type UserDataSelectScalar = {
   firstName?: boolean
   lastName?: boolean
   dateOfBirth?: boolean
+  requiredProfileFieldsCompletedAt?: boolean
   dobVerified?: boolean
   dobVerifiedAt?: boolean
   ageVerificationProvider?: boolean
@@ -723,9 +855,13 @@ export type UserDataSelectScalar = {
   uploadedImages?: boolean
   profileImageId?: boolean
   homePageOrganizationId?: boolean
+  blockedUserIds?: boolean
+  hiddenEventIds?: boolean
+  chatTermsAcceptedAt?: boolean
+  chatTermsVersion?: boolean
 }
 
-export type UserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "firstName" | "lastName" | "dateOfBirth" | "dobVerified" | "dobVerifiedAt" | "ageVerificationProvider" | "teamIds" | "friendIds" | "userName" | "hasStripeAccount" | "followingIds" | "friendRequestIds" | "friendRequestSentIds" | "uploadedImages" | "profileImageId" | "homePageOrganizationId", ExtArgs["result"]["userData"]>
+export type UserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "firstName" | "lastName" | "dateOfBirth" | "requiredProfileFieldsCompletedAt" | "dobVerified" | "dobVerifiedAt" | "ageVerificationProvider" | "teamIds" | "friendIds" | "userName" | "hasStripeAccount" | "followingIds" | "friendRequestIds" | "friendRequestSentIds" | "uploadedImages" | "profileImageId" | "homePageOrganizationId" | "blockedUserIds" | "hiddenEventIds" | "chatTermsAcceptedAt" | "chatTermsVersion", ExtArgs["result"]["userData"]>
 
 export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "UserData"
@@ -737,6 +873,7 @@ export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     firstName: string | null
     lastName: string | null
     dateOfBirth: Date
+    requiredProfileFieldsCompletedAt: Date | null
     dobVerified: boolean | null
     dobVerifiedAt: Date | null
     ageVerificationProvider: string | null
@@ -750,6 +887,10 @@ export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     uploadedImages: string[]
     profileImageId: string | null
     homePageOrganizationId: string | null
+    blockedUserIds: string[]
+    hiddenEventIds: string[]
+    chatTermsAcceptedAt: Date | null
+    chatTermsVersion: string | null
   }, ExtArgs["result"]["userData"]>
   composites: {}
 }
@@ -1179,6 +1320,7 @@ export interface UserDataFieldRefs {
   readonly firstName: Prisma.FieldRef<"UserData", 'String'>
   readonly lastName: Prisma.FieldRef<"UserData", 'String'>
   readonly dateOfBirth: Prisma.FieldRef<"UserData", 'DateTime'>
+  readonly requiredProfileFieldsCompletedAt: Prisma.FieldRef<"UserData", 'DateTime'>
   readonly dobVerified: Prisma.FieldRef<"UserData", 'Boolean'>
   readonly dobVerifiedAt: Prisma.FieldRef<"UserData", 'DateTime'>
   readonly ageVerificationProvider: Prisma.FieldRef<"UserData", 'String'>
@@ -1192,6 +1334,10 @@ export interface UserDataFieldRefs {
   readonly uploadedImages: Prisma.FieldRef<"UserData", 'String[]'>
   readonly profileImageId: Prisma.FieldRef<"UserData", 'String'>
   readonly homePageOrganizationId: Prisma.FieldRef<"UserData", 'String'>
+  readonly blockedUserIds: Prisma.FieldRef<"UserData", 'String[]'>
+  readonly hiddenEventIds: Prisma.FieldRef<"UserData", 'String[]'>
+  readonly chatTermsAcceptedAt: Prisma.FieldRef<"UserData", 'DateTime'>
+  readonly chatTermsVersion: Prisma.FieldRef<"UserData", 'String'>
 }
     
 
@@ -1368,6 +1514,11 @@ export type UserDataFindManyArgs<ExtArgs extends runtime.Types.Extensions.Intern
    * Skip the first `n` UserData.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of UserData.
+   */
   distinct?: Prisma.UserDataScalarFieldEnum | Prisma.UserDataScalarFieldEnum[]
 }
 

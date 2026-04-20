@@ -6,6 +6,9 @@ export interface ChatGroup {
     name: string | null;
     userIds: string[];
     hostId: string;
+    archivedAt?: string | null;
+    archivedReason?: string | null;
+    archivedByUserId?: string | null;
     displayName?: string | null;
     imageUrl?: string | null;
     unreadCount?: number;
@@ -47,6 +50,14 @@ export interface MessagePageResult {
     pagination: MessagePagePagination;
 }
 
+export interface ChatTermsConsentState {
+    version: string;
+    url: string;
+    summary: string[];
+    accepted: boolean;
+    acceptedAt: string | null;
+}
+
 const DEFAULT_PAGE_LIMIT = 20;
 
 const toMessage = (row: any): Message => ({
@@ -72,6 +83,9 @@ class ChatService {
                 name: row.name,
                 userIds: row.userIds,
                 hostId: row.hostId,
+                archivedAt: row.archivedAt ?? null,
+                archivedReason: row.archivedReason ?? null,
+                archivedByUserId: row.archivedByUserId ?? null,
                 displayName: row.displayName,
                 imageUrl: row.imageUrl,
                 unreadCount: Number.isFinite(row.unreadCount) ? Number(row.unreadCount) : 0,
@@ -225,6 +239,9 @@ class ChatService {
                 name: response.name,
                 userIds: response.userIds,
                 hostId: response.hostId,
+                archivedAt: response.archivedAt ?? null,
+                archivedReason: response.archivedReason ?? null,
+                archivedByUserId: response.archivedByUserId ?? null,
                 displayName: response.displayName,
                 imageUrl: response.imageUrl,
             };
@@ -251,6 +268,30 @@ class ChatService {
             };
         } catch (error) {
             console.error('Failed to rename chat group:', error);
+            throw error;
+        }
+    }
+
+    async leaveChatGroup(chatId: string, userIds: string[]): Promise<ChatGroup> {
+        try {
+            const response = await apiRequest<any>(`/api/chat/groups/${chatId}`, {
+                method: 'PATCH',
+                body: { group: { userIds } },
+            });
+
+            return {
+                $id: response.$id,
+                name: response.name,
+                userIds: response.userIds,
+                hostId: response.hostId,
+                archivedAt: response.archivedAt ?? null,
+                archivedReason: response.archivedReason ?? null,
+                archivedByUserId: response.archivedByUserId ?? null,
+                displayName: response.displayName,
+                imageUrl: response.imageUrl,
+            };
+        } catch (error) {
+            console.error('Failed to leave chat group:', error);
             throw error;
         }
     }
@@ -286,6 +327,9 @@ class ChatService {
                     name: existingDM.name,
                     userIds: existingDM.userIds,
                     hostId: existingDM.hostId,
+                    archivedAt: existingDM.archivedAt ?? null,
+                    archivedReason: existingDM.archivedReason ?? null,
+                    archivedByUserId: existingDM.archivedByUserId ?? null,
                     displayName: existingDM.displayName,
                     imageUrl: existingDM.imageUrl,
                 };
@@ -298,6 +342,33 @@ class ChatService {
             console.error('Failed to find or create direct message:', error);
             throw error;
         }
+    }
+
+    async getChatTermsConsent(): Promise<ChatTermsConsentState> {
+        return apiRequest<ChatTermsConsentState>('/api/chat/terms-consent');
+    }
+
+    async acceptChatTermsConsent(): Promise<ChatTermsConsentState> {
+        return apiRequest<ChatTermsConsentState>('/api/chat/terms-consent', {
+            method: 'POST',
+            body: { accepted: true },
+        });
+    }
+
+    async reportChat(chatId: string, options?: { category?: string; notes?: string; leaveChat?: boolean }): Promise<{ removedChatIds: string[] }> {
+        const response = await apiRequest<{ removedChatIds?: string[] }>('/api/moderation/reports', {
+            method: 'POST',
+            body: {
+                targetType: 'CHAT_GROUP',
+                targetId: chatId,
+                category: options?.category ?? 'report_chat',
+                notes: options?.notes,
+                metadata: {
+                    leaveChat: options?.leaveChat === true,
+                },
+            },
+        });
+        return { removedChatIds: response.removedChatIds ?? [] };
     }
 }
 

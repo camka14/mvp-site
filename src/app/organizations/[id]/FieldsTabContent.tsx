@@ -37,6 +37,7 @@ import { organizationService } from '@/lib/organizationService';
 import { createId } from '@/lib/id';
 import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
 import { fieldService } from '@/lib/fieldService';
+import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
 
@@ -325,7 +326,7 @@ export default function FieldsTabContent({ organization, organizationId, current
   const [org, setOrg] = useState<Organization | null>(organization ?? null);
   const [orgLoading, setOrgLoading] = useState(!organization);
   const [orgError, setOrgError] = useState<string | null>(null);
-  const organizationHasStripeAccount = Boolean(org?.hasStripeAccount);
+  const organizationHasStripeAccount = canOrganizationUsePaidBilling(org);
   const canManage = Boolean(currentUser && org && currentUser.$id === org.ownerId);
 
   const localizer = useMemo(() => dateFnsLocalizer({

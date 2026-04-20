@@ -30,8 +30,8 @@ type OrganizationUsersAccessClient = {
   authUser: {
     findUnique: (args: {
       where: { id: string };
-      select: { email: true; emailVerifiedAt: true };
-    }) => Promise<{ email: string; emailVerifiedAt: Date | null } | null>;
+      select: { email: true; emailVerifiedAt: true; sessionVersion: true };
+    }) => Promise<{ email: string; emailVerifiedAt: Date | null; sessionVersion: number | null } | null>;
   };
   organizations: {
     findUnique: (args: {

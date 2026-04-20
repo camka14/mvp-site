@@ -2,10 +2,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect } from '@mantine/core';
-import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle } from '@/types';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox } from '@mantine/core';
+import { Invite, Team, UserData, Event, PaymentIntent, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice } from '@/types';
+import type { TeamPlayerRegistration } from '@/types';
 import { useApp } from '@/app/providers';
 import { teamService } from '@/lib/teamService';
+import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import {
     buildDivisionName,
@@ -14,6 +16,7 @@ import {
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
 import { ImageSelectionModal } from './ImageSelectionModal';
+import PaymentModal, { type PaymentEventSummary } from './PaymentModal';
 
 interface TeamDetailModalProps {
     currentTeam: Team;
@@ -24,6 +27,7 @@ interface TeamDetailModalProps {
     onTeamDeleted?: (teamId: string) => void;
     selectedFreeAgentId?: string;
     selectedFreeAgentUser?: UserData;
+    canChargeRegistration?: boolean;
 }
 
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -121,6 +125,12 @@ const getPendingInviteRole = (
     return 'team_assistant_coach';
 };
 
+const ACTIVE_PLAYER_REGISTRATION_STATUSES = new Set(['ACTIVE', 'STARTED']);
+
+const isActivePlayerRegistration = (registration: TeamPlayerRegistration): boolean => (
+    ACTIVE_PLAYER_REGISTRATION_STATUSES.has(String(registration.status ?? '').trim().toUpperCase())
+);
+
 export default function TeamDetailModal({
     currentTeam,
     isOpen,
@@ -130,6 +140,7 @@ export default function TeamDetailModal({
     onTeamDeleted,
     selectedFreeAgentId,
     selectedFreeAgentUser,
+    canChargeRegistration,
 }: TeamDetailModalProps) {
     const { user } = useApp();
     const [showAddPlayers, setShowAddPlayers] = useState(false);
@@ -151,6 +162,15 @@ export default function TeamDetailModal({
     const [draftSkillDivisionTypeId, setDraftSkillDivisionTypeId] = useState('open');
     const [draftAgeDivisionTypeId, setDraftAgeDivisionTypeId] = useState(DEFAULT_AGE_DIVISION_FALLBACK);
     const [draftTeamSize, setDraftTeamSize] = useState(currentTeam.teamSize || 0);
+    const [draftOpenRegistration, setDraftOpenRegistration] = useState(Boolean(currentTeam.openRegistration));
+    const [draftRegistrationPriceDollars, setDraftRegistrationPriceDollars] = useState(
+        ((currentTeam.registrationPriceCents ?? 0) / 100),
+    );
+    const [jerseyNumbersByUserId, setJerseyNumbersByUserId] = useState<Record<string, string>>({});
+    const [registeringForTeam, setRegisteringForTeam] = useState(false);
+    const [leavingTeam, setLeavingTeam] = useState(false);
+    const [teamRegistrationPaymentData, setTeamRegistrationPaymentData] = useState<PaymentIntent | null>(null);
+    const [teamRegistrationPaymentOpen, setTeamRegistrationPaymentOpen] = useState(false);
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
     const [inviteMode, setInviteMode] = useState<'search' | 'email'>('search');
     const [emailInviteInput, setEmailInviteInput] = useState('');
@@ -167,6 +187,8 @@ export default function TeamDetailModal({
 
     const isTeamCaptain = currentTeam.captainId === user?.$id || currentTeam.managerId === user?.$id;
     const canManageTeam = canManage ?? isTeamCaptain;
+    const canChargeForTeamRegistration = canChargeRegistration ?? Boolean(user?.hasStripeAccount || (currentTeam.registrationPriceCents ?? 0) > 0);
+    const registrationPriceCents = Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0));
     const normalizedInviteEmail = emailInviteInput.trim().toLowerCase();
     const inviteEmailValid = EMAIL_REGEX.test(normalizedInviteEmail);
     const assistantCoachIds = useMemo(() => (
@@ -181,6 +203,43 @@ export default function TeamDetailModal({
             user: usersById.get(assistantCoachId),
         }));
     }, [assistantCoachIds, assistantCoachUsers]);
+    const activePlayerRegistrationByUserId = useMemo(() => {
+        const registrations = Array.isArray(currentTeam.playerRegistrations)
+            ? currentTeam.playerRegistrations
+            : [];
+        const byUserId = new Map<string, TeamPlayerRegistration>();
+        registrations.forEach((registration) => {
+            if (!registration.userId || !isActivePlayerRegistration(registration)) {
+                return;
+            }
+            byUserId.set(registration.userId, registration);
+        });
+        return byUserId;
+    }, [currentTeam.playerRegistrations]);
+    const currentUserRegistration = useMemo(() => {
+        if (!user?.$id || !Array.isArray(currentTeam.playerRegistrations)) {
+            return null;
+        }
+        return currentTeam.playerRegistrations.find((registration) => registration.userId === user.$id) ?? null;
+    }, [currentTeam.playerRegistrations, user?.$id]);
+    const currentUserRegistrationStatus = String(currentUserRegistration?.status ?? '').trim().toUpperCase();
+    const isCurrentUserActiveMember = currentUserRegistrationStatus === 'ACTIVE' || currentTeam.playerIds.includes(user?.$id ?? '');
+    const isCurrentUserPendingTeamRegistration = currentUserRegistrationStatus === 'STARTED';
+    const reservedOrActiveRegistrationCount = useMemo(() => {
+        const registrations = Array.isArray(currentTeam.playerRegistrations) ? currentTeam.playerRegistrations : [];
+        const counted = registrations.filter((registration) => {
+            const status = String(registration.status ?? '').trim().toUpperCase();
+            return status === 'ACTIVE' || status === 'STARTED';
+        });
+        return Math.max(counted.length, currentTeam.playerIds.length);
+    }, [currentTeam.playerIds.length, currentTeam.playerRegistrations]);
+    const teamHasCapacity = !currentTeam.teamSize || reservedOrActiveRegistrationCount < currentTeam.teamSize;
+    const showSelfServiceRegistrationActions = Boolean(user?.$id) && !canManageTeam;
+    const canStartTeamRegistration = showSelfServiceRegistrationActions
+        && Boolean(currentTeam.openRegistration)
+        && !isCurrentUserActiveMember
+        && !isCurrentUserPendingTeamRegistration
+        && teamHasCapacity;
     const selectedRoleLabel = (() => {
         switch (selectedInviteRole) {
             case 'team_manager':
@@ -318,6 +377,12 @@ export default function TeamDetailModal({
         draftSport,
         resolveDraftDivisionDisplayName,
     ]);
+    const teamPaymentSummary: PaymentEventSummary = useMemo(() => ({
+        name: currentTeam.name,
+        location: teamDivisionLabel,
+        eventType: 'EVENT' as Event['eventType'],
+        price: registrationPriceCents,
+    }), [currentTeam.name, registrationPriceCents, teamDivisionLabel]);
 
     const fetchRoleInvites = useCallback(async () => {
         const invites = await userService.listInvites({
@@ -407,7 +472,7 @@ export default function TeamDetailModal({
         } finally {
             setLoading(false);
         }
-    }, [assistantCoachIds, currentTeam.captainId, currentTeam.headCoachId, currentTeam.managerId, currentTeam.pending, currentTeam.playerIds, fetchRoleInvites]);
+    }, [assistantCoachIds, currentTeam.$id, currentTeam.captainId, currentTeam.headCoachId, currentTeam.managerId, currentTeam.pending, currentTeam.playerIds, fetchRoleInvites]);
 
     const performSearch = useCallback(async () => {
         setSearching(true);
@@ -520,14 +585,30 @@ export default function TeamDetailModal({
         setDraftAgeDivisionTypeId(ageDivisionTypeId);
         setDraftDivision(resolveDraftDivisionDisplayName(gender, skillDivisionTypeId, ageDivisionTypeId, sportInput));
         setDraftTeamSize(currentTeam.teamSize || 0);
+        setDraftOpenRegistration(Boolean(currentTeam.openRegistration));
+        setDraftRegistrationPriceDollars((Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0)) / 100));
     }, [
         currentTeam.$id,
         currentTeam.division,
         currentTeam.divisionTypeId,
+        currentTeam.openRegistration,
+        currentTeam.registrationPriceCents,
         currentTeam.sport,
         currentTeam.teamSize,
         resolveDraftDivisionDisplayName,
     ]);
+
+    useEffect(() => {
+        const nextJerseyNumbers: Record<string, string> = {};
+        const registrations = Array.isArray(currentTeam.playerRegistrations) ? currentTeam.playerRegistrations : [];
+        registrations.forEach((registration) => {
+            if (!registration.userId) {
+                return;
+            }
+            nextJerseyNumbers[registration.userId] = registration.jerseyNumber ?? '';
+        });
+        setJerseyNumbersByUserId(nextJerseyNumbers);
+    }, [currentTeam.$id, currentTeam.playerRegistrations]);
 
     useEffect(() => {
         const fallback = getDefaultDivisionTypeSelections(draftSport || currentTeam.sport || '');
@@ -635,6 +716,9 @@ export default function TeamDetailModal({
         });
         const nextTeamSize = Number(draftTeamSize) || 0;
         const nextCaptainId = draftCaptainId.trim();
+        const nextRegistrationPriceCents = draftOpenRegistration && canChargeForTeamRegistration
+            ? Math.max(0, Math.round((Number(draftRegistrationPriceDollars) || 0) * 100))
+            : 0;
 
         if (!nextSport) {
             setError('Sport is required.');
@@ -668,6 +752,20 @@ export default function TeamDetailModal({
             divisionTypeName: nextDivisionTypeName,
             teamSize: nextTeamSize,
             captainId: nextCaptainId,
+            openRegistration: draftOpenRegistration,
+            registrationPriceCents: nextRegistrationPriceCents,
+            playerRegistrations: teamPlayers.map((player) => {
+                const existingRegistration = activePlayerRegistrationByUserId.get(player.$id);
+                return {
+                    id: existingRegistration?.id ?? `${currentTeam.$id}__${player.$id}`,
+                    teamId: currentTeam.$id,
+                    userId: player.$id,
+                    status: existingRegistration?.status ?? 'ACTIVE',
+                    jerseyNumber: (jerseyNumbersByUserId[player.$id] ?? '').trim() || null,
+                    position: existingRegistration?.position ?? null,
+                    isCaptain: player.$id === nextCaptainId,
+                };
+            }),
         });
         if (!updated) {
             setError('Failed to update team details');
@@ -861,6 +959,66 @@ export default function TeamDetailModal({
         } catch (error) {
             console.error('Failed to remove player:', error);
             setError('Failed to remove player');
+        }
+    };
+
+    const handleRegisterForTeam = async () => {
+        if (!user) {
+            notifications.show({ color: 'red', message: 'Sign in to register for this team.' });
+            return;
+        }
+        if (registeringForTeam) {
+            return;
+        }
+        setRegisteringForTeam(true);
+        setError(null);
+        try {
+            if (registrationPriceCents > 0) {
+                const paymentData = await paymentService.createTeamRegistrationPaymentIntent(user, currentTeam);
+                setTeamRegistrationPaymentData(paymentData);
+                setTeamRegistrationPaymentOpen(true);
+                return;
+            }
+
+            const updated = await teamService.registerForTeam(currentTeam.$id);
+            if (updated) {
+                onTeamUpdated?.(updated);
+            }
+            notifications.show({ color: 'green', message: 'You are registered for this team.' });
+        } catch (registerError) {
+            const message = registerError instanceof Error ? registerError.message : 'Failed to register for team.';
+            setError(message);
+            notifications.show({ color: 'red', message });
+        } finally {
+            setRegisteringForTeam(false);
+        }
+    };
+
+    const handleTeamRegistrationPaymentSuccess = async () => {
+        const refreshed = await teamService.getTeamById(currentTeam.$id, true);
+        if (refreshed) {
+            onTeamUpdated?.(refreshed);
+        }
+    };
+
+    const handleLeaveTeam = async () => {
+        if (!user || leavingTeam) {
+            return;
+        }
+        setLeavingTeam(true);
+        setError(null);
+        try {
+            const updated = await teamService.leaveTeam(currentTeam.$id);
+            if (updated) {
+                onTeamUpdated?.(updated);
+            }
+            notifications.show({ color: 'green', message: 'You left the team.' });
+        } catch (leaveError) {
+            const message = leaveError instanceof Error ? leaveError.message : 'Failed to leave team.';
+            setError(message);
+            notifications.show({ color: 'red', message });
+        } finally {
+            setLeavingTeam(false);
         }
     };
 
@@ -1074,7 +1232,53 @@ export default function TeamDetailModal({
                                     disabled={teamPlayers.length === 0}
                                     allowDeselect={false}
                                 />
+                                <Checkbox
+                                    label="Open registration"
+                                    description="Allow players to register from the readonly team view."
+                                    checked={draftOpenRegistration}
+                                    onChange={(event) => setDraftOpenRegistration(event.currentTarget.checked)}
+                                />
+                                <NumberInput
+                                    label="Registration cost"
+                                    description={
+                                        canChargeForTeamRegistration
+                                            ? 'Leave at $0 for free registration.'
+                                            : 'Connect Stripe to charge for registration. Free registration is still available.'
+                                    }
+                                    min={0}
+                                    decimalScale={2}
+                                    fixedDecimalScale
+                                    prefix="$"
+                                    value={draftRegistrationPriceDollars}
+                                    onChange={(value) => {
+                                        const numeric = typeof value === 'number' ? value : Number(value);
+                                        setDraftRegistrationPriceDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
+                                    }}
+                                    disabled={!draftOpenRegistration || !canChargeForTeamRegistration}
+                                />
                             </SimpleGrid>
+                            {teamPlayers.length > 0 && (
+                                <Paper withBorder radius="md" p="sm" mt="sm">
+                                    <Text fw={500} size="sm" mb="xs">Player jersey numbers</Text>
+                                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+                                        {teamPlayers.map((player) => (
+                                            <TextInput
+                                                key={player.$id}
+                                                label={getUserFullName(player)}
+                                                placeholder="Jersey number"
+                                                value={jerseyNumbersByUserId[player.$id] ?? ''}
+                                                onChange={(event) => {
+                                                    const value = event.currentTarget.value;
+                                                    setJerseyNumbersByUserId((current) => ({
+                                                        ...current,
+                                                        [player.$id]: value,
+                                                    }));
+                                                }}
+                                            />
+                                        ))}
+                                    </SimpleGrid>
+                                </Paper>
+                            )}
                             <Group justify="flex-end" mt="sm">
                                 <Button variant="default" onClick={() => setEditingDetails(false)}>Cancel</Button>
                                 <Button onClick={() => { void handleSaveDetails(); }}>Save Team Details</Button>
@@ -1100,28 +1304,36 @@ export default function TeamDetailModal({
                         {teamPlayers.length > 0 ? (
                             <ScrollArea.Autosize mah={240} type="auto">
                                 <div className="space-y-3">
-                                    {teamPlayers.map(player => (
-                                        <Paper key={player.$id} withBorder radius="md" p="sm">
-                                            <Group justify="space-between">
-                                                <Group>
-                                                    <Avatar src={getUserAvatarUrl(player, 40)} alt={getUserFullName(player)} size={40} radius="xl" />
-                                                    <div>
-                                                        <Text fw={500}>{getUserFullName(player)}</Text>
-                                                        {getUserHandle(player) && <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>}
-                                                        {player.$id === currentTeam.captainId && (
-                                                            <Badge color="blue" variant="light" size="xs">Captain</Badge>
-                                                        )}
-                                                    </div>
+                                    {teamPlayers.map(player => {
+                                        const playerRegistration = activePlayerRegistrationByUserId.get(player.$id);
+                                        return (
+                                            <Paper key={player.$id} withBorder radius="md" p="sm">
+                                                <Group justify="space-between">
+                                                    <Group>
+                                                        <Avatar
+                                                            src={getUserAvatarUrl(player, 40, playerRegistration?.jerseyNumber)}
+                                                            alt={getUserFullName(player)}
+                                                            size={40}
+                                                            radius="xl"
+                                                        />
+                                                        <div>
+                                                            <Text fw={500}>{getUserFullName(player)}</Text>
+                                                            {getUserHandle(player) && <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>}
+                                                            {player.$id === currentTeam.captainId && (
+                                                                <Badge color="blue" variant="light" size="xs">Captain</Badge>
+                                                            )}
+                                                        </div>
+                                                    </Group>
+                                                    {canManageTeam && (
+                                                        (player.$id !== currentTeam.captainId)
+                                                        || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
+                                                    ) && (
+                                                        <Button color="red" variant="subtle" size="xs" onClick={() => handleRemovePlayer(player.$id)}>Remove</Button>
+                                                    )}
                                                 </Group>
-                                                {canManageTeam && (
-                                                    (player.$id !== currentTeam.captainId)
-                                                    || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
-                                                ) && (
-                                                    <Button color="red" variant="subtle" size="xs" onClick={() => handleRemovePlayer(player.$id)}>Remove</Button>
-                                                )}
-                                            </Group>
-                                        </Paper>
-                                    ))}
+                                            </Paper>
+                                        );
+                                    })}
                                 </div>
                             </ScrollArea.Autosize>
                         ) : (
@@ -1492,6 +1704,55 @@ export default function TeamDetailModal({
                         </div>
                     )}
 
+                    {showSelfServiceRegistrationActions && (
+                        <Paper withBorder radius="md" p="md" mb="md">
+                            {isCurrentUserActiveMember ? (
+                                <Group justify="space-between" align="center">
+                                    <div>
+                                        <Title order={5}>Team membership</Title>
+                                        <Text size="sm" c="dimmed">You are on this team.</Text>
+                                    </div>
+                                    <Button
+                                        color="red"
+                                        variant="light"
+                                        loading={leavingTeam}
+                                        onClick={() => { void handleLeaveTeam(); }}
+                                    >
+                                        Leave Team
+                                    </Button>
+                                </Group>
+                            ) : (
+                                <Group justify="space-between" align="center">
+                                    <div>
+                                        <Title order={5}>Team registration</Title>
+                                        <Text size="sm" c="dimmed">
+                                            {currentTeam.openRegistration
+                                                ? `Registration is ${formatPrice(registrationPriceCents)}.`
+                                                : 'Registration is not open for this team.'}
+                                        </Text>
+                                        {isCurrentUserPendingTeamRegistration && (
+                                            <Text size="xs" c="dimmed">Your registration is waiting for payment confirmation.</Text>
+                                        )}
+                                        {currentTeam.openRegistration && !teamHasCapacity && (
+                                            <Text size="xs" c="red">This team is full.</Text>
+                                        )}
+                                    </div>
+                                    <Button
+                                        disabled={!canStartTeamRegistration}
+                                        loading={registeringForTeam}
+                                        onClick={() => { void handleRegisterForTeam(); }}
+                                    >
+                                        {isCurrentUserPendingTeamRegistration
+                                            ? 'Registration Pending'
+                                            : teamHasCapacity
+                                            ? 'Register for Team'
+                                            : 'Team Full'}
+                                    </Button>
+                                </Group>
+                            )}
+                        </Paper>
+                    )}
+
                     {/* Delete Team Section */}
                     {canManageTeam && (
                         <div className="border-t pt-6">
@@ -1522,6 +1783,13 @@ export default function TeamDetailModal({
                 onSelect={handleChangeImage}
                 onClose={() => setImagePickerOpen(false)}
                 isOpen={imagePickerOpen}
+            />
+            <PaymentModal
+                isOpen={teamRegistrationPaymentOpen}
+                onClose={() => setTeamRegistrationPaymentOpen(false)}
+                event={teamPaymentSummary}
+                paymentData={teamRegistrationPaymentData}
+                onPaymentSuccess={handleTeamRegistrationPaymentSuccess}
             />
         </>
     );

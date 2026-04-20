@@ -7,7 +7,16 @@ const prismaMock = {
     findMany: jest.fn(),
     findUnique: jest.fn(),
   },
+  authUser: {
+    findUnique: jest.fn(),
+  },
+  userData: {
+    findUnique: jest.fn(),
+  },
   teams: {
+    findMany: jest.fn(),
+  },
+  eventRegistrations: {
     findMany: jest.fn(),
   },
   matches: {
@@ -64,7 +73,10 @@ describe('event template privacy routes', () => {
     jest.clearAllMocks();
     prismaMock.events.findMany.mockReset();
     prismaMock.events.findUnique.mockReset();
+    prismaMock.authUser.findUnique.mockReset();
+    prismaMock.userData.findUnique.mockReset();
     prismaMock.teams.findMany.mockReset();
+    prismaMock.eventRegistrations.findMany.mockReset();
     prismaMock.matches.findMany.mockReset();
     prismaMock.timeSlots.findMany.mockReset();
     prismaMock.fields.findFirst.mockReset();
@@ -72,8 +84,11 @@ describe('event template privacy routes', () => {
     prismaMock.staffMembers.findUnique.mockReset();
     prismaMock.invites.findMany.mockReset();
     prismaMock.divisions.findMany.mockReset();
+    prismaMock.authUser.findUnique.mockResolvedValue({ disabledAt: null, sessionVersion: 0 });
+    prismaMock.userData.findUnique.mockResolvedValue({ hiddenEventIds: [] });
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.fields.findFirst.mockResolvedValue(null);
@@ -290,7 +305,8 @@ describe('event template privacy routes', () => {
 
   it('includes user-owned unpublished events in GET /api/events list visibility', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false, sessionVersion: 0 });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: [] });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events'));
@@ -317,7 +333,8 @@ describe('event template privacy routes', () => {
 
   it('includes organization unpublished events when requester can manage the organization', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false, sessionVersion: 0 });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: [] });
     prismaMock.organizations.findUnique.mockResolvedValueOnce({ id: 'org_1', ownerId: 'owner_1' });
     prismaMock.staffMembers.findUnique.mockResolvedValueOnce({
       organizationId: 'org_1',
@@ -344,7 +361,9 @@ describe('event template privacy routes', () => {
 
   it('includes user-owned unpublished events in POST /api/events/search visibility', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false, sessionVersion: 0 });
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ disabledAt: null, sessionVersion: 0 });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: [] });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
     const res = await searchPost(
@@ -375,6 +394,49 @@ describe('event template privacy routes', () => {
     );
   });
 
+  it('excludes hidden events from GET /api/events for the signed-in user', async () => {
+    getTokenFromRequestMock.mockReturnValueOnce('token_1');
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: ['event_hidden', ' event_hidden ', ''] });
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await eventsGet(new NextRequest('http://localhost/api/events'));
+
+    expect(res.status).toBe(200);
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.AND).toEqual(
+      expect.arrayContaining([
+        { id: { notIn: ['event_hidden'] } },
+      ]),
+    );
+  });
+
+  it('excludes hidden events from POST /api/events/search for active signed-in users', async () => {
+    getTokenFromRequestMock.mockReturnValueOnce('token_1');
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ disabledAt: null, sessionVersion: 0 });
+    prismaMock.userData.findUnique.mockResolvedValueOnce({ hiddenEventIds: ['event_hidden'] });
+    prismaMock.events.findMany.mockResolvedValueOnce([]);
+
+    const res = await searchPost(
+      new NextRequest('http://localhost/api/events/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer token_1' },
+        body: JSON.stringify({ filters: {} }),
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    const findManyCalls = prismaMock.events.findMany.mock.calls;
+    const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
+    expect(callArgs?.where?.AND).toEqual(
+      expect.arrayContaining([
+        { id: { notIn: ['event_hidden'] } },
+      ]),
+    );
+  });
+
   it('includes divisionDetails in GET /api/events list responses', async () => {
     prismaMock.events.findMany.mockResolvedValueOnce([
       {
@@ -385,7 +447,7 @@ describe('event template privacy routes', () => {
         userIds: [],
       },
     ]);
-    prismaMock.divisions.findMany.mockResolvedValueOnce([
+    const divisionRows = [
       {
         eventId: 'event_1',
         id: 'event_1__division__open',
@@ -404,7 +466,10 @@ describe('event template privacy routes', () => {
         maxParticipants: 10,
         sportId: 'sport_1',
       },
-    ]);
+    ];
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(divisionRows);
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events'));
 
@@ -435,10 +500,9 @@ describe('event template privacy routes', () => {
         divisions: [],
       },
     ]);
-    prismaMock.teams.findMany.mockResolvedValueOnce([
-      { id: 'slot_1', parentTeamId: 'team_a', name: 'Alpha Team' },
-      { id: 'slot_2', parentTeamId: null, name: 'Place Holder 2' },
-      { id: 'slot_3', parentTeamId: 'team_b', name: 'Bravo Team' },
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      { eventId: 'event_1', registrantType: 'TEAM', rosterRole: 'PARTICIPANT', slotId: null, occurrenceDate: null },
+      { eventId: 'event_1', registrantType: 'TEAM', rosterRole: 'PARTICIPANT', slotId: null, occurrenceDate: null },
     ]);
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events'));
@@ -457,7 +521,7 @@ describe('event template privacy routes', () => {
         sportId: 'sport_1',
       },
     ]);
-    prismaMock.divisions.findMany.mockResolvedValueOnce([
+    const divisionRows = [
       {
         eventId: 'event_2',
         id: 'event_2__division__open',
@@ -476,7 +540,10 @@ describe('event template privacy routes', () => {
         maxParticipants: 8,
         sportId: 'sport_1',
       },
-    ]);
+    ];
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(divisionRows);
 
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
 
@@ -497,7 +564,7 @@ describe('event template privacy routes', () => {
 
   it('allows hosts to explicitly query private events via GET /api/events', async () => {
     getTokenFromRequestMock.mockReturnValueOnce('token_1');
-    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false });
+    verifySessionTokenMock.mockReturnValueOnce({ userId: 'host_1', isAdmin: false, sessionVersion: 0 });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events?state=PRIVATE'));
@@ -525,7 +592,9 @@ describe('event template privacy routes', () => {
         sportId: 'sport_1',
       },
     ]);
-    prismaMock.divisions.findMany.mockRejectedValueOnce(new Error('divisions table unavailable'));
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('divisions table unavailable'));
 
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
 
@@ -547,10 +616,9 @@ describe('event template privacy routes', () => {
         divisions: [],
       },
     ]);
-    prismaMock.teams.findMany.mockResolvedValueOnce([
-      { id: 'slot_1', parentTeamId: 'team_a', name: 'Alpha Team' },
-      { id: 'slot_2', parentTeamId: null, name: 'Place Holder 2' },
-      { id: 'slot_3', parentTeamId: 'team_b', name: 'Bravo Team' },
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      { eventId: 'event_2', registrantType: 'TEAM', rosterRole: 'PARTICIPANT', slotId: null, occurrenceDate: null },
+      { eventId: 'event_2', registrantType: 'TEAM', rosterRole: 'PARTICIPANT', slotId: null, occurrenceDate: null },
     ]);
 
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
@@ -572,7 +640,7 @@ describe('event template privacy routes', () => {
         divisions: [],
       },
     ]);
-    prismaMock.teams.findMany.mockRejectedValueOnce(new Error('teams table unavailable'));
+    prismaMock.eventRegistrations.findMany.mockRejectedValueOnce(new Error('registrations table unavailable'));
 
     const res = await searchPost(jsonPost('http://localhost/api/events/search', { filters: {} }));
 
@@ -675,7 +743,9 @@ describe('event template privacy routes', () => {
         sportId: 'sport_1',
       },
     ]);
-    prismaMock.divisions.findMany.mockRejectedValueOnce(new Error('divisions table unavailable'));
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error('divisions table unavailable'));
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events'));
 
@@ -701,12 +771,51 @@ describe('event template privacy routes', () => {
         where: expect.objectContaining({
           start: { lte: new Date(endIso) },
           OR: [
+            { noFixedEndDateTime: true },
             { end: null },
             { end: { gte: new Date(startIso) } },
           ],
         }),
       }),
     );
+  });
+
+  it('uses noFixedEndDateTime to keep slot-based field conflicts open after the displayed end', async () => {
+    prismaMock.events.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_open_ended',
+        eventType: 'LEAGUE',
+        parentEvent: null,
+        start: new Date('2026-04-20T09:00:00.000Z'),
+        end: new Date('2026-05-03T01:20:00.000Z'),
+        noFixedEndDateTime: true,
+        timeSlotIds: ['slot_1'],
+      },
+    ]);
+    prismaMock.timeSlots.findMany.mockResolvedValueOnce([
+      {
+        id: 'slot_1',
+        dayOfWeek: 5,
+        daysOfWeek: [5],
+        repeating: true,
+        startDate: new Date('2026-04-20T09:00:00.000Z'),
+        endDate: null,
+        startTimeMinutes: 9 * 60,
+        endTimeMinutes: 17 * 60,
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+      },
+    ]);
+
+    const res = await eventsByFieldGet(
+      new NextRequest('http://localhost/api/events/field/field_1?start=2026-05-09T00:00:00.000Z&end=2026-05-10T00:00:00.000Z'),
+      { params: Promise.resolve({ fieldId: 'field_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.events).toHaveLength(1);
+    expect(json.events[0].id).toBe('event_open_ended');
   });
 
   it('uses lightweight event selection for GET /api/events/field/:fieldId overlap-only rental queries', async () => {
@@ -726,6 +835,7 @@ describe('event template privacy routes', () => {
           parentEvent: true,
           start: true,
           end: true,
+          noFixedEndDateTime: true,
           timeSlotIds: true,
         }),
       }),

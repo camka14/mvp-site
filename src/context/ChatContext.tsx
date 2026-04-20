@@ -3,6 +3,7 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
     ChatGroup,
+    ChatTermsConsentState,
     chatService,
     Message,
     MessagePageOrder,
@@ -28,6 +29,9 @@ interface ChatContextType {
     messages: Record<string, Message[]>;
     messagePagination: Record<string, ChatMessagePaginationState>;
     loading: boolean;
+    chatTermsState: ChatTermsConsentState | null;
+    chatTermsLoading: boolean;
+    chatTermsModalOpen: boolean;
 
     // Actions
     loadChatGroups: (options?: { silent?: boolean }) => Promise<void>;
@@ -36,6 +40,10 @@ interface ChatContextType {
     markChatViewed: (chatId: string) => void;
     sendMessage: (chatId: string, message: string) => Promise<void>;
     createChatGroup: (name: string, userIds: string[]) => Promise<void>;
+    ensureChatAccess: () => Promise<boolean>;
+    acceptChatTerms: () => Promise<boolean>;
+    closeChatTermsModal: () => void;
+    hideChatGroups: (chatIds: string[]) => void;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -73,9 +81,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const [messages, setMessages] = useState<Record<string, Message[]>>({});
     const [messagePagination, setMessagePagination] = useState<Record<string, ChatMessagePaginationState>>({});
     const [loading, setLoading] = useState(false);
+    const [chatTermsState, setChatTermsState] = useState<ChatTermsConsentState | null>(null);
+    const [chatTermsLoading, setChatTermsLoading] = useState(false);
+    const [chatTermsModalOpen, setChatTermsModalOpen] = useState(false);
     const chatGroupsRef = useRef<ChatGroup[]>([]);
     const messagesRef = useRef<Record<string, Message[]>>({});
     const messagePaginationRef = useRef<Record<string, ChatMessagePaginationState>>({});
+    const chatTermsAcceptedRef = useRef(false);
 
     useEffect(() => {
         chatGroupsRef.current = chatGroups;
@@ -88,6 +100,71 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         messagePaginationRef.current = messagePagination;
     }, [messagePagination]);
+
+    useEffect(() => {
+        chatTermsAcceptedRef.current = Boolean(chatTermsState?.accepted);
+    }, [chatTermsState]);
+
+    useEffect(() => {
+        setChatGroups([]);
+        setMessages({});
+        setMessagePagination({});
+        setChatTermsState(null);
+        setChatTermsModalOpen(false);
+        chatTermsAcceptedRef.current = false;
+    }, [currentUserId]);
+
+    const fetchChatTermsState = useCallback(async (): Promise<ChatTermsConsentState | null> => {
+        if (!currentUserId) {
+            return null;
+        }
+        const state = await chatService.getChatTermsConsent();
+        setChatTermsState(state);
+        return state;
+    }, [currentUserId]);
+
+    const hideChatGroups = useCallback((chatIds: string[]) => {
+        if (!Array.isArray(chatIds) || chatIds.length === 0) {
+            return;
+        }
+        const hiddenIds = new Set(chatIds);
+        setChatGroups((previous) => previous.filter((group) => !hiddenIds.has(group.$id)));
+        setMessages((previous) => Object.fromEntries(
+            Object.entries(previous).filter(([chatId]) => !hiddenIds.has(chatId)),
+        ));
+        setMessagePagination((previous) => Object.fromEntries(
+            Object.entries(previous).filter(([chatId]) => !hiddenIds.has(chatId)),
+        ));
+    }, []);
+
+    const ensureChatAccess = useCallback(async (): Promise<boolean> => {
+        if (!currentUserId) {
+            return false;
+        }
+        if (chatTermsAcceptedRef.current) {
+            return true;
+        }
+
+        setChatTermsLoading(true);
+        try {
+            const state = chatTermsState ?? await fetchChatTermsState();
+            if (state?.accepted) {
+                return true;
+            }
+            setChatTermsModalOpen(true);
+            return false;
+        } catch (error) {
+            console.error('Failed to load chat terms consent state:', error);
+            setChatTermsModalOpen(true);
+            return false;
+        } finally {
+            setChatTermsLoading(false);
+        }
+    }, [chatTermsState, currentUserId, fetchChatTermsState]);
+
+    const closeChatTermsModal = useCallback(() => {
+        setChatTermsModalOpen(false);
+    }, []);
 
     const markChatReadLocally = useCallback((chatId: string, readerId: string) => {
         setMessages((previous) => {
@@ -124,6 +201,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const loadChatGroups = useCallback(async (options?: { silent?: boolean }) => {
         if (!user) return;
+        if (!chatTermsAcceptedRef.current) {
+            return;
+        }
         const shouldSetLoading = !options?.silent;
 
         if (shouldSetLoading) {
@@ -217,9 +297,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
     }, [user]);
 
+    const acceptChatTerms = useCallback(async (): Promise<boolean> => {
+        if (!currentUserId) {
+            return false;
+        }
+        setChatTermsLoading(true);
+        try {
+            const state = await chatService.acceptChatTermsConsent();
+            chatTermsAcceptedRef.current = Boolean(state.accepted);
+            setChatTermsState(state);
+            setChatTermsModalOpen(false);
+            await loadChatGroups();
+            return Boolean(state.accepted);
+        } catch (error) {
+            console.error('Failed to accept chat terms:', error);
+            return false;
+        } finally {
+            setChatTermsLoading(false);
+        }
+    }, [currentUserId, loadChatGroups]);
+
     const loadMessages = useCallback(async (chatId: string) => {
         try {
             if (!currentUserId) {
+                return;
+            }
+            if (!chatTermsAcceptedRef.current) {
                 return;
             }
             const currentPagination = messagePaginationRef.current[chatId];
@@ -290,6 +393,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (!currentUserId) {
             return;
         }
+        if (!chatTermsAcceptedRef.current) {
+            return;
+        }
         const currentPagination = messagePaginationRef.current[chatId];
         if (!currentPagination || currentPagination.loadingMore || !currentPagination.hasMore) {
             return;
@@ -352,6 +458,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (!currentUserId) {
             return;
         }
+        if (!chatTermsAcceptedRef.current) {
+            return;
+        }
 
         // Clear unread counters immediately in the UI when the user opens/views the chat.
         markChatReadLocally(chatId, currentUserId);
@@ -362,6 +471,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const sendMessage = async (chatId: string, messageBody: string) => {
         if (!user) return;
+        if (!chatTermsAcceptedRef.current) return;
 
         try {
             const newMessage = await chatService.sendMessage(chatId, messageBody, user.$id);
@@ -415,6 +525,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const createChatGroup = async (name: string, userIds: string[]) => {
         if (!user) return;
+        if (!chatTermsAcceptedRef.current) return;
 
         try {
             const newGroup = await chatService.createChatGroup(name, [user.$id, ...userIds]);
@@ -424,25 +535,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         }
     };
 
-    // Load chat groups when user is available
-    useEffect(() => {
-        if (user) {
-            void loadChatGroups();
-        }
-    }, [user, loadChatGroups]);
-
     return (
         <ChatContext.Provider value={{
             chatGroups,
             messages,
             messagePagination,
             loading,
+            chatTermsState,
+            chatTermsLoading,
+            chatTermsModalOpen,
             loadChatGroups,
             loadMessages,
             loadMoreMessages,
             markChatViewed,
             sendMessage,
-            createChatGroup
+            createChatGroup,
+            ensureChatAccess,
+            acceptChatTerms,
+            closeChatTermsModal,
+            hideChatGroups,
         }}>
             {children}
         </ChatContext.Provider>

@@ -256,7 +256,7 @@ export type FieldsGroupByOutputType = {
   _max: FieldsMaxAggregateOutputType | null
 }
 
-type GetFieldsGroupByPayload<T extends FieldsGroupByArgs> = Prisma.PrismaPromise<
+export type GetFieldsGroupByPayload<T extends FieldsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<FieldsGroupByOutputType, T['by']> &
       {
@@ -1283,6 +1283,11 @@ export type FieldsFindManyArgs<ExtArgs extends runtime.Types.Extensions.Internal
    * Skip the first `n` Fields.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Fields.
+   */
   distinct?: Prisma.FieldsScalarFieldEnum | Prisma.FieldsScalarFieldEnum[]
 }
 

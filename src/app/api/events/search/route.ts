@@ -5,6 +5,8 @@ import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
+import { isAuthUserSuspended } from '@/server/authState';
+import { isSessionTokenCurrent } from '@/server/authSessions';
 
 export const dynamic = 'force-dynamic';
 
@@ -216,9 +218,9 @@ const fallbackAttendeeCount = (event: { teamSignup?: boolean | null; teamIds?: u
   return normalizeIds(event.userIds).length;
 };
 
-const resolveSessionContext = (
+const resolveSessionContext = async (
   req: NextRequest,
-): { userId: string; isAdmin: boolean } | null => {
+): Promise<{ userId: string; isAdmin: boolean; hiddenEventIds: string[] } | null> => {
   const token = getTokenFromRequest(req);
   if (!token) {
     return null;
@@ -231,9 +233,25 @@ const resolveSessionContext = (
   if (!userId) {
     return null;
   }
+
+  const [authUser, user] = await Promise.all([
+    prisma.authUser.findUnique({
+      where: { id: userId },
+      select: { disabledAt: true, sessionVersion: true },
+    }),
+    prisma.userData.findUnique({
+      where: { id: userId },
+      select: { hiddenEventIds: true },
+    }),
+  ]);
+  if (!authUser || isAuthUserSuspended(authUser) || !isSessionTokenCurrent(session, authUser.sessionVersion)) {
+    return null;
+  }
+
   return {
     userId,
     isAdmin: Boolean(session.isAdmin),
+    hiddenEventIds: user?.hiddenEventIds ?? [],
   };
 };
 
@@ -281,15 +299,19 @@ export async function POST(req: NextRequest) {
   const queryTerm = (filters.query ?? '').trim();
   const normalizedQuery = normalizeQuery(queryTerm);
   const hasQuery = normalizedQuery.length > 0;
-  const session = resolveSessionContext(req);
+  const session = await resolveSessionContext(req);
   const sessionUserId = session?.userId ?? null;
   const isAdmin = session?.isAdmin === true;
+  const hiddenEventIds = session?.hiddenEventIds ?? [];
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
 
   const where: any = {};
   const visibilityClause = buildDiscoverVisibilityClause(sessionUserId, isAdmin);
   where.AND = [...(Array.isArray(where.AND) ? where.AND : []), ...visibilityClause.AND];
+  if (hiddenEventIds.length > 0) {
+    where.AND.push({ id: { notIn: hiddenEventIds } });
+  }
   if (filters.includeWeeklyChildren !== true) {
     where.AND.push({
       OR: [

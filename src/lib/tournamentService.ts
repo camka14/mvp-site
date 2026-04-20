@@ -1,4 +1,16 @@
-import { Event, Team, Field, Match, TournamentBracket, UserData, MatchOfficialAssignment } from '@/types';
+import {
+    Event,
+    Team,
+    Field,
+    Match,
+    TournamentBracket,
+    UserData,
+    MatchOfficialAssignment,
+    MatchIncidentOperation,
+    MatchLifecycleOperation,
+    MatchOfficialCheckInOperation,
+    MatchSegmentOperation,
+} from '@/types';
 import { eventService } from './eventService';
 import { authService } from './auth';
 import { apiRequest } from './apiClient';
@@ -384,7 +396,64 @@ class TournamentService {
         }
     }
 
-    async updateMatchScores(eventId: string, matchId: string, updates: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'>): Promise<Match> {
+    async updateMatchOperations(
+        eventId: string,
+        matchId: string,
+        updates: {
+            lifecycle?: MatchLifecycleOperation;
+            segmentOperations?: MatchSegmentOperation[];
+            incidentOperations?: MatchIncidentOperation[];
+            officialCheckIn?: MatchOfficialCheckInOperation;
+            finalize?: boolean;
+            time?: string;
+        },
+    ): Promise<Match> {
+        return this.updateMatch(eventId, matchId, updates as Partial<Match>);
+    }
+
+    async setMatchScore(
+        eventId: string,
+        matchId: string,
+        update: {
+            segmentId?: string | null;
+            sequence: number;
+            eventTeamId: string;
+            points: number;
+        },
+    ): Promise<Match> {
+        const response = await apiRequest<{ match: Match }>(`/api/events/${eventId}/matches/${matchId}/score`, {
+            method: 'POST',
+            body: update,
+        });
+        if (!response?.match) {
+            throw new Error('Failed to set match score');
+        }
+        return normalizeApiMatch(response.match);
+    }
+
+    async addMatchIncident(
+        eventId: string,
+        matchId: string,
+        operation: Omit<MatchIncidentOperation, 'action'>,
+    ): Promise<Match> {
+        const response = await apiRequest<{ match: Match }>(`/api/events/${eventId}/matches/${matchId}/incidents`, {
+            method: 'POST',
+            body: operation,
+        });
+        if (!response?.match) {
+            throw new Error('Failed to add match incident');
+        }
+        return normalizeApiMatch(response.match);
+    }
+
+    async updateMatchScores(
+        eventId: string,
+        matchId: string,
+        updates: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'> & { segmentOperations?: MatchSegmentOperation[] },
+    ): Promise<Match> {
+        if (Array.isArray(updates.segmentOperations)) {
+            return this.updateMatchOperations(eventId, matchId, { segmentOperations: updates.segmentOperations });
+        }
         return this.updateMatch(eventId, matchId, updates);
     }
 
@@ -410,7 +479,7 @@ class TournamentService {
     async completeMatch(
         eventId: string,
         matchId: string,
-        payload: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'>,
+        payload: Partial<Pick<Match, 'team1Points' | 'team2Points' | 'setResults'>> & { segmentOperations?: MatchSegmentOperation[] },
     ): Promise<void> {
         try {
             const nowIso = new Date().toISOString();
@@ -418,6 +487,7 @@ class TournamentService {
                 method: 'PATCH',
                 body: {
                     finalize: true,
+                    segmentOperations: payload.segmentOperations,
                     setResults: payload.setResults,
                     team1Points: payload.team1Points,
                     team2Points: payload.team2Points,

@@ -63,7 +63,14 @@ export async function GET(req: NextRequest) {
     const authRows = userIds.length > 0
       ? await prisma.authUser.findMany({
           where: { id: { in: userIds } },
-          select: { id: true, email: true, emailVerifiedAt: true },
+          select: {
+            id: true,
+            email: true,
+            emailVerifiedAt: true,
+            disabledAt: true,
+            disabledByUserId: true,
+            disabledReason: true,
+          },
         })
       : [];
     const authById = new Map(authRows.map((row) => [row.id, row]));
@@ -74,6 +81,9 @@ export async function GET(req: NextRequest) {
         ...user,
         email: authUser?.email ?? null,
         emailVerifiedAt: authUser?.emailVerifiedAt?.toISOString() ?? null,
+        disabledAt: authUser?.disabledAt?.toISOString() ?? null,
+        disabledByUserId: authUser?.disabledByUserId ?? null,
+        disabledReason: authUser?.disabledReason ?? null,
       };
     });
 

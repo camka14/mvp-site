@@ -7,6 +7,17 @@ interface UserAccount {
   name?: string;
 }
 
+export type RequiredProfileField = 'firstName' | 'lastName' | 'dateOfBirth';
+
+export interface AuthSessionResult {
+  user: UserAccount | null;
+  profile: UserData | null;
+  session: AuthPayload['session'] | null;
+  token: string | null;
+  requiresProfileCompletion: boolean;
+  missingProfileFields: RequiredProfileField[];
+}
+
 const normalizeUserData = (user: UserData | null): UserData | null => {
   if (!user) return null;
   const normalizedUser = {
@@ -26,9 +37,11 @@ type ExistingUserLookup = { userId: string; sensitiveUserId?: string };
 
 type AuthPayload = {
   user: { id: string; email: string; name?: string | null } | null;
-  session?: { userId: string; isAdmin: boolean } | null;
+  session?: { userId: string; isAdmin: boolean; sessionVersion?: number } | null;
   token?: string | null;
   profile?: UserData | null;
+  requiresProfileCompletion?: boolean;
+  missingProfileFields?: RequiredProfileField[];
 };
 
 type VerificationRequiredPayload = {
@@ -70,6 +83,17 @@ const isVerificationRequiredPayload = (value: unknown): value is VerificationReq
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<VerificationRequiredPayload>;
   return candidate.code === 'EMAIL_NOT_VERIFIED' || candidate.requiresEmailVerification === true;
+};
+
+const REQUIRED_PROFILE_FIELDS: RequiredProfileField[] = ['firstName', 'lastName', 'dateOfBirth'];
+
+const normalizeRequiredProfileFields = (value: unknown): RequiredProfileField[] => {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => (
+    typeof entry === 'string' && REQUIRED_PROFILE_FIELDS.includes(entry as RequiredProfileField)
+      ? [entry as RequiredProfileField]
+      : []
+  ));
 };
 
 const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
@@ -157,15 +181,31 @@ export const authService = {
     return null;
   },
 
-  async fetchSession(): Promise<{ user: UserAccount | null; profile: UserData | null; session: AuthPayload['session'] | null; token: string | null }> {
+  async fetchSession(): Promise<AuthSessionResult> {
     const data = await apiFetch<AuthPayload>('/api/auth/me');
+    const missingProfileFields = normalizeRequiredProfileFields(data?.missingProfileFields);
+    const requiresProfileCompletion = data?.requiresProfileCompletion === true || missingProfileFields.length > 0;
     if (!data?.user || !data.session) {
-      return { user: null, profile: null, session: null, token: null };
+      return {
+        user: null,
+        profile: null,
+        session: null,
+        token: null,
+        requiresProfileCompletion: false,
+        missingProfileFields: [],
+      };
     }
     const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
     this.setCurrentAuthUser(mapped);
     if (data.profile) this.setCurrentUserData(data.profile as UserData);
-    return { user: mapped, profile: (data.profile as UserData) ?? null, session: data.session ?? null, token: data.token ?? null };
+    return {
+      user: mapped,
+      profile: (data.profile as UserData) ?? null,
+      session: data.session ?? null,
+      token: data.token ?? null,
+      requiresProfileCompletion,
+      missingProfileFields,
+    };
   },
 
   async createAccount(
@@ -175,7 +215,7 @@ export const authService = {
     lastName: string,
     userName: string,
     dateOfBirth: string,
-  ): Promise<UserAccount> {
+  ): Promise<AuthSessionResult> {
     const normalizedFirstName = normalizeOptionalName(firstName) ?? firstName.trim();
     const normalizedLastName = normalizeOptionalName(lastName) ?? lastName.trim();
     const data = await apiFetch<AuthPayload | VerificationRequiredPayload>('/api/auth/register', {
@@ -194,14 +234,22 @@ export const authService = {
       throw new ApiError(data.error || 'Email verification required', 403, data);
     }
     if (!data.user) throw new Error('Authentication failed');
+    const missingProfileFields = normalizeRequiredProfileFields(data.missingProfileFields);
     const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
     this.setCurrentAuthUser(mapped);
     if (data.profile) this.setCurrentUserData(data.profile as UserData);
     this.setGuest(false);
-    return mapped;
+    return {
+      user: mapped,
+      profile: (data.profile as UserData) ?? null,
+      session: data.session ?? null,
+      token: data.token ?? null,
+      requiresProfileCompletion: data.requiresProfileCompletion === true || missingProfileFields.length > 0,
+      missingProfileFields,
+    };
   },
 
-  async login(email: string, password: string): Promise<UserAccount> {
+  async login(email: string, password: string): Promise<AuthSessionResult> {
     const data = await apiFetch<AuthPayload | VerificationRequiredPayload>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
@@ -210,11 +258,19 @@ export const authService = {
       throw new ApiError(data.error || 'Email verification required', 403, data);
     }
     if (!data.user) throw new Error('Authentication failed');
+    const missingProfileFields = normalizeRequiredProfileFields(data.missingProfileFields);
     const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
     this.setCurrentAuthUser(mapped);
     if (data.profile) this.setCurrentUserData(data.profile as UserData);
     this.setGuest(false);
-    return mapped;
+    return {
+      user: mapped,
+      profile: (data.profile as UserData) ?? null,
+      session: data.session ?? null,
+      token: data.token ?? null,
+      requiresProfileCompletion: data.requiresProfileCompletion === true || missingProfileFields.length > 0,
+      missingProfileFields,
+    };
   },
 
   async getCurrentUser(): Promise<UserAccount | null> {

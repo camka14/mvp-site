@@ -112,10 +112,9 @@ describe('syncChildRegistrationConsentStatus', () => {
     expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'registration_1' },
       data: expect.objectContaining({
-        status: 'PENDINGCONSENT',
+        status: 'STARTED',
         consentStatus: 'parentSigned',
       }),
     }));
   });
 });
-

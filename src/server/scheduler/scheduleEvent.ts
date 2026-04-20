@@ -224,7 +224,7 @@ const isOpenEndedSchedule = (event: League | Tournament): boolean => {
   if (typeof event.noFixedEndDateTime === 'boolean') {
     return event.noFixedEndDateTime;
   }
-  return event.start.getTime() === event.end.getTime();
+  return false;
 };
 
 const extendOpenEndedWindow = (event: League | Tournament): void => {
@@ -263,7 +263,7 @@ export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContex
 
   const openEndedSchedule = isOpenEndedSchedule(event);
   if (!openEndedSchedule && event.end.getTime() <= event.start.getTime()) {
-    throw new ScheduleError('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
+    throw new ScheduleError('End date/time must be after start date/time when "No fixed end datetime scheduling" is disabled.');
   }
   if (openEndedSchedule) {
     extendOpenEndedWindow(event);
@@ -394,7 +394,7 @@ const buildLeagueSchedule = (
     if (openEndedSchedule) {
       updated.end = latestEnd;
     } else if (latestEnd.getTime() > updated.end.getTime()) {
-      throw new ScheduleError('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end date/time".');
+      throw new ScheduleError('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end datetime scheduling".');
     }
   }
 
@@ -491,7 +491,7 @@ const buildTournamentSchedule = (
     if (openEndedSchedule) {
       scheduled.end = latestEnd;
     } else if (latestEnd.getTime() > scheduled.end.getTime()) {
-      throw new ScheduleError('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end date/time".');
+      throw new ScheduleError('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end datetime scheduling".');
     }
   }
   return {

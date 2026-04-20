@@ -104,6 +104,8 @@ describe('google mobile oauth route', () => {
     expect(res.status).toBe(200);
     expect(json.user.id).toBe('user_1');
     expect(json.token).toBe('signed-token');
+    expect(json.requiresProfileCompletion).toBe(true);
+    expect(json.missingProfileFields).toContain('dateOfBirth');
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
     expect(prismaMock.authUser.create).toHaveBeenCalled();
   });

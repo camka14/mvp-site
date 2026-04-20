@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { isMinorAtUtcDate } from '@/server/userPrivacy';
+import { ensureUserHasAcceptedChatTerms } from '@/server/chatAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +15,20 @@ const createSchema = z.object({
   hostId: z.string().trim().min(1),
 }).passthrough();
 
+const normalizeIds = (value: string[] | null | undefined): string[] => (
+  Array.from(new Set((value ?? []).map((entry) => entry.trim()).filter(Boolean)))
+);
+
+const hasBlockingRelationship = (users: Array<{ id: string; blockedUserIds?: string[] | null }>): boolean => {
+  const participantIds = new Set(users.map((user) => user.id));
+  return users.some((user) => normalizeIds(user.blockedUserIds).some((blockedId) => participantIds.has(blockedId)));
+};
+
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
+  if (!session.isAdmin) {
+    await ensureUserHasAcceptedChatTerms(session.userId);
+  }
   const params = req.nextUrl.searchParams;
   const userId = params.get('userId') ?? session.userId;
   if (!session.isAdmin && userId !== session.userId) {
@@ -23,7 +36,10 @@ export async function GET(req: NextRequest) {
   }
 
   const groups = await prisma.chatGroup.findMany({
-    where: { userIds: { has: userId } },
+    where: {
+      userIds: { has: userId },
+      archivedAt: null,
+    },
     orderBy: { updatedAt: 'desc' },
   });
 
@@ -37,6 +53,7 @@ export async function GET(req: NextRequest) {
       where: {
         chatId: { in: groupIds },
         userId: { not: session.userId },
+        removedAt: null,
         NOT: { readByIds: { has: session.userId } },
       },
       _count: { _all: true },
@@ -46,7 +63,10 @@ export async function GET(req: NextRequest) {
     });
 
     const latestMessages = await prisma.messages.findMany({
-      where: { chatId: { in: groupIds } },
+      where: {
+        chatId: { in: groupIds },
+        removedAt: null,
+      },
       distinct: ['chatId'],
       orderBy: [
         { chatId: 'asc' },
@@ -69,6 +89,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
+  if (!session.isAdmin) {
+    await ensureUserHasAcceptedChatTerms(session.userId);
+  }
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body ?? {});
   if (!parsed.success) {
@@ -93,16 +116,27 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const requestedUsers = await prisma.userData.findMany({
+    where: { id: { in: requestedUserIds } },
+    select: { id: true, dateOfBirth: true, blockedUserIds: true },
+  });
+  if (requestedUsers.length !== requestedUserIds.length) {
+    return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+  }
+
   const targetUserIds = requestedUserIds.filter((id) => id !== session.userId);
   if (targetUserIds.length > 0) {
-    const targetUsers = await prisma.userData.findMany({
-      where: { id: { in: targetUserIds } },
-      select: { id: true, dateOfBirth: true },
-    });
+    const targetUsers = requestedUsers.filter((user) => targetUserIds.includes(user.id));
     const containsMinorTarget = targetUsers.some((user) => isMinorAtUtcDate(user.dateOfBirth));
     if (containsMinorTarget) {
       return NextResponse.json({ error: 'Messaging minor accounts is not allowed.' }, { status: 403 });
     }
+  }
+  if (hasBlockingRelationship(requestedUsers)) {
+    return NextResponse.json(
+      { error: 'Chat creation is unavailable because one of these users has blocked the other.' },
+      { status: 403 },
+    );
   }
 
   const group = await prisma.chatGroup.create({

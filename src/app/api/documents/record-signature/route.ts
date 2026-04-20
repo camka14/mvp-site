@@ -309,7 +309,7 @@ export async function POST(request: NextRequest) {
       where: {
         registrantId: scopedChildUserId,
         registrantType: 'CHILD',
-        status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
+        status: { in: ['STARTED', 'ACTIVE'] },
       },
       select: {
         eventId: true,

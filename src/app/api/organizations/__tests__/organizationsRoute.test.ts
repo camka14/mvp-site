@@ -3,23 +3,27 @@
 import { NextRequest } from 'next/server';
 
 const findManyMock = jest.fn();
+const createMock = jest.fn();
 const prismaMock = {
   organizations: {
     findMany: (...args: any[]) => findManyMock(...args),
+    create: (...args: any[]) => createMock(...args),
   },
 };
 
 const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
+const requireSessionMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
   withLegacyList: (rows: any[]) => withLegacyListMock(rows),
 }));
 
-import { GET as organizationsGet } from '@/app/api/organizations/route';
+import { GET as organizationsGet, POST as organizationsPost } from '@/app/api/organizations/route';
 
-describe('GET /api/organizations', () => {
+describe('/api/organizations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
@@ -64,5 +68,38 @@ describe('GET /api/organizations', () => {
       orderBy: { name: 'asc' },
     });
     expect(json.organizations).toEqual([]);
+  });
+
+  it('ignores client hasStripeAccount values when creating organizations', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    createMock.mockResolvedValue({
+      id: 'org_1',
+      name: 'New Org',
+      ownerId: 'user_1',
+      hasStripeAccount: false,
+    });
+
+    const response = await organizationsPost(new NextRequest('http://localhost/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'org_1',
+        name: 'New Org',
+        ownerId: 'user_1',
+        hasStripeAccount: true,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(createMock).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: 'org_1',
+        name: 'New Org',
+        ownerId: 'user_1',
+        hasStripeAccount: false,
+      }),
+    });
+    expect(payload.hasStripeAccount).toBe(false);
   });
 });

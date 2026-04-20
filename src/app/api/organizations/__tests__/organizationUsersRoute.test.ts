@@ -127,7 +127,7 @@ describe('GET /api/organizations/[id]/users', () => {
         eventId: 'event_2',
         registrantId: 'player_1',
         registrantType: 'SELF',
-        status: 'PENDINGCONSENT',
+        status: 'STARTED',
       },
     ]);
     prismaMock.teams.findMany.mockResolvedValue([]);
@@ -193,7 +193,7 @@ describe('GET /api/organizations/[id]/users', () => {
     }));
     expect(payload.users[0].events).toEqual(expect.arrayContaining([
       expect.objectContaining({ eventId: 'event_1', eventName: 'League Night', status: 'ACTIVE' }),
-      expect.objectContaining({ eventId: 'event_2', eventName: 'Weekend Ladder', status: 'PENDINGCONSENT' }),
+      expect.objectContaining({ eventId: 'event_2', eventName: 'Weekend Ladder', status: 'STARTED' }),
     ]));
     expect(payload.users[0].documents).toEqual(expect.arrayContaining([
       expect.objectContaining({

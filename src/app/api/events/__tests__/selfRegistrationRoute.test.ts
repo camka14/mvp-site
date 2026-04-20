@@ -19,13 +19,18 @@ const prismaMock = {
   divisions: {
     findMany: jest.fn(),
   },
+  timeSlots: {
+    findUnique: jest.fn(),
+  },
   parentChildLinks: {
     findFirst: jest.fn(),
   },
   eventRegistrations: {
     findFirst: jest.fn(),
+    findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    upsert: jest.fn(),
   },
   invites: {
     deleteMany: jest.fn(),
@@ -65,21 +70,31 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
     });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ parentId: 'parent_1' });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
-    prismaMock.eventRegistrations.update.mockResolvedValue({
-      id: 'registration_1',
+    prismaMock.eventRegistrations.findUnique.mockResolvedValue(null);
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({
+      id: 'event_1__self__user_1',
       eventId: 'event_1',
       registrantId: 'user_1',
       registrantType: 'SELF',
       status: 'ACTIVE',
+      rosterRole: 'PARTICIPANT',
+      parentId: null,
+      ageAtEvent: null,
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
+      consentDocumentId: null,
+      consentStatus: null,
+      createdBy: 'user_1',
+      slotId: null,
+      occurrenceDate: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
     prismaMock.templateDocuments.findMany.mockResolvedValue([]);
     prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+    prismaMock.timeSlots.findUnique.mockResolvedValue(null);
     prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
-    prismaMock.events.update.mockResolvedValue({
-      id: 'event_1',
-      userIds: ['user_1'],
-      waitListIds: [],
-    });
   });
 
   it('requires division selection when registering by individual division', async () => {
@@ -131,7 +146,7 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
 
     expect(response.status).toBe(400);
     expect(payload.error).toContain('Select a division');
-    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.upsert).not.toHaveBeenCalled();
   });
 
   it('stores resolved division details when registering by division type', async () => {
@@ -174,12 +189,25 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
         ageCutoffSource: null,
       },
     ]);
-    prismaMock.eventRegistrations.create.mockResolvedValue({
-      id: 'registration_1',
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({
+      id: 'event_1__self__user_1',
       eventId: 'event_1',
       registrantId: 'user_1',
       registrantType: 'SELF',
       status: 'ACTIVE',
+      rosterRole: 'PARTICIPANT',
+      parentId: null,
+      ageAtEvent: null,
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
+      consentDocumentId: null,
+      consentStatus: null,
+      createdBy: 'user_1',
+      slotId: null,
+      occurrenceDate: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
     const response = await POST(
@@ -190,22 +218,20 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
+    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        create: expect.objectContaining({
+          divisionId: 'div_a',
+          divisionTypeId: 'open',
+          divisionTypeKey: 'c_skill_open',
+        }),
+        update: expect.objectContaining({
           divisionId: 'div_a',
           divisionTypeId: 'open',
           divisionTypeKey: 'c_skill_open',
         }),
       }),
     );
-    expect(prismaMock.events.update).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'event_1' },
-      data: expect.objectContaining({
-        userIds: ['user_1'],
-        waitListIds: [],
-      }),
-    }));
   });
 
   it('reuses existing self registration row instead of creating duplicates', async () => {
@@ -235,17 +261,30 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
         ageCutoffSource: null,
       },
     ]);
-    prismaMock.eventRegistrations.findFirst.mockResolvedValue({
-      id: 'registration_existing',
+    prismaMock.eventRegistrations.findUnique.mockResolvedValue({
+      id: 'event_1__self__user_1',
       consentDocumentId: null,
       consentStatus: null,
     });
-    prismaMock.eventRegistrations.update.mockResolvedValue({
-      id: 'registration_existing',
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({
+      id: 'event_1__self__user_1',
       eventId: 'event_1',
       registrantId: 'user_1',
       registrantType: 'SELF',
       status: 'ACTIVE',
+      rosterRole: 'PARTICIPANT',
+      parentId: null,
+      ageAtEvent: null,
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
+      consentDocumentId: null,
+      consentStatus: null,
+      createdBy: 'user_1',
+      slotId: null,
+      occurrenceDate: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
     const response = await POST(
@@ -256,16 +295,15 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(
+    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'registration_existing' },
-        data: expect.objectContaining({
+        where: { id: 'event_1__self__user_1' },
+        update: expect.objectContaining({
           status: 'ACTIVE',
           divisionId: 'div_a',
         }),
       }),
     );
-    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
   });
 
   it('does not require consent when event templates are not participant signer templates', async () => {
@@ -301,13 +339,25 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
         requiredSignerType: 'PARENT_GUARDIAN',
       },
     ]);
-    prismaMock.eventRegistrations.create.mockResolvedValue({
-      id: 'registration_1',
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({
+      id: 'event_1__self__user_1',
       eventId: 'event_1',
       registrantId: 'user_1',
       registrantType: 'SELF',
       status: 'ACTIVE',
+      rosterRole: 'PARTICIPANT',
+      parentId: null,
+      ageAtEvent: null,
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
       consentStatus: null,
+      consentDocumentId: null,
+      createdBy: 'user_1',
+      slotId: null,
+      occurrenceDate: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
     const response = await POST(
@@ -319,9 +369,14 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
 
     expect(response.status).toBe(200);
     expect(dispatchRequiredEventDocumentsMock).not.toHaveBeenCalled();
-    expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
+    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        create: expect.objectContaining({
+          status: 'ACTIVE',
+          consentDocumentId: null,
+          consentStatus: null,
+        }),
+        update: expect.objectContaining({
           status: 'ACTIVE',
           consentDocumentId: null,
           consentStatus: null,
@@ -358,13 +413,25 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
       },
     ]);
     prismaMock.templateDocuments.findMany.mockResolvedValue([]);
-    prismaMock.eventRegistrations.create.mockResolvedValue({
-      id: 'registration_1',
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({
+      id: 'event_1__self__user_1',
       eventId: 'event_1',
       registrantId: 'user_1',
       registrantType: 'SELF',
       status: 'ACTIVE',
+      rosterRole: 'PARTICIPANT',
+      parentId: null,
+      ageAtEvent: null,
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
       consentStatus: null,
+      consentDocumentId: null,
+      createdBy: 'user_1',
+      slotId: null,
+      occurrenceDate: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
     const response = await POST(
@@ -376,9 +443,14 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
 
     expect(response.status).toBe(200);
     expect(dispatchRequiredEventDocumentsMock).not.toHaveBeenCalled();
-    expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
+    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        create: expect.objectContaining({
+          status: 'ACTIVE',
+          consentDocumentId: null,
+          consentStatus: null,
+        }),
+        update: expect.objectContaining({
           status: 'ACTIVE',
           consentDocumentId: null,
           consentStatus: null,
@@ -427,13 +499,25 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
         status: 'SIGNED',
       },
     ]);
-    prismaMock.eventRegistrations.create.mockResolvedValue({
-      id: 'registration_1',
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({
+      id: 'event_1__self__user_1',
       eventId: 'event_1',
       registrantId: 'user_1',
       registrantType: 'SELF',
       status: 'ACTIVE',
+      rosterRole: 'PARTICIPANT',
+      parentId: null,
+      ageAtEvent: null,
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
       consentStatus: 'completed',
+      consentDocumentId: null,
+      createdBy: 'user_1',
+      slotId: null,
+      occurrenceDate: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
     const response = await POST(
@@ -445,9 +529,13 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
 
     expect(response.status).toBe(200);
     expect(dispatchRequiredEventDocumentsMock).not.toHaveBeenCalled();
-    expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
+    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        create: expect.objectContaining({
+          status: 'ACTIVE',
+          consentStatus: 'completed',
+        }),
+        update: expect.objectContaining({
           status: 'ACTIVE',
           consentStatus: 'completed',
         }),
@@ -485,14 +573,25 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
         ageCutoffSource: null,
       },
     ]);
-    prismaMock.eventRegistrations.create.mockResolvedValueOnce({
-      id: 'registration_minor_1',
+    prismaMock.eventRegistrations.upsert.mockResolvedValueOnce({
+      id: 'event_1__child__user_1',
       eventId: 'event_1',
       registrantId: 'user_1',
       parentId: 'parent_1',
       registrantType: 'CHILD',
-      status: 'PENDINGCONSENT',
+      rosterRole: 'PARTICIPANT',
+      status: 'STARTED',
+      ageAtEvent: 12,
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
+      consentDocumentId: null,
       consentStatus: 'guardian_approval_required',
+      createdBy: 'user_1',
+      slotId: null,
+      occurrenceDate: null,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
 
     const response = await POST(
@@ -510,5 +609,65 @@ describe('POST /api/events/[eventId]/registrations/self', () => {
       parentId: 'parent_1',
       consentStatus: 'guardian_approval_required',
     }));
+  });
+
+  it('rejects weekly self registration for an occurrence that has already started', async () => {
+    const pastOccurrence = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    pastOccurrence.setHours(0, 0, 0, 0);
+    const pastOccurrenceDate = `${pastOccurrence.getFullYear()}-${`${pastOccurrence.getMonth() + 1}`.padStart(2, '0')}-${`${pastOccurrence.getDate()}`.padStart(2, '0')}`;
+    const mondayIndex = (pastOccurrence.getDay() + 6) % 7;
+
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      sportId: 'volleyball',
+      registrationByDivisionType: false,
+      divisions: ['div_a'],
+      requiredTemplateIds: [],
+      organizationId: null,
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      timeSlotIds: ['slot_1'],
+    });
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_1',
+      startDate: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
+      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      daysOfWeek: [mondayIndex],
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 10 * 60,
+      divisions: ['div_a'],
+    });
+    prismaMock.divisions.findMany.mockResolvedValueOnce([
+      {
+        id: 'div_a',
+        key: 'c_skill_open',
+        name: 'Open A',
+        sportId: 'volleyball',
+        divisionTypeId: 'open',
+        divisionTypeName: 'Open',
+        ratingType: 'SKILL',
+        gender: 'C',
+        ageCutoffDate: null,
+        ageCutoffLabel: null,
+        ageCutoffSource: null,
+      },
+    ]);
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/event_1/registrations/self', {
+        divisionId: 'div_a',
+        slotId: 'slot_1',
+        occurrenceDate: pastOccurrenceDate,
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(String(payload.error ?? '')).toContain('already started');
+    expect(prismaMock.eventRegistrations.upsert).not.toHaveBeenCalled();
   });
 });

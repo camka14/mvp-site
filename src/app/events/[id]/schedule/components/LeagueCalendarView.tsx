@@ -22,6 +22,10 @@ interface LeagueCalendarViewProps {
   officials?: UserData[];
   eventStart?: string;
   eventEnd?: string;
+  date?: Date;
+  view?: View;
+  onDateChange?: (date: Date) => void;
+  onViewChange?: (view: View) => void;
   onMatchClick?: (match: Match) => void;
   canManage?: boolean;
   matchCardPaddingY?: string;
@@ -191,6 +195,41 @@ type CalendarEvent = {
   isAgendaGroup?: boolean;
 };
 
+type WeeklyOccurrenceCalendarMeta = {
+  slotId: string;
+  occurrenceDate: string;
+  label: string;
+  divisionLabel?: string | null;
+  isSelected?: boolean;
+};
+
+const getWeeklyOccurrenceMeta = (match: Match): WeeklyOccurrenceCalendarMeta | null => {
+  const raw = (match as Match & { weeklyOccurrenceMeta?: unknown }).weeklyOccurrenceMeta;
+  if (!raw || typeof raw !== 'object') {
+    return null;
+  }
+
+  const candidate = raw as Partial<WeeklyOccurrenceCalendarMeta>;
+  const slotId = typeof candidate.slotId === 'string' ? candidate.slotId.trim() : '';
+  const occurrenceDate = typeof candidate.occurrenceDate === 'string' ? candidate.occurrenceDate.trim() : '';
+  const label = typeof candidate.label === 'string' ? candidate.label.trim() : '';
+  if (!slotId || !occurrenceDate || !label) {
+    return null;
+  }
+
+  const divisionLabel = typeof candidate.divisionLabel === 'string' && candidate.divisionLabel.trim().length > 0
+    ? candidate.divisionLabel.trim()
+    : null;
+
+  return {
+    slotId,
+    occurrenceDate,
+    label,
+    divisionLabel,
+    isSelected: Boolean(candidate.isSelected),
+  };
+};
+
 const localizer = dateFnsLocalizer({
   format,
   parse: parse as any,
@@ -229,6 +268,10 @@ export function LeagueCalendarView({
   officials = [],
   eventStart,
   eventEnd,
+  date,
+  view,
+  onDateChange,
+  onViewChange,
   onMatchClick,
   canManage = false,
   matchCardPaddingY = 'my-2',
@@ -408,6 +451,7 @@ export function LeagueCalendarView({
           ?? new Date(start.getTime() + 60 * 60 * 1000);
         const fieldId = resolveMatchFieldId(hydratedMatch);
         const fieldLabel = resolveMatchFieldLabel(hydratedMatch, fieldLookup);
+        const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(hydratedMatch);
         const matchId = typeof match.$id === 'string' && match.$id.trim().length > 0
           ? match.$id.trim()
           : `match-${match.matchId}-${start.getTime()}`;
@@ -416,7 +460,8 @@ export function LeagueCalendarView({
 
         return {
           id: matchId,
-          title: `${resolveTeamLabel(hydratedMatch, 'team1')} vs ${resolveTeamLabel(hydratedMatch, 'team2')}`,
+          title: weeklyOccurrenceMeta?.label
+            ?? `${resolveTeamLabel(hydratedMatch, 'team1')} vs ${resolveTeamLabel(hydratedMatch, 'team2')}`,
           start,
           end,
           allDay: false,
@@ -527,20 +572,33 @@ export function LeagueCalendarView({
   }, [defaultTimeRange]);
 
   useEffect(() => {
-    setCalendarDate(initialDate);
-  }, [initialDate]);
+    if (!date) {
+      setCalendarDate(initialDate);
+    }
+  }, [date, initialDate]);
 
-  const handleNavigate = (date: Date) => {
-    setCalendarDate(date instanceof Date ? date : new Date(date));
+  const handleNavigate = (nextDate: Date) => {
+    const resolvedDate = nextDate instanceof Date ? nextDate : new Date(nextDate);
+    if (!date) {
+      setCalendarDate(resolvedDate);
+    }
+    onDateChange?.(resolvedDate);
   };
 
-  const handleViewChange = (view: View) => {
-    setCalendarView(view);
+  const handleViewChange = (nextView: View) => {
+    if (!view) {
+      setCalendarView(nextView);
+    }
+    onViewChange?.(nextView);
   };
 
   const handleSelectSlot = ({ start }: SlotInfo) => {
     if (!start) return;
-    setCalendarDate(start instanceof Date ? start : new Date(start));
+    const resolvedDate = start instanceof Date ? start : new Date(start);
+    if (!date) {
+      setCalendarDate(resolvedDate);
+    }
+    onDateChange?.(resolvedDate);
   };
 
   const handleSelectEvent = (event: CalendarEvent) => {
@@ -557,6 +615,19 @@ export function LeagueCalendarView({
             border: 'none',
             padding: 0,
             cursor: 'default',
+            color: 'var(--mantine-color-text, var(--mvp-text))',
+          },
+          className: 'p-0',
+        };
+      }
+      const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(event.resource);
+      if (weeklyOccurrenceMeta) {
+        return {
+          style: {
+            backgroundColor: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: onMatchClick ? 'pointer' : 'default',
             color: 'var(--mantine-color-text, var(--mvp-text))',
           },
           className: 'p-0',
@@ -587,18 +658,71 @@ export function LeagueCalendarView({
   );
 
   const MonthEventComponent = useCallback(({ event }: EventProps<CalendarEvent>) => {
+    const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(event.resource);
     return (
       <div className="leading-tight text-xs">
         <div className="font-medium truncate">{event.title}</div>
-        <div className="opacity-70 truncate">{event.fieldLabel}</div>
+        <div className={`truncate ${weeklyOccurrenceMeta?.isSelected ? 'text-red-600 opacity-100' : 'opacity-70'}`}>
+          {weeklyOccurrenceMeta?.divisionLabel ?? event.fieldLabel}
+        </div>
       </div>
     );
   }, []);
+
+  const WeeklyOccurrenceEventCard = useCallback(
+    ({
+      occurrence,
+      fieldLabel,
+      onClick,
+      compact = false,
+    }: {
+      occurrence: WeeklyOccurrenceCalendarMeta;
+      fieldLabel: string;
+      onClick?: () => void;
+      compact?: boolean;
+    }) => (
+      <div
+        className={[
+          'flex h-full flex-col justify-between rounded-lg border-2 transition-all duration-200',
+          compact ? 'p-2' : 'p-3',
+          onClick ? 'cursor-pointer hover:shadow-sm' : '',
+          occurrence.isSelected
+            ? 'border-red-300 bg-red-50'
+            : 'border-blue-200 bg-white hover:border-blue-300',
+        ].join(' ')}
+        onClick={onClick}
+      >
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold">{occurrence.label}</div>
+          {occurrence.divisionLabel && (
+            <div className="mt-1 truncate text-xs text-gray-600">{occurrence.divisionLabel}</div>
+          )}
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500">
+          <span className="truncate">{fieldLabel}</span>
+          <span className={occurrence.isSelected ? 'font-medium text-red-600' : 'font-medium text-blue-600'}>
+            {occurrence.isSelected ? 'Selected' : 'Select'}
+          </span>
+        </div>
+      </div>
+    ),
+    [],
+  );
 
   const WeekDayEventComponent = useCallback(
     ({ event }: EventProps<CalendarEvent>) => {
       const hasConflict = event.hasConflictMatch;
       const shouldHighlightUser = event.hasTrackedUserMatch && !hasConflict;
+      const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(event.resource);
+      if (weeklyOccurrenceMeta) {
+        return (
+          <WeeklyOccurrenceEventCard
+            occurrence={weeklyOccurrenceMeta}
+            fieldLabel={event.fieldLabel}
+            onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
+          />
+        );
+      }
       return (
         <MatchCard
           match={event.resource}
@@ -615,7 +739,7 @@ export function LeagueCalendarView({
         />
       );
     },
-    [canManage, officialLookupById, onMatchClick, showEventOfficialNames],
+    [WeeklyOccurrenceEventCard, canManage, officialLookupById, onMatchClick, showEventOfficialNames],
   );
 
   const AgendaEventComponent = useCallback(
@@ -630,6 +754,8 @@ export function LeagueCalendarView({
                 const matchId = typeof match.$id === 'string' ? match.$id.trim() : '';
                 const hasConflict = matchId.length > 0 && conflictMatchIdSet.has(matchId);
                 const shouldHighlightUser = matchId.length > 0 && userInvolvedMatchIds.has(matchId) && !hasConflict;
+                const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(match);
+                const fieldLabel = resolveMatchFieldLabel(match, fieldLookup);
 
                 return (
                   <div
@@ -637,19 +763,28 @@ export function LeagueCalendarView({
                     className="shrink-0"
                     style={{ width: `${AGENDA_MATCH_CARD_WIDTH}px`, minWidth: `${AGENDA_MATCH_CARD_WIDTH}px` }}
                   >
-                    <MatchCard
-                      match={match}
-                      canManage={canManage}
-                      onClick={onMatchClick ? () => onMatchClick(match) : undefined}
-                      className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
-                      layout="horizontal"
-                      hideTimeBadge
-                      showOfficialInHeader
-                      fieldLabel={resolveMatchFieldLabel(match, fieldLookup)}
-                      hasConflict={hasConflict}
-                      officialUsersById={officialLookupById}
-                      showEventOfficialNames={showEventOfficialNames}
-                    />
+                    {weeklyOccurrenceMeta ? (
+                      <WeeklyOccurrenceEventCard
+                        occurrence={weeklyOccurrenceMeta}
+                        fieldLabel={fieldLabel}
+                        onClick={onMatchClick ? () => onMatchClick(match) : undefined}
+                        compact
+                      />
+                    ) : (
+                      <MatchCard
+                        match={match}
+                        canManage={canManage}
+                        onClick={onMatchClick ? () => onMatchClick(match) : undefined}
+                        className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
+                        layout="horizontal"
+                        hideTimeBadge
+                        showOfficialInHeader
+                        fieldLabel={fieldLabel}
+                        hasConflict={hasConflict}
+                        officialUsersById={officialLookupById}
+                        showEventOfficialNames={showEventOfficialNames}
+                      />
+                    )}
                   </div>
                 );
               })}
@@ -658,7 +793,7 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [canManage, conflictMatchIdSet, fieldLookup, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, userInvolvedMatchIds],
   );
 
   const components = useMemo(
@@ -676,9 +811,10 @@ export function LeagueCalendarView({
     () => (layoutMode === 'resource' ? ['day', 'week'] : ['month', 'week', 'day', 'agenda']),
     [layoutMode],
   );
+  const effectiveCalendarDate = date ?? calendarDate;
   const effectiveCalendarView = useMemo<View>(
-    () => (calendarViews.includes(calendarView) ? calendarView : calendarViews[0]),
-    [calendarView, calendarViews],
+    () => (calendarViews.includes(view ?? calendarView) ? (view ?? calendarView) : calendarViews[0]),
+    [calendarView, calendarViews, view],
   );
   const displayedCalendarEvents = useMemo<CalendarEvent[]>(
     () => (effectiveCalendarView === 'agenda' ? agendaCalendarEvents : calendarEvents),
@@ -689,10 +825,16 @@ export function LeagueCalendarView({
   const [calendarHeight, setCalendarHeight] = useState<number>(MIN_CALENDAR_HEIGHT);
 
   useEffect(() => {
-    if (calendarView !== effectiveCalendarView) {
+    if (!view && calendarView !== effectiveCalendarView) {
       setCalendarView(effectiveCalendarView);
     }
-  }, [calendarView, effectiveCalendarView]);
+  }, [calendarView, effectiveCalendarView, view]);
+
+  useEffect(() => {
+    if (view && view !== effectiveCalendarView) {
+      onViewChange?.(effectiveCalendarView);
+    }
+  }, [effectiveCalendarView, onViewChange, view]);
 
   const measureCalendarHeight = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -836,7 +978,7 @@ export function LeagueCalendarView({
             localizer={localizer}
             events={displayedCalendarEvents}
             resources={layoutMode === 'resource' ? calendarResources : undefined}
-            date={calendarDate}
+            date={effectiveCalendarDate}
             view={effectiveCalendarView}
             views={calendarViews}
             onView={handleViewChange}

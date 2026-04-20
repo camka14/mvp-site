@@ -84,7 +84,97 @@ const formatMinutesLabel = (minutes: number): string => {
 
 const formatDateTimeLabel = (date: Date): string => `${formatDisplayDate(date)} ${formatClockTime(date)}`;
 
-const formatConflictTimeRange = ({ schedule, event }: WeeklySlotConflict): string => {
+const addDays = (date: Date, days: number): Date => {
+  const next = new Date(date.getTime());
+  next.setDate(next.getDate() + days);
+  return next;
+};
+
+const atStartOfDay = (date: Date): Date =>
+  new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+
+const withMinutesOnDay = (day: Date, minutes: number): Date =>
+  new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(minutes / 60), minutes % 60, 0, 0);
+
+const dateRangesOverlap = (startA: Date, endA: Date, startB: Date, endB: Date): boolean =>
+  startA.getTime() < endB.getTime() && endA.getTime() > startB.getTime();
+
+const timeRangesOverlap = (startA?: number, endA?: number, startB?: number, endB?: number): boolean => (
+  typeof startA === 'number' &&
+  typeof endA === 'number' &&
+  typeof startB === 'number' &&
+  typeof endB === 'number' &&
+  endA > startA &&
+  endB > startB &&
+  startA < endB &&
+  endA > startB
+);
+
+const findFirstRecurringConflictOccurrence = (
+  slot: Pick<LeagueSlotForm, 'dayOfWeek' | 'daysOfWeek' | 'startDate' | 'endDate' | 'startTimeMinutes' | 'endTimeMinutes' | 'repeating'> | undefined,
+  schedule: TimeSlot,
+  eventStartDate?: string,
+): { start: Date; end: Date } | null => {
+  if (!slot || slot.repeating === false || schedule?.repeating === false) {
+    return null;
+  }
+
+  if (!timeRangesOverlap(slot.startTimeMinutes, slot.endTimeMinutes, schedule.startTimeMinutes, schedule.endTimeMinutes)) {
+    return null;
+  }
+
+  const slotDays = normalizeSlotDays(slot);
+  const scheduleDays = normalizeSlotDays(schedule);
+  if (!slotDays.length || !scheduleDays.some((day) => slotDays.includes(day))) {
+    return null;
+  }
+
+  const slotWindowStart = parseLocalDateTime(slot.startDate ?? eventStartDate ?? null);
+  const scheduleWindowStart = parseLocalDateTime(schedule.startDate ?? null);
+  if (!slotWindowStart || !scheduleWindowStart) {
+    return null;
+  }
+
+  const slotWindowEnd = parseLocalDateTime(slot.endDate ?? null);
+  const scheduleWindowEnd = parseLocalDateTime(schedule.endDate ?? null);
+  const searchStart = atStartOfDay(
+    new Date(Math.max(slotWindowStart.getTime(), scheduleWindowStart.getTime())),
+  );
+  const boundedEndCandidates = [slotWindowEnd, scheduleWindowEnd]
+    .filter((value): value is Date => Boolean(value));
+  const searchEnd = boundedEndCandidates.length
+    ? new Date(Math.min(...boundedEndCandidates.map((value) => value.getTime())))
+    : addDays(searchStart, 730);
+
+  if (searchEnd.getTime() <= searchStart.getTime()) {
+    return null;
+  }
+
+  let cursor = searchStart;
+  let scannedDays = 0;
+  while (cursor.getTime() <= searchEnd.getTime() && scannedDays <= 730) {
+    const weekday = (cursor.getDay() + 6) % 7;
+    if (slotDays.includes(weekday) && scheduleDays.includes(weekday)) {
+      const slotStart = withMinutesOnDay(cursor, slot.startTimeMinutes!);
+      const slotEnd = withMinutesOnDay(cursor, slot.endTimeMinutes!);
+      const scheduleStart = withMinutesOnDay(cursor, schedule.startTimeMinutes!);
+      const scheduleEnd = withMinutesOnDay(cursor, schedule.endTimeMinutes!);
+      if (dateRangesOverlap(slotStart, slotEnd, scheduleStart, scheduleEnd)) {
+        return { start: scheduleStart, end: scheduleEnd };
+      }
+    }
+    cursor = addDays(cursor, 1);
+    scannedDays += 1;
+  }
+
+  return null;
+};
+
+const formatConflictTimeRange = (
+  { schedule, event }: WeeklySlotConflict,
+  slot?: LeagueSlotForm,
+  eventStartDate?: string,
+): string => {
   const scheduleStart = parseLocalDateTime(schedule?.startDate ?? null);
   const scheduleEnd = parseLocalDateTime(schedule?.endDate ?? null);
   const scheduleHasTimeRange = (
@@ -94,6 +184,11 @@ const formatConflictTimeRange = ({ schedule, event }: WeeklySlotConflict): strin
   );
 
   if (schedule?.repeating !== false && scheduleHasTimeRange) {
+    const firstOccurrence = findFirstRecurringConflictOccurrence(slot, schedule, eventStartDate);
+    if (firstOccurrence) {
+      return `${formatDisplayDate(firstOccurrence.start)}, ${formatMinutesLabel(schedule.startTimeMinutes!)}-${formatMinutesLabel(schedule.endTimeMinutes!)}`;
+    }
+
     const timeRange = `${formatMinutesLabel(schedule.startTimeMinutes!)}-${formatMinutesLabel(schedule.endTimeMinutes!)}`;
     if (scheduleStart && scheduleEnd && scheduleEnd.getTime() > scheduleStart.getTime()) {
       return `${formatDisplayDate(scheduleStart)} - ${formatDisplayDate(scheduleEnd)}, ${timeRange}`;
@@ -870,7 +965,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           <div key={`${schedule.$id}-${conflictIndex}`} className="flex items-start gap-2 text-sm">
                             <Badge color="red" variant="light">{event.name}</Badge>
                             <span>
-                              {formatConflictTimeRange({ event, schedule })} overlaps this slot.
+                              {formatConflictTimeRange({ event, schedule }, slot, eventStartDate)} overlaps this slot.
                             </span>
                           </div>
                         ))}

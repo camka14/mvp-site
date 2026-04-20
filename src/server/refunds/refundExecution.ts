@@ -87,10 +87,11 @@ export const resolveRefundablePaymentsForRequest = async (
   request: RefundRequestRow,
 ): Promise<Array<RefundablePaymentRow & { refundableAmountCents: number }>> => {
   let bills: Array<{ id: string }> = [];
+  const normalizedTeamId = normalizeId(request.teamId);
 
-  if (normalizeId(request.teamId)) {
+  if (normalizedTeamId) {
     const team = await client.teams.findUnique({
-      where: { id: request.teamId },
+      where: { id: normalizedTeamId },
       select: {
         id: true,
         captainId: true,

@@ -367,7 +367,7 @@ const isOpenEndedSchedule = (event: SchedulerEvent): boolean => {
   if (typeof event.noFixedEndDateTime === 'boolean') {
     return event.noFixedEndDateTime;
   }
-  return event.start.getTime() === event.end.getTime();
+  return false;
 };
 
 const resolveRescheduleEndTime = (event: SchedulerEvent): Date => {
@@ -703,7 +703,7 @@ export const rescheduleEventMatchesPreservingLocks = (
     if (openEndedSchedule) {
       event.end = latestEnd;
     } else if (latestEnd.getTime() > event.end.getTime()) {
-      throw new Error('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end date/time".');
+      throw new Error('Scheduled matches exceed the fixed event end date/time. Increase the end date/time or enable "No fixed end datetime scheduling".');
     }
   }
 

@@ -32,6 +32,21 @@ jest.mock('@/server/legacyFormat', () => ({
 
 import { GET } from '@/app/api/sports/route';
 
+const basketballMatchRulesTemplate = {
+  scoringModel: 'PERIODS',
+  segmentCount: 4,
+  segmentLabel: 'Quarter',
+  supportsDraw: false,
+  supportsOvertime: true,
+  supportsShootout: false,
+  canUseOvertime: true,
+  canUseShootout: false,
+  officialRoles: [],
+  supportedIncidentTypes: ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+  autoCreatePointIncidentType: 'POINT',
+  pointIncidentRequiresParticipant: false,
+};
+
 describe('GET /api/sports', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -66,10 +81,39 @@ describe('GET /api/sports', () => {
     const basketball = Array.isArray(createPayload?.data)
       ? createPayload.data.find((row: any) => row.id === 'Basketball')
       : null;
+    const volleyball = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Indoor Volleyball')
+      : null;
+    const baseball = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Baseball')
+      : null;
     expect(createdNames).not.toContain('Soccer');
     expect(createdNames).not.toContain('Volleyball');
     expect(basketball?.usePointsPerGoalScored).toBe(false);
     expect(basketball?.usePointsPerGoalConceded).toBe(false);
+    expect(basketball?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        supportsOvertime: true,
+        canUseOvertime: true,
+        canUseShootout: false,
+      }),
+    );
+    expect(volleyball?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        supportsOvertime: false,
+        supportsShootout: false,
+        canUseOvertime: false,
+        canUseShootout: false,
+      }),
+    );
+    expect(baseball?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        scoringModel: 'INNINGS',
+        segmentCount: 9,
+        segmentLabel: 'Inning',
+        autoCreatePointIncidentType: 'RUN',
+      }),
+    );
     expect(payload.sports.map((sport: any) => sport.name)).toEqual(
       expect.arrayContaining(['Indoor Soccer', 'Indoor Volleyball']),
     );
@@ -120,6 +164,7 @@ describe('GET /api/sports', () => {
       {
         id: 'Basketball',
         name: 'Basketball',
+        matchRulesTemplate: basketballMatchRulesTemplate,
         usePointsForWin: true,
         usePointsForLoss: true,
         usePointsPerGoalScored: true,
@@ -141,6 +186,7 @@ describe('GET /api/sports', () => {
       {
         id: 'Basketball',
         name: 'Basketball',
+        matchRulesTemplate: basketballMatchRulesTemplate,
         usePointsForWin: null,
         usePointsForLoss: null,
         usePointsPerGoalScored: null,
@@ -169,6 +215,66 @@ describe('GET /api/sports', () => {
         usePointsForLoss: true,
         usePointsPerGoalScored: false,
         usePointsPerGoalConceded: false,
+      },
+    });
+  });
+
+  it('backfills missing match rule template fields using default sport settings', async () => {
+    const seededSports = [
+      {
+        id: 'Baseball',
+        name: 'Baseball',
+        matchRulesTemplate: {
+          scoringModel: 'INNINGS',
+        },
+        usePointsForWin: true,
+        usePointsForLoss: true,
+        usePointsPerGoalScored: false,
+        usePointsPerGoalConceded: false,
+      },
+    ];
+    prismaMock.sports.findMany
+      .mockResolvedValueOnce(seededSports)
+      .mockResolvedValueOnce([
+        {
+          ...seededSports[0],
+          matchRulesTemplate: {
+            scoringModel: 'INNINGS',
+            segmentCount: 9,
+            segmentLabel: 'Inning',
+            supportsDraw: false,
+            supportsOvertime: false,
+            supportsShootout: false,
+            canUseOvertime: false,
+            canUseShootout: false,
+            officialRoles: [],
+            supportedIncidentTypes: ['RUN', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+            autoCreatePointIncidentType: 'RUN',
+            pointIncidentRequiresParticipant: false,
+          },
+        },
+      ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/sports'));
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.sports.update).toHaveBeenCalledWith({
+      where: { id: 'Baseball' },
+      data: {
+        matchRulesTemplate: {
+          scoringModel: 'INNINGS',
+          segmentCount: 9,
+          segmentLabel: 'Inning',
+          supportsDraw: false,
+          supportsOvertime: false,
+          supportsShootout: false,
+          canUseOvertime: false,
+          canUseShootout: false,
+          officialRoles: [],
+          supportedIncidentTypes: ['RUN', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+          autoCreatePointIncidentType: 'RUN',
+          pointIncidentRequiresParticipant: false,
+        },
       },
     });
   });

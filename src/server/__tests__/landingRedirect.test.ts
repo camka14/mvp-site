@@ -54,8 +54,8 @@ describe('resolveLandingRedirectPathFromToken', () => {
 
   it('returns null when the auth user is unverified', async () => {
     const client = buildClient();
-    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false });
-    client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: null });
+    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0, issuedAtSeconds: 1 });
+    client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: null, sessionVersion: 0 });
 
     await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBeNull();
 
@@ -64,8 +64,8 @@ describe('resolveLandingRedirectPathFromToken', () => {
 
   it('falls back to discover for verified users without a saved home page', async () => {
     const client = buildClient();
-    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false });
-    client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0, issuedAtSeconds: 1 });
+    client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'), sessionVersion: 0 });
     client.userData.findUnique.mockResolvedValue(null);
 
     await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBe('/discover');
@@ -73,8 +73,8 @@ describe('resolveLandingRedirectPathFromToken', () => {
 
   it('returns the configured organization home path for verified users', async () => {
     const client = buildClient();
-    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false });
-    client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0, issuedAtSeconds: 1 });
+    client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'), sessionVersion: 0 });
     client.userData.findUnique.mockResolvedValue({ homePageOrganizationId: 'org_42' });
 
     await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBe('/organizations/org_42');

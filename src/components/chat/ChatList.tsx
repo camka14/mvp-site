@@ -3,13 +3,15 @@
 import React, { useState } from 'react';
 import { useChat } from '@/context/ChatContext';
 import { useChatUI } from '@/context/ChatUIContext';
+import { useApp } from '@/app/providers';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import { chatService } from '@/lib/chatService';
 import { resolveChatGroupInitial, resolveChatGroupTitle } from './chatGroupDisplay';
 
 export function ChatList() {
-    const { chatGroups, loading, loadChatGroups, markChatViewed } = useChat();
+    const { chatGroups, loading, loadChatGroups, markChatViewed, hideChatGroups } = useChat();
     const { openChatWindow, openChatWindows, closeChatList, closeChatWindow, setInviteModalOpen } = useChatUI();
+    const { user } = useApp();
     const [actionError, setActionError] = useState<string | null>(null);
     const [openActionsChatId, setOpenActionsChatId] = useState<string | null>(null);
 
@@ -46,9 +48,12 @@ export function ChatList() {
         }
     };
 
-    const handleDeleteChat = async (chatId: string, currentTitle: string) => {
+    const handleHideChat = async (chatId: string, currentTitle: string, userIds: string[]) => {
+        if (!user) {
+            return;
+        }
         const confirmed = window.confirm(
-            `Delete "${currentTitle}"? This action cannot be undone and will remove all messages in this chat.`,
+            `Leave "${currentTitle}"? The chat will be hidden from your feed but preserved for moderation review.`,
         );
         if (!confirmed) {
             setOpenActionsChatId(null);
@@ -57,12 +62,48 @@ export function ChatList() {
 
         try {
             setActionError(null);
-            await chatService.deleteChatGroup(chatId);
+            await chatService.leaveChatGroup(
+                chatId,
+                userIds.filter((userId) => userId !== user.$id),
+            );
+            hideChatGroups([chatId]);
             closeChatWindow(chatId);
             await loadChatGroups();
             setOpenActionsChatId(null);
         } catch (error) {
-            const message = error instanceof Error ? error.message : 'Failed to delete chat.';
+            const message = error instanceof Error ? error.message : 'Failed to leave chat.';
+            setActionError(message);
+        }
+    };
+
+    const handleReportChat = async (chatId: string, currentTitle: string) => {
+        const notes = window.prompt(
+            `Report "${currentTitle}". Add details for moderation, or leave the field blank to submit without extra notes.`,
+            '',
+        );
+        if (notes === null) {
+            setOpenActionsChatId(null);
+            return;
+        }
+
+        const leaveChat = window.confirm(
+            'Leave this chat after reporting? Select OK to leave the chat now, or Cancel to stay in the chat.',
+        );
+
+        try {
+            setActionError(null);
+            const result = await chatService.reportChat(chatId, {
+                notes: notes.trim() || undefined,
+                leaveChat,
+            });
+            if (result.removedChatIds.length > 0) {
+                hideChatGroups(result.removedChatIds);
+                result.removedChatIds.forEach((removedChatId) => closeChatWindow(removedChatId));
+            }
+            await loadChatGroups();
+            setOpenActionsChatId(null);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to report chat.';
             setActionError(message);
         }
     };
@@ -217,13 +258,23 @@ export function ChatList() {
                                                 </button>
                                                 <button
                                                     type="button"
+                                                    className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleReportChat(chatGroup.$id, chatTitle);
+                                                    }}
+                                                >
+                                                    Report chat
+                                                </button>
+                                                <button
+                                                    type="button"
                                                     className="block w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
                                                     onClick={(event) => {
                                                         event.stopPropagation();
-                                                        void handleDeleteChat(chatGroup.$id, chatTitle);
+                                                        void handleHideChat(chatGroup.$id, chatTitle, chatGroup.userIds);
                                                     }}
                                                 >
-                                                    Delete chat
+                                                    Leave chat
                                                 </button>
                                             </div>
                                         )}

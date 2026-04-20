@@ -10,11 +10,30 @@ import {
 import { canManageOrganization } from '@/server/accessControl';
 import { deleteTeamChatInTx, getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 import { asRecord, findPresentKeys } from '@/server/http/strictPatch';
+import {
+  applyCanonicalTeamRegistrationMetadata,
+  canManageCanonicalTeam,
+  loadCanonicalTeamById,
+  syncCanonicalTeamRoster,
+} from '@/server/teams/teamMembership';
+import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
 
 const patchEnvelopeSchema = z.object({
   team: z.record(z.string(), z.unknown()),
+}).strict();
+
+const jerseyNumberSchema = z.string().regex(/^\d*$/, 'Jersey number must contain only digits.');
+
+const playerRegistrationPatchSchema = z.object({
+  id: z.string().optional(),
+  teamId: z.string().nullable().optional(),
+  userId: z.string(),
+  status: z.string().optional(),
+  jerseyNumber: jerseyNumberSchema.nullable().optional(),
+  position: z.string().nullable().optional(),
+  isCaptain: z.boolean().optional(),
 }).strict();
 
 const teamPatchSchema = z.object({
@@ -33,7 +52,10 @@ const teamPatchSchema = z.object({
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
   profileImage: z.string().optional(),
+  openRegistration: z.boolean().optional(),
+  registrationPriceCents: z.number().int().nonnegative().optional(),
   parentTeamId: z.string().nullable().optional(),
+  playerRegistrations: z.array(playerRegistrationPatchSchema).optional(),
 }).strict();
 
 const TEAM_HARD_IMMUTABLE_FIELDS = new Set<string>([
@@ -55,6 +77,8 @@ const VERSIONED_PROFILE_FIELDS: ReadonlySet<string> = new Set([
   'divisionTypeName',
   'sport',
   'teamSize',
+  'openRegistration',
+  'registrationPriceCents',
   'playerIds',
   'captainId',
   'managerId',
@@ -136,6 +160,8 @@ type TeamState = {
   pending: string[];
   teamSize: number;
   profileImageId: string | null;
+  openRegistration: boolean;
+  registrationPriceCents: number;
 };
 
 const buildTeamState = (
@@ -202,6 +228,12 @@ const buildTeamState = (
     pending,
     teamSize: normalizeNumber(payload.teamSize, normalizeNumber(existing.teamSize, playerIds.length)),
     profileImageId: nextProfileImage,
+    openRegistration: hasOwn(payload, 'openRegistration')
+      ? Boolean(payload.openRegistration)
+      : Boolean(existing.openRegistration),
+    registrationPriceCents: hasOwn(payload, 'registrationPriceCents')
+      ? Math.max(0, Math.round(normalizeNumber(payload.registrationPriceCents, 0)))
+      : Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))),
   };
 };
 
@@ -234,6 +266,12 @@ const hasVersionedProfileChanges = (
         break;
       case 'teamSize':
         if (normalizeNumber(existing.teamSize, 0) !== next.teamSize) return true;
+        break;
+      case 'openRegistration':
+        if (Boolean(existing.openRegistration) !== next.openRegistration) return true;
+        break;
+      case 'registrationPriceCents':
+        if (Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))) !== next.registrationPriceCents) return true;
         break;
       case 'playerIds': {
         const previous = [...toUniqueStrings(existing.playerIds)].sort();
@@ -353,12 +391,7 @@ const hasOrganizationTeamManagementAccess = async (
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const teamsDelegate = getTeamsDelegate(prisma);
-  if (!teamsDelegate?.findUnique) {
-    return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });
-  }
-
-  const team = await teamsDelegate.findUnique({ where: { id } });
+  const team = await loadCanonicalTeamById(id, prisma);
   if (!team) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
@@ -396,6 +429,164 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const { id } = await params;
+  const payload = payloadParsed.data;
+  const now = new Date();
+  const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
+
+  if (canonicalTeamsDelegate?.findUnique && canonicalTeamsDelegate?.update) {
+    const existingCanonical = await loadCanonicalTeamById(id, prisma);
+    if (!existingCanonical) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session);
+    const canManage = await canManageCanonicalTeam({
+      teamId: id,
+      userId: session.userId,
+      isAdmin: session.isAdmin,
+    }, prisma);
+    if (!canManage && !isOrganizationManager) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const nextState = buildTeamState(existingCanonical as Record<string, any>, payload);
+    const registrationSettingsTouched = hasOwn(payload, 'openRegistration') || hasOwn(payload, 'registrationPriceCents');
+    const registrationSettingsChanged = registrationSettingsTouched && (
+      Boolean((existingCanonical as Record<string, any>).openRegistration) !== nextState.openRegistration
+      || Math.max(0, Math.round(normalizeNumber((existingCanonical as Record<string, any>).registrationPriceCents, 0))) !== nextState.registrationPriceCents
+    );
+    if (registrationSettingsChanged) {
+      try {
+        const registrationSettings = await resolveTeamRegistrationSettings({
+          teamId: id,
+          openRegistration: nextState.openRegistration,
+          registrationPriceCents: nextState.registrationPriceCents,
+        });
+        nextState.openRegistration = registrationSettings.openRegistration;
+        nextState.registrationPriceCents = registrationSettings.registrationPriceCents;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid registration settings.';
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
+    }
+    const shouldSyncDerivedTeams = hasVersionedProfileChanges(payload, existingCanonical as Record<string, any>, nextState);
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.canonicalTeams.update({
+        where: { id },
+        data: {
+          name: nextState.name,
+          division: nextState.division,
+          divisionTypeId: nextState.divisionTypeId,
+          divisionTypeName: nextState.divisionTypeName,
+          sport: nextState.sport,
+          teamSize: nextState.teamSize,
+          profileImageId: nextState.profileImageId,
+          openRegistration: nextState.openRegistration,
+          registrationPriceCents: nextState.registrationPriceCents,
+          updatedAt: now,
+        },
+      });
+      await syncCanonicalTeamRoster({
+        teamId: id,
+        captainId: nextState.captainId,
+        playerIds: nextState.playerIds,
+        pendingPlayerIds: nextState.pending,
+        managerId: nextState.managerId,
+        headCoachId: nextState.headCoachId,
+        assistantCoachIds: nextState.coachIds,
+        actingUserId: session.userId,
+        now,
+      }, tx);
+      await applyCanonicalTeamRegistrationMetadata({
+        client: tx,
+        teamId: id,
+        playerRegistrations: payload.playerRegistrations,
+        now,
+      });
+      const teamsToSync = new Set<string>([id]);
+      const previousMemberIdsByTeamId = new Map<string, string[]>([
+        [id, getTeamChatBaseMemberIds(existingCanonical as Record<string, any>)],
+      ]);
+
+      if (shouldSyncDerivedTeams) {
+        const txTeams = getTeamsDelegate(tx);
+        if (!txTeams?.findMany || !txTeams?.update || !tx.events?.findMany) {
+          throw new Error('Team storage is unavailable in transaction.');
+        }
+
+        const derivedTeams = await txTeams.findMany({
+          where: { parentTeamId: id },
+          select: {
+            id: true,
+            captainId: true,
+            managerId: true,
+            headCoachId: true,
+            coachIds: true,
+            playerIds: true,
+          },
+        });
+        const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
+        const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
+        if (derivedTeamIds.length) {
+          const events = await tx.events.findMany({
+            where: {
+              end: { gte: now },
+              teamIds: { hasSome: derivedTeamIds },
+            },
+            select: { id: true, teamIds: true },
+          });
+
+          if (events.length) {
+            const derivedSet = new Set(derivedTeamIds);
+            const teamIdsToUpdate = new Set<string>();
+            for (const event of events) {
+              const teamIds = Array.isArray(event.teamIds) ? event.teamIds : [];
+              for (const teamId of teamIds) {
+                if (derivedSet.has(teamId)) {
+                  teamIdsToUpdate.add(teamId);
+                }
+              }
+            }
+
+            const updatePayload = {
+              name: nextState.name,
+              playerIds: nextState.playerIds,
+              captainId: nextState.captainId,
+              managerId: nextState.managerId,
+              headCoachId: nextState.headCoachId,
+              coachIds: nextState.coachIds,
+              teamSize: nextState.teamSize,
+              profileImageId: nextState.profileImageId,
+              sport: nextState.sport,
+              divisionTypeId: nextState.divisionTypeId,
+              divisionTypeName: nextState.divisionTypeName,
+              updatedAt: now,
+            };
+
+            for (const teamId of teamIdsToUpdate) {
+              const previousTeam = derivedTeamById.get(teamId);
+              if (previousTeam) {
+                previousMemberIdsByTeamId.set(teamId, getTeamChatBaseMemberIds(previousTeam));
+              }
+              await txTeams.update({
+                where: { id: teamId },
+                data: updatePayload,
+              });
+              teamsToSync.add(teamId);
+            }
+          }
+        }
+      }
+
+      for (const teamId of teamsToSync) {
+        await syncTeamChatInTx(tx, teamId, {
+          previousMemberIds: previousMemberIdsByTeamId.get(teamId),
+        });
+      }
+    });
+    const refreshed = await loadCanonicalTeamById(id, prisma);
+    return NextResponse.json(withTeamRoleAliases((refreshed ?? updated) as any), { status: 200 });
+  }
+
   const teamsDelegate = getTeamsDelegate(prisma);
   if (!teamsDelegate?.findUnique || !teamsDelegate?.update) {
     return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });
@@ -415,9 +606,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const payload = payloadParsed.data;
   const nextState = buildTeamState(existing as Record<string, any>, payload);
-  const now = new Date();
+  const registrationSettingsTouched = hasOwn(payload, 'openRegistration') || hasOwn(payload, 'registrationPriceCents');
+  const registrationSettingsChanged = registrationSettingsTouched && (
+    Boolean((existing as Record<string, any>).openRegistration) !== nextState.openRegistration
+    || Math.max(0, Math.round(normalizeNumber((existing as Record<string, any>).registrationPriceCents, 0))) !== nextState.registrationPriceCents
+  );
+  if (registrationSettingsChanged) {
+    try {
+      const registrationSettings = await resolveTeamRegistrationSettings({
+        teamId: id,
+        openRegistration: nextState.openRegistration,
+        registrationPriceCents: nextState.registrationPriceCents,
+      });
+      nextState.openRegistration = registrationSettings.openRegistration;
+      nextState.registrationPriceCents = registrationSettings.registrationPriceCents;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid registration settings.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     const txTeams = getTeamsDelegate(tx);
@@ -433,6 +641,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         updatedAt: now,
       },
     );
+    await applyCanonicalTeamRegistrationMetadata({
+      client: tx,
+      teamId: id,
+      playerRegistrations: payload.playerRegistrations,
+      now,
+    });
     const teamsToSync = new Set<string>([id]);
     const previousMemberIdsByTeamId = new Map<string, string[]>([
       [id, getTeamChatBaseMemberIds(existing as Record<string, any>)],
@@ -483,6 +697,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           sport: nextState.sport,
           divisionTypeId: nextState.divisionTypeId,
           divisionTypeName: nextState.divisionTypeName,
+          openRegistration: nextState.openRegistration,
+          registrationPriceCents: nextState.registrationPriceCents,
           updatedAt: now,
         };
 
@@ -512,6 +728,43 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
   const { id } = await params;
+  const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
+  if (canonicalTeamsDelegate?.findUnique && canonicalTeamsDelegate?.delete) {
+    const existingCanonical = await loadCanonicalTeamById(id, prisma);
+    if (!existingCanonical) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session);
+    const canManage = await canManageCanonicalTeam({
+      teamId: id,
+      userId: session.userId,
+      isAdmin: session.isAdmin,
+    }, prisma);
+    if (!canManage && !isOrganizationManager) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await deleteTeamChatInTx(tx, id);
+      await tx.teamRegistrations?.updateMany?.({
+        where: { teamId: id },
+        data: {
+          status: 'REMOVED',
+          updatedAt: new Date(),
+        },
+      });
+      await tx.teamStaffAssignments?.updateMany?.({
+        where: { teamId: id },
+        data: {
+          status: 'REMOVED',
+          updatedAt: new Date(),
+        },
+      });
+      await tx.canonicalTeams.delete({ where: { id } });
+    });
+    return NextResponse.json({ deleted: true }, { status: 200 });
+  }
+
   const teamsDelegate = getTeamsDelegate(prisma);
   if (!teamsDelegate?.findUnique || !teamsDelegate?.delete) {
     return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });

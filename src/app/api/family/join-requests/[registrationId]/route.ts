@@ -106,7 +106,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
     })
     : null;
 
-  const approvedStatus = needsConsent ? 'PENDINGCONSENT' : 'ACTIVE';
+  const approvedStatus = needsConsent ? 'STARTED' : 'ACTIVE';
   const approvedConsentStatus = !needsConsent
     ? null
     : consentDispatch?.missingChildEmail

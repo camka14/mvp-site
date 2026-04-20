@@ -4,10 +4,12 @@ import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
+import { isSessionTokenCurrent } from '@/server/authSessions';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import {
   deleteMatchesByEvent,
   isEventFieldConflictError,
+  isLeaguePlayoffTeamCountValidationError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
   saveEventSchedule,
@@ -20,6 +22,7 @@ import { SchedulerContext } from '@/server/scheduler/types';
 import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
 import { evaluateDivisionAgeEligibility, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { notifySocialAudienceOfEventCreation } from '@/server/eventCreationNotifications';
+import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
   buildEventOfficialPositionsFromTemplates,
   deriveEventOfficialsFromLegacyOfficialIds,
@@ -313,7 +316,7 @@ const getDivisionDetailsForEvent = async (
         : (typeof eventDefaults?.maxParticipants === 'number' ? eventDefaults.maxParticipants : null),
       playoffTeamCount: typeof row?.playoffTeamCount === 'number'
         ? row.playoffTeamCount
-        : (typeof eventDefaults?.playoffTeamCount === 'number' ? eventDefaults.playoffTeamCount : null),
+        : null,
       allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
         ? row.allowPaymentPlans
         : normalizeOptionalBoolean(eventDefaults?.allowPaymentPlans),
@@ -474,19 +477,7 @@ const withLegacyEvent = (row: any) => {
     (legacy as any).requiredTemplateIds = [];
   }
   if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
-    const start = legacy.start ? new Date(legacy.start) : null;
-    const end = legacy.end ? new Date(legacy.end) : null;
-    (legacy as any).noFixedEndDateTime = Boolean(
-      start
-      && !Number.isNaN(start.getTime())
-      && (
-        !end
-        || (
-          !Number.isNaN(end.getTime())
-          && start.getTime() === end.getTime()
-        )
-      ),
-    );
+    (legacy as any).noFixedEndDateTime = false;
   }
   if ((legacy as any).doTeamsOfficiate !== true) {
     (legacy as any).teamOfficialsMaySwap = false;
@@ -583,6 +574,7 @@ const buildContext = (): SchedulerContext => {
 const isFixedEndValidationError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes('No fixed end date/time')
+    || message.includes('No fixed end datetime scheduling')
     || message.includes('End date/time must be after start date/time');
 };
 
@@ -593,9 +585,9 @@ const isDivisionAssignmentValidationError = (error: unknown): boolean => {
     || normalized.includes('assigned to multiple divisions');
 };
 
-const resolveSessionContext = (
+const resolveSessionContext = async (
   req: NextRequest,
-): { userId: string; isAdmin: boolean } | null => {
+): Promise<{ userId: string; isAdmin: boolean } | null> => {
   const token = getTokenFromRequest(req);
   if (!token) {
     return null;
@@ -608,10 +600,39 @@ const resolveSessionContext = (
   if (!userId) {
     return null;
   }
+  const authUser = await prisma.authUser.findUnique({
+    where: { id: userId },
+    select: { disabledAt: true, sessionVersion: true },
+  });
+  if (!authUser || authUser.disabledAt || !isSessionTokenCurrent(session, authUser.sessionVersion)) {
+    return null;
+  }
   return {
     userId,
     isAdmin: Boolean(session.isAdmin),
   };
+};
+
+const loadHiddenEventIdsForSessionUser = async (
+  sessionUserId: string | null,
+  isAdmin: boolean,
+): Promise<string[]> => {
+  if (!sessionUserId || isAdmin) {
+    return [];
+  }
+
+  const user = await prisma.userData.findUnique({
+    where: { id: sessionUserId },
+    select: { hiddenEventIds: true },
+  });
+
+  return Array.from(
+    new Set(
+      (user?.hiddenEventIds ?? [])
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  );
 };
 
 const HIDDEN_EVENT_STATES = ['UNPUBLISHED', 'PRIVATE'] as const;
@@ -665,9 +686,10 @@ export async function GET(req: NextRequest) {
 
   const normalizedStateRaw = typeof state === 'string' ? state.toUpperCase() : undefined;
   const normalizedState = normalizedStateRaw === 'DRAFT' ? 'UNPUBLISHED' : normalizedStateRaw;
-  const sessionContext = resolveSessionContext(req);
+  const sessionContext = await resolveSessionContext(req);
   const sessionUserId = sessionContext?.userId ?? null;
   const isAdminSession = sessionContext?.isAdmin === true;
+  const hiddenEventIds = await loadHiddenEventIdsForSessionUser(sessionUserId, isAdminSession);
   if (normalizedState === 'TEMPLATE') {
     templateSession = await requireSession(req);
     if (!templateSession.isAdmin) {
@@ -724,6 +746,9 @@ export async function GET(req: NextRequest) {
   if (sportId) where.sportId = sportId;
   if (eventType) where.eventType = eventType;
   if (state) where.state = normalizedState ?? state;
+  if (hiddenEventIds.length > 0) {
+    where.AND = [...(Array.isArray(where.AND) ? where.AND : []), { id: { notIn: hiddenEventIds } }];
+  }
   if (isHiddenEventStateFilter(normalizedState) && !isAdminSession) {
     if (canViewOrganizationDrafts) {
       // Organization managers can view hidden events within the scoped organization.
@@ -865,6 +890,24 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    assertEventContentAllowed({
+      name: eventPayload.name,
+      description: eventPayload.description,
+    });
+  } catch (error) {
+    if (error instanceof EventContentFilterError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          matches: error.matches,
+        },
+        { status: 400 },
+      );
+    }
+    throw error;
+  }
+
+  try {
     const context = buildContext();
     const event = await prisma.$transaction(async (tx) => {
       await upsertEventFromPayload(eventPayload, tx);
@@ -926,6 +969,19 @@ export async function POST(req: NextRequest) {
     if (isDivisionAssignmentValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid division team assignments';
       return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isLeaguePlayoffTeamCountValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid playoff team count';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (error instanceof EventContentFilterError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          matches: error.matches,
+        },
+        { status: 400 },
+      );
     }
     console.error('Create event failed', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

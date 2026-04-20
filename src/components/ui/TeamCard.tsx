@@ -1,5 +1,6 @@
 import { extractDivisionTokenFromId, inferDivisionDetails, parseDivisionToken } from '@/lib/divisionTypes';
 import { Team, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
+import type { TeamPlayerRegistration } from '@/types';
 import { Paper, Group, Avatar, Text, Badge, SimpleGrid } from '@mantine/core';
 
 interface TeamCardProps {
@@ -9,6 +10,12 @@ interface TeamCardProps {
   onClick?: () => void;
   className?: string;
 }
+
+const ACTIVE_PLAYER_REGISTRATION_STATUSES = new Set(['ACTIVE', 'STARTED']);
+
+const isActivePlayerRegistration = (registration: TeamPlayerRegistration): boolean => (
+  ACTIVE_PLAYER_REGISTRATION_STATUSES.has(String(registration.status ?? '').trim().toUpperCase())
+);
 
 export default function TeamCard({
   team,
@@ -27,6 +34,11 @@ export default function TeamCard({
   });
   const visibleMembersPreview = visibleMembers.slice(0, 5);
   const hiddenVisibleMemberCount = Math.max(visibleMembers.length - visibleMembersPreview.length, 0);
+  const jerseyNumberByUserId = new Map(
+    (team.playerRegistrations ?? [])
+      .filter((registration) => registration.userId && isActivePlayerRegistration(registration))
+      .map((registration) => [registration.userId, registration.jerseyNumber ?? null] as const),
+  );
 
   const resolveLabel = (value: unknown): string | null => {
     if (typeof value !== 'string') {
@@ -136,7 +148,13 @@ export default function TeamCard({
             <Text size="sm" c="dimmed">Members:</Text>
             <Group gap={-8}>
               {visibleMembersPreview.map((player) => (
-                <Avatar key={player.$id} src={getUserAvatarUrl(player, 32)} alt={player.fullName} size={32} radius="xl" />
+                <Avatar
+                  key={player.$id}
+                  src={getUserAvatarUrl(player, 32, jerseyNumberByUserId.get(player.$id))}
+                  alt={player.fullName}
+                  size={32}
+                  radius="xl"
+                />
               ))}
               {hiddenVisibleMemberCount > 0 && (
                 <Avatar size={32} radius="xl" color="gray">+{hiddenVisibleMemberCount}</Avatar>

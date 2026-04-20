@@ -165,6 +165,55 @@ describe('LeagueFields', () => {
     expect(screen.getByText(/9:00 AM-5:00 PM overlaps this slot/i)).toBeInTheDocument();
   });
 
+  it('shows the first actual overlap date for recurring conflicts', () => {
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={noop}
+        slots={[
+          {
+            ...baseSlot,
+            dayOfWeek: 5,
+            daysOfWeek: [5, 6],
+            startDate: '2026-05-04T00:00:00',
+            startTimeMinutes: 9 * 60,
+            endTimeMinutes: 21 * 60,
+            conflicts: [
+              {
+                schedule: {
+                  $id: 'slot-1',
+                  repeating: true,
+                  dayOfWeek: 5,
+                  daysOfWeek: [5],
+                  startDate: '2026-04-20T00:00:00',
+                  startTimeMinutes: 9 * 60,
+                  endTimeMinutes: 17 * 60,
+                  scheduledFieldId: field.$id,
+                  scheduledFieldIds: [field.$id],
+                } as any,
+                event: { $id: 'evt_1', name: 'TEST DOC' } as any,
+              },
+            ],
+          },
+        ]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+        eventStartDate="2026-05-04T09:00:00"
+      />,
+    );
+
+    expect(screen.getByText(/05\/09\/2026, 9:00 AM-5:00 PM overlaps this slot/i)).toBeInTheDocument();
+  });
+
   it('allows auto-resolving a conflicted slot', () => {
     const onAutoResolveSlotConflict = jest.fn();
 

@@ -12,6 +12,7 @@ import {
   MINUTE_MS,
 } from './types';
 import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
+import { rescheduleEventMatchesPreservingLocks } from './reschedulePreservingLocks';
 import {
   buildLegacyOfficialAssignment,
   deriveLegacyOfficialCheckedInFromAssignments,
@@ -57,7 +58,7 @@ const isOpenEndedSchedule = (event: Tournament | League): boolean => {
   if (typeof event.noFixedEndDateTime === 'boolean') {
     return event.noFixedEndDateTime;
   }
-  return event.start.getTime() === event.end.getTime();
+  return false;
 };
 
 const resolveRescheduleEndTime = (event: Tournament | League, currentTime: Date): Date => {
@@ -239,10 +240,6 @@ const buildScheduleParticipants = (event: Tournament | League): Record<string, T
   return participants;
 };
 
-const isPlayoffMatch = (match: Match): boolean => {
-  return Boolean(match.previousLeftMatch || match.previousRightMatch || match.winnerNextMatch || match.loserNextMatch);
-};
-
 const getUpcomingMatchesInTimeRange = (
   beginning: Date,
   end: Date,
@@ -269,12 +266,74 @@ const getUpcomingMatchesInTimeRange = (
   return matchesInRange;
 };
 
-const isMatchOver = (match: Match | null): boolean => {
-  if (!match) return false;
+const completedSegmentWinnerIds = (match: Match): string[] => (
+  (Array.isArray(match.segments) ? match.segments : [])
+    .filter((segment) => segment.status === 'COMPLETE' || Boolean(segment.winnerEventTeamId))
+    .map((segment) => segment.winnerEventTeamId)
+    .filter((winnerId): winnerId is string => typeof winnerId === 'string' && winnerId.length > 0)
+);
+
+const segmentScoreTotal = (match: Match, teamId: string): number => (
+  (Array.isArray(match.segments) ? match.segments : []).reduce((total, segment) => {
+    const score = Number(segment.scores?.[teamId] ?? 0);
+    return Number.isFinite(score) ? total + score : total;
+  }, 0)
+);
+
+const resolveWinnerFromLegacyResults = (match: Match): Team | null => {
+  const teamOne = match.team1;
+  const teamTwo = match.team2;
+  if (!teamOne || !teamTwo) return null;
   const team1Wins = match.setResults.filter((result) => result === 1).length;
   const team2Wins = match.setResults.filter((result) => result === 2).length;
-  const setsToWin = Math.ceil(match.setResults.length / 2);
-  return team1Wins >= setsToWin || team2Wins >= setsToWin;
+  if (team1Wins === 0 && team2Wins === 0) return null;
+  return team1Wins >= team2Wins ? teamOne : teamTwo;
+};
+
+const resolveMatchWinner = (match: Match): Team | null => {
+  const teamOne = match.team1;
+  const teamTwo = match.team2;
+  if (!teamOne || !teamTwo) return null;
+
+  if (match.winnerEventTeamId === teamOne.id) return teamOne;
+  if (match.winnerEventTeamId === teamTwo.id) return teamTwo;
+
+  const rules = (match.matchRulesSnapshot ?? match.resolvedMatchRules ?? {}) as { scoringModel?: string; segmentCount?: number };
+  const scoringModel = typeof rules.scoringModel === 'string' ? rules.scoringModel : null;
+  const segments = Array.isArray(match.segments) ? match.segments : [];
+
+  if (segments.length) {
+    if (scoringModel === 'SETS') {
+      const winners = completedSegmentWinnerIds(match);
+      const team1Wins = winners.filter((winnerId) => winnerId === teamOne.id).length;
+      const team2Wins = winners.filter((winnerId) => winnerId === teamTwo.id).length;
+      const configuredSegmentCount = Number(rules.segmentCount);
+      const segmentCount = Number.isFinite(configuredSegmentCount) && configuredSegmentCount > 0
+        ? Math.trunc(configuredSegmentCount)
+        : Math.max(segments.length, match.setResults.length, 1);
+      const setsToWin = Math.max(1, Math.ceil(segmentCount / 2));
+      if (team1Wins >= setsToWin || team2Wins >= setsToWin) {
+        return team1Wins >= team2Wins ? teamOne : teamTwo;
+      }
+      return null;
+    }
+
+    const allScoredSegmentsComplete = segments.every((segment) => segment.status === 'COMPLETE');
+    if (allScoredSegmentsComplete) {
+      const team1Score = segmentScoreTotal(match, teamOne.id);
+      const team2Score = segmentScoreTotal(match, teamTwo.id);
+      if (team1Score !== team2Score) {
+        return team1Score > team2Score ? teamOne : teamTwo;
+      }
+    }
+  }
+
+  return resolveWinnerFromLegacyResults(match);
+};
+
+const isMatchOver = (match: Match | null): boolean => {
+  if (!match) return false;
+  return Boolean(resolveMatchWinner(match));
 };
 
 const teamsWaitingToStart = (teams: Team[], currentTime: Date): Team[] => {
@@ -366,55 +425,10 @@ const processMatches = (
 
   for (const match of [...matches].reverse()) {
     if (!match.locked && !match.field) {
-      bracketSchedule.scheduleEvent(match, match.team1Points.length * TIMES.SET);
+        const segmentDurationCount = Math.max(match.segments?.length ?? 0, match.team1Points.length, 1);
+        bracketSchedule.scheduleEvent(match, segmentDurationCount * TIMES.SET);
       attachMatchToParticipants(match);
     }
-  }
-};
-
-const assignMissingTeamOfficials = (
-  event: Tournament | League,
-  schedule: Schedule<Match, any, any, Division>,
-  matches: Iterable<Match>,
-): void => {
-  const teams = Object.values(event.teams);
-  const unassigned = [...teams];
-  const ordered = Array.from(matches).sort((a, b) => {
-    const startDiff = a.start.getTime() - b.start.getTime();
-    if (startDiff !== 0) return startDiff;
-    const endDiff = a.end.getTime() - b.end.getTime();
-    if (endDiff !== 0) return endDiff;
-    return (a.field?.id ?? '').localeCompare(b.field?.id ?? '');
-  });
-
-  for (const match of ordered) {
-    if (match.teamOfficial || !(match.team1 && match.team2)) continue;
-    if (!match.division) continue;
-
-    const availableTeams = schedule
-      .freeParticipants(match.division, match.start, match.end)
-      .filter((participant) => participant instanceof Team) as Team[];
-    const filtered = availableTeams.filter((team) => team !== match.team1 && team !== match.team2);
-    if (!filtered.length) continue;
-
-    let candidate: Team | null = null;
-    for (let i = 0; i < unassigned.length; i += 1) {
-      const candidateTeam = unassigned[0];
-      unassigned.push(unassigned.shift() as Team);
-      if (filtered.includes(candidateTeam)) {
-        candidate = candidateTeam;
-        const idx = unassigned.indexOf(candidateTeam);
-        if (idx >= 0) unassigned.splice(idx, 1);
-        break;
-      }
-    }
-    if (!candidate) {
-      candidate = filtered[0] ?? null;
-    }
-    if (!candidate) continue;
-
-    match.teamOfficial = candidate;
-    ensureMatchesArray(candidate).push(match);
   }
 };
 
@@ -435,30 +449,21 @@ export const finalizeMatch = (
     return { updatedMatch, seededTeamIds };
   }
 
-  const team1Wins = updatedMatch.setResults.filter((result) => result === 1).length;
-  const team2Wins = updatedMatch.setResults.filter((result) => result === 2).length;
-  const winner = team1Wins > team2Wins ? teamOne : teamTwo;
+  const winner = resolveMatchWinner(updatedMatch);
+  if (!winner) {
+    return { updatedMatch, seededTeamIds };
+  }
   const loser = winner === teamOne ? teamTwo : teamOne;
+
+  updatedMatch.winnerEventTeamId = winner.id;
+  updatedMatch.status = 'COMPLETE';
+  updatedMatch.resultStatus = updatedMatch.resultStatus ?? 'OFFICIAL';
+  updatedMatch.actualEnd = updatedMatch.actualEnd ?? currentTime;
 
   updatedMatch.advanceTeams(winner, loser);
 
-  // League schedules are pre-built (regular season and playoffs). Finalizing a result should advance teams without
-  // invoking bracket-style rescheduling, which can fail for split-playoff mapping configurations.
   if (event instanceof League) {
-    if (event.doTeamsOfficiate && seededTeamIds.length) {
-      const participants = buildScheduleParticipants(event);
-      const schedule = new Schedule<Match, PlayingField, Team | UserData, Division>(
-        event.start,
-        event.fields,
-        participants,
-        event.divisions,
-        currentTime,
-        { endTime: resolveRescheduleEndTime(event, currentTime), timeSlots: event.timeSlots },
-      );
-      const playoffMatches = Object.values(event.matches).filter((match) => isPlayoffMatch(match));
-      assignMissingTeamOfficials(event, schedule, playoffMatches);
-    }
-
+    rescheduleEventMatchesPreservingLocks(event);
     return { updatedMatch, seededTeamIds };
   }
 

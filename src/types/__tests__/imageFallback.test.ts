@@ -71,4 +71,22 @@ describe('avatar placeholder urls', () => {
     expect(url).toContain('name=Ana+Maria+Lopez');
     expect(url).toContain('size=80');
   });
+
+  it('uses jersey number override before profile image', () => {
+    const url = getUserAvatarUrl(
+      {
+        firstName: 'Ana',
+        lastName: 'Lopez',
+        userName: 'amlopez',
+        profileImageId: 'profile_file_1',
+      } as any,
+      40,
+      '12',
+    );
+
+    expect(url).toContain('/api/avatars/initials?');
+    expect(url).toContain('name=12');
+    expect(url).toContain('size=40');
+    expect(url).not.toContain('/api/files/profile_file_1/preview');
+  });
 });

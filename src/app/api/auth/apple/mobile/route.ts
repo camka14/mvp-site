@@ -8,6 +8,11 @@ import {
   verifyAppleIdentityToken,
 } from '@/lib/appleAuth';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
+import {
+  buildProfileCompletionState,
+  resolveRequiredProfileFieldsCompletedAt,
+} from '@/server/profileCompletion';
+import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const mobileAppleSchema = z.object({
@@ -32,6 +37,8 @@ const toPublicUser = (user: {
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
+
+const UNKNOWN_DATE_OF_BIRTH = new Date(0);
 
 
 export async function POST(req: NextRequest) {
@@ -84,6 +91,12 @@ export async function POST(req: NextRequest) {
     ? await prisma.authUser.findUnique({ where: { email: candidateEmail } })
     : null;
   const existingAuth = existingAuthByAppleSubject ?? existingAuthByEmail;
+  if (isAuthUserSuspended(existingAuth)) {
+    return NextResponse.json(
+      { error: 'Account suspended', code: ACCOUNT_SUSPENDED_CODE },
+      { status: 403 },
+    );
+  }
   const existingSensitive = existingAuth
     ? await prisma.sensitiveUserData.findFirst({ where: { userId: existingAuth.id } })
     : candidateEmail
@@ -140,35 +153,63 @@ export async function POST(req: NextRequest) {
 
     const existingProfile = await tx.userData.findUnique({ where: { id: createdAuth.id } });
     const profileRow = existingProfile
-      ? await tx.userData.update({
-          where: { id: createdAuth.id },
-          data: {
+      ? await (() => {
+          const nextProfile = {
             firstName: existingProfile.firstName ?? normalizedFirstName,
             lastName: existingProfile.lastName ?? normalizedLastName,
-            updatedAt: now,
-          },
-        })
-      : await tx.userData.create({
-          data: {
-            id: createdAuth.id,
-            createdAt: now,
-            updatedAt: now,
+            dateOfBirth: existingProfile.dateOfBirth,
+            requiredProfileFieldsCompletedAt: existingProfile.requiredProfileFieldsCompletedAt,
+          };
+          const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+            authUser: createdAuth,
+            profile: nextProfile,
+            now,
+          });
+          return tx.userData.update({
+            where: { id: createdAuth.id },
+            data: {
+              firstName: nextProfile.firstName,
+              lastName: nextProfile.lastName,
+              requiredProfileFieldsCompletedAt,
+              updatedAt: now,
+            },
+          });
+        })()
+      : await (async () => {
+          const nextProfile = {
             firstName: normalizedFirstName,
             lastName: normalizedLastName,
-            userName: await reserveGeneratedUserName(tx, normalizedEmail.split('@')[0] ?? 'user', {
-              excludeUserId: createdAuth.id,
-              suffixSeed: createdAuth.id,
-            }),
-            dateOfBirth: new Date('2000-01-01'),
-            teamIds: [],
-            friendIds: [],
-            friendRequestIds: [],
-            friendRequestSentIds: [],
-            followingIds: [],
-            uploadedImages: [],
-            profileImageId: null,
-          },
-        });
+            dateOfBirth: UNKNOWN_DATE_OF_BIRTH,
+            requiredProfileFieldsCompletedAt: null,
+          };
+          const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+            authUser: createdAuth,
+            profile: nextProfile,
+            now,
+          });
+          return tx.userData.create({
+            data: {
+              id: createdAuth.id,
+              createdAt: now,
+              updatedAt: now,
+              firstName: nextProfile.firstName,
+              lastName: nextProfile.lastName,
+              userName: await reserveGeneratedUserName(tx, normalizedEmail.split('@')[0] ?? 'user', {
+                excludeUserId: createdAuth.id,
+                suffixSeed: createdAuth.id,
+              }),
+              dateOfBirth: nextProfile.dateOfBirth,
+              requiredProfileFieldsCompletedAt,
+              teamIds: [],
+              friendIds: [],
+              friendRequestIds: [],
+              friendRequestSentIds: [],
+              followingIds: [],
+              uploadedImages: [],
+              profileImageId: null,
+            },
+          });
+        })();
 
     await tx.sensitiveUserData.upsert({
       where: { id: existingSensitive?.id ?? createdAuth.id },
@@ -191,7 +232,18 @@ export async function POST(req: NextRequest) {
     return [createdAuth, profileRow] as const;
   });
 
-  const session: SessionToken = { userId: authUser.id, isAdmin: false };
+  if (isAuthUserSuspended(authUser)) {
+    return NextResponse.json(
+      { error: 'Account suspended', code: ACCOUNT_SUSPENDED_CODE },
+      { status: 403 },
+    );
+  }
+
+  const session: SessionToken = {
+    userId: authUser.id,
+    isAdmin: false,
+    sessionVersion: authUser.sessionVersion ?? 0,
+  };
   const token = signSessionToken(session);
   const res = NextResponse.json(
     {
@@ -199,6 +251,7 @@ export async function POST(req: NextRequest) {
       session,
       token,
       profile: applyNameCaseToUserFields(profile),
+      ...buildProfileCompletionState({ authUser, profile }),
     },
     { status: 200 },
   );

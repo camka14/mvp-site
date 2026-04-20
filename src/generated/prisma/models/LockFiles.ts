@@ -158,7 +158,7 @@ export type LockFilesGroupByOutputType = {
   _max: LockFilesMaxAggregateOutputType | null
 }
 
-type GetLockFilesGroupByPayload<T extends LockFilesGroupByArgs> = Prisma.PrismaPromise<
+export type GetLockFilesGroupByPayload<T extends LockFilesGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<LockFilesGroupByOutputType, T['by']> &
       {
@@ -954,6 +954,11 @@ export type LockFilesFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inter
    * Skip the first `n` LockFiles.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of LockFiles.
+   */
   distinct?: Prisma.LockFilesScalarFieldEnum | Prisma.LockFilesScalarFieldEnum[]
 }
 

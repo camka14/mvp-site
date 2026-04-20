@@ -297,7 +297,8 @@ function DiscoverPageContent() {
       const filters = buildEventFilters();
       const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, 0);
 
-      setEvents(page);
+      const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
+      setEvents(page.filter((event) => !hiddenEventIds.has(event.$id)));
       setEventOffset(page.length);
       setHasMoreEvents(page.length === EVENTS_LIMIT);
     } catch (error) {
@@ -306,7 +307,7 @@ function DiscoverPageContent() {
     } finally {
       setIsLoadingInitial(false);
     }
-  }, [buildEventFilters]);
+  }, [buildEventFilters, user?.hiddenEventIds]);
 
   const loadMoreEvents = useCallback(async () => {
     if (isLoadingInitial || isLoadingMore || !hasMoreEvents) return;
@@ -315,8 +316,9 @@ function DiscoverPageContent() {
     try {
       const filters = buildEventFilters();
       const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, eventOffset);
+      const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
       setEvents((prev) => {
-        const merged = [...prev, ...page];
+        const merged = [...prev, ...page.filter((event) => !hiddenEventIds.has(event.$id))];
         const seen = new Set<string>();
         return merged.filter((event) => {
           if (seen.has(event.$id)) return false;
@@ -332,7 +334,15 @@ function DiscoverPageContent() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [buildEventFilters, eventOffset, isLoadingInitial, isLoadingMore, hasMoreEvents]);
+  }, [buildEventFilters, eventOffset, isLoadingInitial, isLoadingMore, hasMoreEvents, user?.hiddenEventIds]);
+
+  useEffect(() => {
+    const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
+    if (hiddenEventIds.size === 0) {
+      return;
+    }
+    setEvents((previous) => previous.filter((event) => !hiddenEventIds.has(event.$id)));
+  }, [user?.hiddenEventIds]);
 
   /**
    * Rentals fetching

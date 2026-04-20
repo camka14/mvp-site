@@ -1,10 +1,10 @@
 import type { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
-import { isMinorAtUtcDate, publicUserSelect } from '@/server/userPrivacy';
+import { CurrentUser, currentUserSelect, isMinorAtUtcDate, publicUserSelect } from '@/server/userPrivacy';
 
 export type PublicUser = Prisma.UserDataGetPayload<{ select: typeof publicUserSelect }>;
-
 type SocialTx = Prisma.TransactionClient;
+type CurrentUserSocialUser = CurrentUser;
 
 const normalizeIds = (value: string[] | null | undefined): string[] => (
   Array.from(new Set((value ?? []).map((entry) => entry.trim()).filter(Boolean)))
@@ -36,6 +36,10 @@ const mapUsersById = (users: PublicUser[]): Map<string, PublicUser> => {
   return new Map(users.map((user) => [user.id, user]));
 };
 
+const mapSocialUsersById = (users: CurrentUserSocialUser[]): Map<string, CurrentUserSocialUser> => {
+  return new Map(users.map((user) => [user.id, user]));
+};
+
 const pickUsersByIds = (ids: string[], usersById: Map<string, PublicUser>): PublicUser[] => {
   return ids
     .map((id) => usersById.get(id))
@@ -52,11 +56,21 @@ const findUsersByIds = async (tx: SocialTx, ids: string[]): Promise<PublicUser[]
   });
 };
 
+const findSocialUsersByIds = async (tx: SocialTx, ids: string[]): Promise<CurrentUserSocialUser[]> => {
+  const normalizedIds = normalizeIds(ids);
+  if (!normalizedIds.length) return [];
+
+  return tx.userData.findMany({
+    where: { id: { in: normalizedIds } },
+    select: currentUserSelect,
+  });
+};
+
 const getActorAndTarget = async (
   tx: SocialTx,
   actorUserId: string,
   targetUserId: string,
-): Promise<{ actor: PublicUser; target: PublicUser }> => {
+): Promise<{ actor: CurrentUserSocialUser; target: CurrentUserSocialUser }> => {
   const actorId = actorUserId.trim();
   const targetId = targetUserId.trim();
 
@@ -68,8 +82,8 @@ const getActorAndTarget = async (
     throw new SocialGraphError(400, 'You cannot perform this action on your own profile.');
   }
 
-  const users = await findUsersByIds(tx, [actorId, targetId]);
-  const usersById = mapUsersById(users);
+  const users = await findSocialUsersByIds(tx, [actorId, targetId]);
+  const usersById = mapSocialUsersById(users);
   const actor = usersById.get(actorId);
   const target = usersById.get(targetId);
   if (!actor || !target) {
@@ -85,6 +99,17 @@ const assertTargetIsNotMinor = (target: Pick<PublicUser, 'dateOfBirth'>): void =
   }
 };
 
+const assertUsersAreNotBlocked = (
+  actor: Pick<CurrentUserSocialUser, 'blockedUserIds' | 'id'>,
+  target: Pick<CurrentUserSocialUser, 'blockedUserIds' | 'id'>,
+): void => {
+  const actorBlockedIds = normalizeIds(actor.blockedUserIds);
+  const targetBlockedIds = normalizeIds(target.blockedUserIds);
+  if (actorBlockedIds.includes(target.id) || targetBlockedIds.includes(actor.id)) {
+    throw new SocialGraphError(403, 'This action is unavailable because one of these users has blocked the other.');
+  }
+};
+
 export class SocialGraphError extends Error {
   status: number;
 
@@ -95,12 +120,13 @@ export class SocialGraphError extends Error {
 }
 
 export interface SocialGraph {
-  user: PublicUser;
+  user: CurrentUserSocialUser;
   friends: PublicUser[];
   following: PublicUser[];
   followers: PublicUser[];
   incomingFriendRequests: PublicUser[];
   outgoingFriendRequests: PublicUser[];
+  blocked: PublicUser[];
 }
 
 export const getSocialGraphForUser = async (userId: string): Promise<SocialGraph> => {
@@ -111,7 +137,7 @@ export const getSocialGraphForUser = async (userId: string): Promise<SocialGraph
 
   const user = await prisma.userData.findUnique({
     where: { id: actorId },
-    select: publicUserSelect,
+    select: currentUserSelect,
   });
 
   if (!user) {
@@ -124,10 +150,11 @@ export const getSocialGraphForUser = async (userId: string): Promise<SocialGraph
   });
 
   const relatedIds = normalizeIds([
-    ...user.friendIds,
-    ...user.followingIds,
-    ...user.friendRequestIds,
-    ...user.friendRequestSentIds,
+    ...normalizeIds(user.friendIds),
+    ...normalizeIds(user.followingIds),
+    ...normalizeIds(user.friendRequestIds),
+    ...normalizeIds(user.friendRequestSentIds),
+    ...normalizeIds(user.blockedUserIds),
     ...followers.map((row) => row.id),
   ]);
 
@@ -145,13 +172,15 @@ export const getSocialGraphForUser = async (userId: string): Promise<SocialGraph
     followers: sortUsers(pickUsersByIds(normalizeIds(followers.map((row) => row.id)), usersById)),
     incomingFriendRequests: sortUsers(pickUsersByIds(normalizeIds(user.friendRequestIds), usersById)),
     outgoingFriendRequests: sortUsers(pickUsersByIds(normalizeIds(user.friendRequestSentIds), usersById)),
+    blocked: sortUsers(pickUsersByIds(normalizeIds(user.blockedUserIds), usersById)),
   };
 };
 
-export const sendFriendRequest = async (actorUserId: string, targetUserId: string): Promise<PublicUser> => {
+export const sendFriendRequest = async (actorUserId: string, targetUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
     assertTargetIsNotMinor(target);
+    assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
 
     const actorFriendIds = normalizeIds(actor.friendIds);
     const actorSentIds = normalizeIds(actor.friendRequestSentIds);
@@ -186,14 +215,15 @@ export const sendFriendRequest = async (actorUserId: string, targetUserId: strin
         friendRequestSentIds: addUniqueId(actor.friendRequestSentIds, target.id),
         updatedAt: now,
       },
-      select: publicUserSelect,
+      select: currentUserSelect,
     });
   });
 };
 
-export const acceptFriendRequest = async (actorUserId: string, requesterUserId: string): Promise<PublicUser> => {
+export const acceptFriendRequest = async (actorUserId: string, requesterUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, requesterUserId);
+    assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
 
     const actorFriends = normalizeIds(actor.friendIds);
     const actorIncoming = normalizeIds(actor.friendRequestIds);
@@ -230,12 +260,12 @@ export const acceptFriendRequest = async (actorUserId: string, requesterUserId: 
         friendRequestSentIds: removeId(actorOutgoing, target.id),
         updatedAt: now,
       },
-      select: publicUserSelect,
+      select: currentUserSelect,
     });
   });
 };
 
-export const declineFriendRequest = async (actorUserId: string, requesterUserId: string): Promise<PublicUser> => {
+export const declineFriendRequest = async (actorUserId: string, requesterUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, requesterUserId);
 
@@ -257,12 +287,12 @@ export const declineFriendRequest = async (actorUserId: string, requesterUserId:
         friendRequestSentIds: removeId(actor.friendRequestSentIds, target.id),
         updatedAt: now,
       },
-      select: publicUserSelect,
+      select: currentUserSelect,
     });
   });
 };
 
-export const removeFriend = async (actorUserId: string, friendUserId: string): Promise<PublicUser> => {
+export const removeFriend = async (actorUserId: string, friendUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, friendUserId);
 
@@ -286,15 +316,16 @@ export const removeFriend = async (actorUserId: string, friendUserId: string): P
         friendRequestSentIds: removeId(actor.friendRequestSentIds, target.id),
         updatedAt: now,
       },
-      select: publicUserSelect,
+      select: currentUserSelect,
     });
   });
 };
 
-export const followUser = async (actorUserId: string, targetUserId: string): Promise<PublicUser> => {
+export const followUser = async (actorUserId: string, targetUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
     assertTargetIsNotMinor(target);
+    assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
 
     if (normalizeIds(actor.followingIds).includes(target.id)) {
       return actor;
@@ -306,12 +337,12 @@ export const followUser = async (actorUserId: string, targetUserId: string): Pro
         followingIds: addUniqueId(actor.followingIds, target.id),
         updatedAt: new Date(),
       },
-      select: publicUserSelect,
+      select: currentUserSelect,
     });
   });
 };
 
-export const unfollowUser = async (actorUserId: string, targetUserId: string): Promise<PublicUser> => {
+export const unfollowUser = async (actorUserId: string, targetUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
 
@@ -321,7 +352,7 @@ export const unfollowUser = async (actorUserId: string, targetUserId: string): P
         followingIds: removeId(actor.followingIds, target.id),
         updatedAt: new Date(),
       },
-      select: publicUserSelect,
+      select: currentUserSelect,
     });
   });
 };

@@ -130,6 +130,35 @@ export const ParentChildLinksStatusEnum = {
 export type ParentChildLinksStatusEnum = (typeof ParentChildLinksStatusEnum)[keyof typeof ParentChildLinksStatusEnum]
 
 
+export const OrganizationsVerificationStatusEnum = {
+  UNVERIFIED: 'UNVERIFIED',
+  LEGACY_CONNECTED: 'LEGACY_CONNECTED',
+  PENDING: 'PENDING',
+  ACTION_REQUIRED: 'ACTION_REQUIRED',
+  VERIFIED: 'VERIFIED'
+} as const
+
+export type OrganizationsVerificationStatusEnum = (typeof OrganizationsVerificationStatusEnum)[keyof typeof OrganizationsVerificationStatusEnum]
+
+
+export const OrganizationsVerificationReviewStatusEnum = {
+  NONE: 'NONE',
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  RESOLVED: 'RESOLVED'
+} as const
+
+export type OrganizationsVerificationReviewStatusEnum = (typeof OrganizationsVerificationReviewStatusEnum)[keyof typeof OrganizationsVerificationReviewStatusEnum]
+
+
+export const StripeAccountsAccountOriginEnum = {
+  LEGACY_OAUTH: 'LEGACY_OAUTH',
+  PLATFORM_ONBOARDING: 'PLATFORM_ONBOARDING'
+} as const
+
+export type StripeAccountsAccountOriginEnum = (typeof StripeAccountsAccountOriginEnum)[keyof typeof StripeAccountsAccountOriginEnum]
+
+
 export const EventRegistrationsRegistrantTypeEnum = {
   SELF: 'SELF',
   CHILD: 'CHILD',
@@ -139,9 +168,17 @@ export const EventRegistrationsRegistrantTypeEnum = {
 export type EventRegistrationsRegistrantTypeEnum = (typeof EventRegistrationsRegistrantTypeEnum)[keyof typeof EventRegistrationsRegistrantTypeEnum]
 
 
+export const EventRegistrationsRosterRoleEnum = {
+  PARTICIPANT: 'PARTICIPANT',
+  WAITLIST: 'WAITLIST',
+  FREE_AGENT: 'FREE_AGENT'
+} as const
+
+export type EventRegistrationsRosterRoleEnum = (typeof EventRegistrationsRosterRoleEnum)[keyof typeof EventRegistrationsRosterRoleEnum]
+
+
 export const EventRegistrationsStatusEnum = {
   STARTED: 'STARTED',
-  PENDINGCONSENT: 'PENDINGCONSENT',
   ACTIVE: 'ACTIVE',
   BLOCKED: 'BLOCKED',
   CANCELLED: 'CANCELLED',
@@ -149,6 +186,42 @@ export const EventRegistrationsStatusEnum = {
 } as const
 
 export type EventRegistrationsStatusEnum = (typeof EventRegistrationsStatusEnum)[keyof typeof EventRegistrationsStatusEnum]
+
+
+export const TeamMembershipStatusEnum = {
+  INVITED: 'INVITED',
+  STARTED: 'STARTED',
+  ACTIVE: 'ACTIVE',
+  LEFT: 'LEFT',
+  REMOVED: 'REMOVED'
+} as const
+
+export type TeamMembershipStatusEnum = (typeof TeamMembershipStatusEnum)[keyof typeof TeamMembershipStatusEnum]
+
+
+export const TeamStaffAssignmentsRoleEnum = {
+  MANAGER: 'MANAGER',
+  HEAD_COACH: 'HEAD_COACH',
+  ASSISTANT_COACH: 'ASSISTANT_COACH'
+} as const
+
+export type TeamStaffAssignmentsRoleEnum = (typeof TeamStaffAssignmentsRoleEnum)[keyof typeof TeamStaffAssignmentsRoleEnum]
+
+
+export const EventTeamsKindEnum = {
+  REGISTERED: 'REGISTERED',
+  PLACEHOLDER: 'PLACEHOLDER'
+} as const
+
+export type EventTeamsKindEnum = (typeof EventTeamsKindEnum)[keyof typeof EventTeamsKindEnum]
+
+
+export const EventTeamStaffAssignmentsStatusEnum = {
+  ACTIVE: 'ACTIVE',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type EventTeamStaffAssignmentsStatusEnum = (typeof EventTeamStaffAssignmentsStatusEnum)[keyof typeof EventTeamStaffAssignmentsStatusEnum]
 
 
 export const DivisionsKindEnum = {
@@ -178,3 +251,22 @@ export const BoldSignSyncOperationStatusEnum = {
 } as const
 
 export type BoldSignSyncOperationStatusEnum = (typeof BoldSignSyncOperationStatusEnum)[keyof typeof BoldSignSyncOperationStatusEnum]
+
+
+export const ModerationReportTargetTypeEnum = {
+  CHAT_GROUP: 'CHAT_GROUP',
+  EVENT: 'EVENT',
+  BLOCK_USER: 'BLOCK_USER'
+} as const
+
+export type ModerationReportTargetTypeEnum = (typeof ModerationReportTargetTypeEnum)[keyof typeof ModerationReportTargetTypeEnum]
+
+
+export const ModerationReportStatusEnum = {
+  OPEN: 'OPEN',
+  IN_REVIEW: 'IN_REVIEW',
+  ACTIONED: 'ACTIONED',
+  DISMISSED: 'DISMISSED'
+} as const
+
+export type ModerationReportStatusEnum = (typeof ModerationReportStatusEnum)[keyof typeof ModerationReportStatusEnum]

@@ -45,4 +45,36 @@ describe('toEventPayload division teamIds serialization', () => {
     expect(payload.divisionDetails?.[0]).toBeDefined();
     expect(payload.divisionDetails?.[0]?.teamIds).toEqual(['team_1', 'team_2']);
   });
+
+  it('serializes timeslot ids as id instead of $id', () => {
+    const event = {
+      ...baseEvent(),
+      timeSlots: [
+        {
+          $id: 'slot_1',
+          dayOfWeek: 1,
+          daysOfWeek: [1, 3],
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          startTimeMinutes: 540,
+          endTimeMinutes: 780,
+          repeating: true,
+        },
+      ],
+    } as Event;
+
+    const payload = toEventPayload(event);
+
+    expect(payload.timeSlots?.[0]).toEqual(expect.objectContaining({
+      id: 'slot_1',
+      dayOfWeek: 1,
+      daysOfWeek: [1, 3],
+      scheduledFieldId: 'field_1',
+      scheduledFieldIds: ['field_1'],
+      startTimeMinutes: 540,
+      endTimeMinutes: 780,
+      repeating: true,
+    }));
+    expect(Object.prototype.hasOwnProperty.call(payload.timeSlots?.[0] ?? {}, '$id')).toBe(false);
+  });
 });

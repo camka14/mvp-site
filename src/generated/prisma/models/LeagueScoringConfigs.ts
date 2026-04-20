@@ -273,7 +273,7 @@ export type LeagueScoringConfigsGroupByOutputType = {
   _max: LeagueScoringConfigsMaxAggregateOutputType | null
 }
 
-type GetLeagueScoringConfigsGroupByPayload<T extends LeagueScoringConfigsGroupByArgs> = Prisma.PrismaPromise<
+export type GetLeagueScoringConfigsGroupByPayload<T extends LeagueScoringConfigsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<LeagueScoringConfigsGroupByOutputType, T['by']> &
       {
@@ -1242,6 +1242,11 @@ export type LeagueScoringConfigsFindManyArgs<ExtArgs extends runtime.Types.Exten
    * Skip the first `n` LeagueScoringConfigs.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of LeagueScoringConfigs.
+   */
   distinct?: Prisma.LeagueScoringConfigsScalarFieldEnum | Prisma.LeagueScoringConfigsScalarFieldEnum[]
 }
 

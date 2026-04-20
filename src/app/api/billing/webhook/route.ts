@@ -6,8 +6,11 @@ import {
   findSubscriptionProductBaseAmountCents,
   resolveConnectedAccountId,
 } from '@/lib/stripeConnectAccounts';
+import { syncManagedOrganizationStripeAccount } from '@/server/organizationStripeVerification';
 import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
+import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
+import { activateStartedTeamRegistration } from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,6 +74,7 @@ const sameOrderedIds = (left: string[], right: string[]): boolean => {
 };
 
 const SUPPORTED_EVENT_TYPES = new Set([
+  'account.updated',
   'payment_intent.succeeded',
   'invoice.created',
   'invoice.paid',
@@ -168,6 +172,8 @@ const ensureEventRegistrationFromPurchase = async ({
   teamId,
   userId,
   registrationId,
+  occurrenceSlotId,
+  occurrenceDate,
   now,
 }: {
   purchaseType: string | null;
@@ -175,6 +181,8 @@ const ensureEventRegistrationFromPurchase = async ({
   teamId: string | null;
   userId: string | null;
   registrationId: string | null;
+  occurrenceSlotId: string | null;
+  occurrenceDate: string | null;
   now: Date;
 }): Promise<{ applied: boolean; reason?: string }> => {
   const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
@@ -225,7 +233,13 @@ const ensureEventRegistrationFromPurchase = async ({
           return { applied: false, reason: 'schedulable_team_event_requires_participant_route' };
         }
 
-        const expectedRegistrationId = `${eventId}__team__${teamId}`;
+        const expectedRegistrationId = buildEventRegistrationId({
+          eventId,
+          registrantType: 'TEAM',
+          registrantId: teamId,
+          slotId: occurrenceSlotId,
+          occurrenceDate,
+        });
         const normalizedRegistrationId = toStringOrNull(registrationId);
         if (normalizedRegistrationId && normalizedRegistrationId !== expectedRegistrationId) {
           return { applied: false, reason: 'registration_id_mismatch' };
@@ -265,7 +279,10 @@ const ensureEventRegistrationFromPurchase = async ({
               eventId,
               registrantId: teamId,
               registrantType: 'TEAM',
+              rosterRole: 'PARTICIPANT',
               status: 'ACTIVE',
+              slotId: occurrenceSlotId,
+              occurrenceDate,
               ageAtEvent: null,
               divisionId: null,
               divisionTypeId: null,
@@ -293,7 +310,13 @@ const ensureEventRegistrationFromPurchase = async ({
       }
 
       const participantUserId = userId as string;
-      const expectedRegistrationId = `${eventId}__self__${participantUserId}`;
+      const expectedRegistrationId = buildEventRegistrationId({
+        eventId,
+        registrantType: 'SELF',
+        registrantId: participantUserId,
+        slotId: occurrenceSlotId,
+        occurrenceDate,
+      });
       const normalizedRegistrationId = toStringOrNull(registrationId);
       if (normalizedRegistrationId && normalizedRegistrationId !== expectedRegistrationId) {
         return { applied: false, reason: 'registration_id_mismatch' };
@@ -338,7 +361,10 @@ const ensureEventRegistrationFromPurchase = async ({
             eventId,
             registrantId: participantUserId,
             registrantType: 'SELF',
+            rosterRole: 'PARTICIPANT',
             status: 'ACTIVE',
+            slotId: occurrenceSlotId,
+            occurrenceDate,
             ageAtEvent: null,
             divisionId: null,
             divisionTypeId: null,
@@ -370,6 +396,31 @@ const ensureEventRegistrationFromPurchase = async ({
     });
     return { applied: false, reason: 'error' };
   }
+};
+
+const ensureTeamRegistrationFromPurchase = async ({
+  purchaseType,
+  teamId,
+  userId,
+  registrationId,
+  now,
+}: {
+  purchaseType: string | null;
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => {
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  if (normalizedPurchaseType !== 'team_registration') {
+    return { applied: false, reason: 'not_team_registration_purchase' };
+  }
+  return activateStartedTeamRegistration({
+    teamId,
+    userId,
+    registrationId,
+    now,
+  });
 };
 
 const isUpdatablePaymentIntentStatus = (status: Stripe.PaymentIntent.Status): boolean =>
@@ -589,6 +640,7 @@ const resolveInstantLineItemLabel = (purchaseType: string | null): string => {
   if (normalized === 'product') return 'Product purchase';
   if (normalized === 'rental') return 'Field rental';
   if (normalized === 'event') return 'Event registration';
+  if (normalized === 'team_registration') return 'Team registration';
   return 'Purchase';
 };
 
@@ -622,6 +674,7 @@ const buildInstantLineItems = ({
   const taxCents = toIntOrNull(metadata.tax_cents ?? metadata.taxCents) ?? 0;
   const productName = toStringOrNull(metadata.product_name ?? metadata.productName);
   const eventName = toStringOrNull(metadata.event_name ?? metadata.eventName);
+  const teamName = toStringOrNull(metadata.team_name ?? metadata.teamName);
 
   const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
   const primaryType: 'EVENT' | 'PRODUCT' | 'RENTAL' | 'OTHER' =
@@ -629,10 +682,10 @@ const buildInstantLineItems = ({
       ? 'PRODUCT'
       : normalizedPurchaseType === 'rental'
         ? 'RENTAL'
-        : normalizedPurchaseType === 'event'
+        : (normalizedPurchaseType === 'event' || normalizedPurchaseType === 'team_registration')
           ? 'EVENT'
           : 'OTHER';
-  const baseLabel = productName ?? eventName ?? resolveInstantLineItemLabel(purchaseType);
+  const baseLabel = productName ?? eventName ?? teamName ?? resolveInstantLineItemLabel(purchaseType);
 
   const initialBaseAmount = purchaseAmountCents && purchaseAmountCents > 0
     ? purchaseAmountCents
@@ -886,6 +939,32 @@ export async function POST(req: NextRequest) {
   }
 
   if (
+    eventType === 'account.updated'
+    && stripeForPaymentIntentSync
+  ) {
+    const account = (event.data?.object ?? null) as Stripe.Account | null;
+    const accountId = toStringOrNull(account?.id);
+    if (accountId) {
+      const organizationStripeAccount = await prisma.stripeAccounts.findFirst({
+        where: {
+          accountId,
+          accountOrigin: 'PLATFORM_ONBOARDING',
+          organizationId: { not: null },
+        },
+        select: { organizationId: true },
+      });
+      if (organizationStripeAccount?.organizationId) {
+        await syncManagedOrganizationStripeAccount({
+          stripe: stripeForPaymentIntentSync,
+          organizationId: organizationStripeAccount.organizationId,
+          accountId,
+        });
+      }
+    }
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
+  if (
     eventType === 'customer.subscription.created'
     || eventType === 'customer.subscription.updated'
     || eventType === 'customer.subscription.deleted'
@@ -951,6 +1030,10 @@ export async function POST(req: NextRequest) {
   const teamId = toStringOrNull(metadata.team_id ?? metadata.teamId ?? null);
   const eventId = toStringOrNull(metadata.event_id ?? metadata.eventId ?? null);
   const registrationId = toStringOrNull(metadata.registration_id ?? metadata.registrationId ?? null);
+  const occurrenceSlotId = toStringOrNull(
+    metadata.occurrence_slot_id ?? metadata.occurrenceSlotId ?? metadata.slot_id ?? metadata.slotId ?? null,
+  );
+  const occurrenceDate = toStringOrNull(metadata.occurrence_date ?? metadata.occurrenceDate ?? null);
   const productId = toStringOrNull(metadata.product_id ?? metadata.productId ?? null);
   const organizationId = toStringOrNull(metadata.organization_id ?? metadata.organizationId ?? null);
   const paymentIntentId = toStringOrNull(dataObject.id);
@@ -1062,6 +1145,8 @@ export async function POST(req: NextRequest) {
       teamId,
       userId,
       registrationId,
+      occurrenceSlotId,
+      occurrenceDate,
       now,
     });
     if (
@@ -1074,6 +1159,24 @@ export async function POST(req: NextRequest) {
       console.warn('Stripe webhook skipped event registration sync.', {
         ...receiptLogContext,
         reason: registrationResult.reason,
+      });
+    }
+
+    const teamRegistrationResult = await ensureTeamRegistrationFromPurchase({
+      purchaseType,
+      teamId,
+      userId,
+      registrationId,
+      now,
+    });
+    if (
+      !teamRegistrationResult.applied &&
+      teamRegistrationResult.reason &&
+      teamRegistrationResult.reason !== 'not_team_registration_purchase'
+    ) {
+      console.warn('Stripe webhook skipped team registration sync.', {
+        ...receiptLogContext,
+        reason: teamRegistrationResult.reason,
       });
     }
 

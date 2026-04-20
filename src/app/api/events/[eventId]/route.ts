@@ -6,6 +6,7 @@ import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAcco
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
   deleteMatchesByEvent,
+  isLeaguePlayoffTeamCountValidationError,
   loadEventWithRelations,
   persistScheduledRosterTeams,
   saveEventSchedule,
@@ -17,6 +18,7 @@ import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/serve
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
+import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
   buildEventDivisionId,
   evaluateDivisionAgeEligibility,
@@ -95,6 +97,8 @@ const EVENT_UPDATE_FIELDS = new Set([
   'officialSchedulingMode',
   'doTeamsOfficiate',
   'teamOfficialsMaySwap',
+  'matchRulesOverride',
+  'autoCreatePointMatchIncidents',
   'officialIds',
   'officialPositions',
   'allowPaymentPlans',
@@ -214,12 +218,7 @@ const withLegacyEvent = (row: any) => {
     (legacy as any).requiredTemplateIds = [];
   }
   if (typeof (legacy as any).noFixedEndDateTime !== 'boolean') {
-    const start = parseDateInput((legacy as any).start);
-    const end = parseDateInput((legacy as any).end);
-    (legacy as any).noFixedEndDateTime = Boolean(
-      start
-      && (!end || start.getTime() === end.getTime()),
-    );
+    (legacy as any).noFixedEndDateTime = false;
   }
   if ((legacy as any).doTeamsOfficiate !== true) {
     (legacy as any).teamOfficialsMaySwap = false;
@@ -1040,7 +1039,7 @@ const getDivisionDetailsForEvent = async (
         : (typeof eventDefaults?.maxParticipants === 'number' ? eventDefaults.maxParticipants : null),
       playoffTeamCount: typeof row?.playoffTeamCount === 'number'
         ? row.playoffTeamCount
-        : (typeof eventDefaults?.playoffTeamCount === 'number' ? eventDefaults.playoffTeamCount : null),
+        : null,
       playoffPlacementDivisionIds: kind === 'PLAYOFF' ? [] : normalizePlacementDivisionIds((row as any)?.playoffPlacementDivisionIds, eventId),
       standingsOverrides: kind === 'PLAYOFF' ? null : standingsOverrides,
       standingsConfirmedAt: kind === 'PLAYOFF' ? null : standingsConfirmedAt,
@@ -1600,6 +1599,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data[key] = value;
       }
 
+      assertEventContentAllowed({
+        name: Object.prototype.hasOwnProperty.call(data, 'name') ? data.name : existing.name,
+        description: Object.prototype.hasOwnProperty.call(data, 'description') ? data.description : existing.description,
+      });
+
       const targetEventTypeRaw = (data.eventType ?? existing.eventType ?? null) as string | null;
       const targetEventType = typeof targetEventTypeRaw === 'string'
         ? targetEventTypeRaw.toUpperCase()
@@ -1828,17 +1832,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         : nextEventTypeRaw;
       const nextStart = (data.start ?? existing.start ?? null) as Date | null;
       const nextEnd = (data.end ?? existing.end ?? null) as Date | null;
+      const existingNoFixedEndDateTime = typeof (existing as any).noFixedEndDateTime === 'boolean'
+        ? Boolean((existing as any).noFixedEndDateTime)
+        : false;
       const nextNoFixedEndDateTime = typeof data.noFixedEndDateTime === 'boolean'
         ? data.noFixedEndDateTime
-        : typeof (existing as any).noFixedEndDateTime === 'boolean'
-          ? Boolean((existing as any).noFixedEndDateTime)
-          : false;
+        : existingNoFixedEndDateTime;
+      if (isSchedulableEventType(nextEventType) && nextNoFixedEndDateTime && data.end == null) {
+        const preservedComputedEnd = existing.end instanceof Date
+          ? existing.end
+          : parseDateInput(existing.end);
+        if (preservedComputedEnd) {
+          data.end = preservedComputedEnd;
+        }
+      }
       if (isSchedulableEventType(nextEventType) && !nextNoFixedEndDateTime) {
         if (!(nextStart instanceof Date) || !(nextEnd instanceof Date)) {
-          throw new Response('Start and end date/time are required when no fixed end date/time is disabled.', { status: 400 });
+          throw new Response('Start and end date/time are required when no fixed end datetime scheduling is disabled.', { status: 400 });
         }
         if (nextEnd.getTime() <= nextStart.getTime()) {
-          throw new Response('End date/time must be after start date/time when no fixed end date/time is disabled.', { status: 400 });
+          throw new Response('End date/time must be after start date/time when no fixed end datetime scheduling is disabled.', { status: 400 });
         }
       }
       const existingSlotIds = Array.isArray(existing.timeSlotIds)
@@ -2161,6 +2174,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           eventId,
           divisionIds: nextDivisionKeys,
           fieldIds: nextFieldIds,
+          includePlayoffs: Boolean(data.includePlayoffs ?? existing.includePlayoffs),
           singleDivision: nextSingleDivision,
           sportId: (data.sportId ?? existing.sportId ?? null) as string | null,
           referenceDate: (data.start ?? existing.start ?? null) as Date | null,
@@ -2239,8 +2253,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     if (error instanceof ScheduleError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
+    if (error instanceof EventContentFilterError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          matches: error.matches,
+        },
+        { status: 400 },
+      );
+    }
     if (isDivisionAssignmentValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid division team assignments';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isLeaguePlayoffTeamCountValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid playoff team count';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Update event failed', error);
@@ -2362,6 +2389,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
           select: {
             id: true,
             parentTeamId: true,
+            kind: true,
             captainId: true,
             name: true,
           },
@@ -2401,8 +2429,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     }
     const forcedTeamIdsToDelete = new Set(
       linkedTeams
-        .filter((team: { parentTeamId: string | null; captainId: string; name: string | null }) => (
+        .filter((team: { parentTeamId: string | null; kind?: string | null; captainId: string; name: string | null }) => (
           normalizeEntityId(team.parentTeamId) !== null
+          || String(team.kind ?? '').toUpperCase() === 'PLACEHOLDER'
           || normalizeEntityId(team.captainId) === null
           || isPlaceholderTeamName(team.name)
         ))

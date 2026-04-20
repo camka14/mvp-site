@@ -1,8 +1,142 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { withLegacyList } from '@/server/legacyFormat';
+import type { Prisma } from '@/generated/prisma/client';
+import type { MatchRulesConfig } from '@/types';
 
 export const dynamic = 'force-dynamic';
+
+const asJsonObject = (value: MatchRulesConfig): Prisma.InputJsonObject =>
+  value as unknown as Prisma.InputJsonObject;
+
+const POINT_INCIDENT_TYPES = ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'];
+const GOAL_INCIDENT_TYPES = ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'];
+const RUN_INCIDENT_TYPES = ['RUN', 'DISCIPLINE', 'NOTE', 'ADMIN'];
+
+const setBasedRules = (
+  overrides: Partial<MatchRulesConfig> = {},
+): MatchRulesConfig => ({
+  scoringModel: 'SETS',
+  segmentLabel: 'Set',
+  supportsDraw: false,
+  supportsOvertime: false,
+  supportsShootout: false,
+  canUseOvertime: false,
+  canUseShootout: false,
+  officialRoles: [],
+  supportedIncidentTypes: POINT_INCIDENT_TYPES,
+  autoCreatePointIncidentType: 'POINT',
+  pointIncidentRequiresParticipant: false,
+  ...overrides,
+});
+
+const periodRules = (
+  segmentCount: number,
+  segmentLabel: string,
+  overrides: Partial<MatchRulesConfig> = {},
+): MatchRulesConfig => ({
+  scoringModel: 'PERIODS',
+  segmentCount,
+  segmentLabel,
+  supportsDraw: false,
+  supportsOvertime: false,
+  supportsShootout: false,
+  canUseOvertime: false,
+  canUseShootout: false,
+  officialRoles: [],
+  supportedIncidentTypes: POINT_INCIDENT_TYPES,
+  autoCreatePointIncidentType: 'POINT',
+  pointIncidentRequiresParticipant: false,
+  ...overrides,
+});
+
+const pointsOnlyRules = (
+  overrides: Partial<MatchRulesConfig> = {},
+): MatchRulesConfig => ({
+  scoringModel: 'POINTS_ONLY',
+  segmentCount: 1,
+  segmentLabel: 'Total',
+  supportsDraw: false,
+  supportsOvertime: false,
+  supportsShootout: false,
+  canUseOvertime: false,
+  canUseShootout: false,
+  officialRoles: [],
+  supportedIncidentTypes: POINT_INCIDENT_TYPES,
+  autoCreatePointIncidentType: 'POINT',
+  pointIncidentRequiresParticipant: false,
+  ...overrides,
+});
+
+const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
+  'Indoor Volleyball': setBasedRules(),
+  'Beach Volleyball': setBasedRules(),
+  'Grass Volleyball': setBasedRules(),
+  Basketball: periodRules(4, 'Quarter', {
+    supportsOvertime: true,
+    canUseOvertime: true,
+  }),
+  'Indoor Soccer': periodRules(2, 'Half', {
+    supportsDraw: true,
+    canUseOvertime: true,
+    canUseShootout: true,
+    supportedIncidentTypes: GOAL_INCIDENT_TYPES,
+    autoCreatePointIncidentType: 'GOAL',
+    pointIncidentRequiresParticipant: true,
+  }),
+  'Grass Soccer': periodRules(2, 'Half', {
+    supportsDraw: true,
+    canUseOvertime: true,
+    canUseShootout: true,
+    supportedIncidentTypes: GOAL_INCIDENT_TYPES,
+    autoCreatePointIncidentType: 'GOAL',
+    pointIncidentRequiresParticipant: true,
+  }),
+  'Beach Soccer': periodRules(2, 'Half', {
+    supportsDraw: true,
+    canUseOvertime: true,
+    canUseShootout: true,
+    supportedIncidentTypes: GOAL_INCIDENT_TYPES,
+    autoCreatePointIncidentType: 'GOAL',
+    pointIncidentRequiresParticipant: true,
+  }),
+  Tennis: setBasedRules(),
+  Pickleball: setBasedRules({ segmentLabel: 'Game' }),
+  Football: periodRules(4, 'Quarter', {
+    supportsDraw: true,
+    supportsOvertime: true,
+    canUseOvertime: true,
+  }),
+  Hockey: periodRules(3, 'Period', {
+    supportsDraw: true,
+    supportsOvertime: true,
+    supportsShootout: true,
+    canUseOvertime: true,
+    canUseShootout: true,
+    supportedIncidentTypes: GOAL_INCIDENT_TYPES,
+    autoCreatePointIncidentType: 'GOAL',
+    pointIncidentRequiresParticipant: true,
+  }),
+  Baseball: {
+    scoringModel: 'INNINGS',
+    segmentCount: 9,
+    segmentLabel: 'Inning',
+    supportsDraw: false,
+    supportsOvertime: false,
+    supportsShootout: false,
+    canUseOvertime: false,
+    canUseShootout: false,
+    officialRoles: [],
+    supportedIncidentTypes: RUN_INCIDENT_TYPES,
+    autoCreatePointIncidentType: 'RUN',
+    pointIncidentRequiresParticipant: false,
+  },
+  Other: pointsOnlyRules({
+    supportsDraw: true,
+    canUseOvertime: true,
+    canUseShootout: true,
+  }),
+};
 
 const DEFAULT_SPORTS = [
   // NOTE: These flags intentionally gate which LeagueScoringConfig fields render in the UI.
@@ -10,6 +144,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Indoor Volleyball',
     name: 'Indoor Volleyball',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Indoor Volleyball']),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerSetWin: true,
@@ -20,6 +155,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Beach Volleyball',
     name: 'Beach Volleyball',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Beach Volleyball']),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerSetWin: true,
@@ -30,6 +166,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Grass Volleyball',
     name: 'Grass Volleyball',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Grass Volleyball']),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerSetWin: true,
@@ -40,6 +177,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Basketball',
     name: 'Basketball',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Basketball),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
@@ -48,6 +186,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Indoor Soccer',
     name: 'Indoor Soccer',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Indoor Soccer']),
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
@@ -57,6 +196,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Grass Soccer',
     name: 'Grass Soccer',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Grass Soccer']),
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
@@ -66,6 +206,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Beach Soccer',
     name: 'Beach Soccer',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Beach Soccer']),
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
@@ -75,6 +216,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Tennis',
     name: 'Tennis',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Tennis),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerSetWin: true,
@@ -87,6 +229,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Pickleball',
     name: 'Pickleball',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Pickleball),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerSetWin: true,
@@ -97,6 +240,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Football',
     name: 'Football',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Football),
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
@@ -106,6 +250,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Hockey',
     name: 'Hockey',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Hockey),
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
@@ -115,6 +260,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Baseball',
     name: 'Baseball',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Baseball),
     usePointsForWin: true,
     usePointsForLoss: true,
     usePointsPerGoalScored: false,
@@ -123,6 +269,7 @@ const DEFAULT_SPORTS = [
   {
     id: 'Other',
     name: 'Other',
+    matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Other),
     usePointsForWin: true,
     usePointsForDraw: true,
     usePointsForLoss: true,
@@ -134,6 +281,29 @@ const DEFAULT_SPORTS = [
 const DEPRECATED_SPORT_TARGET_BY_NAME: Record<string, string> = {
   soccer: 'Indoor Soccer',
   volleyball: 'Indoor Volleyball',
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const mergeMissingMatchRulesTemplate = (
+  defaults: MatchRulesConfig,
+  current: unknown,
+): MatchRulesConfig | undefined => {
+  if (current == null || !isRecord(current)) {
+    return defaults;
+  }
+
+  const merged: Record<string, unknown> = { ...current };
+  let changed = false;
+  Object.entries(defaults).forEach(([key, value]) => {
+    if (merged[key] == null) {
+      merged[key] = value;
+      changed = true;
+    }
+  });
+  return changed ? merged as MatchRulesConfig : undefined;
 };
 
 const normalizeSportName = (value: unknown): string =>
@@ -177,9 +347,16 @@ export async function GET(_req: NextRequest) {
       if (!existing) return [];
 
       // Backfill only null/undefined flags to preserve DB-owned values.
-      const patch: Record<string, boolean> = {};
+      const patch: Record<string, boolean | MatchRulesConfig> = {};
       Object.entries(spec).forEach(([key, value]) => {
         if (key === 'id' || key === 'name') return;
+        if (key === 'matchRulesTemplate') {
+          const merged = mergeMissingMatchRulesTemplate(value as MatchRulesConfig, (existing as any)[key]);
+          if (merged !== undefined) {
+            patch[key] = merged;
+          }
+          return;
+        }
         if (typeof value !== 'boolean') return;
         const current = (existing as any)[key];
         if (current == null) {

@@ -1,6 +1,6 @@
 import { paymentService } from '@/lib/paymentService';
 import { apiRequest } from '@/lib/apiClient';
-import type { Event, Product, UserData } from '@/types';
+import type { Event, Product, Team, UserData } from '@/types';
 import { buildEvent } from '../../../test/factories';
 
 jest.mock('@/lib/apiClient', () => ({
@@ -10,8 +10,15 @@ jest.mock('@/lib/apiClient', () => ({
 const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
 
 describe('paymentService', () => {
+  let consoleErrorSpy: jest.SpyInstance;
+
   beforeEach(() => {
     apiRequestMock.mockReset();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
   });
 
   describe('createPaymentIntent', () => {
@@ -79,6 +86,43 @@ describe('paymentService', () => {
     });
   });
 
+  describe('createTeamRegistrationPaymentIntent', () => {
+    it('calls billing endpoint with team registration payload', async () => {
+      apiRequestMock.mockResolvedValue({
+        paymentIntent: 'pi_team',
+        publishableKey: 'pk_test',
+        feeBreakdown: {},
+      });
+
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockTeam = {
+        $id: 'team_1',
+        name: 'Open Team',
+        registrationPriceCents: 2500,
+      } as Team;
+
+      await paymentService.createTeamRegistrationPaymentIntent(
+        mockUser,
+        mockTeam,
+        { $id: 'org_1' },
+      );
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/billing/purchase-intent',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            purchaseType: 'team_registration',
+            user: expect.objectContaining({ $id: 'user_1' }),
+            team: expect.objectContaining({ $id: 'team_1' }),
+            teamRegistration: { teamId: 'team_1' },
+            organization: expect.objectContaining({ $id: 'org_1' }),
+          }),
+        }),
+      );
+    });
+  });
+
   describe('joinEvent', () => {
     it('throws when event manager reports error', async () => {
       apiRequestMock.mockResolvedValue({ error: 'not allowed' });
@@ -93,13 +137,53 @@ describe('paymentService', () => {
         expect.objectContaining({
           method: 'POST',
           body: expect.objectContaining({
-            user: expect.objectContaining({ $id: mockUser.$id }),
+            userId: mockUser.$id,
           }),
         }),
       );
       expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('event');
       expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('timeSlot');
       expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('organization');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('user');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('team');
+      expect(consoleErrorSpy).toHaveBeenCalled();
+    });
+
+    it('sends only teamId for team registrations', async () => {
+      apiRequestMock.mockResolvedValue({});
+
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockEvent = buildEvent({ $id: 'event_1' }) as Event;
+      const mockTeam = { $id: 'team_1' } as Team;
+
+      await paymentService.joinEvent(mockUser, mockEvent, mockTeam);
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        `/api/events/${mockEvent.$id}/participants`,
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            teamId: mockTeam.$id,
+          }),
+        }),
+      );
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('userId');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('user');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('team');
+    });
+
+    it('does not log duplicate-registration errors as console errors', async () => {
+      apiRequestMock.mockResolvedValue({ error: 'Team is already registered for this event.' });
+
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockEvent = buildEvent({ $id: 'event_1' }) as Event;
+      const mockTeam = { $id: 'team_1' } as Team;
+
+      await expect(paymentService.joinEvent(mockUser, mockEvent, mockTeam)).rejects.toThrow(
+        'Team is already registered for this event.',
+      );
+
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -117,7 +201,6 @@ describe('paymentService', () => {
         expect.objectContaining({
           method: 'DELETE',
           body: expect.objectContaining({
-            user: expect.objectContaining({ $id: mockUser.$id }),
             userId: mockUser.$id,
           }),
         }),
@@ -125,6 +208,8 @@ describe('paymentService', () => {
       expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('event');
       expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('timeSlot');
       expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('organization');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('user');
+      expect(apiRequestMock.mock.calls[0]?.[1]?.body).not.toHaveProperty('team');
     });
 
     it('sends explicit target user id when leaving on behalf of a linked child', async () => {
@@ -140,7 +225,6 @@ describe('paymentService', () => {
         expect.objectContaining({
           method: 'DELETE',
           body: expect.objectContaining({
-            user: expect.objectContaining({ $id: mockUser.$id }),
             userId: 'child_1',
           }),
         }),

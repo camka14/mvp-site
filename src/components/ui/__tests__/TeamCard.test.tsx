@@ -144,6 +144,31 @@ describe('TeamCard members visibility', () => {
     expect(screen.queryByAltText('Name Hidden')).not.toBeInTheDocument();
   });
 
+  it('uses jersey numbers for visible member avatars when registrations are available', () => {
+    const visiblePlayer = createPlayer('player_visible', {
+      fullName: 'Visible Player',
+      profileImageId: 'profile_file_1',
+    });
+    const team = createTeam({
+      players: [visiblePlayer],
+      playerRegistrations: [{
+        id: 'registration_1',
+        teamId: 'team_1',
+        userId: 'player_visible',
+        status: 'ACTIVE',
+        jerseyNumber: '9',
+      }],
+      currentSize: 1,
+    });
+
+    renderWithMantine(<TeamCard team={team} />);
+
+    expect(screen.getByAltText('Visible Player')).toHaveAttribute(
+      'src',
+      expect.stringContaining('name=9'),
+    );
+  });
+
   it('hides the members section when all members are hidden', () => {
     const hiddenPlayer = createPlayer('player_hidden', {
       fullName: 'Name Hidden',

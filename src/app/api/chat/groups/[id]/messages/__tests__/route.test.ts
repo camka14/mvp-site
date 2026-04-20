@@ -6,6 +6,7 @@ const chatGroupFindUniqueMock = jest.fn();
 const messagesFindManyMock = jest.fn();
 const messagesCountMock = jest.fn();
 const requireSessionMock = jest.fn();
+const ensureUserHasAcceptedChatTermsMock = jest.fn();
 const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
 
 jest.mock('@/lib/prisma', () => ({
@@ -24,6 +25,10 @@ jest.mock('@/lib/permissions', () => ({
   requireSession: (...args: any[]) => requireSessionMock(...args),
 }));
 
+jest.mock('@/server/chatAccess', () => ({
+  ensureUserHasAcceptedChatTerms: (...args: any[]) => ensureUserHasAcceptedChatTermsMock(...args),
+}));
+
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyList: (rows: any[]) => withLegacyListMock(rows),
 }));
@@ -35,6 +40,7 @@ const requestFor = (query = '') => new NextRequest(`http://localhost/api/chat/gr
 describe('/api/chat/groups/[id]/messages GET', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    ensureUserHasAcceptedChatTermsMock.mockResolvedValue(undefined);
   });
 
   it('returns indexed pagination metadata for authorized members', async () => {
@@ -52,8 +58,9 @@ describe('/api/chat/groups/[id]/messages GET', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
+    expect(ensureUserHasAcceptedChatTermsMock).toHaveBeenCalledWith('user_1');
     expect(messagesFindManyMock).toHaveBeenCalledWith({
-      where: { chatId: 'chat_1' },
+      where: { chatId: 'chat_1', removedAt: null },
       orderBy: { sentTime: 'desc' },
       skip: 20,
       take: 20,
@@ -99,7 +106,7 @@ describe('/api/chat/groups/[id]/messages GET', () => {
 
     expect(response.status).toBe(200);
     expect(messagesFindManyMock).toHaveBeenCalledWith({
-      where: { chatId: 'chat_1' },
+      where: { chatId: 'chat_1', removedAt: null },
       orderBy: { sentTime: 'asc' },
       skip: 0,
       take: 1,
@@ -113,5 +120,40 @@ describe('/api/chat/groups/[id]/messages GET', () => {
       hasMore: false,
       order: 'asc',
     });
+  });
+
+  it('lets admins inspect archived chats and removed messages', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'admin_1', isAdmin: true });
+    chatGroupFindUniqueMock.mockResolvedValue({
+      id: 'chat_1',
+      userIds: ['user_1'],
+      archivedAt: new Date('2026-04-14T00:00:00.000Z'),
+    });
+    messagesCountMock.mockResolvedValue(1);
+    messagesFindManyMock.mockResolvedValue([
+      {
+        id: 'm_removed',
+        chatId: 'chat_1',
+        body: 'removed for moderation',
+        userId: 'user_2',
+        sentTime: new Date('2026-04-14T01:00:00.000Z'),
+        removedAt: new Date('2026-04-14T02:00:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(requestFor('?limit=10&index=0&order=asc'), {
+      params: Promise.resolve({ id: 'chat_1' }),
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
+    expect(messagesFindManyMock).toHaveBeenCalledWith({
+      where: { chatId: 'chat_1' },
+      orderBy: { sentTime: 'asc' },
+      skip: 0,
+      take: 10,
+    });
+    expect(json.messages[0].$id).toBe('m_removed');
   });
 });

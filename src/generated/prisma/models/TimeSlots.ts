@@ -265,7 +265,7 @@ export type TimeSlotsGroupByOutputType = {
   _max: TimeSlotsMaxAggregateOutputType | null
 }
 
-type GetTimeSlotsGroupByPayload<T extends TimeSlotsGroupByArgs> = Prisma.PrismaPromise<
+export type GetTimeSlotsGroupByPayload<T extends TimeSlotsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<TimeSlotsGroupByOutputType, T['by']> &
       {
@@ -1345,6 +1345,11 @@ export type TimeSlotsFindManyArgs<ExtArgs extends runtime.Types.Extensions.Inter
    * Skip the first `n` TimeSlots.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of TimeSlots.
+   */
   distinct?: Prisma.TimeSlotsScalarFieldEnum | Prisma.TimeSlotsScalarFieldEnum[]
 }
 

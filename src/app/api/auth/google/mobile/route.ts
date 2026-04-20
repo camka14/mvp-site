@@ -4,6 +4,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
+import {
+  buildProfileCompletionState,
+  resolveRequiredProfileFieldsCompletedAt,
+} from '@/server/profileCompletion';
+import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const mobileGoogleSchema = z.object({
@@ -66,6 +71,8 @@ const isValidExpiry = (exp: string | undefined): boolean => {
   const nowSeconds = Math.floor(Date.now() / 1000);
   return parsed > nowSeconds;
 };
+
+const UNKNOWN_DATE_OF_BIRTH = new Date(0);
 
 const verifyGoogleIdToken = async (idToken: string): Promise<GoogleTokenInfoResponse> => {
   const audiences = allowedAudiences();
@@ -131,7 +138,17 @@ export async function POST(req: NextRequest) {
   const normalizedEmail = tokenInfo.email!.toLowerCase();
   const now = new Date();
 
-  const existingAuth = await prisma.authUser.findUnique({ where: { email: normalizedEmail } });
+  const existingAuthByGoogleSubject = await prisma.authUser.findUnique({ where: { googleSubject: tokenInfo.sub } });
+  const existingAuthByEmail = !existingAuthByGoogleSubject
+    ? await prisma.authUser.findUnique({ where: { email: normalizedEmail } })
+    : null;
+  const existingAuth = existingAuthByGoogleSubject ?? existingAuthByEmail;
+  if (isAuthUserSuspended(existingAuth)) {
+    return NextResponse.json(
+      { error: 'Account suspended', code: ACCOUNT_SUSPENDED_CODE },
+      { status: 403 },
+    );
+  }
   const existingSensitive = existingAuth
     ? null
     : await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });
@@ -146,6 +163,7 @@ export async function POST(req: NextRequest) {
       ? await tx.authUser.update({
           where: { id: existingAuth.id },
           data: {
+            googleSubject: tokenInfo.sub,
             name: existingAuth.name ?? displayName,
             emailVerifiedAt: existingAuth.emailVerifiedAt ?? now,
             lastLogin: now,
@@ -156,6 +174,7 @@ export async function POST(req: NextRequest) {
           data: {
             id: userId,
             email: normalizedEmail,
+            googleSubject: tokenInfo.sub,
             passwordHash: await hashPassword(crypto.randomBytes(48).toString('base64url')),
             name: displayName,
             emailVerifiedAt: now,
@@ -167,36 +186,64 @@ export async function POST(req: NextRequest) {
 
     const existingProfile = await tx.userData.findUnique({ where: { id: createdAuth.id } });
     const profileRow = existingProfile
-      ? await tx.userData.update({
-          where: { id: createdAuth.id },
-          data: {
+      ? await (() => {
+          const nextProfile = {
             firstName: existingProfile.firstName ?? firstName,
             lastName: existingProfile.lastName ?? lastName,
-            updatedAt: now,
-          },
-        })
-      : await tx.userData.create({
-          data: {
-            id: createdAuth.id,
-            createdAt: now,
-            updatedAt: now,
+            dateOfBirth: existingProfile.dateOfBirth,
+            requiredProfileFieldsCompletedAt: existingProfile.requiredProfileFieldsCompletedAt,
+          };
+          const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+            authUser: createdAuth,
+            profile: nextProfile,
+            now,
+          });
+          return tx.userData.update({
+            where: { id: createdAuth.id },
+            data: {
+              firstName: nextProfile.firstName,
+              lastName: nextProfile.lastName,
+              requiredProfileFieldsCompletedAt,
+              updatedAt: now,
+            },
+          });
+        })()
+      : await (async () => {
+          const nextProfile = {
             firstName,
             lastName,
-            userName: await reserveGeneratedUserName(
-              tx,
-              normalizedEmail.split('@')[0] ?? 'user',
-              { excludeUserId: createdAuth.id, suffixSeed: createdAuth.id },
-            ),
-            dateOfBirth: new Date('2000-01-01'),
-            teamIds: [],
-            friendIds: [],
-            friendRequestIds: [],
-            friendRequestSentIds: [],
-            followingIds: [],
-            uploadedImages: [],
-            profileImageId: null,
-          },
-        });
+            dateOfBirth: UNKNOWN_DATE_OF_BIRTH,
+            requiredProfileFieldsCompletedAt: null,
+          };
+          const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+            authUser: createdAuth,
+            profile: nextProfile,
+            now,
+          });
+          return tx.userData.create({
+            data: {
+              id: createdAuth.id,
+              createdAt: now,
+              updatedAt: now,
+              firstName: nextProfile.firstName,
+              lastName: nextProfile.lastName,
+              userName: await reserveGeneratedUserName(
+                tx,
+                normalizedEmail.split('@')[0] ?? 'user',
+                { excludeUserId: createdAuth.id, suffixSeed: createdAuth.id },
+              ),
+              dateOfBirth: nextProfile.dateOfBirth,
+              requiredProfileFieldsCompletedAt,
+              teamIds: [],
+              friendIds: [],
+              friendRequestIds: [],
+              friendRequestSentIds: [],
+              followingIds: [],
+              uploadedImages: [],
+              profileImageId: null,
+            },
+          });
+        })();
 
     await tx.sensitiveUserData.upsert({
       where: { id: existingSensitive?.id ?? createdAuth.id },
@@ -217,7 +264,11 @@ export async function POST(req: NextRequest) {
     return [createdAuth, profileRow] as const;
   });
 
-  const session: SessionToken = { userId: authUser.id, isAdmin: false };
+  const session: SessionToken = {
+    userId: authUser.id,
+    isAdmin: false,
+    sessionVersion: authUser.sessionVersion ?? 0,
+  };
   const token = signSessionToken(session);
   const res = NextResponse.json(
     {
@@ -225,6 +276,7 @@ export async function POST(req: NextRequest) {
       session,
       token,
       profile: applyNameCaseToUserFields(profile),
+      ...buildProfileCompletionState({ authUser, profile }),
     },
     { status: 200 },
   );

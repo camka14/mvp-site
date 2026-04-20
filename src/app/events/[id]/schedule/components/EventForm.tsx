@@ -7,7 +7,7 @@ import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -38,6 +38,7 @@ import { resolveTournamentSetMode } from './tournamentSetMode';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
 import { hasExternalRentalFieldForEvent } from './externalRentalField';
+import MatchRulesSection from './MatchRulesSection';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import UserCard from '@/components/ui/UserCard';
@@ -56,6 +57,7 @@ import {
     getRequiredSignerTypeLabel,
     normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
+import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
@@ -82,6 +84,7 @@ interface EventFormProps {
 export type EventFormHandle = {
     getDraft: () => Partial<Event>;
     validate: () => Promise<boolean>;
+    getValidationErrors: () => Array<{ path: string; message: string }>;
     validatePendingStaffAssignments: () => Promise<void>;
     commitDirtyBaseline: () => void;
     submitPendingStaffInvites: (eventId: string) => Promise<void>;
@@ -164,6 +167,14 @@ type DefaultLocation = {
 const SHEET_POPOVER_Z_INDEX = 1800;
 const sharedComboboxProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
 const sharedPopoverProps = { withinPortal: true, zIndex: SHEET_POPOVER_Z_INDEX };
+const alignedDetailsFieldStyles = {
+    label: {
+        minHeight: '3rem',
+        display: 'flex',
+        alignItems: 'flex-end',
+        lineHeight: 1.25,
+    },
+} as const;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STANDARD_NUMBER = 99_999;
 const MAX_PRICE_NUMBER = 9_999_999;
@@ -173,6 +184,7 @@ const SECTION_ANIMATION_DURATION_MS = 220;
 const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
     'section-basic-information': false,
     'section-event-details': true,
+    'section-match-rules': true,
     'section-officials': true,
     'section-division-settings': true,
     'section-league-scoring-config': true,
@@ -1258,6 +1270,30 @@ const flattenFormErrors = (value: unknown, path: string[] = []): FlattenedFormEr
     return flattened;
 };
 
+const dedupeValidationErrors = (issues: FlattenedFormError[]): FlattenedFormError[] => {
+    const seen = new Set<string>();
+    return issues.filter((issue) => {
+        const path = issue.path.trim();
+        const message = issue.message.trim();
+        if (!message) {
+            return false;
+        }
+        const key = `${path}::${message}`;
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
+};
+
+const flattenZodIssues = (issues: z.ZodIssue[]): FlattenedFormError[] => issues
+    .map((issue) => ({
+        path: issue.path.length ? issue.path.join('.') : 'form',
+        message: issue.message,
+    }))
+    .filter((issue) => issue.message.trim().length > 0);
+
 const parseEventRange = (event: Event): { start: Date; end: Date } | null => {
     const start = parseLocalDateTime(event.start ?? null);
     const end = parseLocalDateTime(event.end ?? null);
@@ -1341,6 +1377,21 @@ const parseExplicitSlotRange = (
         return null;
     }
     return { start, end };
+};
+
+const normalizeSlotBoundaryOverrideForForm = (
+    slotValue: string | Date | null | undefined,
+    eventBoundary: string | Date | null | undefined,
+): string | undefined => {
+    const normalizedSlotValue = formatLocalDateTime(slotValue ?? null);
+    if (!normalizedSlotValue) {
+        return undefined;
+    }
+
+    const normalizedEventBoundary = formatLocalDateTime(eventBoundary ?? null);
+    return normalizedEventBoundary && normalizedSlotValue === normalizedEventBoundary
+        ? undefined
+        : normalizedSlotValue;
 };
 
 const repeatingSlotsOverlap = (
@@ -2075,6 +2126,8 @@ type EventFormState = {
     assistantHostIds: string[];
     doTeamsOfficiate: boolean;
     teamOfficialsMaySwap: boolean;
+    matchRulesOverride: MatchRulesConfig | null;
+    autoCreatePointMatchIncidents: boolean;
     leagueScoringConfig: LeagueScoringConfig;
 };
 
@@ -2365,12 +2418,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         if (typeof event.noFixedEndDateTime === 'boolean') {
             return event.noFixedEndDateTime;
         }
-        const parsedStart = parseLocalDateTime(event.start);
-        const parsedEnd = parseLocalDateTime(event.end);
-        if (parsedStart && parsedEnd) {
-            return parsedStart.getTime() === parsedEnd.getTime();
-        }
-        return isSchedulableType;
+        return false;
     })();
 
     const resolvedSportId = (() => {
@@ -2687,6 +2735,11 @@ const mapEventToFormState = (event: Event): EventFormState => {
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsOfficiate: Boolean(event.doTeamsOfficiate),
     teamOfficialsMaySwap: Boolean(event.doTeamsOfficiate) && Boolean((event as any).teamOfficialsMaySwap),
+    matchRulesOverride: (event as any).matchRulesOverride && typeof (event as any).matchRulesOverride === 'object'
+        && !Array.isArray((event as any).matchRulesOverride)
+        ? { ...((event as any).matchRulesOverride as MatchRulesConfig) }
+        : null,
+    autoCreatePointMatchIncidents: Boolean((event as any).autoCreatePointMatchIncidents),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
             ? (event.leagueScoringConfig as Partial<LeagueScoringConfig>)
@@ -2734,6 +2787,21 @@ const leagueConfigSchema = z.object({
     setsPerMatch: z.number().optional(),
     pointsToVictory: z.array(z.number()).optional(),
 });
+
+const matchRulesConfigSchema = z.object({
+    scoringModel: z.enum(['SETS', 'PERIODS', 'INNINGS', 'POINTS_ONLY']).optional(),
+    segmentCount: z.number().int().min(1).max(20).optional(),
+    segmentLabel: z.string().trim().optional(),
+    supportsDraw: z.boolean().optional(),
+    supportsOvertime: z.boolean().optional(),
+    supportsShootout: z.boolean().optional(),
+    canUseOvertime: z.boolean().optional(),
+    canUseShootout: z.boolean().optional(),
+    officialRoles: z.array(z.string()).optional(),
+    supportedIncidentTypes: z.array(z.string()).optional(),
+    autoCreatePointIncidentType: z.string().trim().optional(),
+    pointIncidentRequiresParticipant: z.boolean().optional(),
+}).nullable().optional();
 
 const tournamentConfigSchema = z.object({
     doubleElimination: z.boolean(),
@@ -2867,6 +2935,8 @@ const eventFormSchema = z
         assistantHostIds: z.array(z.string()).default([]),
         doTeamsOfficiate: z.boolean(),
         teamOfficialsMaySwap: z.boolean().default(false),
+        matchRulesOverride: matchRulesConfigSchema.default(null),
+        autoCreatePointMatchIncidents: z.boolean().default(false),
         leagueScoringConfig: z.any(),
         leagueSlots: z.array(leagueSlotSchema),
         leagueData: z.object({
@@ -2925,7 +2995,7 @@ const eventFormSchema = z
             if (!parsedStart || !parsedEnd || parsedEnd.getTime() <= parsedStart.getTime()) {
                 ctx.addIssue({
                     code: "custom",
-                    message: 'End date/time must be after start date/time when no fixed end date/time is disabled.',
+                    message: 'End date/time must be after start date/time when no fixed end datetime scheduling is disabled.',
                     path: ['end'],
                 });
             }
@@ -3241,12 +3311,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const dirtyBaselineValuesRef = useRef<EventFormValues | null>(null);
     const pendingInitialDirtyRebaseRef = useRef(false);
     const pendingInitialDirtyRebaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const lastValidationErrorsRef = useRef<FlattenedFormError[]>([]);
     const buildDraftForDirtyTrackingRef = useRef<(values: EventFormValues) => Partial<Event>>(
         () => ({}),
     );
     const slotConflictRequestRef = useRef(0);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
-    const createSlotForm = useCallback((slot?: Partial<TimeSlot>, fallbackDivisions: string[] = []): LeagueSlotForm => {
+    const createSlotForm = useCallback((
+        slot?: Partial<TimeSlot>,
+        fallbackDivisions: string[] = [],
+        fallbackEventStart?: string | Date | null,
+        fallbackEventEnd?: string | Date | null,
+    ): LeagueSlotForm => {
         const normalizedDays = normalizeWeekdays({
             dayOfWeek: typeof slot?.dayOfWeek === 'number' ? slot.dayOfWeek : undefined,
             daysOfWeek: Array.isArray(slot?.daysOfWeek) ? slot.daysOfWeek : undefined,
@@ -3256,8 +3332,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             scheduledFieldId: slot?.scheduledFieldId,
             scheduledFieldIds: slot?.scheduledFieldIds,
         });
-        const normalizedStartDate = formatLocalDateTime(slot?.startDate ?? null);
-        const normalizedEndDate = formatLocalDateTime(slot?.endDate ?? null);
+        const isRepeating = slot?.repeating ?? true;
+        const normalizedStartDate = isRepeating
+            ? normalizeSlotBoundaryOverrideForForm(slot?.startDate ?? null, fallbackEventStart ?? null)
+            : formatLocalDateTime(slot?.startDate ?? null) || undefined;
+        const normalizedEndDate = isRepeating
+            ? normalizeSlotBoundaryOverrideForForm(slot?.endDate ?? null, fallbackEventEnd ?? null)
+            : formatLocalDateTime(slot?.endDate ?? null) || undefined;
         return {
             key: slot?.$id ?? createClientId(),
             $id: slot?.$id,
@@ -3266,11 +3347,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             dayOfWeek: normalizedDays[0],
             daysOfWeek: normalizedDays,
             divisions: normalizedDivisions.length ? normalizedDivisions : fallbackDivisions,
-            startDate: normalizedStartDate || undefined,
-            endDate: normalizedEndDate || undefined,
+            startDate: normalizedStartDate,
+            endDate: normalizedEndDate,
             startTimeMinutes: slot?.startTimeMinutes,
             endTimeMinutes: slot?.endTimeMinutes,
-            repeating: slot?.repeating ?? true,
+            repeating: isRepeating,
             conflicts: [],
             checking: false,
             error: undefined,
@@ -3283,9 +3364,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const resolvedOrganizationId = (resolvedOrganization?.$id ?? '').trim();
     const resolvedOrganizationFields = resolvedOrganization?.fields;
     // Organization events must use org billing; personal events use the current user billing account.
-    const hasStripeAccount = Boolean(
-        resolvedOrganization ? resolvedOrganization.hasStripeAccount : currentUser?.hasStripeAccount,
-    );
+    const hasStripeAccount = resolvedOrganization
+        ? canOrganizationUsePaidBilling(resolvedOrganization)
+        : Boolean(currentUser?.hasStripeAccount);
     const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [templatesError, setTemplatesError] = useState<string | null>(null);
@@ -3410,6 +3491,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         if (typeof (defaults as any).teamOfficialsMaySwap === 'boolean') {
             next.teamOfficialsMaySwap = next.doTeamsOfficiate ? Boolean((defaults as any).teamOfficialsMaySwap) : false;
+        }
+        if ((defaults as any).matchRulesOverride && typeof (defaults as any).matchRulesOverride === 'object') {
+            next.matchRulesOverride = { ...((defaults as any).matchRulesOverride as MatchRulesConfig) };
+        } else if ((defaults as any).matchRulesOverride === null) {
+            next.matchRulesOverride = null;
+        }
+        if (typeof (defaults as any).autoCreatePointMatchIncidents === 'boolean') {
+            next.autoCreatePointMatchIncidents = Boolean((defaults as any).autoCreatePointMatchIncidents);
         }
         if ((defaults as any).officialSchedulingMode !== undefined) {
             next.officialSchedulingMode = normalizeOfficialSchedulingMode((defaults as any).officialSchedulingMode);
@@ -3714,7 +3803,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultSlots = (() => {
             if (Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
                 return mergeSlotPayloadsForForm(defaults.timeSlots as TimeSlot[], defaultFieldId)
-                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
+                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end));
             }
 
             if (
@@ -3723,7 +3812,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 && activeEditingEvent.timeSlots?.length
             ) {
                 return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
-                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys));
+                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end));
             }
             return [createSlotForm(undefined, defaultSlotDivisionKeys)];
         })();
@@ -3905,6 +3994,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const selectedFieldIds = useMemo(
         () => (Array.isArray(formValues.selectedFieldIds) ? formValues.selectedFieldIds : []),
         [formValues.selectedFieldIds],
+    );
+    const resolvedOrganizationFieldSignature = useMemo(
+        () => (
+            Array.isArray(resolvedOrganization?.fields)
+                ? resolvedOrganization.fields
+                    .map((field) => {
+                        const fieldId = normalizeEntityId((field as Field | undefined)?.$id) ?? '';
+                        const fieldNumber = Number((field as Field | undefined)?.fieldNumber ?? '');
+                        const fieldName = String((field as Field | undefined)?.name ?? '').trim();
+                        return `${fieldId}:${Number.isFinite(fieldNumber) ? fieldNumber : ''}:${fieldName}`;
+                    })
+                    .sort()
+                    .join('|')
+                : ''
+        ),
+        [resolvedOrganization?.fields],
     );
     const divisionFieldIds = useMemo(
         () => (
@@ -7204,7 +7309,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             const fallbackFieldId = activeEditingEvent.fields?.[0]?.$id;
             const slots = mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [], fallbackFieldId)
-                .map((slot) => createSlotForm(slot, slotDivisionKeysRef.current));
+                .map((slot) => createSlotForm(
+                    slot,
+                    slotDivisionKeysRef.current,
+                    activeEditingEvent.start,
+                    activeEditingEvent.end,
+                ));
 
             const initialSlots = slots.length > 0
                 ? slots
@@ -7232,10 +7342,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         const fallbackFieldId = immutableFields[0]?.$id;
         const slotForms = mergeSlotPayloadsForForm(immutableTimeSlots, fallbackFieldId)
-            .map((slot) => createSlotForm(slot, slotDivisionKeysRef.current));
+            .map((slot) => createSlotForm(
+                slot,
+                slotDivisionKeysRef.current,
+                eventData.start,
+                eventData.end,
+            ));
         const normalizedSlots = normalizeSlotState(slotForms, eventData.eventType);
         setLeagueSlots((prev) => (leagueSlotsEqual(prev, normalizedSlots) ? prev : normalizedSlots), { shouldDirty: false });
-    }, [hasImmutableTimeSlots, immutableTimeSlots, immutableFields, createSlotForm, eventData.eventType, setLeagueSlots]);
+    }, [
+        hasImmutableTimeSlots,
+        immutableTimeSlots,
+        immutableFields,
+        createSlotForm,
+        eventData.eventType,
+        eventData.start,
+        eventData.end,
+        setLeagueSlots,
+    ]);
 
     // Pull the organization's full field list so timeslot field options are complete in edit/create mode.
     useEffect(() => {
@@ -7315,7 +7439,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             cancelled = true;
         };
     }, [
-        resolvedOrganization?.fields,
+        resolvedOrganizationFieldSignature,
         hasImmutableFields,
         isEditMode,
         organizationHostedEventId,
@@ -7498,7 +7622,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ...(isRentalCreateFlow ? [] : [{ value: 'WEEKLY_EVENT', label: 'Weekly Event' }]),
         ],
         [isRentalCreateFlow],
-    );    const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    );
+    const supportsNoFixedEndDateTime = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     useEffect(() => {
         if (!isRentalCreateFlow) {
             return;
@@ -7517,11 +7642,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!eventData.noFixedEndDateTime) {
             setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
         }
-        const currentEnd = getValues('end');
-        if (typeof currentEnd === 'string' && currentEnd.trim().length > 0) {
-            setValue('end', '', { shouldDirty: true, shouldValidate: true });
-        }
-    }, [eventData.eventType, eventData.parentEvent, getValues, hasExternalRentalField, isEditMode, setValue, supportsNoFixedEndDateTime]);
+    }, [eventData.eventType, eventData.parentEvent, hasExternalRentalField, isEditMode, setValue, supportsNoFixedEndDateTime]);
 
     useEffect(() => {
         if ((eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT') &&
@@ -7930,12 +8051,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const normalizedOfficials = normalizedOfficialIds
             .map((id) => officialPoolById.get(id))
             .filter((official): official is UserData => Boolean(official));
-        const shouldClearEndDateTime = supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
-            && Boolean(source.noFixedEndDateTime);
         const normalizedEnd = (() => {
-            if (shouldClearEndDateTime) {
-                return null;
-            }
             if (typeof source.end === 'string') {
                 const trimmed = source.end.trim();
                 return trimmed.length > 0 ? trimmed : null;
@@ -8037,6 +8153,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             assistantHostIds: normalizedAssistantHostIds,
             doTeamsOfficiate: source.doTeamsOfficiate,
             teamOfficialsMaySwap: source.doTeamsOfficiate ? Boolean(source.teamOfficialsMaySwap) : false,
+            matchRulesOverride: source.matchRulesOverride ?? null,
+            autoCreatePointMatchIncidents: Boolean(source.autoCreatePointMatchIncidents),
             coordinates: baseCoordinates,
         };
 
@@ -8283,7 +8401,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             serialized.endDate = formatLocalDateTime(explicitEnd);
                         }
                     } else {
-                        const slotStartDateOverride = formatLocalDateTime(slot.startDate ?? null);
+                        const slotStartDateOverride = normalizeSlotBoundaryOverrideForForm(
+                            slot.startDate ?? null,
+                            activeEditingEvent?.start ?? null,
+                        );
                         if (slotStartDateOverride) {
                             serialized.startDate = slotStartDateOverride;
                         } else if (source.start) {
@@ -8321,6 +8442,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [
         activeEditingEvent?.state,
         activeEditingEvent?.$id,
+        activeEditingEvent?.start,
         eventData,
         fields,
         fieldsReferencedInSlots,
@@ -8407,7 +8529,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const validateDraft = useCallback(async () => {
         const isFormValid = await trigger();
         if (!isFormValid) {
-            const flattenedErrors = flattenFormErrors(errors);
+            const currentValues = getValues();
+            const schemaResult = eventFormSchema.safeParse(currentValues);
+            const flattenedErrors = dedupeValidationErrors([
+                ...(schemaResult.success ? [] : flattenZodIssues(schemaResult.error.issues)),
+                ...flattenFormErrors(errors),
+            ]);
+            lastValidationErrorsRef.current = flattenedErrors;
             console.warn('Event form validation failed.', {
                 errorCount: flattenedErrors.length,
                 errors: flattenedErrors,
@@ -8416,6 +8544,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         if (officialStaffingCoverageError) {
+            lastValidationErrorsRef.current = [
+                {
+                    path: 'officialSchedulingMode',
+                    message: officialStaffingCoverageError,
+                },
+            ];
             console.warn('Event form submission blocked by official staffing requirements.', {
                 requiredOfficialSlotsPerMatch,
                 assignedActiveOfficialsForStaffing,
@@ -8425,10 +8559,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
+            lastValidationErrorsRef.current = [];
             return true;
         }
 
         if (hasPendingExternalConflictChecks || hasBlockingExternalSlotConflicts) {
+            lastValidationErrorsRef.current = [
+                {
+                    path: 'leagueSlots',
+                    message: hasPendingExternalConflictChecks
+                        ? 'Checking field conflicts for timeslots. Please wait.'
+                        : 'Resolve field scheduling conflicts in the timeslots before submitting.',
+                },
+            ];
             console.warn('Event form submission blocked by timeslot conflicts.', {
                 hasPendingExternalConflictChecks,
                 hasBlockingExternalSlotConflicts,
@@ -8436,6 +8579,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return false;
         }
 
+        lastValidationErrorsRef.current = [];
         return true;
     }, [
         assignedActiveOfficialsForStaffing,
@@ -8443,6 +8587,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.officialSchedulingMode,
         eventData.parentEvent,
         errors,
+        getValues,
         hasBlockingExternalSlotConflicts,
         hasPendingExternalConflictChecks,
         officialStaffingCoverageError,
@@ -8462,6 +8607,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => ({
             getDraft: getDraftSnapshot,
             validate: validateDraft,
+            getValidationErrors: () => lastValidationErrorsRef.current,
             validatePendingStaffAssignments,
             commitDirtyBaseline,
             submitPendingStaffInvites,
@@ -8482,12 +8628,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const splitLeaguePlayoffDivisionsLocked = isImmutableField('splitLeaguePlayoffDivisions') && !hasExternalRentalField;
     const isSchedulableEventType = supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     const isWeeklyChildEvent = eventData.eventType === 'WEEKLY_EVENT' && hasParentEventRef(eventData.parentEvent);
+    const supportsEditableTeamSignup = eventData.eventType === 'EVENT' || eventData.eventType === 'WEEKLY_EVENT';
+    const showsFixedTeamEventToggle = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
     const showScheduleConfig = isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent;
+    const showOrganizationFieldsInEventDetails = isOrganizationManagedEvent && eventData.eventType === 'EVENT';
     const sectionNavItems = useMemo(
         () => [
             { id: 'section-basic-information', label: 'Basic Information', visible: true },
             { id: 'section-event-details', label: 'Event Details', visible: true },
+            { id: 'section-match-rules', label: 'Match Rules', visible: true },
             { id: 'section-officials', label: 'Officials', visible: true },
             { id: 'section-division-settings', label: 'Division Settings', visible: true },
             { id: 'section-league-scoring-config', label: 'League Scoring Config', visible: eventData.eventType === 'LEAGUE' },
@@ -8749,6 +8899,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         next ? (sportsById.get(next) ?? null) : null,
                                                         { shouldDirty: false, shouldValidate: false },
                                                     );
+                                                    setValue('matchRulesOverride', null, { shouldDirty: true, shouldValidate: false });
                                                     field.onChange(next);
                                                 }}
                                                 searchable
@@ -8819,98 +8970,137 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </div>
                             <Collapse in={!collapsedSections['section-event-details']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
 
-                            <div id="section-event-details-content" className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-end">
-                                <div className="md:col-span-3">
+                            <div id="section-event-details-content" className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 mb-4 md:items-start">
+                                <div className="md:col-span-2">
                                     <Controller
                                         name="eventType"
                                         control={control}
                                         rules={{ required: true }}
                                         render={({ field }) => (
-                                            <MantineSelect
-                                                label="Event Type"
-                                                data={eventTypeOptions}
-                                                value={field.value}
-                                                comboboxProps={sharedComboboxProps}
-                                                disabled={isImmutableField('eventType')}
-                                                onChange={(value) => {
-                                                    if (isImmutableField('eventType')) return;
-                                                    if (!value) return;
-                                                    clearErrors('leagueSlots');
-                                                    const nextType = value as EventType;
-                                                    const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
-                                                    field.onChange(nextType);
-                                                    if (enforcingTeamSettings) {
-                                                        setValue('teamSignup', true, { shouldDirty: true });
-                                                        setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
-                                                        setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
-                                                    } else {
-                                                        setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
-                                                        const parsedStart = parseLocalDateTime(getValues('start'));
-                                                        const parsedEnd = parseLocalDateTime(getValues('end'));
-                                                        if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                                            const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                                            setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                            <div className="space-y-2">
+                                                <MantineSelect
+                                                    label="Event Type"
+                                                    data={eventTypeOptions}
+                                                    value={field.value}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    disabled={isImmutableField('eventType')}
+                                                    onChange={(value) => {
+                                                        if (isImmutableField('eventType')) return;
+                                                        if (!value) return;
+                                                        clearErrors('leagueSlots');
+                                                        const nextType = value as EventType;
+                                                        const enforcingTeamSettings = nextType === 'LEAGUE' || nextType === 'TOURNAMENT';
+                                                        field.onChange(nextType);
+                                                        if (enforcingTeamSettings) {
+                                                            setValue('teamSignup', true, { shouldDirty: true });
+                                                            setValue('singleDivision', true, { shouldDirty: true, shouldValidate: true });
+                                                            setValue('noFixedEndDateTime', true, { shouldDirty: true, shouldValidate: true });
+                                                        } else {
+                                                            setValue('noFixedEndDateTime', false, { shouldDirty: true, shouldValidate: true });
+                                                            const parsedStart = parseLocalDateTime(getValues('start'));
+                                                            const parsedEnd = parseLocalDateTime(getValues('end'));
+                                                            if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                                                const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                                                setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                                            }
                                                         }
-                                                    }
-                                                }}
-                                                maw={320}
-                                            />
+                                                    }}
+                                                    w="100%"
+                                                />
+                                                <AnimatedSection in={eventData.eventType === 'LEAGUE'}>
+                                                    <Checkbox
+                                                        size="xs"
+                                                        label="Include playoffs"
+                                                        checked={Boolean(leagueData.includePlayoffs)}
+                                                        disabled={isImmutableField('includePlayoffs')}
+                                                        onChange={(event) => {
+                                                            if (isImmutableField('includePlayoffs')) return;
+                                                            handleIncludePlayoffsToggle(event.currentTarget.checked);
+                                                        }}
+                                                    />
+                                                </AnimatedSection>
+                                            </div>
                                         )}
                                     />
-                                    <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs} className="mt-3">
-                                        <NumberInput
-                                            label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
-                                            min={2}
-                                            max={MAX_STANDARD_NUMBER}
-                                            maw={220}
-                                            value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-                                            disabled={isImmutableField('playoffTeamCount')}
-                                            clampBehavior="strict"
-                                            onChange={(value) => {
-                                                if (isImmutableField('playoffTeamCount')) return;
-                                                const numeric = typeof value === 'number' ? value : Number(value);
-                                                setLeagueData((prev) => ({
-                                                    ...prev,
-                                                    playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
-                                                }));
-                                            }}
-                                            error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
-                                        />
-                                        <AnimatedSection in={!eventData.singleDivision}>
-                                            <Text size="xs" c="dimmed" mt="xs">
-                                                Existing divisions keep their own playoff counts. This value is used as the default for new divisions.
-                                            </Text>
-                                        </AnimatedSection>
-                                    </AnimatedSection>
                                 </div>
-                                <div className="md:col-span-3">
+                                <div className="md:col-span-2">
                                     <Controller
                                         name="maxParticipants"
                                         control={control}
                                         render={({ field, fieldState }) => (
-                                            <NumberInput
-                                                label={eventData.singleDivision
-                                                    ? (eventData.teamSignup ? 'Max Teams' : 'Max Participants')
-                                                    : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
-                                                min={2}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value ?? ''}
-                                                maw={220}
-                                                clampBehavior="blur"
-                                                disabled={isImmutableField('maxParticipants')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('maxParticipants')) return;
-                                                    const numeric = typeof val === 'number' && Number.isFinite(val)
-                                                        ? Math.trunc(val)
-                                                        : null;
-                                                    field.onChange(numeric);
-                                                }}
-                                                error={fieldState.error?.message as string | undefined}
-                                            />
+                                            <div className="space-y-2">
+                                                <NumberInput
+                                                    label={eventData.singleDivision
+                                                        ? (eventData.teamSignup ? 'Max Teams' : 'Max Participants')
+                                                        : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
+                                                    min={2}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={field.value ?? ''}
+                                                    w="100%"
+                                                    clampBehavior="blur"
+                                                    disabled={isImmutableField('maxParticipants')}
+                                                    onChange={(val) => {
+                                                        if (isImmutableField('maxParticipants')) return;
+                                                        const numeric = typeof val === 'number' && Number.isFinite(val)
+                                                            ? Math.trunc(val)
+                                                            : null;
+                                                        field.onChange(numeric);
+                                                    }}
+                                                    error={fieldState.error?.message as string | undefined}
+                                                />
+                                                <AnimatedSection in={supportsEditableTeamSignup}>
+                                                    <Controller
+                                                        name="teamSignup"
+                                                        control={control}
+                                                        render={({ field: teamSignupField }) => (
+                                                            <Checkbox
+                                                                data-testid="team-signup-switch"
+                                                                size="xs"
+                                                                label="Use teams"
+                                                                aria-label="Use teams"
+                                                                checked={Boolean(teamSignupField.value)}
+                                                                disabled={isImmutableField('teamSignup')}
+                                                                onChange={(event) => {
+                                                                    if (isImmutableField('teamSignup')) return;
+                                                                    teamSignupField.onChange(event.currentTarget.checked);
+                                                                }}
+                                                            />
+                                                        )}
+                                                    />
+                                                </AnimatedSection>
+                                            </div>
                                         )}
                                     />
                                 </div>
-                                <div className="md:col-span-3">
+                                <AnimatedSection
+                                    in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs}
+                                    collapseClassName="md:col-span-2"
+                                >
+                                    <NumberInput
+                                        label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
+                                        min={2}
+                                        max={MAX_STANDARD_NUMBER}
+                                        w="100%"
+                                        value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                                        disabled={isImmutableField('playoffTeamCount')}
+                                        clampBehavior="strict"
+                                        onChange={(value) => {
+                                            if (isImmutableField('playoffTeamCount')) return;
+                                            const numeric = typeof value === 'number' ? value : Number(value);
+                                            setLeagueData((prev) => ({
+                                                ...prev,
+                                                playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
+                                            }));
+                                        }}
+                                        error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
+                                    />
+                                    <AnimatedSection in={!eventData.singleDivision}>
+                                        <Text size="xs" c="dimmed" mt="xs">
+                                            Used as the default for new divisions.
+                                        </Text>
+                                    </AnimatedSection>
+                                </AnimatedSection>
+                                <div className="md:col-span-2">
                                     <Controller
                                         name="teamSizeLimit"
                                         control={control}
@@ -8920,7 +9110,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 min={1}
                                                 max={MAX_STANDARD_NUMBER}
                                                 value={field.value ?? ''}
-                                                maw={220}
+                                                w="100%"
                                                 clampBehavior="blur"
                                                 disabled={isImmutableField('teamSizeLimit')}
                                                 onChange={(val) => {
@@ -8935,53 +9125,97 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         )}
                                     />
                                 </div>
-                                <AnimatedSection in={eventData.eventType === 'EVENT'} className="md:col-span-3 flex items-end">
+                                <div className="md:col-span-2">
                                     <Controller
-                                        name="teamSignup"
+                                        name="start"
                                         control={control}
                                         render={({ field }) => (
-                                            <Switch
-                                                label="Team Sign Up"
-                                                description="Teams compete rather than individuals."
-                                                checked={field.value}
-                                                disabled={isImmutableField('teamSignup')}
-                                                onChange={(e) => {
-                                                    if (isImmutableField('teamSignup')) return;
-                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
+                                            <DateTimePicker
+                                                label="Start Date & Time"
+                                                valueFormat="MM/DD/YYYY hh:mm A"
+                                                value={parseLocalDateTime(field.value)}
+                                                disabled={isImmutableField('start') || hasExternalRentalField}
+                                                onChange={(val) => {
+                                                    if (isImmutableField('start')) return;
+                                                    const parsed = parseLocalDateTime(val as Date | string | null);
+                                                    if (!parsed) return;
+                                                    setValue('start', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
                                                 }}
+                                                minDate={todaysDate}
+                                                timePickerProps={{
+                                                    withDropdown: true,
+                                                    format: '12h',
+                                                }}
+                                                popoverProps={sharedPopoverProps}
+                                                style={{ width: '100%' }}
                                             />
                                         )}
                                     />
-                                </AnimatedSection>
-                                <AnimatedSection in={hasUnsetTeamCapacityLimits} className="md:col-span-12">
-                                    <Alert color="yellow" variant="light" radius="md">
-                                        <Text size="sm" fw={600}>Capacity limits are required before save</Text>
-                                        <Text size="sm">
-                                            Set {eventData.teamSignup ? 'Max Teams' : 'Max Participants'} and Team Size Limit.
-                                            Blank values are kept as null and shown as validation errors.
-                                        </Text>
-                                    </Alert>
-                                </AnimatedSection>
-                                <div className="md:col-span-3">
-                                    <AnimatedSection in={eventData.eventType === 'LEAGUE'} className="rounded-lg border border-gray-200 bg-white p-3 transition-all duration-200">
-                                        <Group justify="space-between" align="center" wrap="nowrap" gap="sm">
-                                            <div>
-                                                <Text fw={600} size="sm">Include Playoffs</Text>
-                                                <Text size="xs" c="dimmed">
-                                                    Enable a playoff bracket for league standings.
-                                                </Text>
-                                            </div>
-                                            <Switch
-                                                checked={leagueData.includePlayoffs}
-                                                disabled={isImmutableField('includePlayoffs')}
-                                                onChange={(event) => {
-                                                    if (isImmutableField('includePlayoffs')) return;
-                                                    handleIncludePlayoffsToggle(event.currentTarget.checked);
-                                                }}
-                                            />
-                                        </Group>
-                                    </AnimatedSection>
                                 </div>
+                                <AnimatedSection
+                                    in={eventData.eventType === 'EVENT' || supportsNoFixedEndDateTime}
+                                    collapseClassName="md:col-span-2"
+                                >
+                                    <Controller
+                                        name="end"
+                                        control={control}
+                                        render={({ field, fieldState }) => (
+                                            <div className="space-y-2">
+                                                    <DateTimePicker
+                                                    label="End Date & Time"
+                                                    valueFormat="MM/DD/YYYY hh:mm A"
+                                                    value={parseLocalDateTime(field.value)}
+                                                    disabled={
+                                                        isImmutableField('end')
+                                                        || hasExternalRentalField
+                                                        || (supportsNoFixedEndDateTime && eventData.noFixedEndDateTime)
+                                                    }
+                                                    onChange={(val) => {
+                                                        if (isImmutableField('end')) return;
+                                                        const parsed = parseLocalDateTime(val as Date | string | null);
+                                                        if (!parsed) return;
+                                                        setValue('end', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
+                                                    }}
+                                                    minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
+                                                    timePickerProps={{
+                                                        withDropdown: true,
+                                                        format: '12h',
+                                                    }}
+                                                    popoverProps={sharedPopoverProps}
+                                                    style={{ width: '100%' }}
+                                                    error={fieldState.error?.message as string | undefined}
+                                                />
+                                                {supportsNoFixedEndDateTime ? (
+                                                    <div className="space-y-1">
+                                                        <Checkbox
+                                                            size="xs"
+                                                            label="No fixed end datetime scheduling"
+                                                            checked={Boolean(eventData.noFixedEndDateTime)}
+                                                            disabled={isImmutableField('noFixedEndDateTime') || hasExternalRentalField}
+                                                            onChange={(event) => {
+                                                                if (isImmutableField('noFixedEndDateTime')) return;
+                                                                const checked = event.currentTarget.checked;
+                                                                setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
+                                                                if (checked) return;
+                                                                const parsedStart = parseLocalDateTime(getValues('start'));
+                                                                const parsedEnd = parseLocalDateTime(getValues('end'));
+                                                                if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
+                                                                    const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
+                                                                    setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
+                                                                }
+                                                            }}
+                                                        />
+                                                        {eventData.noFixedEndDateTime ? (
+                                                            <Text size="xs" c="dimmed">
+                                                                Scheduling can extend past the displayed end date/time. Turn this off to enforce the end date/time.
+                                                            </Text>
+                                                        ) : null}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        )}
+                                    />
+                                </AnimatedSection>
                             </div>
 
                             <div className="space-y-6 mb-4">
@@ -9013,403 +9247,349 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-6 md:items-end">
-                                    <div className="md:col-span-6">
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
+                                    <div className="md:col-span-2">
                                         <Controller
-                                            name="start"
+                                            name="price"
                                             control={control}
                                             render={({ field }) => (
-                                                <DateTimePicker
-                                                    label="Start Date & Time"
-                                                    valueFormat="MM/DD/YYYY hh:mm A"
-                                                    value={parseLocalDateTime(field.value)}
-                                                    disabled={isImmutableField('start') || hasExternalRentalField}
+                                                <CentsInput
+                                                    label={eventData.singleDivision ? 'Price' : 'Default Price'}
+                                                    maxCents={MAX_PRICE_CENTS}
+                                                    value={field.value}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    onChange={(nextValue) => {
+                                                        if (isImmutableField('price')) return;
+                                                        field.onChange(nextValue);
+                                                    }}
+                                                    disabled={!hasStripeAccount || isImmutableField('price')}
+                                                />
+                                            )}
+                                        />
+                                        <PriceWithFeesPreview
+                                            amountCents={eventData.price}
+                                            eventType={eventData.eventType}
+                                            helperText={!eventData.singleDivision
+                                                ? 'Used as the base price for new divisions before fees.'
+                                                : null}
+                                        />
+
+                                        <AnimatedSection in={!hasStripeAccount}>
+                                            <div className="mt-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={handleConnectStripe}
+                                                    disabled={connectingStripe}
+                                                    className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
+                                                >
+                                                    {connectingStripe ? (
+                                                        <span className="inline-flex items-center gap-2">
+                                                            <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                                                            Connecting…
+                                                        </span>
+                                                    ) : (
+                                                        'Connect Stripe Account'
+                                                    )}
+                                                </button>
+                                                <p className="text-sm text-gray-600 mt-1">
+                                                    Connect your Stripe account to enable paid events and set a price.
+                                                </p>
+                                            </div>
+                                        </AnimatedSection>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <Controller
+                                            name="requiredTemplateIds"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <MantineMultiSelect
+                                                    label="Required Documents"
+                                                    placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+                                                    data={templateOptions}
+                                                    value={field.value ?? []}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    onChange={(vals) => {
+                                                        if (isImmutableField('requiredTemplateIds')) return;
+                                                        field.onChange(vals);
+                                                    }}
+                                                    clearable
+                                                    searchable
+                                                />
+                                            )}
+                                        />
+                                        <AnimatedSection in={Boolean(templatesError)}>
+                                            <Text size="sm" c="red">
+                                                {templatesError}
+                                            </Text>
+                                        </AnimatedSection>
+                                        <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
+                                            <Text size="sm" c="dimmed">
+                                                No templates yet. Create one in your organization Document Templates tab.
+                                            </Text>
+                                        </AnimatedSection>
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <Controller
+                                            name="minAge"
+                                            control={control}
+                                            render={({ field, fieldState }) => (
+                                                <NumberInput
+                                                    label="Minimum Age"
+                                                    min={0}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={normalizeNumber(field.value) ?? ''}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    clampBehavior="strict"
+                                                    disabled={isImmutableField('minAge')}
                                                     onChange={(val) => {
-                                                        if (isImmutableField('start')) return;
-                                                        const parsed = parseLocalDateTime(val as Date | string | null);
-                                                        if (!parsed) return;
-                                                        setValue('start', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
+                                                        if (isImmutableField('minAge')) return;
+                                                        const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
+                                                        field.onChange(next);
                                                     }}
-                                                    minDate={todaysDate}
-                                                    timePickerProps={{
-                                                        withDropdown: true,
-                                                        format: '12h',
-                                                    }}
-                                                    popoverProps={sharedPopoverProps}
-                                                    style={{ maxWidth: 280 }}
+                                                    error={fieldState.error?.message as string | undefined}
                                                 />
                                             )}
                                         />
                                     </div>
-                                    <div className="md:col-span-6">
-                                        <AnimatedSection in={eventData.eventType === 'EVENT' || supportsNoFixedEndDateTime}>
-                                            <Controller
-                                                name="end"
-                                                control={control}
-                                                render={({ field }) => (
-                                                    <DateTimePicker
-                                                        label={
-                                                            supportsNoFixedEndDateTime ? (
-                                                                <Group justify="space-between" wrap="nowrap" gap="sm">
-                                                                    <Text size="sm" fw={500}>End Date & Time</Text>
-                                                                    <Checkbox
-                                                                        size="xs"
-                                                                        label="No fixed end date/time"
-                                                                        checked={Boolean(eventData.noFixedEndDateTime)}
-                                                                        disabled={isImmutableField('noFixedEndDateTime') || hasExternalRentalField}
-                                                                        onChange={(event) => {
-                                                                            if (isImmutableField('noFixedEndDateTime')) return;
-                                                                            const checked = event.currentTarget.checked;
-                                                                            setValue('noFixedEndDateTime', checked, { shouldDirty: true, shouldValidate: true });
-                                                                            if (checked) {
-                                                                                setValue('end', '', { shouldDirty: true, shouldValidate: true });
-                                                                                return;
-                                                                            }
-                                                                            const parsedStart = parseLocalDateTime(getValues('start'));
-                                                                            const parsedEnd = parseLocalDateTime(getValues('end'));
-                                                                            if (parsedStart && (!parsedEnd || parsedEnd.getTime() <= parsedStart.getTime())) {
-                                                                                const minimumEnd = new Date(parsedStart.getTime() + 60 * 60 * 1000);
-                                                                                setValue('end', formatLocalDateTime(minimumEnd), { shouldDirty: true, shouldValidate: true });
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                </Group>
-                                                            ) : 'End Date & Time'
-                                                        }
-                                                        description={
-                                                            supportsNoFixedEndDateTime && eventData.noFixedEndDateTime
-                                                                ? 'Open-ended scheduling is enabled. Turn this off to enforce a fixed end date/time.'
-                                                                : undefined
-                                                        }
-                                                        valueFormat="MM/DD/YYYY hh:mm A"
-                                                        value={supportsNoFixedEndDateTime && eventData.noFixedEndDateTime ? null : parseLocalDateTime(field.value)}
-                                                        disabled={
-                                                            isImmutableField('end')
-                                                            || hasExternalRentalField
-                                                            || (supportsNoFixedEndDateTime && eventData.noFixedEndDateTime)
-                                                        }
-                                                        onChange={(val) => {
-                                                            if (isImmutableField('end')) return;
-                                                            const parsed = parseLocalDateTime(val as Date | string | null);
-                                                            if (!parsed) return;
-                                                            setValue('end', formatLocalDateTime(parsed), { shouldDirty: true, shouldValidate: true });
-                                                        }}
-                                                        minDate={parseLocalDateTime(eventData.start) ?? todaysDate}
-                                                        timePickerProps={{
-                                                            withDropdown: true,
-                                                            format: '12h',
-                                                        }}
-                                                        popoverProps={sharedPopoverProps}
-                                                        style={{ maxWidth: 280 }}
-                                                    />
-                                                )}
-                                            />
-                                        </AnimatedSection>
+                                    <div className="md:col-span-2">
+                                        <Controller
+                                            name="maxAge"
+                                            control={control}
+                                            render={({ field, fieldState }) => (
+                                                <NumberInput
+                                                    label="Maximum Age"
+                                                    min={0}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={normalizeNumber(field.value) ?? ''}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    clampBehavior="strict"
+                                                    disabled={isImmutableField('maxAge')}
+                                                    onChange={(val) => {
+                                                        if (isImmutableField('maxAge')) return;
+                                                        const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
+                                                        field.onChange(next);
+                                                    }}
+                                                    error={fieldState.error?.message as string | undefined}
+                                                />
+                                            )}
+                                        />
                                     </div>
+                                    <div className="md:col-span-2">
+                                        <Controller
+                                            name="cancellationRefundHours"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <NumberInput
+                                                    label="Cancellation Refund (Hours)"
+                                                    min={0}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={field.value}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    clampBehavior="strict"
+                                                    disabled={isImmutableField('cancellationRefundHours')}
+                                                    onChange={(val) => {
+                                                        if (isImmutableField('cancellationRefundHours')) return;
+                                                        field.onChange(Number(val) || 24);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                    </div>
+                                    <div className="md:col-span-2">
+                                        <Controller
+                                            name="registrationCutoffHours"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <NumberInput
+                                                    label="Registration Cutoff (Hours)"
+                                                    min={0}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={field.value}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    clampBehavior="strict"
+                                                    disabled={isImmutableField('registrationCutoffHours')}
+                                                    onChange={(val) => {
+                                                        if (isImmutableField('registrationCutoffHours')) return;
+                                                        field.onChange(Number(val) || 2);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                    </div>
+                                    <Text size="xs" c="dimmed" className="md:col-span-12">
+                                        Leave age limits blank if anyone can register.
+                                    </Text>
+                                    <AnimatedSection
+                                        in={typeof eventData.minAge === 'number' || typeof eventData.maxAge === 'number'}
+                                        collapseClassName="md:col-span-12"
+                                    >
+                                        <Alert color="yellow" variant="light">
+                                            <Text fw={600} size="sm">
+                                                Age-restricted event
+                                            </Text>
+                                            <Text size="sm">
+                                                We only check age using the date of birth users enter in their profile. If your event requires an age check (for example, 18+ or 21+), you are responsible for verifying attendees&apos; age at check-in.
+                                            </Text>
+                                        </Alert>
+                                    </AnimatedSection>
                                 </div>
-                            </div>
 
-                            {/* Pricing and Participant Details */}
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
-                                <div className="md:col-span-12 lg:col-span-6">
-                                    <Controller
-                                        name="price"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <CentsInput
-                                                label={eventData.singleDivision ? 'Price' : 'Default Price'}
-                                                maxCents={MAX_PRICE_CENTS}
-                                                value={field.value}
-                                                maw={220}
-                                                onChange={(nextValue) => {
-                                                    if (isImmutableField('price')) return;
-                                                    field.onChange(nextValue);
-                                                }}
-                                                disabled={!hasStripeAccount || isImmutableField('price')}
-                                            />
-                                        )}
-                                    />
-                                    <PriceWithFeesPreview
-                                        amountCents={eventData.price}
-                                        eventType={eventData.eventType}
-                                        helperText={!eventData.singleDivision
-                                            ? 'Used as the base price for new divisions before fees.'
-                                            : null}
-                                    />
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
+                                    <div className="md:col-span-12">
+                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                            <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
+                                                <div>
+                                                    <Title order={6}>{eventData.singleDivision ? 'Payment Plans' : 'Default Payment Plan'}</Title>
+                                                    <Text size="sm" c="dimmed">
+                                                        {eventData.singleDivision
+                                                            ? 'Offer installments. Total installment amount must equal event price.'
+                                                            : 'Set payment-plan defaults for new divisions. Total installment amount must equal the default event price.'}
+                                                    </Text>
+                                                </div>
+                                                <Switch
+                                                    checked={eventData.allowPaymentPlans}
+                                                    onChange={(e) => {
+                                                        const next = e.currentTarget.checked;
+                                                        setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
+                                                        if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
+                                                            syncInstallmentCount((eventData.installmentCount || 1));
+                                                        }
+                                                    }}
+                                                    disabled={!hasStripeAccount}
+                                                />
+                                            </Group>
 
-                                    {/* Always show connect Stripe when no account */}
-                                    <AnimatedSection in={!hasStripeAccount}>
-                                        <div className="mt-2">
-                                            <button
-                                                type="button"
-                                                onClick={handleConnectStripe}
-                                                disabled={connectingStripe}
-                                                className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                            >
-                                                {connectingStripe ? (
-                                                    <span className="inline-flex items-center gap-2">
-                                                        <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                                                        Connecting…
-                                                    </span>
-                                                ) : (
-                                                    'Connect Stripe Account'
-                                                )}
-                                            </button>
-                                            <p className="text-sm text-gray-600 mt-1">
-                                                Connect your Stripe account to enable paid events and set a price.
-                                            </p>
+                                            <AnimatedSection in={eventData.allowPaymentPlans}>
+                                                <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
+                                                    <Group align="flex-start" gap="md">
+                                                        <NumberInput
+                                                            label={eventData.singleDivision ? 'Installments' : 'Default Installments'}
+                                                            min={1}
+                                                            max={MAX_STANDARD_NUMBER}
+                                                            value={eventData.installmentCount || eventData.installmentAmounts.length || 1}
+                                                            onChange={(val) => syncInstallmentCount(Number(val) || 1)}
+                                                            clampBehavior="strict"
+                                                            maw={180}
+                                                        />
+                                                        {eventData.teamSignup && (
+                                                            <Switch
+                                                                checked={eventData.allowTeamSplitDefault}
+                                                                onChange={(e) =>
+                                                                    setValue('allowTeamSplitDefault', e.currentTarget.checked, {
+                                                                        shouldDirty: true,
+                                                                        shouldValidate: true,
+                                                                    })
+                                                                }
+                                                                label="Allow team bill splitting by default"
+                                                            />
+                                                        )}
+                                                    </Group>
+
+                                                    <Stack gap="sm">
+                                                        {(eventData.installmentAmounts || []).map((amount, idx) => {
+                                                            const dueDateValue = parseLocalDateTime(
+                                                                eventData.installmentDueDates?.[idx] || eventData.start,
+                                                            );
+                                                            return (
+                                                                <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
+                                                                    <DateTimePicker
+                                                                        label={`Installment ${idx + 1} due`}
+                                                                        value={dueDateValue}
+                                                                        onChange={(val) => setInstallmentDueDate(idx, val)}
+                                                                        valueFormat="MM/DD/YYYY hh:mm A"
+                                                                        timePickerProps={{
+                                                                            withDropdown: true,
+                                                                            format: '12h',
+                                                                        }}
+                                                                        style={{ flex: '1 1 260px', maxWidth: 280 }}
+                                                                    />
+                                                                    <CentsInput
+                                                                        label="Amount"
+                                                                        maxCents={MAX_PRICE_CENTS}
+                                                                        value={amount}
+                                                                        onChange={(nextValue) => setInstallmentAmount(idx, nextValue)}
+                                                                        maw={180}
+                                                                    />
+                                                                    {eventData.installmentAmounts.length > 1 && (
+                                                                        <ActionIcon
+                                                                            variant="light"
+                                                                            color="red"
+                                                                            aria-label="Remove installment"
+                                                                            onClick={() => removeInstallment(idx)}
+                                                                        >
+                                                                            ×
+                                                                        </ActionIcon>
+                                                                    )}
+                                                                </Group>
+                                                            );
+                                                        })}
+                                                        <Group justify="space-between" align="center">
+                                                            <Button variant="light" onClick={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}>
+                                                                Add installment
+                                                            </Button>
+                                                            <Text
+                                                                size="sm"
+                                                                c={(eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) === eventData.price
+                                                                    ? 'dimmed'
+                                                                    : 'red'}
+                                                            >
+                                                                Installment total: {formatBillAmount((eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0))} / {formatBillAmount(eventData.price || 0)}
+                                                            </Text>
+                                                        </Group>
+                                                    </Stack>
+                                                </div>
+                                            </AnimatedSection>
                                         </div>
+                                    </div>
+                                    <AnimatedSection in={hasUnsetTeamCapacityLimits} className="md:col-span-12">
+                                        <Alert color="yellow" variant="light" radius="md">
+                                            <Text size="sm" fw={600}>Capacity limits are required before save</Text>
+                                            <Text size="sm">
+                                                Set {eventData.teamSignup ? 'Max Teams' : 'Max Participants'} and Team Size Limit.
+                                                Blank values are kept as null and shown as validation errors.
+                                            </Text>
+                                        </Alert>
                                     </AnimatedSection>
                                 </div>
                             </div>
 
-                            <Controller
-                                name="requiredTemplateIds"
-                                control={control}
-                                render={({ field }) => (
-                                    <MantineMultiSelect
-                                        label="Required Documents"
-                                        placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
-                                        data={templateOptions}
-                                        value={field.value ?? []}
-                                        maw={560}
-                                        disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
-                                        comboboxProps={sharedComboboxProps}
-                                        onChange={(vals) => {
-                                            if (isImmutableField('requiredTemplateIds')) return;
-                                            field.onChange(vals);
-                                        }}
-                                        clearable
-                                        searchable
-                                    />
-                                )}
-                            />
-                            <AnimatedSection in={Boolean(templatesError)}>
-                                <Text size="sm" c="red">
-                                    {templatesError}
-                                </Text>
-                            </AnimatedSection>
-                            <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
-                                <Text size="sm" c="dimmed">
-                                    No templates yet. Create one in your organization Document Templates tab.
-                                </Text>
-                            </AnimatedSection>
-
-                            <div className="mt-4 grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
-                                <div className="md:col-span-4">
-                                    <Controller
-                                        name="minAge"
-                                        control={control}
-                                        render={({ field, fieldState }) => (
-                                            <NumberInput
-                                                label="Minimum Age"
-                                                min={0}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value ?? ''}
-                                                maw={180}
-                                                clampBehavior="strict"
-                                                disabled={isImmutableField('minAge')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('minAge')) return;
-                                                    const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
-                                                    field.onChange(next);
-                                                }}
-                                                error={fieldState.error?.message as string | undefined}
-                                            />
-                                        )}
-                                    />
-                                </div>
-                                <div className="md:col-span-4">
-                                    <Controller
-                                        name="maxAge"
-                                        control={control}
-                                        render={({ field, fieldState }) => (
-                                            <NumberInput
-                                                label="Maximum Age"
-                                                min={0}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value ?? ''}
-                                                maw={180}
-                                                clampBehavior="strict"
-                                                disabled={isImmutableField('maxAge')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('maxAge')) return;
-                                                    const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
-                                                    field.onChange(next);
-                                                }}
-                                                error={fieldState.error?.message as string | undefined}
-                                            />
-                                        )}
-                                    />
-                                </div>
-                                <Text size="xs" c="dimmed" className="md:col-span-12">
-                                    Leave age limits blank if anyone can register.
-                                </Text>
-                                <AnimatedSection
-                                    in={typeof eventData.minAge === 'number' || typeof eventData.maxAge === 'number'}
-                                    collapseClassName="md:col-span-12"
-                                >
-                                    <Alert color="yellow" variant="light">
-                                        <Text fw={600} size="sm">
-                                            Age-restricted event
-                                        </Text>
-                                        <Text size="sm">
-                                            We only check age using the date of birth users enter in their profile. If your event requires an age check (for example, 18+ or 21+), you are responsible for verifying attendees&apos; age at check-in.
-                                        </Text>
-                                    </Alert>
-                                </AnimatedSection>
-                            </div>
-
-                            <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
-                                <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
-                                    <div>
-                                        <Title order={6}>{eventData.singleDivision ? 'Payment Plans' : 'Default Payment Plan'}</Title>
-                                        <Text size="sm" c="dimmed">
-                                            {eventData.singleDivision
-                                                ? 'Offer installments. Total installment amount must equal event price.'
-                                                : 'Set payment-plan defaults for new divisions. Total installment amount must equal the default event price.'}
-                                        </Text>
-                                    </div>
-                                    <Switch
-                                        checked={eventData.allowPaymentPlans}
-                                        onChange={(e) => {
-                                            const next = e.currentTarget.checked;
-                                            setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
-                                            if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
-                                                syncInstallmentCount((eventData.installmentCount || 1));
-                                            }
-                                        }}
-                                        disabled={!hasStripeAccount}
-                                    />
-                                </Group>
-
-                                <AnimatedSection in={eventData.allowPaymentPlans}>
-                                    <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
-                                        <Group align="flex-start" gap="md">
-                                            <NumberInput
-                                                label={eventData.singleDivision ? 'Installments' : 'Default Installments'}
-                                                min={1}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={eventData.installmentCount || eventData.installmentAmounts.length || 1}
-                                                onChange={(val) => syncInstallmentCount(Number(val) || 1)}
-                                                clampBehavior="strict"
-                                                maw={180}
-                                            />
-                                            {eventData.teamSignup && (
-                                                <Switch
-                                                    checked={eventData.allowTeamSplitDefault}
-                                                    onChange={(e) =>
-                                                        setValue('allowTeamSplitDefault', e.currentTarget.checked, {
-                                                            shouldDirty: true,
-                                                            shouldValidate: true,
-                                                        })
-                                                    }
-                                                    label="Allow team bill splitting by default"
+                            {showOrganizationFieldsInEventDetails ? (
+                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
+                                    <div className="md:col-span-6">
+                                        <Controller
+                                            name="selectedFieldIds"
+                                            control={control}
+                                            render={({ field, fieldState }) => (
+                                                <MantineMultiSelect
+                                                    label="Organization Fields"
+                                                    description="Choose which organization fields this event can use."
+                                                    placeholder={fieldsLoading ? 'Loading organization fields...' : 'Select one or more fields'}
+                                                    data={leagueFieldOptions}
+                                                    value={Array.isArray(field.value) ? field.value : []}
+                                                    comboboxProps={sharedComboboxProps}
+                                                    w="100%"
+                                                    disabled={fieldsLoading || isImmutableField('fieldIds')}
+                                                    onChange={(values) => {
+                                                        if (isImmutableField('fieldIds')) return;
+                                                        field.onChange(values);
+                                                    }}
+                                                    searchable
+                                                    clearable
+                                                    error={fieldState.error?.message}
                                                 />
                                             )}
-                                        </Group>
-
-                                        <Stack gap="sm">
-                                            {(eventData.installmentAmounts || []).map((amount, idx) => {
-                                                const dueDateValue = parseLocalDateTime(
-                                                    eventData.installmentDueDates?.[idx] || eventData.start,
-                                                );
-                                                return (
-                                                    <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
-                                                        <DateTimePicker
-                                                            label={`Installment ${idx + 1} due`}
-                                                            value={dueDateValue}
-                                                            onChange={(val) => setInstallmentDueDate(idx, val)}
-                                                            valueFormat="MM/DD/YYYY hh:mm A"
-                                                            timePickerProps={{
-                                                                withDropdown: true,
-                                                                format: '12h',
-                                                            }}
-                                                            style={{ flex: '1 1 260px', maxWidth: 280 }}
-                                                        />
-                                                        <CentsInput
-                                                            label="Amount"
-                                                            maxCents={MAX_PRICE_CENTS}
-                                                            value={amount}
-                                                            onChange={(nextValue) => setInstallmentAmount(idx, nextValue)}
-                                                            maw={180}
-                                                        />
-                                                        {eventData.installmentAmounts.length > 1 && (
-                                                            <ActionIcon
-                                                                variant="light"
-                                                                color="red"
-                                                                aria-label="Remove installment"
-                                                                onClick={() => removeInstallment(idx)}
-                                                            >
-                                                                ×
-                                                            </ActionIcon>
-                                                        )}
-                                                    </Group>
-                                                );
-                                            })}
-                                            <Group justify="space-between" align="center">
-                                                <Button variant="light" onClick={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}>
-                                                    Add installment
-                                                </Button>
-                                                <Text
-                                                    size="sm"
-                                                    c={(eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) === eventData.price
-                                                        ? 'dimmed'
-                                                        : 'red'}
-                                                >
-                                                    Installment total: {formatBillAmount((eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0))} / {formatBillAmount(eventData.price || 0)}
-                                                </Text>
-                                            </Group>
-                                        </Stack>
+                                        />
                                     </div>
-                                </AnimatedSection>
-                            </div>
-
-                            {/* Policy Settings */}
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4 md:items-end">
-                                <div className="md:col-span-6">
-                                    <Controller
-                                        name="cancellationRefundHours"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <NumberInput
-                                                label="Cancellation Refund (Hours)"
-                                                min={0}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value}
-                                                maw={220}
-                                                clampBehavior="strict"
-                                                disabled={isImmutableField('cancellationRefundHours')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('cancellationRefundHours')) return;
-                                                    field.onChange(Number(val) || 24);
-                                                }}
-                                            />
-                                        )}
-                                    />
                                 </div>
-                                <div className="md:col-span-6">
-                                    <Controller
-                                        name="registrationCutoffHours"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <NumberInput
-                                                label="Registration Cutoff (Hours)"
-                                                min={0}
-                                                max={MAX_STANDARD_NUMBER}
-                                                value={field.value}
-                                                maw={220}
-                                                clampBehavior="strict"
-                                                disabled={isImmutableField('registrationCutoffHours')}
-                                                onChange={(val) => {
-                                                    if (isImmutableField('registrationCutoffHours')) return;
-                                                    field.onChange(Number(val) || 2);
-                                                }}
-                                            />
-                                        )}
-                                    />
-                                </div>
-                            </div>
+                            ) : null}
 
                             {shouldManageLocalFields && !hasExternalRentalField && (
                                 <div className="mt-4 space-y-4">
@@ -9443,6 +9623,51 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </div>
                                 </div>
                             )}
+                            </Collapse>
+                        </Paper>
+
+                        <Paper
+                            id="section-match-rules"
+                            shadow="xs"
+                            radius="md"
+                            withBorder
+                            p="lg"
+                            className="scroll-mt-28 bg-gray-50"
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-lg font-semibold">Match Rules</h3>
+                                <Button
+                                    type="button"
+                                    variant="subtle"
+                                    size="xs"
+                                    aria-expanded={!collapsedSections['section-match-rules']}
+                                    aria-controls="section-match-rules-content"
+                                    onClick={() => toggleSectionCollapse('section-match-rules')}
+                                >
+                                    {collapsedSections['section-match-rules'] ? 'Expand' : 'Collapse'}
+                                </Button>
+                            </div>
+                            <Collapse in={!collapsedSections['section-match-rules']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                <div id="section-match-rules-content" className="mt-4">
+                                    <MatchRulesSection
+                                        sport={eventData.sportConfig ?? sportsById.get(String(eventData.sportId ?? '').trim()) ?? undefined}
+                                        usesSets={eventData.eventType === 'LEAGUE'
+                                            ? Boolean(leagueData.usesSets)
+                                            : eventData.eventType === 'TOURNAMENT'
+                                                ? Boolean(tournamentData.usesSets)
+                                                : Boolean((eventData.sportConfig ?? sportsById.get(String(eventData.sportId ?? '').trim()))?.usePointsPerSetWin)}
+                                        setsPerMatch={eventData.eventType === 'LEAGUE' ? leagueData.setsPerMatch : undefined}
+                                        winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
+                                        officialPositions={eventData.officialPositions}
+                                        value={eventData.matchRulesOverride}
+                                        onChange={(nextValue) => setValue('matchRulesOverride', nextValue, { shouldDirty: true, shouldValidate: false })}
+                                        autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
+                                        onAutoCreatePointMatchIncidentsChange={(checked) => setValue('autoCreatePointMatchIncidents', checked, { shouldDirty: true, shouldValidate: false })}
+                                        disabled={isImmutableField('matchRulesOverride')}
+                                        incidentToggleDisabled={isImmutableField('matchRulesOverride') || isImmutableField('autoCreatePointMatchIncidents')}
+                                        comboboxProps={sharedComboboxProps}
+                                    />
+                                </div>
                             </Collapse>
                         </Paper>
 
@@ -9501,7 +9726,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             )}
                                         />
                                     )}
-
                                     <Paper withBorder radius="md" p="md" bg="white">
                                         <Stack gap="sm">
                                             <MantineSelect
@@ -10556,7 +10780,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </div>
 
                             {/* Team Settings */}
-                            {eventData.eventType === 'EVENT' ? (
+                            {supportsEditableTeamSignup ? (
                                 <div className="mt-6 space-y-3">
                                     <Controller
                                         name="singleDivision"
@@ -10589,32 +10813,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
-                                    {isOrganizationManagedEvent && !isWeeklyChildEvent ? (
-                                        <Controller
-                                            name="selectedFieldIds"
-                                            control={control}
-                                            render={({ field, fieldState }) => (
-                                                <MantineMultiSelect
-                                                    label="Organization Fields"
-                                                    description="Choose which organization fields this event can use."
-                                                    placeholder={fieldsLoading ? 'Loading organization fields...' : 'Select one or more fields'}
-                                                    data={leagueFieldOptions}
-                                                    value={Array.isArray(field.value) ? field.value : []}
-                                                    comboboxProps={sharedComboboxProps}
-                                                    disabled={fieldsLoading || isImmutableField('fieldIds')}
-                                                    onChange={(values) => {
-                                                        if (isImmutableField('fieldIds')) return;
-                                                        field.onChange(values);
-                                                    }}
-                                                    searchable
-                                                    clearable
-                                                    error={fieldState.error?.message}
-                                                />
-                                            )}
-                                        />
-                                    ) : null}
                                 </div>
-                            ) : (
+                            ) : showsFixedTeamEventToggle ? (
                                 <div className="mt-6 space-y-2">
                                     <Switch
                                         label="Team Event (teams compete rather than individuals)"
@@ -10694,7 +10894,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         each timeslot is automatically assigned all selected divisions.
                                     </Text>
                                 </div>
-                            )}
+                            ) : null}
                             </Collapse>
                         </Paper>
 

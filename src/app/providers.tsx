@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
-import { authService } from '@/lib/auth';
+import { authService, type RequiredProfileField } from '@/lib/auth';
 import { userService } from '@/lib/userService';
 import { sportsService } from '@/lib/sportsService';
 import { UserData } from '@/types';
@@ -20,8 +20,11 @@ interface AppContextType {
   setAuthUser: (authUser: UserAccount | null) => void;
   updateUser: (updates: Partial<UserData>) => Promise<UserData | null>;
   refreshUser: () => Promise<void>;
+  refreshSession: () => Promise<void>;
   isGuest: boolean;
   isAuthenticated: boolean;
+  requiresProfileCompletion: boolean;
+  missingProfileFields: RequiredProfileField[];
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -45,6 +48,8 @@ export function Providers({ children }: ProvidersProps) {
   const [authUser, setAuthUserState] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [isGuest, setIsGuest] = useState<boolean>(false);
+  const [requiresProfileCompletion, setRequiresProfileCompletion] = useState<boolean>(false);
+  const [missingProfileFields, setMissingProfileFields] = useState<RequiredProfileField[]>([]);
 
   const setUser = useCallback((value: UserData | null) => {
     setUserState(value);
@@ -70,6 +75,8 @@ export function Providers({ children }: ProvidersProps) {
       const guest = authService.isGuest();
       setAuthUser(currentAuthUser);
       setIsGuest(guest);
+      setRequiresProfileCompletion(session.requiresProfileCompletion);
+      setMissingProfileFields(session.missingProfileFields);
 
       if (guest) {
         setUser(null);
@@ -94,6 +101,8 @@ export function Providers({ children }: ProvidersProps) {
       console.warn('Auth check error:', error);
       setAuthUser(null);
       setUser(null);
+      setRequiresProfileCompletion(false);
+      setMissingProfileFields([]);
       authService.setCurrentUserData(null);
     } finally {
       setLoading(false);
@@ -137,6 +146,10 @@ export function Providers({ children }: ProvidersProps) {
     }
   };
 
+  const refreshSession = useCallback(async () => {
+    await checkAuth();
+  }, [checkAuth]);
+
   const updateUser = async (updates: Partial<UserData>) => {
     if (!user) return null;
     try {
@@ -160,8 +173,11 @@ export function Providers({ children }: ProvidersProps) {
       setAuthUser,
       updateUser,
       refreshUser,
+      refreshSession,
       isGuest,
-      isAuthenticated
+      isAuthenticated,
+      requiresProfileCompletion,
+      missingProfileFields,
     }}>
       {children}
     </AppContext.Provider>

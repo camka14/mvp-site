@@ -2,14 +2,36 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { canManageOrganization } from '@/server/accessControl';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
 import { syncTeamChatByTeamId } from '@/server/teamChatSync';
+import {
+  applyCanonicalTeamRegistrationMetadata,
+  listCanonicalTeamsForUser,
+  loadCanonicalTeamById,
+  normalizeId,
+  normalizeIdList,
+  syncCanonicalTeamRoster,
+} from '@/server/teams/teamMembership';
+import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
+
+const jerseyNumberSchema = z.string().regex(/^\d*$/, 'Jersey number must contain only digits.');
+
+const playerRegistrationInputSchema = z.object({
+  id: z.string().optional(),
+  teamId: z.string().nullable().optional(),
+  userId: z.string(),
+  status: z.string().optional(),
+  jerseyNumber: jerseyNumberSchema.nullable().optional(),
+  position: z.string().nullable().optional(),
+  isCaptain: z.boolean().optional(),
+}).strict();
 
 const createSchema = z.object({
   id: z.string(),
@@ -29,6 +51,10 @@ const createSchema = z.object({
   pending: z.array(z.string()).optional(),
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
+  organizationId: z.string().nullable().optional(),
+  openRegistration: z.boolean().optional(),
+  registrationPriceCents: z.number().int().nonnegative().optional(),
+  playerRegistrations: z.array(playerRegistrationInputSchema).optional(),
 }).passthrough();
 
 const normalizeText = (value: unknown): string | null => {
@@ -110,39 +136,16 @@ export async function GET(req: NextRequest) {
   const idsParam = params.get('ids');
   const playerId = params.get('playerId');
   const managerId = params.get('managerId');
-  const includeChildTeams = params.get('includeChildTeams') === 'true';
   const limit = Number(params.get('limit') || '100');
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
-
-  const where: any = {};
-  if (ids?.length) where.id = { in: ids };
-  if (playerId && managerId) {
-    where.OR = [{ playerIds: { has: playerId } }, { managerId }];
-  } else if (playerId) {
-    where.playerIds = { has: playerId };
-  } else if (managerId) {
-    where.managerId = managerId;
-  }
-  if (!ids?.length && !includeChildTeams) {
-    where.parentTeamId = null;
-  }
-  if (!ids?.length && !playerId && !managerId) {
-    where.captainId = { not: '' };
-  }
-
-  const teamsDelegate = getTeamsDelegate(prisma);
-  if (!teamsDelegate?.findMany) {
-    return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });
-  }
-
-  const teams = await teamsDelegate.findMany({
-    where,
-    take: Number.isFinite(limit) ? limit : 100,
-    orderBy: { name: 'asc' },
-  });
-
-  return NextResponse.json({ teams: withTeamRoleAliasesList(teams as any[]) }, { status: 200 });
+  const teams = await listCanonicalTeamsForUser({
+    ids,
+    playerId: normalizeId(playerId),
+    managerId: normalizeId(managerId),
+    limit: Number.isFinite(limit) ? limit : 100,
+  }, prisma);
+  return NextResponse.json({ teams: withTeamRoleAliasesList(teams as Record<string, any>[]) }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {
@@ -174,33 +177,105 @@ export async function POST(req: NextRequest) {
   });
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
   const divisionTypeName = normalizeText(data.divisionTypeName) ?? inferredDivision.divisionTypeName;
+  const organizationId = normalizeText(data.organizationId);
+  if (organizationId) {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: organizationId },
+      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    });
+    if (!organization || !await canManageOrganization(session, organization)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+  let registrationSettings: { openRegistration: boolean; registrationPriceCents: number };
+  try {
+    registrationSettings = await resolveTeamRegistrationSettings({
+      organizationId,
+      createdBy: session.userId,
+      openRegistration: data.openRegistration === true,
+      registrationPriceCents: data.registrationPriceCents ?? 0,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid registration settings.';
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   const teamsDelegate = getTeamsDelegate(prisma);
-  if (!teamsDelegate?.create) {
+  const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
+  const teamRegistrationsDelegate: any = (prisma as any).teamRegistrations;
+  const teamStaffAssignmentsDelegate: any = (prisma as any).teamStaffAssignments;
+  if (!canonicalTeamsDelegate?.create && !teamsDelegate?.create) {
     return NextResponse.json({ error: 'Team storage is unavailable. Regenerate Prisma client.' }, { status: 500 });
   }
 
-  const team = await createTeamWithCompatibility(teamsDelegate, {
-    id: data.id,
-    name: normalizedTeamName,
-    division: normalizedDivision,
-    divisionTypeId,
-    divisionTypeName,
-    sport: sportInput,
-    playerIds,
-    captainId,
-    managerId,
-    headCoachId,
-    coachIds: assistantCoachIds,
-    parentTeamId: normalizeText(data.parentTeamId),
-    pending,
-    teamSize: data.teamSize ?? 0,
-    profileImageId: data.profileImageId ?? null,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  });
+  let responseTeam: Record<string, any> | null = null;
 
-  await syncTeamChatByTeamId(String((team as any).id ?? data.id));
+  if (canonicalTeamsDelegate?.create && teamRegistrationsDelegate?.upsert && teamStaffAssignmentsDelegate?.upsert) {
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.canonicalTeams.create({
+        data: {
+          id: data.id,
+          name: normalizedTeamName,
+          division: normalizedDivision,
+          divisionTypeId,
+          divisionTypeName,
+          sport: sportInput,
+          teamSize: data.teamSize ?? 0,
+          profileImageId: data.profileImageId ?? null,
+          organizationId,
+          createdBy: session.userId,
+          openRegistration: registrationSettings.openRegistration,
+          registrationPriceCents: registrationSettings.registrationPriceCents,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+      await syncCanonicalTeamRoster({
+        teamId: data.id,
+        captainId,
+        playerIds,
+        pendingPlayerIds: pending,
+        managerId,
+        headCoachId,
+        assistantCoachIds,
+        actingUserId: session.userId,
+        now,
+      }, tx);
+      await applyCanonicalTeamRegistrationMetadata({
+        client: tx,
+        teamId: data.id,
+        playerRegistrations: data.playerRegistrations,
+        now,
+      });
+    });
+    responseTeam = await loadCanonicalTeamById(data.id, prisma) as Record<string, any> | null;
+  } else {
+    const team = await createTeamWithCompatibility(teamsDelegate, {
+      id: data.id,
+      name: normalizedTeamName,
+      division: normalizedDivision,
+      divisionTypeId,
+      divisionTypeName,
+      sport: sportInput,
+      playerIds,
+      captainId,
+      managerId,
+      headCoachId,
+      coachIds: assistantCoachIds,
+      parentTeamId: normalizeText(data.parentTeamId),
+      pending,
+      teamSize: data.teamSize ?? 0,
+      profileImageId: data.profileImageId ?? null,
+      openRegistration: registrationSettings.openRegistration,
+      registrationPriceCents: registrationSettings.registrationPriceCents,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    responseTeam = withTeamRoleAliases(team as any);
+  }
 
-  return NextResponse.json(withTeamRoleAliases(team as any), { status: 201 });
+  await syncTeamChatByTeamId(String(responseTeam?.id ?? data.id));
+
+  return NextResponse.json(withTeamRoleAliases(responseTeam ?? { id: data.id }), { status: 201 });
 }

@@ -1,6 +1,10 @@
 import { formatDisplayDate, formatDisplayTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
 import { formatNameParts } from '@/lib/nameCase';
+import type {
+  OrganizationVerificationReviewStatus,
+  OrganizationVerificationStatus,
+} from '@/lib/organizationVerification';
 
 // User types
 export interface UserAccount {
@@ -116,10 +120,145 @@ export interface MatchOfficialAssignment {
   hasConflict?: boolean;
 }
 
+export type MatchScoringModel = 'SETS' | 'PERIODS' | 'INNINGS' | 'POINTS_ONLY';
+export type MatchLifecycleStatus = 'SCHEDULED' | 'READY' | 'IN_PROGRESS' | 'COMPLETE' | 'CANCELLED' | 'FORFEIT' | 'SUSPENDED';
+export type MatchResultStatus = 'PENDING' | 'OFFICIAL' | 'OVERRIDDEN' | 'DISPUTED';
+export type MatchResultType = 'REGULATION' | 'OVERTIME' | 'SHOOTOUT' | 'FORFEIT' | 'NO_CONTEST' | 'DRAW';
+export type MatchSegmentStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'VOID';
+
+export interface MatchRulesConfig {
+  scoringModel?: MatchScoringModel;
+  segmentCount?: number;
+  segmentLabel?: string;
+  supportsDraw?: boolean;
+  supportsOvertime?: boolean;
+  supportsShootout?: boolean;
+  canUseOvertime?: boolean;
+  canUseShootout?: boolean;
+  officialRoles?: string[];
+  supportedIncidentTypes?: string[];
+  autoCreatePointIncidentType?: string;
+  pointIncidentRequiresParticipant?: boolean;
+}
+
+export interface ResolvedMatchRules {
+  scoringModel: MatchScoringModel;
+  segmentCount: number;
+  segmentLabel: string;
+  supportsDraw: boolean;
+  supportsOvertime: boolean;
+  supportsShootout: boolean;
+  canUseOvertime: boolean;
+  canUseShootout: boolean;
+  officialRoles: string[];
+  supportedIncidentTypes: string[];
+  autoCreatePointIncidentType: string | null;
+  pointIncidentRequiresParticipant: boolean;
+}
+
+export interface MatchSegment {
+  id: string;
+  $id?: string;
+  eventId?: string | null;
+  matchId: string;
+  sequence: number;
+  status: MatchSegmentStatus;
+  scores: Record<string, number>;
+  winnerEventTeamId?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  resultType?: MatchResultType | string | null;
+  statusReason?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface MatchIncident {
+  id: string;
+  $id?: string;
+  eventId?: string | null;
+  matchId: string;
+  segmentId?: string | null;
+  eventTeamId?: string | null;
+  eventRegistrationId?: string | null;
+  participantUserId?: string | null;
+  officialUserId?: string | null;
+  incidentType: string;
+  sequence: number;
+  minute?: number | null;
+  clock?: string | null;
+  clockSeconds?: number | null;
+  linkedPointDelta?: number | null;
+  note?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface MatchLifecycleOperation {
+  status?: MatchLifecycleStatus;
+  resultStatus?: MatchResultStatus;
+  resultType?: MatchResultType;
+  actualStart?: string | null;
+  actualEnd?: string | null;
+  statusReason?: string | null;
+  winnerEventTeamId?: string | null;
+}
+
+export interface MatchSegmentOperation {
+  id?: string;
+  sequence: number;
+  status?: MatchSegmentStatus;
+  scores?: Record<string, number>;
+  winnerEventTeamId?: string | null;
+  startedAt?: string | null;
+  endedAt?: string | null;
+  resultType?: MatchResultType | string | null;
+  statusReason?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface MatchIncidentOperation {
+  action: 'CREATE' | 'UPDATE' | 'DELETE';
+  id?: string;
+  segmentId?: string | null;
+  eventTeamId?: string | null;
+  eventRegistrationId?: string | null;
+  participantUserId?: string | null;
+  officialUserId?: string | null;
+  incidentType?: string;
+  sequence?: number;
+  minute?: number | null;
+  clock?: string | null;
+  clockSeconds?: number | null;
+  linkedPointDelta?: number | null;
+  note?: string | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface MatchOfficialCheckInOperation {
+  positionId?: string;
+  slotIndex?: number;
+  userId?: string;
+  checkedIn: boolean;
+}
+
+export interface TeamPlayerRegistration {
+  id: string;
+  teamId?: string | null;
+  userId: string;
+  status: string;
+  jerseyNumber?: string | null;
+  position?: string | null;
+  isCaptain?: boolean;
+}
+
 export interface Sport {
   $id: string;
   name: string;
   officialPositionTemplates?: SportOfficialPositionTemplate[];
+  matchRulesTemplate?: MatchRulesConfig | null;
   usePointsForWin: boolean;
   usePointsForDraw: boolean;
   usePointsForLoss: boolean;
@@ -189,6 +328,17 @@ export interface Match {
   eventId?: string;
   fieldId?: string | null;
   locked?: boolean;
+  status?: MatchLifecycleStatus | string | null;
+  resultStatus?: MatchResultStatus | string | null;
+  resultType?: MatchResultType | string | null;
+  actualStart?: string | null;
+  actualEnd?: string | null;
+  statusReason?: string | null;
+  winnerEventTeamId?: string | null;
+  matchRulesSnapshot?: ResolvedMatchRules | MatchRulesConfig | Record<string, unknown> | null;
+  resolvedMatchRules?: ResolvedMatchRules | null;
+  segments?: MatchSegment[];
+  incidents?: MatchIncident[];
   team1Id?: string | null;
   team2Id?: string | null;
   officialId?: string | null;
@@ -264,7 +414,9 @@ export interface TimeSlot {
   scheduledFieldIds?: string[];
 }
 
-export type TimeSlotPayload = Omit<TimeSlot, 'event'>;
+export type TimeSlotPayload = Omit<TimeSlot, 'event' | 'field' | '$id'> & {
+  id: string;
+};
 
 export interface UserData {
   $id: string;
@@ -282,11 +434,15 @@ export interface UserData {
   friendRequestIds: string[];
   friendRequestSentIds: string[];
   followingIds: string[];
+  blockedUserIds: string[];
+  hiddenEventIds: string[];
   userName: string;
   hasStripeAccount?: boolean;
   uploadedImages: string[];
   profileImageId?: string;
   homePageOrganizationId?: string | null;
+  chatTermsAcceptedAt?: string | null;
+  chatTermsVersion?: string | null;
   stripeAccountId?: string | null;
   $createdAt?: string;
   $updatedAt?: string;
@@ -392,10 +548,15 @@ export interface Team {
   pending: string[];
   teamSize: number;
   profileImageId?: string;
+  organizationId?: string | null;
+  createdBy?: string | null;
+  openRegistration?: boolean;
+  registrationPriceCents?: number;
   $createdAt?: string;
   $updatedAt?: string;
   // Expanded relationships
   players?: UserData[];
+  playerRegistrations?: TeamPlayerRegistration[];
   captain?: UserData;
   manager?: UserData;
   headCoach?: UserData;
@@ -504,11 +665,16 @@ export interface Event {
   setsPerMatch?: number;
   doTeamsOfficiate?: boolean;
   teamOfficialsMaySwap?: boolean;
+  matchRulesOverride?: MatchRulesConfig | null;
+  autoCreatePointMatchIncidents?: boolean;
+  resolvedMatchRules?: ResolvedMatchRules | null;
   refType?: string;
   pointsToVictory?: number[];
   status?: EventStatus;
   leagueConfig?: LeagueConfig;
   leagueScoringConfig?: LeagueScoringConfig | null;
+  participantCount?: number | null;
+  participantCapacity?: number | null;
 
   // Computed properties
   attendees: number;
@@ -544,6 +710,11 @@ export interface Organization {
   ownerId?: string;
   hostIds?: string[];
   hasStripeAccount?: boolean;
+  verificationStatus?: OrganizationVerificationStatus;
+  verifiedAt?: string;
+  verificationReviewStatus?: OrganizationVerificationReviewStatus;
+  verificationReviewNotes?: string;
+  verificationReviewUpdatedAt?: string;
   officialIds?: string[];
   staffMembers?: StaffMember[];
   staffInvites?: Invite[];
@@ -921,6 +1092,16 @@ export function toFieldPayload(field: Field, matchIdsByField?: Map<string, strin
   return payload;
 }
 
+export function toTimeSlotPayload(slot: TimeSlot): TimeSlotPayload {
+  const { event, field, $id, ...rest } = slot;
+  const id = extractId(slot);
+
+  return {
+    ...rest,
+    id: id ?? '',
+  };
+}
+
 export function toEventPayload(event: Event): EventPayload {
   const { matches, fields, teams, timeSlots, organization, officials, assistantHosts, ...rest } = event;
 
@@ -981,10 +1162,9 @@ export function toEventPayload(event: Event): EventPayload {
 
   const timeSlotPayloads = Array.isArray(timeSlots) && timeSlots.length
     ? timeSlots.map((slot) => {
-        const { event: slotEvent, ...slotRest } = slot;
         const normalizedDays = normalizeSlotDays(slot);
         return {
-          ...slotRest,
+          ...toTimeSlotPayload(slot),
           dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek,
           daysOfWeek: normalizedDays,
         };
@@ -1292,7 +1472,16 @@ const buildInitialsAvatarUrl = (name: string, size: number): string => {
   return `/api/avatars/initials?${params.toString()}`;
 };
 
-export function getUserAvatarUrl(user: UserData, size: number = 64): string {
+export function getUserAvatarUrl(
+  user: UserData,
+  size: number = 64,
+  jerseyNumber?: string | null,
+): string {
+  const normalizedJerseyNumber = jerseyNumber?.trim();
+  if (normalizedJerseyNumber) {
+    return buildInitialsAvatarUrl(normalizedJerseyNumber, size);
+  }
+
   if (user.profileImageId) {
     return buildPreviewUrl(user.profileImageId, size, size);
   }

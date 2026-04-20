@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { isMinorAtUtcDate } from '@/server/userPrivacy';
+import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
 
 const TEAM_CHAT_GROUP_ID_PREFIX = 'team:';
 
@@ -187,6 +188,19 @@ const getActiveParentIdsForMinorMembers = async (tx: any, memberIds: string[]): 
 };
 
 const getTeamById = async (tx: any, teamId: string): Promise<TeamRecord | null> => {
+  const canonicalTeam = await loadCanonicalTeamById(teamId, tx);
+  if (canonicalTeam) {
+    return {
+      id: canonicalTeam.id,
+      name: canonicalTeam.name ?? null,
+      captainId: canonicalTeam.captainId ?? '',
+      managerId: canonicalTeam.managerId ?? '',
+      headCoachId: canonicalTeam.headCoachId ?? null,
+      coachIds: Array.isArray(canonicalTeam.coachIds) ? canonicalTeam.coachIds : [],
+      playerIds: Array.isArray(canonicalTeam.playerIds) ? canonicalTeam.playerIds : [],
+    };
+  }
+
   const teamsDelegate = getTeamsDelegate(tx);
   if (!teamsDelegate?.findUnique) {
     return null;

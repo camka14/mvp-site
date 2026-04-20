@@ -163,8 +163,17 @@ describe('POST /api/products/[id]/subscriptions', () => {
     });
     invoicesRetrieveMock.mockResolvedValue({
       id: 'in_123',
-      payment_intent: {
-        id: 'pi_123',
+      payments: {
+        data: [
+          {
+            payment: {
+              type: 'payment_intent',
+              payment_intent: {
+                id: 'pi_123',
+              },
+            },
+          },
+        ],
       },
     });
     paymentIntentsUpdateMock.mockResolvedValue({});
@@ -214,12 +223,9 @@ describe('POST /api/products/[id]/subscriptions', () => {
     }));
     expect(paymentIntentsUpdateMock).toHaveBeenCalledWith('pi_123', {
       application_fee_amount: 478,
-      transfer_data: {
-        destination: 'acct_connected_123',
-      },
     });
     expect(invoicesRetrieveMock).toHaveBeenCalledWith('in_123', {
-      expand: ['payment_intent'],
+      expand: ['payments.data.payment.payment_intent'],
     });
   });
 

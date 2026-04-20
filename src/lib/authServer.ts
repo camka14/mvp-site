@@ -10,6 +10,11 @@ const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
 export type SessionToken = {
   userId: string;
   isAdmin: boolean;
+  sessionVersion: number;
+};
+
+export type VerifiedSessionToken = SessionToken & {
+  issuedAtSeconds: number | null;
 };
 
 const getAuthSecret = (): string => {
@@ -39,12 +44,14 @@ export const signSessionToken = (payload: SessionToken): string => {
   return jwt.sign(payload, getAuthSecret(), { expiresIn: TOKEN_TTL_SECONDS });
 };
 
-export const verifySessionToken = (token: string): SessionToken | null => {
+export const verifySessionToken = (token: string): VerifiedSessionToken | null => {
   try {
     const decoded = jwt.verify(token, getAuthSecret()) as JwtPayload;
     return {
       userId: decoded.userId as string,
       isAdmin: Boolean(decoded.isAdmin),
+      sessionVersion: Number.isInteger(decoded.sessionVersion) ? Number(decoded.sessionVersion) : 0,
+      issuedAtSeconds: Number.isInteger(decoded.iat) ? Number(decoded.iat) : null,
     };
   } catch {
     return null;

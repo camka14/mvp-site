@@ -1,5 +1,6 @@
 import type { PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
+import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
   buildDivisionName,
@@ -45,6 +46,12 @@ import {
   type EventOfficialRecord,
   type MatchOfficialAssignment,
 } from '@/server/officials/config';
+import {
+  buildLegacySegments,
+  resolveMatchRules,
+  serializeMatchIncidentRow,
+  serializeMatchSegmentRow,
+} from '@/server/matches/matchOperations';
 
 type PrismaLike = PrismaClient | any;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -70,6 +77,17 @@ export class EventFieldConflictError extends Error {
 
 export const isEventFieldConflictError = (error: unknown): error is EventFieldConflictError =>
   error instanceof EventFieldConflictError;
+
+export class LeaguePlayoffTeamCountValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'LeaguePlayoffTeamCountValidationError';
+  }
+}
+
+export const isLeaguePlayoffTeamCountValidationError = (
+  error: unknown,
+): error is LeaguePlayoffTeamCountValidationError => error instanceof LeaguePlayoffTeamCountValidationError;
 
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
   const message = error instanceof Error ? error.message : String(error ?? '');
@@ -209,9 +227,9 @@ const resolveBillingOwnerHasStripeAccount = async (
   if (organizationId) {
     const organization = await client.organizations.findUnique({
       where: { id: organizationId },
-      select: { hasStripeAccount: true },
+      select: { hasStripeAccount: true, verificationStatus: true },
     });
-    return Boolean(organization?.hasStripeAccount);
+    return canOrganizationUsePaidBilling(organization);
   }
 
   const hostId = normalizeEntityId(params.hostId);
@@ -699,6 +717,20 @@ const normalizeDivisionDetailsPayload = (
   return unique;
 };
 
+const requireExplicitLeaguePlayoffTeamCount = (
+  value: number | null | undefined,
+  message: string,
+): number => {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new LeaguePlayoffTeamCountValidationError(message);
+  }
+  const normalized = Math.trunc(value);
+  if (normalized < 2) {
+    throw new LeaguePlayoffTeamCountValidationError(message);
+  }
+  return normalized;
+};
+
 type DivisionRatingWindow = {
   minRating: number | null;
   maxRating: number | null;
@@ -1006,6 +1038,16 @@ const buildTeams = (
   divisionMap: Map<string, Division>,
   fallbackDivision: Division,
   divisionByTeamId: Map<string, Division> = new Map<string, Division>(),
+  playerLookup: Map<string, UserData> = new Map<string, UserData>(),
+  playerRegistrationsByTeamId: Map<string, Array<{
+    id: string;
+    teamId?: string | null;
+    userId: string;
+    status: string;
+    jerseyNumber?: string | null;
+    position?: string | null;
+    isCaptain?: boolean;
+  }>> = new Map(),
 ) => {
   const teams: Record<string, Team> = {};
   for (const row of rows) {
@@ -1024,6 +1066,10 @@ const buildTeams = (
       name: row.name ?? '',
       matches: [],
       playerIds: ensureArray(row.playerIds),
+      players: ensureArray(row.playerIds)
+        .map((playerId) => playerLookup.get(String(playerId)))
+        .filter((player): player is UserData => Boolean(player)),
+      playerRegistrations: playerRegistrationsByTeamId.get(row.id) ?? [],
     });
   }
   return teams;
@@ -1668,6 +1714,9 @@ const buildMatches = (
   fields: Record<string, PlayingField>,
   divisions: Division[],
   officials: UserData[],
+  segmentRowsByMatchId: Map<string, any[]> = new Map(),
+  incidentRowsByMatchId: Map<string, any[]> = new Map(),
+  resolvedMatchRules: ReturnType<typeof resolveMatchRules> | null = null,
 ) => {
   const divisionLookup = new Map(divisions.map((division) => [division.id, division]));
   const officialLookup = new Map(officials.map((official) => [official.id, official]));
@@ -1704,6 +1753,29 @@ const buildMatches = (
     const primaryOfficialCheckedIn = officialAssignments.length
       ? deriveLegacyOfficialCheckedInFromAssignments(officialAssignments)
       : row.officialCheckedIn ?? false;
+    const persistedSegments = (segmentRowsByMatchId.get(row.id) ?? [])
+      .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
+      .map(serializeMatchSegmentRow);
+    const legacySegments = persistedSegments.length
+      ? []
+      : buildLegacySegments({
+          eventId: row.eventId ?? event.id,
+          matchId: row.id,
+          team1Id: row.team1Id ?? null,
+          team2Id: row.team2Id ?? null,
+          team1Points: ensureArray(row.team1Points),
+          team2Points: ensureArray(row.team2Points),
+          setResults: ensureArray(row.setResults),
+          start,
+          end,
+        });
+    const segments = persistedSegments.length ? persistedSegments : legacySegments;
+    const incidents = (incidentRowsByMatchId.get(row.id) ?? [])
+      .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
+      .map(serializeMatchIncidentRow);
+    const winnerEventTeamId = normalizeEntityId(row.winnerEventTeamId)
+      ?? segments.find((segment) => segment.status === 'COMPLETE' && segment.winnerEventTeamId)?.winnerEventTeamId
+      ?? null;
     const match = new Match({
       id: row.id,
       matchId: row.matchId ?? null,
@@ -1726,6 +1798,17 @@ const buildMatches = (
       division,
       field: row.fieldId ? fields[row.fieldId] ?? null : null,
       setResults: ensureArray(row.setResults),
+      status: row.status ?? null,
+      resultStatus: row.resultStatus ?? null,
+      resultType: row.resultType ?? null,
+      actualStart: toOptionalDate(row.actualStart),
+      actualEnd: toOptionalDate(row.actualEnd),
+      statusReason: row.statusReason ?? null,
+      winnerEventTeamId,
+      matchRulesSnapshot: row.matchRulesSnapshot ?? null,
+      resolvedMatchRules: row.matchRulesSnapshot ?? resolvedMatchRules,
+      segments,
+      incidents,
       bufferMs: matchBufferMs(event),
       side: sideFrom(row.side),
       officialCheckedIn: primaryOfficialCheckedIn,
@@ -1818,7 +1901,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     event.sportId && typeof (client as any).sports?.findUnique === 'function'
       ? (client as any).sports.findUnique({
           where: { id: event.sportId },
-          select: { officialPositionTemplates: true } as any,
+          select: { officialPositionTemplates: true, matchRulesTemplate: true } as any,
         })
       : Promise.resolve(null),
   ]);
@@ -1868,6 +1951,96 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     client.matches.findMany({ where: { eventId: event.id } }),
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
   ]);
+  const teamPlayerIds = Array.from(new Set(
+    (teamRows as any[]).flatMap((row) => ensureStringArray((row as any).playerIds)),
+  ));
+  const [teamPlayerRows, eventRegistrationRows] = await Promise.all([
+    teamPlayerIds.length ? client.userData.findMany({ where: { id: { in: teamPlayerIds } } }) : Promise.resolve([]),
+    teamIdsToLoad.length && typeof (client as any).eventRegistrations?.findMany === 'function'
+      ? (client as any).eventRegistrations.findMany({
+          where: {
+            eventId: event.id,
+            eventTeamId: { in: teamIdsToLoad },
+            rosterRole: 'PARTICIPANT',
+            status: { in: ['ACTIVE', 'STARTED'] },
+          },
+          select: {
+            id: true,
+            eventTeamId: true,
+            registrantId: true,
+            status: true,
+            jerseyNumber: true,
+            position: true,
+            isCaptain: true,
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+  const teamPlayerLookup = new Map<string, UserData>();
+  for (const row of teamPlayerRows as any[]) {
+    const normalizedId = normalizeEntityId((row as any).id);
+    if (!normalizedId) continue;
+    teamPlayerLookup.set(normalizedId, new UserData({
+      id: normalizedId,
+      firstName: (row as any).firstName ?? '',
+      lastName: (row as any).lastName ?? '',
+      userName: (row as any).userName ?? '',
+      divisions: allDivisions,
+    }));
+  }
+  const playerRegistrationsByTeamId = new Map<string, Array<{
+    id: string;
+    teamId?: string | null;
+    userId: string;
+    status: string;
+    jerseyNumber?: string | null;
+    position?: string | null;
+    isCaptain?: boolean;
+  }>>();
+  for (const row of eventRegistrationRows as any[]) {
+    const eventTeamId = normalizeEntityId((row as any).eventTeamId);
+    const userId = normalizeEntityId((row as any).registrantId);
+    const registrationId = normalizeEntityId((row as any).id);
+    if (!eventTeamId || !userId || !registrationId) continue;
+    const list = playerRegistrationsByTeamId.get(eventTeamId) ?? [];
+    list.push({
+      id: registrationId,
+      teamId: eventTeamId,
+      userId,
+      status: String((row as any).status ?? 'ACTIVE'),
+      jerseyNumber: (row as any).jerseyNumber ?? null,
+      position: (row as any).position ?? null,
+      isCaptain: Boolean((row as any).isCaptain),
+    });
+    playerRegistrationsByTeamId.set(eventTeamId, list);
+  }
+  const matchIds = (matchRows as any[])
+    .map((row) => normalizeEntityId(row.id))
+    .filter((id): id is string => Boolean(id));
+  const [segmentRows, incidentRows] = await Promise.all([
+    matchIds.length && typeof (client as any).matchSegments?.findMany === 'function'
+      ? (client as any).matchSegments.findMany({ where: { matchId: { in: matchIds } } })
+      : Promise.resolve([]),
+    matchIds.length && typeof (client as any).matchIncidents?.findMany === 'function'
+      ? (client as any).matchIncidents.findMany({ where: { matchId: { in: matchIds } } })
+      : Promise.resolve([]),
+  ]);
+  const segmentRowsByMatchId = new Map<string, any[]>();
+  for (const row of segmentRows as any[]) {
+    const rowMatchId = normalizeEntityId(row.matchId);
+    if (!rowMatchId) continue;
+    const list = segmentRowsByMatchId.get(rowMatchId) ?? [];
+    list.push(row);
+    segmentRowsByMatchId.set(rowMatchId, list);
+  }
+  const incidentRowsByMatchId = new Map<string, any[]>();
+  for (const row of incidentRows as any[]) {
+    const rowMatchId = normalizeEntityId(row.matchId);
+    if (!rowMatchId) continue;
+    const list = incidentRowsByMatchId.get(rowMatchId) ?? [];
+    list.push(row);
+    incidentRowsByMatchId.set(rowMatchId, list);
+  }
 
   const fallbackFieldDivisionIds = leagueDivisionIds.length ? leagueDivisionIds : [DEFAULT_DIVISION_KEY];
   const fields = buildFields(fieldRows, divisionMap, fallbackFieldDivisionIds, fieldIdsByDivision);
@@ -1885,7 +2058,14 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
       }
     }
   }
-  const teams = buildTeams(teamRows, divisionMap, fallbackDivision, divisionByTeamId);
+  const teams = buildTeams(
+    teamRows,
+    divisionMap,
+    fallbackDivision,
+    divisionByTeamId,
+    teamPlayerLookup,
+    playerRegistrationsByTeamId,
+  );
   const timeSlots = buildTimeSlots(timeSlotRows, divisionMap, divisions);
   const officials = buildOfficials(officialRows, allDivisions);
   attachTimeSlotsToFields(fields, timeSlots);
@@ -1900,7 +2080,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   );
   const noFixedEndDateTime = typeof (event as any).noFixedEndDateTime === 'boolean'
     ? (event as any).noFixedEndDateTime
-    : event.end == null || eventStart.getTime() === eventEnd.getTime();
+    : false;
   if (!isWeeklyChild) {
     const conflictWindowEnd = resolveFieldConflictWindowEnd({
       start: eventStart,
@@ -1928,6 +2108,15 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     const linkedFieldCount = ensureStringArray(event.fieldIds).length;
     return linkedFieldCount > 0 ? linkedFieldCount : null;
   })();
+  const resolvedMatchRules = resolveMatchRules({
+    sportTemplate: (sportRow as any)?.matchRulesTemplate,
+    eventOverride: (event as any).matchRulesOverride,
+    usesSets: event.usesSets,
+    setsPerMatch: event.setsPerMatch,
+    winnerSetCount: event.winnerSetCount,
+    matchDurationMinutes: event.matchDurationMinutes,
+    officialPositions,
+  });
 
   const baseParams = {
     id: event.id,
@@ -1969,6 +2158,9 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     officialSchedulingMode: normalizeOfficialSchedulingMode((event as any).officialSchedulingMode),
     officialPositions,
     eventOfficials,
+    matchRulesOverride: (event as any).matchRulesOverride ?? null,
+    autoCreatePointMatchIncidents: Boolean((event as any).autoCreatePointMatchIncidents),
+    resolvedMatchRules,
     fieldCount: resolvedFieldCount,
     prize: event.prize ?? null,
     hostId: event.hostId ?? '',
@@ -2010,7 +2202,17 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
       })
     : new Tournament(baseParams);
 
-  const matches = buildMatches(matchRows, constructed, teams, fields, allDivisions, officials);
+  const matches = buildMatches(
+    matchRows,
+    constructed,
+    teams,
+    fields,
+    allDivisions,
+    officials,
+    segmentRowsByMatchId,
+    incidentRowsByMatchId,
+    resolvedMatchRules,
+  );
   constructed.matches = matches;
   (constructed as any).parentEvent = normalizedParentEvent;
   return constructed;
@@ -2053,6 +2255,16 @@ export const saveMatches = async (
       team1Points: match.team1Points ?? [],
       team2Points: match.team2Points ?? [],
       setResults: match.setResults ?? [],
+      status: match.status ?? null,
+      resultStatus: match.resultStatus ?? null,
+      resultType: match.resultType ?? null,
+      actualStart: match.actualStart ?? null,
+      actualEnd: match.actualEnd ?? null,
+      statusReason: match.statusReason ?? null,
+      winnerEventTeamId: match.winnerEventTeamId ?? null,
+      matchRulesSnapshot: match.matchRulesSnapshot
+        ? (match.matchRulesSnapshot as unknown as Record<string, unknown>)
+        : null,
       side: match.side ?? null,
       losersBracket: Boolean(match.losersBracket),
       winnerNextMatchId: match.winnerNextMatch?.id ?? null,
@@ -2077,6 +2289,60 @@ export const saveMatches = async (
       create: { ...data, createdAt: now },
       update: updateData,
     });
+    if (typeof (client as any).matchSegments?.upsert === 'function' && Array.isArray(match.segments)) {
+      for (const segment of match.segments) {
+        const segmentId = segment.id || `${match.id}_segment_${segment.sequence}`;
+        const segmentData = {
+          id: segmentId,
+          eventId,
+          matchId: match.id,
+          sequence: segment.sequence,
+          status: segment.status ?? 'NOT_STARTED',
+          scores: segment.scores ?? {},
+          winnerEventTeamId: segment.winnerEventTeamId ?? null,
+          startedAt: segment.startedAt ? new Date(segment.startedAt) : null,
+          endedAt: segment.endedAt ? new Date(segment.endedAt) : null,
+          resultType: segment.resultType ?? null,
+          statusReason: segment.statusReason ?? null,
+          metadata: segment.metadata ?? null,
+          updatedAt: now,
+        };
+        await (client as any).matchSegments.upsert({
+          where: { matchId_sequence: { matchId: match.id, sequence: segment.sequence } },
+          create: { ...segmentData, createdAt: now },
+          update: segmentData,
+        });
+      }
+    }
+    if (typeof (client as any).matchIncidents?.upsert === 'function' && Array.isArray(match.incidents)) {
+      for (const incident of match.incidents) {
+        const incidentId = incident.id || `${match.id}_incident_${incident.sequence}`;
+        const incidentData = {
+          id: incidentId,
+          eventId,
+          matchId: match.id,
+          segmentId: incident.segmentId ?? null,
+          eventTeamId: incident.eventTeamId ?? null,
+          eventRegistrationId: incident.eventRegistrationId ?? null,
+          participantUserId: incident.participantUserId ?? null,
+          officialUserId: incident.officialUserId ?? null,
+          incidentType: incident.incidentType,
+          sequence: incident.sequence,
+          minute: incident.minute ?? null,
+          clock: incident.clock ?? null,
+          clockSeconds: incident.clockSeconds ?? null,
+          linkedPointDelta: incident.linkedPointDelta ?? null,
+          note: incident.note ?? null,
+          metadata: incident.metadata ?? null,
+          updatedAt: now,
+        };
+        await (client as any).matchIncidents.upsert({
+          where: { id: incidentId },
+          create: { ...incidentData, createdAt: now },
+          update: incidentData,
+        });
+      }
+    }
   }
 };
 
@@ -2186,7 +2452,10 @@ export const persistScheduledRosterTeams = async (
           id: teamId,
           createdAt: now,
           updatedAt: now,
+          eventId: params.eventId,
+          kind: captainId ? 'REGISTERED' : 'PLACEHOLDER',
           playerIds,
+          playerRegistrationIds: [],
           division: divisionId,
           divisionTypeId: null,
           divisionTypeName: null,
@@ -2195,6 +2464,7 @@ export const persistScheduledRosterTeams = async (
           managerId: captainId || '',
           headCoachId: null,
           coachIds: [],
+          staffAssignmentIds: [],
           parentTeamId: null,
           pending: [],
           teamSize,
@@ -2282,16 +2552,12 @@ export const saveEventSchedule = async (event: League | Tournament, client: Pris
   });
 };
 
-export const saveTeamRecords = async (teams: Team[], client: PrismaLike = prisma) => {
-  void teams;
-  void client;
-};
-
 export const syncEventDivisions = async (
   params: {
     eventId: string;
     divisionIds: string[];
     fieldIds: string[];
+    includePlayoffs?: boolean;
     singleDivision?: boolean;
     sportId?: string | null;
     referenceDate?: Date | null;
@@ -2393,6 +2659,37 @@ export const syncEventDivisions = async (
     const normalizedKey = normalizeDivisionKey(row.key);
     if (normalizedKey) {
       existingByKey.set(normalizedKey, row);
+    }
+  }
+
+  if (params.includePlayoffs) {
+    requireExplicitLeaguePlayoffTeamCount(
+      params.defaultPlayoffTeamCount,
+      'Playoff team count must be at least 2 when playoffs are enabled.',
+    );
+
+    if (!params.singleDivision) {
+      for (const rawDivisionId of divisionIds) {
+        const normalizedDivisionId = normalizeDivisionKey(rawDivisionId) ?? rawDivisionId;
+        const detail = detailLookup.get(normalizedDivisionId)
+          ?? detailLookup.get(extractDivisionTokenFromId(normalizedDivisionId) ?? '')
+          ?? null;
+        const existing = existingById.get(normalizedDivisionId)
+          ?? existingByKey.get(normalizedDivisionId)
+          ?? existingByKey.get(extractDivisionTokenFromId(normalizedDivisionId) ?? '')
+          ?? null;
+        const divisionLabel = detail?.name
+          ?? existing?.name
+          ?? detail?.key
+          ?? existing?.key
+          ?? extractDivisionTokenFromId(normalizedDivisionId)
+          ?? normalizedDivisionId;
+
+        requireExplicitLeaguePlayoffTeamCount(
+          detail?.playoffTeamCount ?? existing?.playoffTeamCount,
+          `Playoff team count must be at least 2 for division "${divisionLabel}" when playoffs are enabled.`,
+        );
+      }
     }
   }
 
@@ -2548,7 +2845,7 @@ export const syncEventDivisions = async (
       : resolveDivisionValue(
         detail?.playoffTeamCount,
         existing?.playoffTeamCount,
-        params.defaultPlayoffTeamCount ?? undefined,
+        params.singleDivision ? (params.defaultPlayoffTeamCount ?? undefined) : undefined,
       ) ?? null;
     const allowPaymentPlans = kind === 'PLAYOFF'
       ? false
@@ -3035,10 +3332,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const noFixedEndDateTime = supportsNoFixedEndDateTime
     ? coerceBoolean(payload.noFixedEndDateTime, fallbackNoFixedEndDateTime)
     : false;
-  const normalizedEnd = noFixedEndDateTime ? null : candidateEnd;
+  const normalizedEnd = noFixedEndDateTime
+    ? (candidateEnd ?? parsedExistingEnd)
+    : candidateEnd;
 
   if (!noFixedEndDateTime && (!normalizedEnd || normalizedEnd.getTime() <= start.getTime())) {
-    throw new Error('End date/time must be after start date/time when "No fixed end date/time" is disabled.');
+    throw new Error('End date/time must be after start date/time when "No fixed end datetime scheduling" is disabled.');
   }
   if (normalizedEnd) {
     await assertNoEventFieldSchedulingConflicts({
@@ -3247,6 +3546,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     eventId: id,
     divisionIds: normalizedEventDivisionIds,
     fieldIds,
+    includePlayoffs: payload.includePlayoffs ?? false,
     singleDivision: singleDivisionEnabled,
     sportId: payload.sportId ?? null,
     referenceDate: start,
@@ -3359,7 +3659,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: teamId },
       create: {
         id: teamId,
+        eventId: id,
+        kind: (team.captainId ?? '') ? 'REGISTERED' : 'PLACEHOLDER',
         playerIds: ensureArray(team.playerIds),
+        playerRegistrationIds: ensureArray((team as any).playerRegistrationIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,
         divisionTypeName: normalizedTeamDivisionTypeName,
@@ -3368,6 +3671,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         managerId: team.managerId ?? team.captainId ?? '',
         headCoachId: team.headCoachId ?? null,
         coachIds: ensureArray((team as any).assistantCoachIds ?? team.coachIds),
+        staffAssignmentIds: ensureArray((team as any).staffAssignmentIds),
         parentTeamId: team.parentTeamId ?? null,
         pending: ensureArray(team.pending),
         teamSize: team.teamSize ?? 0,
@@ -3377,7 +3681,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         updatedAt: new Date(),
       },
       update: {
+        eventId: id,
+        kind: (team.captainId ?? '') ? 'REGISTERED' : 'PLACEHOLDER',
         playerIds: ensureArray(team.playerIds),
+        playerRegistrationIds: ensureArray((team as any).playerRegistrationIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,
         divisionTypeName: normalizedTeamDivisionTypeName,
@@ -3386,6 +3693,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         managerId: team.managerId ?? team.captainId ?? '',
         headCoachId: team.headCoachId ?? null,
         coachIds: ensureArray((team as any).assistantCoachIds ?? team.coachIds),
+        staffAssignmentIds: ensureArray((team as any).staffAssignmentIds),
         parentTeamId: team.parentTeamId ?? null,
         pending: ensureArray(team.pending),
         teamSize: team.teamSize ?? 0,

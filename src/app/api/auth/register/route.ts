@@ -17,6 +17,10 @@ import {
   normalizeUserName,
   reserveGeneratedUserName,
 } from '@/server/userNames';
+import {
+  buildProfileCompletionState,
+  resolveRequiredProfileFieldsCompletedAt,
+} from '@/server/profileCompletion';
 
 const profileSelectionSchema = z.object({
   firstName: z.string().optional(),
@@ -38,6 +42,7 @@ const registerSchema = z.object({
 });
 
 const PROFILE_CONFLICT_CODE = 'PROFILE_CONFLICT' as const;
+const UNKNOWN_DATE_OF_BIRTH = new Date(0);
 
 type ProfileField = 'firstName' | 'lastName' | 'userName' | 'dateOfBirth';
 
@@ -276,34 +281,62 @@ export async function POST(req: NextRequest) {
           });
 
       const profileRow = existingProfile
-        ? await tx.userData.update({
-            where: { id: createdAuth.id },
-            data: {
+        ? await (() => {
+            const nextProfile = {
               firstName: resolvedSnapshot.firstName ?? existingProfile.firstName,
               lastName: resolvedSnapshot.lastName ?? existingProfile.lastName,
-              userName: finalUserName,
               dateOfBirth: parsedDateOfBirth ?? existingProfile.dateOfBirth,
-              updatedAt: now,
-            },
-          })
-        : await tx.userData.create({
-            data: {
-              id: createdAuth.id,
-              createdAt: now,
-              updatedAt: now,
+              requiredProfileFieldsCompletedAt: existingProfile.requiredProfileFieldsCompletedAt,
+            };
+            const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+              authUser: createdAuth,
+              profile: nextProfile,
+              now,
+            });
+            return tx.userData.update({
+              where: { id: createdAuth.id },
+              data: {
+                firstName: nextProfile.firstName,
+                lastName: nextProfile.lastName,
+                userName: finalUserName,
+                dateOfBirth: nextProfile.dateOfBirth,
+                requiredProfileFieldsCompletedAt,
+                updatedAt: now,
+              },
+            });
+          })()
+        : await (() => {
+            const nextProfile = {
               firstName: resolvedSnapshot.firstName,
               lastName: resolvedSnapshot.lastName,
-              userName: finalUserName,
-              dateOfBirth: parsedDateOfBirth ?? new Date('2000-01-01'),
-              teamIds: [],
-              friendIds: [],
-              friendRequestIds: [],
-              friendRequestSentIds: [],
-              followingIds: [],
-              uploadedImages: [],
-              profileImageId: null,
-            },
-          });
+              dateOfBirth: parsedDateOfBirth ?? UNKNOWN_DATE_OF_BIRTH,
+              requiredProfileFieldsCompletedAt: null,
+            };
+            const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+              authUser: createdAuth,
+              profile: nextProfile,
+              now,
+            });
+            return tx.userData.create({
+              data: {
+                id: createdAuth.id,
+                createdAt: now,
+                updatedAt: now,
+                firstName: nextProfile.firstName,
+                lastName: nextProfile.lastName,
+                userName: finalUserName,
+                dateOfBirth: nextProfile.dateOfBirth,
+                requiredProfileFieldsCompletedAt,
+                teamIds: [],
+                friendIds: [],
+                friendRequestIds: [],
+                friendRequestSentIds: [],
+                followingIds: [],
+                uploadedImages: [],
+                profileImageId: null,
+              },
+            });
+          })();
 
       await tx.sensitiveUserData.upsert({
         where: { id: existingSensitive?.id ?? createdAuth.id },
@@ -360,6 +393,7 @@ export async function POST(req: NextRequest) {
       verificationEmailSent: true,
       user: toPublicUser(authUser),
       profile: applyNameCaseToUserFields(profile),
+      ...buildProfileCompletionState({ authUser, profile }),
     },
     { status: 202 },
   );

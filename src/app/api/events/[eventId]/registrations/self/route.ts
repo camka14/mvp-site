@@ -7,6 +7,16 @@ import {
   resolveEventDivisionSelection,
   validateRegistrantAgeForSelection,
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
+import {
+  findEventRegistration,
+  upsertEventRegistration,
+} from '@/server/events/eventRegistrations';
+import {
+  isWeeklyParentEvent,
+  isWeeklyOccurrenceJoinClosed,
+  resolveWeeklyOccurrence,
+  WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
+} from '@/server/events/weeklyOccurrences';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 import { normalizeRequiredSignerType } from '@/lib/templateSignerTypes';
 
@@ -16,6 +26,8 @@ const schema = z.object({
   divisionId: z.string().optional(),
   divisionTypeId: z.string().optional(),
   divisionTypeKey: z.string().optional(),
+  slotId: z.string().optional(),
+  occurrenceDate: z.string().optional(),
 }).passthrough();
 
 const isSignedStatus = (value: unknown): boolean => {
@@ -24,16 +36,6 @@ const isSignedStatus = (value: unknown): boolean => {
   }
   const normalized = value.trim().toLowerCase();
   return normalized === 'signed' || normalized === 'completed';
-};
-
-const normalizeIdList = (value: unknown): string[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const normalized = value
-    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-    .filter((entry) => entry.length > 0);
-  return Array.from(new Set(normalized));
 };
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
@@ -57,12 +59,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       divisions: true,
       requiredTemplateIds: true,
       organizationId: true,
-      userIds: true,
-      waitListIds: true,
+      eventType: true,
+      parentEvent: true,
+      timeSlotIds: true,
     },
   });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+  }
+
+  const hasOccurrenceInput = Boolean(parsed.data.slotId || parsed.data.occurrenceDate);
+  const occurrence = isWeeklyParentEvent(event)
+    ? await resolveWeeklyOccurrence({
+      event,
+      occurrence: parsed.data,
+    })
+    : null;
+  if (occurrence && !occurrence.ok) {
+    return NextResponse.json({ error: occurrence.error }, { status: 400 });
+  }
+  if (!isWeeklyParentEvent(event) && hasOccurrenceInput) {
+    return NextResponse.json({ error: 'Weekly occurrence selection is only valid for weekly events.' }, { status: 400 });
+  }
+  const resolvedOccurrence = occurrence?.ok ? occurrence.value : null;
+  if (resolvedOccurrence && isWeeklyOccurrenceJoinClosed(resolvedOccurrence)) {
+    return NextResponse.json({ error: WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR }, { status: 409 });
   }
 
   const user = await prisma.userData.findUnique({
@@ -115,19 +136,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       );
     }
 
-    const existingRequest = await prisma.eventRegistrations.findFirst({
-      where: {
-        eventId,
-        registrantId: session.userId,
-        parentId: parentLink.parentId,
-        registrantType: 'CHILD',
-        status: {
-          in: ['PENDINGCONSENT', 'ACTIVE'],
-        },
-      },
-      orderBy: {
-        updatedAt: 'desc',
-      },
+    const existingRequest = await findEventRegistration({
+      eventId,
+      registrantType: 'CHILD',
+      registrantId: session.userId,
+      occurrence: resolvedOccurrence,
     });
     if (existingRequest) {
       return NextResponse.json(
@@ -143,23 +156,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       );
     }
 
-    const registration = await prisma.eventRegistrations.create({
-      data: {
-        id: crypto.randomUUID(),
-        eventId,
-        registrantId: session.userId,
-        parentId: parentLink.parentId,
-        registrantType: 'CHILD',
-        status: 'PENDINGCONSENT',
-        ageAtEvent,
-        divisionId: divisionSelection.selection.divisionId,
-        divisionTypeId: divisionSelection.selection.divisionTypeId,
-        divisionTypeKey: divisionSelection.selection.divisionTypeKey,
-        consentStatus: 'guardian_approval_required',
-        createdBy: session.userId,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      },
+    const registration = await upsertEventRegistration({
+      eventId,
+      registrantType: 'CHILD',
+      registrantId: session.userId,
+      parentId: parentLink.parentId,
+      rosterRole: 'PARTICIPANT',
+      status: 'STARTED',
+      ageAtEvent,
+      divisionId: divisionSelection.selection.divisionId,
+      divisionTypeId: divisionSelection.selection.divisionTypeId,
+      divisionTypeKey: divisionSelection.selection.divisionTypeKey,
+      consentStatus: 'guardian_approval_required',
+      createdBy: session.userId,
+      occurrence: resolvedOccurrence,
     });
 
     return NextResponse.json(
@@ -265,61 +275,34 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       ? 'send_failed'
       : 'sent';
 
-  const existingRegistration = await prisma.eventRegistrations.findFirst({
-    where: {
-      eventId,
-      registrantId: session.userId,
-      registrantType: 'SELF',
-    },
-    orderBy: {
-      updatedAt: 'desc',
-    },
-    select: {
-      id: true,
-      consentDocumentId: true,
-      consentStatus: true,
-    },
+  const existingRegistration = await findEventRegistration({
+    eventId,
+    registrantType: 'SELF',
+    registrantId: session.userId,
+    occurrence: resolvedOccurrence,
   });
 
-  const now = new Date();
-  const nextStatus = needsConsent ? 'PENDINGCONSENT' : 'ACTIVE';
+  const nextStatus = needsConsent ? 'STARTED' : 'ACTIVE';
   const nextConsentDocumentId = needsConsent
     ? (consentDispatch?.firstDocumentId ?? existingRegistration?.consentDocumentId ?? null)
     : (existingRegistration?.consentDocumentId ?? null);
   const nextConsentStatus = consentStatus ?? existingRegistration?.consentStatus ?? null;
 
-  const registration = existingRegistration
-    ? await prisma.eventRegistrations.update({
-      where: { id: existingRegistration.id },
-      data: {
-        status: nextStatus,
-        ageAtEvent,
-        divisionId: divisionSelection.selection.divisionId,
-        divisionTypeId: divisionSelection.selection.divisionTypeId,
-        divisionTypeKey: divisionSelection.selection.divisionTypeKey,
-        consentDocumentId: nextConsentDocumentId,
-        consentStatus: nextConsentStatus,
-        updatedAt: now,
-      },
-    })
-    : await prisma.eventRegistrations.create({
-      data: {
-        id: crypto.randomUUID(),
-        eventId,
-        registrantId: session.userId,
-        registrantType: 'SELF',
-        status: nextStatus,
-        ageAtEvent,
-        divisionId: divisionSelection.selection.divisionId,
-        divisionTypeId: divisionSelection.selection.divisionTypeId,
-        divisionTypeKey: divisionSelection.selection.divisionTypeKey,
-        consentDocumentId: nextConsentDocumentId,
-        consentStatus: nextConsentStatus,
-        createdBy: session.userId,
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
+  const registration = await upsertEventRegistration({
+    eventId,
+    registrantType: 'SELF',
+    registrantId: session.userId,
+    rosterRole: 'PARTICIPANT',
+    status: nextStatus,
+    ageAtEvent,
+    divisionId: divisionSelection.selection.divisionId,
+    divisionTypeId: divisionSelection.selection.divisionTypeId,
+    divisionTypeKey: divisionSelection.selection.divisionTypeKey,
+    consentDocumentId: nextConsentDocumentId,
+    consentStatus: nextConsentStatus,
+    createdBy: session.userId,
+    occurrence: resolvedOccurrence,
+  });
 
   await prisma.invites?.deleteMany?.({
     where: {
@@ -328,28 +311,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       userId: session.userId,
     },
   });
-
-  if (nextStatus === 'ACTIVE') {
-    const currentUserIds = normalizeIdList(event.userIds);
-    const currentWaitListIds = normalizeIdList(event.waitListIds);
-    const nextUserIds = currentUserIds.includes(session.userId)
-      ? currentUserIds
-      : [...currentUserIds, session.userId];
-    const nextWaitListIds = currentWaitListIds.filter((value) => value !== session.userId);
-    const membershipChanged = nextUserIds.length !== currentUserIds.length
-      || nextWaitListIds.length !== currentWaitListIds.length;
-
-    if (membershipChanged) {
-      await prisma.events.update({
-        where: { id: eventId },
-        data: {
-          userIds: nextUserIds,
-          waitListIds: nextWaitListIds,
-          updatedAt: now,
-        },
-      });
-    }
-  }
 
   return NextResponse.json({
     registration: withLegacyFields(registration),

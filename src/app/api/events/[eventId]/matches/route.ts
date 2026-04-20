@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { createId } from '@/lib/id';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
+import { parseDateInput } from '@/server/legacyFormat';
 import { canManageEvent } from '@/server/accessControl';
-import { loadEventWithRelations, saveMatches, saveTeamRecords } from '@/server/repositories/events';
+import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 import { applyMatchUpdates, applyPersistentAutoLock } from '@/server/scheduler/updateMatch';
@@ -92,6 +92,18 @@ const bulkUpdateSchema = z.object({
 });
 
 const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
+
+const matchStartTime = (match: SchedulerMatch): number => {
+  const start = (match as { start?: unknown }).start;
+  if (start instanceof Date) {
+    return start.getTime();
+  }
+  if (typeof start === 'string') {
+    const parsed = Date.parse(start);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+};
 
 const normalizeOptionalString = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -203,12 +215,19 @@ const ensureEventDivisionMembershipForTeam = async (
 };
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
-  const { eventId } = await params;
-  const matches = await prisma.matches.findMany({
-    where: { eventId },
-    orderBy: { start: 'asc' },
-  });
-  return NextResponse.json({ matches: withLegacyList(matches) }, { status: 200 });
+  try {
+    const { eventId } = await params;
+    const event = await loadEventWithRelations(eventId);
+    const matches = Object.values(event.matches)
+      .sort((left, right) => matchStartTime(left) - matchStartTime(right));
+    return NextResponse.json({ matches: serializeMatchesLegacy(matches) }, { status: 200 });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Event not found') {
+      return NextResponse.json({ error: 'Event not found' }, { status: 404 });
+    }
+    console.error('Match list fetch failed', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
@@ -438,7 +457,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
               id: placeholderTeamId,
               createdAt: new Date(),
               updatedAt: new Date(),
+              eventId,
+              kind: 'PLACEHOLDER',
               playerIds: [],
+              playerRegistrationIds: [],
               division: matchDivision.id,
               divisionTypeId: null,
               divisionTypeName: null,
@@ -449,6 +471,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
               managerId: '',
               headCoachId: null,
               coachIds: [],
+              staffAssignmentIds: [],
               parentTeamId: null,
               pending: [],
               teamSize: Math.max(0, Math.trunc(event.teamSizeLimit ?? 0)),
@@ -612,6 +635,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           now: lockEvaluationTime,
           explicitLockedValue: entry.locked,
         });
+        if (entry.officialCheckedIn === true || target.officialCheckedIn === true) {
+          target.locked = true;
+        }
 
         touchedIds.push(matchId);
       }
@@ -677,7 +703,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       await saveMatches(eventId, Object.values(event.matches), tx);
-      await saveTeamRecords(Object.values(event.teams), tx);
 
       const uniqueTouchedIds = Array.from(new Set(touchedIds));
       const created: Record<string, string> = {};

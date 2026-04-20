@@ -2,13 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { getRequestOrigin } from '@/lib/requestOrigin';
 import { normalizeOptionalName } from '@/lib/nameCase';
+import {
+  buildProfileCompletionState,
+  resolveRequiredProfileFieldsCompletedAt,
+} from '@/server/profileCompletion';
+import { isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
 
 const STATE_COOKIE = 'google_oauth_state';
 const VERIFIER_COOKIE = 'google_oauth_verifier';
 const NEXT_COOKIE = 'google_oauth_next';
 const MAX_NEXT_PATH_LENGTH = 2048;
+const UNKNOWN_DATE_OF_BIRTH = new Date(0);
 
 type GoogleTokenResponse = {
   access_token?: string;
@@ -36,15 +43,6 @@ const getEnv = (key: string): string => {
   const value = process.env[key];
   if (!value) throw new Error(`${key} is not set`);
   return value;
-};
-
-const getRequestOrigin = (req: NextRequest): string => {
-  const proto = (req.headers.get('x-forwarded-proto') || '').split(',')[0]?.trim();
-  const host =
-    (req.headers.get('x-forwarded-host') || '').split(',')[0]?.trim() ||
-    (req.headers.get('host') || '').trim();
-  if (proto && host) return `${proto}://${host}`;
-  return req.nextUrl.origin;
 };
 
 const safeNextPath = (value: string | null): string => {
@@ -136,7 +134,18 @@ export async function GET(req: NextRequest) {
 
   const now = new Date();
 
-  const existingAuth = await prisma.authUser.findUnique({ where: { email: normalizedEmail } });
+  const existingAuthByGoogleSubject = userInfo.sub
+    ? await prisma.authUser.findUnique({ where: { googleSubject: userInfo.sub } })
+    : null;
+  const existingAuthByEmail = !existingAuthByGoogleSubject
+    ? await prisma.authUser.findUnique({ where: { email: normalizedEmail } })
+    : null;
+  const existingAuth = existingAuthByGoogleSubject ?? existingAuthByEmail;
+  if (isAuthUserSuspended(existingAuth)) {
+    const res = NextResponse.redirect(new URL('/login?oauth=google&error=account_suspended', origin), { status: 302 });
+    clearOauthCookies(res);
+    return res;
+  }
   const existingSensitive = existingAuth ? null : await prisma.sensitiveUserData.findFirst({ where: { email: normalizedEmail } });
   const userId = existingAuth?.id || existingSensitive?.userId || crypto.randomUUID();
 
@@ -149,6 +158,7 @@ export async function GET(req: NextRequest) {
       ? await tx.authUser.update({
           where: { id: existingAuth.id },
           data: {
+            googleSubject: userInfo.sub ?? existingAuth.googleSubject,
             name: existingAuth.name ?? displayName,
             emailVerifiedAt: existingAuth.emailVerifiedAt ?? now,
             lastLogin: now,
@@ -159,6 +169,7 @@ export async function GET(req: NextRequest) {
           data: {
             id: userId,
             email: normalizedEmail,
+            googleSubject: userInfo.sub ?? null,
             passwordHash: await hashPassword(crypto.randomBytes(48).toString('base64url')),
             name: displayName,
             emailVerifiedAt: now,
@@ -170,36 +181,64 @@ export async function GET(req: NextRequest) {
 
     const existingProfile = await tx.userData.findUnique({ where: { id: createdAuth.id } });
     const profileRow = existingProfile
-      ? await tx.userData.update({
-          where: { id: createdAuth.id },
-          data: {
+      ? await (() => {
+          const nextProfile = {
             firstName: existingProfile.firstName ?? firstName,
             lastName: existingProfile.lastName ?? lastName,
-            updatedAt: now,
-          },
-        })
-      : await tx.userData.create({
-          data: {
-            id: createdAuth.id,
-            createdAt: now,
-            updatedAt: now,
+            dateOfBirth: existingProfile.dateOfBirth,
+            requiredProfileFieldsCompletedAt: existingProfile.requiredProfileFieldsCompletedAt,
+          };
+          const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+            authUser: createdAuth,
+            profile: nextProfile,
+            now,
+          });
+          return tx.userData.update({
+            where: { id: createdAuth.id },
+            data: {
+              firstName: nextProfile.firstName,
+              lastName: nextProfile.lastName,
+              requiredProfileFieldsCompletedAt,
+              updatedAt: now,
+            },
+          });
+        })()
+      : await (async () => {
+          const nextProfile = {
             firstName,
             lastName,
-            userName: await reserveGeneratedUserName(
-              tx,
-              normalizedEmail.split('@')[0] ?? 'user',
-              { excludeUserId: createdAuth.id, suffixSeed: createdAuth.id },
-            ),
-            dateOfBirth: new Date('2000-01-01'),
-            teamIds: [],
-            friendIds: [],
-            friendRequestIds: [],
-            friendRequestSentIds: [],
-            followingIds: [],
-            uploadedImages: [],
-            profileImageId: null,
-          },
-        });
+            dateOfBirth: UNKNOWN_DATE_OF_BIRTH,
+            requiredProfileFieldsCompletedAt: null,
+          };
+          const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+            authUser: createdAuth,
+            profile: nextProfile,
+            now,
+          });
+          return tx.userData.create({
+            data: {
+              id: createdAuth.id,
+              createdAt: now,
+              updatedAt: now,
+              firstName: nextProfile.firstName,
+              lastName: nextProfile.lastName,
+              userName: await reserveGeneratedUserName(
+                tx,
+                normalizedEmail.split('@')[0] ?? 'user',
+                { excludeUserId: createdAuth.id, suffixSeed: createdAuth.id },
+              ),
+              dateOfBirth: nextProfile.dateOfBirth,
+              requiredProfileFieldsCompletedAt,
+              teamIds: [],
+              friendIds: [],
+              friendRequestIds: [],
+              friendRequestSentIds: [],
+              followingIds: [],
+              uploadedImages: [],
+              profileImageId: null,
+            },
+          });
+        })();
 
     await tx.sensitiveUserData.upsert({
       where: { id: existingSensitive?.id ?? createdAuth.id },
@@ -220,10 +259,28 @@ export async function GET(req: NextRequest) {
     return [createdAuth, profileRow] as const;
   });
 
-  const session: SessionToken = { userId: authUser.id, isAdmin: false };
-  const token = signSessionToken(session);
+  if (isAuthUserSuspended(authUser)) {
+    const res = NextResponse.redirect(new URL('/login?oauth=google&error=account_suspended', origin), { status: 302 });
+    clearOauthCookies(res);
+    return res;
+  }
 
-  const res = NextResponse.redirect(new URL(next, origin), { status: 302 });
+  const session: SessionToken = {
+    userId: authUser.id,
+    isAdmin: false,
+    sessionVersion: authUser.sessionVersion ?? 0,
+  };
+  const token = signSessionToken(session);
+  const profileCompletionState = buildProfileCompletionState({ authUser, profile });
+  const destinationUrl = new URL(
+    profileCompletionState.requiresProfileCompletion ? '/complete-profile' : next,
+    origin,
+  );
+  if (profileCompletionState.requiresProfileCompletion) {
+    destinationUrl.searchParams.set('next', next);
+  }
+
+  const res = NextResponse.redirect(destinationUrl, { status: 302 });
   clearOauthCookies(res);
   setAuthCookie(res, token);
   return res;

@@ -23,6 +23,7 @@ uploads/
 *.pem
 .idea
 tmp/
+.codex-artifacts/
 
 # debug
 npm-debug.log*

@@ -11,6 +11,7 @@ import type {
 } from '@/types';
 import { buildPayload } from './utils';
 import type { DivisionRegistrationSelection } from '@/lib/registrationService';
+import type { WeeklyOccurrenceSelection } from '@/lib/eventService';
 
 type PaymentOrganizationContext = Partial<Organization>;
 
@@ -78,6 +79,7 @@ class PaymentService {
     organization?: PaymentOrganizationContext,
     selection?: DivisionRegistrationSelection,
     billingAddress?: BillingAddress,
+    occurrence?: WeeklyOccurrenceSelection,
   ): Promise<PaymentIntent> {
     try {
       if (!event) {
@@ -92,6 +94,8 @@ class PaymentService {
         organization,
         billingAddress,
         ...selection,
+        ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+        ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
@@ -150,21 +154,71 @@ class PaymentService {
     }
   }
 
+  async createTeamRegistrationPaymentIntent(
+    user: UserData,
+    team: Team,
+    organization?: PaymentOrganizationContext,
+    billingAddress?: BillingAddress,
+  ): Promise<PaymentIntent> {
+    try {
+      if (!team?.$id) {
+        throw new Error('Team is required to create a registration payment intent.');
+      }
+      const payload = {
+        purchaseType: 'team_registration',
+        user,
+        team,
+        teamRegistration: { teamId: team.$id },
+        organization,
+        billingAddress,
+      };
+
+      const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
+        method: 'POST',
+        body: payload,
+      });
+
+      if (result && 'error' in result && result.error) {
+        throw new Error(result.error);
+      }
+
+      if (!result || Object.keys(result).length === 0) {
+        throw new Error('Received empty response when creating team registration payment intent.');
+      }
+
+      return result as PaymentIntent;
+    } catch (error) {
+      console.error('Failed to create team registration payment intent:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to start team registration');
+    }
+  }
+
   async joinEvent(
     user?: UserData,
     event?: Event,
     team?: Team,
     selection?: DivisionRegistrationSelection,
     timeoutMs?: number,
+    occurrence?: WeeklyOccurrenceSelection,
   ): Promise<void> {
     try {
       if (!event?.$id) {
         throw new Error('Event is required to join.');
       }
+      const teamId = typeof team?.$id === 'string' ? team.$id : undefined;
+      const userId = teamId ? undefined : (typeof user?.$id === 'string' ? user.$id : undefined);
+      if (!userId && !teamId) {
+        throw new Error('Specify exactly one participant target via userId or teamId.');
+      }
       const payload = {
-        user,
-        team,
+        ...(userId ? { userId } : {}),
+        ...(teamId ? { teamId } : {}),
         ...selection,
+        ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+        ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
       };
 
       const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {
@@ -177,8 +231,11 @@ class PaymentService {
         throw new Error(result.error);
       }
     } catch (error) {
-      console.error('Failed to join event:', error);
-      throw new Error(error instanceof Error ? error.message : 'Failed to join event');
+      const message = error instanceof Error ? error.message : 'Failed to join event';
+      if (!message.toLowerCase().includes('already registered')) {
+        console.error('Failed to join event:', error);
+      }
+      throw new Error(message);
     }
   }
 
@@ -189,17 +246,24 @@ class PaymentService {
     targetUserId?: string,
     options?: LeaveEventOptions,
     timeoutMs?: number,
+    occurrence?: WeeklyOccurrenceSelection,
   ): Promise<void> {
     try {
       if (!event?.$id) {
         throw new Error('Event is required to leave.');
       }
+      const teamId = typeof team?.$id === 'string' ? team.$id : undefined;
+      const resolvedUserId = teamId ? undefined : (targetUserId ?? user?.$id);
+      if (!resolvedUserId && !teamId) {
+        throw new Error('Specify exactly one participant target via userId or teamId.');
+      }
       const payload = {
-        user,
-        userId: targetUserId ?? user?.$id,
-        team,
+        ...(resolvedUserId ? { userId: resolvedUserId } : {}),
+        ...(teamId ? { teamId } : {}),
         refundMode: options?.refundMode,
         refundReason: options?.refundReason,
+        ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+        ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
       };
 
       const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {

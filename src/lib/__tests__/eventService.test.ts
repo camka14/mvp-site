@@ -347,7 +347,7 @@ describe('eventService', () => {
           ],
           timeSlots: [
             expect.objectContaining({
-              $id: 'slot_1',
+              id: 'slot_1',
               dayOfWeek: 2,
               daysOfWeek: [2, 4],
               scheduledFieldId: 'field_1',

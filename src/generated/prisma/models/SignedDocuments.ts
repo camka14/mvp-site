@@ -276,7 +276,7 @@ export type SignedDocumentsGroupByOutputType = {
   _max: SignedDocumentsMaxAggregateOutputType | null
 }
 
-type GetSignedDocumentsGroupByPayload<T extends SignedDocumentsGroupByArgs> = Prisma.PrismaPromise<
+export type GetSignedDocumentsGroupByPayload<T extends SignedDocumentsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<SignedDocumentsGroupByOutputType, T['by']> &
       {
@@ -1334,6 +1334,11 @@ export type SignedDocumentsFindManyArgs<ExtArgs extends runtime.Types.Extensions
    * Skip the first `n` SignedDocuments.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of SignedDocuments.
+   */
   distinct?: Prisma.SignedDocumentsScalarFieldEnum | Prisma.SignedDocumentsScalarFieldEnum[]
 }
 

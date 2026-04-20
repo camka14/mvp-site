@@ -6,6 +6,9 @@ const prismaMock = {
   userData: {
     findUnique: jest.fn(),
   },
+  eventRegistrations: {
+    findMany: jest.fn(),
+  },
   events: {
     findMany: jest.fn(),
   },
@@ -42,6 +45,7 @@ describe('GET /api/profile/schedule', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockReset();
     prismaMock.volleyBallTeams.findMany.mockReset();
   });
@@ -206,6 +210,66 @@ describe('GET /api/profile/schedule', () => {
           AND: expect.any(Array),
         }),
         take: 50,
+      }),
+    );
+  });
+
+  it('includes events discovered through registration rows even when legacy participant arrays are empty', async () => {
+    prismaMock.userData.findUnique.mockResolvedValue({
+      id: 'user_1',
+      teamIds: [],
+    });
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      { eventId: 'event_1' },
+    ]);
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'event_1',
+        name: 'Registered Event',
+        state: 'PUBLISHED',
+        start: new Date('2026-03-01T10:00:00Z'),
+        end: new Date('2026-03-01T12:00:00Z'),
+        fieldIds: ['field_1'],
+        teamIds: [],
+        hostId: 'host_1',
+        userIds: [],
+        freeAgentIds: [],
+        waitListIds: [],
+        officialIds: [],
+      },
+    ]);
+    prismaMock.matches.findMany.mockResolvedValue([]);
+    prismaMock.fields.findMany.mockResolvedValue([
+      { id: 'field_1', fieldNumber: 1, name: 'Field 1' },
+    ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/profile/schedule'));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.events).toHaveLength(1);
+    expect(json.events[0].$id).toBe('event_1');
+    expect(prismaMock.eventRegistrations.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          status: { in: ['ACTIVE', 'STARTED', 'BLOCKED'] },
+          OR: [
+            {
+              registrantId: 'user_1',
+              registrantType: { in: ['SELF', 'CHILD'] },
+            },
+          ],
+        },
+        select: { eventId: true },
+      }),
+    );
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            { id: { in: ['event_1'] } },
+          ]),
+        }),
       }),
     );
   });

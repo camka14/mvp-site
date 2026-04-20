@@ -360,6 +360,8 @@ describe('POST /api/billing/host/onboarding-link', () => {
   });
 
   it('canonicalizes the Stripe callback host in OAuth fallback when the request arrives on www.bracket-iq.com', async () => {
+    process.env.PUBLIC_WEB_BASE_URL = 'https://www.bracket-iq.com';
+
     prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_123' });
     accountsRetrieveMock.mockResolvedValue({
       type: 'custom',

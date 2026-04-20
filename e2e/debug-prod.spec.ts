@@ -1,7 +1,7 @@
-import { test } from '@playwright/test';
+import { test } from "@playwright/test";
 
-test('debug prod evaluate', async ({ page }) => {
-  await page.goto('http://localhost:3001/', { waitUntil: 'domcontentloaded' });
+test("debug prod evaluate", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
   const value = await page.evaluate(() => 1 + 1);
-  console.log('value', value);
+  console.log("value", value);
 });

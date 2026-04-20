@@ -24,7 +24,6 @@ const canManageEventMock = jest.fn();
 const acquireEventLockMock = jest.fn();
 const loadEventWithRelationsMock = jest.fn();
 const saveMatchesMock = jest.fn();
-const saveTeamRecordsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -33,7 +32,6 @@ jest.mock('@/server/repositories/locks', () => ({ acquireEventLock: acquireEvent
 jest.mock('@/server/repositories/events', () => ({
   loadEventWithRelations: (...args: any[]) => loadEventWithRelationsMock(...args),
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
-  saveTeamRecords: (...args: any[]) => saveTeamRecordsMock(...args),
 }));
 
 import { GET as standingsGet, PATCH as standingsPatch } from '@/app/api/events/[eventId]/standings/route';
@@ -216,7 +214,6 @@ describe('standings routes', () => {
       }),
     );
     expect(saveMatchesMock).not.toHaveBeenCalled();
-    expect(saveTeamRecordsMock).not.toHaveBeenCalled();
 
     const json = await res.json();
     expect(json.applyReassignment).toBe(false);

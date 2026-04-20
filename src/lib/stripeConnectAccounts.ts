@@ -1,5 +1,6 @@
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
+import { deriveManagedOrganizationVerificationStatus } from '@/lib/organizationVerification';
 
 const normalizeString = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -10,6 +11,22 @@ const normalizeString = (value: unknown): string | null => {
 };
 
 const normalizeTransferAmount = (value: number): number => Math.max(0, Math.round(value));
+
+const managedStripeAccountRowIsVerified = (row: {
+  detailsSubmitted?: boolean | null;
+  chargesEnabled?: boolean | null;
+  payoutsEnabled?: boolean | null;
+  requirementsCurrentlyDue?: string[] | null;
+  requirementsPastDue?: string[] | null;
+  requirementsDisabledReason?: string | null;
+}): boolean => deriveManagedOrganizationVerificationStatus({
+  detailsSubmitted: row.detailsSubmitted,
+  chargesEnabled: row.chargesEnabled,
+  payoutsEnabled: row.payoutsEnabled,
+  requirementsCurrentlyDue: row.requirementsCurrentlyDue ?? [],
+  requirementsPastDue: row.requirementsPastDue ?? [],
+  requirementsDisabledReason: row.requirementsDisabledReason ?? null,
+}) === 'VERIFIED';
 
 const selectLatestConnectedAccountId = async (where: { organizationId?: string; userId?: string }) => {
   const row = await prisma.stripeAccounts.findFirst({
@@ -23,6 +40,57 @@ const selectLatestConnectedAccountId = async (where: { organizationId?: string; 
   return normalizeString(row?.accountId);
 };
 
+const selectOrganizationConnectedAccountId = async (organizationId: string): Promise<string | null> => {
+  if (typeof (prisma.stripeAccounts as { findMany?: unknown }).findMany !== 'function') {
+    return selectLatestConnectedAccountId({ organizationId });
+  }
+
+  const rows = await prisma.stripeAccounts.findMany({
+    where: {
+      organizationId,
+      accountId: { not: null },
+    },
+    orderBy: { updatedAt: 'desc' },
+    select: {
+      accountId: true,
+      accountOrigin: true,
+      isActiveForBilling: true,
+      detailsSubmitted: true,
+      chargesEnabled: true,
+      payoutsEnabled: true,
+      requirementsCurrentlyDue: true,
+      requirementsPastDue: true,
+      requirementsDisabledReason: true,
+    },
+  });
+
+  const activeManagedAccount = rows.find((row) =>
+    row.accountOrigin === 'PLATFORM_ONBOARDING'
+    && row.isActiveForBilling
+    && managedStripeAccountRowIsVerified(row),
+  );
+  if (activeManagedAccount) {
+    return normalizeString(activeManagedAccount.accountId);
+  }
+
+  const activeLegacyAccount = rows.find((row) =>
+    row.isActiveForBilling
+    && row.accountOrigin !== 'PLATFORM_ONBOARDING',
+  );
+  if (activeLegacyAccount) {
+    return normalizeString(activeLegacyAccount.accountId);
+  }
+
+  const legacyAccount = rows.find((row) =>
+    row.accountOrigin === 'LEGACY_OAUTH' || row.accountOrigin == null,
+  );
+  if (legacyAccount) {
+    return normalizeString(legacyAccount.accountId);
+  }
+
+  return null;
+};
+
 export const resolveConnectedAccountId = async ({
   organizationId,
   hostUserId,
@@ -32,9 +100,9 @@ export const resolveConnectedAccountId = async ({
 }): Promise<string | null> => {
   const normalizedOrganizationId = normalizeString(organizationId);
   if (normalizedOrganizationId) {
-    const organizationAccountId = await selectLatestConnectedAccountId({
-      organizationId: normalizedOrganizationId,
-    });
+    const organizationAccountId = await selectOrganizationConnectedAccountId(
+      normalizedOrganizationId,
+    );
     if (organizationAccountId) {
       return organizationAccountId;
     }

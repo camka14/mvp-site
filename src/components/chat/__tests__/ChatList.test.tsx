@@ -7,14 +7,18 @@ import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 
 const useChatMock = jest.fn();
 const useChatUIMock = jest.fn();
+const useAppMock = jest.fn();
 const renameChatGroupMock = jest.fn();
-const deleteChatGroupMock = jest.fn();
+const reportChatMock = jest.fn();
+const leaveChatGroupMock = jest.fn();
 const markChatViewedMock = jest.fn();
+const hideChatGroupsMock = jest.fn();
 
 jest.mock('@/lib/chatService', () => ({
   chatService: {
     renameChatGroup: (...args: unknown[]) => renameChatGroupMock(...args),
-    deleteChatGroup: (...args: unknown[]) => deleteChatGroupMock(...args),
+    reportChat: (...args: unknown[]) => reportChatMock(...args),
+    leaveChatGroup: (...args: unknown[]) => leaveChatGroupMock(...args),
   },
 }));
 
@@ -24,6 +28,10 @@ jest.mock('@/context/ChatContext', () => ({
 
 jest.mock('@/context/ChatUIContext', () => ({
   useChatUI: () => useChatUIMock(),
+}));
+
+jest.mock('@/app/providers', () => ({
+  useApp: () => useAppMock(),
 }));
 
 const baseChatUIState = {
@@ -45,16 +53,23 @@ const baseGroup: ChatGroup = {
 describe('ChatList', () => {
   beforeEach(() => {
     renameChatGroupMock.mockReset();
-    deleteChatGroupMock.mockReset();
+    reportChatMock.mockReset();
+    leaveChatGroupMock.mockReset();
     markChatViewedMock.mockReset();
+    hideChatGroupsMock.mockReset();
     renameChatGroupMock.mockResolvedValue(baseGroup);
-    deleteChatGroupMock.mockResolvedValue(undefined);
+    reportChatMock.mockResolvedValue({ removedChatIds: [] });
+    leaveChatGroupMock.mockResolvedValue(baseGroup);
+    useAppMock.mockReturnValue({
+      user: { $id: 'user_1' },
+    });
 
     useChatMock.mockReturnValue({
       chatGroups: [],
       loading: false,
       loadChatGroups: jest.fn(),
       markChatViewed: markChatViewedMock,
+      hideChatGroups: hideChatGroupsMock,
     });
     useChatUIMock.mockReturnValue({
       ...baseChatUIState,
@@ -77,6 +92,7 @@ describe('ChatList', () => {
       loading: false,
       loadChatGroups: jest.fn(),
       markChatViewed: markChatViewedMock,
+      hideChatGroups: hideChatGroupsMock,
     });
 
     renderWithMantine(<ChatList />);
@@ -95,6 +111,7 @@ describe('ChatList', () => {
       loading: false,
       loadChatGroups: loadChatGroupsMock,
       markChatViewed: markChatViewedMock,
+      hideChatGroups: hideChatGroupsMock,
     });
 
     const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('Renamed Chat');
@@ -111,7 +128,7 @@ describe('ChatList', () => {
     promptSpy.mockRestore();
   });
 
-  it('deletes a chat from the 3-dot menu', async () => {
+  it('reports a chat and optionally removes it from the current feed', async () => {
     const user = userEvent.setup();
     const loadChatGroupsMock = jest.fn().mockResolvedValue(undefined);
     const closeChatWindowMock = jest.fn();
@@ -121,6 +138,7 @@ describe('ChatList', () => {
       loading: false,
       loadChatGroups: loadChatGroupsMock,
       markChatViewed: markChatViewedMock,
+      hideChatGroups: hideChatGroupsMock,
     });
 
     useChatUIMock.mockReturnValue({
@@ -129,18 +147,25 @@ describe('ChatList', () => {
       closeChatWindow: closeChatWindowMock,
     });
 
+    reportChatMock.mockResolvedValue({ removedChatIds: ['chat_1'] });
+    const promptSpy = jest.spyOn(window, 'prompt').mockReturnValue('Objectionable content');
     const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
     renderWithMantine(<ChatList />);
 
     await user.click(screen.getByLabelText('Chat actions for Weekend League'));
-    await user.click(screen.getByText('Delete chat'));
+    await user.click(screen.getByText('Report chat'));
 
     await waitFor(() => {
-      expect(deleteChatGroupMock).toHaveBeenCalledWith('chat_1');
+      expect(reportChatMock).toHaveBeenCalledWith('chat_1', {
+        notes: 'Objectionable content',
+        leaveChat: true,
+      });
+      expect(hideChatGroupsMock).toHaveBeenCalledWith(['chat_1']);
       expect(closeChatWindowMock).toHaveBeenCalledWith('chat_1');
       expect(loadChatGroupsMock).toHaveBeenCalled();
     });
 
+    promptSpy.mockRestore();
     confirmSpy.mockRestore();
   });
 
@@ -153,6 +178,7 @@ describe('ChatList', () => {
       loading: false,
       loadChatGroups: jest.fn(),
       markChatViewed: markChatViewedMock,
+      hideChatGroups: hideChatGroupsMock,
     });
 
     useChatUIMock.mockReturnValue({
@@ -183,6 +209,7 @@ describe('ChatList', () => {
       loading: false,
       loadChatGroups: jest.fn(),
       markChatViewed: markChatViewedMock,
+      hideChatGroups: hideChatGroupsMock,
     });
 
     renderWithMantine(<ChatList />);
@@ -200,6 +227,7 @@ describe('ChatList', () => {
       loading: false,
       loadChatGroups: jest.fn(),
       markChatViewed: markChatViewedMock,
+      hideChatGroups: hideChatGroupsMock,
     });
 
     useChatUIMock.mockReturnValue({
@@ -213,5 +241,40 @@ describe('ChatList', () => {
 
     expect(markChatViewedMock).toHaveBeenCalledWith('chat_1');
     expect(openChatWindowMock).toHaveBeenCalledWith('chat_1');
+  });
+
+  it('leaves a chat from the 3-dot menu and hides it locally', async () => {
+    const user = userEvent.setup();
+    const loadChatGroupsMock = jest.fn().mockResolvedValue(undefined);
+    const closeChatWindowMock = jest.fn();
+
+    useChatMock.mockReturnValue({
+      chatGroups: [baseGroup],
+      loading: false,
+      loadChatGroups: loadChatGroupsMock,
+      markChatViewed: markChatViewedMock,
+      hideChatGroups: hideChatGroupsMock,
+    });
+
+    useChatUIMock.mockReturnValue({
+      ...baseChatUIState,
+      openChatWindow: jest.fn(),
+      closeChatWindow: closeChatWindowMock,
+    });
+
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    renderWithMantine(<ChatList />);
+
+    await user.click(screen.getByLabelText('Chat actions for Weekend League'));
+    await user.click(screen.getByText('Leave chat'));
+
+    await waitFor(() => {
+      expect(leaveChatGroupMock).toHaveBeenCalledWith('chat_1', ['user_2']);
+      expect(hideChatGroupsMock).toHaveBeenCalledWith(['chat_1']);
+      expect(closeChatWindowMock).toHaveBeenCalledWith('chat_1');
+      expect(loadChatGroupsMock).toHaveBeenCalled();
+    });
+
+    confirmSpy.mockRestore();
   });
 });

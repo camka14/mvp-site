@@ -1,4 +1,5 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { ChatDrawer } from '../ChatDrawer';
 
@@ -25,11 +26,38 @@ jest.mock('../ChatDetail', () => ({
 describe('ChatDrawer', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    useChatMock.mockReturnValue({
+      chatGroups: [],
+      loadMessages: jest.fn().mockResolvedValue(undefined),
+      loadChatGroups: jest.fn().mockResolvedValue(undefined),
+      markChatViewed: jest.fn(),
+      chatTermsState: {
+        version: '2026-04-14',
+        url: '/terms',
+        summary: ['There is no tolerance for objectionable content or abusive users.'],
+        accepted: false,
+        acceptedAt: null,
+      },
+      chatTermsLoading: false,
+      chatTermsModalOpen: false,
+      ensureChatAccess: jest.fn().mockResolvedValue(true),
+      acceptChatTerms: jest.fn().mockResolvedValue(undefined),
+      closeChatTermsModal: jest.fn(),
+    });
+    useChatUIMock.mockReturnValue({
+      isChatListOpen: false,
+      openChatWindows: [],
+      openChatList: jest.fn(),
+      isFloatingButtonVisible: false,
+    });
   });
 
   afterEach(() => {
-    jest.runOnlyPendingTimers();
+    act(() => {
+      jest.runOnlyPendingTimers();
+    });
     jest.useRealTimers();
+    jest.clearAllMocks();
   });
 
   it('refreshes inactive chat groups every 30 seconds', async () => {
@@ -42,12 +70,12 @@ describe('ChatDrawer', () => {
       loadMessages: loadMessagesMock,
       loadChatGroups: loadChatGroupsMock,
       markChatViewed: markChatViewedMock,
-    });
-    useChatUIMock.mockReturnValue({
-      isChatListOpen: false,
-      openChatWindows: [],
-      openChatList: jest.fn(),
-      isFloatingButtonVisible: false,
+      chatTermsState: null,
+      chatTermsLoading: false,
+      chatTermsModalOpen: false,
+      ensureChatAccess: jest.fn().mockResolvedValue(true),
+      acceptChatTerms: jest.fn().mockResolvedValue(undefined),
+      closeChatTermsModal: jest.fn(),
     });
 
     render(<ChatDrawer />);
@@ -69,6 +97,12 @@ describe('ChatDrawer', () => {
       loadMessages: jest.fn().mockResolvedValue(undefined),
       loadChatGroups: jest.fn().mockResolvedValue(undefined),
       markChatViewed: jest.fn(),
+      chatTermsState: null,
+      chatTermsLoading: false,
+      chatTermsModalOpen: false,
+      ensureChatAccess: jest.fn().mockResolvedValue(true),
+      acceptChatTerms: jest.fn().mockResolvedValue(undefined),
+      closeChatTermsModal: jest.fn(),
     });
     useChatUIMock.mockReturnValue({
       isChatListOpen: false,
@@ -92,6 +126,12 @@ describe('ChatDrawer', () => {
       loadMessages: loadMessagesMock,
       loadChatGroups: jest.fn().mockResolvedValue(undefined),
       markChatViewed: markChatViewedMock,
+      chatTermsState: null,
+      chatTermsLoading: false,
+      chatTermsModalOpen: false,
+      ensureChatAccess: jest.fn().mockResolvedValue(true),
+      acceptChatTerms: jest.fn().mockResolvedValue(undefined),
+      closeChatTermsModal: jest.fn(),
     });
     useChatUIMock.mockReturnValue({
       isChatListOpen: false,
@@ -105,5 +145,81 @@ describe('ChatDrawer', () => {
 
     expect(markChatViewedMock).toHaveBeenCalledWith('chat_1');
     expect(loadMessagesMock).toHaveBeenCalledWith('chat_1');
+  });
+
+  it('gates opening the chat list behind chat terms consent', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const ensureChatAccessMock = jest.fn().mockResolvedValue(false);
+    const loadChatGroupsMock = jest.fn().mockResolvedValue(undefined);
+    const openChatListMock = jest.fn();
+
+    useChatMock.mockReturnValue({
+      chatGroups: [],
+      loadMessages: jest.fn().mockResolvedValue(undefined),
+      loadChatGroups: loadChatGroupsMock,
+      markChatViewed: jest.fn(),
+      chatTermsState: null,
+      chatTermsLoading: false,
+      chatTermsModalOpen: false,
+      ensureChatAccess: ensureChatAccessMock,
+      acceptChatTerms: jest.fn().mockResolvedValue(undefined),
+      closeChatTermsModal: jest.fn(),
+    });
+    useChatUIMock.mockReturnValue({
+      isChatListOpen: false,
+      openChatWindows: [],
+      openChatList: openChatListMock,
+      isFloatingButtonVisible: true,
+    });
+
+    render(<ChatDrawer />);
+    await act(async () => {});
+
+    await user.click(screen.getByLabelText('Open chat'));
+
+    await waitFor(() => {
+      expect(ensureChatAccessMock).toHaveBeenCalled();
+    });
+    expect(loadChatGroupsMock).not.toHaveBeenCalledWith();
+    expect(openChatListMock).not.toHaveBeenCalled();
+  });
+
+  it('shows the chat terms modal and records agreement', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const acceptChatTermsMock = jest.fn().mockResolvedValue(undefined);
+    const closeChatTermsModalMock = jest.fn();
+
+    useChatMock.mockReturnValue({
+      chatGroups: [],
+      loadMessages: jest.fn().mockResolvedValue(undefined),
+      loadChatGroups: jest.fn().mockResolvedValue(undefined),
+      markChatViewed: jest.fn(),
+      chatTermsState: {
+        version: '2026-04-14',
+        url: '/terms',
+        summary: ['There is no tolerance for objectionable content or abusive users.'],
+        accepted: false,
+        acceptedAt: null,
+      },
+      chatTermsLoading: false,
+      chatTermsModalOpen: true,
+      ensureChatAccess: jest.fn().mockResolvedValue(false),
+      acceptChatTerms: acceptChatTermsMock,
+      closeChatTermsModal: closeChatTermsModalMock,
+    });
+
+    render(<ChatDrawer />);
+    await act(async () => {});
+
+    expect(screen.getByText('Agree to the Terms and EULA')).toBeInTheDocument();
+    expect(screen.getByText('There is no tolerance for objectionable content or abusive users.')).toBeInTheDocument();
+
+    await user.click(screen.getByText('Agree'));
+    await waitFor(() => {
+      expect(acceptChatTermsMock).toHaveBeenCalled();
+    });
+
+    await user.click(screen.getByText('Not now'));
+    expect(closeChatTermsModalMock).toHaveBeenCalled();
   });
 });

@@ -36,6 +36,11 @@ export type OrganizationsMinAggregateOutputType = {
   ownerId: string | null
   website: string | null
   hasStripeAccount: boolean | null
+  verificationStatus: $Enums.OrganizationsVerificationStatusEnum | null
+  verifiedAt: Date | null
+  verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum | null
+  verificationReviewNotes: string | null
+  verificationReviewUpdatedAt: Date | null
 }
 
 export type OrganizationsMaxAggregateOutputType = {
@@ -50,6 +55,11 @@ export type OrganizationsMaxAggregateOutputType = {
   ownerId: string | null
   website: string | null
   hasStripeAccount: boolean | null
+  verificationStatus: $Enums.OrganizationsVerificationStatusEnum | null
+  verifiedAt: Date | null
+  verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum | null
+  verificationReviewNotes: string | null
+  verificationReviewUpdatedAt: Date | null
 }
 
 export type OrganizationsCountAggregateOutputType = {
@@ -67,6 +77,11 @@ export type OrganizationsCountAggregateOutputType = {
   sports: number
   officialIds: number
   hasStripeAccount: number
+  verificationStatus: number
+  verifiedAt: number
+  verificationReviewStatus: number
+  verificationReviewNotes: number
+  verificationReviewUpdatedAt: number
   coordinates: number
   productIds: number
   teamIds: number
@@ -86,6 +101,11 @@ export type OrganizationsMinAggregateInputType = {
   ownerId?: true
   website?: true
   hasStripeAccount?: true
+  verificationStatus?: true
+  verifiedAt?: true
+  verificationReviewStatus?: true
+  verificationReviewNotes?: true
+  verificationReviewUpdatedAt?: true
 }
 
 export type OrganizationsMaxAggregateInputType = {
@@ -100,6 +120,11 @@ export type OrganizationsMaxAggregateInputType = {
   ownerId?: true
   website?: true
   hasStripeAccount?: true
+  verificationStatus?: true
+  verifiedAt?: true
+  verificationReviewStatus?: true
+  verificationReviewNotes?: true
+  verificationReviewUpdatedAt?: true
 }
 
 export type OrganizationsCountAggregateInputType = {
@@ -117,6 +142,11 @@ export type OrganizationsCountAggregateInputType = {
   sports?: true
   officialIds?: true
   hasStripeAccount?: true
+  verificationStatus?: true
+  verifiedAt?: true
+  verificationReviewStatus?: true
+  verificationReviewNotes?: true
+  verificationReviewUpdatedAt?: true
   coordinates?: true
   productIds?: true
   teamIds?: true
@@ -210,6 +240,11 @@ export type OrganizationsGroupByOutputType = {
   sports: string[]
   officialIds: string[]
   hasStripeAccount: boolean | null
+  verificationStatus: $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt: Date | null
+  verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes: string | null
+  verificationReviewUpdatedAt: Date | null
   coordinates: runtime.JsonValue | null
   productIds: string[]
   teamIds: string[]
@@ -218,7 +253,7 @@ export type OrganizationsGroupByOutputType = {
   _max: OrganizationsMaxAggregateOutputType | null
 }
 
-type GetOrganizationsGroupByPayload<T extends OrganizationsGroupByArgs> = Prisma.PrismaPromise<
+export type GetOrganizationsGroupByPayload<T extends OrganizationsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<OrganizationsGroupByOutputType, T['by']> &
       {
@@ -251,6 +286,11 @@ export type OrganizationsWhereInput = {
   sports?: Prisma.StringNullableListFilter<"Organizations">
   officialIds?: Prisma.StringNullableListFilter<"Organizations">
   hasStripeAccount?: Prisma.BoolNullableFilter<"Organizations"> | boolean | null
+  verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFilter<"Organizations"> | $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFilter<"Organizations"> | $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  verificationReviewUpdatedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
   coordinates?: Prisma.JsonNullableFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   teamIds?: Prisma.StringNullableListFilter<"Organizations">
@@ -271,6 +311,11 @@ export type OrganizationsOrderByWithRelationInput = {
   sports?: Prisma.SortOrder
   officialIds?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrderInput | Prisma.SortOrder
+  verificationStatus?: Prisma.SortOrder
+  verifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  verificationReviewStatus?: Prisma.SortOrder
+  verificationReviewNotes?: Prisma.SortOrderInput | Prisma.SortOrder
+  verificationReviewUpdatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   coordinates?: Prisma.SortOrderInput | Prisma.SortOrder
   productIds?: Prisma.SortOrder
   teamIds?: Prisma.SortOrder
@@ -294,6 +339,11 @@ export type OrganizationsWhereUniqueInput = Prisma.AtLeast<{
   sports?: Prisma.StringNullableListFilter<"Organizations">
   officialIds?: Prisma.StringNullableListFilter<"Organizations">
   hasStripeAccount?: Prisma.BoolNullableFilter<"Organizations"> | boolean | null
+  verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFilter<"Organizations"> | $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFilter<"Organizations"> | $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  verificationReviewUpdatedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
   coordinates?: Prisma.JsonNullableFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   teamIds?: Prisma.StringNullableListFilter<"Organizations">
@@ -314,6 +364,11 @@ export type OrganizationsOrderByWithAggregationInput = {
   sports?: Prisma.SortOrder
   officialIds?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrderInput | Prisma.SortOrder
+  verificationStatus?: Prisma.SortOrder
+  verifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  verificationReviewStatus?: Prisma.SortOrder
+  verificationReviewNotes?: Prisma.SortOrderInput | Prisma.SortOrder
+  verificationReviewUpdatedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   coordinates?: Prisma.SortOrderInput | Prisma.SortOrder
   productIds?: Prisma.SortOrder
   teamIds?: Prisma.SortOrder
@@ -340,6 +395,11 @@ export type OrganizationsScalarWhereWithAggregatesInput = {
   sports?: Prisma.StringNullableListFilter<"Organizations">
   officialIds?: Prisma.StringNullableListFilter<"Organizations">
   hasStripeAccount?: Prisma.BoolNullableWithAggregatesFilter<"Organizations"> | boolean | null
+  verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumWithAggregatesFilter<"Organizations"> | $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Organizations"> | Date | string | null
+  verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumWithAggregatesFilter<"Organizations"> | $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  verificationReviewUpdatedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Organizations"> | Date | string | null
   coordinates?: Prisma.JsonNullableWithAggregatesFilter<"Organizations">
   productIds?: Prisma.StringNullableListFilter<"Organizations">
   teamIds?: Prisma.StringNullableListFilter<"Organizations">
@@ -360,6 +420,11 @@ export type OrganizationsCreateInput = {
   sports?: Prisma.OrganizationsCreatesportsInput | string[]
   officialIds?: Prisma.OrganizationsCreateofficialIdsInput | string[]
   hasStripeAccount?: boolean | null
+  verificationStatus?: $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Date | string | null
+  verificationReviewStatus?: $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: string | null
+  verificationReviewUpdatedAt?: Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsCreateteamIdsInput | string[]
@@ -380,6 +445,11 @@ export type OrganizationsUncheckedCreateInput = {
   sports?: Prisma.OrganizationsCreatesportsInput | string[]
   officialIds?: Prisma.OrganizationsCreateofficialIdsInput | string[]
   hasStripeAccount?: boolean | null
+  verificationStatus?: $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Date | string | null
+  verificationReviewStatus?: $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: string | null
+  verificationReviewUpdatedAt?: Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsCreateteamIdsInput | string[]
@@ -400,6 +470,11 @@ export type OrganizationsUpdateInput = {
   sports?: Prisma.OrganizationsUpdatesportsInput | string[]
   officialIds?: Prisma.OrganizationsUpdateofficialIdsInput | string[]
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  verificationReviewUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsUpdateteamIdsInput | string[]
@@ -420,6 +495,11 @@ export type OrganizationsUncheckedUpdateInput = {
   sports?: Prisma.OrganizationsUpdatesportsInput | string[]
   officialIds?: Prisma.OrganizationsUpdateofficialIdsInput | string[]
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  verificationReviewUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsUpdateteamIdsInput | string[]
@@ -440,6 +520,11 @@ export type OrganizationsCreateManyInput = {
   sports?: Prisma.OrganizationsCreatesportsInput | string[]
   officialIds?: Prisma.OrganizationsCreateofficialIdsInput | string[]
   hasStripeAccount?: boolean | null
+  verificationStatus?: $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Date | string | null
+  verificationReviewStatus?: $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: string | null
+  verificationReviewUpdatedAt?: Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsCreateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsCreateteamIdsInput | string[]
@@ -460,6 +545,11 @@ export type OrganizationsUpdateManyMutationInput = {
   sports?: Prisma.OrganizationsUpdatesportsInput | string[]
   officialIds?: Prisma.OrganizationsUpdateofficialIdsInput | string[]
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  verificationReviewUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsUpdateteamIdsInput | string[]
@@ -480,6 +570,11 @@ export type OrganizationsUncheckedUpdateManyInput = {
   sports?: Prisma.OrganizationsUpdatesportsInput | string[]
   officialIds?: Prisma.OrganizationsUpdateofficialIdsInput | string[]
   hasStripeAccount?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  verificationStatus?: Prisma.EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationStatusEnum
+  verifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  verificationReviewStatus?: Prisma.EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationsVerificationReviewStatusEnum
+  verificationReviewNotes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  verificationReviewUpdatedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   coordinates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   productIds?: Prisma.OrganizationsUpdateproductIdsInput | string[]
   teamIds?: Prisma.OrganizationsUpdateteamIdsInput | string[]
@@ -500,6 +595,11 @@ export type OrganizationsCountOrderByAggregateInput = {
   sports?: Prisma.SortOrder
   officialIds?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrder
+  verificationStatus?: Prisma.SortOrder
+  verifiedAt?: Prisma.SortOrder
+  verificationReviewStatus?: Prisma.SortOrder
+  verificationReviewNotes?: Prisma.SortOrder
+  verificationReviewUpdatedAt?: Prisma.SortOrder
   coordinates?: Prisma.SortOrder
   productIds?: Prisma.SortOrder
   teamIds?: Prisma.SortOrder
@@ -517,6 +617,11 @@ export type OrganizationsMaxOrderByAggregateInput = {
   ownerId?: Prisma.SortOrder
   website?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrder
+  verificationStatus?: Prisma.SortOrder
+  verifiedAt?: Prisma.SortOrder
+  verificationReviewStatus?: Prisma.SortOrder
+  verificationReviewNotes?: Prisma.SortOrder
+  verificationReviewUpdatedAt?: Prisma.SortOrder
 }
 
 export type OrganizationsMinOrderByAggregateInput = {
@@ -531,6 +636,11 @@ export type OrganizationsMinOrderByAggregateInput = {
   ownerId?: Prisma.SortOrder
   website?: Prisma.SortOrder
   hasStripeAccount?: Prisma.SortOrder
+  verificationStatus?: Prisma.SortOrder
+  verifiedAt?: Prisma.SortOrder
+  verificationReviewStatus?: Prisma.SortOrder
+  verificationReviewNotes?: Prisma.SortOrder
+  verificationReviewUpdatedAt?: Prisma.SortOrder
 }
 
 export type OrganizationsCreatehostIdsInput = {
@@ -568,6 +678,14 @@ export type OrganizationsUpdateofficialIdsInput = {
   push?: string | string[]
 }
 
+export type EnumOrganizationsVerificationStatusEnumFieldUpdateOperationsInput = {
+  set?: $Enums.OrganizationsVerificationStatusEnum
+}
+
+export type EnumOrganizationsVerificationReviewStatusEnumFieldUpdateOperationsInput = {
+  set?: $Enums.OrganizationsVerificationReviewStatusEnum
+}
+
 export type OrganizationsUpdateproductIdsInput = {
   set?: string[]
   push?: string | string[]
@@ -595,6 +713,11 @@ export type OrganizationsSelect<ExtArgs extends runtime.Types.Extensions.Interna
   sports?: boolean
   officialIds?: boolean
   hasStripeAccount?: boolean
+  verificationStatus?: boolean
+  verifiedAt?: boolean
+  verificationReviewStatus?: boolean
+  verificationReviewNotes?: boolean
+  verificationReviewUpdatedAt?: boolean
   coordinates?: boolean
   productIds?: boolean
   teamIds?: boolean
@@ -615,6 +738,11 @@ export type OrganizationsSelectCreateManyAndReturn<ExtArgs extends runtime.Types
   sports?: boolean
   officialIds?: boolean
   hasStripeAccount?: boolean
+  verificationStatus?: boolean
+  verifiedAt?: boolean
+  verificationReviewStatus?: boolean
+  verificationReviewNotes?: boolean
+  verificationReviewUpdatedAt?: boolean
   coordinates?: boolean
   productIds?: boolean
   teamIds?: boolean
@@ -635,6 +763,11 @@ export type OrganizationsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   sports?: boolean
   officialIds?: boolean
   hasStripeAccount?: boolean
+  verificationStatus?: boolean
+  verifiedAt?: boolean
+  verificationReviewStatus?: boolean
+  verificationReviewNotes?: boolean
+  verificationReviewUpdatedAt?: boolean
   coordinates?: boolean
   productIds?: boolean
   teamIds?: boolean
@@ -655,12 +788,17 @@ export type OrganizationsSelectScalar = {
   sports?: boolean
   officialIds?: boolean
   hasStripeAccount?: boolean
+  verificationStatus?: boolean
+  verifiedAt?: boolean
+  verificationReviewStatus?: boolean
+  verificationReviewNotes?: boolean
+  verificationReviewUpdatedAt?: boolean
   coordinates?: boolean
   productIds?: boolean
   teamIds?: boolean
 }
 
-export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "hostIds" | "website" | "sports" | "officialIds" | "hasStripeAccount" | "coordinates" | "productIds" | "teamIds", ExtArgs["result"]["organizations"]>
+export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "hostIds" | "website" | "sports" | "officialIds" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "coordinates" | "productIds" | "teamIds", ExtArgs["result"]["organizations"]>
 
 export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Organizations"
@@ -680,6 +818,11 @@ export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.Inter
     sports: string[]
     officialIds: string[]
     hasStripeAccount: boolean | null
+    verificationStatus: $Enums.OrganizationsVerificationStatusEnum
+    verifiedAt: Date | null
+    verificationReviewStatus: $Enums.OrganizationsVerificationReviewStatusEnum
+    verificationReviewNotes: string | null
+    verificationReviewUpdatedAt: Date | null
     coordinates: runtime.JsonValue | null
     productIds: string[]
     teamIds: string[]
@@ -1120,6 +1263,11 @@ export interface OrganizationsFieldRefs {
   readonly sports: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly officialIds: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly hasStripeAccount: Prisma.FieldRef<"Organizations", 'Boolean'>
+  readonly verificationStatus: Prisma.FieldRef<"Organizations", 'OrganizationsVerificationStatusEnum'>
+  readonly verifiedAt: Prisma.FieldRef<"Organizations", 'DateTime'>
+  readonly verificationReviewStatus: Prisma.FieldRef<"Organizations", 'OrganizationsVerificationReviewStatusEnum'>
+  readonly verificationReviewNotes: Prisma.FieldRef<"Organizations", 'String'>
+  readonly verificationReviewUpdatedAt: Prisma.FieldRef<"Organizations", 'DateTime'>
   readonly coordinates: Prisma.FieldRef<"Organizations", 'Json'>
   readonly productIds: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly teamIds: Prisma.FieldRef<"Organizations", 'String[]'>
@@ -1299,6 +1447,11 @@ export type OrganizationsFindManyArgs<ExtArgs extends runtime.Types.Extensions.I
    * Skip the first `n` Organizations.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Organizations.
+   */
   distinct?: Prisma.OrganizationsScalarFieldEnum | Prisma.OrganizationsScalarFieldEnum[]
 }
 

@@ -32,6 +32,9 @@ export type MessagesMinAggregateOutputType = {
   userId: string | null
   chatId: string | null
   sentTime: Date | null
+  removedAt: Date | null
+  removedByUserId: string | null
+  removalReason: string | null
 }
 
 export type MessagesMaxAggregateOutputType = {
@@ -42,6 +45,9 @@ export type MessagesMaxAggregateOutputType = {
   userId: string | null
   chatId: string | null
   sentTime: Date | null
+  removedAt: Date | null
+  removedByUserId: string | null
+  removalReason: string | null
 }
 
 export type MessagesCountAggregateOutputType = {
@@ -54,6 +60,9 @@ export type MessagesCountAggregateOutputType = {
   chatId: number
   readByIds: number
   sentTime: number
+  removedAt: number
+  removedByUserId: number
+  removalReason: number
   _all: number
 }
 
@@ -66,6 +75,9 @@ export type MessagesMinAggregateInputType = {
   userId?: true
   chatId?: true
   sentTime?: true
+  removedAt?: true
+  removedByUserId?: true
+  removalReason?: true
 }
 
 export type MessagesMaxAggregateInputType = {
@@ -76,6 +88,9 @@ export type MessagesMaxAggregateInputType = {
   userId?: true
   chatId?: true
   sentTime?: true
+  removedAt?: true
+  removedByUserId?: true
+  removalReason?: true
 }
 
 export type MessagesCountAggregateInputType = {
@@ -88,6 +103,9 @@ export type MessagesCountAggregateInputType = {
   chatId?: true
   readByIds?: true
   sentTime?: true
+  removedAt?: true
+  removedByUserId?: true
+  removalReason?: true
   _all?: true
 }
 
@@ -173,12 +191,15 @@ export type MessagesGroupByOutputType = {
   chatId: string
   readByIds: string[]
   sentTime: Date
+  removedAt: Date | null
+  removedByUserId: string | null
+  removalReason: string | null
   _count: MessagesCountAggregateOutputType | null
   _min: MessagesMinAggregateOutputType | null
   _max: MessagesMaxAggregateOutputType | null
 }
 
-type GetMessagesGroupByPayload<T extends MessagesGroupByArgs> = Prisma.PrismaPromise<
+export type GetMessagesGroupByPayload<T extends MessagesGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<MessagesGroupByOutputType, T['by']> &
       {
@@ -206,6 +227,9 @@ export type MessagesWhereInput = {
   chatId?: Prisma.StringFilter<"Messages"> | string
   readByIds?: Prisma.StringNullableListFilter<"Messages">
   sentTime?: Prisma.DateTimeFilter<"Messages"> | Date | string
+  removedAt?: Prisma.DateTimeNullableFilter<"Messages"> | Date | string | null
+  removedByUserId?: Prisma.StringNullableFilter<"Messages"> | string | null
+  removalReason?: Prisma.StringNullableFilter<"Messages"> | string | null
 }
 
 export type MessagesOrderByWithRelationInput = {
@@ -218,6 +242,9 @@ export type MessagesOrderByWithRelationInput = {
   chatId?: Prisma.SortOrder
   readByIds?: Prisma.SortOrder
   sentTime?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  removedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  removalReason?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type MessagesWhereUniqueInput = Prisma.AtLeast<{
@@ -233,6 +260,9 @@ export type MessagesWhereUniqueInput = Prisma.AtLeast<{
   chatId?: Prisma.StringFilter<"Messages"> | string
   readByIds?: Prisma.StringNullableListFilter<"Messages">
   sentTime?: Prisma.DateTimeFilter<"Messages"> | Date | string
+  removedAt?: Prisma.DateTimeNullableFilter<"Messages"> | Date | string | null
+  removedByUserId?: Prisma.StringNullableFilter<"Messages"> | string | null
+  removalReason?: Prisma.StringNullableFilter<"Messages"> | string | null
 }, "id">
 
 export type MessagesOrderByWithAggregationInput = {
@@ -245,6 +275,9 @@ export type MessagesOrderByWithAggregationInput = {
   chatId?: Prisma.SortOrder
   readByIds?: Prisma.SortOrder
   sentTime?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  removedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  removalReason?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.MessagesCountOrderByAggregateInput
   _max?: Prisma.MessagesMaxOrderByAggregateInput
   _min?: Prisma.MessagesMinOrderByAggregateInput
@@ -263,6 +296,9 @@ export type MessagesScalarWhereWithAggregatesInput = {
   chatId?: Prisma.StringWithAggregatesFilter<"Messages"> | string
   readByIds?: Prisma.StringNullableListFilter<"Messages">
   sentTime?: Prisma.DateTimeWithAggregatesFilter<"Messages"> | Date | string
+  removedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Messages"> | Date | string | null
+  removedByUserId?: Prisma.StringNullableWithAggregatesFilter<"Messages"> | string | null
+  removalReason?: Prisma.StringNullableWithAggregatesFilter<"Messages"> | string | null
 }
 
 export type MessagesCreateInput = {
@@ -275,6 +311,9 @@ export type MessagesCreateInput = {
   chatId: string
   readByIds?: Prisma.MessagesCreatereadByIdsInput | string[]
   sentTime: Date | string
+  removedAt?: Date | string | null
+  removedByUserId?: string | null
+  removalReason?: string | null
 }
 
 export type MessagesUncheckedCreateInput = {
@@ -287,6 +326,9 @@ export type MessagesUncheckedCreateInput = {
   chatId: string
   readByIds?: Prisma.MessagesCreatereadByIdsInput | string[]
   sentTime: Date | string
+  removedAt?: Date | string | null
+  removedByUserId?: string | null
+  removalReason?: string | null
 }
 
 export type MessagesUpdateInput = {
@@ -299,6 +341,9 @@ export type MessagesUpdateInput = {
   chatId?: Prisma.StringFieldUpdateOperationsInput | string
   readByIds?: Prisma.MessagesUpdatereadByIdsInput | string[]
   sentTime?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  removedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  removedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  removalReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type MessagesUncheckedUpdateInput = {
@@ -311,6 +356,9 @@ export type MessagesUncheckedUpdateInput = {
   chatId?: Prisma.StringFieldUpdateOperationsInput | string
   readByIds?: Prisma.MessagesUpdatereadByIdsInput | string[]
   sentTime?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  removedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  removedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  removalReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type MessagesCreateManyInput = {
@@ -323,6 +371,9 @@ export type MessagesCreateManyInput = {
   chatId: string
   readByIds?: Prisma.MessagesCreatereadByIdsInput | string[]
   sentTime: Date | string
+  removedAt?: Date | string | null
+  removedByUserId?: string | null
+  removalReason?: string | null
 }
 
 export type MessagesUpdateManyMutationInput = {
@@ -335,6 +386,9 @@ export type MessagesUpdateManyMutationInput = {
   chatId?: Prisma.StringFieldUpdateOperationsInput | string
   readByIds?: Prisma.MessagesUpdatereadByIdsInput | string[]
   sentTime?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  removedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  removedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  removalReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type MessagesUncheckedUpdateManyInput = {
@@ -347,6 +401,9 @@ export type MessagesUncheckedUpdateManyInput = {
   chatId?: Prisma.StringFieldUpdateOperationsInput | string
   readByIds?: Prisma.MessagesUpdatereadByIdsInput | string[]
   sentTime?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  removedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  removedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  removalReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type MessagesCountOrderByAggregateInput = {
@@ -359,6 +416,9 @@ export type MessagesCountOrderByAggregateInput = {
   chatId?: Prisma.SortOrder
   readByIds?: Prisma.SortOrder
   sentTime?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrder
+  removedByUserId?: Prisma.SortOrder
+  removalReason?: Prisma.SortOrder
 }
 
 export type MessagesMaxOrderByAggregateInput = {
@@ -369,6 +429,9 @@ export type MessagesMaxOrderByAggregateInput = {
   userId?: Prisma.SortOrder
   chatId?: Prisma.SortOrder
   sentTime?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrder
+  removedByUserId?: Prisma.SortOrder
+  removalReason?: Prisma.SortOrder
 }
 
 export type MessagesMinOrderByAggregateInput = {
@@ -379,6 +442,9 @@ export type MessagesMinOrderByAggregateInput = {
   userId?: Prisma.SortOrder
   chatId?: Prisma.SortOrder
   sentTime?: Prisma.SortOrder
+  removedAt?: Prisma.SortOrder
+  removedByUserId?: Prisma.SortOrder
+  removalReason?: Prisma.SortOrder
 }
 
 export type MessagesCreateattachmentUrlsInput = {
@@ -411,6 +477,9 @@ export type MessagesSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   chatId?: boolean
   readByIds?: boolean
   sentTime?: boolean
+  removedAt?: boolean
+  removedByUserId?: boolean
+  removalReason?: boolean
 }, ExtArgs["result"]["messages"]>
 
 export type MessagesSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -423,6 +492,9 @@ export type MessagesSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   chatId?: boolean
   readByIds?: boolean
   sentTime?: boolean
+  removedAt?: boolean
+  removedByUserId?: boolean
+  removalReason?: boolean
 }, ExtArgs["result"]["messages"]>
 
 export type MessagesSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -435,6 +507,9 @@ export type MessagesSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   chatId?: boolean
   readByIds?: boolean
   sentTime?: boolean
+  removedAt?: boolean
+  removedByUserId?: boolean
+  removalReason?: boolean
 }, ExtArgs["result"]["messages"]>
 
 export type MessagesSelectScalar = {
@@ -447,9 +522,12 @@ export type MessagesSelectScalar = {
   chatId?: boolean
   readByIds?: boolean
   sentTime?: boolean
+  removedAt?: boolean
+  removedByUserId?: boolean
+  removalReason?: boolean
 }
 
-export type MessagesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "body" | "userId" | "attachmentUrls" | "chatId" | "readByIds" | "sentTime", ExtArgs["result"]["messages"]>
+export type MessagesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "body" | "userId" | "attachmentUrls" | "chatId" | "readByIds" | "sentTime" | "removedAt" | "removedByUserId" | "removalReason", ExtArgs["result"]["messages"]>
 
 export type $MessagesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Messages"
@@ -464,6 +542,9 @@ export type $MessagesPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     chatId: string
     readByIds: string[]
     sentTime: Date
+    removedAt: Date | null
+    removedByUserId: string | null
+    removalReason: string | null
   }, ExtArgs["result"]["messages"]>
   composites: {}
 }
@@ -896,6 +977,9 @@ export interface MessagesFieldRefs {
   readonly chatId: Prisma.FieldRef<"Messages", 'String'>
   readonly readByIds: Prisma.FieldRef<"Messages", 'String[]'>
   readonly sentTime: Prisma.FieldRef<"Messages", 'DateTime'>
+  readonly removedAt: Prisma.FieldRef<"Messages", 'DateTime'>
+  readonly removedByUserId: Prisma.FieldRef<"Messages", 'String'>
+  readonly removalReason: Prisma.FieldRef<"Messages", 'String'>
 }
     
 
@@ -1072,6 +1156,11 @@ export type MessagesFindManyArgs<ExtArgs extends runtime.Types.Extensions.Intern
    * Skip the first `n` Messages.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Messages.
+   */
   distinct?: Prisma.MessagesScalarFieldEnum | Prisma.MessagesScalarFieldEnum[]
 }
 

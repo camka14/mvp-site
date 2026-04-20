@@ -55,6 +55,12 @@ export const normalizeApiMatch = (input: Match): Match => {
   return {
     ...match,
     locked: Boolean((match as any).locked),
+    segments: Array.isArray(match.segments)
+      ? match.segments.map((segment) => withLegacyId(segment))
+      : match.segments,
+    incidents: Array.isArray(match.incidents)
+      ? match.incidents.map((incident) => withLegacyId(incident))
+      : match.incidents,
     field: withLegacyId(match.field as Field | null) ?? match.field,
     team1: withLegacyId(match.team1 as Team | null) ?? match.team1,
     team2: withLegacyId(match.team2 as Team | null) ?? match.team2,

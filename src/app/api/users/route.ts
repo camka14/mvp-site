@@ -56,7 +56,7 @@ const normalizeNameFields = (data: Record<string, unknown>) => {
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const ids = parseIdsParam(params.get('ids'));
-  const session = getOptionalSession(req);
+  const session = await getOptionalSession(req);
   const visibilityContext = await createVisibilityContext(prisma, {
     viewerId: session?.userId,
     isAdmin: session?.isAdmin,

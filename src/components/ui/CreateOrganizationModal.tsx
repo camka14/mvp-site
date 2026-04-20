@@ -239,7 +239,6 @@ export default function CreateOrganizationModal({
           coordinates: coordinatesPayload,
           logoId: form.logoId || undefined,
           ownerId: currentUser.$id,
-          hasStripeAccount: false,
         });
         onCreated?.(created);
         notifications.show({ color: 'teal', message: 'Organization created successfully.' });

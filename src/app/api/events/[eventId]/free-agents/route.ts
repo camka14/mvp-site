@@ -5,11 +5,23 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
+import {
+  deleteEventRegistration,
+  upsertEventRegistration,
+} from '@/server/events/eventRegistrations';
+import {
+  isWeeklyParentEvent,
+  isWeeklyOccurrenceJoinClosed,
+  resolveWeeklyOccurrence,
+  WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
+} from '@/server/events/weeklyOccurrences';
 
 export const dynamic = 'force-dynamic';
 
 const payloadSchema = z.object({
   userId: z.string().optional(),
+  slotId: z.string().optional(),
+  occurrenceDate: z.string().optional(),
 }).passthrough();
 
 const normalizeUserId = (value: unknown): string | null => {
@@ -19,8 +31,6 @@ const normalizeUserId = (value: unknown): string | null => {
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
 };
-
-const ensureUnique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
 
 const canManageChildFreeAgent = async (params: {
   parentId: string;
@@ -70,12 +80,13 @@ async function updateFreeAgents(
       select: {
         id: true,
         teamSignup: true,
-        userIds: true,
-        waitListIds: true,
-        freeAgentIds: true,
         requiredTemplateIds: true,
         organizationId: true,
         start: true,
+        eventType: true,
+        parentEvent: true,
+        timeSlotIds: true,
+        divisions: true,
       },
     }),
     prisma.userData.findUnique({
@@ -92,15 +103,34 @@ async function updateFreeAgents(
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
+  if (!targetUser) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+  }
   if (mode === 'add' && !event.teamSignup) {
     return NextResponse.json(
       { error: 'Free-agent signup is only available for team registration events.' },
       { status: 403 },
     );
   }
-  if (!targetUser) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 });
+
+  const hasOccurrenceInput = Boolean(parsed.data.slotId || parsed.data.occurrenceDate);
+  const occurrence = isWeeklyParentEvent(event)
+    ? await resolveWeeklyOccurrence({
+      event,
+      occurrence: parsed.data,
+    })
+    : null;
+  if (occurrence && !occurrence.ok) {
+    return NextResponse.json({ error: occurrence.error }, { status: 400 });
   }
+  if (!isWeeklyParentEvent(event) && hasOccurrenceInput) {
+    return NextResponse.json({ error: 'Weekly occurrence selection is only valid for weekly events.' }, { status: 400 });
+  }
+  const resolvedOccurrence = occurrence?.ok ? occurrence.value : null;
+  if (mode === 'add' && resolvedOccurrence && isWeeklyOccurrenceJoinClosed(resolvedOccurrence)) {
+    return NextResponse.json({ error: WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR }, { status: 409 });
+  }
+
   const targetUserAgeAtEvent = targetUser.dateOfBirth instanceof Date && event.start instanceof Date
     ? calculateAgeOnDate(targetUser.dateOfBirth, event.start)
     : Number.NaN;
@@ -116,70 +146,64 @@ async function updateFreeAgents(
     );
   }
 
-  const currentFreeAgentIds = Array.isArray(event.freeAgentIds)
-    ? event.freeAgentIds.filter((id): id is string => typeof id === 'string' && Boolean(id))
-    : [];
-  const currentUserIds = Array.isArray(event.userIds)
-    ? event.userIds.filter((id): id is string => typeof id === 'string' && Boolean(id))
-    : [];
-  const currentWaitListIds = Array.isArray(event.waitListIds)
-    ? event.waitListIds.filter((id): id is string => typeof id === 'string' && Boolean(id))
-    : [];
+  if (mode === 'add') {
+    const warnings: string[] = [];
+    if (managingLinkedChild && Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0) {
+      const childSensitive = await prisma.sensitiveUserData.findFirst({
+        where: { userId: targetUserId },
+        select: { email: true },
+      });
+      const childEmail = normalizeUserId(childSensitive?.email ?? null);
+      if (!childEmail && Number.isFinite(targetUserAgeAtEvent) && targetUserAgeAtEvent < 13) {
+        const childName = `${(targetUser.firstName ?? '').trim()} ${(targetUser.lastName ?? '').trim()}`.trim() || targetUserId;
+        warnings.push(
+          `Under-13 child ${childName} is missing an email and cannot complete child signature steps until an email is added.`,
+        );
+      }
+    }
 
-  if (mode === 'add' && currentFreeAgentIds.includes(targetUserId)) {
-    return NextResponse.json({ error: 'User is already registered as a free agent for this event.' }, { status: 409 });
+    if (Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0) {
+      const consentDispatch = await dispatchRequiredEventDocuments({
+        eventId,
+        organizationId: event.organizationId ?? null,
+        requiredTemplateIds: event.requiredTemplateIds,
+        participantUserId: isMinorTargetUser ? null : targetUserId,
+        parentUserId: isMinorTargetUser && managingLinkedChild ? session.userId : null,
+        childUserId: isMinorTargetUser && managingLinkedChild ? targetUserId : null,
+      });
+      warnings.push(...consentDispatch.errors);
+    }
+
+    const registration = await upsertEventRegistration({
+      eventId,
+      registrantType: managingLinkedChild ? 'CHILD' : 'SELF',
+      registrantId: targetUserId,
+      parentId: managingLinkedChild ? session.userId : null,
+      rosterRole: 'FREE_AGENT',
+      status: 'ACTIVE',
+      ageAtEvent: Number.isFinite(targetUserAgeAtEvent) ? targetUserAgeAtEvent : null,
+      createdBy: session.userId,
+      occurrence: resolvedOccurrence,
+    });
+
+    const refreshedEvent = await prisma.events.findUnique({ where: { id: eventId } });
+    return NextResponse.json({
+      event: refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event),
+      registration: withLegacyFields(registration),
+      warnings: warnings.length ? warnings : undefined,
+    }, { status: 200 });
   }
 
-  const nextFreeAgentIds = mode === 'add'
-    ? ensureUnique([...currentFreeAgentIds, targetUserId])
-    : currentFreeAgentIds.filter((id) => id !== targetUserId);
-  const nextUserIds = mode === 'add'
-    ? currentUserIds.filter((id) => id !== targetUserId)
-    : currentUserIds;
-  const nextWaitListIds = mode === 'add'
-    ? currentWaitListIds.filter((id) => id !== targetUserId)
-    : currentWaitListIds;
-
-  const updated = await prisma.events.update({
-    where: { id: eventId },
-    data: {
-      userIds: nextUserIds,
-      waitListIds: nextWaitListIds,
-      freeAgentIds: nextFreeAgentIds,
-      updatedAt: new Date(),
-    },
+  await deleteEventRegistration({
+    eventId,
+    registrantType: managingLinkedChild ? 'CHILD' : 'SELF',
+    registrantId: targetUserId,
+    occurrence: resolvedOccurrence,
   });
 
-  const warningMessages: string[] = [];
-  if (mode === 'add' && managingLinkedChild && Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0) {
-    const childSensitive = await prisma.sensitiveUserData.findFirst({
-      where: { userId: targetUserId },
-      select: { email: true },
-    });
-    const childEmail = normalizeUserId(childSensitive?.email ?? null);
-    if (!childEmail && Number.isFinite(targetUserAgeAtEvent) && targetUserAgeAtEvent < 13) {
-      const childName = `${(targetUser.firstName ?? '').trim()} ${(targetUser.lastName ?? '').trim()}`.trim() || targetUserId;
-      warningMessages.push(
-        `Under-13 child ${childName} is missing an email and cannot complete child signature steps until an email is added.`,
-      );
-    }
-  }
-
-  if (mode === 'add' && Array.isArray(event.requiredTemplateIds) && event.requiredTemplateIds.length > 0) {
-    const consentDispatch = await dispatchRequiredEventDocuments({
-      eventId,
-      organizationId: event.organizationId ?? null,
-      requiredTemplateIds: event.requiredTemplateIds,
-      participantUserId: isMinorTargetUser ? null : targetUserId,
-      parentUserId: isMinorTargetUser && managingLinkedChild ? session.userId : null,
-      childUserId: isMinorTargetUser && managingLinkedChild ? targetUserId : null,
-    });
-    warningMessages.push(...consentDispatch.errors);
-  }
-
+  const refreshedEvent = await prisma.events.findUnique({ where: { id: eventId } });
   return NextResponse.json({
-    event: withLegacyFields(updated),
-    warnings: warningMessages.length ? warningMessages : undefined,
+    event: refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event),
   }, { status: 200 });
 }
 

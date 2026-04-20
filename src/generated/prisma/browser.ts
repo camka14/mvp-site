@@ -28,6 +28,16 @@ export type Fields = Prisma.FieldsModel
  */
 export type Matches = Prisma.MatchesModel
 /**
+ * Model MatchSegments
+ * 
+ */
+export type MatchSegments = Prisma.MatchSegmentsModel
+/**
+ * Model MatchIncidents
+ * 
+ */
+export type MatchIncidents = Prisma.MatchIncidentsModel
+/**
  * Model Divisions
  * 
  */
@@ -63,6 +73,26 @@ export type EventOfficials = Prisma.EventOfficialsModel
  */
 export type Teams = Prisma.TeamsModel
 /**
+ * Model CanonicalTeams
+ * 
+ */
+export type CanonicalTeams = Prisma.CanonicalTeamsModel
+/**
+ * Model TeamRegistrations
+ * 
+ */
+export type TeamRegistrations = Prisma.TeamRegistrationsModel
+/**
+ * Model TeamStaffAssignments
+ * 
+ */
+export type TeamStaffAssignments = Prisma.TeamStaffAssignmentsModel
+/**
+ * Model EventTeamStaffAssignments
+ * 
+ */
+export type EventTeamStaffAssignments = Prisma.EventTeamStaffAssignmentsModel
+/**
  * Model Messages
  * 
  */
@@ -72,6 +102,11 @@ export type Messages = Prisma.MessagesModel
  * 
  */
 export type ChatGroup = Prisma.ChatGroupModel
+/**
+ * Model ModerationReport
+ * 
+ */
+export type ModerationReport = Prisma.ModerationReportModel
 /**
  * Model PushDeviceTarget
  * 

@@ -51,6 +51,7 @@ const buildContext = (): SchedulerContext => {
 const isFixedEndValidationError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   return message.includes('No fixed end date/time')
+    || message.includes('No fixed end datetime scheduling')
     || message.includes('End date/time must be after start date/time');
 };
 

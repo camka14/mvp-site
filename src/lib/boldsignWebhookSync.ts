@@ -771,7 +771,7 @@ const inferEventContextForDocumentProjection = async (params: {
         eventId: { in: candidateEventIds },
         registrantType: 'CHILD',
         registrantId: params.childUserId,
-        status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
+        status: { in: ['STARTED', 'ACTIVE'] },
       },
       orderBy: { updatedAt: 'desc' },
       select: { eventId: true },
@@ -785,7 +785,7 @@ const inferEventContextForDocumentProjection = async (params: {
     const userRegistration = await prisma.eventRegistrations.findFirst({
       where: {
         eventId: { in: candidateEventIds },
-        status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
+        status: { in: ['STARTED', 'ACTIVE'] },
         OR: [
           { registrantId: params.representativeUserId },
           { parentId: params.representativeUserId },

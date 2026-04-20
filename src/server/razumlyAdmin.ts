@@ -4,13 +4,14 @@ import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import type { AuthContext } from '@/lib/permissions';
 import { requireSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
+import { isSessionTokenCurrent } from './authSessions';
 
 type AuthUserLookupClient = {
   authUser: {
     findUnique: (args: {
       where: { id: string };
-      select: { email: true; emailVerifiedAt: true };
-    }) => Promise<{ email: string; emailVerifiedAt: Date | null } | null>;
+      select: { email: true; emailVerifiedAt: true; sessionVersion: true };
+    }) => Promise<{ email: string; emailVerifiedAt: Date | null; sessionVersion: number | null } | null>;
   };
 };
 
@@ -83,7 +84,7 @@ export const evaluateRazumlyAdminAccess = async (
 ): Promise<RazumlyAdminStatus> => {
   const authUser = await client.authUser.findUnique({
     where: { id: userId },
-    select: { email: true, emailVerifiedAt: true },
+    select: { email: true, emailVerifiedAt: true, sessionVersion: true },
   });
   if (!authUser) {
     return { allowed: false, email: null, verified: false, reason: 'missing_user' };
@@ -143,7 +144,28 @@ export const resolveRazumlyAdminFromToken = async (
     };
   }
 
-  const status = await evaluateRazumlyAdminAccess(session.userId, client);
+  const authUser = await client.authUser.findUnique({
+    where: { id: session.userId },
+    select: { email: true, emailVerifiedAt: true, sessionVersion: true },
+  });
+  if (!authUser) {
+    return {
+      session: null,
+      status: { allowed: false, email: null, verified: false, reason: 'missing_user' },
+    };
+  }
+  if (!isSessionTokenCurrent(session, authUser.sessionVersion)) {
+    return {
+      session: null,
+      status: { allowed: false, email: null, verified: false, reason: 'invalid_session' },
+    };
+  }
+
+  const status = await evaluateRazumlyAdminAccess(session.userId, {
+    authUser: {
+      findUnique: async () => authUser,
+    },
+  });
   return { session, status };
 };
 

@@ -55,6 +55,13 @@ export type MatchesMinAggregateOutputType = {
   side: string | null
   matchId: number | null
   losersBracket: boolean | null
+  status: string | null
+  resultStatus: string | null
+  resultType: string | null
+  actualStart: Date | null
+  actualEnd: Date | null
+  statusReason: string | null
+  winnerEventTeamId: string | null
   winnerNextMatchId: string | null
   loserNextMatchId: string | null
   previousRightId: string | null
@@ -81,6 +88,13 @@ export type MatchesMaxAggregateOutputType = {
   side: string | null
   matchId: number | null
   losersBracket: boolean | null
+  status: string | null
+  resultStatus: string | null
+  resultType: string | null
+  actualStart: Date | null
+  actualEnd: Date | null
+  statusReason: string | null
+  winnerEventTeamId: string | null
   winnerNextMatchId: string | null
   loserNextMatchId: string | null
   previousRightId: string | null
@@ -110,6 +124,14 @@ export type MatchesCountAggregateOutputType = {
   side: number
   matchId: number
   losersBracket: number
+  status: number
+  resultStatus: number
+  resultType: number
+  actualStart: number
+  actualEnd: number
+  statusReason: number
+  winnerEventTeamId: number
+  matchRulesSnapshot: number
   winnerNextMatchId: number
   loserNextMatchId: number
   previousRightId: number
@@ -157,6 +179,13 @@ export type MatchesMinAggregateInputType = {
   side?: true
   matchId?: true
   losersBracket?: true
+  status?: true
+  resultStatus?: true
+  resultType?: true
+  actualStart?: true
+  actualEnd?: true
+  statusReason?: true
+  winnerEventTeamId?: true
   winnerNextMatchId?: true
   loserNextMatchId?: true
   previousRightId?: true
@@ -183,6 +212,13 @@ export type MatchesMaxAggregateInputType = {
   side?: true
   matchId?: true
   losersBracket?: true
+  status?: true
+  resultStatus?: true
+  resultType?: true
+  actualStart?: true
+  actualEnd?: true
+  statusReason?: true
+  winnerEventTeamId?: true
   winnerNextMatchId?: true
   loserNextMatchId?: true
   previousRightId?: true
@@ -212,6 +248,14 @@ export type MatchesCountAggregateInputType = {
   side?: true
   matchId?: true
   losersBracket?: true
+  status?: true
+  resultStatus?: true
+  resultType?: true
+  actualStart?: true
+  actualEnd?: true
+  statusReason?: true
+  winnerEventTeamId?: true
+  matchRulesSnapshot?: true
   winnerNextMatchId?: true
   loserNextMatchId?: true
   previousRightId?: true
@@ -329,6 +373,14 @@ export type MatchesGroupByOutputType = {
   side: string | null
   matchId: number
   losersBracket: boolean | null
+  status: string | null
+  resultStatus: string | null
+  resultType: string | null
+  actualStart: Date | null
+  actualEnd: Date | null
+  statusReason: string | null
+  winnerEventTeamId: string | null
+  matchRulesSnapshot: runtime.JsonValue | null
   winnerNextMatchId: string | null
   loserNextMatchId: string | null
   previousRightId: string | null
@@ -350,7 +402,7 @@ export type MatchesGroupByOutputType = {
   _max: MatchesMaxAggregateOutputType | null
 }
 
-type GetMatchesGroupByPayload<T extends MatchesGroupByArgs> = Prisma.PrismaPromise<
+export type GetMatchesGroupByPayload<T extends MatchesGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<MatchesGroupByOutputType, T['by']> &
       {
@@ -382,6 +434,14 @@ export type MatchesWhereInput = {
   side?: Prisma.StringNullableFilter<"Matches"> | string | null
   matchId?: Prisma.IntFilter<"Matches"> | number
   losersBracket?: Prisma.BoolNullableFilter<"Matches"> | boolean | null
+  status?: Prisma.StringNullableFilter<"Matches"> | string | null
+  resultStatus?: Prisma.StringNullableFilter<"Matches"> | string | null
+  resultType?: Prisma.StringNullableFilter<"Matches"> | string | null
+  actualStart?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
+  actualEnd?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
+  statusReason?: Prisma.StringNullableFilter<"Matches"> | string | null
+  winnerEventTeamId?: Prisma.StringNullableFilter<"Matches"> | string | null
+  matchRulesSnapshot?: Prisma.JsonNullableFilter<"Matches">
   winnerNextMatchId?: Prisma.StringNullableFilter<"Matches"> | string | null
   loserNextMatchId?: Prisma.StringNullableFilter<"Matches"> | string | null
   previousRightId?: Prisma.StringNullableFilter<"Matches"> | string | null
@@ -412,6 +472,14 @@ export type MatchesOrderByWithRelationInput = {
   side?: Prisma.SortOrderInput | Prisma.SortOrder
   matchId?: Prisma.SortOrder
   losersBracket?: Prisma.SortOrderInput | Prisma.SortOrder
+  status?: Prisma.SortOrderInput | Prisma.SortOrder
+  resultStatus?: Prisma.SortOrderInput | Prisma.SortOrder
+  resultType?: Prisma.SortOrderInput | Prisma.SortOrder
+  actualStart?: Prisma.SortOrderInput | Prisma.SortOrder
+  actualEnd?: Prisma.SortOrderInput | Prisma.SortOrder
+  statusReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  winnerEventTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
+  matchRulesSnapshot?: Prisma.SortOrderInput | Prisma.SortOrder
   winnerNextMatchId?: Prisma.SortOrderInput | Prisma.SortOrder
   loserNextMatchId?: Prisma.SortOrderInput | Prisma.SortOrder
   previousRightId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -445,6 +513,14 @@ export type MatchesWhereUniqueInput = Prisma.AtLeast<{
   side?: Prisma.StringNullableFilter<"Matches"> | string | null
   matchId?: Prisma.IntFilter<"Matches"> | number
   losersBracket?: Prisma.BoolNullableFilter<"Matches"> | boolean | null
+  status?: Prisma.StringNullableFilter<"Matches"> | string | null
+  resultStatus?: Prisma.StringNullableFilter<"Matches"> | string | null
+  resultType?: Prisma.StringNullableFilter<"Matches"> | string | null
+  actualStart?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
+  actualEnd?: Prisma.DateTimeNullableFilter<"Matches"> | Date | string | null
+  statusReason?: Prisma.StringNullableFilter<"Matches"> | string | null
+  winnerEventTeamId?: Prisma.StringNullableFilter<"Matches"> | string | null
+  matchRulesSnapshot?: Prisma.JsonNullableFilter<"Matches">
   winnerNextMatchId?: Prisma.StringNullableFilter<"Matches"> | string | null
   loserNextMatchId?: Prisma.StringNullableFilter<"Matches"> | string | null
   previousRightId?: Prisma.StringNullableFilter<"Matches"> | string | null
@@ -475,6 +551,14 @@ export type MatchesOrderByWithAggregationInput = {
   side?: Prisma.SortOrderInput | Prisma.SortOrder
   matchId?: Prisma.SortOrder
   losersBracket?: Prisma.SortOrderInput | Prisma.SortOrder
+  status?: Prisma.SortOrderInput | Prisma.SortOrder
+  resultStatus?: Prisma.SortOrderInput | Prisma.SortOrder
+  resultType?: Prisma.SortOrderInput | Prisma.SortOrder
+  actualStart?: Prisma.SortOrderInput | Prisma.SortOrder
+  actualEnd?: Prisma.SortOrderInput | Prisma.SortOrder
+  statusReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  winnerEventTeamId?: Prisma.SortOrderInput | Prisma.SortOrder
+  matchRulesSnapshot?: Prisma.SortOrderInput | Prisma.SortOrder
   winnerNextMatchId?: Prisma.SortOrderInput | Prisma.SortOrder
   loserNextMatchId?: Prisma.SortOrderInput | Prisma.SortOrder
   previousRightId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -513,6 +597,14 @@ export type MatchesScalarWhereWithAggregatesInput = {
   side?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   matchId?: Prisma.IntWithAggregatesFilter<"Matches"> | number
   losersBracket?: Prisma.BoolNullableWithAggregatesFilter<"Matches"> | boolean | null
+  status?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
+  resultStatus?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
+  resultType?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
+  actualStart?: Prisma.DateTimeNullableWithAggregatesFilter<"Matches"> | Date | string | null
+  actualEnd?: Prisma.DateTimeNullableWithAggregatesFilter<"Matches"> | Date | string | null
+  statusReason?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
+  winnerEventTeamId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
+  matchRulesSnapshot?: Prisma.JsonNullableWithAggregatesFilter<"Matches">
   winnerNextMatchId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   loserNextMatchId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
   previousRightId?: Prisma.StringNullableWithAggregatesFilter<"Matches"> | string | null
@@ -543,6 +635,14 @@ export type MatchesCreateInput = {
   side?: string | null
   matchId: number
   losersBracket?: boolean | null
+  status?: string | null
+  resultStatus?: string | null
+  resultType?: string | null
+  actualStart?: Date | string | null
+  actualEnd?: Date | string | null
+  statusReason?: string | null
+  winnerEventTeamId?: string | null
+  matchRulesSnapshot?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   winnerNextMatchId?: string | null
   loserNextMatchId?: string | null
   previousRightId?: string | null
@@ -573,6 +673,14 @@ export type MatchesUncheckedCreateInput = {
   side?: string | null
   matchId: number
   losersBracket?: boolean | null
+  status?: string | null
+  resultStatus?: string | null
+  resultType?: string | null
+  actualStart?: Date | string | null
+  actualEnd?: Date | string | null
+  statusReason?: string | null
+  winnerEventTeamId?: string | null
+  matchRulesSnapshot?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   winnerNextMatchId?: string | null
   loserNextMatchId?: string | null
   previousRightId?: string | null
@@ -603,6 +711,14 @@ export type MatchesUpdateInput = {
   side?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   matchId?: Prisma.IntFieldUpdateOperationsInput | number
   losersBracket?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  resultStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  resultType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  actualStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  actualEnd?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  winnerEventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  matchRulesSnapshot?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   winnerNextMatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   loserNextMatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   previousRightId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -633,6 +749,14 @@ export type MatchesUncheckedUpdateInput = {
   side?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   matchId?: Prisma.IntFieldUpdateOperationsInput | number
   losersBracket?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  resultStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  resultType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  actualStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  actualEnd?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  winnerEventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  matchRulesSnapshot?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   winnerNextMatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   loserNextMatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   previousRightId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -663,6 +787,14 @@ export type MatchesCreateManyInput = {
   side?: string | null
   matchId: number
   losersBracket?: boolean | null
+  status?: string | null
+  resultStatus?: string | null
+  resultType?: string | null
+  actualStart?: Date | string | null
+  actualEnd?: Date | string | null
+  statusReason?: string | null
+  winnerEventTeamId?: string | null
+  matchRulesSnapshot?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   winnerNextMatchId?: string | null
   loserNextMatchId?: string | null
   previousRightId?: string | null
@@ -693,6 +825,14 @@ export type MatchesUpdateManyMutationInput = {
   side?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   matchId?: Prisma.IntFieldUpdateOperationsInput | number
   losersBracket?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  resultStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  resultType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  actualStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  actualEnd?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  winnerEventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  matchRulesSnapshot?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   winnerNextMatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   loserNextMatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   previousRightId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -723,6 +863,14 @@ export type MatchesUncheckedUpdateManyInput = {
   side?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   matchId?: Prisma.IntFieldUpdateOperationsInput | number
   losersBracket?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  resultStatus?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  resultType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  actualStart?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  actualEnd?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  statusReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  winnerEventTeamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  matchRulesSnapshot?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   winnerNextMatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   loserNextMatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   previousRightId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -761,6 +909,14 @@ export type MatchesCountOrderByAggregateInput = {
   side?: Prisma.SortOrder
   matchId?: Prisma.SortOrder
   losersBracket?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  resultStatus?: Prisma.SortOrder
+  resultType?: Prisma.SortOrder
+  actualStart?: Prisma.SortOrder
+  actualEnd?: Prisma.SortOrder
+  statusReason?: Prisma.SortOrder
+  winnerEventTeamId?: Prisma.SortOrder
+  matchRulesSnapshot?: Prisma.SortOrder
   winnerNextMatchId?: Prisma.SortOrder
   loserNextMatchId?: Prisma.SortOrder
   previousRightId?: Prisma.SortOrder
@@ -797,6 +953,13 @@ export type MatchesMaxOrderByAggregateInput = {
   side?: Prisma.SortOrder
   matchId?: Prisma.SortOrder
   losersBracket?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  resultStatus?: Prisma.SortOrder
+  resultType?: Prisma.SortOrder
+  actualStart?: Prisma.SortOrder
+  actualEnd?: Prisma.SortOrder
+  statusReason?: Prisma.SortOrder
+  winnerEventTeamId?: Prisma.SortOrder
   winnerNextMatchId?: Prisma.SortOrder
   loserNextMatchId?: Prisma.SortOrder
   previousRightId?: Prisma.SortOrder
@@ -823,6 +986,13 @@ export type MatchesMinOrderByAggregateInput = {
   side?: Prisma.SortOrder
   matchId?: Prisma.SortOrder
   losersBracket?: Prisma.SortOrder
+  status?: Prisma.SortOrder
+  resultStatus?: Prisma.SortOrder
+  resultType?: Prisma.SortOrder
+  actualStart?: Prisma.SortOrder
+  actualEnd?: Prisma.SortOrder
+  statusReason?: Prisma.SortOrder
+  winnerEventTeamId?: Prisma.SortOrder
   winnerNextMatchId?: Prisma.SortOrder
   loserNextMatchId?: Prisma.SortOrder
   previousRightId?: Prisma.SortOrder
@@ -902,6 +1072,14 @@ export type MatchesSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs 
   side?: boolean
   matchId?: boolean
   losersBracket?: boolean
+  status?: boolean
+  resultStatus?: boolean
+  resultType?: boolean
+  actualStart?: boolean
+  actualEnd?: boolean
+  statusReason?: boolean
+  winnerEventTeamId?: boolean
+  matchRulesSnapshot?: boolean
   winnerNextMatchId?: boolean
   loserNextMatchId?: boolean
   previousRightId?: boolean
@@ -932,6 +1110,14 @@ export type MatchesSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exten
   side?: boolean
   matchId?: boolean
   losersBracket?: boolean
+  status?: boolean
+  resultStatus?: boolean
+  resultType?: boolean
+  actualStart?: boolean
+  actualEnd?: boolean
+  statusReason?: boolean
+  winnerEventTeamId?: boolean
+  matchRulesSnapshot?: boolean
   winnerNextMatchId?: boolean
   loserNextMatchId?: boolean
   previousRightId?: boolean
@@ -962,6 +1148,14 @@ export type MatchesSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exten
   side?: boolean
   matchId?: boolean
   losersBracket?: boolean
+  status?: boolean
+  resultStatus?: boolean
+  resultType?: boolean
+  actualStart?: boolean
+  actualEnd?: boolean
+  statusReason?: boolean
+  winnerEventTeamId?: boolean
+  matchRulesSnapshot?: boolean
   winnerNextMatchId?: boolean
   loserNextMatchId?: boolean
   previousRightId?: boolean
@@ -992,6 +1186,14 @@ export type MatchesSelectScalar = {
   side?: boolean
   matchId?: boolean
   losersBracket?: boolean
+  status?: boolean
+  resultStatus?: boolean
+  resultType?: boolean
+  actualStart?: boolean
+  actualEnd?: boolean
+  statusReason?: boolean
+  winnerEventTeamId?: boolean
+  matchRulesSnapshot?: boolean
   winnerNextMatchId?: boolean
   loserNextMatchId?: boolean
   previousRightId?: boolean
@@ -1008,7 +1210,7 @@ export type MatchesSelectScalar = {
   teamOfficialId?: boolean
 }
 
-export type MatchesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "start" | "end" | "locked" | "division" | "team1Points" | "team2Points" | "setResults" | "side" | "matchId" | "losersBracket" | "winnerNextMatchId" | "loserNextMatchId" | "previousRightId" | "previousLeftId" | "officialCheckedIn" | "officialId" | "officialIds" | "team1Id" | "team2Id" | "team1Seed" | "team2Seed" | "eventId" | "fieldId" | "teamOfficialId", ExtArgs["result"]["matches"]>
+export type MatchesOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "start" | "end" | "locked" | "division" | "team1Points" | "team2Points" | "setResults" | "side" | "matchId" | "losersBracket" | "status" | "resultStatus" | "resultType" | "actualStart" | "actualEnd" | "statusReason" | "winnerEventTeamId" | "matchRulesSnapshot" | "winnerNextMatchId" | "loserNextMatchId" | "previousRightId" | "previousLeftId" | "officialCheckedIn" | "officialId" | "officialIds" | "team1Id" | "team2Id" | "team1Seed" | "team2Seed" | "eventId" | "fieldId" | "teamOfficialId", ExtArgs["result"]["matches"]>
 
 export type $MatchesPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Matches"
@@ -1027,6 +1229,14 @@ export type $MatchesPayload<ExtArgs extends runtime.Types.Extensions.InternalArg
     side: string | null
     matchId: number
     losersBracket: boolean | null
+    status: string | null
+    resultStatus: string | null
+    resultType: string | null
+    actualStart: Date | null
+    actualEnd: Date | null
+    statusReason: string | null
+    winnerEventTeamId: string | null
+    matchRulesSnapshot: runtime.JsonValue | null
     winnerNextMatchId: string | null
     loserNextMatchId: string | null
     previousRightId: string | null
@@ -1477,6 +1687,14 @@ export interface MatchesFieldRefs {
   readonly side: Prisma.FieldRef<"Matches", 'String'>
   readonly matchId: Prisma.FieldRef<"Matches", 'Int'>
   readonly losersBracket: Prisma.FieldRef<"Matches", 'Boolean'>
+  readonly status: Prisma.FieldRef<"Matches", 'String'>
+  readonly resultStatus: Prisma.FieldRef<"Matches", 'String'>
+  readonly resultType: Prisma.FieldRef<"Matches", 'String'>
+  readonly actualStart: Prisma.FieldRef<"Matches", 'DateTime'>
+  readonly actualEnd: Prisma.FieldRef<"Matches", 'DateTime'>
+  readonly statusReason: Prisma.FieldRef<"Matches", 'String'>
+  readonly winnerEventTeamId: Prisma.FieldRef<"Matches", 'String'>
+  readonly matchRulesSnapshot: Prisma.FieldRef<"Matches", 'Json'>
   readonly winnerNextMatchId: Prisma.FieldRef<"Matches", 'String'>
   readonly loserNextMatchId: Prisma.FieldRef<"Matches", 'String'>
   readonly previousRightId: Prisma.FieldRef<"Matches", 'String'>
@@ -1667,6 +1885,11 @@ export type MatchesFindManyArgs<ExtArgs extends runtime.Types.Extensions.Interna
    * Skip the first `n` Matches.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of Matches.
+   */
   distinct?: Prisma.MatchesScalarFieldEnum | Prisma.MatchesScalarFieldEnum[]
 }
 

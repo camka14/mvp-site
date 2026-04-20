@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Modal, Stack, Group, Text, Button, Alert, Select, NumberInput, Divider, Checkbox, Switch } from '@mantine/core';
+import { Modal, Stack, Group, Text, Button, Alert, Select, Divider, Checkbox, Switch } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
@@ -35,6 +35,20 @@ const MATCH_TIME_PICKER_PROPS = {
 };
 
 const coerceDate = (value?: string | Date | null): Date | null => parseLocalDateTime(value ?? null);
+const coerceInstantDate = (value?: string | Date | null): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+export const actualMatchTimePayload = (
+  actualStart: Date | null,
+  actualEnd: Date | null,
+): Pick<Match, 'actualStart' | 'actualEnd'> => ({
+  actualStart: actualStart ? actualStart.toISOString() : null,
+  actualEnd: actualEnd ? actualEnd.toISOString() : null,
+});
 
 const getEntityId = (value: unknown): string | null => {
   if (!value || typeof value !== 'object') {
@@ -191,33 +205,6 @@ const findTeamById = (id: string | null, allTeams: Team[], fallback?: Match['tea
   return undefined;
 };
 
-const normalizePointsValue = (value: unknown): number => {
-  const numeric = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(numeric) || Number.isNaN(numeric)) {
-    return 0;
-  }
-  if (numeric <= 0) {
-    return 0;
-  }
-  return Math.round(numeric);
-};
-
-const extractSetData = (match?: Match | null) => {
-  const rawTeam1 = match && Array.isArray(match.team1Points) ? match.team1Points : [];
-  const rawTeam2 = match && Array.isArray(match.team2Points) ? match.team2Points : [];
-  const rawResults = match && Array.isArray(match.setResults) ? match.setResults : [];
-  const length = Math.max(rawTeam1.length, rawTeam2.length, rawResults.length, 1);
-
-  const team1 = Array.from({ length }, (_, index) => normalizePointsValue(rawTeam1[index]));
-  const team2 = Array.from({ length }, (_, index) => normalizePointsValue(rawTeam2[index]));
-  const results = Array.from({ length }, (_, index) => {
-    const candidate = Number(rawResults[index]);
-    return candidate === 1 || candidate === 2 ? candidate : 0;
-  });
-
-  return { team1, team2, results };
-};
-
 export default function MatchEditModal({
   opened,
   match,
@@ -238,15 +225,14 @@ export default function MatchEditModal({
 }: MatchEditModalProps) {
   const [startValue, setStartValue] = useState<Date | null>(null);
   const [endValue, setEndValue] = useState<Date | null>(null);
+  const [actualStartValue, setActualStartValue] = useState<Date | null>(null);
+  const [actualEndValue, setActualEndValue] = useState<Date | null>(null);
   const [fieldId, setFieldId] = useState<string | null>(null);
   const [team1Id, setTeam1Id] = useState<string | null>(null);
   const [team2Id, setTeam2Id] = useState<string | null>(null);
   const [teamOfficialId, setTeamOfficialId] = useState<string | null>(null);
   const [userOfficialId, setUserOfficialId] = useState<string | null>(null);
   const [officialAssignments, setOfficialAssignments] = useState<MatchOfficialAssignment[]>([]);
-  const [team1Points, setTeam1Points] = useState<number[]>([0]);
-  const [team2Points, setTeam2Points] = useState<number[]>([0]);
-  const [setResults, setSetResults] = useState<number[]>([0]);
   const [winnerNextMatchId, setWinnerNextMatchId] = useState<string | null>(null);
   const [loserNextMatchId, setLoserNextMatchId] = useState<string | null>(null);
   const [losersBracket, setLosersBracket] = useState(false);
@@ -259,15 +245,14 @@ export default function MatchEditModal({
     if (!match || !opened) {
       setStartValue(null);
       setEndValue(null);
+      setActualStartValue(null);
+      setActualEndValue(null);
       setFieldId(null);
       setTeam1Id(null);
       setTeam2Id(null);
       setTeamOfficialId(null);
       setUserOfficialId(null);
       setOfficialAssignments([]);
-      setTeam1Points([0]);
-      setTeam2Points([0]);
-      setSetResults([0]);
       setWinnerNextMatchId(null);
       setLoserNextMatchId(null);
       setLosersBracket(false);
@@ -278,6 +263,8 @@ export default function MatchEditModal({
 
     setStartValue(coerceDate(match.start));
     setEndValue(coerceDate(match.end));
+    setActualStartValue(coerceInstantDate(match.actualStart));
+    setActualEndValue(coerceInstantDate(match.actualEnd));
     setFieldId(getEntityId(match.field));
     setTeam1Id(resolveMatchTeamId(match, 'team1'));
     setTeam2Id(resolveMatchTeamId(match, 'team2'));
@@ -312,10 +299,6 @@ export default function MatchEditModal({
       setOfficialAssignments([]);
     }
 
-    const aligned = extractSetData(match);
-    setTeam1Points(aligned.team1);
-    setTeam2Points(aligned.team2);
-    setSetResults(aligned.results);
     setWinnerNextMatchId(normalizeOptionalId(match.winnerNextMatchId) ?? null);
     setLoserNextMatchId(normalizeOptionalId(match.loserNextMatchId) ?? null);
     setLosersBracket(Boolean(match.losersBracket));
@@ -680,18 +663,6 @@ export default function MatchEditModal({
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [eventOfficialById, eventOfficialByUserId, fieldId, normalizedEventOfficials, officialUserById, playerCandidates]);
 
-  const team1DisplayName = selectedTeam1 ? resolveTeamName(selectedTeam1, teams) : 'TBD';
-  const team2DisplayName = selectedTeam2 ? resolveTeamName(selectedTeam2, teams) : 'TBD';
-
-  const resultOptions = useMemo(
-    () => [
-      { value: '0', label: 'Not decided' },
-      { value: '1', label: team1DisplayName === 'TBD' ? 'Team 1' : team1DisplayName },
-      { value: '2', label: team2DisplayName === 'TBD' ? 'Team 2' : team2DisplayName },
-    ],
-    [team1DisplayName, team2DisplayName],
-  );
-
   const handleClose = () => {
     setError(null);
     onClose();
@@ -708,6 +679,14 @@ export default function MatchEditModal({
 
   const handleEndDateChange = (value: Date | string | null) => {
     setEndValue(parseLocalDateTime(value));
+  };
+
+  const handleActualStartDateChange = (value: Date | string | null) => {
+    setActualStartValue(parseLocalDateTime(value));
+  };
+
+  const handleActualEndDateChange = (value: Date | string | null) => {
+    setActualEndValue(parseLocalDateTime(value));
   };
 
   const handleOfficialAssignmentChange = (
@@ -757,48 +736,6 @@ export default function MatchEditModal({
     });
   };
 
-  const handlePointsChange = (team: 'team1' | 'team2', index: number, value: string | number | null) => {
-    const sanitized = normalizePointsValue(value ?? 0);
-    if (team === 'team1') {
-      setTeam1Points((prev) => {
-        const next = [...prev];
-        next[index] = sanitized;
-        return next;
-      });
-    } else {
-      setTeam2Points((prev) => {
-        const next = [...prev];
-        next[index] = sanitized;
-        return next;
-      });
-    }
-  };
-
-  const handleResultChange = (index: number, value: string | null) => {
-    const numeric = value ? Number(value) : 0;
-    setSetResults((prev) => {
-      const next = [...prev];
-      next[index] = numeric === 1 || numeric === 2 ? numeric : 0;
-      return next;
-    });
-  };
-
-  const handleAddSet = () => {
-    setTeam1Points((prev) => [...prev, 0]);
-    setTeam2Points((prev) => [...prev, 0]);
-    setSetResults((prev) => [...prev, 0]);
-  };
-
-  const handleRemoveSet = () => {
-    setTeam1Points((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-    setTeam2Points((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-    setSetResults((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-  };
-
-  const sanitizeResults = (values: number[]): number[] => values.map((value) => (value === 1 || value === 2 ? value : 0));
-
-  const sanitizePoints = (values: number[]): number[] => values.map((value) => normalizePointsValue(value));
-
   const findFieldById = (id: string | null): Field | undefined => {
     if (!id) return undefined;
     const fromList = fields.find((field) => getEntityId(field) === id);
@@ -826,6 +763,10 @@ export default function MatchEditModal({
       }
     } else if (startValue && endValue && endValue.getTime() <= startValue.getTime()) {
       setError('End time must be after the start time.');
+      return;
+    }
+    if (actualStartValue && actualEndValue && actualEndValue.getTime() <= actualStartValue.getTime()) {
+      setError('Actual end time must be after the actual start time.');
       return;
     }
 
@@ -868,11 +809,9 @@ export default function MatchEditModal({
       ...match,
       start: startValue ? formatLocalDateTime(startValue) : null,
       end: endValue ? formatLocalDateTime(endValue) : null,
+      ...actualMatchTimePayload(actualStartValue, actualEndValue),
       locked,
       losersBracket,
-      team1Points: sanitizePoints(team1Points),
-      team2Points: sanitizePoints(team2Points),
-      setResults: sanitizeResults(setResults),
       winnerNextMatchId: selectedWinnerNextMatchId ?? undefined,
       loserNextMatchId: selectedLoserNextMatchId ?? undefined,
     };
@@ -1105,6 +1044,27 @@ export default function MatchEditModal({
           minDate={startValue ?? undefined}
         />
 
+        <Divider label="Actual Times" />
+        <DateTimePicker
+          label="Actual start time"
+          value={actualStartValue}
+          onChange={handleActualStartDateChange}
+          withSeconds
+          valueFormat="MM/DD/YYYY hh:mm:ss A"
+          timePickerProps={MATCH_TIME_PICKER_PROPS}
+          clearable
+        />
+        <DateTimePicker
+          label="Actual end time"
+          value={actualEndValue}
+          onChange={handleActualEndDateChange}
+          withSeconds
+          valueFormat="MM/DD/YYYY hh:mm:ss A"
+          timePickerProps={MATCH_TIME_PICKER_PROPS}
+          minDate={actualStartValue ?? undefined}
+          clearable
+        />
+
         <Divider label="Bracket Links" />
 
         <Select
@@ -1128,45 +1088,10 @@ export default function MatchEditModal({
           nothingFoundMessage={loserNextOptions.length ? 'No matches' : 'No valid matches'}
         />
 
-        <Divider label="Sets" />
-
-        {setResults.map((result, index) => (
-          <Group key={`set-${index}`} align="flex-end" gap="md" grow>
-            <NumberInput
-              label={`${team1DisplayName === 'TBD' ? 'Team 1' : team1DisplayName} - Set ${index + 1}`}
-              value={team1Points[index]}
-              min={0}
-              step={1}
-              onChange={(value) => handlePointsChange('team1', index, value)}
-            />
-            <NumberInput
-              label={`${team2DisplayName === 'TBD' ? 'Team 2' : team2DisplayName} - Set ${index + 1}`}
-              value={team2Points[index]}
-              min={0}
-              step={1}
-              onChange={(value) => handlePointsChange('team2', index, value)}
-            />
-            <Select
-              label="Set winner"
-              data={resultOptions}
-              value={String(result ?? 0)}
-              onChange={(value) => handleResultChange(index, value)}
-            />
-          </Group>
-        ))}
-
-        <Group justify="space-between">
-          <Group gap="xs">
-            <Button variant="light" onClick={handleAddSet}>
-              Add set
-            </Button>
-            {setResults.length > 1 && (
-              <Button variant="light" color="red" onClick={handleRemoveSet}>
-                Remove last set
-              </Button>
-            )}
-          </Group>
-        </Group>
+        <Divider label="Match Operations" />
+        <Text size="sm" c="dimmed">
+          Scores, segment winners, official check-in, and the match log are handled from Match Details.
+        </Text>
 
         <Group justify="space-between" mt="md">
           <Group>

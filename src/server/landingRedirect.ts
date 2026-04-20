@@ -1,13 +1,14 @@
 import { verifySessionToken } from '@/lib/authServer';
 import { getHomePathForUser } from '@/lib/homePage';
 import { prisma } from '@/lib/prisma';
+import { isSessionTokenCurrent } from './authSessions';
 
 type LandingRedirectClient = {
   authUser: {
     findUnique: (args: {
       where: { id: string };
-      select: { emailVerifiedAt: true };
-    }) => Promise<{ emailVerifiedAt: Date | null } | null>;
+      select: { emailVerifiedAt: true; sessionVersion: true };
+    }) => Promise<{ emailVerifiedAt: Date | null; sessionVersion: number | null } | null>;
   };
   userData: {
     findUnique: (args: {
@@ -32,9 +33,9 @@ export const resolveLandingRedirectPathFromToken = async (
 
   const authUser = await client.authUser.findUnique({
     where: { id: session.userId },
-    select: { emailVerifiedAt: true },
+    select: { emailVerifiedAt: true, sessionVersion: true },
   });
-  if (!authUser?.emailVerifiedAt) {
+  if (!authUser?.emailVerifiedAt || !isSessionTokenCurrent(session, authUser.sessionVersion)) {
     return null;
   }
 

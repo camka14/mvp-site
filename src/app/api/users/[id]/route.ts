@@ -9,7 +9,8 @@ import {
   isPrismaUserNameUniqueError,
   normalizeUserName,
 } from '@/server/userNames';
-import { applyUserPrivacy, createVisibilityContext, publicUserSelect } from '@/server/userPrivacy';
+import { resolveRequiredProfileFieldsCompletedAt } from '@/server/profileCompletion';
+import { applyUserPrivacy, createVisibilityContext, currentUserSelect, publicUserSelect } from '@/server/userPrivacy';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 
 const USER_MUTABLE_FIELDS = new Set<string>([
@@ -48,13 +49,29 @@ const normalizeNameFields = (data: Record<string, unknown>) => {
   }
 };
 
+const parseDateValue = (value: unknown): Date | null => {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'string') {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+};
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await prisma.userData.findUnique({ where: { id }, select: publicUserSelect });
+  const session = await getOptionalSession(_req);
+  const shouldExposeCurrentUserFields = Boolean(session?.isAdmin || session?.userId === id);
+  const user = await prisma.userData.findUnique({
+    where: { id },
+    select: shouldExposeCurrentUserFields ? currentUserSelect : publicUserSelect,
+  });
   if (!user) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
-  const session = getOptionalSession(_req);
   const query = _req.nextUrl.searchParams;
   const parseContextId = (value: string | null): string | null => {
     if (!value) return null;
@@ -103,6 +120,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     );
   }
 
+  const [currentUser, authUser] = await Promise.all([
+    prisma.userData.findUnique({
+      where: { id },
+      select: {
+        firstName: true,
+        lastName: true,
+        dateOfBirth: true,
+        requiredProfileFieldsCompletedAt: true,
+      },
+    }),
+    prisma.authUser.findUnique({
+      where: { id },
+      select: {
+        appleSubject: true,
+        googleSubject: true,
+      },
+    }),
+  ]);
+  if (!currentUser || !authUser) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
   const nextData: Record<string, unknown> = {};
   for (const key of USER_MUTABLE_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(parsed.payload, key)) {
@@ -110,6 +149,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
   normalizeNameFields(nextData);
+  if (Object.prototype.hasOwnProperty.call(nextData, 'dateOfBirth')) {
+    const parsedDate = parseDateValue(nextData.dateOfBirth);
+    if (!parsedDate) {
+      return NextResponse.json({ error: 'dateOfBirth must be a valid date.' }, { status: 400 });
+    }
+    nextData.dateOfBirth = parsedDate;
+  }
   if (Object.prototype.hasOwnProperty.call(nextData, 'userName')) {
     const normalizedUserName = normalizeUserName(nextData.userName);
     if (!normalizedUserName) {
@@ -165,9 +211,30 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   try {
+    const updatedAt = new Date();
+    const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
+      authUser,
+      profile: {
+        firstName: Object.prototype.hasOwnProperty.call(nextData, 'firstName')
+          ? (nextData.firstName as string | null)
+          : currentUser.firstName,
+        lastName: Object.prototype.hasOwnProperty.call(nextData, 'lastName')
+          ? (nextData.lastName as string | null)
+          : currentUser.lastName,
+        dateOfBirth: Object.prototype.hasOwnProperty.call(nextData, 'dateOfBirth')
+          ? (nextData.dateOfBirth as Date)
+          : currentUser.dateOfBirth,
+        requiredProfileFieldsCompletedAt: currentUser.requiredProfileFieldsCompletedAt,
+      },
+      now: updatedAt,
+    });
     const updated = await prisma.userData.update({
       where: { id },
-      data: { ...nextData, updatedAt: new Date() },
+      data: {
+        ...nextData,
+        requiredProfileFieldsCompletedAt,
+        updatedAt,
+      },
     });
     return NextResponse.json({ user: withLegacyFields(applyNameCaseToUserFields(updated)) }, { status: 200 });
   } catch (error) {

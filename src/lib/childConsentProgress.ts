@@ -30,7 +30,7 @@ export const syncChildRegistrationConsentStatus = async (params: {
       eventId,
       registrantId: childUserId,
       registrantType: 'CHILD',
-      status: { in: ['PENDINGCONSENT', 'ACTIVE'] },
+      status: { in: ['STARTED', 'ACTIVE'] },
       ...(normalizeText(params.parentUserId) ? { parentId: normalizeText(params.parentUserId) } : {}),
     },
     orderBy: { updatedAt: 'desc' },
@@ -213,7 +213,7 @@ export const syncChildRegistrationConsentStatus = async (params: {
   await prisma.eventRegistrations.update({
     where: { id: registration.id },
     data: {
-      status: consentComplete ? 'ACTIVE' : 'PENDINGCONSENT',
+      status: consentComplete ? 'ACTIVE' : 'STARTED',
       consentStatus,
       updatedAt: new Date(),
     },

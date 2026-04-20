@@ -53,6 +53,8 @@ export const AnyNull = runtime.AnyNull
 export const ModelName = {
   Fields: 'Fields',
   Matches: 'Matches',
+  MatchSegments: 'MatchSegments',
+  MatchIncidents: 'MatchIncidents',
   Divisions: 'Divisions',
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
@@ -60,8 +62,13 @@ export const ModelName = {
   StaffMembers: 'StaffMembers',
   EventOfficials: 'EventOfficials',
   Teams: 'Teams',
+  CanonicalTeams: 'CanonicalTeams',
+  TeamRegistrations: 'TeamRegistrations',
+  TeamStaffAssignments: 'TeamStaffAssignments',
+  EventTeamStaffAssignments: 'EventTeamStaffAssignments',
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
+  ModerationReport: 'ModerationReport',
   PushDeviceTarget: 'PushDeviceTarget',
   LockFiles: 'LockFiles',
   PaymentIntents: 'PaymentIntents',
@@ -135,6 +142,14 @@ export const MatchesScalarFieldEnum = {
   side: 'side',
   matchId: 'matchId',
   losersBracket: 'losersBracket',
+  status: 'status',
+  resultStatus: 'resultStatus',
+  resultType: 'resultType',
+  actualStart: 'actualStart',
+  actualEnd: 'actualEnd',
+  statusReason: 'statusReason',
+  winnerEventTeamId: 'winnerEventTeamId',
+  matchRulesSnapshot: 'matchRulesSnapshot',
   winnerNextMatchId: 'winnerNextMatchId',
   loserNextMatchId: 'loserNextMatchId',
   previousRightId: 'previousRightId',
@@ -152,6 +167,50 @@ export const MatchesScalarFieldEnum = {
 } as const
 
 export type MatchesScalarFieldEnum = (typeof MatchesScalarFieldEnum)[keyof typeof MatchesScalarFieldEnum]
+
+
+export const MatchSegmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  sequence: 'sequence',
+  status: 'status',
+  scores: 'scores',
+  winnerEventTeamId: 'winnerEventTeamId',
+  startedAt: 'startedAt',
+  endedAt: 'endedAt',
+  resultType: 'resultType',
+  statusReason: 'statusReason',
+  metadata: 'metadata'
+} as const
+
+export type MatchSegmentsScalarFieldEnum = (typeof MatchSegmentsScalarFieldEnum)[keyof typeof MatchSegmentsScalarFieldEnum]
+
+
+export const MatchIncidentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  matchId: 'matchId',
+  segmentId: 'segmentId',
+  eventTeamId: 'eventTeamId',
+  eventRegistrationId: 'eventRegistrationId',
+  participantUserId: 'participantUserId',
+  officialUserId: 'officialUserId',
+  incidentType: 'incidentType',
+  sequence: 'sequence',
+  minute: 'minute',
+  clock: 'clock',
+  clockSeconds: 'clockSeconds',
+  linkedPointDelta: 'linkedPointDelta',
+  note: 'note',
+  metadata: 'metadata'
+} as const
+
+export type MatchIncidentsScalarFieldEnum = (typeof MatchIncidentsScalarFieldEnum)[keyof typeof MatchIncidentsScalarFieldEnum]
 
 
 export const DivisionsScalarFieldEnum = {
@@ -198,6 +257,7 @@ export const UserDataScalarFieldEnum = {
   firstName: 'firstName',
   lastName: 'lastName',
   dateOfBirth: 'dateOfBirth',
+  requiredProfileFieldsCompletedAt: 'requiredProfileFieldsCompletedAt',
   dobVerified: 'dobVerified',
   dobVerifiedAt: 'dobVerifiedAt',
   ageVerificationProvider: 'ageVerificationProvider',
@@ -210,7 +270,11 @@ export const UserDataScalarFieldEnum = {
   friendRequestSentIds: 'friendRequestSentIds',
   uploadedImages: 'uploadedImages',
   profileImageId: 'profileImageId',
-  homePageOrganizationId: 'homePageOrganizationId'
+  homePageOrganizationId: 'homePageOrganizationId',
+  blockedUserIds: 'blockedUserIds',
+  hiddenEventIds: 'hiddenEventIds',
+  chatTermsAcceptedAt: 'chatTermsAcceptedAt',
+  chatTermsVersion: 'chatTermsVersion'
 } as const
 
 export type UserDataScalarFieldEnum = (typeof UserDataScalarFieldEnum)[keyof typeof UserDataScalarFieldEnum]
@@ -284,7 +348,10 @@ export const TeamsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt',
+  eventId: 'eventId',
+  kind: 'kind',
   playerIds: 'playerIds',
+  playerRegistrationIds: 'playerRegistrationIds',
   division: 'division',
   divisionTypeId: 'divisionTypeId',
   divisionTypeName: 'divisionTypeName',
@@ -295,6 +362,7 @@ export const TeamsScalarFieldEnum = {
   managerId: 'managerId',
   headCoachId: 'headCoachId',
   coachIds: 'coachIds',
+  staffAssignmentIds: 'staffAssignmentIds',
   parentTeamId: 'parentTeamId',
   pending: 'pending',
   teamSize: 'teamSize',
@@ -303,6 +371,72 @@ export const TeamsScalarFieldEnum = {
 } as const
 
 export type TeamsScalarFieldEnum = (typeof TeamsScalarFieldEnum)[keyof typeof TeamsScalarFieldEnum]
+
+
+export const CanonicalTeamsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  name: 'name',
+  division: 'division',
+  divisionTypeId: 'divisionTypeId',
+  divisionTypeName: 'divisionTypeName',
+  wins: 'wins',
+  losses: 'losses',
+  teamSize: 'teamSize',
+  profileImageId: 'profileImageId',
+  sport: 'sport',
+  organizationId: 'organizationId',
+  createdBy: 'createdBy',
+  openRegistration: 'openRegistration',
+  registrationPriceCents: 'registrationPriceCents'
+} as const
+
+export type CanonicalTeamsScalarFieldEnum = (typeof CanonicalTeamsScalarFieldEnum)[keyof typeof CanonicalTeamsScalarFieldEnum]
+
+
+export const TeamRegistrationsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  teamId: 'teamId',
+  userId: 'userId',
+  status: 'status',
+  jerseyNumber: 'jerseyNumber',
+  position: 'position',
+  isCaptain: 'isCaptain',
+  createdBy: 'createdBy'
+} as const
+
+export type TeamRegistrationsScalarFieldEnum = (typeof TeamRegistrationsScalarFieldEnum)[keyof typeof TeamRegistrationsScalarFieldEnum]
+
+
+export const TeamStaffAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  teamId: 'teamId',
+  userId: 'userId',
+  role: 'role',
+  status: 'status',
+  createdBy: 'createdBy'
+} as const
+
+export type TeamStaffAssignmentsScalarFieldEnum = (typeof TeamStaffAssignmentsScalarFieldEnum)[keyof typeof TeamStaffAssignmentsScalarFieldEnum]
+
+
+export const EventTeamStaffAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  eventTeamId: 'eventTeamId',
+  userId: 'userId',
+  role: 'role',
+  status: 'status',
+  sourceStaffAssignmentId: 'sourceStaffAssignmentId'
+} as const
+
+export type EventTeamStaffAssignmentsScalarFieldEnum = (typeof EventTeamStaffAssignmentsScalarFieldEnum)[keyof typeof EventTeamStaffAssignmentsScalarFieldEnum]
 
 
 export const MessagesScalarFieldEnum = {
@@ -314,7 +448,10 @@ export const MessagesScalarFieldEnum = {
   attachmentUrls: 'attachmentUrls',
   chatId: 'chatId',
   readByIds: 'readByIds',
-  sentTime: 'sentTime'
+  sentTime: 'sentTime',
+  removedAt: 'removedAt',
+  removedByUserId: 'removedByUserId',
+  removalReason: 'removalReason'
 } as const
 
 export type MessagesScalarFieldEnum = (typeof MessagesScalarFieldEnum)[keyof typeof MessagesScalarFieldEnum]
@@ -328,10 +465,33 @@ export const ChatGroupScalarFieldEnum = {
   teamId: 'teamId',
   userIds: 'userIds',
   mutedUserIds: 'mutedUserIds',
-  hostId: 'hostId'
+  hostId: 'hostId',
+  archivedAt: 'archivedAt',
+  archivedReason: 'archivedReason',
+  archivedByUserId: 'archivedByUserId'
 } as const
 
 export type ChatGroupScalarFieldEnum = (typeof ChatGroupScalarFieldEnum)[keyof typeof ChatGroupScalarFieldEnum]
+
+
+export const ModerationReportScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  reporterUserId: 'reporterUserId',
+  targetType: 'targetType',
+  targetId: 'targetId',
+  category: 'category',
+  notes: 'notes',
+  status: 'status',
+  dueAt: 'dueAt',
+  reviewedAt: 'reviewedAt',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewNotes: 'reviewNotes',
+  metadata: 'metadata'
+} as const
+
+export type ModerationReportScalarFieldEnum = (typeof ModerationReportScalarFieldEnum)[keyof typeof ModerationReportScalarFieldEnum]
 
 
 export const PushDeviceTargetScalarFieldEnum = {
@@ -440,7 +600,18 @@ export const StripeAccountsScalarFieldEnum = {
   accountId: 'accountId',
   userId: 'userId',
   organizationId: 'organizationId',
-  email: 'email'
+  email: 'email',
+  accountOrigin: 'accountOrigin',
+  accountType: 'accountType',
+  isActiveForBilling: 'isActiveForBilling',
+  detailsSubmitted: 'detailsSubmitted',
+  chargesEnabled: 'chargesEnabled',
+  payoutsEnabled: 'payoutsEnabled',
+  requirementsCurrentlyDue: 'requirementsCurrentlyDue',
+  requirementsPastDue: 'requirementsPastDue',
+  requirementsEventuallyDue: 'requirementsEventuallyDue',
+  requirementsDisabledReason: 'requirementsDisabledReason',
+  verificationLastSyncedAt: 'verificationLastSyncedAt'
 } as const
 
 export type StripeAccountsScalarFieldEnum = (typeof StripeAccountsScalarFieldEnum)[keyof typeof StripeAccountsScalarFieldEnum]
@@ -508,6 +679,8 @@ export const EventsScalarFieldEnum = {
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
   officialIds: 'officialIds',
   officialPositions: 'officialPositions',
+  matchRulesOverride: 'matchRulesOverride',
+  autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',
   allowPaymentPlans: 'allowPaymentPlans',
   installmentCount: 'installmentCount',
   installmentDueDates: 'installmentDueDates',
@@ -535,6 +708,11 @@ export const OrganizationsScalarFieldEnum = {
   sports: 'sports',
   officialIds: 'officialIds',
   hasStripeAccount: 'hasStripeAccount',
+  verificationStatus: 'verificationStatus',
+  verifiedAt: 'verifiedAt',
+  verificationReviewStatus: 'verificationReviewStatus',
+  verificationReviewNotes: 'verificationReviewNotes',
+  verificationReviewUpdatedAt: 'verificationReviewUpdatedAt',
   coordinates: 'coordinates',
   productIds: 'productIds',
   teamIds: 'teamIds'
@@ -667,7 +845,8 @@ export const SportsScalarFieldEnum = {
   useEnablePenaltyUnsporting: 'useEnablePenaltyUnsporting',
   usePenaltyPointsUnsporting: 'usePenaltyPointsUnsporting',
   usePointPrecision: 'usePointPrecision',
-  officialPositionTemplates: 'officialPositionTemplates'
+  officialPositionTemplates: 'officialPositionTemplates',
+  matchRulesTemplate: 'matchRulesTemplate'
 } as const
 
 export type SportsScalarFieldEnum = (typeof SportsScalarFieldEnum)[keyof typeof SportsScalarFieldEnum]
@@ -791,11 +970,19 @@ export const EventRegistrationsScalarFieldEnum = {
   registrantId: 'registrantId',
   parentId: 'parentId',
   registrantType: 'registrantType',
+  rosterRole: 'rosterRole',
   status: 'status',
+  eventTeamId: 'eventTeamId',
+  sourceTeamRegistrationId: 'sourceTeamRegistrationId',
+  slotId: 'slotId',
+  occurrenceDate: 'occurrenceDate',
   ageAtEvent: 'ageAtEvent',
   divisionId: 'divisionId',
   divisionTypeId: 'divisionTypeId',
   divisionTypeKey: 'divisionTypeKey',
+  jerseyNumber: 'jerseyNumber',
+  position: 'position',
+  isCaptain: 'isCaptain',
   consentDocumentId: 'consentDocumentId',
   consentStatus: 'consentStatus',
   createdBy: 'createdBy'
@@ -807,13 +994,18 @@ export type EventRegistrationsScalarFieldEnum = (typeof EventRegistrationsScalar
 export const AuthUserScalarFieldEnum = {
   id: 'id',
   email: 'email',
+  googleSubject: 'googleSubject',
   passwordHash: 'passwordHash',
   name: 'name',
   appleSubject: 'appleSubject',
   emailVerifiedAt: 'emailVerifiedAt',
   lastLogin: 'lastLogin',
+  sessionVersion: 'sessionVersion',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
+  updatedAt: 'updatedAt',
+  disabledAt: 'disabledAt',
+  disabledByUserId: 'disabledByUserId',
+  disabledReason: 'disabledReason'
 } as const
 
 export type AuthUserScalarFieldEnum = (typeof AuthUserScalarFieldEnum)[keyof typeof AuthUserScalarFieldEnum]

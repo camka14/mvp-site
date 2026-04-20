@@ -67,6 +67,8 @@ describe('Providers guest/auth state synchronization', () => {
       profile: null,
       session: null,
       token: null,
+      requiresProfileCompletion: false,
+      missingProfileFields: [],
     });
     isGuestMock.mockReturnValue(true);
     getAllSportsMock.mockResolvedValue([]);

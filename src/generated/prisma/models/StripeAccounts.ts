@@ -33,6 +33,14 @@ export type StripeAccountsMinAggregateOutputType = {
   userId: string | null
   organizationId: string | null
   email: string | null
+  accountOrigin: $Enums.StripeAccountsAccountOriginEnum | null
+  accountType: string | null
+  isActiveForBilling: boolean | null
+  detailsSubmitted: boolean | null
+  chargesEnabled: boolean | null
+  payoutsEnabled: boolean | null
+  requirementsDisabledReason: string | null
+  verificationLastSyncedAt: Date | null
 }
 
 export type StripeAccountsMaxAggregateOutputType = {
@@ -44,6 +52,14 @@ export type StripeAccountsMaxAggregateOutputType = {
   userId: string | null
   organizationId: string | null
   email: string | null
+  accountOrigin: $Enums.StripeAccountsAccountOriginEnum | null
+  accountType: string | null
+  isActiveForBilling: boolean | null
+  detailsSubmitted: boolean | null
+  chargesEnabled: boolean | null
+  payoutsEnabled: boolean | null
+  requirementsDisabledReason: string | null
+  verificationLastSyncedAt: Date | null
 }
 
 export type StripeAccountsCountAggregateOutputType = {
@@ -55,6 +71,17 @@ export type StripeAccountsCountAggregateOutputType = {
   userId: number
   organizationId: number
   email: number
+  accountOrigin: number
+  accountType: number
+  isActiveForBilling: number
+  detailsSubmitted: number
+  chargesEnabled: number
+  payoutsEnabled: number
+  requirementsCurrentlyDue: number
+  requirementsPastDue: number
+  requirementsEventuallyDue: number
+  requirementsDisabledReason: number
+  verificationLastSyncedAt: number
   _all: number
 }
 
@@ -68,6 +95,14 @@ export type StripeAccountsMinAggregateInputType = {
   userId?: true
   organizationId?: true
   email?: true
+  accountOrigin?: true
+  accountType?: true
+  isActiveForBilling?: true
+  detailsSubmitted?: true
+  chargesEnabled?: true
+  payoutsEnabled?: true
+  requirementsDisabledReason?: true
+  verificationLastSyncedAt?: true
 }
 
 export type StripeAccountsMaxAggregateInputType = {
@@ -79,6 +114,14 @@ export type StripeAccountsMaxAggregateInputType = {
   userId?: true
   organizationId?: true
   email?: true
+  accountOrigin?: true
+  accountType?: true
+  isActiveForBilling?: true
+  detailsSubmitted?: true
+  chargesEnabled?: true
+  payoutsEnabled?: true
+  requirementsDisabledReason?: true
+  verificationLastSyncedAt?: true
 }
 
 export type StripeAccountsCountAggregateInputType = {
@@ -90,6 +133,17 @@ export type StripeAccountsCountAggregateInputType = {
   userId?: true
   organizationId?: true
   email?: true
+  accountOrigin?: true
+  accountType?: true
+  isActiveForBilling?: true
+  detailsSubmitted?: true
+  chargesEnabled?: true
+  payoutsEnabled?: true
+  requirementsCurrentlyDue?: true
+  requirementsPastDue?: true
+  requirementsEventuallyDue?: true
+  requirementsDisabledReason?: true
+  verificationLastSyncedAt?: true
   _all?: true
 }
 
@@ -174,12 +228,23 @@ export type StripeAccountsGroupByOutputType = {
   userId: string | null
   organizationId: string | null
   email: string | null
+  accountOrigin: $Enums.StripeAccountsAccountOriginEnum | null
+  accountType: string | null
+  isActiveForBilling: boolean | null
+  detailsSubmitted: boolean | null
+  chargesEnabled: boolean | null
+  payoutsEnabled: boolean | null
+  requirementsCurrentlyDue: string[]
+  requirementsPastDue: string[]
+  requirementsEventuallyDue: string[]
+  requirementsDisabledReason: string | null
+  verificationLastSyncedAt: Date | null
   _count: StripeAccountsCountAggregateOutputType | null
   _min: StripeAccountsMinAggregateOutputType | null
   _max: StripeAccountsMaxAggregateOutputType | null
 }
 
-type GetStripeAccountsGroupByPayload<T extends StripeAccountsGroupByArgs> = Prisma.PrismaPromise<
+export type GetStripeAccountsGroupByPayload<T extends StripeAccountsGroupByArgs> = Prisma.PrismaPromise<
   Array<
     Prisma.PickEnumerable<StripeAccountsGroupByOutputType, T['by']> &
       {
@@ -206,6 +271,17 @@ export type StripeAccountsWhereInput = {
   userId?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
   organizationId?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
   email?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
+  accountOrigin?: Prisma.EnumStripeAccountsAccountOriginEnumNullableFilter<"StripeAccounts"> | $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
+  isActiveForBilling?: Prisma.BoolNullableFilter<"StripeAccounts"> | boolean | null
+  detailsSubmitted?: Prisma.BoolNullableFilter<"StripeAccounts"> | boolean | null
+  chargesEnabled?: Prisma.BoolNullableFilter<"StripeAccounts"> | boolean | null
+  payoutsEnabled?: Prisma.BoolNullableFilter<"StripeAccounts"> | boolean | null
+  requirementsCurrentlyDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsPastDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsEventuallyDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsDisabledReason?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
+  verificationLastSyncedAt?: Prisma.DateTimeNullableFilter<"StripeAccounts"> | Date | string | null
 }
 
 export type StripeAccountsOrderByWithRelationInput = {
@@ -217,6 +293,17 @@ export type StripeAccountsOrderByWithRelationInput = {
   userId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   email?: Prisma.SortOrderInput | Prisma.SortOrder
+  accountOrigin?: Prisma.SortOrderInput | Prisma.SortOrder
+  accountType?: Prisma.SortOrderInput | Prisma.SortOrder
+  isActiveForBilling?: Prisma.SortOrderInput | Prisma.SortOrder
+  detailsSubmitted?: Prisma.SortOrderInput | Prisma.SortOrder
+  chargesEnabled?: Prisma.SortOrderInput | Prisma.SortOrder
+  payoutsEnabled?: Prisma.SortOrderInput | Prisma.SortOrder
+  requirementsCurrentlyDue?: Prisma.SortOrder
+  requirementsPastDue?: Prisma.SortOrder
+  requirementsEventuallyDue?: Prisma.SortOrder
+  requirementsDisabledReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  verificationLastSyncedAt?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type StripeAccountsWhereUniqueInput = Prisma.AtLeast<{
@@ -231,6 +318,17 @@ export type StripeAccountsWhereUniqueInput = Prisma.AtLeast<{
   userId?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
   organizationId?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
   email?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
+  accountOrigin?: Prisma.EnumStripeAccountsAccountOriginEnumNullableFilter<"StripeAccounts"> | $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
+  isActiveForBilling?: Prisma.BoolNullableFilter<"StripeAccounts"> | boolean | null
+  detailsSubmitted?: Prisma.BoolNullableFilter<"StripeAccounts"> | boolean | null
+  chargesEnabled?: Prisma.BoolNullableFilter<"StripeAccounts"> | boolean | null
+  payoutsEnabled?: Prisma.BoolNullableFilter<"StripeAccounts"> | boolean | null
+  requirementsCurrentlyDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsPastDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsEventuallyDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsDisabledReason?: Prisma.StringNullableFilter<"StripeAccounts"> | string | null
+  verificationLastSyncedAt?: Prisma.DateTimeNullableFilter<"StripeAccounts"> | Date | string | null
 }, "id">
 
 export type StripeAccountsOrderByWithAggregationInput = {
@@ -242,6 +340,17 @@ export type StripeAccountsOrderByWithAggregationInput = {
   userId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   email?: Prisma.SortOrderInput | Prisma.SortOrder
+  accountOrigin?: Prisma.SortOrderInput | Prisma.SortOrder
+  accountType?: Prisma.SortOrderInput | Prisma.SortOrder
+  isActiveForBilling?: Prisma.SortOrderInput | Prisma.SortOrder
+  detailsSubmitted?: Prisma.SortOrderInput | Prisma.SortOrder
+  chargesEnabled?: Prisma.SortOrderInput | Prisma.SortOrder
+  payoutsEnabled?: Prisma.SortOrderInput | Prisma.SortOrder
+  requirementsCurrentlyDue?: Prisma.SortOrder
+  requirementsPastDue?: Prisma.SortOrder
+  requirementsEventuallyDue?: Prisma.SortOrder
+  requirementsDisabledReason?: Prisma.SortOrderInput | Prisma.SortOrder
+  verificationLastSyncedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.StripeAccountsCountOrderByAggregateInput
   _max?: Prisma.StripeAccountsMaxOrderByAggregateInput
   _min?: Prisma.StripeAccountsMinOrderByAggregateInput
@@ -259,6 +368,17 @@ export type StripeAccountsScalarWhereWithAggregatesInput = {
   userId?: Prisma.StringNullableWithAggregatesFilter<"StripeAccounts"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"StripeAccounts"> | string | null
   email?: Prisma.StringNullableWithAggregatesFilter<"StripeAccounts"> | string | null
+  accountOrigin?: Prisma.EnumStripeAccountsAccountOriginEnumNullableWithAggregatesFilter<"StripeAccounts"> | $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: Prisma.StringNullableWithAggregatesFilter<"StripeAccounts"> | string | null
+  isActiveForBilling?: Prisma.BoolNullableWithAggregatesFilter<"StripeAccounts"> | boolean | null
+  detailsSubmitted?: Prisma.BoolNullableWithAggregatesFilter<"StripeAccounts"> | boolean | null
+  chargesEnabled?: Prisma.BoolNullableWithAggregatesFilter<"StripeAccounts"> | boolean | null
+  payoutsEnabled?: Prisma.BoolNullableWithAggregatesFilter<"StripeAccounts"> | boolean | null
+  requirementsCurrentlyDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsPastDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsEventuallyDue?: Prisma.StringNullableListFilter<"StripeAccounts">
+  requirementsDisabledReason?: Prisma.StringNullableWithAggregatesFilter<"StripeAccounts"> | string | null
+  verificationLastSyncedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"StripeAccounts"> | Date | string | null
 }
 
 export type StripeAccountsCreateInput = {
@@ -270,6 +390,17 @@ export type StripeAccountsCreateInput = {
   userId?: string | null
   organizationId?: string | null
   email?: string | null
+  accountOrigin?: $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: string | null
+  isActiveForBilling?: boolean | null
+  detailsSubmitted?: boolean | null
+  chargesEnabled?: boolean | null
+  payoutsEnabled?: boolean | null
+  requirementsCurrentlyDue?: Prisma.StripeAccountsCreaterequirementsCurrentlyDueInput | string[]
+  requirementsPastDue?: Prisma.StripeAccountsCreaterequirementsPastDueInput | string[]
+  requirementsEventuallyDue?: Prisma.StripeAccountsCreaterequirementsEventuallyDueInput | string[]
+  requirementsDisabledReason?: string | null
+  verificationLastSyncedAt?: Date | string | null
 }
 
 export type StripeAccountsUncheckedCreateInput = {
@@ -281,6 +412,17 @@ export type StripeAccountsUncheckedCreateInput = {
   userId?: string | null
   organizationId?: string | null
   email?: string | null
+  accountOrigin?: $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: string | null
+  isActiveForBilling?: boolean | null
+  detailsSubmitted?: boolean | null
+  chargesEnabled?: boolean | null
+  payoutsEnabled?: boolean | null
+  requirementsCurrentlyDue?: Prisma.StripeAccountsCreaterequirementsCurrentlyDueInput | string[]
+  requirementsPastDue?: Prisma.StripeAccountsCreaterequirementsPastDueInput | string[]
+  requirementsEventuallyDue?: Prisma.StripeAccountsCreaterequirementsEventuallyDueInput | string[]
+  requirementsDisabledReason?: string | null
+  verificationLastSyncedAt?: Date | string | null
 }
 
 export type StripeAccountsUpdateInput = {
@@ -292,6 +434,17 @@ export type StripeAccountsUpdateInput = {
   userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  accountOrigin?: Prisma.NullableEnumStripeAccountsAccountOriginEnumFieldUpdateOperationsInput | $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isActiveForBilling?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  detailsSubmitted?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  chargesEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  payoutsEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  requirementsCurrentlyDue?: Prisma.StripeAccountsUpdaterequirementsCurrentlyDueInput | string[]
+  requirementsPastDue?: Prisma.StripeAccountsUpdaterequirementsPastDueInput | string[]
+  requirementsEventuallyDue?: Prisma.StripeAccountsUpdaterequirementsEventuallyDueInput | string[]
+  requirementsDisabledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  verificationLastSyncedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type StripeAccountsUncheckedUpdateInput = {
@@ -303,6 +456,17 @@ export type StripeAccountsUncheckedUpdateInput = {
   userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  accountOrigin?: Prisma.NullableEnumStripeAccountsAccountOriginEnumFieldUpdateOperationsInput | $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isActiveForBilling?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  detailsSubmitted?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  chargesEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  payoutsEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  requirementsCurrentlyDue?: Prisma.StripeAccountsUpdaterequirementsCurrentlyDueInput | string[]
+  requirementsPastDue?: Prisma.StripeAccountsUpdaterequirementsPastDueInput | string[]
+  requirementsEventuallyDue?: Prisma.StripeAccountsUpdaterequirementsEventuallyDueInput | string[]
+  requirementsDisabledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  verificationLastSyncedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type StripeAccountsCreateManyInput = {
@@ -314,6 +478,17 @@ export type StripeAccountsCreateManyInput = {
   userId?: string | null
   organizationId?: string | null
   email?: string | null
+  accountOrigin?: $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: string | null
+  isActiveForBilling?: boolean | null
+  detailsSubmitted?: boolean | null
+  chargesEnabled?: boolean | null
+  payoutsEnabled?: boolean | null
+  requirementsCurrentlyDue?: Prisma.StripeAccountsCreaterequirementsCurrentlyDueInput | string[]
+  requirementsPastDue?: Prisma.StripeAccountsCreaterequirementsPastDueInput | string[]
+  requirementsEventuallyDue?: Prisma.StripeAccountsCreaterequirementsEventuallyDueInput | string[]
+  requirementsDisabledReason?: string | null
+  verificationLastSyncedAt?: Date | string | null
 }
 
 export type StripeAccountsUpdateManyMutationInput = {
@@ -325,6 +500,17 @@ export type StripeAccountsUpdateManyMutationInput = {
   userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  accountOrigin?: Prisma.NullableEnumStripeAccountsAccountOriginEnumFieldUpdateOperationsInput | $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isActiveForBilling?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  detailsSubmitted?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  chargesEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  payoutsEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  requirementsCurrentlyDue?: Prisma.StripeAccountsUpdaterequirementsCurrentlyDueInput | string[]
+  requirementsPastDue?: Prisma.StripeAccountsUpdaterequirementsPastDueInput | string[]
+  requirementsEventuallyDue?: Prisma.StripeAccountsUpdaterequirementsEventuallyDueInput | string[]
+  requirementsDisabledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  verificationLastSyncedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type StripeAccountsUncheckedUpdateManyInput = {
@@ -336,6 +522,17 @@ export type StripeAccountsUncheckedUpdateManyInput = {
   userId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  accountOrigin?: Prisma.NullableEnumStripeAccountsAccountOriginEnumFieldUpdateOperationsInput | $Enums.StripeAccountsAccountOriginEnum | null
+  accountType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  isActiveForBilling?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  detailsSubmitted?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  chargesEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  payoutsEnabled?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  requirementsCurrentlyDue?: Prisma.StripeAccountsUpdaterequirementsCurrentlyDueInput | string[]
+  requirementsPastDue?: Prisma.StripeAccountsUpdaterequirementsPastDueInput | string[]
+  requirementsEventuallyDue?: Prisma.StripeAccountsUpdaterequirementsEventuallyDueInput | string[]
+  requirementsDisabledReason?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  verificationLastSyncedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type StripeAccountsCountOrderByAggregateInput = {
@@ -347,6 +544,17 @@ export type StripeAccountsCountOrderByAggregateInput = {
   userId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   email?: Prisma.SortOrder
+  accountOrigin?: Prisma.SortOrder
+  accountType?: Prisma.SortOrder
+  isActiveForBilling?: Prisma.SortOrder
+  detailsSubmitted?: Prisma.SortOrder
+  chargesEnabled?: Prisma.SortOrder
+  payoutsEnabled?: Prisma.SortOrder
+  requirementsCurrentlyDue?: Prisma.SortOrder
+  requirementsPastDue?: Prisma.SortOrder
+  requirementsEventuallyDue?: Prisma.SortOrder
+  requirementsDisabledReason?: Prisma.SortOrder
+  verificationLastSyncedAt?: Prisma.SortOrder
 }
 
 export type StripeAccountsMaxOrderByAggregateInput = {
@@ -358,6 +566,14 @@ export type StripeAccountsMaxOrderByAggregateInput = {
   userId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   email?: Prisma.SortOrder
+  accountOrigin?: Prisma.SortOrder
+  accountType?: Prisma.SortOrder
+  isActiveForBilling?: Prisma.SortOrder
+  detailsSubmitted?: Prisma.SortOrder
+  chargesEnabled?: Prisma.SortOrder
+  payoutsEnabled?: Prisma.SortOrder
+  requirementsDisabledReason?: Prisma.SortOrder
+  verificationLastSyncedAt?: Prisma.SortOrder
 }
 
 export type StripeAccountsMinOrderByAggregateInput = {
@@ -369,6 +585,45 @@ export type StripeAccountsMinOrderByAggregateInput = {
   userId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   email?: Prisma.SortOrder
+  accountOrigin?: Prisma.SortOrder
+  accountType?: Prisma.SortOrder
+  isActiveForBilling?: Prisma.SortOrder
+  detailsSubmitted?: Prisma.SortOrder
+  chargesEnabled?: Prisma.SortOrder
+  payoutsEnabled?: Prisma.SortOrder
+  requirementsDisabledReason?: Prisma.SortOrder
+  verificationLastSyncedAt?: Prisma.SortOrder
+}
+
+export type StripeAccountsCreaterequirementsCurrentlyDueInput = {
+  set: string[]
+}
+
+export type StripeAccountsCreaterequirementsPastDueInput = {
+  set: string[]
+}
+
+export type StripeAccountsCreaterequirementsEventuallyDueInput = {
+  set: string[]
+}
+
+export type NullableEnumStripeAccountsAccountOriginEnumFieldUpdateOperationsInput = {
+  set?: $Enums.StripeAccountsAccountOriginEnum | null
+}
+
+export type StripeAccountsUpdaterequirementsCurrentlyDueInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
+export type StripeAccountsUpdaterequirementsPastDueInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
+export type StripeAccountsUpdaterequirementsEventuallyDueInput = {
+  set?: string[]
+  push?: string | string[]
 }
 
 
@@ -382,6 +637,17 @@ export type StripeAccountsSelect<ExtArgs extends runtime.Types.Extensions.Intern
   userId?: boolean
   organizationId?: boolean
   email?: boolean
+  accountOrigin?: boolean
+  accountType?: boolean
+  isActiveForBilling?: boolean
+  detailsSubmitted?: boolean
+  chargesEnabled?: boolean
+  payoutsEnabled?: boolean
+  requirementsCurrentlyDue?: boolean
+  requirementsPastDue?: boolean
+  requirementsEventuallyDue?: boolean
+  requirementsDisabledReason?: boolean
+  verificationLastSyncedAt?: boolean
 }, ExtArgs["result"]["stripeAccounts"]>
 
 export type StripeAccountsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -393,6 +659,17 @@ export type StripeAccountsSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   userId?: boolean
   organizationId?: boolean
   email?: boolean
+  accountOrigin?: boolean
+  accountType?: boolean
+  isActiveForBilling?: boolean
+  detailsSubmitted?: boolean
+  chargesEnabled?: boolean
+  payoutsEnabled?: boolean
+  requirementsCurrentlyDue?: boolean
+  requirementsPastDue?: boolean
+  requirementsEventuallyDue?: boolean
+  requirementsDisabledReason?: boolean
+  verificationLastSyncedAt?: boolean
 }, ExtArgs["result"]["stripeAccounts"]>
 
 export type StripeAccountsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -404,6 +681,17 @@ export type StripeAccountsSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   userId?: boolean
   organizationId?: boolean
   email?: boolean
+  accountOrigin?: boolean
+  accountType?: boolean
+  isActiveForBilling?: boolean
+  detailsSubmitted?: boolean
+  chargesEnabled?: boolean
+  payoutsEnabled?: boolean
+  requirementsCurrentlyDue?: boolean
+  requirementsPastDue?: boolean
+  requirementsEventuallyDue?: boolean
+  requirementsDisabledReason?: boolean
+  verificationLastSyncedAt?: boolean
 }, ExtArgs["result"]["stripeAccounts"]>
 
 export type StripeAccountsSelectScalar = {
@@ -415,9 +703,20 @@ export type StripeAccountsSelectScalar = {
   userId?: boolean
   organizationId?: boolean
   email?: boolean
+  accountOrigin?: boolean
+  accountType?: boolean
+  isActiveForBilling?: boolean
+  detailsSubmitted?: boolean
+  chargesEnabled?: boolean
+  payoutsEnabled?: boolean
+  requirementsCurrentlyDue?: boolean
+  requirementsPastDue?: boolean
+  requirementsEventuallyDue?: boolean
+  requirementsDisabledReason?: boolean
+  verificationLastSyncedAt?: boolean
 }
 
-export type StripeAccountsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "customerId" | "accountId" | "userId" | "organizationId" | "email", ExtArgs["result"]["stripeAccounts"]>
+export type StripeAccountsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "customerId" | "accountId" | "userId" | "organizationId" | "email" | "accountOrigin" | "accountType" | "isActiveForBilling" | "detailsSubmitted" | "chargesEnabled" | "payoutsEnabled" | "requirementsCurrentlyDue" | "requirementsPastDue" | "requirementsEventuallyDue" | "requirementsDisabledReason" | "verificationLastSyncedAt", ExtArgs["result"]["stripeAccounts"]>
 
 export type $StripeAccountsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "StripeAccounts"
@@ -431,6 +730,17 @@ export type $StripeAccountsPayload<ExtArgs extends runtime.Types.Extensions.Inte
     userId: string | null
     organizationId: string | null
     email: string | null
+    accountOrigin: $Enums.StripeAccountsAccountOriginEnum | null
+    accountType: string | null
+    isActiveForBilling: boolean | null
+    detailsSubmitted: boolean | null
+    chargesEnabled: boolean | null
+    payoutsEnabled: boolean | null
+    requirementsCurrentlyDue: string[]
+    requirementsPastDue: string[]
+    requirementsEventuallyDue: string[]
+    requirementsDisabledReason: string | null
+    verificationLastSyncedAt: Date | null
   }, ExtArgs["result"]["stripeAccounts"]>
   composites: {}
 }
@@ -862,6 +1172,17 @@ export interface StripeAccountsFieldRefs {
   readonly userId: Prisma.FieldRef<"StripeAccounts", 'String'>
   readonly organizationId: Prisma.FieldRef<"StripeAccounts", 'String'>
   readonly email: Prisma.FieldRef<"StripeAccounts", 'String'>
+  readonly accountOrigin: Prisma.FieldRef<"StripeAccounts", 'StripeAccountsAccountOriginEnum'>
+  readonly accountType: Prisma.FieldRef<"StripeAccounts", 'String'>
+  readonly isActiveForBilling: Prisma.FieldRef<"StripeAccounts", 'Boolean'>
+  readonly detailsSubmitted: Prisma.FieldRef<"StripeAccounts", 'Boolean'>
+  readonly chargesEnabled: Prisma.FieldRef<"StripeAccounts", 'Boolean'>
+  readonly payoutsEnabled: Prisma.FieldRef<"StripeAccounts", 'Boolean'>
+  readonly requirementsCurrentlyDue: Prisma.FieldRef<"StripeAccounts", 'String[]'>
+  readonly requirementsPastDue: Prisma.FieldRef<"StripeAccounts", 'String[]'>
+  readonly requirementsEventuallyDue: Prisma.FieldRef<"StripeAccounts", 'String[]'>
+  readonly requirementsDisabledReason: Prisma.FieldRef<"StripeAccounts", 'String'>
+  readonly verificationLastSyncedAt: Prisma.FieldRef<"StripeAccounts", 'DateTime'>
 }
     
 
@@ -1038,6 +1359,11 @@ export type StripeAccountsFindManyArgs<ExtArgs extends runtime.Types.Extensions.
    * Skip the first `n` StripeAccounts.
    */
   skip?: number
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/distinct Distinct Docs}
+   * 
+   * Filter by unique combinations of StripeAccounts.
+   */
   distinct?: Prisma.StripeAccountsScalarFieldEnum | Prisma.StripeAccountsScalarFieldEnum[]
 }
 

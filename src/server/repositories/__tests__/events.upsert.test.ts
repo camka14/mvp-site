@@ -116,9 +116,59 @@ describe('upsertEventFromPayload', () => {
     };
 
     await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
-      'End date/time must be after start date/time when "No fixed end date/time" is disabled.',
+      'End date/time must be after start date/time when "No fixed end datetime scheduling" is disabled.',
     );
     expect(client.events.upsert).not.toHaveBeenCalled();
+  });
+
+  it('preserves an existing scheduler-computed end for open-ended schedulable upserts', async () => {
+    const client = createMockClient();
+    const computedEnd = new Date('2026-05-03T01:20:00.000Z');
+    client.events.findUnique.mockResolvedValueOnce({
+      fieldIds: ['field_1'],
+      timeSlotIds: ['slot_1'],
+      eventType: 'TOURNAMENT',
+      end: computedEnd,
+      noFixedEndDateTime: true,
+      leagueScoringConfigId: null,
+      hostId: 'host_1',
+      organizationId: null,
+      parentEvent: null,
+      officialIds: [],
+      officialPositions: [],
+      officialSchedulingMode: 'SCHEDULE',
+      sportId: 'sport_1',
+    });
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'TOURNAMENT',
+      noFixedEndDateTime: true,
+      end: null,
+      divisions: ['OPEN'],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.end).toEqual(computedEnd);
+    expect(eventUpsertArg.update.end).toEqual(computedEnd);
+  });
+
+  it('persists a provided end date for open-ended schedulable upserts', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'TOURNAMENT',
+      noFixedEndDateTime: true,
+      end: '2026-05-03T01:20:00.000Z',
+      divisions: ['OPEN'],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.end).toEqual(new Date('2026-05-03T01:20:00.000Z'));
+    expect(eventUpsertArg.update.end).toEqual(new Date('2026-05-03T01:20:00.000Z'));
   });
 
   it('persists multi-day slot payloads as one canonical row', async () => {
@@ -771,6 +821,74 @@ describe('upsertEventFromPayload', () => {
     );
   });
 
+  it('requires an explicit event playoff team count when playoffs are enabled', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+
+    const payload = {
+      ...baseEventPayload(),
+      includePlayoffs: true,
+      singleDivision: true,
+      divisions: ['OPEN'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+        },
+      ],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'Playoff team count must be at least 2 when playoffs are enabled.',
+    );
+    expect(client.divisions.upsert).not.toHaveBeenCalled();
+  });
+
+  it('requires explicit playoff team counts for each division in split leagues', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    const advancedDivisionId = divisionId('advanced');
+
+    const payload = {
+      ...baseEventPayload(),
+      includePlayoffs: true,
+      singleDivision: false,
+      playoffTeamCount: 8,
+      divisions: ['OPEN', 'ADVANCED'],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          playoffTeamCount: 4,
+        },
+        {
+          id: advancedDivisionId,
+          key: 'advanced',
+          name: 'Advanced',
+          divisionTypeId: 'advanced',
+          divisionTypeName: 'Advanced',
+          ratingType: 'SKILL',
+          gender: 'C',
+        },
+      ],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'Playoff team count must be at least 2 for division "Advanced" when playoffs are enabled.',
+    );
+    expect(client.divisions.upsert).not.toHaveBeenCalled();
+  });
+
   it('falls back to event-level payment-plan defaults when division payment fields are omitted', async () => {
     const client = createMockClient();
     const openDivisionId = divisionId('open');
@@ -910,7 +1028,7 @@ describe('upsertEventFromPayload', () => {
 
   it('uses organization Stripe status for organization events', async () => {
     const client = createMockClient();
-    client.organizations.findUnique.mockResolvedValue({ hasStripeAccount: false });
+    client.organizations.findUnique.mockResolvedValue({ hasStripeAccount: false, verificationStatus: 'UNVERIFIED' });
     client.userData.findUnique.mockResolvedValue({ hasStripeAccount: true });
 
     const payload = {
@@ -923,7 +1041,7 @@ describe('upsertEventFromPayload', () => {
 
     expect(client.organizations.findUnique).toHaveBeenCalledWith({
       where: { id: 'org_1' },
-      select: { hasStripeAccount: true },
+      select: { hasStripeAccount: true, verificationStatus: true },
     });
     expect(client.userData.findUnique).not.toHaveBeenCalled();
 
@@ -1166,6 +1284,40 @@ describe('upsertEventFromPayload', () => {
       }),
     });
   });
+
+  it('persists event teams with the resolved event id when payload only provides $id', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      teams: [
+        {
+          $id: 'team_1',
+          name: 'Place Holder 1',
+          captainId: '',
+          playerIds: [],
+          division: 'OPEN',
+          teamSize: 2,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.teams.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'team_1' },
+        create: expect.objectContaining({
+          eventId: 'event_1',
+          kind: 'PLACEHOLDER',
+        }),
+        update: expect.objectContaining({
+          eventId: 'event_1',
+          kind: 'PLACEHOLDER',
+        }),
+      }),
+    );
+  });
 });
 
 describe('persistScheduledRosterTeams', () => {
@@ -1244,6 +1396,7 @@ describe('persistScheduledRosterTeams', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           id: 'slot_1',
+          eventId: 'event_1',
           division: divisionA,
         }),
       }),
@@ -1253,6 +1406,7 @@ describe('persistScheduledRosterTeams', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           id: 'slot_2',
+          eventId: 'event_1',
           division: divisionB,
         }),
       }),
