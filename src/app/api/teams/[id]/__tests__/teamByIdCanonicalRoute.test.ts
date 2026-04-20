@@ -36,6 +36,7 @@ const requireSessionMock = jest.fn();
 const canManageCanonicalTeamMock = jest.fn();
 const loadCanonicalTeamByIdMock = jest.fn();
 const syncCanonicalTeamRosterMock = jest.fn();
+const applyCanonicalTeamRegistrationMetadataMock = jest.fn();
 const syncTeamChatInTxMock = jest.fn();
 const getTeamChatBaseMemberIdsMock = jest.fn();
 
@@ -45,6 +46,7 @@ jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
 }));
 jest.mock('@/server/teams/teamMembership', () => ({
+  applyCanonicalTeamRegistrationMetadata: (...args: any[]) => applyCanonicalTeamRegistrationMetadataMock(...args),
   canManageCanonicalTeam: (...args: any[]) => canManageCanonicalTeamMock(...args),
   loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
   syncCanonicalTeamRoster: (...args: any[]) => syncCanonicalTeamRosterMock(...args),
@@ -70,6 +72,7 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
     canManageCanonicalTeamMock.mockResolvedValue(true);
     organizationFindFirstMock.mockResolvedValue(null);
     syncCanonicalTeamRosterMock.mockResolvedValue(undefined);
+    applyCanonicalTeamRegistrationMetadataMock.mockResolvedValue(undefined);
     syncTeamChatInTxMock.mockResolvedValue(undefined);
     getTeamChatBaseMemberIdsMock.mockImplementation((team: any) => team?.playerIds ?? []);
     teamFindManyMock.mockResolvedValue([
@@ -145,5 +148,41 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
     expect(syncTeamChatInTxMock).toHaveBeenCalledWith(txClientMock, 'team_1', expect.any(Object));
     expect(syncTeamChatInTxMock).toHaveBeenCalledWith(txClientMock, 'event_team_1', expect.any(Object));
     expect(payload.name).toBe('Sandstorm');
+  });
+
+  it('accepts player registration jersey updates on canonical teams', async () => {
+    const response = await PATCH(
+      patchJson({
+        team: {
+          playerRegistrations: [
+            {
+              id: 'team_1__user_2',
+              teamId: 'team_1',
+              userId: 'user_2',
+              status: 'ACTIVE',
+              jerseyNumber: '21',
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(applyCanonicalTeamRegistrationMetadataMock).toHaveBeenCalledWith({
+      client: txClientMock,
+      teamId: 'team_1',
+      playerRegistrations: [
+        {
+          id: 'team_1__user_2',
+          teamId: 'team_1',
+          userId: 'user_2',
+          status: 'ACTIVE',
+          jerseyNumber: '21',
+        },
+      ],
+      now: expect.any(Date),
+    });
+    expect(teamUpdateMock).not.toHaveBeenCalled();
   });
 });

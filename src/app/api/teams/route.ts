@@ -9,6 +9,7 @@ import {
 } from '@/lib/divisionTypes';
 import { syncTeamChatByTeamId } from '@/server/teamChatSync';
 import {
+  applyCanonicalTeamRegistrationMetadata,
   listCanonicalTeamsForUser,
   loadCanonicalTeamById,
   normalizeId,
@@ -17,6 +18,16 @@ import {
 } from '@/server/teams/teamMembership';
 
 export const dynamic = 'force-dynamic';
+
+const playerRegistrationInputSchema = z.object({
+  id: z.string().optional(),
+  teamId: z.string().nullable().optional(),
+  userId: z.string(),
+  status: z.string().optional(),
+  jerseyNumber: z.string().nullable().optional(),
+  position: z.string().nullable().optional(),
+  isCaptain: z.boolean().optional(),
+}).strict();
 
 const createSchema = z.object({
   id: z.string(),
@@ -36,6 +47,7 @@ const createSchema = z.object({
   pending: z.array(z.string()).optional(),
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
+  playerRegistrations: z.array(playerRegistrationInputSchema).optional(),
 }).passthrough();
 
 const normalizeText = (value: unknown): string | null => {
@@ -199,6 +211,12 @@ export async function POST(req: NextRequest) {
         actingUserId: session.userId,
         now,
       }, tx);
+      await applyCanonicalTeamRegistrationMetadata({
+        client: tx,
+        teamId: data.id,
+        playerRegistrations: data.playerRegistrations,
+        now,
+      });
     });
     responseTeam = await loadCanonicalTeamById(data.id, prisma) as Record<string, any> | null;
   } else {

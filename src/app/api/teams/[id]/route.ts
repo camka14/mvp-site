@@ -11,6 +11,7 @@ import { canManageOrganization } from '@/server/accessControl';
 import { deleteTeamChatInTx, getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 import { asRecord, findPresentKeys } from '@/server/http/strictPatch';
 import {
+  applyCanonicalTeamRegistrationMetadata,
   canManageCanonicalTeam,
   loadCanonicalTeamById,
   syncCanonicalTeamRoster,
@@ -20,6 +21,16 @@ export const dynamic = 'force-dynamic';
 
 const patchEnvelopeSchema = z.object({
   team: z.record(z.string(), z.unknown()),
+}).strict();
+
+const playerRegistrationPatchSchema = z.object({
+  id: z.string().optional(),
+  teamId: z.string().nullable().optional(),
+  userId: z.string(),
+  status: z.string().optional(),
+  jerseyNumber: z.string().nullable().optional(),
+  position: z.string().nullable().optional(),
+  isCaptain: z.boolean().optional(),
 }).strict();
 
 const teamPatchSchema = z.object({
@@ -39,6 +50,7 @@ const teamPatchSchema = z.object({
   profileImageId: z.string().optional(),
   profileImage: z.string().optional(),
   parentTeamId: z.string().nullable().optional(),
+  playerRegistrations: z.array(playerRegistrationPatchSchema).optional(),
 }).strict();
 
 const TEAM_HARD_IMMUTABLE_FIELDS = new Set<string>([
@@ -442,6 +454,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         actingUserId: session.userId,
         now,
       }, tx);
+      await applyCanonicalTeamRegistrationMetadata({
+        client: tx,
+        teamId: id,
+        playerRegistrations: payload.playerRegistrations,
+        now,
+      });
       const teamsToSync = new Set<string>([id]);
       const previousMemberIdsByTeamId = new Map<string, string[]>([
         [id, getTeamChatBaseMemberIds(existingCanonical as Record<string, any>)],
@@ -562,6 +580,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         updatedAt: now,
       },
     );
+    await applyCanonicalTeamRegistrationMetadata({
+      client: tx,
+      teamId: id,
+      playerRegistrations: payload.playerRegistrations,
+      now,
+    });
     const teamsToSync = new Set<string>([id]);
     const previousMemberIdsByTeamId = new Map<string, string[]>([
       [id, getTeamChatBaseMemberIds(existing as Record<string, any>)],

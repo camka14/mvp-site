@@ -7,7 +7,58 @@ jest.mock('@/server/events/eventRegistrations', () => ({
   upsertEventRegistration: (...args: any[]) => upsertEventRegistrationMock(...args),
 }));
 
-import { claimOrCreateEventTeamSnapshot } from '@/server/teams/teamMembership';
+import {
+  applyCanonicalTeamRegistrationMetadata,
+  claimOrCreateEventTeamSnapshot,
+} from '@/server/teams/teamMembership';
+
+describe('applyCanonicalTeamRegistrationMetadata', () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('updates optional jersey numbers and positions for matching team registrations', async () => {
+    const updateManyMock = jest.fn().mockResolvedValue({ count: 1 });
+    const now = new Date('2026-04-20T12:00:00.000Z');
+
+    await applyCanonicalTeamRegistrationMetadata({
+      client: {
+        teamRegistrations: {
+          updateMany: updateManyMock,
+        },
+      },
+      teamId: 'team_1',
+      now,
+      playerRegistrations: [
+        {
+          userId: ' user_1 ',
+          jerseyNumber: ' 7 ',
+          position: ' Setter ',
+        },
+        {
+          userId: 'user_2',
+          jerseyNumber: '',
+        },
+      ],
+    });
+
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: { teamId: 'team_1', userId: 'user_1' },
+      data: {
+        jerseyNumber: '7',
+        position: 'Setter',
+        updatedAt: now,
+      },
+    });
+    expect(updateManyMock).toHaveBeenCalledWith({
+      where: { teamId: 'team_1', userId: 'user_2' },
+      data: {
+        jerseyNumber: null,
+        updatedAt: now,
+      },
+    });
+  });
+});
 
 describe('claimOrCreateEventTeamSnapshot', () => {
   beforeEach(() => {

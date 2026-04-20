@@ -18,6 +18,12 @@ export type CanonicalPlayerRegistration = {
   createdBy?: string | null;
 };
 
+export type TeamRegistrationMetadataInput = {
+  userId?: unknown;
+  jerseyNumber?: unknown;
+  position?: unknown;
+};
+
 export type CanonicalStaffAssignment = {
   id: string;
   createdAt?: Date | null;
@@ -106,6 +112,53 @@ const buildCanonicalTeamStaffAssignmentId = (teamId: string, role: string, userI
 const buildEventTeamStaffAssignmentId = (eventTeamId: string, role: string, userId: string) => `${eventTeamId}__${role}__${userId}`;
 
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+
+const hasOwn = (value: object, key: string): boolean => (
+  Object.prototype.hasOwnProperty.call(value, key)
+);
+
+export const applyCanonicalTeamRegistrationMetadata = async (params: {
+  client: PrismaLike;
+  teamId: string;
+  playerRegistrations?: TeamRegistrationMetadataInput[] | null;
+  now?: Date;
+}) => {
+  const teamRegistrationsDelegate = getTeamRegistrationsDelegate(params.client);
+  if (!teamRegistrationsDelegate?.updateMany || !Array.isArray(params.playerRegistrations)) {
+    return;
+  }
+
+  const now = params.now ?? new Date();
+  await Promise.all(params.playerRegistrations.map(async (registration) => {
+    if (!registration || typeof registration !== 'object') {
+      return;
+    }
+
+    const userId = normalizeId(registration.userId);
+    if (!userId) {
+      return;
+    }
+
+    const data: Record<string, unknown> = { updatedAt: now };
+    if (hasOwn(registration, 'jerseyNumber')) {
+      data.jerseyNumber = normalizeId(registration.jerseyNumber);
+    }
+    if (hasOwn(registration, 'position')) {
+      data.position = normalizeId(registration.position);
+    }
+    if (Object.keys(data).length === 1) {
+      return;
+    }
+
+    await teamRegistrationsDelegate.updateMany({
+      where: {
+        teamId: params.teamId,
+        userId,
+      },
+      data,
+    });
+  }));
+};
 
 export const serializeCanonicalTeam = (params: {
   team: CanonicalTeamRow;
