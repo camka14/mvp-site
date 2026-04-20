@@ -16,6 +16,7 @@ interface CreateTeamModalProps {
   onClose: () => void;
   currentUser: UserData;
   onTeamCreated?: (team: Team) => void;
+  organizationId?: string;
 }
 
 const DIVISION_GENDER_OPTIONS = [
@@ -83,7 +84,7 @@ const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTy
   return `skill_${normalizedSkill}_age_${normalizedAge}`;
 };
 
-export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCreated }: CreateTeamModalProps) {
+export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCreated, organizationId }: CreateTeamModalProps) {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedTeamImageUrl, setSelectedTeamImageUrl] = useState('');
@@ -223,6 +224,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
           divisionTypeId: nextDivisionTypeId,
           divisionTypeName: nextDivisionTypeName,
           addSelfAsPlayer,
+          organizationId,
         },
       );
       if (newTeam) {

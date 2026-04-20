@@ -50,6 +50,8 @@ type CanonicalTeamRow = {
   sport?: string | null;
   organizationId?: string | null;
   createdBy?: string | null;
+  openRegistration?: boolean | null;
+  registrationPriceCents?: number | null;
 };
 
 type EventTeamRow = {
@@ -182,6 +184,8 @@ export const serializeCanonicalTeam = (params: {
 
   return withLegacyFields({
     ...params.team,
+    openRegistration: Boolean(params.team.openRegistration),
+    registrationPriceCents: Math.max(0, Math.round(params.team.registrationPriceCents ?? 0)),
     playerIds: activePlayerRegistrations.map((row) => row.userId),
     pending: invitedPlayerRegistrations.map((row) => row.userId),
     captainId: normalizeId(captainRegistration?.userId) ?? '',
@@ -204,6 +208,8 @@ export const serializeCanonicalTeam = (params: {
 
 const serializeLegacyEventTeam = (team: EventTeamRow) => withLegacyFields({
   ...team,
+  openRegistration: false,
+  registrationPriceCents: 0,
   kind: normalizeId(team.kind) ?? 'REGISTERED',
   playerIds: normalizeIdList(team.playerIds),
   playerRegistrationIds: normalizeIdList(team.playerRegistrationIds),
@@ -293,6 +299,8 @@ const buildFallbackCanonicalTeam = (team: EventTeamRow): ReturnType<typeof seria
       sport: normalizeId(team.sport),
       organizationId: null,
       createdBy: normalizeId(team.managerId),
+      openRegistration: false,
+      registrationPriceCents: 0,
     },
     playerRegistrations,
     staffAssignments,

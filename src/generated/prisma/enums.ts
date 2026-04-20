@@ -190,6 +190,7 @@ export type EventRegistrationsStatusEnum = (typeof EventRegistrationsStatusEnum)
 
 export const TeamMembershipStatusEnum = {
   INVITED: 'INVITED',
+  STARTED: 'STARTED',
   ACTIVE: 'ACTIVE',
   LEFT: 'LEFT',
   REMOVED: 'REMOVED'

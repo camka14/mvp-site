@@ -10,6 +10,7 @@ import { syncManagedOrganizationStripeAccount } from '@/server/organizationStrip
 import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
+import { activateStartedTeamRegistration } from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
 
@@ -397,6 +398,31 @@ const ensureEventRegistrationFromPurchase = async ({
   }
 };
 
+const ensureTeamRegistrationFromPurchase = async ({
+  purchaseType,
+  teamId,
+  userId,
+  registrationId,
+  now,
+}: {
+  purchaseType: string | null;
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => {
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  if (normalizedPurchaseType !== 'team_registration') {
+    return { applied: false, reason: 'not_team_registration_purchase' };
+  }
+  return activateStartedTeamRegistration({
+    teamId,
+    userId,
+    registrationId,
+    now,
+  });
+};
+
 const isUpdatablePaymentIntentStatus = (status: Stripe.PaymentIntent.Status): boolean =>
   status === 'requires_payment_method'
   || status === 'requires_confirmation'
@@ -614,6 +640,7 @@ const resolveInstantLineItemLabel = (purchaseType: string | null): string => {
   if (normalized === 'product') return 'Product purchase';
   if (normalized === 'rental') return 'Field rental';
   if (normalized === 'event') return 'Event registration';
+  if (normalized === 'team_registration') return 'Team registration';
   return 'Purchase';
 };
 
@@ -647,6 +674,7 @@ const buildInstantLineItems = ({
   const taxCents = toIntOrNull(metadata.tax_cents ?? metadata.taxCents) ?? 0;
   const productName = toStringOrNull(metadata.product_name ?? metadata.productName);
   const eventName = toStringOrNull(metadata.event_name ?? metadata.eventName);
+  const teamName = toStringOrNull(metadata.team_name ?? metadata.teamName);
 
   const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
   const primaryType: 'EVENT' | 'PRODUCT' | 'RENTAL' | 'OTHER' =
@@ -654,10 +682,10 @@ const buildInstantLineItems = ({
       ? 'PRODUCT'
       : normalizedPurchaseType === 'rental'
         ? 'RENTAL'
-        : normalizedPurchaseType === 'event'
+        : (normalizedPurchaseType === 'event' || normalizedPurchaseType === 'team_registration')
           ? 'EVENT'
           : 'OTHER';
-  const baseLabel = productName ?? eventName ?? resolveInstantLineItemLabel(purchaseType);
+  const baseLabel = productName ?? eventName ?? teamName ?? resolveInstantLineItemLabel(purchaseType);
 
   const initialBaseAmount = purchaseAmountCents && purchaseAmountCents > 0
     ? purchaseAmountCents
@@ -1131,6 +1159,24 @@ export async function POST(req: NextRequest) {
       console.warn('Stripe webhook skipped event registration sync.', {
         ...receiptLogContext,
         reason: registrationResult.reason,
+      });
+    }
+
+    const teamRegistrationResult = await ensureTeamRegistrationFromPurchase({
+      purchaseType,
+      teamId,
+      userId,
+      registrationId,
+      now,
+    });
+    if (
+      !teamRegistrationResult.applied &&
+      teamRegistrationResult.reason &&
+      teamRegistrationResult.reason !== 'not_team_registration_purchase'
+    ) {
+      console.warn('Stripe webhook skipped team registration sync.', {
+        ...receiptLogContext,
+        reason: teamRegistrationResult.reason,
       });
     }
 

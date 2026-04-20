@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { canManageOrganization } from '@/server/accessControl';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
   inferDivisionDetails,
@@ -16,6 +17,7 @@ import {
   normalizeIdList,
   syncCanonicalTeamRoster,
 } from '@/server/teams/teamMembership';
+import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +49,9 @@ const createSchema = z.object({
   pending: z.array(z.string()).optional(),
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
+  organizationId: z.string().nullable().optional(),
+  openRegistration: z.boolean().optional(),
+  registrationPriceCents: z.number().int().nonnegative().optional(),
   playerRegistrations: z.array(playerRegistrationInputSchema).optional(),
 }).passthrough();
 
@@ -170,6 +175,28 @@ export async function POST(req: NextRequest) {
   });
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
   const divisionTypeName = normalizeText(data.divisionTypeName) ?? inferredDivision.divisionTypeName;
+  const organizationId = normalizeText(data.organizationId);
+  if (organizationId) {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: organizationId },
+      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    });
+    if (!organization || !await canManageOrganization(session, organization)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+  let registrationSettings: { openRegistration: boolean; registrationPriceCents: number };
+  try {
+    registrationSettings = await resolveTeamRegistrationSettings({
+      organizationId,
+      createdBy: session.userId,
+      openRegistration: data.openRegistration === true,
+      registrationPriceCents: data.registrationPriceCents ?? 0,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid registration settings.';
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   const teamsDelegate = getTeamsDelegate(prisma);
   const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
@@ -194,8 +221,10 @@ export async function POST(req: NextRequest) {
           sport: sportInput,
           teamSize: data.teamSize ?? 0,
           profileImageId: data.profileImageId ?? null,
-          organizationId: null,
+          organizationId,
           createdBy: session.userId,
+          openRegistration: registrationSettings.openRegistration,
+          registrationPriceCents: registrationSettings.registrationPriceCents,
           createdAt: now,
           updatedAt: now,
         },
@@ -236,6 +265,8 @@ export async function POST(req: NextRequest) {
       pending,
       teamSize: data.teamSize ?? 0,
       profileImageId: data.profileImageId ?? null,
+      openRegistration: registrationSettings.openRegistration,
+      registrationPriceCents: registrationSettings.registrationPriceCents,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

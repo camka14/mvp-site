@@ -28,6 +28,10 @@ import {
 } from '@/server/repositories/rentalCheckoutLocks';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
 import {
+  releaseStartedTeamRegistration,
+  reserveTeamRegistrationSlot,
+} from '@/server/teams/teamOpenRegistration';
+import {
   isWeeklyParentEvent,
   isWeeklyOccurrenceJoinClosed,
   resolveWeeklyOccurrence,
@@ -40,8 +44,10 @@ const schema = z.object({
   user: z.record(z.string(), z.any()).optional(),
   event: z.record(z.string(), z.any()).optional(),
   team: z.record(z.string(), z.any()).optional(),
+  teamRegistration: z.union([z.record(z.string(), z.any()), z.string()]).optional(),
   timeSlot: z.record(z.string(), z.any()).optional(),
   organization: z.record(z.string(), z.any()).optional(),
+  purchaseType: z.string().optional(),
   slotId: z.string().optional(),
   occurrenceDate: z.string().optional(),
   productId: z.string().optional(),
@@ -67,13 +73,14 @@ const extractEntityId = (value: unknown): string | null => {
     return normalizeString(value);
   }
   const row = value as Record<string, unknown>;
-  return normalizeString(row.$id ?? row.id);
+  return normalizeString(row.$id ?? row.id ?? row.teamId);
 };
 
 const buildLineItemReference = ({
   purchaseType,
   productId,
   eventId,
+  teamId,
   timeSlotId,
   billId,
   billPaymentId,
@@ -81,10 +88,11 @@ const buildLineItemReference = ({
   purchaseType: string;
   productId?: string | null;
   eventId?: string | null;
+  teamId?: string | null;
   timeSlotId?: string | null;
   billId?: string | null;
   billPaymentId?: string | null;
-}) => [purchaseType, productId, eventId, timeSlotId, billId, billPaymentId]
+}) => [purchaseType, productId, eventId, teamId, timeSlotId, billId, billPaymentId]
   .filter((value): value is string => Boolean(value))
   .join('_')
   .slice(0, 200);
@@ -467,6 +475,31 @@ const releaseStartedRegistration = async ({
   }
 };
 
+const releaseStartedCheckoutRegistration = async ({
+  purchaseType,
+  registrationId,
+  eventId,
+  teamId,
+}: {
+  purchaseType: string | null;
+  registrationId: string | null;
+  eventId: string | null;
+  teamId: string | null;
+}) => {
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  if (normalizedPurchaseType === 'team_registration') {
+    await releaseStartedTeamRegistration({
+      registrationId,
+      teamId,
+    });
+    return;
+  }
+  await releaseStartedRegistration({
+    registrationId,
+    eventId,
+  });
+};
+
 const releaseReservedRentalWindow = async ({
   window,
   userId,
@@ -521,7 +554,10 @@ export async function POST(req: NextRequest) {
   const payloadRow = payload as Record<string, unknown>;
   const userId = extractEntityId(payload.user);
   const eventId = extractEntityId(payload.event);
-  const teamId = extractEntityId(payload.team);
+  const requestedPurchaseType = normalizeString(payload.purchaseType);
+  const teamRegistrationId = extractEntityId(payload.teamRegistration)
+    ?? (requestedPurchaseType === 'team_registration' ? extractEntityId(payload.team) : null);
+  const teamId = teamRegistrationId ?? extractEntityId(payload.team);
   const slotId = normalizeString(payload.slotId);
   const occurrenceDate = normalizeString(payload.occurrenceDate);
   const divisionSelectionInput = normalizeDivisionInput(payloadRow);
@@ -596,6 +632,7 @@ export async function POST(req: NextRequest) {
     resolvedPurchase = await resolvePurchaseContext({
       productId: payload.productId ?? null,
       event: payload.event ?? null,
+      teamRegistration: payload.teamRegistration ?? (requestedPurchaseType === 'team_registration' ? payload.team ?? null : null),
       timeSlot: payload.timeSlot ?? null,
       requestedTaxCategory: (payload.taxCategory ?? null) as InternalTaxCategory | null,
     });
@@ -667,7 +704,7 @@ export async function POST(req: NextRequest) {
     ?? normalizeString(payload.event?.organizationId)
     ?? normalizeString(resolvedPurchase.product?.organizationId)
     ?? null;
-  const hostUserId = normalizeString(payload.event?.hostId);
+  const hostUserId = resolvedPurchase.hostUserId ?? normalizeString(payload.event?.hostId);
 
   let taxQuote: Awaited<ReturnType<typeof calculateTaxQuote>>;
   try {
@@ -685,11 +722,13 @@ export async function POST(req: NextRequest) {
         purchaseType: resolvedPurchase.purchaseType,
         productId: resolvedPurchase.product?.id ?? null,
         eventId: eventIdForReference,
+        teamId,
         timeSlotId: timeSlotIdForReference,
         billId: payload.billId ?? null,
         billPaymentId: payload.billPaymentId ?? null,
       }),
       description: resolvedPurchase.product?.name
+        ?? resolvedPurchase.team?.name
         ?? normalizeString(payload.event?.name)
         ?? resolvedPurchase.purchaseType,
     });
@@ -741,6 +780,7 @@ export async function POST(req: NextRequest) {
   }
 
   const actorUserId = normalizeString(session?.userId) ?? userId ?? 'system:purchase-intent';
+  const checkoutUserId = userId ?? session.userId;
   let reservedRegistrationId: string | null = null;
   let reservedRentalWindow: RentalCheckoutWindow | null = null;
 
@@ -748,11 +788,23 @@ export async function POST(req: NextRequest) {
     const reservationResult = await reserveEventRegistrationSlot({
       eventId,
       teamId,
-      userId,
+      userId: checkoutUserId,
       actorUserId,
       divisionSelectionInput,
       slotId,
       occurrenceDate,
+      now: new Date(),
+    });
+    if (!reservationResult.ok) {
+      return NextResponse.json({ error: reservationResult.error }, { status: reservationResult.status });
+    }
+    reservedRegistrationId = reservationResult.registrationId;
+  } else if (resolvedPurchase.purchaseType === 'team_registration') {
+    const reservationResult = await reserveTeamRegistrationSlot({
+      teamId,
+      userId: checkoutUserId,
+      actorUserId,
+      status: 'STARTED',
       now: new Date(),
     });
     if (!reservationResult.ok) {
@@ -791,13 +843,13 @@ export async function POST(req: NextRequest) {
       purchase_type: resolvedPurchase.purchaseType,
     };
 
-    appendMetadata(metadata, 'user_id', userId);
+    appendMetadata(metadata, 'user_id', checkoutUserId);
     appendMetadata(metadata, 'team_id', teamId);
     appendMetadata(metadata, 'event_id', eventId);
     appendMetadata(metadata, 'product_id', payload.productId ?? resolvedPurchase.product?.id);
     appendMetadata(metadata, 'organization_id', organizationId);
     appendMetadata(metadata, 'organization_name', payload.organization?.name);
-    appendMetadata(metadata, 'team_name', payload.team?.name);
+    appendMetadata(metadata, 'team_name', payload.team?.name ?? resolvedPurchase.team?.name);
     appendMetadata(metadata, 'amount_cents', taxQuote.subtotalCents);
     appendMetadata(metadata, 'total_charge_cents', taxQuote.totalChargeCents);
     appendMetadata(metadata, 'processing_fee_cents', taxQuote.processingFeeCents);
@@ -813,7 +865,7 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'event_name', payload.event?.name);
     appendMetadata(metadata, 'event_location', payload.event?.location);
     appendMetadata(metadata, 'event_start', payload.event?.start);
-    appendMetadata(metadata, 'host_id', payload.event?.hostId);
+    appendMetadata(metadata, 'host_id', hostUserId);
     appendMetadata(metadata, 'time_slot_id', extractEntityId(payload.timeSlot));
     appendMetadata(metadata, 'occurrence_slot_id', slotId);
     appendMetadata(metadata, 'occurrence_date', occurrenceDate);
@@ -860,9 +912,11 @@ export async function POST(req: NextRequest) {
     }, { status: 200 });
   } catch (error) {
     console.error('Stripe payment intent failed', error);
-    await releaseStartedRegistration({
+    await releaseStartedCheckoutRegistration({
+      purchaseType: resolvedPurchase.purchaseType,
       registrationId: reservedRegistrationId,
       eventId,
+      teamId,
     });
     await releaseReservedRentalWindow({
       window: reservedRentalWindow,

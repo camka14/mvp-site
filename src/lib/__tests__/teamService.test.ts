@@ -103,6 +103,33 @@ describe('teamService', () => {
       }));
     });
 
+    it('maps open registration billing and ownership fields', async () => {
+      apiRequestMock.mockResolvedValue({
+        $id: 'team_open',
+        name: 'Open Team',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: [],
+        pending: [],
+        teamSize: 6,
+        captainId: 'captain_1',
+        organizationId: 'org_1',
+        createdBy: 'owner_1',
+        openRegistration: true,
+        registrationPriceCents: 2500,
+      });
+
+      const team = await teamService.getTeamById('team_open');
+
+      expect(team).toEqual(expect.objectContaining({
+        $id: 'team_open',
+        organizationId: 'org_1',
+        createdBy: 'owner_1',
+        openRegistration: true,
+        registrationPriceCents: 2500,
+      }));
+    });
+
     it('fetches missing captain when not returned in initial hydration', async () => {
       apiRequestMock.mockResolvedValue({
         $id: 'team_missing_captain',
@@ -240,6 +267,108 @@ describe('teamService', () => {
       });
       expect(updated?.captainId).toBe('user_2');
       expect(updated?.playerIds).toEqual(['user_2']);
+    });
+  });
+
+  describe('updateTeamDetails', () => {
+    it('sends open registration cost and jersey registration edits', async () => {
+      apiRequestMock.mockResolvedValue({
+        $id: 'team_1',
+        name: 'Roster Team',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: ['user_1'],
+        pending: [],
+        teamSize: 6,
+        captainId: 'user_1',
+        openRegistration: true,
+        registrationPriceCents: 3000,
+        playerRegistrations: [{
+          id: 'registration_1',
+          teamId: 'team_1',
+          userId: 'user_1',
+          status: 'ACTIVE',
+          jerseyNumber: '7',
+        }],
+      });
+
+      await teamService.updateTeamDetails('team_1', {
+        openRegistration: true,
+        registrationPriceCents: 3000,
+        playerRegistrations: [{
+          id: 'registration_1',
+          teamId: 'team_1',
+          userId: 'user_1',
+          status: 'ACTIVE',
+          jerseyNumber: '7',
+        }],
+      });
+
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1', {
+        method: 'PATCH',
+        body: {
+          team: {
+            openRegistration: true,
+            registrationPriceCents: 3000,
+            playerRegistrations: [{
+              id: 'registration_1',
+              teamId: 'team_1',
+              userId: 'user_1',
+              status: 'ACTIVE',
+              jerseyNumber: '7',
+            }],
+          },
+        },
+      });
+    });
+  });
+
+  describe('self-service registration', () => {
+    it('calls the free team registration endpoint', async () => {
+      apiRequestMock.mockResolvedValue({
+        registrationId: 'registration_1',
+        status: 'ACTIVE',
+        team: {
+          $id: 'team_1',
+          name: 'Open Team',
+          sport: 'Volleyball',
+          division: 'Open',
+          playerIds: ['user_1'],
+          pending: [],
+          teamSize: 6,
+          captainId: 'captain_1',
+        },
+      });
+
+      const team = await teamService.registerForTeam('team_1');
+
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1/registrations/self', {
+        method: 'POST',
+      });
+      expect(team?.playerIds).toEqual(['user_1']);
+    });
+
+    it('calls the leave endpoint', async () => {
+      apiRequestMock.mockResolvedValue({
+        left: true,
+        team: {
+          $id: 'team_1',
+          name: 'Open Team',
+          sport: 'Volleyball',
+          division: 'Open',
+          playerIds: [],
+          pending: [],
+          teamSize: 6,
+          captainId: 'captain_1',
+        },
+      });
+
+      const team = await teamService.leaveTeam('team_1');
+
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1/registrations/self', {
+        method: 'DELETE',
+      });
+      expect(team?.playerIds).toEqual([]);
     });
   });
 

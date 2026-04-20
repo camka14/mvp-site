@@ -126,6 +126,9 @@ class TeamService {
             divisionTypeId?: string;
             divisionTypeName?: string;
             addSelfAsPlayer?: boolean;
+            organizationId?: string;
+            openRegistration?: boolean;
+            registrationPriceCents?: number;
         },
     ): Promise<Team> {
         try {
@@ -149,6 +152,9 @@ class TeamService {
                 teamSize: maxPlayers,
                 profileImageId: profileImageId || '',
                 addSelfAsPlayer,
+                organizationId: options?.organizationId,
+                openRegistration: options?.openRegistration ?? false,
+                registrationPriceCents: options?.openRegistration ? Math.max(0, Math.round(options?.registrationPriceCents ?? 0)) : 0,
             };
 
             const response = await apiRequest<any>('/api/teams', {
@@ -307,6 +313,16 @@ class TeamService {
             playerRegistrations,
             teamSize,
             profileImageId: row.profileImageId || row.profileImage || row.profileImageID,
+            organizationId: typeof row.organizationId === 'string' && row.organizationId.trim().length > 0
+                ? row.organizationId
+                : null,
+            createdBy: typeof row.createdBy === 'string' && row.createdBy.trim().length > 0
+                ? row.createdBy
+                : null,
+            openRegistration: Boolean(row.openRegistration),
+            registrationPriceCents: typeof row.registrationPriceCents === 'number'
+                ? Math.max(0, Math.round(row.registrationPriceCents))
+                : 0,
             $createdAt: row.$createdAt,
             $updatedAt: row.$updatedAt,
             currentSize: playerIds.length,
@@ -401,7 +417,7 @@ class TeamService {
 
     async updateTeamDetails(
         teamId: string,
-        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize' | 'captainId'>>,
+        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize' | 'captainId' | 'openRegistration' | 'registrationPriceCents' | 'playerRegistrations'>>,
     ): Promise<Team | undefined> {
         try {
             const response = await apiRequest<any>(`/api/teams/${teamId}`, {
@@ -508,6 +524,36 @@ class TeamService {
         } catch (error) {
             console.error('Failed to remove player from team:', error);
             return false;
+        }
+    }
+
+    async registerForTeam(teamId: string): Promise<Team | undefined> {
+        try {
+            const response = await apiRequest<{ team?: any; error?: string }>(`/api/teams/${teamId}/registrations/self`, {
+                method: 'POST',
+            });
+            if (response?.error) {
+                throw new Error(response.error);
+            }
+            return response?.team ? this.mapRowToTeam(response.team) : this.getTeamById(teamId);
+        } catch (error) {
+            console.error('Failed to register for team:', error);
+            throw error;
+        }
+    }
+
+    async leaveTeam(teamId: string): Promise<Team | undefined> {
+        try {
+            const response = await apiRequest<{ team?: any; error?: string }>(`/api/teams/${teamId}/registrations/self`, {
+                method: 'DELETE',
+            });
+            if (response?.error) {
+                throw new Error(response.error);
+            }
+            return response?.team ? this.mapRowToTeam(response.team) : this.getTeamById(teamId);
+        } catch (error) {
+            console.error('Failed to leave team:', error);
+            throw error;
         }
     }
 

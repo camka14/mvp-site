@@ -16,6 +16,7 @@ import {
   loadCanonicalTeamById,
   syncCanonicalTeamRoster,
 } from '@/server/teams/teamMembership';
+import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +50,8 @@ const teamPatchSchema = z.object({
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
   profileImage: z.string().optional(),
+  openRegistration: z.boolean().optional(),
+  registrationPriceCents: z.number().int().nonnegative().optional(),
   parentTeamId: z.string().nullable().optional(),
   playerRegistrations: z.array(playerRegistrationPatchSchema).optional(),
 }).strict();
@@ -72,6 +75,8 @@ const VERSIONED_PROFILE_FIELDS: ReadonlySet<string> = new Set([
   'divisionTypeName',
   'sport',
   'teamSize',
+  'openRegistration',
+  'registrationPriceCents',
   'playerIds',
   'captainId',
   'managerId',
@@ -153,6 +158,8 @@ type TeamState = {
   pending: string[];
   teamSize: number;
   profileImageId: string | null;
+  openRegistration: boolean;
+  registrationPriceCents: number;
 };
 
 const buildTeamState = (
@@ -219,6 +226,12 @@ const buildTeamState = (
     pending,
     teamSize: normalizeNumber(payload.teamSize, normalizeNumber(existing.teamSize, playerIds.length)),
     profileImageId: nextProfileImage,
+    openRegistration: hasOwn(payload, 'openRegistration')
+      ? Boolean(payload.openRegistration)
+      : Boolean(existing.openRegistration),
+    registrationPriceCents: hasOwn(payload, 'registrationPriceCents')
+      ? Math.max(0, Math.round(normalizeNumber(payload.registrationPriceCents, 0)))
+      : Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))),
   };
 };
 
@@ -251,6 +264,12 @@ const hasVersionedProfileChanges = (
         break;
       case 'teamSize':
         if (normalizeNumber(existing.teamSize, 0) !== next.teamSize) return true;
+        break;
+      case 'openRegistration':
+        if (Boolean(existing.openRegistration) !== next.openRegistration) return true;
+        break;
+      case 'registrationPriceCents':
+        if (Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))) !== next.registrationPriceCents) return true;
         break;
       case 'playerIds': {
         const previous = [...toUniqueStrings(existing.playerIds)].sort();
@@ -428,6 +447,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const nextState = buildTeamState(existingCanonical as Record<string, any>, payload);
+    const registrationSettingsTouched = hasOwn(payload, 'openRegistration') || hasOwn(payload, 'registrationPriceCents');
+    const registrationSettingsChanged = registrationSettingsTouched && (
+      Boolean((existingCanonical as Record<string, any>).openRegistration) !== nextState.openRegistration
+      || Math.max(0, Math.round(normalizeNumber((existingCanonical as Record<string, any>).registrationPriceCents, 0))) !== nextState.registrationPriceCents
+    );
+    if (registrationSettingsChanged) {
+      try {
+        const registrationSettings = await resolveTeamRegistrationSettings({
+          teamId: id,
+          openRegistration: nextState.openRegistration,
+          registrationPriceCents: nextState.registrationPriceCents,
+        });
+        nextState.openRegistration = registrationSettings.openRegistration;
+        nextState.registrationPriceCents = registrationSettings.registrationPriceCents;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Invalid registration settings.';
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
+    }
     const shouldSyncDerivedTeams = hasVersionedProfileChanges(payload, existingCanonical as Record<string, any>, nextState);
     const updated = await prisma.$transaction(async (tx) => {
       await tx.canonicalTeams.update({
@@ -440,6 +478,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           sport: nextState.sport,
           teamSize: nextState.teamSize,
           profileImageId: nextState.profileImageId,
+          openRegistration: nextState.openRegistration,
+          registrationPriceCents: nextState.registrationPriceCents,
           updatedAt: now,
         },
       });
@@ -565,6 +605,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const nextState = buildTeamState(existing as Record<string, any>, payload);
+  const registrationSettingsTouched = hasOwn(payload, 'openRegistration') || hasOwn(payload, 'registrationPriceCents');
+  const registrationSettingsChanged = registrationSettingsTouched && (
+    Boolean((existing as Record<string, any>).openRegistration) !== nextState.openRegistration
+    || Math.max(0, Math.round(normalizeNumber((existing as Record<string, any>).registrationPriceCents, 0))) !== nextState.registrationPriceCents
+  );
+  if (registrationSettingsChanged) {
+    try {
+      const registrationSettings = await resolveTeamRegistrationSettings({
+        teamId: id,
+        openRegistration: nextState.openRegistration,
+        registrationPriceCents: nextState.registrationPriceCents,
+      });
+      nextState.openRegistration = registrationSettings.openRegistration;
+      nextState.registrationPriceCents = registrationSettings.registrationPriceCents;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid registration settings.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     const txTeams = getTeamsDelegate(tx);
@@ -636,6 +695,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           sport: nextState.sport,
           divisionTypeId: nextState.divisionTypeId,
           divisionTypeName: nextState.divisionTypeName,
+          openRegistration: nextState.openRegistration,
+          registrationPriceCents: nextState.registrationPriceCents,
           updatedAt: now,
         };
 

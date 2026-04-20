@@ -42,6 +42,15 @@ export const getPaymentModalCopy = (purchaseType: PaymentModalPurchaseType): Pay
     };
   }
 
+  if (normalized === 'team_registration') {
+    return {
+      summaryTypeLabel: 'Team',
+      refreshFailureMessage: 'Payment succeeded but failed to refresh the team details. Please contact support.',
+      reloadingMessage: 'Reloading team...',
+      refreshedMessage: 'Team details are up to date.',
+    };
+  }
+
   if (normalized === 'event') {
     return {
       summaryTypeLabel: defaultSummaryTypeLabel,

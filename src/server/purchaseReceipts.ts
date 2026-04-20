@@ -109,6 +109,7 @@ const redactEmail = (value: string | null | undefined): string | null => {
 const resolvePurchaseTypeLabel = (purchaseType: string | null | undefined): string => {
   const normalized = (purchaseType ?? '').trim().toLowerCase();
   if (normalized === 'event') return 'Event registration';
+  if (normalized === 'team_registration') return 'Team registration';
   if (normalized === 'rental') return 'Field rental';
   if (normalized === 'product') return 'Product purchase';
   if (normalized === 'bill') return 'Bill payment';

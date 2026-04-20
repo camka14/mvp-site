@@ -548,6 +548,10 @@ export interface Team {
   pending: string[];
   teamSize: number;
   profileImageId?: string;
+  organizationId?: string | null;
+  createdBy?: string | null;
+  openRegistration?: boolean;
+  registrationPriceCents?: number;
   $createdAt?: string;
   $updatedAt?: string;
   // Expanded relationships

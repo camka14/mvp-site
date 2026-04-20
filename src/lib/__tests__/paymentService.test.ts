@@ -86,6 +86,43 @@ describe('paymentService', () => {
     });
   });
 
+  describe('createTeamRegistrationPaymentIntent', () => {
+    it('calls billing endpoint with team registration payload', async () => {
+      apiRequestMock.mockResolvedValue({
+        paymentIntent: 'pi_team',
+        publishableKey: 'pk_test',
+        feeBreakdown: {},
+      });
+
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockTeam = {
+        $id: 'team_1',
+        name: 'Open Team',
+        registrationPriceCents: 2500,
+      } as Team;
+
+      await paymentService.createTeamRegistrationPaymentIntent(
+        mockUser,
+        mockTeam,
+        { $id: 'org_1' },
+      );
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/billing/purchase-intent',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            purchaseType: 'team_registration',
+            user: expect.objectContaining({ $id: 'user_1' }),
+            team: expect.objectContaining({ $id: 'team_1' }),
+            teamRegistration: { teamId: 'team_1' },
+            organization: expect.objectContaining({ $id: 'org_1' }),
+          }),
+        }),
+      );
+    });
+  });
+
   describe('joinEvent', () => {
     it('throws when event manager reports error', async () => {
       apiRequestMock.mockResolvedValue({ error: 'not allowed' });

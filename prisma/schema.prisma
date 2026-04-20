@@ -131,6 +131,7 @@ enum EventRegistrationsStatusEnum {
 
 enum TeamMembershipStatusEnum {
   INVITED
+  STARTED
   ACTIVE
   LEFT
   REMOVED
@@ -477,6 +478,8 @@ model CanonicalTeams {
   sport            String?
   organizationId   String?
   createdBy        String?
+  openRegistration Boolean   @default(false)
+  registrationPriceCents Int @default(0)
 
   @@index([organizationId])
   @@index([createdBy])

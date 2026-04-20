@@ -154,6 +154,48 @@ class PaymentService {
     }
   }
 
+  async createTeamRegistrationPaymentIntent(
+    user: UserData,
+    team: Team,
+    organization?: PaymentOrganizationContext,
+    billingAddress?: BillingAddress,
+  ): Promise<PaymentIntent> {
+    try {
+      if (!team?.$id) {
+        throw new Error('Team is required to create a registration payment intent.');
+      }
+      const payload = {
+        purchaseType: 'team_registration',
+        user,
+        team,
+        teamRegistration: { teamId: team.$id },
+        organization,
+        billingAddress,
+      };
+
+      const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
+        method: 'POST',
+        body: payload,
+      });
+
+      if (result && 'error' in result && result.error) {
+        throw new Error(result.error);
+      }
+
+      if (!result || Object.keys(result).length === 0) {
+        throw new Error('Received empty response when creating team registration payment intent.');
+      }
+
+      return result as PaymentIntent;
+    } catch (error) {
+      console.error('Failed to create team registration payment intent:', error);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Failed to start team registration');
+    }
+  }
+
   async joinEvent(
     user?: UserData,
     event?: Event,

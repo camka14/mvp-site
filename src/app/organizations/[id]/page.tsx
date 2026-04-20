@@ -2876,6 +2876,7 @@ function OrganizationDetailContent() {
         isOpen={showCreateTeamModal}
         onClose={() => setShowCreateTeamModal(false)}
         currentUser={user}
+        organizationId={org?.$id}
         onTeamCreated={async (team) => {
           setShowCreateTeamModal(false);
           if (!team) {
@@ -2909,6 +2910,7 @@ function OrganizationDetailContent() {
             setSelectedTeam(null);
           }}
           canManage={isOwner}
+          canChargeRegistration={Boolean(org?.hasStripeAccount)}
           onTeamUpdated={(updatedTeam) => {
             setSelectedTeam(updatedTeam);
             setOrg((prev) => {
