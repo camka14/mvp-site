@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList } from '@/server/legacyFormat';
+import { canManageOrganization } from '@/server/accessControl';
 import {
   applyUserPrivacyList,
   createVisibilityContext,
@@ -17,6 +18,21 @@ const normalizeIdList = (value: unknown): string[] => {
 
 const includesId = (ids: string[], value: string): boolean => {
   return ids.map((entry) => entry.trim()).filter(Boolean).includes(value);
+};
+
+const hasOrganizationTeamManagementAccess = async (
+  teamId: string,
+  session: { userId: string; isAdmin: boolean },
+): Promise<boolean> => {
+  if (!teamId || !session.userId) return false;
+  const organization = await prisma.organizations.findFirst({
+    where: { teamIds: { has: teamId } },
+    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+  });
+  if (!organization) {
+    return false;
+  }
+  return canManageOrganization(session, organization);
 };
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -53,9 +69,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     || team.managerId === session.userId
     || team.headCoachId === session.userId
     || includesId(normalizeIdList(team.coachIds), session.userId);
+  const isOrganizationManager = !isTeamManager
+    ? await hasOrganizationTeamManagementAccess(teamId, session)
+    : false;
 
   const playerIds = normalizeIdList(team.playerIds);
-  const parentLink = !isTeamManager && playerIds.length > 0
+  const parentLink = !isTeamManager && !isOrganizationManager && playerIds.length > 0
     ? await prisma.parentChildLinks.findFirst({
       where: {
         parentId: session.userId,
@@ -66,7 +85,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     })
     : null;
 
-  if (!isTeamManager && !parentLink) {
+  if (!isTeamManager && !isOrganizationManager && !parentLink) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

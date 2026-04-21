@@ -372,17 +372,82 @@ export const listTeamsByIds = async (ids: string[], client: PrismaLike = prisma)
   if (!normalizedIds.length) {
     return [];
   }
-  const eventTeamsDelegate = getEventTeamsDelegate(client);
-  if (eventTeamsDelegate?.findMany) {
-    const rows = await eventTeamsDelegate.findMany({
+
+  const teamsById = new Map<string, ReturnType<typeof serializeCanonicalTeam> | ReturnType<typeof serializeLegacyEventTeam>>();
+  const canonicalTeamsDelegate = getCanonicalTeamsDelegate(client);
+  const teamRegistrationsDelegate = getTeamRegistrationsDelegate(client);
+  const teamStaffAssignmentsDelegate = getTeamStaffAssignmentsDelegate(client);
+
+  if (canonicalTeamsDelegate?.findMany && teamRegistrationsDelegate?.findMany && teamStaffAssignmentsDelegate?.findMany) {
+    const canonicalRows = await canonicalTeamsDelegate.findMany({
       where: { id: { in: normalizedIds } },
-      orderBy: { name: 'asc' },
-    });
-    return (rows as EventTeamRow[]).map(serializeLegacyEventTeam);
+    }) as CanonicalTeamRow[];
+    const canonicalIds = canonicalRows.map((row) => row.id).filter(Boolean);
+
+    if (canonicalIds.length) {
+      const [playerRegistrations, staffAssignments] = await Promise.all([
+        teamRegistrationsDelegate.findMany({
+          where: { teamId: { in: canonicalIds } },
+          orderBy: [
+            { createdAt: 'asc' },
+            { id: 'asc' },
+          ],
+        }) as Promise<CanonicalPlayerRegistration[]>,
+        teamStaffAssignmentsDelegate.findMany({
+          where: { teamId: { in: canonicalIds } },
+          orderBy: [
+            { createdAt: 'asc' },
+            { id: 'asc' },
+          ],
+        }) as Promise<CanonicalStaffAssignment[]>,
+      ]);
+
+      const playerRegistrationsByTeamId = new Map<string, CanonicalPlayerRegistration[]>();
+      playerRegistrations.forEach((row) => {
+        const existingRows = playerRegistrationsByTeamId.get(row.teamId);
+        if (existingRows) {
+          existingRows.push(row);
+          return;
+        }
+        playerRegistrationsByTeamId.set(row.teamId, [row]);
+      });
+
+      const staffAssignmentsByTeamId = new Map<string, CanonicalStaffAssignment[]>();
+      staffAssignments.forEach((row) => {
+        const existingRows = staffAssignmentsByTeamId.get(row.teamId);
+        if (existingRows) {
+          existingRows.push(row);
+          return;
+        }
+        staffAssignmentsByTeamId.set(row.teamId, [row]);
+      });
+
+      canonicalRows.forEach((row) => {
+        teamsById.set(row.id, serializeCanonicalTeam({
+          team: row,
+          playerRegistrations: playerRegistrationsByTeamId.get(row.id) ?? [],
+          staffAssignments: staffAssignmentsByTeamId.get(row.id) ?? [],
+        }));
+      });
+    }
   }
 
-  const teams = await Promise.all(normalizedIds.map((teamId) => loadCanonicalTeamById(teamId, client)));
-  return teams.filter(Boolean);
+  const remainingIds = normalizedIds.filter((teamId) => !teamsById.has(teamId));
+  if (remainingIds.length) {
+    const eventTeamsDelegate = getEventTeamsDelegate(client);
+    if (eventTeamsDelegate?.findMany) {
+      const rows = await eventTeamsDelegate.findMany({
+        where: { id: { in: remainingIds } },
+      }) as EventTeamRow[];
+      rows.forEach((row) => {
+        teamsById.set(row.id, serializeLegacyEventTeam(row));
+      });
+    }
+  }
+
+  return normalizedIds
+    .map((teamId) => teamsById.get(teamId))
+    .filter((team): team is ReturnType<typeof serializeCanonicalTeam> | ReturnType<typeof serializeLegacyEventTeam> => Boolean(team));
 };
 
 export const listCanonicalTeamsForUser = async (params: {

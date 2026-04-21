@@ -10,6 +10,7 @@ jest.mock('@/server/events/eventRegistrations', () => ({
 import {
   applyCanonicalTeamRegistrationMetadata,
   claimOrCreateEventTeamSnapshot,
+  listTeamsByIds,
   normalizeJerseyNumber,
 } from '@/server/teams/teamMembership';
 
@@ -67,6 +68,138 @@ describe('applyCanonicalTeamRegistrationMetadata', () => {
         jerseyNumber: null,
         updatedAt: now,
       },
+    });
+  });
+});
+
+describe('listTeamsByIds', () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('prefers canonical teams over event-team snapshots when the same id exists in both tables', async () => {
+    const canonicalFindManyMock = jest.fn().mockResolvedValue([
+      {
+        id: 'team_1',
+        name: 'Canonical Team',
+        division: 'Open',
+        divisionTypeId: 'open',
+        divisionTypeName: 'Open',
+        wins: null,
+        losses: null,
+        teamSize: 6,
+        profileImageId: null,
+        sport: 'Indoor Volleyball',
+        organizationId: null,
+        createdBy: 'user_1',
+        openRegistration: true,
+        registrationPriceCents: 2500,
+        createdAt: new Date('2026-04-20T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-20T01:00:00.000Z'),
+      },
+    ]);
+    const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([
+      {
+        id: 'team_1__player_1',
+        teamId: 'team_1',
+        userId: 'player_1',
+        status: 'ACTIVE',
+        isCaptain: true,
+        createdAt: new Date('2026-04-20T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-20T01:00:00.000Z'),
+      },
+    ]);
+    const teamStaffAssignmentsFindManyMock = jest.fn().mockResolvedValue([
+      {
+        id: 'team_1__MANAGER__manager_1',
+        teamId: 'team_1',
+        userId: 'manager_1',
+        role: 'MANAGER',
+        status: 'ACTIVE',
+        createdAt: new Date('2026-04-20T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-20T01:00:00.000Z'),
+      },
+    ]);
+    const eventTeamsFindManyMock = jest.fn().mockResolvedValue([
+      {
+        id: 'event_team_1',
+        name: 'Event Snapshot',
+        eventId: 'event_1',
+        kind: 'REGISTERED',
+        playerIds: ['player_2'],
+        playerRegistrationIds: [],
+        division: 'Intermediate',
+        divisionTypeId: 'intermediate',
+        divisionTypeName: 'Intermediate',
+        wins: 0,
+        losses: 0,
+        captainId: 'player_2',
+        managerId: 'manager_2',
+        headCoachId: null,
+        coachIds: [],
+        staffAssignmentIds: [],
+        parentTeamId: 'team_2',
+        pending: [],
+        teamSize: 2,
+        profileImageId: null,
+        sport: 'Beach Volleyball',
+        createdAt: new Date('2026-04-20T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-20T01:00:00.000Z'),
+      },
+    ]);
+
+    const teams = await listTeamsByIds(['team_1', 'event_team_1'], {
+      canonicalTeams: {
+        findMany: canonicalFindManyMock,
+      },
+      teamRegistrations: {
+        findMany: teamRegistrationsFindManyMock,
+      },
+      teamStaffAssignments: {
+        findMany: teamStaffAssignmentsFindManyMock,
+      },
+      teams: {
+        findMany: eventTeamsFindManyMock,
+      },
+    });
+
+    expect(teams).toHaveLength(2);
+    expect(teams[0]).toMatchObject({
+      id: 'team_1',
+      $id: 'team_1',
+      name: 'Canonical Team',
+      playerIds: ['player_1'],
+      captainId: 'player_1',
+      managerId: 'manager_1',
+      openRegistration: true,
+      registrationPriceCents: 2500,
+    });
+    expect(teams[1]).toMatchObject({
+      id: 'event_team_1',
+      $id: 'event_team_1',
+      name: 'Event Snapshot',
+      parentTeamId: 'team_2',
+    });
+
+    expect(canonicalFindManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['team_1', 'event_team_1'] } },
+    });
+    expect(teamRegistrationsFindManyMock).toHaveBeenCalledWith({
+      where: { teamId: { in: ['team_1'] } },
+      orderBy: [
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
+    });
+    expect(teamStaffAssignmentsFindManyMock).toHaveBeenCalledWith({
+      where: { teamId: { in: ['team_1'] } },
+      orderBy: [
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
+    });
+    expect(eventTeamsFindManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['event_team_1'] } },
     });
   });
 });
