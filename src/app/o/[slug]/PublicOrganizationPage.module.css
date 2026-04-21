@@ -183,6 +183,29 @@
   font-weight: 800;
 }
 
+.itemButton {
+  margin-top: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--org-primary);
+  font: inherit;
+  font-weight: 800;
+  text-align: left;
+  cursor: pointer;
+}
+
+.itemButton:disabled {
+  opacity: 0.64;
+  cursor: wait;
+}
+
+.authDivider {
+  height: 1px;
+  flex: 1;
+  background: #e5e7eb;
+}
+
 .empty {
   margin: 0;
   color: #52625b;

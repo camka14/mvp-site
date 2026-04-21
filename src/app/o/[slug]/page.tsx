@@ -5,10 +5,10 @@ import { notFound } from 'next/navigation';
 import {
   getPublicOrganizationCatalog,
   type PublicOrganizationEventCard,
-  type PublicOrganizationProductCard,
   type PublicOrganizationRentalCard,
   type PublicOrganizationTeamCard,
 } from '@/server/publicOrganizationCatalog';
+import PublicProductGrid from './PublicProductGrid';
 import styles from './PublicOrganizationPage.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -70,19 +70,6 @@ function RentalItem({ rental }: { rental: PublicOrganizationRentalCard }) {
         <p className={styles.itemMeta}>{rental.location ?? 'Location TBD'}</p>
         <p className={styles.itemMeta}>{formatDate(rental.start)} · {formatPrice(rental.priceCents)}</p>
         <span className={styles.itemAction}>Book rental</span>
-      </div>
-    </a>
-  );
-}
-
-function ProductItem({ product }: { product: PublicOrganizationProductCard }) {
-  return (
-    <a href={product.detailsUrl} className={styles.item}>
-      <div className={styles.itemBody}>
-        <h3 className={styles.itemTitle}>{product.name}</h3>
-        {product.description ? <p className={styles.itemMeta}>{product.description}</p> : null}
-        <p className={styles.itemMeta}>{formatPrice(product.priceCents)} · {product.period.toLowerCase()}</p>
-        <span className={styles.itemAction}>Buy now</span>
       </div>
     </a>
   );
@@ -172,7 +159,7 @@ export default async function PublicOrganizationPage({ params }: { params: Promi
             </div>
           </div>
           {products.length ? (
-            <div className={styles.grid}>{products.map((product) => <ProductItem key={product.id} product={product} />)}</div>
+            <PublicProductGrid slug={slug} organization={organization} products={products} />
           ) : (
             <p className={styles.empty}>No public products are listed yet.</p>
           )}

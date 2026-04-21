@@ -56,4 +56,16 @@ describe('/api/chat/groups/[id]/messages/read POST', () => {
     expect(response.status).toBe(403);
     expect(executeRawMock).not.toHaveBeenCalled();
   });
+
+  it('returns the thrown unauthorized response instead of a 500', async () => {
+    requireSessionMock.mockRejectedValue(new Response('Unauthorized', { status: 401 }));
+
+    const response = await POST(requestFor(), {
+      params: Promise.resolve({ id: 'chat_1' }),
+    });
+
+    expect(response.status).toBe(401);
+    expect(chatGroupFindUniqueMock).not.toHaveBeenCalled();
+    expect(executeRawMock).not.toHaveBeenCalled();
+  });
 });

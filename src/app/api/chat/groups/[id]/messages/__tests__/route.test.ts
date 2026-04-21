@@ -156,4 +156,23 @@ describe('/api/chat/groups/[id]/messages GET', () => {
     });
     expect(json.messages[0].$id).toBe('m_removed');
   });
+
+  it('returns the thrown chat-terms response instead of a 500', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    ensureUserHasAcceptedChatTermsMock.mockRejectedValue(
+      new Response(JSON.stringify({ error: 'Chat terms acceptance required' }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const response = await GET(requestFor(), {
+      params: Promise.resolve({ id: 'chat_1' }),
+    });
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toBe('Chat terms acceptance required');
+    expect(chatGroupFindUniqueMock).not.toHaveBeenCalled();
+  });
 });

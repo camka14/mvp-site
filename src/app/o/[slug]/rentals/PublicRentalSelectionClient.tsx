@@ -8,6 +8,7 @@ import {
   Container,
   Group,
   Modal,
+  Select,
   Stack,
   Text,
   Title,
@@ -38,10 +39,21 @@ const getPaymentIntentId = (clientSecret: string | undefined): string | null => 
   return secretIndex > 0 ? clientSecret.slice(0, secretIndex) : clientSecret;
 };
 
+const normalizeOrganizationSports = (sports: string[] | undefined): string[] => (
+  Array.isArray(sports)
+    ? Array.from(new Set(
+        sports
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0),
+      ))
+    : []
+);
+
 const buildRentalPaymentDraft = (
   organization: Organization,
   payload: RentalSelectionCheckoutPayload,
   userId: string,
+  sportId: string | null,
 ): RentalPaymentDraft => {
   const timeSlotId = `${payload.eventId}-rental-payment`;
   const fallbackCoordinates = payload.coordinates ?? organization.coordinates ?? [0, 0];
@@ -75,6 +87,7 @@ const buildRentalPaymentDraft = (
     seedColor: 0,
     eventType: 'EVENT',
     organizationId: organization.$id,
+    sportId,
     divisions: [],
     requiredTemplateIds: [],
     noFixedEndDateTime: false,
@@ -107,15 +120,26 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
   const { user, loading: authLoading } = useApp();
   const [pendingSelection, setPendingSelection] = useState<RentalSelectionCheckoutPayload | null>(null);
   const [choiceOpen, setChoiceOpen] = useState(false);
+  const [showSportPrompt, setShowSportPrompt] = useState(false);
   const [startingCheckout, setStartingCheckout] = useState(false);
   const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
   const [paymentDraft, setPaymentDraft] = useState<RentalPaymentDraft | null>(null);
   const [orderCompleteMessage, setOrderCompleteMessage] = useState<string | null>(null);
+  const [selectedSportId, setSelectedSportId] = useState<string | null>(null);
 
   const returnHref = `/o/${encodeURIComponent(slug)}`;
   const fieldsCount = organization.fields?.length ?? 0;
+  const availableSports = useMemo(
+    () => normalizeOrganizationSports(organization.sports),
+    [organization.sports],
+  );
+  const defaultSportId = availableSports.length === 1 ? availableSports[0] : null;
+  const sportOptions = useMemo(
+    () => availableSports.map((sport) => ({ value: sport, label: sport })),
+    [availableSports],
+  );
 
   const paymentEvent = useMemo(() => ({
     name: `${organization.name} rental`,
@@ -127,6 +151,7 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
   const createRentalOrder = useCallback(async (
     payload: RentalSelectionCheckoutPayload,
     paymentIntentId: string | null,
+    sportId: string | null,
   ) => {
     const result = await apiRequest<{ eventId: string; totalCents: number }>(
       `/api/public/organizations/${encodeURIComponent(slug)}/rental-orders`,
@@ -135,6 +160,7 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
         body: {
           eventId: payload.eventId,
           selections: payload.rentalSelections,
+          sportId,
           paymentIntentId,
         },
         timeoutMs: 30_000,
@@ -149,8 +175,9 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
   const completeRentalOrder = useCallback(async (
     payload: RentalSelectionCheckoutPayload,
     paymentIntentId: string | null,
+    sportId: string | null,
   ) => {
-    const result = await createRentalOrder(payload, paymentIntentId);
+    const result = await createRentalOrder(payload, paymentIntentId, sportId);
     navigateToPublicCompletion({
       router,
       slug,
@@ -162,11 +189,13 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
 
   const clearCheckoutState = useCallback(() => {
     setChoiceOpen(false);
+    setShowSportPrompt(false);
     setShowPaymentModal(false);
     setShowBillingAddressModal(false);
     setPaymentData(null);
     setPaymentDraft(null);
     setPendingSelection(null);
+    setSelectedSportId(null);
   }, []);
 
   const releasePaymentDraftLock = useCallback(async () => {
@@ -184,18 +213,22 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
     if (!pendingSelection) {
       return;
     }
+    if (availableSports.length > 0 && !selectedSportId) {
+      notifications.show({ color: 'yellow', message: 'Select a sport for this rental event.' });
+      return;
+    }
     if (!user) {
       notifications.show({ color: 'yellow', message: 'Sign in to order this rental.' });
       router.push('/login');
       return;
     }
 
-      const draft = buildRentalPaymentDraft(organization, pendingSelection, user.$id);
+    const draft = buildRentalPaymentDraft(organization, pendingSelection, user.$id, selectedSportId);
     setPaymentDraft(draft);
     setStartingCheckout(true);
     try {
       if (pendingSelection.totalRentalCents <= 0) {
-        await completeRentalOrder(pendingSelection, null);
+        await completeRentalOrder(pendingSelection, null, selectedSportId);
         clearCheckoutState();
         return;
       }
@@ -231,17 +264,17 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
     } finally {
       setStartingCheckout(false);
     }
-  }, [clearCheckoutState, completeRentalOrder, organization, pendingSelection, router, user]);
+  }, [availableSports.length, clearCheckoutState, completeRentalOrder, organization, pendingSelection, router, selectedSportId, user]);
 
   const handlePaymentSuccess = useCallback(async () => {
     if (!pendingSelection || !paymentData) {
       return;
     }
     const paymentIntentId = getPaymentIntentId(paymentData.paymentIntent);
-    await completeRentalOrder(pendingSelection, paymentIntentId);
+    await completeRentalOrder(pendingSelection, paymentIntentId, selectedSportId);
     await releasePaymentDraftLock();
     clearCheckoutState();
-  }, [clearCheckoutState, completeRentalOrder, paymentData, pendingSelection, releasePaymentDraftLock]);
+  }, [clearCheckoutState, completeRentalOrder, paymentData, pendingSelection, releasePaymentDraftLock, selectedSportId]);
 
   const closePaymentModal = useCallback(async () => {
     setShowPaymentModal(false);
@@ -253,8 +286,10 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
   const handleSelectionReady = useCallback((payload: RentalSelectionCheckoutPayload) => {
     setOrderCompleteMessage(null);
     setPendingSelection(payload);
+    setShowSportPrompt(false);
+    setSelectedSportId(defaultSportId);
     setChoiceOpen(true);
-  }, []);
+  }, [defaultSportId]);
 
   return (
     <Container size="xl" py="xl">
@@ -297,38 +332,76 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
 
       <Modal
         opened={choiceOpen}
-        onClose={() => setChoiceOpen(false)}
-        title="Finish rental"
+        onClose={() => {
+          setChoiceOpen(false);
+          setShowSportPrompt(false);
+        }}
+        title={showSportPrompt ? 'Rental sport' : 'Finish rental'}
         centered
         size="lg"
       >
         <Stack gap="md">
-          <Text>
-            Manage this rental in BracketIQ to create a full event with registration, teams, divisions, and scheduling.
-            Order rental only to reserve the selected field time after payment.
-          </Text>
           {pendingSelection ? (
             <Group justify="space-between">
               <Text fw={600}>Rental total</Text>
               <Text fw={700}>{formatPrice(pendingSelection.totalRentalCents)}</Text>
             </Group>
           ) : null}
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setChoiceOpen(false)}>Cancel</Button>
-            <Button
-              variant="light"
-              onClick={() => {
-                if (pendingSelection) {
-                  router.push(pendingSelection.manageEventUrl);
-                }
-              }}
-            >
-              Manage in BracketIQ
-            </Button>
-            <Button loading={startingCheckout} onClick={() => void startRentalOnlyCheckout()}>
-              Order rental only
-            </Button>
-          </Group>
+          {showSportPrompt ? (
+            <>
+              <Text>Select the sport for the private rental event.</Text>
+              <Select
+                label="Sport"
+                placeholder="Select a sport"
+                data={sportOptions}
+                value={selectedSportId}
+                onChange={setSelectedSportId}
+                allowDeselect={false}
+                withAsterisk
+              />
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setShowSportPrompt(false)}>Back</Button>
+                <Button
+                  loading={startingCheckout}
+                  disabled={!selectedSportId}
+                  onClick={() => void startRentalOnlyCheckout()}
+                >
+                  Continue to payment
+                </Button>
+              </Group>
+            </>
+          ) : (
+            <>
+              <Text>
+                Manage this rental in BracketIQ to create a full event with registration, teams, divisions, and scheduling.
+                Order rental only to reserve the selected field time after payment.
+              </Text>
+              {!availableSports.length ? (
+                <Alert color="yellow" title="Sport required for rental-only orders">
+                  Add at least one sport to this organization before offering rental-only checkout.
+                </Alert>
+              ) : null}
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setChoiceOpen(false)}>Cancel</Button>
+                <Button
+                  variant="light"
+                  onClick={() => {
+                    if (pendingSelection) {
+                      router.push(pendingSelection.manageEventUrl);
+                    }
+                  }}
+                >
+                  Manage in BracketIQ
+                </Button>
+                <Button
+                  disabled={!availableSports.length}
+                  onClick={() => setShowSportPrompt(true)}
+                >
+                  Order rental only
+                </Button>
+              </Group>
+            </>
+          )}
         </Stack>
       </Modal>
 

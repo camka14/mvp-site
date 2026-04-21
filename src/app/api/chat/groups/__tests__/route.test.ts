@@ -108,6 +108,23 @@ describe('/api/chat/groups GET', () => {
     expect(messagesGroupByMock).not.toHaveBeenCalled();
     expect(messagesFindManyMock).not.toHaveBeenCalled();
   });
+
+  it('returns the thrown chat-terms response instead of a 500', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    ensureUserHasAcceptedChatTermsMock.mockRejectedValue(
+      new Response(JSON.stringify({ error: 'Chat terms acceptance required' }), {
+        status: 403,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+
+    const response = await GET(new NextRequest('http://localhost/api/chat/groups?userId=user_1'));
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toBe('Chat terms acceptance required');
+    expect(chatGroupFindManyMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('/api/chat/groups POST', () => {

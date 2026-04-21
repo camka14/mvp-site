@@ -7,6 +7,10 @@ import {
   EventFieldConflictError,
   assertNoEventFieldSchedulingConflicts,
 } from '@/server/repositories/events';
+import {
+  normalizePublicRentalOrderSports,
+  resolvePublicRentalOrderSportId,
+} from '@/server/publicRentalOrders';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +29,7 @@ const selectionSchema = z.object({
 const orderSchema = z.object({
   eventId: z.string().min(1),
   selections: z.array(selectionSchema).min(1),
+  sportId: z.string().trim().min(1).optional().nullable(),
   paymentIntentId: z.string().optional().nullable(),
 }).strict();
 
@@ -283,6 +288,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     select: {
       id: true,
       name: true,
+      sports: true,
       location: true,
       address: true,
       coordinates: true,
@@ -292,6 +298,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   });
   if (!organization || organization.publicPageEnabled !== true) {
     return NextResponse.json({ error: 'Organization not found.' }, { status: 404 });
+  }
+
+  const availableSports = normalizePublicRentalOrderSports(organization.sports);
+  if (!availableSports.length) {
+    return NextResponse.json({
+      error: 'This organization must have at least one sport configured before rental-only orders can be created.',
+    }, { status: 400 });
+  }
+  const requestedSportId = typeof parsed.data.sportId === 'string'
+    ? parsed.data.sportId.trim()
+    : '';
+  if (!requestedSportId) {
+    return NextResponse.json({ error: 'Select a sport before ordering this rental.' }, { status: 400 });
+  }
+  if (requestedSportId && !availableSports.includes(requestedSportId)) {
+    return NextResponse.json({ error: 'Selected sport is not available for this organization.' }, { status: 400 });
   }
 
   const fields = await (prisma as any).fields.findMany({
@@ -347,6 +369,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   const primaryField = fieldById.get(fieldIds[0]) ?? null;
   const timeSlotIds = validation.selections.map((selection, index) => `${parsed.data.eventId}-rental-${index + 1}`);
   const now = new Date();
+  const sportId = resolvePublicRentalOrderSportId({
+    organizationName: organization.name,
+    organizationSports: organization.sports,
+    requestedSportId,
+  });
+  if (!sportId) {
+    return NextResponse.json({ error: 'Unable to determine a sport for this rental order.' }, { status: 400 });
+  }
 
   try {
     await (prisma as any).$transaction(async (tx: any) => {
@@ -447,7 +477,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           restTimeMinutes: null,
           state: 'PRIVATE',
           pointsToVictory: [],
-          sportId: null,
+          sportId,
           timeSlotIds,
           fieldIds,
           teamIds: [],
