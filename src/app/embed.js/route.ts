@@ -11,7 +11,7 @@ const SCRIPT = `
 
   const normalizeKind = (value) => {
     const kind = String(value || 'events').toLowerCase();
-    return ['all', 'events', 'teams', 'rentals', 'products'].includes(kind) ? kind : 'events';
+    return ['all', 'events', 'teams', 'rentals', 'products', 'standings', 'brackets'].includes(kind) ? kind : 'events';
   };
 
   widgets.forEach((target) => {
@@ -28,6 +28,8 @@ const SCRIPT = `
     if (target.dataset.dateFrom) params.set('dateFrom', target.dataset.dateFrom);
     if (target.dataset.dateTo) params.set('dateTo', target.dataset.dateTo);
     if (target.dataset.eventTypes) params.set('eventTypes', target.dataset.eventTypes);
+    if (target.dataset.eventIds) params.set('eventIds', target.dataset.eventIds);
+    if (target.dataset.divisionId) params.set('divisionId', target.dataset.divisionId);
     if (target.dataset.includeChildWeeklyEvents) params.set('includeChildWeeklyEvents', target.dataset.includeChildWeeklyEvents);
     if (target.dataset.teamOpenRegistrationOnly) params.set('teamOpenRegistrationOnly', target.dataset.teamOpenRegistrationOnly);
     if (target.dataset.productPurchaseMode) params.set('productPurchaseMode', target.dataset.productPurchaseMode);

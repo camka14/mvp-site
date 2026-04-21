@@ -3,11 +3,15 @@
 import { NextRequest } from 'next/server';
 
 const getPublicOrganizationCatalogMock = jest.fn();
+const getPublicStandingsWidgetPageMock = jest.fn();
+const getPublicBracketWidgetPageMock = jest.fn();
 
 jest.mock('@/server/publicOrganizationCatalog', () => ({
   PUBLIC_EVENT_TYPES: ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'],
   formatPublicEventTypeLabel: (value: unknown) => String(value ?? 'Event').replace('_', ' '),
   getPublicOrganizationCatalog: (...args: unknown[]) => getPublicOrganizationCatalogMock(...args),
+  getPublicStandingsWidgetPage: (...args: unknown[]) => getPublicStandingsWidgetPageMock(...args),
+  getPublicBracketWidgetPage: (...args: unknown[]) => getPublicBracketWidgetPageMock(...args),
   normalizePublicEventTypes: (value: unknown) => (
     typeof value === 'string'
       ? value.split(',').map((entry) => entry.trim().toUpperCase()).filter(Boolean)
@@ -63,10 +67,89 @@ const catalog = {
   products: [],
 };
 
+const standingsPage = {
+  organization: catalog.organization,
+  eventPageInfo: {
+    limit: 1,
+    page: 2,
+    offset: 1,
+    hasPrevious: true,
+    hasNext: true,
+  },
+  currentEvent: {
+    id: 'league_1',
+    name: 'Spring League',
+  },
+  divisionOptions: [
+    { value: 'open', label: 'Open Division' },
+    { value: 'women', label: 'Women' },
+  ],
+  selectedDivisionId: 'open',
+  selectedDivisionName: 'Open Division',
+  division: {
+    divisionName: 'Open Division',
+    standings: [
+      {
+        position: 1,
+        teamName: 'Aces',
+        draws: 0,
+        finalPoints: 9,
+        pointsDelta: 0,
+      },
+    ],
+  },
+};
+
+const bracketPage = {
+  organization: catalog.organization,
+  eventPageInfo: {
+    limit: 1,
+    page: 1,
+    offset: 0,
+    hasPrevious: false,
+    hasNext: false,
+  },
+  currentEvent: {
+    id: 'tournament_1',
+    name: 'Spring Finals',
+  },
+  divisionOptions: [
+    { value: 'open', label: 'Open Division' },
+  ],
+  selectedDivisionId: 'open',
+  selectedDivisionName: 'Open Division',
+  winnersColumns: [
+    {
+      label: 'Round 1',
+      matches: [
+        {
+          id: 'match_1',
+          matchId: 1,
+          fieldLabel: 'Court 1',
+          startLabel: 'May 10, 5:00 PM',
+          team1Name: 'Aces',
+          team2Name: 'Bumpers',
+          team1Points: [21, 21],
+          team2Points: [18, 17],
+        },
+      ],
+    },
+  ],
+  losersColumns: [
+    {
+      label: 'Losers Round 1',
+      matches: [],
+    },
+  ],
+  hasLosersBracket: true,
+};
+
 describe('GET /embed/[slug]/[kind]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getPublicOrganizationCatalogMock.mockResolvedValue(catalog);
+    getPublicStandingsWidgetPageMock.mockResolvedValue(standingsPage);
+    getPublicBracketWidgetPageMock.mockResolvedValue(bracketPage);
   });
 
   it('passes widget filter query params to the public catalog', async () => {
@@ -122,6 +205,59 @@ describe('GET /embed/[slug]/[kind]', () => {
     expect(html).toContain('data-widget-page="1"');
     expect(html).toContain('Page 2');
     expect(html).toContain('data-widget-page="3"');
+  });
+
+  it('passes standings widget selection params to the dedicated standings loader', async () => {
+    const req = new NextRequest(
+      'http://localhost/embed/scsoccer/standings?page=2&showDateFilter=1&dateRule=upcoming&eventIds=league_1,league_2&divisionId=open',
+    );
+
+    await getWidget(req, { params: Promise.resolve({ slug: 'scsoccer', kind: 'standings' }) });
+
+    expect(getPublicStandingsWidgetPageMock).toHaveBeenCalledWith('scsoccer', {
+      page: 2,
+      dateRule: 'upcoming',
+      eventIds: ['league_1', 'league_2'],
+      divisionId: 'open',
+    });
+    expect(getPublicOrganizationCatalogMock).not.toHaveBeenCalled();
+  });
+
+  it('renders standings widgets with division controls and page navigation', async () => {
+    const req = new NextRequest('http://localhost/embed/scsoccer/standings?page=2&showDateFilter=1&dateRule=upcoming');
+
+    const res = await getWidget(req, { params: Promise.resolve({ slug: 'scsoccer', kind: 'standings' }) });
+    const html = await res.text();
+
+    expect(html).toContain('League standings');
+    expect(html).toContain('Spring League');
+    expect(html).toContain('Open Division');
+    expect(html).toContain('data-widget-division');
+    expect(html).toContain('name="dateFilter"');
+    expect(html).toContain('data-widget-page="1"');
+    expect(html).toContain('data-widget-page="3"');
+    expect(html).toContain('Aces');
+  });
+
+  it('renders bracket widgets with winners and losers lanes', async () => {
+    const req = new NextRequest('http://localhost/embed/scsoccer/brackets?divisionId=open');
+
+    const res = await getWidget(req, { params: Promise.resolve({ slug: 'scsoccer', kind: 'brackets' }) });
+    const html = await res.text();
+
+    expect(getPublicBracketWidgetPageMock).toHaveBeenCalledWith('scsoccer', {
+      page: 1,
+      dateRule: 'all',
+      eventIds: [],
+      divisionId: 'open',
+    });
+    expect(html).toContain('Bracket view');
+    expect(html).toContain('Winners Bracket');
+    expect(html).toContain('Losers Bracket');
+    expect(html).toContain('Round 1');
+    expect(html).toContain('Court 1');
+    expect(html).toContain('Aces');
+    expect(html).toContain('Bumpers');
   });
 
   it('renders open-registration team cards as public registration links', async () => {

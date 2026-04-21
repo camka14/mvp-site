@@ -22,10 +22,11 @@ import {
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
-import type { Organization } from '@/types';
+import { eventService } from '@/lib/eventService';
 import { organizationService, type PublicSlugCheckResult } from '@/lib/organizationService';
 import { resolveClientPublicOrigin } from '@/lib/clientPublicOrigin';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import type { Event, EventType, Organization } from '@/types';
 
 type OrganizationPublicSettingsPanelProps = {
   organization: Organization;
@@ -57,18 +58,29 @@ type WidgetSnippetOptions = {
   dateFrom?: string | null;
   dateTo?: string | null;
   eventTypes?: string[];
+  eventIds?: string[];
+  divisionId?: string | null;
   includeChildWeeklyEvents?: boolean;
   teamOpenRegistrationOnly?: boolean;
   productPurchaseMode?: 'all' | 'single' | 'subscription';
 };
 
-type WidgetKind = 'all' | 'events' | 'teams' | 'rentals' | 'products';
+type WidgetKind = 'all' | 'events' | 'teams' | 'rentals' | 'products' | 'standings' | 'brackets';
 type WidgetDateRule = NonNullable<WidgetSnippetOptions['dateRule']>;
 type WidgetProductPurchaseMode = NonNullable<WidgetSnippetOptions['productPurchaseMode']>;
 type WidgetSectionKind = Exclude<WidgetKind, 'all'>;
+type WidgetEventSelection = {
+  id: string;
+  name: string;
+  eventType: string;
+  start: string | null;
+};
+type WidgetEventSelectionDateRule = Extract<WidgetDateRule, 'all' | 'upcoming'>;
 
 const WIDGET_KIND_OPTIONS: Array<{ value: WidgetKind; label: string }> = [
   { value: 'events', label: 'Events' },
+  { value: 'standings', label: 'Standings preview' },
+  { value: 'brackets', label: 'Bracket view' },
   { value: 'all', label: 'All sections' },
   { value: 'teams', label: 'Teams' },
   { value: 'rentals', label: 'Rentals' },
@@ -82,8 +94,14 @@ const DATE_RULE_OPTIONS: Array<{ value: WidgetDateRule; label: string }> = [
   { value: 'week', label: 'This week' },
   { value: 'month', label: 'This month' },
 ];
+const WIDGET_EVENT_SELECTION_DATE_RULE_OPTIONS: Array<{ value: WidgetEventSelectionDateRule; label: string }> = [
+  { value: 'upcoming', label: 'Upcoming events' },
+  { value: 'all', label: 'All events' },
+];
 
 const EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const;
+const STANDINGS_EVENT_TYPE_OPTIONS: EventType[] = ['LEAGUE'];
+const BRACKETS_EVENT_TYPE_OPTIONS: EventType[] = ['LEAGUE', 'TOURNAMENT'];
 const PRODUCT_PURCHASE_MODE_OPTIONS: Array<{ value: WidgetProductPurchaseMode; label: string }> = [
   { value: 'all', label: 'Both' },
   { value: 'single', label: 'Single purchase' },
@@ -103,7 +121,8 @@ const SECTION_WIDTH_STYLES = {
   events: buildResponsiveWidthRange(720),
   teams: buildResponsiveWidthRange(320),
   products: buildResponsiveWidthRange(220),
-} satisfies Record<'common' | 'events' | 'teams' | 'products', CSSProperties>;
+  selection: buildResponsiveWidthRange(720),
+} satisfies Record<'common' | 'events' | 'teams' | 'products' | 'selection', CSSProperties>;
 const EVENT_CONTROL_WIDTH_STYLES = {
   datePreset: buildResponsiveWidthRange(160),
   startDate: buildResponsiveWidthRange(170),
@@ -200,6 +219,8 @@ const parsePickerDate = (value: unknown): Date | null => {
 };
 
 const widgetIncludesEvents = (kind: WidgetKind): boolean => kind === 'all' || kind === 'events';
+const widgetIncludesStandings = (kind: WidgetKind): boolean => kind === 'standings';
+const widgetIncludesBrackets = (kind: WidgetKind): boolean => kind === 'brackets';
 const widgetIncludesTeams = (kind: WidgetKind): boolean => kind === 'all' || kind === 'teams';
 const widgetIncludesProducts = (kind: WidgetKind): boolean => kind === 'all' || kind === 'products';
 const getVisibleWidgetSections = (kind: WidgetKind): WidgetSectionKind[] => (
@@ -207,13 +228,16 @@ const getVisibleWidgetSections = (kind: WidgetKind): WidgetSectionKind[] => (
 );
 
 const buildWidgetQuery = (options: WidgetSnippetOptions = {}): string => {
-  const params = new URLSearchParams({ limit: normalizeLimitInput(options.limit ?? '6') });
+  const params = new URLSearchParams();
+  if (options.limit) params.set('limit', normalizeLimitInput(options.limit));
   if (options.showDateFilter) params.set('showDateFilter', '1');
   if (options.showEventTypeFilter) params.set('showEventTypeFilter', '1');
   if (options.dateRule && options.dateRule !== 'all') params.set('dateRule', options.dateRule);
   if (options.dateFrom) params.set('dateFrom', options.dateFrom);
   if (options.dateTo) params.set('dateTo', options.dateTo);
   if (options.eventTypes?.length) params.set('eventTypes', options.eventTypes.join(','));
+  if (options.eventIds?.length) params.set('eventIds', options.eventIds.join(','));
+  if (options.divisionId) params.set('divisionId', options.divisionId);
   if (options.includeChildWeeklyEvents === false) params.set('includeChildWeeklyEvents', '0');
   if (options.teamOpenRegistrationOnly) params.set('teamOpenRegistrationOnly', '1');
   if (options.productPurchaseMode && options.productPurchaseMode !== 'all') {
@@ -227,9 +251,10 @@ const buildWidgetEmbedUrl = (
   slug: string,
   kind: string,
   options: WidgetSnippetOptions = {},
-): string => (
-  `${origin}/embed/${slug}/${kind}?${buildWidgetQuery(options)}`
-);
+): string => {
+  const query = buildWidgetQuery(options);
+  return `${origin}/embed/${slug}/${kind}${query ? `?${query}` : ''}`;
+};
 
 const buildIframeSnippet = (
   widgetUrl: string,
@@ -248,13 +273,15 @@ const buildScriptSnippet = (
     `data-bracketiq-widget`,
     `data-org="${slug}"`,
     `data-kind="${kind}"`,
-    `data-limit="${normalizeLimitInput(options.limit ?? '6')}"`,
+    options.limit ? `data-limit="${normalizeLimitInput(options.limit)}"` : '',
     options.showDateFilter ? `data-show-date-filter="1"` : '',
     options.showEventTypeFilter ? `data-show-event-type-filter="1"` : '',
     options.dateRule && options.dateRule !== 'all' ? `data-date-rule="${options.dateRule}"` : '',
     options.dateFrom ? `data-date-from="${options.dateFrom}"` : '',
     options.dateTo ? `data-date-to="${options.dateTo}"` : '',
     options.eventTypes?.length ? `data-event-types="${options.eventTypes.join(',')}"` : '',
+    options.eventIds?.length ? `data-event-ids="${options.eventIds.join(',')}"` : '',
+    options.divisionId ? `data-division-id="${options.divisionId}"` : '',
     options.includeChildWeeklyEvents === false ? `data-include-child-weekly-events="0"` : '',
     options.teamOpenRegistrationOnly ? `data-team-open-registration-only="1"` : '',
     options.productPurchaseMode && options.productPurchaseMode !== 'all'
@@ -263,6 +290,203 @@ const buildScriptSnippet = (
   ].filter(Boolean).join(' ');
   return `<div ${attrs}></div>\n<script async src="${origin}/embed.js"></script>`;
 };
+
+const formatWidgetEventDate = (value: string | null): string => {
+  if (!value) {
+    return 'Date TBD';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Date TBD';
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(parsed);
+};
+
+const toWidgetEventSelection = (event: Event): WidgetEventSelection | null => {
+  const id = typeof event.$id === 'string' ? event.$id.trim() : '';
+  const name = typeof event.name === 'string' ? event.name.trim() : '';
+  if (!id || !name) {
+    return null;
+  }
+  const rawStart = event.start as unknown;
+  const start = rawStart instanceof Date
+    ? rawStart.toISOString()
+    : typeof rawStart === 'string'
+      ? rawStart
+      : null;
+  return {
+    id,
+    name,
+    eventType: typeof event.eventType === 'string' ? event.eventType : 'EVENT',
+    start,
+  };
+};
+
+type WidgetEventSearchPickerProps = {
+  label: string;
+  description: string;
+  organizationId?: string;
+  eventTypes: EventType[];
+  selectedEvents: WidgetEventSelection[];
+  onChange: (events: WidgetEventSelection[]) => void;
+};
+
+function WidgetEventSearchPicker({
+  label,
+  description,
+  organizationId,
+  eventTypes,
+  selectedEvents,
+  onChange,
+}: WidgetEventSearchPickerProps) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<WidgetEventSelection[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const normalizedQuery = query.trim();
+  const selectedIds = useMemo(() => new Set(selectedEvents.map((event) => event.id)), [selectedEvents]);
+  const eventTypesKey = eventTypes.join(',');
+
+  useEffect(() => {
+    if (!organizationId || !normalizedQuery) {
+      setResults([]);
+      setLoading(false);
+      setError(null);
+      return undefined;
+    }
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      setLoading(true);
+      setError(null);
+      eventService
+        .getEventsPaginated(
+          {
+            query: normalizedQuery,
+            organizationId,
+            eventTypes,
+          },
+          8,
+          0,
+        )
+        .then((events) => {
+          if (cancelled) {
+            return;
+          }
+          setResults(
+            events
+              .map((event) => toWidgetEventSelection(event))
+              .filter((event): event is WidgetEventSelection => Boolean(event))
+              .filter((event) => !selectedIds.has(event.id)),
+          );
+        })
+        .catch((searchError) => {
+          if (cancelled) {
+            return;
+          }
+          setResults([]);
+          setError(searchError instanceof Error ? searchError.message : 'Failed to search events.');
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setLoading(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [eventTypes, eventTypesKey, normalizedQuery, organizationId, selectedIds]);
+
+  const addEvent = (event: WidgetEventSelection) => {
+    if (selectedIds.has(event.id)) {
+      return;
+    }
+    onChange([...selectedEvents, event]);
+    setQuery('');
+    setResults([]);
+    setError(null);
+  };
+
+  const removeEvent = (eventId: string) => {
+    onChange(selectedEvents.filter((event) => event.id !== eventId));
+  };
+
+  return (
+    <Stack gap="xs">
+      <TextInput
+        label={label}
+        description={description}
+        placeholder="Search events by name"
+        value={query}
+        onChange={(event) => setQuery(event.currentTarget.value)}
+        disabled={!organizationId}
+      />
+
+      {selectedEvents.length ? (
+        <Stack gap="xs">
+          {selectedEvents.map((event) => (
+            <Paper key={event.id} withBorder p="xs" radius="md">
+              <Group justify="space-between" align="flex-start" wrap="nowrap">
+                <div>
+                  <Text size="sm" fw={600}>{event.name}</Text>
+                  <Text size="xs" c="dimmed">
+                    {formatEnumDisplayLabel(event.eventType, 'Event')} - {formatWidgetEventDate(event.start)}
+                  </Text>
+                </div>
+                <Button variant="subtle" size="xs" onClick={() => removeEvent(event.id)}>
+                  Remove
+                </Button>
+              </Group>
+            </Paper>
+          ))}
+        </Stack>
+      ) : (
+        <Text size="xs" c="dimmed">
+          No specific events selected. The widget will use the date rule instead.
+        </Text>
+      )}
+
+      <Text size="xs" c="dimmed">
+        Selected events override the date rule and stay in the order added.
+      </Text>
+
+      {normalizedQuery ? (
+        <Paper withBorder p="xs" radius="md">
+          <Stack gap="xs">
+            {loading ? <Loader size="sm" /> : null}
+            {!loading && error ? <Text size="xs" c="red">{error}</Text> : null}
+            {!loading && !error && !results.length ? (
+              <Text size="xs" c="dimmed">No matching events found.</Text>
+            ) : null}
+            {!loading && !error ? results.map((event) => (
+              <Paper key={event.id} withBorder p="xs" radius="md">
+                <Group justify="space-between" align="center" wrap="nowrap">
+                  <div>
+                    <Text size="sm" fw={600}>{event.name}</Text>
+                    <Text size="xs" c="dimmed">
+                      {formatEnumDisplayLabel(event.eventType, 'Event')} - {formatWidgetEventDate(event.start)}
+                    </Text>
+                  </div>
+                  <Button size="xs" variant="light" onClick={() => addEvent(event)}>
+                    Add
+                  </Button>
+                </Group>
+              </Paper>
+            )) : null}
+          </Stack>
+        </Paper>
+      ) : null}
+    </Stack>
+  );
+}
 
 export default function OrganizationPublicSettingsPanel({
   organization,
@@ -292,6 +516,12 @@ export default function OrganizationPublicSettingsPanel({
   const [snippetIncludeChildWeeklyEvents, setSnippetIncludeChildWeeklyEvents] = useState(true);
   const [snippetTeamOpenRegistrationOnly, setSnippetTeamOpenRegistrationOnly] = useState(false);
   const [snippetProductPurchaseMode, setSnippetProductPurchaseMode] = useState<WidgetProductPurchaseMode>('all');
+  const [standingsShowDateFilter, setStandingsShowDateFilter] = useState(true);
+  const [standingsDateRule, setStandingsDateRule] = useState<WidgetEventSelectionDateRule>('upcoming');
+  const [standingsSelectedEvents, setStandingsSelectedEvents] = useState<WidgetEventSelection[]>([]);
+  const [bracketsShowDateFilter, setBracketsShowDateFilter] = useState(true);
+  const [bracketsDateRule, setBracketsDateRule] = useState<WidgetEventSelectionDateRule>('upcoming');
+  const [bracketsSelectedEvents, setBracketsSelectedEvents] = useState<WidgetEventSelection[]>([]);
   const [slugCheck, setSlugCheck] = useState<SlugCheckState>(idleSlugCheck);
   const [saving, setSaving] = useState(false);
 
@@ -305,6 +535,8 @@ export default function OrganizationPublicSettingsPanel({
     setPublicIntroText(organization.publicIntroText ?? 'Find upcoming events, teams, rentals, and products.');
     setEmbedAllowedDomains((organization.embedAllowedDomains ?? []).join(', '));
     setPublicCompletionRedirectUrl(organization.publicCompletionRedirectUrl ?? '');
+    setStandingsSelectedEvents([]);
+    setBracketsSelectedEvents([]);
   }, [organization]);
 
   const origin = useMemo(() => {
@@ -331,12 +563,28 @@ export default function OrganizationPublicSettingsPanel({
     eventTypes: selectedAllEventTypes ? [] : snippetEventTypes,
     includeChildWeeklyEvents: snippetIncludeChildWeeklyEvents,
   } satisfies WidgetSnippetOptions;
-  const widgetOptions: WidgetSnippetOptions = {
-    limit: widgetLimit,
-    ...(widgetIncludesEvents(widgetKind) ? eventPresetOptions : {}),
-    ...(widgetIncludesTeams(widgetKind) ? { teamOpenRegistrationOnly: snippetTeamOpenRegistrationOnly } : {}),
-    ...(widgetIncludesProducts(widgetKind) ? { productPurchaseMode: snippetProductPurchaseMode } : {}),
-  };
+  const standingsPresetOptions = {
+    showDateFilter: standingsShowDateFilter,
+    dateRule: standingsDateRule,
+    eventIds: standingsSelectedEvents.map((event) => event.id),
+  } satisfies WidgetSnippetOptions;
+  const bracketPresetOptions = {
+    showDateFilter: bracketsShowDateFilter,
+    dateRule: bracketsDateRule,
+    eventIds: bracketsSelectedEvents.map((event) => event.id),
+  } satisfies WidgetSnippetOptions;
+  const widgetOptions: WidgetSnippetOptions = (
+    widgetIncludesStandings(widgetKind)
+      ? standingsPresetOptions
+      : widgetIncludesBrackets(widgetKind)
+        ? bracketPresetOptions
+        : {
+            limit: widgetLimit,
+            ...(widgetIncludesEvents(widgetKind) ? eventPresetOptions : {}),
+            ...(widgetIncludesTeams(widgetKind) ? { teamOpenRegistrationOnly: snippetTeamOpenRegistrationOnly } : {}),
+            ...(widgetIncludesProducts(widgetKind) ? { productPurchaseMode: snippetProductPurchaseMode } : {}),
+          }
+  );
   const slugCheckIsPending = Boolean(normalizedSlug)
     && (slugCheck.status === 'checking' || slugCheck.checkedSlug !== normalizedSlug);
   const slugHasValidationError = Boolean(normalizedSlug) && slugCheck.status === 'invalid';
@@ -675,16 +923,22 @@ export default function OrganizationPublicSettingsPanel({
             <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.common}>
               <Stack gap="xs">
                 <Title order={6}>Common settings</Title>
-                <Group align="flex-end" gap="sm" wrap="wrap">
-                  <TextInput
-                    label="Data limit"
-                    inputMode="numeric"
-                    value={widgetLimit}
-                    onChange={(event) => setWidgetLimit(event.currentTarget.value.replace(/\D/g, '').slice(0, 2))}
-                    onBlur={() => setWidgetLimit(normalizeLimitInput(widgetLimit))}
-                    style={{ flex: '0 1 110px', minWidth: 100 }}
-                  />
-                </Group>
+                {widgetIncludesStandings(widgetKind) || widgetIncludesBrackets(widgetKind) ? (
+                  <Text size="sm" c="dimmed">
+                    Standings and bracket widgets page through one event at a time, so there is no card limit to set here.
+                  </Text>
+                ) : (
+                  <Group align="flex-end" gap="sm" wrap="wrap">
+                    <TextInput
+                      label="Data limit"
+                      inputMode="numeric"
+                      value={widgetLimit}
+                      onChange={(event) => setWidgetLimit(event.currentTarget.value.replace(/\D/g, '').slice(0, 2))}
+                      onBlur={() => setWidgetLimit(normalizeLimitInput(widgetLimit))}
+                      style={{ flex: '0 1 110px', minWidth: 100 }}
+                    />
+                  </Group>
+                )}
               </Stack>
             </Paper>
 
@@ -808,6 +1062,66 @@ export default function OrganizationPublicSettingsPanel({
                       style={buildResponsiveWidthRange(200)}
                     />
                   </Group>
+                </Stack>
+              </Paper>
+            ) : null}
+
+            {visibleWidgetSections.includes('standings') ? (
+              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.selection}>
+                <Stack gap="sm">
+                  <Title order={6}>Standings settings</Title>
+                  <Group align="flex-end" gap="sm" wrap="wrap">
+                    <Select
+                      label="Default event set"
+                      data={WIDGET_EVENT_SELECTION_DATE_RULE_OPTIONS}
+                      value={standingsDateRule}
+                      onChange={(value) => setStandingsDateRule((value as WidgetEventSelectionDateRule | null) ?? 'upcoming')}
+                      style={EVENT_CONTROL_WIDTH_STYLES.datePreset}
+                    />
+                    <Checkbox
+                      checked={standingsShowDateFilter}
+                      onChange={(event) => setStandingsShowDateFilter(event.currentTarget.checked)}
+                      label="Show date filter"
+                    />
+                  </Group>
+                  <WidgetEventSearchPicker
+                    label="Specific league events"
+                    description="Search this organization's league events. Selected events page left and right in the order added."
+                    organizationId={organization.$id}
+                    eventTypes={STANDINGS_EVENT_TYPE_OPTIONS}
+                    selectedEvents={standingsSelectedEvents}
+                    onChange={setStandingsSelectedEvents}
+                  />
+                </Stack>
+              </Paper>
+            ) : null}
+
+            {visibleWidgetSections.includes('brackets') ? (
+              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.selection}>
+                <Stack gap="sm">
+                  <Title order={6}>Bracket settings</Title>
+                  <Group align="flex-end" gap="sm" wrap="wrap">
+                    <Select
+                      label="Default event set"
+                      data={WIDGET_EVENT_SELECTION_DATE_RULE_OPTIONS}
+                      value={bracketsDateRule}
+                      onChange={(value) => setBracketsDateRule((value as WidgetEventSelectionDateRule | null) ?? 'upcoming')}
+                      style={EVENT_CONTROL_WIDTH_STYLES.datePreset}
+                    />
+                    <Checkbox
+                      checked={bracketsShowDateFilter}
+                      onChange={(event) => setBracketsShowDateFilter(event.currentTarget.checked)}
+                      label="Show date filter"
+                    />
+                  </Group>
+                  <WidgetEventSearchPicker
+                    label="Specific bracket events"
+                    description="Search this organization's leagues and tournaments. Selected events page left and right in the order added."
+                    organizationId={organization.$id}
+                    eventTypes={BRACKETS_EVENT_TYPE_OPTIONS}
+                    selectedEvents={bracketsSelectedEvents}
+                    onChange={setBracketsSelectedEvents}
+                  />
                 </Stack>
               </Paper>
             ) : null}

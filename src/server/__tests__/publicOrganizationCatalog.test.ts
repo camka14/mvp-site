@@ -6,6 +6,7 @@ const prismaMock = {
   },
   events: {
     findMany: jest.fn(),
+    findUnique: jest.fn(),
   },
   sports: {
     findMany: jest.fn(),
@@ -34,16 +35,39 @@ const prismaMock = {
   teams: {
     findMany: jest.fn(),
   },
+  matches: {
+    findMany: jest.fn(),
+  },
 };
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 
+const buildDivisionStandingsResponseMock = jest.fn();
+const toLeagueEventMock = jest.fn();
+const buildPublicBracketWidgetViewMock = jest.fn();
+const loadEventWithRelationsMock = jest.fn();
+
+jest.mock('@/app/api/events/[eventId]/standings/shared', () => ({
+  buildDivisionStandingsResponse: (...args: unknown[]) => buildDivisionStandingsResponseMock(...args),
+  toLeagueEvent: (...args: unknown[]) => toLeagueEventMock(...args),
+}));
+
+jest.mock('@/server/publicWidgetBracket', () => ({
+  buildPublicBracketWidgetView: (...args: unknown[]) => buildPublicBracketWidgetViewMock(...args),
+}));
+
+jest.mock('@/server/repositories/events', () => ({
+  loadEventWithRelations: (...args: unknown[]) => loadEventWithRelationsMock(...args),
+}));
+
 import {
+  getPublicBracketWidgetPage,
   getPublicOrganizationBySlug,
   listPublicOrganizationRentals,
   listPublicOrganizationProducts,
   listPublicOrganizationEvents,
   listPublicOrganizationEventPage,
+  getPublicStandingsWidgetPage,
   getPublicOrganizationTeamForRegistration,
   listPublicOrganizationTeams,
 } from '@/server/publicOrganizationCatalog';
@@ -69,8 +93,32 @@ const publicOrganization = {
 describe('publicOrganizationCatalog', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.organizations.findUnique.mockReset();
+    prismaMock.events.findMany.mockReset();
+    prismaMock.events.findUnique.mockReset();
+    prismaMock.sports.findMany.mockReset();
+    prismaMock.sports.findUnique.mockReset();
+    prismaMock.divisions.findMany.mockReset();
+    prismaMock.canonicalTeams.findMany.mockReset();
+    prismaMock.canonicalTeams.findFirst.mockReset();
     prismaMock.teamRegistrations.findMany.mockReset();
+    prismaMock.fields.findMany.mockReset();
+    prismaMock.timeSlots.findMany.mockReset();
+    prismaMock.products.findMany.mockReset();
+    prismaMock.products.findFirst.mockReset();
+    prismaMock.teams.findMany.mockReset();
+    prismaMock.matches.findMany.mockReset();
+    prismaMock.organizations.findUnique.mockResolvedValue(null);
+    prismaMock.events.findUnique.mockResolvedValue(null);
+    prismaMock.sports.findMany.mockResolvedValue([]);
+    prismaMock.sports.findUnique.mockResolvedValue(null);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.matches.findMany.mockResolvedValue([]);
+    buildDivisionStandingsResponseMock.mockReset();
+    toLeagueEventMock.mockReset();
+    buildPublicBracketWidgetViewMock.mockReset();
+    loadEventWithRelationsMock.mockReset();
   });
 
   it('does not return page-disabled organizations for public pages', async () => {
@@ -249,6 +297,189 @@ describe('publicOrganizationCatalog', () => {
       hasPrevious: true,
       hasNext: true,
     });
+  });
+
+  it('keeps explicitly selected public events in the requested order and skips date filtering', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'event_old',
+        name: 'Old League',
+        start: new Date('2026-04-01T17:00:00.000Z'),
+        end: null,
+        location: 'Main Field',
+        eventType: 'LEAGUE',
+        sportId: null,
+        price: 0,
+        imageId: null,
+        divisions: [],
+      },
+      {
+        id: 'event_new',
+        name: 'New League',
+        start: new Date('2026-06-01T17:00:00.000Z'),
+        end: null,
+        location: 'Main Field',
+        eventType: 'LEAGUE',
+        sportId: null,
+        price: 0,
+        imageId: null,
+        divisions: [],
+      },
+    ]);
+    prismaMock.sports.findMany.mockResolvedValue([]);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
+
+    const page = await listPublicOrganizationEventPage(publicOrganization, {
+      limit: 2,
+      page: 1,
+      dateRule: 'upcoming',
+      eventIds: ['event_new', 'event_old'],
+    });
+
+    expect(prismaMock.events.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: 'org_1',
+        id: { in: ['event_new', 'event_old'] },
+      }),
+    }));
+    expect(prismaMock.events.findMany.mock.calls[0]?.[0].where.AND).toBeUndefined();
+    expect(page.events.map((event) => event.id)).toEqual(['event_new', 'event_old']);
+  });
+
+  it('loads a public standings widget page for the selected league event and division', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      name: 'SCSoccer',
+      publicSlug: 'scsoccer',
+      publicPageEnabled: true,
+      publicWidgetsEnabled: true,
+      publicCompletionRedirectUrl: null,
+    });
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'league_1',
+        name: 'Spring League',
+        start: new Date('2026-05-01T17:00:00.000Z'),
+        end: null,
+        location: 'Main Field',
+        eventType: 'LEAGUE',
+        sportId: null,
+        price: 0,
+        imageId: null,
+        divisions: [],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'league_1',
+      organizationId: 'org_1',
+      state: 'PUBLISHED',
+      eventType: 'LEAGUE',
+    });
+    prismaMock.sports.findMany.mockResolvedValue([]);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
+    loadEventWithRelationsMock.mockResolvedValue({ id: 'league_1' });
+    toLeagueEventMock.mockReturnValue({
+      divisions: [{ id: 'open', name: 'Open Division' }],
+      matches: {},
+    });
+    buildDivisionStandingsResponseMock.mockReturnValue({
+      divisionName: 'Open Division',
+      standings: [
+        { position: 1, teamName: 'Aces', draws: 0, finalPoints: 9, pointsDelta: 0 },
+      ],
+    });
+
+    const page = await getPublicStandingsWidgetPage('scsoccer', {
+      page: 1,
+      dateRule: 'upcoming',
+      eventIds: ['league_1'],
+      divisionId: 'open',
+    });
+
+    expect(prismaMock.events.findUnique).toHaveBeenCalledWith({
+      where: { id: 'league_1' },
+      select: {
+        id: true,
+        organizationId: true,
+        state: true,
+        eventType: true,
+      },
+    });
+    expect(loadEventWithRelationsMock).toHaveBeenCalledWith('league_1');
+    expect(toLeagueEventMock).toHaveBeenCalled();
+    expect(buildDivisionStandingsResponseMock).toHaveBeenCalledWith(expect.any(Object), 'open');
+    expect(page).toEqual(expect.objectContaining({
+      currentEvent: expect.objectContaining({ id: 'league_1' }),
+      selectedDivisionId: 'open',
+      selectedDivisionName: 'Open Division',
+      divisionOptions: [{ value: 'open', label: 'Open Division' }],
+      division: expect.objectContaining({
+        divisionName: 'Open Division',
+      }),
+    }));
+  });
+
+  it('loads a public bracket widget page for a public tournament event', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      name: 'SCSoccer',
+      publicSlug: 'scsoccer',
+      publicPageEnabled: true,
+      publicWidgetsEnabled: true,
+      publicCompletionRedirectUrl: null,
+    });
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'tournament_1',
+        name: 'Spring Finals',
+        start: new Date('2026-05-10T17:00:00.000Z'),
+        end: null,
+        location: 'Main Field',
+        eventType: 'TOURNAMENT',
+        sportId: null,
+        price: 0,
+        imageId: null,
+        divisions: [],
+      },
+    ]);
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'tournament_1',
+      organizationId: 'org_1',
+      state: 'PUBLISHED',
+      eventType: 'TOURNAMENT',
+    });
+    prismaMock.sports.findMany.mockResolvedValue([]);
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    prismaMock.matches.findMany.mockResolvedValue([]);
+    loadEventWithRelationsMock.mockResolvedValue({ id: 'tournament_1' });
+    buildPublicBracketWidgetViewMock.mockReturnValue({
+      divisionOptions: [{ value: 'open', label: 'Open Division' }],
+      selectedDivisionId: 'open',
+      selectedDivisionName: 'Open Division',
+      winnersColumns: [{ label: 'Round 1', matches: [] }],
+      losersColumns: [],
+      hasLosersBracket: false,
+    });
+
+    const page = await getPublicBracketWidgetPage('scsoccer', {
+      page: 1,
+      dateRule: 'upcoming',
+      eventIds: ['tournament_1'],
+      divisionId: 'open',
+    });
+
+    expect(prismaMock.matches.findMany).toHaveBeenCalled();
+    expect(loadEventWithRelationsMock).toHaveBeenCalledWith('tournament_1');
+    expect(buildPublicBracketWidgetViewMock).toHaveBeenCalledWith({ id: 'tournament_1' }, 'open');
+    expect(page).toEqual(expect.objectContaining({
+      currentEvent: expect.objectContaining({ id: 'tournament_1' }),
+      selectedDivisionId: 'open',
+      selectedDivisionName: 'Open Division',
+      winnersColumns: [{ label: 'Round 1', matches: [] }],
+      hasLosersBracket: false,
+    }));
   });
 
   it('lists organization teams by canonical organizationId and sorts open registration first', async () => {

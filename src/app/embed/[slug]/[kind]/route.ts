@@ -1,20 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { formatStandingsDelta, formatStandingsPoints } from '@/lib/standingsDisplay';
 import {
+  getPublicBracketWidgetPage,
   getPublicOrganizationCatalog,
+  getPublicStandingsWidgetPage,
   formatPublicEventTypeLabel,
   normalizePublicEventTypes,
   PUBLIC_EVENT_TYPES,
+  type PublicBracketWidgetPage,
   type PublicEventDateRule,
   type PublicOrganizationCatalog,
   type PublicOrganizationEventCard,
   type PublicProductPurchaseMode,
   type PublicPaginationInfo,
+  type PublicStandingsWidgetPage,
   type PublicWidgetKind,
 } from '@/server/publicOrganizationCatalog';
 
 export const dynamic = 'force-dynamic';
 
-const WIDGET_KINDS = new Set<PublicWidgetKind>(['all', 'events', 'teams', 'rentals', 'products']);
+const WIDGET_KINDS = new Set<PublicWidgetKind>(['all', 'events', 'teams', 'rentals', 'products', 'standings', 'brackets']);
 const DATE_RULES = new Set<PublicEventDateRule>(['all', 'upcoming', 'today', 'week', 'month']);
 const PRODUCT_PURCHASE_MODES = new Set<PublicProductPurchaseMode>(['all', 'single', 'subscription']);
 
@@ -28,6 +33,8 @@ type WidgetRenderOptions = {
   includeChildWeeklyEvents: boolean;
   teamOpenRegistrationOnly: boolean;
   productPurchaseMode: PublicProductPurchaseMode;
+  eventIds: string[];
+  divisionId: string | null;
   limit: number;
   page: number;
 };
@@ -115,6 +122,15 @@ const parseProductPurchaseMode = (value: string | null): PublicProductPurchaseMo
     : 'all';
 };
 
+const parseIdList = (value: string | null): string[] => (
+  Array.from(new Set(
+    String(value ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+  ))
+);
+
 const getWidgetRenderOptions = (req: NextRequest): WidgetRenderOptions => ({
   showDateFilter: parseBooleanParam(req.nextUrl.searchParams.get('showDateFilter')),
   showEventTypeFilter: parseBooleanParam(req.nextUrl.searchParams.get('showEventTypeFilter')),
@@ -125,6 +141,8 @@ const getWidgetRenderOptions = (req: NextRequest): WidgetRenderOptions => ({
   includeChildWeeklyEvents: parseOptionalBooleanParam(req.nextUrl.searchParams.get('includeChildWeeklyEvents'), true),
   teamOpenRegistrationOnly: parseBooleanParam(req.nextUrl.searchParams.get('teamOpenRegistrationOnly')),
   productPurchaseMode: parseProductPurchaseMode(req.nextUrl.searchParams.get('productPurchaseMode')),
+  eventIds: parseIdList(req.nextUrl.searchParams.get('eventIds')),
+  divisionId: req.nextUrl.searchParams.get('divisionId'),
   limit: parsePositiveIntegerParam(req.nextUrl.searchParams.get('limit'), 6, 24),
   page: parsePositiveIntegerParam(req.nextUrl.searchParams.get('page'), 1),
 });
@@ -358,20 +376,246 @@ const renderSection = (title: string, body: string): string => `
   </section>
 `;
 
-const renderWidgetHtml = (
+const renderWidgetPagination = (
+  pageInfo: PublicPaginationInfo,
+  label: string,
+): string => {
+  if (!pageInfo.hasPrevious && !pageInfo.hasNext) {
+    return '';
+  }
+
+  return `
+    <nav class="widget-pagination" aria-label="${escapeHtml(label)} pages">
+      <button type="button" data-widget-page="${Math.max(1, pageInfo.page - 1)}" ${pageInfo.hasPrevious ? '' : 'disabled'}>
+        &larr; Previous
+      </button>
+      <span>Page ${escapeHtml(pageInfo.page)}</span>
+      <button type="button" data-widget-page="${pageInfo.page + 1}" ${pageInfo.hasNext ? '' : 'disabled'}>
+        Next &rarr;
+      </button>
+    </nav>
+  `;
+};
+
+const renderWidgetDateFilters = (options: WidgetRenderOptions): string => {
+  if (!options.showDateFilter || options.eventIds.length > 0) {
+    return '';
+  }
+
+  const selectedRule = options.dateRule === 'upcoming' ? 'upcoming' : 'all';
+  return `
+    <fieldset class="widget-filter-group" data-filter-group="date">
+      <legend>Events</legend>
+      ${[
+        ['upcoming', 'Upcoming'],
+        ['all', 'All'],
+      ].map(([value, label]) => `
+        <label class="filter-option">
+          <input type="radio" name="dateFilter" value="${escapeHtml(value)}" ${value === selectedRule ? 'checked' : ''} />
+          <span>${escapeHtml(label)}</span>
+        </label>
+      `).join('')}
+    </fieldset>
+  `;
+};
+
+const renderDivisionSelect = (
+  divisionOptions: Array<{ value: string; label: string }>,
+  selectedDivisionId: string | null,
+): string => {
+  if (divisionOptions.length <= 1) {
+    return '';
+  }
+
+  return `
+    <label class="widget-select-group">
+      <span>Division</span>
+      <select data-widget-division class="widget-select">
+        ${divisionOptions.map((option) => `
+          <option value="${escapeHtml(option.value)}" ${option.value === selectedDivisionId ? 'selected' : ''}>
+            ${escapeHtml(option.label)}
+          </option>
+        `).join('')}
+      </select>
+    </label>
+  `;
+};
+
+const renderStandingsTable = (
+  page: PublicStandingsWidgetPage & { options: WidgetRenderOptions },
+): string => {
+  if (!page.currentEvent) {
+    return '<p class="empty">No public league standings are available right now.</p>';
+  }
+
+  const controls = [
+    renderWidgetDateFilters(page.options),
+    renderDivisionSelect(page.divisionOptions, page.selectedDivisionId),
+    renderWidgetPagination(page.eventPageInfo, 'Standings events'),
+  ].filter(Boolean).join('');
+
+  if (!page.division || page.division.standings.length === 0) {
+    return `
+      <section>
+        <div class="widget-detail-header">
+          <div>
+            <span class="label">League standings</span>
+            <h2>${escapeHtml(page.currentEvent.name)}</h2>
+            <p class="widget-subtitle">${escapeHtml(page.selectedDivisionName ?? 'Division TBD')}</p>
+          </div>
+          <div class="widget-detail-controls">${controls}</div>
+        </div>
+        <p class="empty">No standings are available for this division yet.</p>
+      </section>
+    `;
+  }
+
+  return `
+    <section>
+      <div class="widget-detail-header">
+        <div>
+          <span class="label">League standings</span>
+          <h2>${escapeHtml(page.currentEvent.name)}</h2>
+          <p class="widget-subtitle">${escapeHtml(page.selectedDivisionName ?? page.division.divisionName)}</p>
+        </div>
+        <div class="widget-detail-controls">${controls}</div>
+      </div>
+      <div class="standings-table-wrap">
+        <table class="standings-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Team</th>
+              <th>D</th>
+              <th>Final Pts</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${page.division.standings.map((row) => `
+              <tr>
+                <td>${escapeHtml(row.position)}</td>
+                <td>${escapeHtml(row.teamName)}</td>
+                <td>${escapeHtml(row.draws)}</td>
+                <td class="points-cell">
+                  <strong>${escapeHtml(formatStandingsPoints(row.finalPoints))}</strong>
+                  <span>${escapeHtml(formatStandingsDelta(row.pointsDelta))}</span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+};
+
+const renderBracketColumns = (
+  columns: PublicBracketWidgetPage['winnersColumns'],
+): string => {
+  if (!columns.length) {
+    return '<p class="empty">No bracket rounds are available yet.</p>';
+  }
+
+  return `
+    <div class="bracket-columns">
+      ${columns.map((column) => `
+        <div class="bracket-column">
+          <h3>${escapeHtml(column.label)}</h3>
+          <div class="bracket-column-stack">
+            ${column.matches.map((match) => `
+              <article class="bracket-card">
+                <div class="bracket-card-top">
+                  <span class="label">${escapeHtml(match.matchId ? `Match #${match.matchId}` : 'Match')}</span>
+                  <span class="bracket-meta">${escapeHtml(match.fieldLabel)}</span>
+                </div>
+                <div class="bracket-teams">
+                  <div class="bracket-team-row">
+                    <span>${escapeHtml(match.team1Name)}</span>
+                    <strong>${escapeHtml(match.team1Points.join(' - ') || '-')}</strong>
+                  </div>
+                  <div class="bracket-team-row">
+                    <span>${escapeHtml(match.team2Name)}</span>
+                    <strong>${escapeHtml(match.team2Points.join(' - ') || '-')}</strong>
+                  </div>
+                </div>
+                <p class="bracket-meta">${escapeHtml(match.startLabel)}</p>
+              </article>
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+};
+
+const renderBracketWidget = (
+  page: PublicBracketWidgetPage & { options: WidgetRenderOptions },
+): string => {
+  if (!page.currentEvent) {
+    return '<p class="empty">No public bracket events are available right now.</p>';
+  }
+
+  const controls = [
+    renderWidgetDateFilters(page.options),
+    renderDivisionSelect(page.divisionOptions, page.selectedDivisionId),
+    renderWidgetPagination(page.eventPageInfo, 'Bracket events'),
+  ].filter(Boolean).join('');
+
+  if (!page.winnersColumns.length && !page.losersColumns.length) {
+    return `
+      <section>
+        <div class="widget-detail-header">
+          <div>
+            <span class="label">Bracket view</span>
+            <h2>${escapeHtml(page.currentEvent.name)}</h2>
+            <p class="widget-subtitle">${escapeHtml(page.selectedDivisionName ?? 'Division TBD')}</p>
+          </div>
+          <div class="widget-detail-controls">${controls}</div>
+        </div>
+        <p class="empty">No bracket has been generated for this division yet.</p>
+      </section>
+    `;
+  }
+
+  return `
+    <section>
+      <div class="widget-detail-header">
+        <div>
+          <span class="label">Bracket view</span>
+          <h2>${escapeHtml(page.currentEvent.name)}</h2>
+          <p class="widget-subtitle">${escapeHtml(page.selectedDivisionName ?? 'Division TBD')}</p>
+        </div>
+        <div class="widget-detail-controls">${controls}</div>
+      </div>
+      <div class="bracket-lane">
+        <h3>Winners Bracket</h3>
+        ${renderBracketColumns(page.winnersColumns)}
+      </div>
+      ${page.hasLosersBracket ? `
+        <div class="bracket-lane">
+          <h3>Losers Bracket</h3>
+          ${renderBracketColumns(page.losersColumns)}
+        </div>
+      ` : ''}
+    </section>
+  `;
+};
+
+const renderCatalogSections = (
   catalog: PublicOrganizationCatalog,
   kind: PublicWidgetKind,
   options: WidgetRenderOptions,
-): string => {
-  const { organization } = catalog;
-  const sections = [
-    sectionEnabled(kind, 'events') ? renderSection('Events', renderEvents(catalog, options)) : '',
-    sectionEnabled(kind, 'teams') ? renderSection('Teams', renderTeams(catalog, options)) : '',
-    sectionEnabled(kind, 'rentals') ? renderSection('Rentals', renderRentals(catalog)) : '',
-    sectionEnabled(kind, 'products') ? renderSection('Products', renderProducts(catalog)) : '',
-  ].filter(Boolean).join('');
+): string => ([
+  sectionEnabled(kind, 'events') ? renderSection('Events', renderEvents(catalog, options)) : '',
+  sectionEnabled(kind, 'teams') ? renderSection('Teams', renderTeams(catalog, options)) : '',
+  sectionEnabled(kind, 'rentals') ? renderSection('Rentals', renderRentals(catalog)) : '',
+  sectionEnabled(kind, 'products') ? renderSection('Products', renderProducts(catalog)) : '',
+].filter(Boolean).join(''));
 
-  return `<!doctype html>
+const renderWidgetDocument = (
+  organization: PublicOrganizationCatalog['organization'],
+  body: string,
+): string => `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -423,10 +667,41 @@ const renderWidgetHtml = (
     .empty { grid-column: 1 / -1; }
     .empty[hidden] { display: none; }
     .brand-link { color: inherit; text-decoration: none; }
+    .widget-detail-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+    .widget-subtitle { margin-top: 6px; color: #53645d; font-size: 0.95rem; font-weight: 600; }
+    .widget-detail-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: 12px; }
+    .widget-filter-group { display: grid; gap: 8px; min-width: 180px; margin: 0; padding: 0; border: 0; }
+    .widget-filter-group legend { margin-bottom: 2px; color: #53645d; font-size: 0.76rem; font-weight: 800; text-transform: uppercase; }
+    .widget-select-group { display: grid; gap: 6px; min-width: 220px; color: #53645d; font-size: 0.76rem; font-weight: 800; text-transform: uppercase; }
+    .widget-select { min-height: 40px; border: 1px solid #c8d8d0; border-radius: 8px; padding: 0 12px; background: white; color: #17211d; font: inherit; font-size: 0.92rem; text-transform: none; }
+    .standings-table-wrap { overflow-x: auto; }
+    .standings-table { width: 100%; border-collapse: collapse; background: white; border: 1px solid #d7e3dd; border-radius: 10px; overflow: hidden; }
+    .standings-table th, .standings-table td { padding: 12px 14px; border-bottom: 1px solid #e6eeea; text-align: left; }
+    .standings-table th { color: #53645d; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+    .standings-table td { font-size: 0.92rem; color: #17211d; }
+    .standings-table tbody tr:last-child td { border-bottom: 0; }
+    .points-cell { text-align: right; white-space: nowrap; }
+    .points-cell strong { margin-right: 8px; color: #17211d; }
+    .points-cell span { color: #53645d; font-size: 0.82rem; }
+    .bracket-lane + .bracket-lane { margin-top: 20px; }
+    .bracket-columns { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
+    .bracket-column { min-width: 260px; display: grid; gap: 10px; align-content: start; }
+    .bracket-column h3, .bracket-lane h3 { margin: 0; font-size: 0.95rem; }
+    .bracket-column-stack { display: grid; gap: 10px; }
+    .bracket-card { display: grid; gap: 10px; padding: 14px; border: 1px solid #d7e3dd; border-radius: 10px; background: white; }
+    .bracket-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .bracket-teams { display: grid; gap: 8px; }
+    .bracket-team-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-radius: 8px; background: #f7faf8; padding: 10px 12px; }
+    .bracket-team-row strong { margin-top: 0; color: #17211d; font-size: 0.88rem; }
+    .bracket-meta { color: #53645d; font-size: 0.82rem; }
     @media (max-width: 720px) {
       .event-layout { grid-template-columns: 1fr; }
       .event-grid { grid-template-columns: 1fr; }
       .filters { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+      .widget-detail-header { flex-direction: column; }
+      .widget-detail-controls { width: 100%; justify-content: flex-start; }
+      .widget-select-group { width: 100%; min-width: 0; }
+      .bracket-column { min-width: 220px; }
     }
   </style>
 </head>
@@ -439,7 +714,7 @@ const renderWidgetHtml = (
         <p class="intro">${escapeHtml(organization.publicIntroText)}</p>
       </div>
     </header>
-    ${sections}
+    ${body}
   </main>
   <script>
     const postHeight = () => {
@@ -531,6 +806,19 @@ const renderWidgetHtml = (
       });
     });
 
+    document.querySelectorAll('[data-widget-division]').forEach((select) => {
+      select.addEventListener('change', () => {
+        const url = new URL(window.location.href);
+        const value = select.value || '';
+        if (value) {
+          url.searchParams.set('divisionId', value);
+        } else {
+          url.searchParams.delete('divisionId');
+        }
+        window.location.assign(url.toString());
+      });
+    });
+
     document.querySelectorAll('input[name="dateFilter"], input[name="eventTypeFilter"]').forEach((input) => {
       input.addEventListener('change', refetchEventsFromFilters);
     });
@@ -541,7 +829,6 @@ const renderWidgetHtml = (
   </script>
 </body>
 </html>`;
-};
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ slug: string; kind: string }> }) {
   const { slug, kind: rawKind } = await params;
@@ -550,6 +837,65 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   const widgetOptions = getWidgetRenderOptions(req);
+
+  if (kind === 'standings') {
+    const standingsPage = await getPublicStandingsWidgetPage(slug, {
+      page: widgetOptions.page,
+      dateRule: widgetOptions.dateRule,
+      eventIds: widgetOptions.eventIds,
+      divisionId: widgetOptions.divisionId,
+    });
+    if (!standingsPage) {
+      return NextResponse.json({ error: 'Widget not available' }, { status: 404 });
+    }
+
+    return new NextResponse(
+      renderWidgetDocument(
+        standingsPage.organization,
+        renderStandingsTable({
+          ...standingsPage,
+          options: widgetOptions,
+        }),
+      ),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      },
+    );
+  }
+
+  if (kind === 'brackets') {
+    const bracketPage = await getPublicBracketWidgetPage(slug, {
+      page: widgetOptions.page,
+      dateRule: widgetOptions.dateRule,
+      eventIds: widgetOptions.eventIds,
+      divisionId: widgetOptions.divisionId,
+    });
+    if (!bracketPage) {
+      return NextResponse.json({ error: 'Widget not available' }, { status: 404 });
+    }
+
+    return new NextResponse(
+      renderWidgetDocument(
+        bracketPage.organization,
+        renderBracketWidget({
+          ...bracketPage,
+          options: widgetOptions,
+        }),
+      ),
+      {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store',
+        },
+      },
+    );
+  }
+
   const catalog = await getPublicOrganizationCatalog(slug, {
     surface: 'widget',
     limit: widgetOptions.limit,
@@ -561,16 +907,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     includeChildWeeklyEvents: widgetOptions.includeChildWeeklyEvents,
     teamOpenRegistrationOnly: widgetOptions.teamOpenRegistrationOnly,
     productPurchaseMode: widgetOptions.productPurchaseMode,
+    eventIds: widgetOptions.eventIds,
   });
   if (!catalog) {
     return NextResponse.json({ error: 'Widget not available' }, { status: 404 });
   }
 
-  return new NextResponse(renderWidgetHtml(catalog, kind, widgetOptions), {
-    status: 200,
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-store',
+  return new NextResponse(
+    renderWidgetDocument(catalog.organization, renderCatalogSections(catalog, kind, widgetOptions)),
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
     },
-  });
+  );
 }

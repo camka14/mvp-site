@@ -1,9 +1,16 @@
 import { prisma } from '@/lib/prisma';
+import { buildDivisionStandingsResponse, type DivisionStandingsResponse, toLeagueEvent } from '@/app/api/events/[eventId]/standings/shared';
+import {
+  buildPublicBracketWidgetView,
+  type PublicBracketWidgetView,
+  type PublicWidgetDivisionOption,
+} from '@/server/publicWidgetBracket';
+import { loadEventWithRelations } from '@/server/repositories/events';
 import { TEAM_REGISTRATION_STARTED_TTL_MS } from '@/server/teams/teamOpenRegistration';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
 
 export type PublicCatalogSurface = 'page' | 'widget' | 'any';
-export type PublicWidgetKind = 'all' | 'events' | 'teams' | 'rentals' | 'products';
+export type PublicWidgetKind = 'all' | 'events' | 'teams' | 'rentals' | 'products' | 'standings' | 'brackets';
 export type PublicEventDateRule = 'all' | 'upcoming' | 'today' | 'week' | 'month';
 export type PublicProductPurchaseMode = 'all' | 'single' | 'subscription';
 
@@ -90,6 +97,28 @@ export type PublicOrganizationCatalog = {
   teams: PublicOrganizationTeamCard[];
   rentals: PublicOrganizationRentalCard[];
   products: PublicOrganizationProductCard[];
+};
+
+export type PublicStandingsWidgetPage = {
+  organization: PublicOrganizationSummary;
+  eventPageInfo: PublicPaginationInfo;
+  currentEvent: PublicOrganizationEventCard | null;
+  divisionOptions: PublicWidgetDivisionOption[];
+  selectedDivisionId: string | null;
+  selectedDivisionName: string | null;
+  division: DivisionStandingsResponse | null;
+};
+
+export type PublicBracketWidgetPage = {
+  organization: PublicOrganizationSummary;
+  eventPageInfo: PublicPaginationInfo;
+  currentEvent: PublicOrganizationEventCard | null;
+  divisionOptions: PublicWidgetDivisionOption[];
+  selectedDivisionId: string | null;
+  selectedDivisionName: string | null;
+  winnersColumns: PublicBracketWidgetView['winnersColumns'];
+  losersColumns: PublicBracketWidgetView['losersColumns'];
+  hasLosersBracket: boolean;
 };
 
 export type PublicOrganizationRentalSelectionData = {
@@ -267,6 +296,19 @@ export const normalizePublicEventTypes = (value: unknown): string[] => {
     rawValues
       .map((entry) => (typeof entry === 'string' ? entry.trim().toUpperCase() : ''))
       .filter((entry) => PUBLIC_EVENT_TYPE_SET.has(entry)),
+  ));
+};
+
+export const normalizePublicEventIds = (value: unknown): string[] => {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(',')
+      : [];
+  return Array.from(new Set(
+    rawValues
+      .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+      .filter((entry) => entry.length > 0),
   ));
 };
 
@@ -756,6 +798,7 @@ type PublicOrganizationEventListOptions = {
   dateFrom?: Date | string | null;
   dateTo?: Date | string | null;
   includeChildWeeklyEvents?: boolean;
+  eventIds?: string[];
 };
 
 type PublicEventDateWindow = {
@@ -769,20 +812,42 @@ const buildPublicOrganizationEventWhere = (
   options: PublicOrganizationEventListOptions,
 ): Record<string, unknown> => {
   const eventTypes = normalizePublicEventTypes(options.eventTypes);
+  const eventIds = normalizePublicEventIds(options.eventIds);
   const dateWhere = getPublicEventDateWhere(
     getPublicEventDateWindow(options.dateRule, options.dateFrom, options.dateTo),
   );
   const andFilters = [
-    dateWhere,
+    eventIds.length === 0 ? dateWhere : null,
     options.includeChildWeeklyEvents === false ? { eventType: { not: 'WEEKLY_EVENT' } } : null,
   ].filter((filter): filter is Record<string, unknown> => Boolean(filter));
   return {
     organizationId: organization.id,
+    ...(eventIds.length ? { id: { in: eventIds } } : {}),
     OR: PUBLIC_EVENT_STATES.map((state) => ({ state })),
     NOT: { state: 'TEMPLATE' },
     ...(eventTypes.length ? { eventType: { in: eventTypes } } : {}),
     ...(andFilters.length ? { AND: andFilters } : {}),
   };
+};
+
+const sortPublicOrganizationEventCards = (
+  cards: PublicOrganizationEventCard[],
+  requestedEventIds?: string[],
+): PublicOrganizationEventCard[] => {
+  const eventIds = normalizePublicEventIds(requestedEventIds);
+  if (!eventIds.length) {
+    return [...cards];
+  }
+
+  const orderById = new Map(eventIds.map((eventId, index) => [eventId, index]));
+  return [...cards].sort((left, right) => {
+    const leftOrder = orderById.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = orderById.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return left.start.localeCompare(right.start) || left.id.localeCompare(right.id);
+  });
 };
 
 const mapPublicOrganizationEventCards = async (
@@ -916,7 +981,10 @@ export const listPublicOrganizationEvents = async (
     take: Math.max(PUBLIC_EVENT_QUERY_CAP, limit),
   });
 
-  const cards = await mapAndExpandPublicOrganizationEventCards(organization, events, options, dateWindow);
+  const cards = sortPublicOrganizationEventCards(
+    await mapAndExpandPublicOrganizationEventCards(organization, events, options, dateWindow),
+    options.eventIds,
+  );
   return cards.slice(0, limit);
 };
 
@@ -933,7 +1001,10 @@ export const listPublicOrganizationEventPage = async (
     orderBy: { start: 'asc' },
     take: Math.max(PUBLIC_EVENT_QUERY_CAP, offset + limit + 1),
   });
-  const expandedRows = await mapAndExpandPublicOrganizationEventCards(organization, rows, options, dateWindow);
+  const expandedRows = sortPublicOrganizationEventCards(
+    await mapAndExpandPublicOrganizationEventCards(organization, rows, options, dateWindow),
+    options.eventIds,
+  );
   const pageRows = expandedRows.slice(offset, offset + limit + 1);
   const hasNext = pageRows.length > limit;
   const events = pageRows.slice(0, limit);
@@ -1192,6 +1263,267 @@ export const getPublicOrganizationProductForCheckout = async (
   };
 };
 
+type PublicWidgetEventSelectionOptions = {
+  page?: number;
+  dateRule?: PublicEventDateRule;
+  eventIds?: string[];
+  divisionId?: string | null;
+};
+
+const loadPublicSchedulableEvent = async (
+  organization: PublicOrganizationSummary,
+  eventId: string,
+) => {
+  const eventAccess = await (prisma as any).events.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      organizationId: true,
+      state: true,
+      eventType: true,
+    },
+  });
+  if (!eventAccess || eventAccess.organizationId !== organization.id) {
+    return null;
+  }
+
+  const eventState = String(eventAccess.state ?? '').trim().toUpperCase();
+  if (eventState && eventState !== 'PUBLISHED') {
+    return null;
+  }
+
+  const eventType = String(eventAccess.eventType ?? '').trim().toUpperCase();
+  if (!['LEAGUE', 'TOURNAMENT'].includes(eventType)) {
+    return null;
+  }
+
+  try {
+    return await loadEventWithRelations(eventId);
+  } catch (error) {
+    console.error('Failed to load public schedulable event', error);
+    return null;
+  }
+};
+
+export const getPublicStandingsWidgetPage = async (
+  slug: string,
+  options: PublicWidgetEventSelectionOptions = {},
+): Promise<PublicStandingsWidgetPage | null> => {
+  const organization = await getPublicOrganizationBySlug(slug, { surface: 'widget' });
+  if (!organization) {
+    return null;
+  }
+
+  const eventPage = await listPublicOrganizationEventPage(organization, {
+    limit: 1,
+    page: options.page,
+    dateRule: options.dateRule,
+    eventTypes: ['LEAGUE'],
+    eventIds: options.eventIds,
+  });
+  const currentEvent = eventPage.events[0] ?? null;
+  if (!currentEvent) {
+    return {
+      organization,
+      eventPageInfo: eventPage.pageInfo,
+      currentEvent: null,
+      divisionOptions: [],
+      selectedDivisionId: null,
+      selectedDivisionName: null,
+      division: null,
+    };
+  }
+
+  const loadedEvent = await loadPublicSchedulableEvent(organization, currentEvent.id);
+  const league = loadedEvent ? toLeagueEvent(loadedEvent) : null;
+  if (!league) {
+    return {
+      organization,
+      eventPageInfo: eventPage.pageInfo,
+      currentEvent,
+      divisionOptions: [],
+      selectedDivisionId: null,
+      selectedDivisionName: null,
+      division: null,
+    };
+  }
+
+  const divisionOptions = league.divisions
+    .map((division) => ({
+      value: division.id,
+      label: division.name || division.id,
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+
+  if (!divisionOptions.length) {
+    return {
+      organization,
+      eventPageInfo: eventPage.pageInfo,
+      currentEvent,
+      divisionOptions: [],
+      selectedDivisionId: null,
+      selectedDivisionName: null,
+      division: null,
+    };
+  }
+
+  const selectedDivisionId: string = divisionOptions.some((option) => option.value === options.divisionId)
+    ? options.divisionId as string
+    : divisionOptions[0].value;
+
+  return {
+    organization,
+    eventPageInfo: eventPage.pageInfo,
+    currentEvent,
+    divisionOptions,
+    selectedDivisionId,
+    selectedDivisionName: divisionOptions.find((option) => option.value === selectedDivisionId)?.label ?? null,
+    division: buildDivisionStandingsResponse(league, selectedDivisionId),
+  };
+};
+
+const getBracketCapableEventCards = async (
+  organization: PublicOrganizationSummary,
+  options: PublicWidgetEventSelectionOptions = {},
+): Promise<{ events: PublicOrganizationEventCard[]; pageInfo: PublicPaginationInfo }> => {
+  const page = normalizePage(options.page);
+  const rows = await (prisma as any).events.findMany({
+    where: buildPublicOrganizationEventWhere(organization, {
+      eventTypes: ['LEAGUE', 'TOURNAMENT'],
+      dateRule: options.dateRule,
+      eventIds: options.eventIds,
+    }),
+    orderBy: { start: 'asc' },
+    take: PUBLIC_EVENT_QUERY_CAP,
+  });
+
+  const eventIds = rows.map((row: Record<string, any>) => String(row.id)).filter(Boolean);
+  const [playoffDivisionRows, bracketMatchRows] = await Promise.all([
+    eventIds.length
+      ? (prisma as any).divisions.findMany({
+          where: {
+            eventId: { in: eventIds },
+            kind: 'PLAYOFF',
+          },
+          select: { eventId: true },
+        })
+      : Promise.resolve([]),
+    eventIds.length && typeof (prisma as any).matches?.findMany === 'function'
+      ? (prisma as any).matches.findMany({
+          where: {
+            eventId: { in: eventIds },
+            OR: [
+              { previousLeftId: { not: null } },
+              { previousRightId: { not: null } },
+              { winnerNextMatchId: { not: null } },
+              { loserNextMatchId: { not: null } },
+            ],
+          },
+          select: { eventId: true },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const bracketEventIds = new Set<string>();
+  playoffDivisionRows.forEach((row: { eventId?: string | null }) => {
+    if (typeof row.eventId === 'string' && row.eventId.trim().length > 0) {
+      bracketEventIds.add(row.eventId);
+    }
+  });
+  bracketMatchRows.forEach((row: { eventId?: string | null }) => {
+    if (typeof row.eventId === 'string' && row.eventId.trim().length > 0) {
+      bracketEventIds.add(row.eventId);
+    }
+  });
+
+  const eligibleRows = rows.filter((row: Record<string, any>) => {
+    const eventId = String(row.id);
+    const eventType = String(row.eventType ?? '').trim().toUpperCase();
+    return eventType === 'TOURNAMENT' || bracketEventIds.has(eventId);
+  });
+
+  const cards = sortPublicOrganizationEventCards(
+    await mapAndExpandPublicOrganizationEventCards(
+      organization,
+      eligibleRows,
+      {
+        eventTypes: ['LEAGUE', 'TOURNAMENT'],
+        dateRule: options.dateRule,
+        eventIds: options.eventIds,
+      },
+      getPublicEventDateWindow(options.dateRule, null, null),
+    ),
+    options.eventIds,
+  );
+
+  const offset = (page - 1) * 1;
+  const pageRows = cards.slice(offset, offset + 2);
+  return {
+    events: pageRows.slice(0, 1),
+    pageInfo: {
+      limit: 1,
+      page,
+      offset,
+      hasPrevious: page > 1,
+      hasNext: pageRows.length > 1,
+    },
+  };
+};
+
+export const getPublicBracketWidgetPage = async (
+  slug: string,
+  options: PublicWidgetEventSelectionOptions = {},
+): Promise<PublicBracketWidgetPage | null> => {
+  const organization = await getPublicOrganizationBySlug(slug, { surface: 'widget' });
+  if (!organization) {
+    return null;
+  }
+
+  const eventPage = await getBracketCapableEventCards(organization, options);
+  const currentEvent = eventPage.events[0] ?? null;
+  if (!currentEvent) {
+    return {
+      organization,
+      eventPageInfo: eventPage.pageInfo,
+      currentEvent: null,
+      divisionOptions: [],
+      selectedDivisionId: null,
+      selectedDivisionName: null,
+      winnersColumns: [],
+      losersColumns: [],
+      hasLosersBracket: false,
+    };
+  }
+
+  const loadedEvent = await loadPublicSchedulableEvent(organization, currentEvent.id);
+  if (!loadedEvent) {
+    return {
+      organization,
+      eventPageInfo: eventPage.pageInfo,
+      currentEvent,
+      divisionOptions: [],
+      selectedDivisionId: null,
+      selectedDivisionName: null,
+      winnersColumns: [],
+      losersColumns: [],
+      hasLosersBracket: false,
+    };
+  }
+
+  const bracketView = buildPublicBracketWidgetView(loadedEvent, options.divisionId);
+  return {
+    organization,
+    eventPageInfo: eventPage.pageInfo,
+    currentEvent,
+    divisionOptions: bracketView?.divisionOptions ?? [],
+    selectedDivisionId: bracketView?.selectedDivisionId ?? null,
+    selectedDivisionName: bracketView?.selectedDivisionName ?? null,
+    winnersColumns: bracketView?.winnersColumns ?? [],
+    losersColumns: bracketView?.losersColumns ?? [],
+    hasLosersBracket: bracketView?.hasLosersBracket ?? false,
+  };
+};
+
 export const getPublicOrganizationCatalog = async (
   slug: string,
   options: {
@@ -1205,6 +1537,7 @@ export const getPublicOrganizationCatalog = async (
     includeChildWeeklyEvents?: boolean;
     teamOpenRegistrationOnly?: boolean;
     productPurchaseMode?: PublicProductPurchaseMode;
+    eventIds?: string[];
   } = {},
 ): Promise<PublicOrganizationCatalog | null> => {
   const organization = await getPublicOrganizationBySlug(slug, { surface: options.surface ?? 'page' });
@@ -1220,6 +1553,7 @@ export const getPublicOrganizationCatalog = async (
       dateFrom: options.dateFrom,
       dateTo: options.dateTo,
       includeChildWeeklyEvents: options.includeChildWeeklyEvents,
+      eventIds: options.eventIds,
     }),
     listPublicOrganizationTeams(organization, {
       limit: options.limit,
