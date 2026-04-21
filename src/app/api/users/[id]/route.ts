@@ -12,6 +12,7 @@ import {
 import { resolveRequiredProfileFieldsCompletedAt } from '@/server/profileCompletion';
 import { applyUserPrivacy, createVisibilityContext, currentUserSelect, publicUserSelect } from '@/server/userPrivacy';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const USER_MUTABLE_FIELDS = new Set<string>([
   'firstName',
@@ -20,7 +21,6 @@ const USER_MUTABLE_FIELDS = new Set<string>([
   'dobVerified',
   'dobVerifiedAt',
   'ageVerificationProvider',
-  'teamIds',
   'friendIds',
   'userName',
   'hasStripeAccount',
@@ -85,7 +85,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     teamId: parseContextId(query.get('teamId')),
     eventId: parseContextId(query.get('eventId')),
   });
-  return NextResponse.json({ user: withLegacyFields(applyUserPrivacy(user, visibilityContext)) }, { status: 200 });
+  const [userWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([user], prisma);
+  return NextResponse.json({ user: withLegacyFields(applyUserPrivacy(userWithDerivedTeamIds, visibilityContext)) }, { status: 200 });
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -100,6 +101,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   });
   if ('error' in parsed) {
     return NextResponse.json({ error: parsed.error, details: parsed.details }, { status: 400 });
+  }
+  if (Object.prototype.hasOwnProperty.call(parsed.payload, 'teamIds')) {
+    return NextResponse.json(
+      { error: 'teamIds is derived from team memberships and cannot be updated directly.' },
+      { status: 403 },
+    );
   }
 
   const unknownKeys = findUnknownKeys(parsed.payload, [
@@ -236,7 +243,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         updatedAt,
       },
     });
-    return NextResponse.json({ user: withLegacyFields(applyNameCaseToUserFields(updated)) }, { status: 200 });
+    const [updatedWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([updated], prisma);
+    return NextResponse.json({ user: withLegacyFields(applyNameCaseToUserFields(updatedWithDerivedTeamIds)) }, { status: 200 });
   } catch (error) {
     if (isPrismaUserNameUniqueError(error)) {
       return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });

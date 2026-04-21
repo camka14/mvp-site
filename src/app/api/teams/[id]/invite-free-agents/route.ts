@@ -25,8 +25,16 @@ const hasOrganizationTeamManagementAccess = async (
   session: { userId: string; isAdmin: boolean },
 ): Promise<boolean> => {
   if (!teamId || !session.userId) return false;
-  const organization = await prisma.organizations.findFirst({
-    where: { teamIds: { has: teamId } },
+  const team = await prisma.canonicalTeams.findUnique({
+    where: { id: teamId },
+    select: { organizationId: true },
+  });
+  const organizationId = typeof team?.organizationId === 'string' ? team.organizationId.trim() : '';
+  if (!organizationId) {
+    return false;
+  }
+  const organization = await prisma.organizations.findUnique({
+    where: { id: organizationId },
     select: { id: true, ownerId: true, hostIds: true, officialIds: true },
   });
   if (!organization) {

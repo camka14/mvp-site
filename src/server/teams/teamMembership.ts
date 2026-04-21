@@ -452,6 +452,7 @@ export const listTeamsByIds = async (ids: string[], client: PrismaLike = prisma)
 
 export const listCanonicalTeamsForUser = async (params: {
   ids?: string[];
+  organizationId?: string | null;
   playerId?: string | null;
   managerId?: string | null;
   limit?: number;
@@ -464,6 +465,9 @@ export const listCanonicalTeamsForUser = async (params: {
   const teamRegistrationsDelegate = getTeamRegistrationsDelegate(client);
   const teamStaffAssignmentsDelegate = getTeamStaffAssignmentsDelegate(client);
   if (!canonicalTeamsDelegate?.findMany || !teamRegistrationsDelegate?.findMany || !teamStaffAssignmentsDelegate?.findMany) {
+    if (params.organizationId) {
+      return [];
+    }
     const where: Record<string, unknown> = {};
     if (params.playerId && params.managerId) {
       where.OR = [
@@ -510,15 +514,125 @@ export const listCanonicalTeamsForUser = async (params: {
   }
   if (!params.playerId && !params.managerId) {
     const rows = await canonicalTeamsDelegate.findMany({
+      where: params.organizationId
+        ? { organizationId: params.organizationId }
+        : undefined,
       take: params.limit ?? 100,
-      orderBy: { name: 'asc' },
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
     });
     return Promise.all((rows as CanonicalTeamRow[]).map((row) => loadCanonicalTeamById(row.id, client))).then((items) => items.filter(Boolean));
   }
 
   const uniqueTeamIds = Array.from(new Set(teamIds)).slice(0, params.limit ?? 100);
   const teams = await Promise.all(uniqueTeamIds.map((teamId) => loadCanonicalTeamById(teamId, client)));
-  return teams.filter(Boolean);
+  return teams.filter((team): team is NonNullable<typeof team> => (
+    Boolean(team)
+    && (!params.organizationId || normalizeId((team as Record<string, unknown>).organizationId as string | null | undefined) === params.organizationId)
+  ));
+};
+
+export const getCanonicalTeamIdsByUserIds = async (
+  userIds: string[],
+  client: PrismaLike = prisma,
+): Promise<Map<string, string[]>> => {
+  const normalizedUserIds = normalizeIdList(userIds);
+  const teamIdsByUserId = new Map<string, string[]>(
+    normalizedUserIds.map((userId) => [userId, []]),
+  );
+
+  if (!normalizedUserIds.length) {
+    return teamIdsByUserId;
+  }
+
+  const teamRegistrationsDelegate = getTeamRegistrationsDelegate(client);
+  const teamStaffAssignmentsDelegate = getTeamStaffAssignmentsDelegate(client);
+  if (!teamRegistrationsDelegate?.findMany || !teamStaffAssignmentsDelegate?.findMany) {
+    if (client?.userData?.findMany) {
+      const userRows = await client.userData.findMany({
+        where: { id: { in: normalizedUserIds } },
+        select: {
+          id: true,
+          teamIds: true,
+        },
+      }) as Array<{ id: string; teamIds?: string[] | null }>;
+
+      userRows.forEach((row) => {
+        teamIdsByUserId.set(row.id, normalizeIdList(row.teamIds));
+      });
+    } else if (client?.userData?.findUnique) {
+      const userRows = await Promise.all(normalizedUserIds.map(async (userId) => {
+        const row = await client.userData.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            teamIds: true,
+          },
+        }) as { id: string; teamIds?: string[] | null } | null;
+        return row;
+      }));
+
+      userRows.forEach((row) => {
+        if (!row) {
+          return;
+        }
+        teamIdsByUserId.set(row.id, normalizeIdList(row.teamIds));
+      });
+    }
+    return teamIdsByUserId;
+  }
+
+  const [playerRegistrations, staffAssignments] = await Promise.all([
+    teamRegistrationsDelegate.findMany({
+      where: {
+        userId: { in: normalizedUserIds },
+        status: 'ACTIVE',
+      },
+      select: {
+        userId: true,
+        teamId: true,
+      },
+    }) as Promise<Array<{ userId: string; teamId: string }>>,
+    teamStaffAssignmentsDelegate.findMany({
+      where: {
+        userId: { in: normalizedUserIds },
+        status: 'ACTIVE',
+      },
+      select: {
+        userId: true,
+        teamId: true,
+      },
+    }) as Promise<Array<{ userId: string; teamId: string }>>,
+  ]);
+
+  [...playerRegistrations, ...staffAssignments].forEach((row) => {
+    const userId = normalizeId(row.userId);
+    const teamId = normalizeId(row.teamId);
+    if (!userId || !teamId || !teamIdsByUserId.has(userId)) {
+      return;
+    }
+    const currentTeamIds = teamIdsByUserId.get(userId) ?? [];
+    if (!currentTeamIds.includes(teamId)) {
+      currentTeamIds.push(teamId);
+      teamIdsByUserId.set(userId, currentTeamIds);
+    }
+  });
+
+  return teamIdsByUserId;
+};
+
+export const withDerivedCanonicalTeamIds = async <T extends { id: string; teamIds?: unknown }>(
+  users: T[],
+  client: PrismaLike = prisma,
+): Promise<Array<Omit<T, 'teamIds'> & { teamIds: string[] }>> => {
+  const teamIdsByUserId = await getCanonicalTeamIdsByUserIds(
+    users.map((user) => user.id),
+    client,
+  );
+
+  return users.map((user) => ({
+    ...user,
+    teamIds: teamIdsByUserId.get(user.id) ?? [],
+  }));
 };
 
 type SyncCanonicalTeamRosterInput = {
@@ -531,44 +645,6 @@ type SyncCanonicalTeamRosterInput = {
   assistantCoachIds: string[];
   actingUserId?: string | null;
   now?: Date;
-};
-
-const syncUserTeamIds = async (params: {
-  tx: PrismaLike;
-  teamId: string;
-  previousActiveUserIds: string[];
-  nextActiveUserIds: string[];
-  now: Date;
-}) => {
-  const nextUsers = new Set(params.nextActiveUserIds);
-  const previousUsers = new Set(params.previousActiveUserIds);
-  const addUserIds = params.nextActiveUserIds.filter((userId) => !previousUsers.has(userId));
-  const removeUserIds = params.previousActiveUserIds.filter((userId) => !nextUsers.has(userId));
-  const userIds = Array.from(new Set([...addUserIds, ...removeUserIds]));
-  if (!userIds.length || !params.tx?.userData?.findMany || !params.tx?.userData?.update) {
-    return;
-  }
-
-  const users = await params.tx.userData.findMany({
-    where: { id: { in: userIds } },
-    select: { id: true, teamIds: true },
-  });
-  const userMap = new Map<string, string[]>(users.map((row: { id: string; teamIds: string[] }) => [row.id, normalizeIdList(row.teamIds)]));
-
-  await Promise.all(userIds.map(async (userId) => {
-    const currentTeamIds = userMap.get(userId) ?? [];
-    const shouldAdd = addUserIds.includes(userId);
-    const nextTeamIds = shouldAdd
-      ? uniqueStrings([...currentTeamIds, params.teamId])
-      : currentTeamIds.filter((teamId) => teamId !== params.teamId);
-    await params.tx.userData.update({
-      where: { id: userId },
-      data: {
-        teamIds: nextTeamIds,
-        updatedAt: params.now,
-      },
-    });
-  }));
 };
 
 export const syncCanonicalTeamRoster = async (input: SyncCanonicalTeamRosterInput, tx: PrismaLike) => {
@@ -720,22 +796,6 @@ export const syncCanonicalTeamRoster = async (input: SyncCanonicalTeamRosterInpu
     })));
   }
 
-  const previousActiveUserIds = uniqueStrings([
-    ...existingPlayerRegistrations.filter(isActiveRegistration).map((row) => row.userId),
-    ...existingStaffAssignments.filter(isActiveRegistration).map((row) => row.userId),
-  ]);
-  const nextActiveUserIds = uniqueStrings([
-    ...activePlayerIds,
-    ...Array.from(desiredStaffKeys.values()).map((row) => row.userId),
-  ]);
-
-  await syncUserTeamIds({
-    tx,
-    teamId: input.teamId,
-    previousActiveUserIds,
-    nextActiveUserIds,
-    now,
-  });
 };
 
 export const canManageCanonicalTeam = async (params: {

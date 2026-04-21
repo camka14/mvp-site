@@ -482,7 +482,6 @@ const seed = async (): Promise<void> => {
         coordinates: SEED_ORG.coordinates,
         productIds: [],
         officialIds: [],
-        teamIds: [],
         createdAt: now,
         updatedAt: now,
       },

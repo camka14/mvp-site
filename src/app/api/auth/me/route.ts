@@ -6,6 +6,7 @@ import { withLegacyFields } from '@/server/legacyFormat';
 import { buildProfileCompletionState } from '@/server/profileCompletion';
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const toPublicUser = (user: { id: string; email: string; name: string | null; createdAt: Date | null; updatedAt: Date | null }) => ({
   id: user.id,
@@ -54,6 +55,9 @@ export async function GET(req: NextRequest) {
   }
 
   const profile = await prisma.userData.findUnique({ where: { id: user.id } });
+  const [profileWithDerivedTeamIds] = profile
+    ? await withDerivedCanonicalTeamIds([profile], prisma)
+    : [null];
   const refreshed = signSessionToken({
     userId: user.id,
     isAdmin: decoded.isAdmin,
@@ -68,7 +72,7 @@ export async function GET(req: NextRequest) {
         sessionVersion: user.sessionVersion ?? 0,
       },
       token: refreshed,
-      profile: profile ? withLegacyFields(applyNameCaseToUserFields(profile)) : null,
+      profile: profileWithDerivedTeamIds ? withLegacyFields(applyNameCaseToUserFields(profileWithDerivedTeamIds)) : null,
       ...buildProfileCompletionState({ authUser: user, profile }),
     },
     { status: 200 },

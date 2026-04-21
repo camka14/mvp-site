@@ -23,13 +23,15 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
-const assertUserAccessMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({
-  requireSession: requireSessionMock,
-  assertUserAccess: assertUserAccessMock,
-}));
+jest.mock('@/lib/permissions', () => {
+  const actual = jest.requireActual('@/lib/permissions');
+  return {
+    ...actual,
+    requireSession: requireSessionMock,
+  };
+});
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
 }));
@@ -160,5 +162,16 @@ describe('PATCH /api/users/[id]', () => {
       where: { id: 'user_1' },
       data: expect.objectContaining({ homePageOrganizationId: null }),
     }));
+  });
+
+  it('returns 403 when a non-admin attempts to update another user', async () => {
+    await expect(
+      patchUserById(
+        buildJsonRequest('http://localhost/api/users/user_2', { data: { teamIds: [] } }),
+        { params: Promise.resolve({ id: 'user_2' }) },
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(prismaMock.userData.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,6 @@ import { getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSyn
 import {
   loadCanonicalTeamById,
   normalizeId,
-  normalizeIdList,
 } from '@/server/teams/teamMembership';
 
 type PrismaLike = any;
@@ -58,58 +57,8 @@ const sortRegistrationRows = <T extends { id: string; createdAt: Date | null }>(
   })
 );
 
-const addTeamIdToUser = async (tx: PrismaLike, userId: string, teamId: string, now: Date) => {
-  const user = await tx.userData?.findUnique?.({
-    where: { id: userId },
-    select: { teamIds: true },
-  });
-  if (!user) return;
-  const nextTeamIds = Array.from(new Set([...normalizeIdList(user.teamIds), teamId]));
-  await tx.userData.update({
-    where: { id: userId },
-    data: {
-      teamIds: nextTeamIds,
-      updatedAt: now,
-    },
-  });
-};
-
-const removeTeamIdFromUserIfNoActiveRole = async (tx: PrismaLike, userId: string, teamId: string, now: Date) => {
-  const activeStaff = await tx.teamStaffAssignments?.findFirst?.({
-    where: {
-      teamId,
-      userId,
-      status: ACTIVE_MEMBER_STATUS as any,
-    },
-    select: { id: true },
-  });
-  if (activeStaff) return;
-
-  const user = await tx.userData?.findUnique?.({
-    where: { id: userId },
-    select: { teamIds: true },
-  });
-  if (!user) return;
-  const nextTeamIds = normalizeIdList(user.teamIds).filter((id) => id !== teamId);
-  await tx.userData.update({
-    where: { id: userId },
-    data: {
-      teamIds: nextTeamIds,
-      updatedAt: now,
-    },
-  });
-};
-
 const findOrganizationIdForTeam = async (client: PrismaLike, team: { id: string; organizationId?: string | null }) => {
-  const directOrganizationId = normalizeId(team.organizationId);
-  if (directOrganizationId) {
-    return directOrganizationId;
-  }
-  const organization = await client.organizations?.findFirst?.({
-    where: { teamIds: { has: team.id } },
-    select: { id: true },
-  });
-  return normalizeId(organization?.id);
+  return normalizeId(team.organizationId);
 };
 
 const findHostUserIdForTeam = async (client: PrismaLike, team: { id: string; createdBy?: string | null }) => {
@@ -415,7 +364,6 @@ export const reserveTeamRegistrationSlot = async ({
     }
 
     if (status === ACTIVE_MEMBER_STATUS) {
-      await addTeamIdToUser(tx, normalizedUserId, normalizedTeamId, now);
       await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     }
 
@@ -548,7 +496,6 @@ export const activateStartedTeamRegistration = async ({
         updatedAt: now,
       },
     });
-    await addTeamIdToUser(tx, normalizedUserId, normalizedTeamId, now);
     await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     return { applied: true };
   });
@@ -627,9 +574,7 @@ export const leaveTeam = async ({
         updatedAt: now,
       },
     });
-    await removeTeamIdFromUserIfNoActiveRole(tx, normalizedUserId, normalizedTeamId, now);
     await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     return { ok: true };
   });
 };
-

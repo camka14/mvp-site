@@ -21,11 +21,15 @@ const completionCopy: Record<PublicCompletionKind, { title: string; message: str
     title: 'Product purchased',
     message: 'Your product purchase was successful.',
   },
+  team: {
+    title: 'Team registration complete',
+    message: 'Your team registration was successful.',
+  },
 };
 
 const getCompletionKind = (value: string | string[] | undefined): PublicCompletionKind => {
   const raw = Array.isArray(value) ? value[0] : value;
-  return raw === 'rental' || raw === 'product' || raw === 'event' ? raw : 'event';
+  return raw === 'rental' || raw === 'product' || raw === 'team' || raw === 'event' ? raw : 'event';
 };
 
 export default async function PublicCompletionPage({

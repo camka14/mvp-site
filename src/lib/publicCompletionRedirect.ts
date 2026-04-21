@@ -1,4 +1,4 @@
-export type PublicCompletionKind = 'event' | 'rental' | 'product';
+export type PublicCompletionKind = 'event' | 'rental' | 'product' | 'team';
 
 type ClientRouter = {
   push: (href: string) => void;

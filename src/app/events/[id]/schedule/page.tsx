@@ -3293,38 +3293,18 @@ function EventScheduleContent() {
             }
             return;
           }
-
-          if (org.$id === organizationIdForParticipants && Array.isArray(org.teamIds) && org.teamIds.length > 0) {
-            const hydratedTeams = await teamService.getTeamsByIds(
-              org.teamIds,
-              true,
-              { eventId: eventVisibilityContext },
-            );
-            if (!cancelled) {
-              setOrganizationTeamsForPicker(hydratedTeams);
-            }
-            return;
-          }
         }
 
-        const organization = await organizationService.getOrganizationById(organizationIdForParticipants, false);
+        const organizationTeams = await teamService.getTeamsByOrganizationId(
+          organizationIdForParticipants,
+          true,
+          { eventId: eventVisibilityContext },
+          200,
+        );
         if (cancelled) {
           return;
         }
-        const teamIds = Array.isArray(organization?.teamIds)
-          ? organization.teamIds.filter((teamId): teamId is string => typeof teamId === 'string' && teamId.trim().length > 0)
-          : [];
-        const hydratedTeams = teamIds.length > 0
-          ? await teamService.getTeamsByIds(
-            teamIds,
-            true,
-            { eventId: eventVisibilityContext },
-          )
-          : [];
-        if (cancelled) {
-          return;
-        }
-        setOrganizationTeamsForPicker(hydratedTeams);
+        setOrganizationTeamsForPicker(organizationTeams);
       } catch (organizationError) {
         if (cancelled) {
           return;

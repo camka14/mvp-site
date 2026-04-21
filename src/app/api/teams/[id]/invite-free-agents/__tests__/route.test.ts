@@ -4,7 +4,8 @@ import { NextRequest } from 'next/server';
 
 const teamFindUniqueMock = jest.fn();
 const teamFindManyMock = jest.fn();
-const organizationFindFirstMock = jest.fn();
+const canonicalTeamFindUniqueMock = jest.fn();
+const organizationFindUniqueMock = jest.fn();
 const parentChildLinkFindFirstMock = jest.fn();
 const eventsFindManyMock = jest.fn();
 const requireSessionMock = jest.fn();
@@ -15,8 +16,11 @@ const prismaMock = {
     findUnique: (...args: any[]) => teamFindUniqueMock(...args),
     findMany: (...args: any[]) => teamFindManyMock(...args),
   },
+  canonicalTeams: {
+    findUnique: (...args: any[]) => canonicalTeamFindUniqueMock(...args),
+  },
   organizations: {
-    findFirst: (...args: any[]) => organizationFindFirstMock(...args),
+    findUnique: (...args: any[]) => organizationFindUniqueMock(...args),
   },
   parentChildLinks: {
     findFirst: (...args: any[]) => parentChildLinkFindFirstMock(...args),
@@ -59,7 +63,10 @@ describe('/api/teams/[id]/invite-free-agents GET', () => {
     teamFindManyMock.mockResolvedValue([]);
     eventsFindManyMock.mockResolvedValue([]);
     parentChildLinkFindFirstMock.mockResolvedValue(null);
-    organizationFindFirstMock.mockResolvedValue({
+    canonicalTeamFindUniqueMock.mockResolvedValue({
+      organizationId: 'org_1',
+    });
+    organizationFindUniqueMock.mockResolvedValue({
       id: 'org_1',
       ownerId: 'org_owner_1',
       hostIds: [],
@@ -79,8 +86,12 @@ describe('/api/teams/[id]/invite-free-agents GET', () => {
 
     expect(response.status).toBe(200);
     expect(payload).toEqual({ users: [], eventIds: [], freeAgentIds: [] });
-    expect(organizationFindFirstMock).toHaveBeenCalledWith({
-      where: { teamIds: { has: 'team_1' } },
+    expect(canonicalTeamFindUniqueMock).toHaveBeenCalledWith({
+      where: { id: 'team_1' },
+      select: { organizationId: true },
+    });
+    expect(organizationFindUniqueMock).toHaveBeenCalledWith({
+      where: { id: 'org_1' },
       select: { id: true, ownerId: true, hostIds: true, officialIds: true },
     });
     expect(canManageOrganizationMock).toHaveBeenCalledWith(

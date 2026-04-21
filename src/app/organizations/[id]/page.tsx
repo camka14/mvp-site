@@ -2897,19 +2897,12 @@ function OrganizationDetailContent() {
             return;
           }
 
-          const nextTeamIds = Array.from(new Set([...(org?.teamIds ?? []), team.$id]));
-
           setOrg((prev) => {
             if (!prev) return prev;
-            return { ...prev, teamIds: nextTeamIds, teams: [...(prev.teams ?? []), team] };
+            return { ...prev, teams: [...(prev.teams ?? []), team] };
           });
 
           if (id) {
-            try {
-              await organizationService.updateOrganization(id, { teamIds: nextTeamIds });
-            } catch (e) {
-              console.error('Failed to attach team to organization', e);
-            }
             await loadOrg(id);
           }
         }}
@@ -2937,9 +2930,8 @@ function OrganizationDetailContent() {
           onTeamDeleted={(teamId) => {
             setOrg((prev) => {
               if (!prev) return prev;
-              const nextTeamIds = (prev.teamIds ?? []).filter((candidateId) => candidateId !== teamId);
               const nextTeams = (prev.teams ?? []).filter((team) => team.$id !== teamId);
-              return { ...prev, teamIds: nextTeamIds, teams: nextTeams };
+              return { ...prev, teams: nextTeams };
             });
             setShowTeamDetailModal(false);
             setSelectedTeam(null);

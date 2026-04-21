@@ -13,6 +13,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
   const limit = Number(req.nextUrl.searchParams.get('limit') ?? '12');
-  const teams = await listPublicOrganizationTeams(organization, { limit });
+  const openRegistrationOnly = ['1', 'true', 'yes', 'on'].includes(
+    String(req.nextUrl.searchParams.get('openRegistrationOnly') ?? '').trim().toLowerCase(),
+  );
+  const teams = await listPublicOrganizationTeams(organization, {
+    limit,
+    openRegistrationOnly,
+  });
   return NextResponse.json({ organization, teams }, { status: 200 });
 }

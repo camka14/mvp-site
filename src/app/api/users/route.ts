@@ -16,6 +16,7 @@ import {
   isVisibleInGenericSearch,
   publicUserSelect,
 } from '@/server/userPrivacy';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const createSchema = z.object({
   id: z.string(),
@@ -70,7 +71,8 @@ export async function GET(req: NextRequest) {
       select: publicUserSelect,
       take: Math.min(ids.length, 200),
     });
-    const byId = new Map(users.map((user) => [user.id, user] as const));
+    const usersWithDerivedTeamIds = await withDerivedCanonicalTeamIds(users, prisma);
+    const byId = new Map(usersWithDerivedTeamIds.map((user) => [user.id, user] as const));
     const orderedUsers = ids
       .map((id) => byId.get(id))
       .filter((user): user is NonNullable<typeof user> => Boolean(user));
@@ -100,7 +102,8 @@ export async function GET(req: NextRequest) {
     orderBy: { userName: 'asc' },
   });
 
-  const filteredUsers = users.filter((user) => isVisibleInGenericSearch(user)).slice(0, 20);
+  const usersWithDerivedTeamIds = await withDerivedCanonicalTeamIds(users, prisma);
+  const filteredUsers = usersWithDerivedTeamIds.filter((user) => isVisibleInGenericSearch(user)).slice(0, 20);
   return NextResponse.json(
     { users: withLegacyList(applyUserPrivacyList(filteredUsers, visibilityContext)) },
     { status: 200 },

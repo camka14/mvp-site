@@ -9,6 +9,9 @@ describe('publicCompletionRedirect', () => {
     expect(getPublicCompletionPath('summit-indoor-volleyball-facility', 'rental')).toBe(
       '/o/summit-indoor-volleyball-facility/complete?type=rental',
     );
+    expect(getPublicCompletionPath('summit-indoor-volleyball-facility', 'team')).toBe(
+      '/o/summit-indoor-volleyball-facility/complete?type=team',
+    );
   });
 
   it('uses valid absolute redirect URLs ahead of fallback paths', () => {

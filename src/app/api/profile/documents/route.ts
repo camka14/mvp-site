@@ -11,6 +11,7 @@ import {
   normalizeRequiredSignerType,
   type SignerContext,
 } from '@/lib/templateSignerTypes';
+import { getCanonicalTeamIdsByUserIds } from '@/server/teams/teamMembership';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,11 +164,7 @@ export async function GET(_req: NextRequest) {
   const session = await requireSession(_req);
   const userId = session.userId;
 
-  const [profile, registrations, linkedChildren, parentLinksForSelf, selfSensitive] = await Promise.all([
-    prisma.userData.findUnique({
-      where: { id: userId },
-      select: { teamIds: true },
-    }),
+  const [registrations, linkedChildren, parentLinksForSelf, selfSensitive] = await Promise.all([
     prisma.eventRegistrations.findMany({
       where: {
         OR: [
@@ -212,14 +209,16 @@ export async function GET(_req: NextRequest) {
     }),
   ]);
 
-  const teamIds = Array.isArray(profile?.teamIds)
-    ? profile.teamIds.filter((entry): entry is string => typeof entry === 'string' && Boolean(entry.trim()))
-    : [];
   const linkedChildIds = Array.from(new Set(
     linkedChildren
       .map((link) => normalizeText(link.childId))
       .filter((value): value is string => Boolean(value)),
   ));
+  const teamIdsByUserId = await getCanonicalTeamIdsByUserIds(
+    [userId, ...linkedChildIds],
+    prisma,
+  );
+  const teamIds = teamIdsByUserId.get(userId) ?? [];
   const linkedChildProfiles = linkedChildIds.length
     ? await prisma.userData.findMany({
       where: { id: { in: linkedChildIds } },
@@ -227,15 +226,12 @@ export async function GET(_req: NextRequest) {
         id: true,
         firstName: true,
         lastName: true,
-        teamIds: true,
       },
     })
     : [];
   const linkedChildTeamIds = Array.from(new Set(
     linkedChildProfiles.flatMap((child) =>
-      Array.isArray(child.teamIds)
-        ? child.teamIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-        : [],
+      teamIdsByUserId.get(child.id) ?? [],
     ),
   ));
   const canonicalTeamIdsForSlotLookup = Array.from(new Set([...teamIds, ...linkedChildTeamIds]));
@@ -270,11 +266,7 @@ export async function GET(_req: NextRequest) {
     if (!childId) {
       return;
     }
-    const childCanonicalTeamIds = Array.from(new Set(
-      Array.isArray(child.teamIds)
-        ? child.teamIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-        : [],
-    ));
+    const childCanonicalTeamIds = teamIdsByUserId.get(childId) ?? [];
     const childSlots = Array.from(new Set(
       childCanonicalTeamIds.flatMap((teamId) => slotTeamIdsByParent.get(teamId) ?? []),
     ));
@@ -430,9 +422,7 @@ export async function GET(_req: NextRequest) {
   const childTeamIdsById = new Map(
     linkedChildProfiles.map((child) => [
       child.id,
-      Array.isArray(child.teamIds)
-        ? child.teamIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-        : [],
+      teamIdsByUserId.get(child.id) ?? [],
     ]),
   );
   const childRegistrationByEventAndChild = new Map<string, { consentStatus?: string; registrationStatus?: string }>();

@@ -800,7 +800,6 @@ model Organizations {
   verificationReviewUpdatedAt DateTime?
   coordinates                 Json?
   productIds                  String[]
-  teamIds                     String[]
   publicSlug                  String?                                  @unique
   publicPageEnabled           Boolean                                  @default(false)
   publicWidgetsEnabled        Boolean                                  @default(false)

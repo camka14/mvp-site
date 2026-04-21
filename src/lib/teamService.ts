@@ -162,12 +162,6 @@ class TeamService {
                 body: { ...teamData, id: createId() },
             });
 
-            const captain = await userService.getUserById(captainId);
-            if (captain) {
-                const updatedTeamIds = [...captain.teamIds, response.$id];
-                await userService.updateUser(captainId, { teamIds: updatedTeamIds });
-            }
-
             return this.mapRowToTeam(response);
         } catch (error) {
             console.error('Failed to create team:', error);
@@ -360,6 +354,34 @@ class TeamService {
         }
     }
 
+    async getTeamsByOrganizationId(
+        organizationId: string,
+        includeRelations: boolean = false,
+        visibilityContext: UserVisibilityContext = {},
+        limit: number = 100,
+    ): Promise<Team[]> {
+        try {
+            const normalizedOrganizationId = organizationId.trim();
+            if (!normalizedOrganizationId) return [];
+
+            const params = new URLSearchParams();
+            params.set('organizationId', normalizedOrganizationId);
+            params.set('limit', String(limit));
+            const response = await apiRequest<{ teams?: any[] }>(`/api/teams?${params.toString()}`);
+
+            const teams = (response.teams ?? []).map((row) => this.mapRowToTeam(row));
+
+            if (includeRelations) {
+                await Promise.all(teams.map((team) => this.hydrateTeamRelations(team, visibilityContext)));
+            }
+
+            return teams;
+        } catch (error) {
+            console.error('Failed to fetch organization teams:', error);
+            return [];
+        }
+    }
+
     async getTeamsByUserId(userId: string): Promise<Team[]> {
         try {
             const params = new URLSearchParams();
@@ -462,12 +484,6 @@ class TeamService {
                 body: { team: { playerIds: nextPlayerIds, pending: nextPending } },
             });
 
-            const user = await userService.getUserById(userId);
-            if (user) {
-                const updatedTeamIds = Array.from(new Set([...(user.teamIds || []), teamId]));
-                await userService.updateUser(userId, { teamIds: updatedTeamIds });
-            }
-
             await userService.removeTeamInvitation(userId, teamId);
             return true;
         } catch (error) {
@@ -514,12 +530,6 @@ class TeamService {
                 body: { team: { playerIds: nextPlayerIds } },
             });
 
-            const user = await userService.getUserById(userId);
-            if (user) {
-                const updatedTeamIds = (user.teamIds || []).filter(id => id !== teamId);
-                await userService.updateUser(userId, { teamIds: updatedTeamIds });
-            }
-
             return true;
         } catch (error) {
             console.error('Failed to remove player from team:', error);
@@ -564,13 +574,6 @@ class TeamService {
             await apiRequest(`/api/teams/${teamId}`, { method: 'DELETE' });
 
             if (team) {
-                await Promise.all(team.playerIds.map(async (playerId) => {
-                    const user = await userService.getUserById(playerId);
-                    if (!user) return;
-                    const updatedTeamIds = (user.teamIds || []).filter(id => id !== teamId);
-                    await userService.updateUser(playerId, { teamIds: updatedTeamIds });
-                }));
-
                 await Promise.all(team.pending.map(async (userId) => {
                     await userService.removeTeamInvitation(userId, teamId);
                 }));

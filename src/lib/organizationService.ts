@@ -182,9 +182,6 @@ class OrganizationService {
     const productIds = Array.isArray(row.productIds)
       ? row.productIds.map((value: unknown) => String(value))
       : undefined;
-    const teamIds = Array.isArray(row.teamIds)
-      ? row.teamIds.map((value: unknown) => String(value))
-      : undefined;
     const sports = Array.isArray(row.sports)
       ? row.sports
         .filter((value: unknown): value is string => typeof value === 'string')
@@ -244,7 +241,6 @@ class OrganizationService {
         )
         : undefined,
       productIds,
-      teamIds,
       publicSlug: typeof row.publicSlug === 'string' ? row.publicSlug : null,
       publicPageEnabled: Boolean(row.publicPageEnabled),
       publicWidgetsEnabled: Boolean(row.publicWidgetsEnabled),
@@ -285,9 +281,6 @@ class OrganizationService {
     if (data.hostIds !== undefined) {
       payload.hostIds = Array.isArray(data.hostIds) ? data.hostIds : [];
     }
-    if (data.teamIds !== undefined) {
-      payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
-    }
     if (data.sports !== undefined) {
       payload.sports = Array.isArray(data.sports) ? data.sports : [];
     }
@@ -322,9 +315,6 @@ class OrganizationService {
     }
     if (data.hostIds !== undefined) {
       payload.hostIds = Array.isArray(data.hostIds) ? data.hostIds : [];
-    }
-    if (data.teamIds !== undefined) {
-      payload.teamIds = Array.isArray(data.teamIds) ? data.teamIds : [];
     }
     if (data.sports !== undefined) {
       payload.sports = Array.isArray(data.sports) ? data.sports : [];
@@ -509,13 +499,8 @@ class OrganizationService {
         ? userService.getUserById(organization.ownerId)
         : Promise.resolve(undefined);
 
-      const teamIds = Array.isArray(organization.teamIds)
-        ? organization.teamIds.filter((value): value is string => typeof value === 'string' && value.length > 0)
-        : [];
       const productsPromise: Promise<Product[]> = productService.listProducts(organization.$id);
-      const teamsPromise: Promise<Team[]> = teamIds.length
-        ? teamService.getTeamsByIds(teamIds, true)
-        : Promise.resolve<Team[]>([]);
+      const teamsPromise: Promise<Team[]> = teamService.getTeamsByOrganizationId(organization.$id, true);
 
       const [fields, events, staffUsers, owner, products, teams] = await Promise.all([
         fieldsPromise,

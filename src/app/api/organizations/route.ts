@@ -22,7 +22,6 @@ const createSchema = z.object({
   officialIds: z.array(z.string()).optional(),
   coordinates: z.any().optional(),
   productIds: z.array(z.string()).optional(),
-  teamIds: z.array(z.string()).optional(),
 }).passthrough();
 
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
@@ -204,7 +203,6 @@ export async function POST(req: NextRequest) {
     hasStripeAccount: false,
     coordinates: data.coordinates ?? null,
     productIds: Array.isArray(data.productIds) ? data.productIds : [],
-    teamIds: Array.isArray(data.teamIds) ? data.teamIds : [],
     createdAt: new Date(),
     updatedAt: new Date(),
   });

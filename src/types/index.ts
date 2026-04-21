@@ -720,7 +720,6 @@ export interface Organization {
   staffInvites?: Invite[];
   staffEmailsByUserId?: Record<string, string>;
   productIds?: string[];
-  teamIds?: string[];
   publicSlug?: string | null;
   publicPageEnabled?: boolean;
   publicWidgetsEnabled?: boolean;

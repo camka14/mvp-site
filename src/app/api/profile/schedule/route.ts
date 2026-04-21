@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
+import { getCanonicalTeamIdsByUserIds } from '@/server/teams/teamMembership';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,16 +33,14 @@ export async function GET(req: NextRequest) {
     where: { id: session.userId },
     select: {
       id: true,
-      teamIds: true,
     },
   });
   if (!user) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  const teamIds = Array.isArray(user.teamIds)
-    ? user.teamIds.map((id) => String(id).trim()).filter(Boolean)
-    : [];
+  const teamIdsByUserId = await getCanonicalTeamIdsByUserIds([user.id], prisma);
+  const teamIds = teamIdsByUserId.get(user.id) ?? [];
 
   const teamsDelegate = getTeamsDelegate(prisma);
   const slotTeamRows = teamIds.length && teamsDelegate?.findMany

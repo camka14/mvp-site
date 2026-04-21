@@ -4048,7 +4048,6 @@ export const OrganizationsScalarFieldEnum = {
   verificationReviewUpdatedAt: 'verificationReviewUpdatedAt',
   coordinates: 'coordinates',
   productIds: 'productIds',
-  teamIds: 'teamIds',
   publicSlug: 'publicSlug',
   publicPageEnabled: 'publicPageEnabled',
   publicWidgetsEnabled: 'publicWidgetsEnabled',

@@ -29,7 +29,6 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'officialIds',
   'coordinates',
   'productIds',
-  'teamIds',
   'ownerId',
   'publicSlug',
   'publicPageEnabled',

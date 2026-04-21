@@ -54,6 +54,10 @@ describe('teamService', () => {
     userServiceMock.removeTeamInvitation.mockReset();
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('getTeamById', () => {
     it('hydrates players, pending players, and captain when requested', async () => {
       apiRequestMock.mockResolvedValue({
@@ -183,9 +187,7 @@ describe('teamService', () => {
           }),
         }),
       );
-      expect(userServiceMock.updateUser).toHaveBeenCalledWith('captain_1', {
-        teamIds: ['team_new'],
-      });
+      expect(userServiceMock.updateUser).not.toHaveBeenCalled();
       expect(team.$id).toBe('team_new');
     });
 
@@ -227,9 +229,7 @@ describe('teamService', () => {
           }),
         }),
       );
-      expect(userServiceMock.updateUser).toHaveBeenCalledWith('captain_1', {
-        teamIds: ['team_manager_only'],
-      });
+      expect(userServiceMock.updateUser).not.toHaveBeenCalled();
     });
   });
 
@@ -396,6 +396,78 @@ describe('teamService', () => {
       );
       expect(userServiceMock.addTeamInvitation).toHaveBeenCalledWith('user_2', 'team_1');
       expect(result).toBe(true);
+    });
+  });
+
+  describe('membership updates', () => {
+    it('accepts a player invitation without patching the user profile teamIds', async () => {
+      apiRequestMock.mockResolvedValue({});
+      userServiceMock.removeTeamInvitation.mockResolvedValue(true);
+      jest.spyOn(teamService, 'getTeamById').mockResolvedValueOnce({
+        $id: 'team_1',
+        name: 'Team One',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: ['captain_1'],
+        pending: ['user_2'],
+        teamSize: 6,
+        captainId: 'captain_1',
+      } as any);
+
+      const result = await teamService.acceptTeamInvitation('team_1', 'user_2');
+
+      expect(result).toBe(true);
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1', {
+        method: 'PATCH',
+        body: { team: { playerIds: ['captain_1', 'user_2'], pending: [] } },
+      });
+      expect(userServiceMock.updateUser).not.toHaveBeenCalled();
+      expect(userServiceMock.removeTeamInvitation).toHaveBeenCalledWith('user_2', 'team_1');
+    });
+
+    it('removes a player without patching the removed user profile', async () => {
+      apiRequestMock.mockResolvedValue({});
+      jest.spyOn(teamService, 'getTeamById').mockResolvedValueOnce({
+        $id: 'team_1',
+        name: 'Team One',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: ['captain_1', 'user_2'],
+        pending: [],
+        teamSize: 6,
+        captainId: 'captain_1',
+      } as any);
+
+      const result = await teamService.removePlayerFromTeam('team_1', 'user_2');
+
+      expect(result).toBe(true);
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1', {
+        method: 'PATCH',
+        body: { team: { playerIds: ['captain_1'] } },
+      });
+      expect(userServiceMock.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('deletes a team without patching each player profile teamIds', async () => {
+      apiRequestMock.mockResolvedValue({});
+      userServiceMock.removeTeamInvitation.mockResolvedValue(true);
+      jest.spyOn(teamService, 'getTeamById').mockResolvedValueOnce({
+        $id: 'team_1',
+        name: 'Team One',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: ['captain_1', 'user_2'],
+        pending: ['user_3'],
+        teamSize: 6,
+        captainId: 'captain_1',
+      } as any);
+
+      const result = await teamService.deleteTeam('team_1');
+
+      expect(result).toBe(true);
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1', { method: 'DELETE' });
+      expect(userServiceMock.updateUser).not.toHaveBeenCalled();
+      expect(userServiceMock.removeTeamInvitation).toHaveBeenCalledWith('user_3', 'team_1');
     });
   });
 });

@@ -1,9 +1,11 @@
 import { prisma } from '@/lib/prisma';
+import { TEAM_REGISTRATION_STARTED_TTL_MS } from '@/server/teams/teamOpenRegistration';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
 
 export type PublicCatalogSurface = 'page' | 'widget' | 'any';
 export type PublicWidgetKind = 'all' | 'events' | 'teams' | 'rentals' | 'products';
 export type PublicEventDateRule = 'all' | 'upcoming' | 'today' | 'week' | 'month';
+export type PublicProductPurchaseMode = 'all' | 'single' | 'subscription';
 
 export type PublicPaginationInfo = {
   limit: number;
@@ -53,6 +55,12 @@ export type PublicOrganizationTeamCard = {
   sport: string | null;
   division: string | null;
   imageUrl: string;
+  currentSize: number;
+  teamSize: number;
+  isFull: boolean;
+  openRegistration: boolean;
+  registrationPriceCents: number;
+  registrationUrl: string | null;
 };
 
 export type PublicOrganizationRentalCard = {
@@ -94,10 +102,28 @@ export type PublicOrganizationProductCheckoutData = {
   product: Product;
 };
 
+export type PublicOrganizationTeamRegistrationData = {
+  organization: PublicOrganizationSummary;
+  team: {
+    id: string;
+    name: string;
+    sport: string | null;
+    division: string | null;
+    imageUrl: string;
+    currentSize: number;
+    teamSize: number;
+    isFull: boolean;
+    openRegistration: boolean;
+    registrationPriceCents: number;
+  };
+};
+
 const DEFAULT_PRIMARY_COLOR = '#0f766e';
 const DEFAULT_ACCENT_COLOR = '#f59e0b';
 const FALLBACK_IMAGE_URL = '/bracketiq-shield.svg';
 const PUBLIC_EVENT_STATES = ['PUBLISHED', null] as const;
+const PUBLIC_TEAM_ACTIVE_STATUS = 'ACTIVE';
+const PUBLIC_TEAM_STARTED_STATUS = 'STARTED';
 const DEFAULT_LIMIT = 8;
 const PUBLIC_EVENT_QUERY_CAP = 300;
 const DEFAULT_WEEKLY_OCCURRENCE_WEEKS = 12;
@@ -136,6 +162,8 @@ const normalizeNumber = (value: unknown, fallback = 0): number => (
   typeof value === 'number' && Number.isFinite(value) ? value : fallback
 );
 
+const normalizePriceCents = (value: unknown): number => Math.max(0, Math.round(normalizeNumber(value)));
+
 const normalizeProductPeriodForClient = (value: unknown): ProductPeriod => {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
   if (normalized === 'single' || normalized === 'single_purchase' || normalized === 'one-time' || normalized === 'one_time') {
@@ -148,6 +176,13 @@ const normalizeProductPeriodForClient = (value: unknown): ProductPeriod => {
     return normalized as ProductPeriod;
   }
   return 'month';
+};
+
+const normalizePublicProductPurchaseMode = (value: unknown): PublicProductPurchaseMode => {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return normalized === 'single' || normalized === 'subscription'
+    ? normalized as PublicProductPurchaseMode
+    : 'all';
 };
 
 const toClientTimeSlot = (slot: Record<string, any>): TimeSlot => {
@@ -425,6 +460,40 @@ const formatEventOccurrenceDetailsUrl = (
 ): string => {
   const params = new URLSearchParams({ slotId, occurrenceDate });
   return `${formatEventDetailsUrl(slug, eventId)}?${params.toString()}`;
+};
+
+const formatTeamRegistrationUrl = (slug: string, teamId: string): string => (
+  `/o/${encodeURIComponent(slug)}/teams/${encodeURIComponent(teamId)}`
+);
+
+const getPublicTeamOccupancyByTeamId = async (teamIds: string[]): Promise<Map<string, number>> => {
+  const normalizedIds = Array.from(new Set(teamIds.filter(Boolean)));
+  if (!normalizedIds.length || !(prisma as any).teamRegistrations?.findMany) {
+    return new Map();
+  }
+  const startedCutoff = new Date(Date.now() - TEAM_REGISTRATION_STARTED_TTL_MS);
+
+  const rows = await (prisma as any).teamRegistrations.findMany({
+    where: {
+      teamId: { in: normalizedIds },
+      OR: [
+        { status: PUBLIC_TEAM_ACTIVE_STATUS },
+        {
+          status: PUBLIC_TEAM_STARTED_STATUS,
+          createdAt: { gte: startedCutoff },
+        },
+      ],
+    },
+    select: {
+      teamId: true,
+    },
+  });
+
+  const counts = new Map<string, number>();
+  rows.forEach((row: { teamId: string }) => {
+    counts.set(row.teamId, (counts.get(row.teamId) ?? 0) + 1);
+  });
+  return counts;
 };
 
 const toLocalIsoDate = (value: Date): string => {
@@ -883,13 +952,17 @@ export const listPublicOrganizationEventPage = async (
 
 export const listPublicOrganizationTeams = async (
   organization: PublicOrganizationSummary,
-  options: { limit?: number } = {},
+  options: { limit?: number; openRegistrationOnly?: boolean } = {},
 ): Promise<PublicOrganizationTeamCard[]> => {
   const rows = await (prisma as any).canonicalTeams.findMany({
-    where: { organizationId: organization.id },
-    orderBy: { name: 'asc' },
+    where: {
+      organizationId: organization.id,
+      ...(options.openRegistrationOnly ? { openRegistration: true } : {}),
+    },
+    orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
     take: normalizeLimit(options.limit),
   });
+  const occupancyByTeamId = await getPublicTeamOccupancyByTeamId(rows.map((row: Record<string, any>) => String(row.id)));
   return rows.map((team: Record<string, any>): PublicOrganizationTeamCard => ({
     id: String(team.id),
     name: String(team.name ?? 'Unnamed team'),
@@ -900,6 +973,74 @@ export const listPublicOrganizationTeams = async (
         ? team.division
         : null,
     imageUrl: imageUrl(team.profileImageId, 240, 240),
+    currentSize: occupancyByTeamId.get(String(team.id)) ?? 0,
+    teamSize: normalizeNumber(team.teamSize),
+    isFull: normalizeNumber(team.teamSize) > 0 && (occupancyByTeamId.get(String(team.id)) ?? 0) >= normalizeNumber(team.teamSize),
+    openRegistration: Boolean(team.openRegistration),
+    registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
+    registrationUrl: team.openRegistration && !(normalizeNumber(team.teamSize) > 0 && (occupancyByTeamId.get(String(team.id)) ?? 0) >= normalizeNumber(team.teamSize))
+      ? formatTeamRegistrationUrl(organization.slug, String(team.id))
+      : null,
+  }));
+};
+
+const mapPublicTeamCard = (
+  team: Record<string, any>,
+  currentSize: number,
+): PublicOrganizationTeamRegistrationData['team'] => {
+  const teamSize = normalizeNumber(team.teamSize);
+  const isFull = teamSize > 0 && currentSize >= teamSize;
+  return {
+    id: String(team.id),
+    name: String(team.name ?? 'Unnamed team'),
+    sport: typeof team.sport === 'string' ? team.sport : null,
+    division: typeof team.divisionTypeName === 'string'
+      ? team.divisionTypeName
+      : typeof team.division === 'string'
+        ? team.division
+        : null,
+    imageUrl: imageUrl(team.profileImageId, 640, 360),
+    currentSize,
+    teamSize,
+    isFull,
+    openRegistration: Boolean(team.openRegistration),
+    registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
+  };
+};
+
+const buildPublicProductPurchaseModeWhere = (
+  purchaseMode: PublicProductPurchaseMode,
+): Record<string, unknown> => {
+  if (purchaseMode === 'single') {
+    return { period: 'SINGLE' };
+  }
+  if (purchaseMode === 'subscription') {
+    return { period: { in: ['WEEK', 'MONTH', 'YEAR'] } };
+  }
+  return {};
+};
+
+export const listPublicOrganizationProducts = async (
+  organization: PublicOrganizationSummary,
+  options: { limit?: number; purchaseMode?: PublicProductPurchaseMode } = {},
+): Promise<PublicOrganizationProductCard[]> => {
+  const purchaseMode = normalizePublicProductPurchaseMode(options.purchaseMode);
+  const rows = await (prisma as any).products.findMany({
+    where: {
+      organizationId: organization.id,
+      OR: [{ isActive: true }, { isActive: null }],
+      ...buildPublicProductPurchaseModeWhere(purchaseMode),
+    },
+    orderBy: { createdAt: 'desc' },
+    take: normalizeLimit(options.limit),
+  });
+  return rows.map((product: Record<string, any>): PublicOrganizationProductCard => ({
+    id: String(product.id),
+    name: String(product.name ?? 'Product'),
+    description: typeof product.description === 'string' ? product.description : null,
+    priceCents: normalizePriceCents(product.priceCents),
+    period: normalizeProductPeriodForClient(product.period),
+    detailsUrl: `/o/${encodeURIComponent(organization.slug)}/products/${encodeURIComponent(String(product.id))}`,
   }));
 };
 
@@ -940,28 +1081,6 @@ export const listPublicOrganizationRentals = async (
       detailsUrl: `/o/${encodeURIComponent(organization.slug)}/rentals`,
     };
   });
-};
-
-export const listPublicOrganizationProducts = async (
-  organization: PublicOrganizationSummary,
-  options: { limit?: number } = {},
-): Promise<PublicOrganizationProductCard[]> => {
-  const rows = await (prisma as any).products.findMany({
-    where: {
-      organizationId: organization.id,
-      OR: [{ isActive: true }, { isActive: null }],
-    },
-    orderBy: { createdAt: 'desc' },
-    take: normalizeLimit(options.limit),
-  });
-  return rows.map((product: Record<string, any>): PublicOrganizationProductCard => ({
-    id: String(product.id),
-    name: String(product.name ?? 'Product'),
-    description: typeof product.description === 'string' ? product.description : null,
-    priceCents: typeof product.priceCents === 'number' ? product.priceCents : 0,
-    period: String(product.period ?? 'SINGLE'),
-    detailsUrl: `/o/${encodeURIComponent(organization.slug)}/products/${encodeURIComponent(String(product.id))}`,
-  }));
 };
 
 export const getPublicOrganizationRentalSelectionData = async (
@@ -1084,6 +1203,8 @@ export const getPublicOrganizationCatalog = async (
     dateFrom?: Date | string | null;
     dateTo?: Date | string | null;
     includeChildWeeklyEvents?: boolean;
+    teamOpenRegistrationOnly?: boolean;
+    productPurchaseMode?: PublicProductPurchaseMode;
   } = {},
 ): Promise<PublicOrganizationCatalog | null> => {
   const organization = await getPublicOrganizationBySlug(slug, { surface: options.surface ?? 'page' });
@@ -1100,11 +1221,43 @@ export const getPublicOrganizationCatalog = async (
       dateTo: options.dateTo,
       includeChildWeeklyEvents: options.includeChildWeeklyEvents,
     }),
-    listPublicOrganizationTeams(organization, { limit: options.limit }),
+    listPublicOrganizationTeams(organization, {
+      limit: options.limit,
+      openRegistrationOnly: options.teamOpenRegistrationOnly,
+    }),
     listPublicOrganizationRentals(organization, { limit: options.limit }),
-    listPublicOrganizationProducts(organization, { limit: options.limit }),
+    listPublicOrganizationProducts(organization, {
+      limit: options.limit,
+      purchaseMode: options.productPurchaseMode,
+    }),
   ]);
   return { organization, events: eventPage.events, eventPageInfo: eventPage.pageInfo, teams, rentals, products };
+};
+
+export const getPublicOrganizationTeamForRegistration = async (
+  slug: string,
+  teamId: string,
+): Promise<PublicOrganizationTeamRegistrationData | null> => {
+  const organization = await getPublicOrganizationBySlug(slug, { surface: 'page' });
+  if (!organization) {
+    return null;
+  }
+  const team = await (prisma as any).canonicalTeams.findFirst({
+    where: {
+      id: teamId,
+      organizationId: organization.id,
+      openRegistration: true,
+    },
+  });
+  if (!team) {
+    return null;
+  }
+  const currentSize = (await getPublicTeamOccupancyByTeamId([String(team.id)])).get(String(team.id)) ?? 0;
+
+  return {
+    organization,
+    team: mapPublicTeamCard(team, currentSize),
+  };
 };
 
 export const getPublicOrganizationEventForRegistration = async (

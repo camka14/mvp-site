@@ -159,8 +159,17 @@ export const createVisibilityContext = async (
     };
     organizations: {
       findMany: (args: any) => Promise<Array<{ id: string }>>;
-      findUnique: (args: any) => Promise<{ id?: string; teamIds?: string[] } | null>;
-      findFirst: (args: any) => Promise<{ id: string } | null>;
+      findUnique: (args: any) => Promise<{ id?: string } | null>;
+    };
+    canonicalTeams?: {
+      findUnique: (args: any) => Promise<{ organizationId?: string | null } | null>;
+      findMany: (args: any) => Promise<Array<{ id: string }>>;
+    };
+    teamRegistrations?: {
+      findMany: (args: any) => Promise<Array<{ teamId: string; userId: string; status?: string | null }>>;
+    };
+    teamStaffAssignments?: {
+      findMany: (args: any) => Promise<Array<{ teamId: string; userId: string; status?: string | null }>>;
     };
   },
   options: VisibilityContextOptions,
@@ -263,11 +272,11 @@ export const createVisibilityContext = async (
         ...contextTeam.pending,
       ]));
       viewerBelongsToContextTeam = contextTeamVisibleUserIds.has(viewerId);
-      const contextTeamOrganization = await client.organizations.findFirst({
-        where: { teamIds: { has: contextTeam.id } },
-        select: { id: true },
+      const contextTeamOrganization = await client.canonicalTeams?.findUnique?.({
+        where: { id: contextTeam.id },
+        select: { organizationId: true },
       });
-      contextOrganizationId = normalizeId(contextTeamOrganization?.id ?? null);
+      contextOrganizationId = normalizeId(contextTeamOrganization?.organizationId ?? null);
     }
   }
 
@@ -354,31 +363,40 @@ export const createVisibilityContext = async (
   let contextOrganizationVisibleUserIds = new Set<string>();
   if (contextOrganizationId && viewerOrganizationIds.has(contextOrganizationId)) {
     contextOrganizationAllowsStaff = true;
-    const organization = await client.organizations.findUnique({
-      where: { id: contextOrganizationId },
-      select: { teamIds: true },
+    const organizationTeams = await client.canonicalTeams?.findMany?.({
+      where: { organizationId: contextOrganizationId },
+      select: { id: true },
     });
-    const organizationTeamIds = normalizeIdList(organization?.teamIds);
+    const organizationTeamIds = normalizeIdList(organizationTeams?.map((team) => team.id));
     if (organizationTeamIds.length) {
-      const organizationTeams = await client.teams.findMany({
-        where: { id: { in: organizationTeamIds } },
-        select: {
-          captainId: true,
-          managerId: true,
-          headCoachId: true,
-          coachIds: true,
-          playerIds: true,
-          pending: true,
-        },
-      });
-      contextOrganizationVisibleUserIds = new Set(normalizeIdList(organizationTeams.flatMap((team) => [
-        team.captainId ?? '',
-        team.managerId ?? '',
-        team.headCoachId ?? '',
-        ...(team.coachIds ?? []),
-        ...(team.playerIds ?? []),
-        ...(team.pending ?? []),
-      ])));
+      const [organizationTeamRegistrations, organizationTeamStaffAssignments] = await Promise.all([
+        client.teamRegistrations?.findMany?.({
+          where: {
+            teamId: { in: organizationTeamIds },
+            status: { in: ['ACTIVE', 'INVITED'] },
+          },
+          select: {
+            teamId: true,
+            userId: true,
+            status: true,
+          },
+        }) ?? Promise.resolve([]),
+        client.teamStaffAssignments?.findMany?.({
+          where: {
+            teamId: { in: organizationTeamIds },
+            status: 'ACTIVE',
+          },
+          select: {
+            teamId: true,
+            userId: true,
+            status: true,
+          },
+        }) ?? Promise.resolve([]),
+      ]);
+      contextOrganizationVisibleUserIds = new Set(normalizeIdList([
+        ...organizationTeamRegistrations.map((registration) => registration.userId),
+        ...organizationTeamStaffAssignments.map((assignment) => assignment.userId),
+      ]));
     }
   }
 

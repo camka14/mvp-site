@@ -7,6 +7,7 @@ import {
   type PublicEventDateRule,
   type PublicOrganizationCatalog,
   type PublicOrganizationEventCard,
+  type PublicProductPurchaseMode,
   type PublicPaginationInfo,
   type PublicWidgetKind,
 } from '@/server/publicOrganizationCatalog';
@@ -15,6 +16,7 @@ export const dynamic = 'force-dynamic';
 
 const WIDGET_KINDS = new Set<PublicWidgetKind>(['all', 'events', 'teams', 'rentals', 'products']);
 const DATE_RULES = new Set<PublicEventDateRule>(['all', 'upcoming', 'today', 'week', 'month']);
+const PRODUCT_PURCHASE_MODES = new Set<PublicProductPurchaseMode>(['all', 'single', 'subscription']);
 
 type WidgetRenderOptions = {
   showDateFilter: boolean;
@@ -24,6 +26,8 @@ type WidgetRenderOptions = {
   dateTo: string | null;
   eventTypes: string[];
   includeChildWeeklyEvents: boolean;
+  teamOpenRegistrationOnly: boolean;
+  productPurchaseMode: PublicProductPurchaseMode;
   limit: number;
   page: number;
 };
@@ -54,6 +58,18 @@ const formatDate = (value: string | null): string => {
     minute: '2-digit',
   }).format(parsed);
 };
+
+const getTeamCapacityLabel = (team: PublicOrganizationCatalog['teams'][number]): string => (
+  team.teamSize > 0
+    ? `${team.currentSize}/${team.teamSize} full`
+    : `${team.currentSize} members`
+);
+
+const getTeamCapacityFill = (team: PublicOrganizationCatalog['teams'][number]): number => (
+  team.teamSize > 0
+    ? Math.max(0, Math.min(100, Math.round((team.currentSize / team.teamSize) * 100)))
+    : 0
+);
 
 const parseBooleanParam = (value: string | null): boolean => {
   if (!value) {
@@ -92,6 +108,13 @@ const parsePositiveIntegerParam = (value: string | null, fallback: number, max?:
   return typeof max === 'number' ? Math.min(normalized, max) : normalized;
 };
 
+const parseProductPurchaseMode = (value: string | null): PublicProductPurchaseMode => {
+  const normalized = String(value ?? '').trim().toLowerCase();
+  return PRODUCT_PURCHASE_MODES.has(normalized as PublicProductPurchaseMode)
+    ? normalized as PublicProductPurchaseMode
+    : 'all';
+};
+
 const getWidgetRenderOptions = (req: NextRequest): WidgetRenderOptions => ({
   showDateFilter: parseBooleanParam(req.nextUrl.searchParams.get('showDateFilter')),
   showEventTypeFilter: parseBooleanParam(req.nextUrl.searchParams.get('showEventTypeFilter')),
@@ -100,6 +123,8 @@ const getWidgetRenderOptions = (req: NextRequest): WidgetRenderOptions => ({
   dateTo: req.nextUrl.searchParams.get('dateTo'),
   eventTypes: normalizePublicEventTypes(req.nextUrl.searchParams.get('eventTypes')),
   includeChildWeeklyEvents: parseOptionalBooleanParam(req.nextUrl.searchParams.get('includeChildWeeklyEvents'), true),
+  teamOpenRegistrationOnly: parseBooleanParam(req.nextUrl.searchParams.get('teamOpenRegistrationOnly')),
+  productPurchaseMode: parseProductPurchaseMode(req.nextUrl.searchParams.get('productPurchaseMode')),
   limit: parsePositiveIntegerParam(req.nextUrl.searchParams.get('limit'), 6, 24),
   page: parsePositiveIntegerParam(req.nextUrl.searchParams.get('page'), 1),
 });
@@ -237,18 +262,55 @@ const renderEvents = (catalog: PublicOrganizationCatalog, options: WidgetRenderO
   `;
 };
 
-const renderTeams = (catalog: PublicOrganizationCatalog): string => {
+const renderTeams = (catalog: PublicOrganizationCatalog, options: WidgetRenderOptions): string => {
   if (!catalog.teams.length) {
-    return '<p class="empty">No public teams are listed yet.</p>';
+    return `<p class="empty">${
+      options.teamOpenRegistrationOnly
+        ? 'No teams with open registration are listed yet.'
+        : 'No public teams are listed yet.'
+    }</p>`;
   }
-  return catalog.teams.map((team) => `
-    <article class="card media-card">
+  return catalog.teams.map((team) => {
+    const capacityLabel = getTeamCapacityLabel(team);
+    const capacityFill = getTeamCapacityFill(team);
+    const cardBody = `
       <img src="${escapeHtml(team.imageUrl)}" alt="" class="media" />
       <span class="label">${escapeHtml(team.sport ?? 'Team')}</span>
       <h3>${escapeHtml(team.name)}</h3>
       <p>${escapeHtml(team.division ?? 'Open')}</p>
-    </article>
-  `).join('');
+      <div class="team-capacity" aria-label="${escapeHtml(capacityLabel)}">
+        <span class="team-capacity-text">${escapeHtml(capacityLabel)}</span>
+        ${team.teamSize > 0 ? `
+          <span class="team-capacity-track" aria-hidden="true">
+            <span class="team-capacity-fill" style="width: ${capacityFill}%"></span>
+          </span>
+        ` : ''}
+      </div>
+      <p>${
+        team.openRegistration
+          ? `Open registration - ${escapeHtml(formatPrice(team.registrationPriceCents))}`
+          : 'Registration closed'
+      }</p>
+      ${
+        team.registrationUrl
+          ? '<span class="card-action-link">Join team</span>'
+          : team.openRegistration && team.isFull
+            ? '<button type="button" class="card-action-button" disabled>Team full</button>'
+            : ''
+      }
+    `;
+    return team.registrationUrl
+      ? `
+        <a class="card media-card" href="${escapeHtml(team.registrationUrl)}" target="_top" rel="noopener">
+          ${cardBody}
+        </a>
+      `
+      : `
+        <article class="card media-card">
+          ${cardBody}
+        </article>
+      `;
+  }).join('');
 };
 
 const renderRentals = (catalog: PublicOrganizationCatalog): string => {
@@ -266,13 +328,19 @@ const renderRentals = (catalog: PublicOrganizationCatalog): string => {
   `).join('');
 };
 
+const formatProductPeriodLabel = (period: string): string => (
+  String(period).trim().toLowerCase() === 'single'
+    ? 'Single purchase'
+    : 'Subscription'
+);
+
 const renderProducts = (catalog: PublicOrganizationCatalog): string => {
   if (!catalog.products.length) {
     return '<p class="empty">No public products are listed yet.</p>';
   }
   return catalog.products.map((product) => `
     <a class="card" href="${escapeHtml(product.detailsUrl)}" target="_top" rel="noopener">
-      <span class="label">${escapeHtml(product.period.toLowerCase())}</span>
+      <span class="label">${escapeHtml(formatProductPeriodLabel(product.period))}</span>
       <h3>${escapeHtml(product.name)}</h3>
       ${product.description ? `<p>${escapeHtml(product.description)}</p>` : ''}
       <p>${escapeHtml(formatPrice(product.priceCents))}</p>
@@ -298,7 +366,7 @@ const renderWidgetHtml = (
   const { organization } = catalog;
   const sections = [
     sectionEnabled(kind, 'events') ? renderSection('Events', renderEvents(catalog, options)) : '',
-    sectionEnabled(kind, 'teams') ? renderSection('Teams', renderTeams(catalog)) : '',
+    sectionEnabled(kind, 'teams') ? renderSection('Teams', renderTeams(catalog, options)) : '',
     sectionEnabled(kind, 'rentals') ? renderSection('Rentals', renderRentals(catalog)) : '',
     sectionEnabled(kind, 'products') ? renderSection('Products', renderProducts(catalog)) : '',
   ].filter(Boolean).join('');
@@ -345,6 +413,13 @@ const renderWidgetHtml = (
     h3 { margin: 0; font-size: 1rem; line-height: 1.25; letter-spacing: 0; }
     p { margin: 0; color: #53645d; line-height: 1.45; }
     strong { margin-top: auto; color: var(--primary); }
+    .team-capacity { display: grid; gap: 6px; }
+    .team-capacity-text { color: #53645d; font-size: 0.84rem; font-weight: 700; }
+    .team-capacity-track { height: 8px; overflow: hidden; border-radius: 999px; background: #dbe6df; }
+    .team-capacity-fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), color-mix(in srgb, var(--accent) 42%, var(--primary))); }
+    .card-action-link { margin-top: auto; color: var(--primary); font-weight: 800; }
+    .card-action-button { margin-top: auto; align-self: flex-start; border: 0; border-radius: 999px; padding: 8px 12px; background: #e6ece9; color: #73847c; font: inherit; font-weight: 800; }
+    .card-action-button:disabled { cursor: not-allowed; }
     .empty { grid-column: 1 / -1; }
     .empty[hidden] { display: none; }
     .brand-link { color: inherit; text-decoration: none; }
@@ -484,6 +559,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     dateFrom: widgetOptions.dateFrom,
     dateTo: widgetOptions.dateTo,
     includeChildWeeklyEvents: widgetOptions.includeChildWeeklyEvents,
+    teamOpenRegistrationOnly: widgetOptions.teamOpenRegistrationOnly,
+    productPurchaseMode: widgetOptions.productPurchaseMode,
   });
   if (!catalog) {
     return NextResponse.json({ error: 'Widget not available' }, { status: 404 });

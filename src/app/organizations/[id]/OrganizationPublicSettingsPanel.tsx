@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Badge,
@@ -57,10 +58,14 @@ type WidgetSnippetOptions = {
   dateTo?: string | null;
   eventTypes?: string[];
   includeChildWeeklyEvents?: boolean;
+  teamOpenRegistrationOnly?: boolean;
+  productPurchaseMode?: 'all' | 'single' | 'subscription';
 };
 
 type WidgetKind = 'all' | 'events' | 'teams' | 'rentals' | 'products';
 type WidgetDateRule = NonNullable<WidgetSnippetOptions['dateRule']>;
+type WidgetProductPurchaseMode = NonNullable<WidgetSnippetOptions['productPurchaseMode']>;
+type WidgetSectionKind = Exclude<WidgetKind, 'all'>;
 
 const WIDGET_KIND_OPTIONS: Array<{ value: WidgetKind; label: string }> = [
   { value: 'events', label: 'Events' },
@@ -79,6 +84,33 @@ const DATE_RULE_OPTIONS: Array<{ value: WidgetDateRule; label: string }> = [
 ];
 
 const EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const;
+const PRODUCT_PURCHASE_MODE_OPTIONS: Array<{ value: WidgetProductPurchaseMode; label: string }> = [
+  { value: 'all', label: 'Both' },
+  { value: 'single', label: 'Single purchase' },
+  { value: 'subscription', label: 'Subscription' },
+];
+const WIDGET_TYPE_CONTROL_WIDTH = 216;
+const buildResponsiveWidthRange = (
+  minWidth: number,
+  grow: number = 1,
+): CSSProperties => ({
+  flex: `${grow} 1 ${minWidth}px`,
+  minWidth: `min(100%, ${minWidth}px)`,
+  maxWidth: `min(100%, ${Math.round(minWidth * 1.25)}px)`,
+});
+const SECTION_WIDTH_STYLES = {
+  common: buildResponsiveWidthRange(180),
+  events: buildResponsiveWidthRange(720),
+  teams: buildResponsiveWidthRange(320),
+  products: buildResponsiveWidthRange(220),
+} satisfies Record<'common' | 'events' | 'teams' | 'products', CSSProperties>;
+const EVENT_CONTROL_WIDTH_STYLES = {
+  datePreset: buildResponsiveWidthRange(160),
+  startDate: buildResponsiveWidthRange(170),
+  endDate: buildResponsiveWidthRange(170),
+  eventType: buildResponsiveWidthRange(380),
+  widgetControls: buildResponsiveWidthRange(300),
+} satisfies Record<'datePreset' | 'startDate' | 'endDate' | 'eventType' | 'widgetControls', CSSProperties>;
 
 const getInitialPublicSlug = (organization: Organization): string => (
   organization.publicSlug ?? slugify(organization.name)
@@ -168,6 +200,11 @@ const parsePickerDate = (value: unknown): Date | null => {
 };
 
 const widgetIncludesEvents = (kind: WidgetKind): boolean => kind === 'all' || kind === 'events';
+const widgetIncludesTeams = (kind: WidgetKind): boolean => kind === 'all' || kind === 'teams';
+const widgetIncludesProducts = (kind: WidgetKind): boolean => kind === 'all' || kind === 'products';
+const getVisibleWidgetSections = (kind: WidgetKind): WidgetSectionKind[] => (
+  kind === 'all' ? ['events', 'teams', 'rentals', 'products'] : [kind]
+);
 
 const buildWidgetQuery = (options: WidgetSnippetOptions = {}): string => {
   const params = new URLSearchParams({ limit: normalizeLimitInput(options.limit ?? '6') });
@@ -178,6 +215,10 @@ const buildWidgetQuery = (options: WidgetSnippetOptions = {}): string => {
   if (options.dateTo) params.set('dateTo', options.dateTo);
   if (options.eventTypes?.length) params.set('eventTypes', options.eventTypes.join(','));
   if (options.includeChildWeeklyEvents === false) params.set('includeChildWeeklyEvents', '0');
+  if (options.teamOpenRegistrationOnly) params.set('teamOpenRegistrationOnly', '1');
+  if (options.productPurchaseMode && options.productPurchaseMode !== 'all') {
+    params.set('productPurchaseMode', options.productPurchaseMode);
+  }
   return params.toString();
 };
 
@@ -215,6 +256,10 @@ const buildScriptSnippet = (
     options.dateTo ? `data-date-to="${options.dateTo}"` : '',
     options.eventTypes?.length ? `data-event-types="${options.eventTypes.join(',')}"` : '',
     options.includeChildWeeklyEvents === false ? `data-include-child-weekly-events="0"` : '',
+    options.teamOpenRegistrationOnly ? `data-team-open-registration-only="1"` : '',
+    options.productPurchaseMode && options.productPurchaseMode !== 'all'
+      ? `data-product-purchase-mode="${options.productPurchaseMode}"`
+      : '',
   ].filter(Boolean).join(' ');
   return `<div ${attrs}></div>\n<script async src="${origin}/embed.js"></script>`;
 };
@@ -245,6 +290,8 @@ export default function OrganizationPublicSettingsPanel({
   const [snippetShowDateFilter, setSnippetShowDateFilter] = useState(true);
   const [snippetShowEventTypeFilter, setSnippetShowEventTypeFilter] = useState(true);
   const [snippetIncludeChildWeeklyEvents, setSnippetIncludeChildWeeklyEvents] = useState(true);
+  const [snippetTeamOpenRegistrationOnly, setSnippetTeamOpenRegistrationOnly] = useState(false);
+  const [snippetProductPurchaseMode, setSnippetProductPurchaseMode] = useState<WidgetProductPurchaseMode>('all');
   const [slugCheck, setSlugCheck] = useState<SlugCheckState>(idleSlugCheck);
   const [saving, setSaving] = useState(false);
 
@@ -274,6 +321,7 @@ export default function OrganizationPublicSettingsPanel({
   const draftPublicPageUrl = normalizedSlug ? `${origin}/o/${normalizedSlug}` : '';
   const savedPublicPageUrl = savedPublicSlug ? `${origin}/o/${savedPublicSlug}` : '';
   const selectedAllEventTypes = snippetEventTypes.length === EVENT_TYPE_OPTIONS.length;
+  const visibleWidgetSections = getVisibleWidgetSections(widgetKind);
   const eventPresetOptions = {
     showDateFilter: snippetShowDateFilter,
     showEventTypeFilter: snippetShowEventTypeFilter,
@@ -283,9 +331,12 @@ export default function OrganizationPublicSettingsPanel({
     eventTypes: selectedAllEventTypes ? [] : snippetEventTypes,
     includeChildWeeklyEvents: snippetIncludeChildWeeklyEvents,
   } satisfies WidgetSnippetOptions;
-  const widgetOptions: WidgetSnippetOptions = widgetIncludesEvents(widgetKind)
-    ? { ...eventPresetOptions, limit: widgetLimit }
-    : { limit: widgetLimit };
+  const widgetOptions: WidgetSnippetOptions = {
+    limit: widgetLimit,
+    ...(widgetIncludesEvents(widgetKind) ? eventPresetOptions : {}),
+    ...(widgetIncludesTeams(widgetKind) ? { teamOpenRegistrationOnly: snippetTeamOpenRegistrationOnly } : {}),
+    ...(widgetIncludesProducts(widgetKind) ? { productPurchaseMode: snippetProductPurchaseMode } : {}),
+  };
   const slugCheckIsPending = Boolean(normalizedSlug)
     && (slugCheck.status === 'checking' || slugCheck.checkedSlug !== normalizedSlug);
   const slugHasValidationError = Boolean(normalizedSlug) && slugCheck.status === 'invalid';
@@ -311,8 +362,8 @@ export default function OrganizationPublicSettingsPanel({
   const widgetPreviewUrl = widgetsReady && savedPublicSlug
     ? buildWidgetEmbedUrl(origin, savedPublicSlug, widgetKind, widgetOptions)
     : '';
-  const eventsIframeSnippet = widgetPreviewUrl ? buildIframeSnippet(widgetPreviewUrl, widgetKind) : '';
-  const allScriptSnippet = widgetsReady ? buildScriptSnippet(origin, savedPublicSlug, widgetKind, widgetOptions) : '';
+  const iframeSnippet = widgetPreviewUrl ? buildIframeSnippet(widgetPreviewUrl, widgetKind) : '';
+  const scriptSnippet = widgetsReady ? buildScriptSnippet(origin, savedPublicSlug, widgetKind, widgetOptions) : '';
   const previewHelpMessage = (() => {
     if (!normalizedSlug) {
       return 'Set a slug before opening previews or copying snippets.';
@@ -587,7 +638,7 @@ export default function OrganizationPublicSettingsPanel({
       <Paper withBorder p="md" radius="md">
         <Title order={5} mb="sm">Preview and snippets</Title>
         <Stack gap="sm">
-          <Group>
+          <Group align="flex-end" gap="sm" wrap="wrap">
             <Button component="a" href={savedPublicPageUrl || '#'} target="_blank" rel="noreferrer" disabled={!publicPageReady}>
               Open public page
             </Button>
@@ -601,130 +652,176 @@ export default function OrganizationPublicSettingsPanel({
             >
               Open widget preview
             </Button>
+            <Select
+              label="Widget type"
+              data={WIDGET_KIND_OPTIONS}
+              value={widgetKind}
+              onChange={(value) => setWidgetKind((value as WidgetKind | null) ?? 'events')}
+              style={{ width: WIDGET_TYPE_CONTROL_WIDTH, minWidth: WIDGET_TYPE_CONTROL_WIDTH, maxWidth: WIDGET_TYPE_CONTROL_WIDTH }}
+            />
           </Group>
           {previewHelpMessage ? (
             <Text size="sm" c="dimmed">
               {previewHelpMessage}
             </Text>
           ) : null}
-          <Stack gap="sm">
-            <div>
-              <Title order={6}>Widget preset builder</Title>
-              <Text size="sm" c="dimmed">
-                Build the iframe and script snippets with the same event filters visitors use on event lists.
-              </Text>
-            </div>
-            <Group align="flex-end" gap="sm" wrap="wrap">
-              <Select
-                label="Widget"
-                data={WIDGET_KIND_OPTIONS}
-                value={widgetKind}
-                onChange={(value) => setWidgetKind((value as WidgetKind | null) ?? 'events')}
-                style={{ flex: '1 1 150px', minWidth: 140 }}
-              />
-              <TextInput
-                label="Data limit"
-                inputMode="numeric"
-                value={widgetLimit}
-                onChange={(event) => setWidgetLimit(event.currentTarget.value.replace(/\D/g, '').slice(0, 2))}
-                onBlur={() => setWidgetLimit(normalizeLimitInput(widgetLimit))}
-                style={{ flex: '0 1 110px', minWidth: 100 }}
-              />
-              <Select
-                label="Date preset"
-                data={DATE_RULE_OPTIONS}
-                value={snippetDateRule}
-                onChange={(value) => setSnippetDateRule((value as WidgetDateRule | null) ?? 'all')}
-                style={{ flex: '1 1 150px', minWidth: 140 }}
-              />
-              <DatePickerInput
-                label="Start date"
-                value={snippetDateFrom}
-                onChange={(value) => setSnippetDateFrom(parsePickerDate(value))}
-                clearable
-                valueFormat="MMM D, YYYY"
-                placeholder="No start date"
-                highlightToday
-                style={{ flex: '1 1 160px', minWidth: 150 }}
-              />
-              <DatePickerInput
-                label="End date"
-                value={snippetDateTo}
-                onChange={(value) => setSnippetDateTo(parsePickerDate(value))}
-                clearable
-                valueFormat="MMM D, YYYY"
-                placeholder="No end date"
-                minDate={snippetDateFrom ?? undefined}
-                highlightToday
-                style={{ flex: '1 1 160px', minWidth: 150 }}
-              />
-              <Stack gap={6} style={{ flex: '2 1 380px', minWidth: 300 }}>
-                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
-                  Event Type
-                </Text>
-                <Group gap="xs" wrap="wrap">
-                  <Chip
-                    radius="xl"
-                    checked={selectedAllEventTypes}
-                    onChange={(checked) => setSnippetEventTypes(checked ? [...EVENT_TYPE_OPTIONS] : [])}
-                  >
-                    All
-                  </Chip>
-                  {EVENT_TYPE_OPTIONS.map((type) => (
-                    <Chip
-                      key={type}
-                      radius="xl"
-                      checked={snippetEventTypes.includes(type)}
-                      onChange={(checked) => {
-                        if (checked) {
-                          const next = new Set(snippetEventTypes);
-                          next.add(type);
-                          setSnippetEventTypes(EVENT_TYPE_OPTIONS.filter((option) => next.has(option)));
-                        } else {
-                          setSnippetEventTypes(snippetEventTypes.filter((value) => value !== type));
-                        }
-                      }}
-                    >
-                      {formatEnumDisplayLabel(type, 'Event')}
-                    </Chip>
-                  ))}
+          <div>
+            <Title order={6}>Widget preset builder</Title>
+            <Text size="sm" c="dimmed">
+              Build iframe and script snippets with the same public filters visitors should see in each widget section.
+            </Text>
+          </div>
+          <Group align="stretch" gap="md" wrap="wrap">
+            <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.common}>
+              <Stack gap="xs">
+                <Title order={6}>Common settings</Title>
+                <Group align="flex-end" gap="sm" wrap="wrap">
+                  <TextInput
+                    label="Data limit"
+                    inputMode="numeric"
+                    value={widgetLimit}
+                    onChange={(event) => setWidgetLimit(event.currentTarget.value.replace(/\D/g, '').slice(0, 2))}
+                    onBlur={() => setWidgetLimit(normalizeLimitInput(widgetLimit))}
+                    style={{ flex: '0 1 110px', minWidth: 100 }}
+                  />
                 </Group>
               </Stack>
+            </Paper>
 
-              <Stack gap={6} style={{ flex: '1 1 340px', minWidth: 280 }}>
-                <Text size="xs" fw={700} c="dimmed" tt="uppercase">
-                  Widget Controls
-                </Text>
-                <Group gap="sm" wrap="wrap">
-                  <Checkbox
-                    checked={snippetShowDateFilter}
-                    onChange={(event) => setSnippetShowDateFilter(event.currentTarget.checked)}
-                    label="Date filter"
-                  />
-                  <Checkbox
-                    checked={snippetShowEventTypeFilter}
-                    onChange={(event) => setSnippetShowEventTypeFilter(event.currentTarget.checked)}
-                    label="Event type filter"
-                  />
-                    <Checkbox
-                      checked={!snippetIncludeChildWeeklyEvents}
-                      onChange={(event) => setSnippetIncludeChildWeeklyEvents(!event.currentTarget.checked)}
-                      label="Hide weekly events"
+            {visibleWidgetSections.includes('events') ? (
+              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.events}>
+                <Stack gap="xs">
+                  <Title order={6}>Events settings</Title>
+                  <Group align="flex-end" gap="sm" wrap="wrap">
+                    <Select
+                      label="Date preset"
+                      data={DATE_RULE_OPTIONS}
+                      value={snippetDateRule}
+                      onChange={(value) => setSnippetDateRule((value as WidgetDateRule | null) ?? 'all')}
+                      style={EVENT_CONTROL_WIDTH_STYLES.datePreset}
                     />
-                </Group>
-              </Stack>
-            </Group>
-          </Stack>
+                    <DatePickerInput
+                      label="Start date"
+                      value={snippetDateFrom}
+                      onChange={(value) => setSnippetDateFrom(parsePickerDate(value))}
+                      clearable
+                      valueFormat="MMM D, YYYY"
+                      placeholder="No start date"
+                      highlightToday
+                      style={EVENT_CONTROL_WIDTH_STYLES.startDate}
+                    />
+                    <DatePickerInput
+                      label="End date"
+                      value={snippetDateTo}
+                      onChange={(value) => setSnippetDateTo(parsePickerDate(value))}
+                      clearable
+                      valueFormat="MMM D, YYYY"
+                      placeholder="No end date"
+                      minDate={snippetDateFrom ?? undefined}
+                      highlightToday
+                      style={EVENT_CONTROL_WIDTH_STYLES.endDate}
+                    />
+                    <Stack gap={6} style={EVENT_CONTROL_WIDTH_STYLES.eventType}>
+                      <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                        Event type
+                      </Text>
+                      <Group gap="xs" wrap="wrap">
+                        <Chip
+                          radius="xl"
+                          checked={selectedAllEventTypes}
+                          onChange={(checked) => setSnippetEventTypes(checked ? [...EVENT_TYPE_OPTIONS] : [])}
+                        >
+                          All
+                        </Chip>
+                        {EVENT_TYPE_OPTIONS.map((type) => (
+                          <Chip
+                            key={type}
+                            radius="xl"
+                            checked={snippetEventTypes.includes(type)}
+                            onChange={(checked) => {
+                              if (checked) {
+                                const next = new Set(snippetEventTypes);
+                                next.add(type);
+                                setSnippetEventTypes(EVENT_TYPE_OPTIONS.filter((option) => next.has(option)));
+                              } else {
+                                setSnippetEventTypes(snippetEventTypes.filter((value) => value !== type));
+                              }
+                            }}
+                          >
+                            {formatEnumDisplayLabel(type, 'Event')}
+                          </Chip>
+                        ))}
+                      </Group>
+                    </Stack>
+                    <Stack gap={6} style={EVENT_CONTROL_WIDTH_STYLES.widgetControls}>
+                      <Text size="xs" fw={700} c="dimmed" tt="uppercase">
+                        Widget controls
+                      </Text>
+                      <Group gap="sm" wrap="wrap">
+                        <Checkbox
+                          checked={snippetShowDateFilter}
+                          onChange={(event) => setSnippetShowDateFilter(event.currentTarget.checked)}
+                          label="Date filter"
+                        />
+                        <Checkbox
+                          checked={snippetShowEventTypeFilter}
+                          onChange={(event) => setSnippetShowEventTypeFilter(event.currentTarget.checked)}
+                          label="Event type filter"
+                        />
+                        <Checkbox
+                          checked={!snippetIncludeChildWeeklyEvents}
+                          onChange={(event) => setSnippetIncludeChildWeeklyEvents(!event.currentTarget.checked)}
+                          label="Hide weekly events"
+                        />
+                      </Group>
+                    </Stack>
+                  </Group>
+                </Stack>
+              </Paper>
+            ) : null}
+
+            {visibleWidgetSections.includes('teams') ? (
+              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.teams}>
+                <Stack gap="xs">
+                  <Title order={6}>Teams settings</Title>
+                  <Group align="flex-end" gap="sm" wrap="wrap">
+                    <Checkbox
+                      checked={snippetTeamOpenRegistrationOnly}
+                      onChange={(event) => setSnippetTeamOpenRegistrationOnly(event.currentTarget.checked)}
+                      label="Only show teams with open registration"
+                    />
+                  </Group>
+                </Stack>
+              </Paper>
+            ) : null}
+
+            {visibleWidgetSections.includes('products') ? (
+              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.products}>
+                <Stack gap="xs">
+                  <Title order={6}>Products settings</Title>
+                  <Group align="flex-end" gap="sm" wrap="wrap">
+                    <Select
+                      label="Show"
+                      data={PRODUCT_PURCHASE_MODE_OPTIONS}
+                      value={snippetProductPurchaseMode}
+                      onChange={(value) => setSnippetProductPurchaseMode((value as WidgetProductPurchaseMode | null) ?? 'all')}
+                      style={buildResponsiveWidthRange(200)}
+                    />
+                  </Group>
+                </Stack>
+              </Paper>
+            ) : null}
+          </Group>
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
             <Stack gap="xs">
-              <Textarea label="Iframe snippet" value={eventsIframeSnippet} readOnly autosize minRows={4} />
-              <Button variant="default" onClick={() => copySnippet(eventsIframeSnippet, 'Iframe snippet')} disabled={!eventsIframeSnippet || !widgetsReady}>
+              <Textarea label="Iframe snippet" value={iframeSnippet} readOnly autosize minRows={4} />
+              <Button variant="default" onClick={() => copySnippet(iframeSnippet, 'Iframe snippet')} disabled={!iframeSnippet || !widgetsReady}>
                 Copy iframe snippet
               </Button>
             </Stack>
             <Stack gap="xs">
-              <Textarea label="Script snippet" value={allScriptSnippet} readOnly autosize minRows={4} />
-              <Button variant="default" onClick={() => copySnippet(allScriptSnippet, 'Script snippet')} disabled={!allScriptSnippet || !widgetsReady}>
+              <Textarea label="Script snippet" value={scriptSnippet} readOnly autosize minRows={4} />
+              <Button variant="default" onClick={() => copySnippet(scriptSnippet, 'Script snippet')} disabled={!scriptSnippet || !widgetsReady}>
                 Copy script snippet
               </Button>
             </Stack>

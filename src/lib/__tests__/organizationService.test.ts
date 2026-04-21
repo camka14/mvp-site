@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/apiClient';
 import { fieldService } from '@/lib/fieldService';
 import { organizationService } from '@/lib/organizationService';
 import { productService } from '@/lib/productService';
+import { teamService } from '@/lib/teamService';
 
 jest.mock('@/lib/apiClient', () => ({
   apiRequest: jest.fn(),
@@ -21,7 +22,7 @@ jest.mock('@/lib/productService', () => ({
 
 jest.mock('@/lib/teamService', () => ({
   teamService: {
-    getTeamsByIds: jest.fn(),
+    getTeamsByOrganizationId: jest.fn(),
   },
 }));
 
@@ -35,12 +36,15 @@ jest.mock('@/lib/userService', () => ({
 const apiRequestMock = apiRequest as jest.MockedFunction<typeof apiRequest>;
 const listFieldsMock = fieldService.listFields as jest.MockedFunction<typeof fieldService.listFields>;
 const listProductsMock = productService.listProducts as jest.MockedFunction<typeof productService.listProducts>;
+const getTeamsByOrganizationIdMock = teamService.getTeamsByOrganizationId as jest.MockedFunction<typeof teamService.getTeamsByOrganizationId>;
 
 describe('organizationService', () => {
   beforeEach(() => {
     apiRequestMock.mockReset();
     listFieldsMock.mockReset();
     listProductsMock.mockReset();
+    getTeamsByOrganizationIdMock.mockReset();
+    getTeamsByOrganizationIdMock.mockResolvedValue([]);
     organizationService.invalidateCachedOrganization('org_1');
   });
 
@@ -50,7 +54,6 @@ describe('organizationService', () => {
         $id: 'org_1',
         name: 'Test Org',
         productIds: [],
-        teamIds: [],
       })
       .mockResolvedValueOnce({ events: [] });
     listFieldsMock.mockResolvedValue([]);

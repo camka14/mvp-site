@@ -16,6 +16,10 @@ const prismaMock = {
   },
   canonicalTeams: {
     findMany: jest.fn(),
+    findFirst: jest.fn(),
+  },
+  teamRegistrations: {
+    findMany: jest.fn(),
   },
   fields: {
     findMany: jest.fn(),
@@ -40,6 +44,8 @@ import {
   listPublicOrganizationProducts,
   listPublicOrganizationEvents,
   listPublicOrganizationEventPage,
+  getPublicOrganizationTeamForRegistration,
+  listPublicOrganizationTeams,
 } from '@/server/publicOrganizationCatalog';
 
 const publicOrganization = {
@@ -63,6 +69,8 @@ const publicOrganization = {
 describe('publicOrganizationCatalog', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    prismaMock.teamRegistrations.findMany.mockReset();
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
   });
 
   it('does not return page-disabled organizations for public pages', async () => {
@@ -243,6 +251,215 @@ describe('publicOrganizationCatalog', () => {
     });
   });
 
+  it('lists organization teams by canonical organizationId and sorts open registration first', async () => {
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'team_open',
+        name: 'Fusion Volleyball Club',
+        division: 'CoEd Open',
+        divisionTypeName: 'Open',
+        sport: 'Indoor Volleyball',
+        profileImageId: null,
+        teamSize: 6,
+        openRegistration: true,
+        registrationPriceCents: 2500,
+        organizationId: 'org_1',
+      },
+      {
+        id: 'team_closed',
+        name: 'Titan Volleyball Club',
+        division: null,
+        divisionTypeName: null,
+        sport: 'Indoor Volleyball',
+        profileImageId: null,
+        teamSize: 8,
+        openRegistration: false,
+        registrationPriceCents: 0,
+        organizationId: 'org_1',
+      },
+    ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { teamId: 'team_open' },
+      { teamId: 'team_open' },
+      { teamId: 'team_closed' },
+    ]);
+
+    const teams = await listPublicOrganizationTeams(publicOrganization, { limit: 6 });
+
+    expect(prismaMock.canonicalTeams.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org_1' },
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+      take: 6,
+    });
+    expect(prismaMock.teamRegistrations.findMany).toHaveBeenCalledWith({
+      where: {
+        teamId: { in: ['team_open', 'team_closed'] },
+        OR: [
+          { status: 'ACTIVE' },
+          {
+            status: 'STARTED',
+            createdAt: { gte: expect.any(Date) },
+          },
+        ],
+      },
+      select: {
+        teamId: true,
+      },
+    });
+    expect(teams).toEqual([
+      expect.objectContaining({
+        id: 'team_open',
+        name: 'Fusion Volleyball Club',
+        sport: 'Indoor Volleyball',
+        division: 'Open',
+        currentSize: 2,
+        teamSize: 6,
+        isFull: false,
+        openRegistration: true,
+        registrationPriceCents: 2500,
+        registrationUrl: '/o/scsoccer/teams/team_open',
+      }),
+      expect.objectContaining({
+        id: 'team_closed',
+        name: 'Titan Volleyball Club',
+        sport: 'Indoor Volleyball',
+        division: null,
+        currentSize: 1,
+        teamSize: 8,
+        isFull: false,
+        openRegistration: false,
+        registrationPriceCents: 0,
+        registrationUrl: null,
+      }),
+    ]);
+  });
+
+  it('can limit public teams to only open-registration teams', async () => {
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'team_open',
+        name: 'Fusion Volleyball Club',
+        division: 'CoEd Open',
+        divisionTypeName: 'Open',
+        sport: 'Indoor Volleyball',
+        profileImageId: null,
+        teamSize: 6,
+        openRegistration: true,
+        registrationPriceCents: 2500,
+        organizationId: 'org_1',
+      },
+    ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { teamId: 'team_open' },
+    ]);
+
+    const teams = await listPublicOrganizationTeams(publicOrganization, {
+      limit: 6,
+      openRegistrationOnly: true,
+    });
+
+    expect(prismaMock.canonicalTeams.findMany).toHaveBeenCalledWith({
+      where: { organizationId: 'org_1', openRegistration: true },
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+      take: 6,
+    });
+    expect(teams).toEqual([
+      expect.objectContaining({
+        id: 'team_open',
+        currentSize: 1,
+        teamSize: 6,
+        isFull: false,
+        openRegistration: true,
+        registrationUrl: '/o/scsoccer/teams/team_open',
+      }),
+    ]);
+  });
+
+  it('removes the public registration link for full open-registration teams', async () => {
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'team_full',
+        name: 'Packed House',
+        division: 'CoEd Open',
+        divisionTypeName: 'Open',
+        sport: 'Indoor Volleyball',
+        profileImageId: null,
+        teamSize: 2,
+        openRegistration: true,
+        registrationPriceCents: 2500,
+        organizationId: 'org_1',
+      },
+    ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { teamId: 'team_full' },
+      { teamId: 'team_full' },
+    ]);
+
+    const teams = await listPublicOrganizationTeams(publicOrganization, { limit: 6 });
+
+    expect(teams).toEqual([
+      expect.objectContaining({
+        id: 'team_full',
+        currentSize: 2,
+        teamSize: 2,
+        isFull: true,
+        registrationUrl: null,
+      }),
+    ]);
+  });
+
+  it('ignores stale started team registrations in public fullness counts', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-04-21T22:00:00.000Z'));
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'team_open',
+        name: 'Fusion Volleyball Club',
+        division: 'CoEd Open',
+        divisionTypeName: 'Open',
+        sport: 'Indoor Volleyball',
+        profileImageId: null,
+        teamSize: 6,
+        openRegistration: true,
+        registrationPriceCents: 2500,
+        organizationId: 'org_1',
+      },
+    ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { teamId: 'team_open' },
+    ]);
+
+    try {
+      const teams = await listPublicOrganizationTeams(publicOrganization, { limit: 6 });
+
+      expect(prismaMock.teamRegistrations.findMany).toHaveBeenCalledWith({
+        where: {
+          teamId: { in: ['team_open'] },
+          OR: [
+            { status: 'ACTIVE' },
+            {
+              status: 'STARTED',
+              createdAt: { gte: new Date('2026-04-21T21:55:00.000Z') },
+            },
+          ],
+        },
+        select: {
+          teamId: true,
+        },
+      });
+      expect(teams).toEqual([
+        expect.objectContaining({
+          id: 'team_open',
+          currentSize: 1,
+          teamSize: 6,
+          isFull: false,
+          registrationUrl: '/o/scsoccer/teams/team_open',
+        }),
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('expands public weekly parent events into upcoming occurrence cards for filtered widgets', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-05-04T12:00:00.000Z'));
     prismaMock.events.findMany.mockResolvedValue([
@@ -341,8 +558,77 @@ describe('publicOrganizationCatalog', () => {
     expect(products).toEqual([
       expect.objectContaining({
         id: 'product_1',
+        period: 'single',
         detailsUrl: '/o/scsoccer/products/product_1',
       }),
     ]);
+  });
+
+  it('filters public products by single purchase or subscription mode', async () => {
+    prismaMock.products.findMany.mockResolvedValue([]);
+
+    await listPublicOrganizationProducts(publicOrganization, {
+      limit: 6,
+      purchaseMode: 'subscription',
+    });
+
+    expect(prismaMock.products.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        organizationId: 'org_1',
+        OR: [{ isActive: true }, { isActive: null }],
+        period: { in: ['WEEK', 'MONTH', 'YEAR'] },
+      }),
+      take: 6,
+    }));
+  });
+
+  it('loads only open-registration public teams for registration pages', async () => {
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      name: 'SCSoccer',
+      publicSlug: 'scsoccer',
+      publicPageEnabled: true,
+      publicWidgetsEnabled: true,
+      publicCompletionRedirectUrl: null,
+    });
+    prismaMock.canonicalTeams.findFirst.mockResolvedValue({
+      id: 'team_open',
+      name: 'Fusion Volleyball Club',
+      divisionTypeName: 'Open',
+      sport: 'Indoor Volleyball',
+      profileImageId: null,
+      teamSize: 10,
+      openRegistration: true,
+      registrationPriceCents: 2500,
+      organizationId: 'org_1',
+    });
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { teamId: 'team_open' },
+      { teamId: 'team_open' },
+      { teamId: 'team_open' },
+    ]);
+
+    const result = await getPublicOrganizationTeamForRegistration('scsoccer', 'team_open');
+
+    expect(prismaMock.canonicalTeams.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'team_open',
+        organizationId: 'org_1',
+        openRegistration: true,
+      },
+    });
+    expect(result).toEqual({
+      organization: expect.objectContaining({ slug: 'scsoccer' }),
+      team: expect.objectContaining({
+        id: 'team_open',
+        name: 'Fusion Volleyball Club',
+        division: 'Open',
+        sport: 'Indoor Volleyball',
+        currentSize: 3,
+        teamSize: 10,
+        isFull: false,
+        registrationPriceCents: 2500,
+      }),
+    });
   });
 });

@@ -36,14 +36,26 @@ const formatDate = (value: string | null): string => {
   }).format(parsed);
 };
 
+const getTeamCapacityLabel = (team: PublicOrganizationTeamCard): string => (
+  team.teamSize > 0
+    ? `${team.currentSize}/${team.teamSize} full`
+    : `${team.currentSize} members`
+);
+
+const getTeamCapacityFill = (team: PublicOrganizationTeamCard): number => (
+  team.teamSize > 0
+    ? Math.max(0, Math.min(100, Math.round((team.currentSize / team.teamSize) * 100)))
+    : 0
+);
+
 function EventItem({ event }: { event: PublicOrganizationEventCard }) {
   return (
     <Link href={event.detailsUrl} className={styles.item}>
       <Image src={event.imageUrl} alt="" width={640} height={360} className={styles.itemImage} unoptimized />
       <div className={styles.itemBody}>
         <h3 className={styles.itemTitle}>{event.name}</h3>
-        <p className={styles.itemMeta}>{formatDate(event.start)} · {event.location}</p>
-        <p className={styles.itemMeta}>{event.sportName ?? event.eventType} · {formatPrice(event.priceCents)}</p>
+        <p className={styles.itemMeta}>{formatDate(event.start)} - {event.location}</p>
+        <p className={styles.itemMeta}>{event.sportName ?? event.eventType} - {formatPrice(event.priceCents)}</p>
         <span className={styles.itemAction}>Register</span>
       </div>
     </Link>
@@ -51,13 +63,48 @@ function EventItem({ event }: { event: PublicOrganizationEventCard }) {
 }
 
 function TeamItem({ team }: { team: PublicOrganizationTeamCard }) {
-  return (
-    <div className={styles.item}>
+  const capacityLabel = getTeamCapacityLabel(team);
+  const capacityFill = getTeamCapacityFill(team);
+  const content = (
+    <>
       <Image src={team.imageUrl} alt="" width={640} height={360} className={styles.itemImage} unoptimized />
       <div className={styles.itemBody}>
         <h3 className={styles.itemTitle}>{team.name}</h3>
-        <p className={styles.itemMeta}>{team.sport ?? 'Sport TBD'} · {team.division ?? 'Open'}</p>
+        <p className={styles.itemMeta}>{team.sport ?? 'Sport TBD'} - {team.division ?? 'Open'}</p>
+        <div className={styles.teamCapacity} aria-label={capacityLabel}>
+          <span className={styles.teamCapacityText}>{capacityLabel}</span>
+          {team.teamSize > 0 ? (
+            <span className={styles.teamCapacityTrack} aria-hidden="true">
+              <span className={styles.teamCapacityFill} style={{ width: `${capacityFill}%` }} />
+            </span>
+          ) : null}
+        </div>
+        <p className={styles.itemMeta}>
+          {team.openRegistration
+            ? `Open registration - ${formatPrice(team.registrationPriceCents)}`
+            : 'Registration closed'}
+        </p>
+        {team.registrationUrl ? <span className={styles.itemAction}>Join team</span> : null}
+        {team.openRegistration && team.isFull ? (
+          <button type="button" className={styles.itemButtonDisabled} disabled>
+            Team full
+          </button>
+        ) : null}
       </div>
+    </>
+  );
+
+  if (team.registrationUrl) {
+    return (
+      <Link href={team.registrationUrl} className={styles.item}>
+        {content}
+      </Link>
+    );
+  }
+
+  return (
+    <div className={styles.item}>
+      {content}
     </div>
   );
 }
@@ -68,7 +115,7 @@ function RentalItem({ rental }: { rental: PublicOrganizationRentalCard }) {
       <div className={styles.itemBody}>
         <h3 className={styles.itemTitle}>{rental.fieldName}</h3>
         <p className={styles.itemMeta}>{rental.location ?? 'Location TBD'}</p>
-        <p className={styles.itemMeta}>{formatDate(rental.start)} · {formatPrice(rental.priceCents)}</p>
+        <p className={styles.itemMeta}>{formatDate(rental.start)} - {formatPrice(rental.priceCents)}</p>
         <span className={styles.itemAction}>Book rental</span>
       </div>
     </a>

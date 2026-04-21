@@ -71,7 +71,7 @@ describe('GET /embed/[slug]/[kind]', () => {
 
   it('passes widget filter query params to the public catalog', async () => {
     const req = new NextRequest(
-      'http://localhost/embed/scsoccer/events?limit=4&page=2&showDateFilter=1&showEventTypeFilter=1&dateRule=today&eventTypes=league,tournament&includeChildWeeklyEvents=0',
+      'http://localhost/embed/scsoccer/events?limit=4&page=2&showDateFilter=1&showEventTypeFilter=1&dateRule=today&eventTypes=league,tournament&includeChildWeeklyEvents=0&teamOpenRegistrationOnly=1&productPurchaseMode=subscription',
     );
 
     await getWidget(req, { params: Promise.resolve({ slug: 'scsoccer', kind: 'events' }) });
@@ -83,6 +83,8 @@ describe('GET /embed/[slug]/[kind]', () => {
       dateRule: 'today',
       eventTypes: ['LEAGUE', 'TOURNAMENT'],
       includeChildWeeklyEvents: false,
+      teamOpenRegistrationOnly: true,
+      productPurchaseMode: 'subscription',
     }));
   });
 
@@ -120,5 +122,64 @@ describe('GET /embed/[slug]/[kind]', () => {
     expect(html).toContain('data-widget-page="1"');
     expect(html).toContain('Page 2');
     expect(html).toContain('data-widget-page="3"');
+  });
+
+  it('renders open-registration team cards as public registration links', async () => {
+    getPublicOrganizationCatalogMock.mockResolvedValue({
+      ...catalog,
+      teams: [
+        {
+          id: 'team_open',
+          name: 'Fusion Volleyball Club',
+          sport: 'Indoor Volleyball',
+          division: 'Open',
+          imageUrl: '/team.png',
+          currentSize: 3,
+          teamSize: 6,
+          isFull: false,
+          openRegistration: true,
+          registrationPriceCents: 2500,
+          registrationUrl: '/o/scsoccer/teams/team_open',
+        },
+      ],
+    });
+    const req = new NextRequest('http://localhost/embed/scsoccer/teams?teamOpenRegistrationOnly=1');
+
+    const res = await getWidget(req, { params: Promise.resolve({ slug: 'scsoccer', kind: 'teams' }) });
+    const html = await res.text();
+
+    expect(html).toContain('href="/o/scsoccer/teams/team_open"');
+    expect(html).toContain('3/6 full');
+    expect(html).toContain('Open registration - $25.00');
+    expect(html).toContain('Join team');
+  });
+
+  it('renders full teams without a registration link', async () => {
+    getPublicOrganizationCatalogMock.mockResolvedValue({
+      ...catalog,
+      teams: [
+        {
+          id: 'team_full',
+          name: 'Packed House',
+          sport: 'Indoor Volleyball',
+          division: 'Open',
+          imageUrl: '/team.png',
+          currentSize: 6,
+          teamSize: 6,
+          isFull: true,
+          openRegistration: true,
+          registrationPriceCents: 2500,
+          registrationUrl: null,
+        },
+      ],
+    });
+    const req = new NextRequest('http://localhost/embed/scsoccer/teams');
+
+    const res = await getWidget(req, { params: Promise.resolve({ slug: 'scsoccer', kind: 'teams' }) });
+    const html = await res.text();
+
+    expect(html).not.toContain('href="/o/scsoccer/teams/team_full"');
+    expect(html).toContain('6/6 full');
+    expect(html).toContain('Team full');
   });
 });

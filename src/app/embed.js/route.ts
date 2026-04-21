@@ -29,6 +29,8 @@ const SCRIPT = `
     if (target.dataset.dateTo) params.set('dateTo', target.dataset.dateTo);
     if (target.dataset.eventTypes) params.set('eventTypes', target.dataset.eventTypes);
     if (target.dataset.includeChildWeeklyEvents) params.set('includeChildWeeklyEvents', target.dataset.includeChildWeeklyEvents);
+    if (target.dataset.teamOpenRegistrationOnly) params.set('teamOpenRegistrationOnly', target.dataset.teamOpenRegistrationOnly);
+    if (target.dataset.productPurchaseMode) params.set('productPurchaseMode', target.dataset.productPurchaseMode);
     const iframe = document.createElement('iframe');
     iframe.src = origin + '/embed/' + encodeURIComponent(org) + '/' + encodeURIComponent(kind) + (params.toString() ? '?' + params.toString() : '');
     iframe.title = target.dataset.title || 'BracketIQ widget';

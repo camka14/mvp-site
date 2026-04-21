@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { getCanonicalTeamIdsByUserIds } from '@/server/teams/teamMembership';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,7 +45,6 @@ export async function GET(req: NextRequest) {
       where: { id: session.userId },
       select: {
         id: true,
-        teamIds: true,
       },
     }),
     prisma.parentChildLinks.findMany({
@@ -58,10 +58,12 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  const teamIds = Array.isArray(profile?.teamIds)
-    ? profile.teamIds
-      .map((value) => normalizeId(value))
-      .filter((value): value is string => Boolean(value))
+  const teamIdsByUserId = await getCanonicalTeamIdsByUserIds(
+    profile?.id ? [profile.id] : [],
+    prisma,
+  );
+  const teamIds = profile?.id
+    ? (teamIdsByUserId.get(profile.id) ?? [])
     : [];
   const childIds = uniqueIds(linkedChildren.map((link) => normalizeId(link.childId)));
 

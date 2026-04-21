@@ -134,6 +134,7 @@ const createTeamWithCompatibility = async (
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
+  const organizationId = params.get('organizationId');
   const playerId = params.get('playerId');
   const managerId = params.get('managerId');
   const limit = Number(params.get('limit') || '100');
@@ -141,6 +142,7 @@ export async function GET(req: NextRequest) {
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   const teams = await listCanonicalTeamsForUser({
     ids,
+    organizationId: normalizeId(organizationId),
     playerId: normalizeId(playerId),
     managerId: normalizeId(managerId),
     limit: Number.isFinite(limit) ? limit : 100,
