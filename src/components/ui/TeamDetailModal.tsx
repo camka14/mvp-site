@@ -238,8 +238,7 @@ export default function TeamDetailModal({
     const canStartTeamRegistration = showSelfServiceRegistrationActions
         && Boolean(currentTeam.openRegistration)
         && !isCurrentUserActiveMember
-        && !isCurrentUserPendingTeamRegistration
-        && teamHasCapacity;
+        && (isCurrentUserPendingTeamRegistration || teamHasCapacity);
     const selectedRoleLabel = (() => {
         switch (selectedInviteRole) {
             case 'team_manager':
@@ -1733,7 +1732,7 @@ export default function TeamDetailModal({
                                         {isCurrentUserPendingTeamRegistration && (
                                             <Text size="xs" c="dimmed">Your registration is waiting for payment confirmation.</Text>
                                         )}
-                                        {currentTeam.openRegistration && !teamHasCapacity && (
+                                        {currentTeam.openRegistration && !teamHasCapacity && !isCurrentUserPendingTeamRegistration && (
                                             <Text size="xs" c="red">This team is full.</Text>
                                         )}
                                     </div>
@@ -1743,7 +1742,7 @@ export default function TeamDetailModal({
                                         onClick={() => { void handleRegisterForTeam(); }}
                                     >
                                         {isCurrentUserPendingTeamRegistration
-                                            ? 'Registration Pending'
+                                            ? 'Resume Payment'
                                             : teamHasCapacity
                                             ? 'Register for Team'
                                             : 'Team Full'}

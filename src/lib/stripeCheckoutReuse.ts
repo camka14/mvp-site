@@ -180,6 +180,67 @@ export const findReusableIncompleteProductPaymentIntent = async ({
   }) ?? null;
 };
 
+export const findReusableIncompleteTeamRegistrationPaymentIntent = async ({
+  stripe,
+  customerId,
+  teamId,
+  userId,
+  organizationId,
+  registrationId,
+  totalChargeCents,
+  billingAddressFingerprint,
+  transferData,
+}: {
+  stripe: Stripe;
+  customerId: string;
+  teamId: string;
+  userId: string;
+  organizationId?: string | null;
+  registrationId: string;
+  totalChargeCents: number;
+  billingAddressFingerprint: string | null;
+  transferData: Stripe.PaymentIntentCreateParams.TransferData | null;
+}): Promise<Stripe.PaymentIntent | null> => {
+  const intents = await stripe.paymentIntents.list({
+    customer: customerId,
+    limit: 20,
+  });
+
+  return intents.data.find((intent) => {
+    if (!REUSABLE_PAYMENT_INTENT_STATUSES.has(intent.status)) {
+      return false;
+    }
+    if (!intent.client_secret || intent.currency !== 'usd') {
+      return false;
+    }
+    if (intent.amount !== totalChargeCents) {
+      return false;
+    }
+    if (!metadataMatches(intent.metadata, 'purchase_type', 'team_registration')) {
+      return false;
+    }
+    if (!metadataMatches(intent.metadata, 'team_id', teamId)) {
+      return false;
+    }
+    if (!metadataMatches(intent.metadata, 'user_id', userId)) {
+      return false;
+    }
+    if (!metadataMatches(intent.metadata, 'organization_id', organizationId)) {
+      return false;
+    }
+    if (!metadataMatches(intent.metadata, 'registration_id', registrationId)) {
+      return false;
+    }
+    if (!metadataMatches(intent.metadata, 'billing_address_fingerprint', billingAddressFingerprint)) {
+      return false;
+    }
+    if (parseMetadataInt(intent.metadata.total_charge_cents) !== totalChargeCents) {
+      return false;
+    }
+    return paymentIntentTransferMatches(intent, transferData);
+  }) ?? null;
+};
+
 export const findReusableIncompleteProductSubscriptionCheckout = async ({
   stripe,
   customerId,

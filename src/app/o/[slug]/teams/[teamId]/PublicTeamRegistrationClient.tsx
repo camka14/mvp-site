@@ -90,13 +90,9 @@ export default function PublicTeamRegistrationClient({
   const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
   const [startingRegistration, setStartingRegistration] = useState(false);
   const [registrationError, setRegistrationError] = useState<string | null>(null);
+  const canAttemptRegistration = !team.isFull || team.registrationPriceCents > 0;
 
   const startTeamRegistration = useCallback(async (billingAddress?: BillingAddress) => {
-    if (team.isFull) {
-      setRegistrationError('This team is full.');
-      return;
-    }
-
     if (!user) {
       router.push('/login');
       return;
@@ -151,7 +147,6 @@ export default function PublicTeamRegistrationClient({
     organization.publicCompletionRedirectUrl,
     router,
     slug,
-    team.isFull,
     team.name,
     team.registrationPriceCents,
     user,
@@ -264,9 +259,13 @@ export default function PublicTeamRegistrationClient({
             <Button
               loading={startingRegistration}
               onClick={() => void startTeamRegistration()}
-              disabled={team.isFull}
+              disabled={!canAttemptRegistration}
             >
-              {team.isFull ? 'Team full' : team.registrationPriceCents > 0 ? 'Open payment' : 'Join team'}
+              {team.isFull
+                ? (team.registrationPriceCents > 0 ? 'Continue registration' : 'Team full')
+                : team.registrationPriceCents > 0
+                  ? 'Open payment'
+                  : 'Join team'}
             </Button>
           ) : null}
         </Stack>

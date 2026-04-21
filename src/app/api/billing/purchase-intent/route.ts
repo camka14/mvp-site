@@ -16,6 +16,7 @@ import { buildDestinationTransferData } from '@/lib/stripeConnectAccounts';
 import {
   buildBillingAddressFingerprint,
   findReusableIncompleteProductPaymentIntent,
+  findReusableIncompleteTeamRegistrationPaymentIntent,
   getCheckoutTaxCalculationIdFromMetadata,
   getCheckoutTaxCategoryFromMetadata,
 } from '@/lib/stripeCheckoutReuse';
@@ -838,6 +839,34 @@ export async function POST(req: NextRequest) {
     }
     reservedRentalWindow = rentalWindowResult.window;
   }
+
+  if (
+    resolvedPurchase.purchaseType === 'team_registration'
+    && reservedRegistrationId
+    && checkoutUserId
+  ) {
+    const reusableIntent = await findReusableIncompleteTeamRegistrationPaymentIntent({
+      stripe,
+      customerId: taxQuote.customerId,
+      teamId: teamId ?? resolvedPurchase.team?.id ?? '',
+      userId: checkoutUserId,
+      organizationId,
+      registrationId: reservedRegistrationId,
+      totalChargeCents: taxQuote.totalChargeCents,
+      billingAddressFingerprint,
+      transferData,
+    });
+    if (reusableIntent?.client_secret) {
+      return NextResponse.json({
+        paymentIntent: reusableIntent.client_secret,
+        publishableKey,
+        taxCalculationId: getCheckoutTaxCalculationIdFromMetadata(reusableIntent.metadata) ?? taxQuote.calculationId,
+        taxCategory: getCheckoutTaxCategoryFromMetadata(reusableIntent.metadata) ?? taxQuote.taxCategory,
+        feeBreakdown,
+      }, { status: 200 });
+    }
+  }
+
   try {
     const metadata: Record<string, string> = {
       purchase_type: resolvedPurchase.purchaseType,

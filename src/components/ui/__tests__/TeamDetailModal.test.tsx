@@ -107,4 +107,44 @@ describe('TeamDetailModal', () => {
       );
     });
   });
+
+  it('allows a pending paid team registration to resume payment even when the team is full', async () => {
+    (useApp as jest.Mock).mockReturnValue({
+      user: buildUser({
+        $id: 'player_1',
+        firstName: 'Alex',
+        lastName: 'Stone',
+        fullName: 'Alex Stone',
+      }),
+    });
+    const team = buildTeam({
+      $id: 'team_1',
+      captainId: 'captain_1',
+      managerId: '',
+      playerIds: [],
+      pending: [],
+      openRegistration: true,
+      registrationPriceCents: 2500,
+      playerRegistrations: [{
+        id: 'registration_1',
+        teamId: 'team_1',
+        userId: 'player_1',
+        status: 'STARTED',
+      }],
+      teamSize: 1,
+    });
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage={false}
+      />,
+    );
+
+    expect(await screen.findByRole('button', { name: /resume payment/i })).toBeEnabled();
+    expect(screen.getByText(/waiting for payment confirmation/i)).toBeInTheDocument();
+    expect(screen.queryByText('This team is full.')).not.toBeInTheDocument();
+  });
 });

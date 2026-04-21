@@ -287,7 +287,13 @@ export const reserveTeamRegistrationSlot = async ({
       },
     });
     const existingStatus = String(existing?.status ?? '').toUpperCase();
-    if (existingStatus === ACTIVE_MEMBER_STATUS || existingStatus === STARTED_MEMBER_STATUS) {
+    if (existingStatus === ACTIVE_MEMBER_STATUS) {
+      return { ok: false, status: 409, error: 'You are already registered for this team.' };
+    }
+    if (existingStatus === STARTED_MEMBER_STATUS && status === STARTED_MEMBER_STATUS) {
+      return { ok: true, registrationId: existing?.id ?? registrationId, status };
+    }
+    if (existingStatus === STARTED_MEMBER_STATUS) {
       return { ok: false, status: 409, error: 'You are already registered for this team.' };
     }
 
