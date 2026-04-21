@@ -10,6 +10,7 @@ import {
 } from '@/server/authEmailVerification';
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { buildProfileCompletionState } from '@/server/profileCompletion';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -87,6 +88,9 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   await prisma.authUser.update({ where: { id: authUser.id }, data: { lastLogin: now, updatedAt: now } });
   const profile = await prisma.userData.findUnique({ where: { id: authUser.id } });
+  const [profileWithDerivedTeamIds] = profile
+    ? await withDerivedCanonicalTeamIds([profile], prisma)
+    : [null];
 
   const session: SessionToken = {
     userId: authUser.id,
@@ -99,7 +103,7 @@ export async function POST(req: NextRequest) {
       user: toPublicUser(authUser),
       session,
       token,
-      profile: profile ? applyNameCaseToUserFields(profile) : null,
+      profile: profileWithDerivedTeamIds ? applyNameCaseToUserFields(profileWithDerivedTeamIds) : null,
       ...buildProfileCompletionState({ authUser, profile }),
     },
     { status: 200 },

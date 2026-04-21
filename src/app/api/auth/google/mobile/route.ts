@@ -10,6 +10,7 @@ import {
 } from '@/server/profileCompletion';
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const mobileGoogleSchema = z.object({
   idToken: z.string().min(1),
@@ -270,12 +271,13 @@ export async function POST(req: NextRequest) {
     sessionVersion: authUser.sessionVersion ?? 0,
   };
   const token = signSessionToken(session);
+  const [profileWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([profile], prisma);
   const res = NextResponse.json(
     {
       user: toPublicUser(authUser),
       session,
       token,
-      profile: applyNameCaseToUserFields(profile),
+      profile: applyNameCaseToUserFields(profileWithDerivedTeamIds),
       ...buildProfileCompletionState({ authUser, profile }),
     },
     { status: 200 },

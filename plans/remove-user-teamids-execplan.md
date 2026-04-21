@@ -12,11 +12,11 @@ Users should be able to join, leave, and be removed from teams without any secon
 
 - [x] (2026-04-21 18:05Z) Audited the current membership model and confirmed that canonical team membership already lives in `CanonicalTeams`, `TeamRegistrations`, and `TeamStaffAssignments`.
 - [x] (2026-04-21 18:10Z) Identified duplicate `userData.teamIds` writes in `src/lib/teamService.ts`, `src/server/teams/teamMembership.ts`, and `src/server/teams/teamOpenRegistration.ts`.
-- [ ] Remove client-side `userService.updateUser(...teamIds...)` calls from team membership flows and add regressions for remove-player behavior.
-- [ ] Introduce a shared server helper that derives canonical team IDs for one or more users from active registrations and staff assignments.
-- [ ] Switch user/profile/team membership readers to the derived helper while preserving the existing response shape that includes `teamIds`.
-- [ ] Stop server-side synchronization into `userData.teamIds` and lock down the user patch route so `teamIds` is no longer writable.
-- [ ] Run targeted Jest coverage for the changed routes and services, then record the results here.
+- [x] (2026-04-21 18:20Z) Removed client-side `userService.updateUser(...teamIds...)` calls from `src/lib/teamService.ts` and added regressions for accept/remove/delete membership flows.
+- [x] (2026-04-21 18:31Z) Introduced `getCanonicalTeamIdsByUserIds(...)` and `withDerivedCanonicalTeamIds(...)` in `src/server/teams/teamMembership.ts`.
+- [x] (2026-04-21 18:40Z) Switched user and profile readers to derived canonical team IDs while keeping the existing `teamIds` response field for compatibility.
+- [x] (2026-04-21 18:45Z) Removed server-side synchronization into `userData.teamIds` and locked down `PATCH /api/users/[id]` so `teamIds` is no longer writable.
+- [x] (2026-04-21 18:52Z) Ran targeted Jest coverage and a full TypeScript check for the changed paths.
 
 ## Surprises & Discoveries
 
@@ -41,7 +41,9 @@ Users should be able to join, leave, and be removed from teams without any secon
 
 ## Outcomes & Retrospective
 
-Pending implementation.
+The immediate remove-player failure is fixed because team membership changes no longer issue a second profile patch against another user. Canonical membership tables are now the active source of truth for user-team association in the changed routes and services. Compatibility was preserved by continuing to expose `teamIds` in API responses, but those IDs are now derived from `TeamRegistrations` and `TeamStaffAssignments` instead of being written into `UserData`.
+
+The `UserData.teamIds` column still exists in the schema as a legacy artifact, but the changed membership flows no longer treat it as authoritative or writable. A future cleanup can remove the column entirely once the remaining session/bootstrap and test scaffolding no longer need the compatibility field.
 
 ## Context and Orientation
 
@@ -103,6 +105,11 @@ Expected behavior after the fix:
 
     PATCH /api/teams/<team-id> 200
     no PATCH /api/users/<removed-player-id> request is issued
+
+Validation completed:
+
+    npm test -- --runInBand src/app/api/users/__tests__/usersRoute.test.ts src/app/api/users/__tests__/userByIdRoute.test.ts src/app/api/profile/schedule/__tests__/route.test.ts src/app/api/profile/documents/__tests__/route.test.ts src/lib/__tests__/teamService.test.ts
+    npx tsc --noEmit
 
 ## Interfaces and Dependencies
 

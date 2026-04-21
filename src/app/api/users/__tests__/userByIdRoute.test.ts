@@ -11,6 +11,12 @@ const prismaMock = {
     findFirst: jest.fn(),
     update: jest.fn(),
   },
+  teamRegistrations: {
+    findMany: jest.fn(),
+  },
+  teamStaffAssignments: {
+    findMany: jest.fn(),
+  },
   organizations: {
     findUnique: jest.fn(),
   },
@@ -60,6 +66,8 @@ describe('PATCH /api/users/[id]', () => {
       dateOfBirth: new Date('2000-01-01T00:00:00.000Z'),
       requiredProfileFieldsCompletedAt: new Date('2026-01-01T00:00:00.000Z'),
     });
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
   });
@@ -171,6 +179,19 @@ describe('PATCH /api/users/[id]', () => {
         { params: Promise.resolve({ id: 'user_2' }) },
       ),
     ).rejects.toMatchObject({ status: 403 });
+    expect(prismaMock.userData.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects direct teamIds patches because membership is derived', async () => {
+    const response = await patchUserById(
+      buildJsonRequest('http://localhost/api/users/user_1', { data: { teamIds: ['team_1'] } }),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toContain('teamIds is derived');
     expect(prismaMock.userData.findUnique).not.toHaveBeenCalled();
     expect(prismaMock.userData.update).not.toHaveBeenCalled();
   });

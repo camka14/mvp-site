@@ -11,6 +11,10 @@ const staffMembersFindManyMock = jest.fn();
 const organizationsFindManyMock = jest.fn();
 const organizationsFindUniqueMock = jest.fn();
 const organizationsFindFirstMock = jest.fn();
+const canonicalTeamsFindManyMock = jest.fn();
+const canonicalTeamsFindUniqueMock = jest.fn();
+const teamRegistrationsFindManyMock = jest.fn();
+const teamStaffAssignmentsFindManyMock = jest.fn();
 const getOptionalSessionMock = jest.fn();
 const prismaMock = {
   userData: {
@@ -33,6 +37,16 @@ const prismaMock = {
     findMany: (...args: any[]) => organizationsFindManyMock(...args),
     findUnique: (...args: any[]) => organizationsFindUniqueMock(...args),
     findFirst: (...args: any[]) => organizationsFindFirstMock(...args),
+  },
+  canonicalTeams: {
+    findMany: (...args: any[]) => canonicalTeamsFindManyMock(...args),
+    findUnique: (...args: any[]) => canonicalTeamsFindUniqueMock(...args),
+  },
+  teamRegistrations: {
+    findMany: (...args: any[]) => teamRegistrationsFindManyMock(...args),
+  },
+  teamStaffAssignments: {
+    findMany: (...args: any[]) => teamStaffAssignmentsFindManyMock(...args),
   },
 };
 
@@ -62,6 +76,10 @@ describe('users list route', () => {
     organizationsFindManyMock.mockResolvedValue([]);
     organizationsFindUniqueMock.mockResolvedValue(null);
     organizationsFindFirstMock.mockResolvedValue(null);
+    canonicalTeamsFindManyMock.mockResolvedValue([]);
+    canonicalTeamsFindUniqueMock.mockResolvedValue(null);
+    teamRegistrationsFindManyMock.mockResolvedValue([]);
+    teamStaffAssignmentsFindManyMock.mockResolvedValue([]);
   });
 
   it('returns users by ids in requested order', async () => {
@@ -365,17 +383,9 @@ describe('users list route', () => {
     });
     organizationsFindFirstMock.mockResolvedValue({ id: 'org_1' });
     staffMembersFindManyMock.mockResolvedValue([{ organizationId: 'org_1' }]);
-    organizationsFindUniqueMock.mockResolvedValue({ teamIds: ['team_1'] });
-    teamsFindManyMock.mockResolvedValue([
-      {
-        captainId: 'capt_1',
-        managerId: 'mgr_1',
-        headCoachId: null,
-        coachIds: [],
-        playerIds: ['minor_1'],
-        pending: [],
-      },
-    ]);
+    canonicalTeamsFindUniqueMock.mockResolvedValue({ organizationId: 'org_1' });
+    canonicalTeamsFindManyMock.mockResolvedValue([{ id: 'team_1' }]);
+    teamRegistrationsFindManyMock.mockResolvedValue([{ teamId: 'team_1', userId: 'minor_1', status: 'ACTIVE' }]);
     findManyMock.mockResolvedValue([
       {
         id: 'minor_1',
@@ -408,17 +418,9 @@ describe('users list route', () => {
     });
     organizationsFindFirstMock.mockResolvedValue({ id: 'org_1' });
     organizationsFindManyMock.mockResolvedValue([{ id: 'org_1' }]);
-    organizationsFindUniqueMock.mockResolvedValue({ teamIds: ['team_1'] });
-    teamsFindManyMock.mockResolvedValue([
-      {
-        captainId: 'capt_1',
-        managerId: 'mgr_1',
-        headCoachId: null,
-        coachIds: [],
-        playerIds: ['minor_1'],
-        pending: [],
-      },
-    ]);
+    canonicalTeamsFindUniqueMock.mockResolvedValue({ organizationId: 'org_1' });
+    canonicalTeamsFindManyMock.mockResolvedValue([{ id: 'team_1' }]);
+    teamRegistrationsFindManyMock.mockResolvedValue([{ teamId: 'team_1', userId: 'minor_1', status: 'ACTIVE' }]);
     findManyMock.mockResolvedValue([
       {
         id: 'minor_1',

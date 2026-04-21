@@ -21,6 +21,7 @@ import {
   buildProfileCompletionState,
   resolveRequiredProfileFieldsCompletedAt,
 } from '@/server/profileCompletion';
+import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
 const profileSelectionSchema = z.object({
   firstName: z.string().optional(),
@@ -384,6 +385,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const [profileWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([profile], prisma);
+
   return NextResponse.json(
     {
       error: 'Email not verified. We sent a verification link to your email.',
@@ -392,7 +395,7 @@ export async function POST(req: NextRequest) {
       requiresEmailVerification: true,
       verificationEmailSent: true,
       user: toPublicUser(authUser),
-      profile: applyNameCaseToUserFields(profile),
+      profile: applyNameCaseToUserFields(profileWithDerivedTeamIds),
       ...buildProfileCompletionState({ authUser, profile }),
     },
     { status: 202 },
