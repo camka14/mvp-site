@@ -45,6 +45,7 @@ describe('buildOrganizationTabs', () => {
       { label: 'Document Templates', value: 'templates' },
       { label: 'Staff', value: 'staff' },
       { label: 'Refunds', value: 'refunds' },
+      { label: 'Public Page', value: 'publicPage' },
       { label: 'Fields', value: 'fields' },
       { label: 'Store', value: 'store' },
     ]);

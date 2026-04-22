@@ -2,9 +2,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const useProdServer = process.env.E2E_WEB_SERVER !== 'dev';
+const webServerEnv = Object.fromEntries(
+  Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+);
 const webServerCommand = useProdServer
-  ? 'NEXT_PUBLIC_DISABLE_CHAT=1 NEXT_PUBLIC_E2E=1 npm run build && NEXT_PUBLIC_DISABLE_CHAT=1 NEXT_PUBLIC_E2E=1 npm run start'
-  : 'NEXT_PUBLIC_DISABLE_CHAT=1 NEXT_PUBLIC_E2E=1 npm run dev';
+  ? 'npm run build && npm run start'
+  : 'npm run dev';
 
 export default defineConfig({
   testDir: './e2e',
@@ -29,6 +32,11 @@ export default defineConfig({
   ],
   webServer: {
     command: webServerCommand,
+    env: {
+      ...webServerEnv,
+      NEXT_PUBLIC_DISABLE_CHAT: '1',
+      NEXT_PUBLIC_E2E: '1',
+    },
     url: baseURL,
     reuseExistingServer: !useProdServer,
     timeout: 180000,

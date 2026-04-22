@@ -20,8 +20,8 @@
     "db:down": "docker compose --env-file .env.docker down",
     "db:ps": "docker compose --env-file .env.docker ps",
     "db:logs": "docker compose --env-file .env.docker logs -f db",
-    "seed:dev": "E2E_SEED=1 SEED_SKIP_RESET=1 tsx prisma/seed.e2e.ts",
-    "seed:e2e": "E2E_SEED=1 tsx prisma/seed.e2e.ts",
+    "seed:dev": "node scripts/run-seed-e2e.mjs --skip-reset",
+    "seed:e2e": "node scripts/run-seed-e2e.mjs",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

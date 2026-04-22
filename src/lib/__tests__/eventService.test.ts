@@ -59,6 +59,34 @@ describe('eventService', () => {
     expect(event?.$id).toBe('evt_1');
   });
 
+  it('uses the extended timeout when scheduling an event', async () => {
+    apiRequestMock.mockResolvedValue({
+      preview: false,
+      event: { ...baseEventRow, id: 'evt_1' },
+      matches: [],
+    });
+
+    await eventService.scheduleEvent(
+      {
+        $id: 'evt_1',
+        name: 'Test Event',
+        eventType: 'LEAGUE',
+        divisions: [],
+        fields: [],
+        timeSlots: [],
+      },
+      { eventId: 'evt_1' },
+    );
+
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      '/api/events/evt_1/schedule',
+      expect.objectContaining({
+        method: 'POST',
+        timeoutMs: 60_000,
+      }),
+    );
+  });
+
   it('creates event via apiRequest', async () => {
     apiRequestMock.mockResolvedValue({ event: { ...baseEventRow } });
 

@@ -2915,7 +2915,7 @@ describe('League schedule page', () => {
       if (path === '/api/events/event_1/matches') {
         return Promise.resolve({ matches: [] });
       }
-      if (path === '/api/teams?ids=team_1') {
+      if (path === '/api/teams?organizationId=org_1&limit=200') {
         return Promise.resolve({ teams: [organizationTeam] });
       }
       if (

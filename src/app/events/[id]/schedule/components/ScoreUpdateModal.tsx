@@ -196,9 +196,13 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount
   const source = { ...eventRules, ...matchResolvedRules, ...matchSnapshotRules };
   const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
   const supportsShootout = source.supportsShootout === true;
-  const usesPlayerRecordedScoring = typeof matchSnapshotRules.pointIncidentRequiresParticipant === 'boolean'
-    ? matchSnapshotRules.pointIncidentRequiresParticipant === true
-    : event.autoCreatePointMatchIncidents === true;
+  const usesPlayerRecordedScoring = typeof matchResolvedRules.pointIncidentRequiresParticipant === 'boolean'
+    ? matchResolvedRules.pointIncidentRequiresParticipant === true
+    : typeof eventRules.pointIncidentRequiresParticipant === 'boolean'
+      ? eventRules.pointIncidentRequiresParticipant === true
+      : typeof matchSnapshotRules.pointIncidentRequiresParticipant === 'boolean'
+        ? matchSnapshotRules.pointIncidentRequiresParticipant === true
+        : event.autoCreatePointMatchIncidents === true;
   return {
     scoringModel,
     segmentCount: positiveInt(source.segmentCount, segmentCount),

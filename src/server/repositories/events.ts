@@ -2445,14 +2445,55 @@ export const saveMatches = async (
           linkedPointDelta: incident.linkedPointDelta ?? null,
           note: incident.note ?? null,
           metadata: incident.metadata ?? null,
-          updatedAt: now,
-        };
-        await (client as any).matchIncidents.upsert({
-          where: { id: incidentId },
-          create: { ...incidentData, createdAt: now },
-          update: incidentData,
         });
       }
+    }
+  }
+
+  const matchSegments = (client as any).matchSegments;
+  if (segmentMatchIds.size > 0 && typeof matchSegments?.deleteMany === 'function' && typeof matchSegments?.createMany === 'function') {
+    await matchSegments.deleteMany({
+      where: { matchId: { in: Array.from(segmentMatchIds) } },
+    });
+    if (segmentRows.length > 0) {
+      await matchSegments.createMany({ data: segmentRows });
+    }
+  } else if (typeof matchSegments?.upsert === 'function') {
+    for (const segmentRow of segmentRows) {
+      await matchSegments.upsert({
+        where: {
+          matchId_sequence: {
+            matchId: String(segmentRow.matchId),
+            sequence: Number(segmentRow.sequence),
+          },
+        },
+        create: { ...segmentRow },
+        update: {
+          ...segmentRow,
+          createdAt: undefined,
+        },
+      });
+    }
+  }
+
+  const matchIncidents = (client as any).matchIncidents;
+  if (incidentMatchIds.size > 0 && typeof matchIncidents?.deleteMany === 'function' && typeof matchIncidents?.createMany === 'function') {
+    await matchIncidents.deleteMany({
+      where: { matchId: { in: Array.from(incidentMatchIds) } },
+    });
+    if (incidentRows.length > 0) {
+      await matchIncidents.createMany({ data: incidentRows });
+    }
+  } else if (typeof matchIncidents?.upsert === 'function') {
+    for (const incidentRow of incidentRows) {
+      await matchIncidents.upsert({
+        where: { id: String(incidentRow.id) },
+        create: { ...incidentRow },
+        update: {
+          ...incidentRow,
+          createdAt: undefined,
+        },
+      });
     }
   }
 };
