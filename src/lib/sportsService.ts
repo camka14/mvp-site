@@ -1,13 +1,37 @@
 import { apiRequest } from '@/lib/apiClient';
-import { Sport } from '@/types';
+import type { MatchRulesConfig, Sport, SportOfficialPositionTemplate } from '@/types';
 
-const CACHE_KEY = 'sports-cache-v2';
+const CACHE_KEY = 'sports-cache-v3';
 // Sports rarely change; keep cache long-lived and refresh opportunistically.
 const CACHE_DURATION_MS = 1000 * 60 * 60 * 24; // 24h
 
 let cachedSports: Sport[] | null = null;
 let cachedAt: number | null = null;
 let inflightPromise: Promise<Sport[]> | null = null;
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+);
+
+const normalizeOfficialPositionTemplates = (value: unknown): SportOfficialPositionTemplate[] => (
+  Array.isArray(value)
+    ? value.flatMap((entry) => {
+      if (!isRecord(entry)) {
+        return [];
+      }
+
+      const name = String(entry.name ?? '').trim();
+      const numericCount = typeof entry.count === 'number' ? entry.count : Number(entry.count);
+      const count = Number.isFinite(numericCount) ? Math.max(1, Math.trunc(numericCount)) : 1;
+
+      return name ? [{ name, count }] : [];
+    })
+    : []
+);
+
+const normalizeMatchRulesTemplate = (value: unknown): MatchRulesConfig | null => (
+  isRecord(value) ? { ...(value as MatchRulesConfig) } : null
+);
 
 const mapRowToSport = (row: any): Sport => {
   if (!row) {
@@ -17,6 +41,8 @@ const mapRowToSport = (row: any): Sport => {
   return {
     $id: String(row.$id ?? ''),
     name: String(row.name ?? ''),
+    officialPositionTemplates: normalizeOfficialPositionTemplates(row.officialPositionTemplates),
+    matchRulesTemplate: normalizeMatchRulesTemplate(row.matchRulesTemplate),
     usePointsForWin: Boolean(row.usePointsForWin),
     usePointsForDraw: Boolean(row.usePointsForDraw),
     usePointsForLoss: Boolean(row.usePointsForLoss),

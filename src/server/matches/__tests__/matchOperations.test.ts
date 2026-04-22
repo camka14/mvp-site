@@ -56,6 +56,7 @@ describe('resolveMatchRules', () => {
         supportsOvertime: true,
         pointIncidentRequiresParticipant: true,
       },
+      autoCreatePointMatchIncidents: true,
     })).toEqual(expect.objectContaining({
       scoringModel: 'PERIODS',
       segmentCount: 4,
@@ -64,6 +65,32 @@ describe('resolveMatchRules', () => {
       supportsOvertime: true,
       supportedIncidentTypes: ['POINT', 'DISCIPLINE'],
       pointIncidentRequiresParticipant: true,
+    }));
+  });
+
+  it('treats automatic scoring incidents as the source of truth for player-recorded scoring', () => {
+    expect(resolveMatchRules({
+      sportTemplate: {
+        scoringModel: 'PERIODS',
+        segmentCount: 2,
+        segmentLabel: 'Half',
+        pointIncidentRequiresParticipant: false,
+      },
+      autoCreatePointMatchIncidents: true,
+    })).toEqual(expect.objectContaining({
+      pointIncidentRequiresParticipant: true,
+    }));
+
+    expect(resolveMatchRules({
+      sportTemplate: {
+        scoringModel: 'PERIODS',
+        segmentCount: 2,
+        segmentLabel: 'Half',
+        pointIncidentRequiresParticipant: true,
+      },
+      autoCreatePointMatchIncidents: false,
+    })).toEqual(expect.objectContaining({
+      pointIncidentRequiresParticipant: false,
     }));
   });
 

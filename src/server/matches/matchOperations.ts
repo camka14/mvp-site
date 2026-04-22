@@ -56,6 +56,7 @@ const segmentLabelForModel = (model: ResolvedMatchRules['scoringModel']): string
 export const resolveMatchRules = (params: {
   sportTemplate?: unknown;
   eventOverride?: unknown;
+  autoCreatePointMatchIncidents?: boolean | null;
   usesSets?: boolean | null;
   setsPerMatch?: number | null;
   winnerSetCount?: number | null;
@@ -104,7 +105,8 @@ export const resolveMatchRules = (params: {
     autoCreatePointIncidentType: typeof merged.autoCreatePointIncidentType === 'string' && merged.autoCreatePointIncidentType.trim()
       ? merged.autoCreatePointIncidentType.trim()
       : DEFAULT_POINT_INCIDENT_TYPE,
-    pointIncidentRequiresParticipant: merged.pointIncidentRequiresParticipant === true,
+    // Automatic point/goal incident capture is now the single source of truth.
+    pointIncidentRequiresParticipant: params.autoCreatePointMatchIncidents === true,
   };
 };
 

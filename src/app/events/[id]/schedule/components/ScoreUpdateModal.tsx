@@ -194,6 +194,9 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount
   const source = { ...eventRules, ...matchResolvedRules, ...matchSnapshotRules };
   const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
   const supportsShootout = source.supportsShootout === true;
+  const usesPlayerRecordedScoring = typeof matchSnapshotRules.pointIncidentRequiresParticipant === 'boolean'
+    ? matchSnapshotRules.pointIncidentRequiresParticipant === true
+    : event.autoCreatePointMatchIncidents === true;
   return {
     scoringModel,
     segmentCount: positiveInt(source.segmentCount, segmentCount),
@@ -208,9 +211,7 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount
       ? source.supportedIncidentTypes
       : ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
     autoCreatePointIncidentType: source.autoCreatePointIncidentType ?? 'POINT',
-    pointIncidentRequiresParticipant: eventRules.pointIncidentRequiresParticipant === true
-      || matchResolvedRules.pointIncidentRequiresParticipant === true
-      || matchSnapshotRules.pointIncidentRequiresParticipant === true,
+    pointIncidentRequiresParticipant: usesPlayerRecordedScoring,
   };
 };
 

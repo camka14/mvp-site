@@ -155,6 +155,7 @@ const resolveScoringModel = (
 const resolveMatchRules = (params: {
   sportTemplate?: MatchRulesConfig | null;
   eventOverride?: MatchRulesConfig | null;
+  autoCreatePointMatchIncidents?: boolean;
   usesSets?: boolean | null;
   setsPerMatch?: number | null;
   winnerSetCount?: number | null;
@@ -200,7 +201,7 @@ const resolveMatchRules = (params: {
     officialRoles: officialRoles.length > 0 ? officialRoles : officialRolesFromPositions,
     supportedIncidentTypes: supportedIncidentTypes.length > 0 ? supportedIncidentTypes : [...DEFAULT_INCIDENT_TYPES],
     autoCreatePointIncidentType,
-    pointIncidentRequiresParticipant: merged.pointIncidentRequiresParticipant === true,
+    pointIncidentRequiresParticipant: params.autoCreatePointMatchIncidents === true,
   };
 };
 
@@ -237,26 +238,29 @@ export default function MatchRulesSection({
   const baseRules = useMemo(
     () => resolveMatchRules({
       sportTemplate: sport?.matchRulesTemplate ?? null,
+      autoCreatePointMatchIncidents,
       usesSets,
       setsPerMatch,
       winnerSetCount,
       officialPositions,
     }),
-    [officialPositions, setsPerMatch, sport?.matchRulesTemplate, usesSets, winnerSetCount],
+    [autoCreatePointMatchIncidents, officialPositions, setsPerMatch, sport?.matchRulesTemplate, usesSets, winnerSetCount],
   );
   const resolvedRules = useMemo(
     () => resolveMatchRules({
       sportTemplate: sport?.matchRulesTemplate ?? null,
       eventOverride: value ?? null,
+      autoCreatePointMatchIncidents,
       usesSets,
       setsPerMatch,
       winnerSetCount,
       officialPositions,
     }),
-    [officialPositions, setsPerMatch, sport?.matchRulesTemplate, usesSets, value, winnerSetCount],
+    [autoCreatePointMatchIncidents, officialPositions, setsPerMatch, sport?.matchRulesTemplate, usesSets, value, winnerSetCount],
   );
   const normalizedOverride = useMemo(() => normalizeRulesConfig(value), [value]);
   const hasOverrides = Object.keys(normalizedOverride).length > 0;
+  const autoPointIncidentType = resolvedRules.autoCreatePointIncidentType?.trim() || DEFAULT_POINT_INCIDENT_TYPE;
   const availableIncidentTypes = useMemo(() => (
     Array.from(
       new Set([
@@ -266,8 +270,11 @@ export default function MatchRulesSection({
       ]),
     )
   ), [baseRules.supportedIncidentTypes, resolvedRules.supportedIncidentTypes]);
-  const selectedIncidentTypes = resolvedRules.supportedIncidentTypes;
-  const autoPointIncidentType = resolvedRules.autoCreatePointIncidentType?.trim() || DEFAULT_POINT_INCIDENT_TYPE;
+  const selectedIncidentTypes = useMemo(() => (
+    autoCreatePointMatchIncidents
+      ? resolvedRules.supportedIncidentTypes
+      : resolvedRules.supportedIncidentTypes.filter((incidentType) => incidentType !== autoPointIncidentType)
+  ), [autoCreatePointMatchIncidents, autoPointIncidentType, resolvedRules.supportedIncidentTypes]);
 
   const updateOverride = useCallback((updater: (draft: MatchRulesConfig) => void) => {
     const draft = normalizeRulesConfig(normalizedOverride);
@@ -277,7 +284,7 @@ export default function MatchRulesSection({
   }, [normalizedOverride, onChange]);
 
   const setBooleanOverride = useCallback((
-    key: 'supportsOvertime' | 'supportsShootout' | 'pointIncidentRequiresParticipant',
+    key: 'supportsOvertime' | 'supportsShootout',
     checked: boolean,
     defaultValue: boolean,
   ) => {
@@ -319,18 +326,24 @@ export default function MatchRulesSection({
 
   const handleAutoCreateToggle = useCallback((checked: boolean) => {
     onAutoCreatePointMatchIncidentsChange(checked);
-    if (!checked) {
-      return;
-    }
-    handleIncidentTypesChange(selectedIncidentTypes);
-  }, [handleIncidentTypesChange, onAutoCreatePointMatchIncidentsChange, selectedIncidentTypes]);
+    updateOverride((draft) => {
+      draft.pointIncidentRequiresParticipant = checked;
+    });
+    handleIncidentTypesChange(
+      checked
+        ? Array.from(new Set([...selectedIncidentTypes, autoPointIncidentType]))
+        : selectedIncidentTypes.filter((incidentType) => incidentType !== autoPointIncidentType),
+    );
+  }, [autoPointIncidentType, handleIncidentTypesChange, onAutoCreatePointMatchIncidentsChange, selectedIncidentTypes, updateOverride]);
 
   const incidentTypeOptions = useMemo(
-    () => availableIncidentTypes.map((incidentType) => ({
-      value: incidentType,
-      label: incidentTypeLabel(incidentType),
-    })),
-    [availableIncidentTypes],
+    () => availableIncidentTypes
+      .filter((incidentType) => autoCreatePointMatchIncidents || incidentType !== autoPointIncidentType)
+      .map((incidentType) => ({
+        value: incidentType,
+        label: incidentTypeLabel(incidentType),
+      })),
+    [autoCreatePointMatchIncidents, autoPointIncidentType, availableIncidentTypes],
   );
 
   return (
@@ -410,17 +423,6 @@ export default function MatchRulesSection({
             )}
           />
         ) : null}
-        <Switch
-          label="Point incidents require a participant"
-          description="Require officials to identify the player when logging a scoring incident."
-          checked={resolvedRules.pointIncidentRequiresParticipant}
-          disabled={disabled}
-          onChange={(event) => setBooleanOverride(
-            'pointIncidentRequiresParticipant',
-            event.currentTarget.checked,
-            baseRules.pointIncidentRequiresParticipant,
-          )}
-        />
       </SimpleGrid>
 
       <MultiSelect
@@ -437,7 +439,7 @@ export default function MatchRulesSection({
 
       <Switch
         label="Create a scoring incident for each point / goal"
-        description="Prompt officials for scoring details before the score changes."
+        description="Prompt officials to identify the player before the score changes."
         checked={autoCreatePointMatchIncidents}
         disabled={incidentToggleDisabled}
         onChange={(event) => handleAutoCreateToggle(event.currentTarget.checked)}

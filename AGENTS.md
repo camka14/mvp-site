@@ -14,7 +14,7 @@ tags:
   - react
   - saas
   - digitalocean
-lastUpdated: "2026-02-04"
+lastUpdated: "2026-04-21"
 ---
 
 # TypeScript Next.js Prisma Web App Guide
@@ -24,6 +24,8 @@ lastUpdated: "2026-02-04"
 This guide covers best practices for developing a **full-stack web application** with **Next.js** (App Router) as the front-end framework, **TypeScript** for type safety, **Mantine** as the UI component library, and **Prisma + Postgres** for backend data. The example project is the BracketIQ volleyball event platform where users can sign up, create profiles, form teams, join events, chat with other players, and handle payments for event registrations. We emphasize a **modular architecture**: Next.js for routing and SSR, Mantine for cohesive UI components, and Prisma-backed API routes for data access, file uploads, and business logic.
 
 **Legacy references**: The repos `mvpDatabase` and `mvp-build-bracket` are **legacy backend references** only. Use them to understand data shape and historical behavior, but **do not implement new features using legacy services**. Any legacy-specific files or env vars in this repo should be treated as artifacts.
+
+**Related app**: The mobile version of this product lives in `C:\Users\samue\StudioProjects\mvp-app`. When a request mentions `mvp-app` or mobile parity, inspect that repo directly and determine whether web-side behavior changes in `mvp-site` also need a corresponding mobile update.
 
 # ExecPlans
 When writing complex features or significant refactors, use an ExecPlan (as described in `mvp-site/PLANS.md`) from design to implementation.
