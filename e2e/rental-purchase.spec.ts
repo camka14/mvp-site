@@ -9,6 +9,7 @@ import {
   RENTAL_START_LOCAL,
 } from "./utils/rental";
 import { SEED_FIELD, SEED_ORG, SEED_RENTAL_SLOT } from "./fixtures/seed-data";
+import { E2E_EVENT_IDS } from "./fixtures/test-ids";
 
 const expectedRentalTotalCents =
   SEED_RENTAL_SLOT.price *
@@ -18,7 +19,7 @@ test.describe("rental purchase (fields flow)", () => {
   test("participant starts rental purchase from organization fields", async ({
     page,
   }) => {
-    const eventId = `rental_purchase_${Date.now()}`;
+    const eventId = E2E_EVENT_IDS.rentalPurchase;
     const params = new URLSearchParams({
       create: "1",
       rentalOrgId: SEED_ORG.id,

@@ -17,6 +17,7 @@ export default defineConfig({
     timeout: 10000,
   },
   globalSetup: './e2e/global-setup',
+  globalTeardown: './e2e/global-teardown',
   use: {
     baseURL,
     timezoneId: 'UTC',

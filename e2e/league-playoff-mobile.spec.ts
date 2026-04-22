@@ -9,6 +9,7 @@ import {
   SEED_UPLOADED_IMAGES,
   SEED_USERS,
 } from "./fixtures/seed-data";
+import { E2E_EVENT_IDS } from "./fixtures/test-ids";
 import {
   AUTH_STORAGE,
   ensureDobVerified,
@@ -183,7 +184,7 @@ test("creates a playoff league, loads hydrated relations on mobile, and keeps th
   participantApi,
   page,
 }) => {
-  const eventId = `event_league_mobile_${Date.now()}`;
+  const eventId = E2E_EVENT_IDS.leaguePlayoffMobile;
   const fieldId = `${eventId}_field_1`;
   const slotId = `${eventId}_slot_1`;
   const eventName = "E2E Mobile Playoff League";

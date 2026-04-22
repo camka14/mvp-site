@@ -10,11 +10,12 @@ import {
   SEED_SPORT,
   SEED_USERS,
 } from "./fixtures/seed-data";
+import { E2E_EVENT_IDS } from "./fixtures/test-ids";
 
 test.use({ storageState: AUTH_STORAGE.host });
 
 test("creates an event from the schedule create flow", async ({ page }) => {
-  const eventId = `event_create_${Date.now()}`;
+  const eventId = E2E_EVENT_IDS.createFlow;
 
   page.on("pageerror", (err) => console.log("[pageerror]", err.message));
   page.on("console", (msg) => {

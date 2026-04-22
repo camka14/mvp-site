@@ -1380,6 +1380,43 @@ describe('upsertEventFromPayload', () => {
     );
   });
 
+  it('preserves the stored sportId when an update payload omits it', async () => {
+    const client = createMockClient();
+    client.events.findUnique.mockResolvedValueOnce({
+      fieldIds: ['field_1'],
+      timeSlotIds: [],
+      eventType: 'LEAGUE',
+      end: new Date('2026-03-05T09:00:00.000Z'),
+      noFixedEndDateTime: false,
+      leagueScoringConfigId: null,
+      hostId: 'host_1',
+      organizationId: null,
+      parentEvent: null,
+      officialIds: [],
+      officialPositions: [],
+      officialSchedulingMode: 'SCHEDULE',
+      sportId: 'sport_existing',
+    });
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      description: 'Metadata-only edit',
+      sportId: undefined,
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create.sportId).toBe('sport_existing');
+    expect(eventUpsertArgs.update.sportId).toBe('sport_existing');
+    expect(client.divisions.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ sportId: 'sport_existing' }),
+        update: expect.objectContaining({ sportId: 'sport_existing' }),
+      }),
+    );
+  });
+
   it('persists event teams with the resolved event id when payload only provides $id', async () => {
     const client = createMockClient();
     const payload = {

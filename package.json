@@ -22,6 +22,7 @@
     "db:logs": "docker compose --env-file .env.docker logs -f db",
     "seed:dev": "node scripts/run-seed-e2e.mjs --skip-reset",
     "seed:e2e": "node scripts/run-seed-e2e.mjs",
+    "seed:e2e:reset": "node scripts/run-seed-e2e.mjs --force-reset",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui"
   },

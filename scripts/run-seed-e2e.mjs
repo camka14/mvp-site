@@ -16,6 +16,11 @@ if (process.argv.includes('--skip-reset')) {
   env.SEED_SKIP_RESET = '1';
 }
 
+if (process.argv.includes('--force-reset')) {
+  delete env.SEED_SKIP_RESET;
+  env.SEED_FORCE_RESET = '1';
+}
+
 const result = spawnSync(
   process.execPath,
   [tsxCliPath, seedScriptPath],

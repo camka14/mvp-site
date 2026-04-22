@@ -3600,6 +3600,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : typeof (existingEvent as any)?.autoCreatePointMatchIncidents === 'boolean'
       ? Boolean((existingEvent as any).autoCreatePointMatchIncidents)
       : undefined;
+  const normalizedSportId = normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId);
 
   const eventData = {
     id,
@@ -3649,7 +3650,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     restTimeMinutes: payload.restTimeMinutes ?? null,
     state: payload.state ?? null,
     pointsToVictory: ensureNumberArray(payload.pointsToVictory),
-    sportId: payload.sportId ?? null,
+    sportId: normalizedSportId,
     timeSlotIds,
     fieldIds,
     teamIds,
@@ -3736,7 +3737,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     fieldIds,
     includePlayoffs: payload.includePlayoffs ?? false,
     singleDivision: singleDivisionEnabled,
-    sportId: payload.sportId ?? null,
+    sportId: normalizedSportId,
     referenceDate: start,
     organizationId: payload.organizationId ?? null,
     divisionFieldMap,

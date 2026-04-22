@@ -20,6 +20,7 @@ import {
   SEED_TEAM_IDS,
   SEED_USERS,
 } from "../e2e/fixtures/seed-data";
+import { E2E_EVENT_IDS, E2E_EVENT_PREFIXES } from "../e2e/fixtures/test-ids";
 
 const projectRoot = path.resolve(__dirname, "..");
 const uploadsRoot = path.join(projectRoot, "uploads");
@@ -46,6 +47,9 @@ const seedUserNames = [
   SEED_USERS.participant.userName,
   ...SEED_DEV_USERS.map((user) => user.userName),
 ];
+const prefixedE2eEventsWhere = E2E_EVENT_PREFIXES.map((prefix) => ({
+  id: { startsWith: prefix },
+}));
 
 const truthyEnv = (value: string | undefined): boolean =>
   ["1", "true", "yes"].includes(String(value || "").toLowerCase());
@@ -107,7 +111,19 @@ const resetDatabase = (): void => {
   });
 };
 
-const shouldSkipReset = (): boolean => truthyEnv(process.env.SEED_SKIP_RESET);
+const shouldResetDatabase = (): boolean =>
+  !truthyEnv(process.env.SEED_SKIP_RESET) &&
+  truthyEnv(process.env.SEED_FORCE_RESET);
+
+const deleteManyIfAvailable = async (
+  model: { deleteMany?: (args: { where: Record<string, unknown> }) => Promise<unknown> } | undefined,
+  where: Record<string, unknown>,
+): Promise<void> => {
+  if (typeof model?.deleteMany !== "function") {
+    return;
+  }
+  await model.deleteMany({ where });
+};
 
 const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
   const seedEventIds = [
@@ -118,14 +134,118 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
     SEED_EVENTS.scheduler.tournamentDoubleElim.id,
     SEED_EVENTS.scheduler.leagueNoSlots.id,
     SEED_EVENTS.scheduler.leagueSameDay.id,
+    ...Object.values(E2E_EVENT_IDS),
   ];
-  await prisma.events.deleteMany({ where: { id: { in: seedEventIds } } });
-  await prisma.teams.deleteMany({ where: { id: { in: [...SEED_TEAM_IDS] } } });
-  await prisma.timeSlots.deleteMany({ where: { id: SEED_RENTAL_SLOT.id } });
-  await prisma.fields.deleteMany({ where: { id: SEED_FIELD.id } });
+  const targetedEvents = await prisma.events.findMany({
+    where: {
+      OR: [{ id: { in: seedEventIds } }, ...prefixedE2eEventsWhere],
+    },
+    select: {
+      id: true,
+      fieldIds: true,
+      timeSlotIds: true,
+    },
+  });
+  const extraFields = await prisma.fields.findMany({
+    where: { OR: prefixedE2eEventsWhere },
+    select: { id: true },
+  });
+  const extraTimeSlots = await prisma.timeSlots.findMany({
+    where: { OR: prefixedE2eEventsWhere },
+    select: { id: true },
+  });
+  const targetedEventIds = unique(targetedEvents.map((event) => event.id));
+  const targetedTeamRows = targetedEventIds.length
+    ? await prisma.teams.findMany({
+      where: { eventId: { in: targetedEventIds } },
+      select: { id: true },
+    })
+    : [];
+  const targetedRegistrationRows = targetedEventIds.length
+    ? await (prisma as any).eventRegistrations.findMany({
+      where: { eventId: { in: targetedEventIds } },
+      select: { id: true },
+    })
+    : [];
+  const targetedFieldIds = unique([
+    SEED_FIELD.id,
+    ...targetedEvents.flatMap((event) => event.fieldIds ?? []),
+    ...extraFields.map((field) => field.id),
+  ]);
+  const targetedTimeSlotIds = unique([
+    SEED_RENTAL_SLOT.id,
+    ...targetedEvents.flatMap((event) => event.timeSlotIds ?? []),
+    ...extraTimeSlots.map((slot) => slot.id),
+  ]);
+  const targetedTeamIds = unique([
+    ...SEED_TEAM_IDS,
+    ...targetedTeamRows.map((team) => team.id),
+  ]);
+  const targetedRegistrationIds = unique(
+    targetedRegistrationRows.map((registration: { id: string }) => registration.id),
+  );
+  if (targetedEventIds.length > 0) {
+    const eventFilters: Record<string, unknown>[] = [
+      { eventId: { in: targetedEventIds } },
+    ];
+    const teamFilters: Record<string, unknown>[] = targetedTeamIds.length > 0
+      ? [{ eventTeamId: { in: targetedTeamIds } }]
+      : [];
+    const registrationFilters: Record<string, unknown>[] = targetedRegistrationIds.length > 0
+      ? [{ eventRegistrationId: { in: targetedRegistrationIds } }]
+      : [];
+    await deleteManyIfAvailable((prisma as any).matchIncidents, {
+      OR: [...eventFilters, ...teamFilters, ...registrationFilters],
+    });
+    await deleteManyIfAvailable((prisma as any).matchSegments, {
+      eventId: { in: targetedEventIds },
+    });
+    await deleteManyIfAvailable((prisma as any).eventTeamStaffAssignments, {
+      eventTeamId: { in: targetedTeamIds },
+    });
+    await deleteManyIfAvailable((prisma as any).chatGroup, {
+      teamId: { in: targetedTeamIds },
+    });
+    await deleteManyIfAvailable((prisma as any).refundRequests, {
+      teamId: { in: targetedTeamIds },
+    });
+    await prisma.invites.deleteMany({
+      where: {
+        OR: [
+          { eventId: { in: targetedEventIds } },
+          { teamId: { in: targetedTeamIds } },
+        ],
+      },
+    });
+    await (prisma as any).eventRegistrations.deleteMany({
+      where: { eventId: { in: targetedEventIds } },
+    });
+    await prisma.matches.deleteMany({ where: { eventId: { in: targetedEventIds } } });
+    await prisma.divisions.deleteMany({
+      where: {
+        OR: [
+          { eventId: { in: targetedEventIds } },
+          { id: SEED_DIVISION.id },
+        ],
+      },
+    });
+    await prisma.teams.deleteMany({
+      where: {
+        OR: [
+          { eventId: { in: targetedEventIds } },
+          { id: { in: targetedTeamIds } },
+        ],
+      },
+    });
+    await prisma.events.deleteMany({ where: { id: { in: targetedEventIds } } });
+  } else {
+    await prisma.divisions.deleteMany({ where: { id: SEED_DIVISION.id } });
+    await prisma.teams.deleteMany({ where: { id: { in: [...SEED_TEAM_IDS] } } });
+  }
+  await prisma.timeSlots.deleteMany({ where: { id: { in: targetedTimeSlotIds } } });
+  await prisma.fields.deleteMany({ where: { id: { in: targetedFieldIds } } });
   await prisma.organizations.deleteMany({ where: { id: SEED_ORG.id } });
   await prisma.sports.deleteMany({ where: { id: SEED_SPORT.id } });
-  await prisma.divisions.deleteMany({ where: { id: SEED_DIVISION.id } });
   await prisma.file.deleteMany({ where: { id: SEED_IMAGE.id } });
   await prisma.file.deleteMany({
     where: { id: { startsWith: CAMKA_UPLOAD_ID_PREFIX } },
@@ -339,7 +459,7 @@ const ensureCamkaUploads = async (
 
 const seed = async (): Promise<void> => {
   ensureSeedGuard();
-  if (!shouldSkipReset()) {
+  if (shouldResetDatabase()) {
     resetDatabase();
   }
 
