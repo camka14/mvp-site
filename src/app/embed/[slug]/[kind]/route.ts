@@ -714,11 +714,8 @@ const renderWidgetDocument = (
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17211d; background: #f7faf8; }
     .wrap { padding: 18px; }
-    header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
-    .logo { width: 52px; height: 52px; border-radius: 8px; object-fit: cover; background: white; border: 1px solid #d7e3dd; }
-    h1 { margin: 0; font-size: clamp(1.3rem, 4vw, 2rem); line-height: 1.05; letter-spacing: 0; }
-    .intro { margin: 4px 0 0; color: #53645d; line-height: 1.45; }
     section { padding: 18px 0; border-top: 1px solid #dbe6df; }
+    section:first-child { padding-top: 0; border-top: 0; }
     .section-heading { margin-bottom: 12px; }
     h2 { margin: 0; font-size: 1.1rem; letter-spacing: 0; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
@@ -753,7 +750,6 @@ const renderWidgetDocument = (
     .card-action-button:disabled { cursor: not-allowed; }
     .empty { grid-column: 1 / -1; }
     .empty[hidden] { display: none; }
-    .brand-link { color: inherit; text-decoration: none; }
     .widget-detail-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
     .widget-subtitle { margin-top: 6px; color: #53645d; font-size: 0.95rem; font-weight: 600; }
     .widget-detail-controls { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-end; gap: 12px; }
@@ -874,13 +870,6 @@ const renderWidgetDocument = (
 </head>
 <body>
   <main class="wrap">
-    <header>
-      <img src="${escapeHtml(organization.logoUrl)}" alt="" class="logo" />
-      <div>
-        <a class="brand-link" href="/o/${escapeHtml(organization.slug)}" target="_top" rel="noopener"><h1>${escapeHtml(organization.name)}</h1></a>
-        <p class="intro">${escapeHtml(organization.publicIntroText)}</p>
-      </div>
-    </header>
     ${body}
   </main>
   <script>

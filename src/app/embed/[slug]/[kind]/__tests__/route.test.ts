@@ -247,6 +247,18 @@ describe('GET /embed/[slug]/[kind]', () => {
     expect(html).toContain('input[name="dateFilter"], input[name="eventTypeFilter"]');
   });
 
+  it('omits organization header chrome from embedded widgets', async () => {
+    const req = new NextRequest('http://localhost/embed/scsoccer/events');
+
+    const res = await getWidget(req, { params: Promise.resolve({ slug: 'scsoccer', kind: 'events' }) });
+    const html = await res.text();
+
+    expect(html).not.toContain('<header>');
+    expect(html).not.toContain('class="logo"');
+    expect(html).not.toContain('Find events.');
+    expect(html).toContain('section:first-child { padding-top: 0; border-top: 0; }');
+  });
+
   it('renders event pagination controls when more events are available', async () => {
     getPublicOrganizationCatalogMock.mockResolvedValue({
       ...catalog,
