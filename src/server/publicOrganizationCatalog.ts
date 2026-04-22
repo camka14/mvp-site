@@ -117,8 +117,8 @@ export type PublicBracketWidgetPage = {
   divisionOptions: PublicWidgetDivisionOption[];
   selectedDivisionId: string | null;
   selectedDivisionName: string | null;
-  winnersColumns: PublicBracketWidgetView['winnersColumns'];
-  losersColumns: PublicBracketWidgetView['losersColumns'];
+  winnersLane: PublicBracketWidgetView['winnersLane'];
+  losersLane: PublicBracketWidgetView['losersLane'];
   hasLosersBracket: boolean;
 };
 
@@ -1493,8 +1493,8 @@ export const getPublicBracketWidgetPage = async (
       divisionOptions: [],
       selectedDivisionId: null,
       selectedDivisionName: null,
-      winnersColumns: [],
-      losersColumns: [],
+      winnersLane: null,
+      losersLane: null,
       hasLosersBracket: false,
     };
   }
@@ -1508,8 +1508,8 @@ export const getPublicBracketWidgetPage = async (
       divisionOptions: [],
       selectedDivisionId: null,
       selectedDivisionName: null,
-      winnersColumns: [],
-      losersColumns: [],
+      winnersLane: null,
+      losersLane: null,
       hasLosersBracket: false,
     };
   }
@@ -1522,8 +1522,8 @@ export const getPublicBracketWidgetPage = async (
     divisionOptions: bracketView?.divisionOptions ?? [],
     selectedDivisionId: bracketView?.selectedDivisionId ?? null,
     selectedDivisionName: bracketView?.selectedDivisionName ?? null,
-    winnersColumns: bracketView?.winnersColumns ?? [],
-    losersColumns: bracketView?.losersColumns ?? [],
+    winnersLane: bracketView?.winnersLane ?? null,
+    losersLane: bracketView?.losersLane ?? null,
     hasLosersBracket: bracketView?.hasLosersBracket ?? false,
   };
 };

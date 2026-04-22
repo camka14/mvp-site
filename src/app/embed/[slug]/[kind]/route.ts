@@ -39,6 +39,9 @@ type WidgetRenderOptions = {
   page: number;
 };
 
+type PublicBracketLane = NonNullable<PublicBracketWidgetPage['winnersLane']>;
+const BRACKET_CONNECTOR_COLOR = '#aeb9c7';
+
 const escapeHtml = (value: unknown): string => (
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -486,6 +489,8 @@ const renderStandingsTable = (
             <tr>
               <th>#</th>
               <th>Team</th>
+              <th>W</th>
+              <th>L</th>
               <th>D</th>
               <th>Final Pts</th>
             </tr>
@@ -495,6 +500,8 @@ const renderStandingsTable = (
               <tr>
                 <td>${escapeHtml(row.position)}</td>
                 <td>${escapeHtml(row.teamName)}</td>
+                <td>${escapeHtml(row.wins)}</td>
+                <td>${escapeHtml(row.losses)}</td>
                 <td>${escapeHtml(row.draws)}</td>
                 <td class="points-cell">
                   <strong>${escapeHtml(formatStandingsPoints(row.finalPoints))}</strong>
@@ -509,41 +516,119 @@ const renderStandingsTable = (
   `;
 };
 
-const renderBracketColumns = (
-  columns: PublicBracketWidgetPage['winnersColumns'],
+const renderPublicBracketCard = (
+  card: PublicBracketLane['cardsById'][string],
+  options: { losersBracket: boolean },
 ): string => {
-  if (!columns.length) {
+  const matchLabel = typeof card.matchId === 'number' ? `Match #${card.matchId}` : 'Match';
+  const team1Score = card.team1Points.length ? card.team1Points.join(' - ') : '-';
+  const team2Score = card.team2Points.length ? card.team2Points.join(' - ') : '-';
+  const className = `public-bracket-card public-bracket-card-shell ${options.losersBracket ? 'is-losers' : ''}`.trim();
+
+  return `
+    <article
+      class="${className}"
+      data-public-bracket-card="${escapeHtml(card.id)}"
+    >
+      <div class="public-bracket-time-badge">${escapeHtml(card.startLabel)}</div>
+      <div class="public-bracket-card-inner">
+        <div class="public-bracket-card-header">
+          <span class="public-bracket-match-label">${escapeHtml(matchLabel)}</span>
+          <span class="public-bracket-field-label">${escapeHtml(card.fieldLabel)}</span>
+        </div>
+        <div class="public-bracket-team-list">
+          <div class="public-bracket-team-row">
+            <span class="public-bracket-team-name">${escapeHtml(card.team1Name)}</span>
+            <strong class="public-bracket-team-score">${escapeHtml(team1Score)}</strong>
+          </div>
+          <div class="public-bracket-team-row">
+            <span class="public-bracket-team-name">${escapeHtml(card.team2Name)}</span>
+            <strong class="public-bracket-team-score">${escapeHtml(team2Score)}</strong>
+          </div>
+        </div>
+      </div>
+    </article>
+  `;
+};
+
+const renderBracketCanvasMarkup = (
+  lane: PublicBracketLane,
+  options: {
+    markerId: string;
+    losersBracket: boolean;
+  },
+): string => {
+  if (!lane.matchIds.length) {
     return '<p class="empty">No bracket rounds are available yet.</p>';
   }
 
-  return `
-    <div class="bracket-columns">
-      ${columns.map((column) => `
-        <div class="bracket-column">
-          <h3>${escapeHtml(column.label)}</h3>
-          <div class="bracket-column-stack">
-            ${column.matches.map((match) => `
-              <article class="bracket-card">
-                <div class="bracket-card-top">
-                  <span class="label">${escapeHtml(match.matchId ? `Match #${match.matchId}` : 'Match')}</span>
-                  <span class="bracket-meta">${escapeHtml(match.fieldLabel)}</span>
-                </div>
-                <div class="bracket-teams">
-                  <div class="bracket-team-row">
-                    <span>${escapeHtml(match.team1Name)}</span>
-                    <strong>${escapeHtml(match.team1Points.join(' - ') || '-')}</strong>
-                  </div>
-                  <div class="bracket-team-row">
-                    <span>${escapeHtml(match.team2Name)}</span>
-                    <strong>${escapeHtml(match.team2Points.join(' - ') || '-')}</strong>
-                  </div>
-                </div>
-                <p class="bracket-meta">${escapeHtml(match.startLabel)}</p>
-              </article>
-            `).join('')}
-          </div>
+  const cards = lane.matchIds
+    .filter((matchId) => Boolean(lane.positionById[matchId] && lane.cardsById[matchId]))
+    .map((matchId) => {
+      const position = lane.positionById[matchId];
+      const card = lane.cardsById[matchId];
+      return `
+        <div
+          class="absolute bracket-card-slot"
+          style="position:absolute;left:${lane.metrics.paddingLeft + position.x}px;top:${lane.metrics.paddingTop + position.y}px;width:${lane.metrics.cardWidth}px;height:${lane.metrics.cardHeight}px;"
+          data-bracket-match-id="${escapeHtml(matchId)}"
+        >
+          ${renderPublicBracketCard(card, { losersBracket: options.losersBracket })}
         </div>
-      `).join('')}
+      `;
+    }).join('');
+
+  const paths = lane.connections.map((connection) => {
+    const midX = (connection.x1 + connection.x2) / 2;
+    const d = `M ${connection.x1} ${connection.y1} L ${midX} ${connection.y1} L ${midX} ${connection.y2} L ${connection.x2} ${connection.y2}`;
+    return `
+      <path
+        d="${escapeHtml(d)}"
+        stroke="${BRACKET_CONNECTOR_COLOR}"
+        stroke-width="2"
+        fill="none"
+        stroke-linecap="square"
+        marker-end="url(#${escapeHtml(options.markerId)})"
+      ></path>
+    `;
+  }).join('');
+
+  return `
+    <div
+      class="bracket-canvas"
+      style="position:relative;display:inline-block;width:${lane.contentSize.width}px;height:${lane.contentSize.height}px;"
+    >
+      ${cards}
+      <svg
+        class="bracket-canvas-svg"
+        width="100%"
+        height="100%"
+        style="position:absolute;inset:0;pointer-events:none"
+        aria-hidden="true"
+      >
+        <defs>
+          <marker id="${escapeHtml(options.markerId)}" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+            <polygon points="0 0, 10 3.5, 0 7" fill="${BRACKET_CONNECTOR_COLOR}"></polygon>
+          </marker>
+        </defs>
+        ${paths}
+      </svg>
+    </div>
+  `;
+};
+
+const renderBracketLane = (
+  lane: PublicBracketLane,
+  options: {
+    title: string;
+    markerId: string;
+    losersBracket: boolean;
+  },
+): string => {
+  return `
+    <div class="bracket-lane">
+      <h3>${escapeHtml(options.title)}</h3>
+      <div class="bracket-scroll">${renderBracketCanvasMarkup(lane, options)}</div>
     </div>
   `;
 };
@@ -561,7 +646,9 @@ const renderBracketWidget = (
     renderWidgetPagination(page.eventPageInfo, 'Bracket events'),
   ].filter(Boolean).join('');
 
-  if (!page.winnersColumns.length && !page.losersColumns.length) {
+  const hasWinnersLane = Boolean(page.winnersLane?.matchIds.length);
+  const hasLosersLane = Boolean(page.losersLane?.matchIds.length);
+  if (!hasWinnersLane && !hasLosersLane) {
     return `
       <section>
         <div class="widget-detail-header">
@@ -587,16 +674,16 @@ const renderBracketWidget = (
         </div>
         <div class="widget-detail-controls">${controls}</div>
       </div>
-      <div class="bracket-lane">
-        <h3>Winners Bracket</h3>
-        ${renderBracketColumns(page.winnersColumns)}
-      </div>
-      ${page.hasLosersBracket ? `
-        <div class="bracket-lane">
-          <h3>Losers Bracket</h3>
-          ${renderBracketColumns(page.losersColumns)}
-        </div>
-      ` : ''}
+      ${page.winnersLane ? renderBracketLane(page.winnersLane, {
+        title: 'Winners Bracket',
+        markerId: 'public-bracket-winners-arrowhead',
+        losersBracket: false,
+      }) : ''}
+      ${page.hasLosersBracket && page.losersLane ? renderBracketLane(page.losersLane, {
+        title: 'Losers Bracket',
+        markerId: 'public-bracket-losers-arrowhead',
+        losersBracket: true,
+      }) : ''}
     </section>
   `;
 };
@@ -623,7 +710,7 @@ const renderWidgetDocument = (
   <base target="_top" />
   <title>${escapeHtml(organization.name)} on BracketIQ</title>
   <style>
-    :root { --primary: ${escapeHtml(organization.brandPrimaryColor)}; --accent: ${escapeHtml(organization.brandAccentColor)}; }
+    :root { --primary: ${escapeHtml(organization.brandPrimaryColor)}; --accent: ${escapeHtml(organization.brandAccentColor)}; --bracket-connector: ${BRACKET_CONNECTOR_COLOR}; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #17211d; background: #f7faf8; }
     .wrap { padding: 18px; }
@@ -683,17 +770,97 @@ const renderWidgetDocument = (
     .points-cell { text-align: right; white-space: nowrap; }
     .points-cell strong { margin-right: 8px; color: #17211d; }
     .points-cell span { color: #53645d; font-size: 0.82rem; }
-    .bracket-lane + .bracket-lane { margin-top: 20px; }
-    .bracket-columns { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 8px; }
-    .bracket-column { min-width: 260px; display: grid; gap: 10px; align-content: start; }
-    .bracket-column h3, .bracket-lane h3 { margin: 0; font-size: 0.95rem; }
-    .bracket-column-stack { display: grid; gap: 10px; }
-    .bracket-card { display: grid; gap: 10px; padding: 14px; border: 1px solid #d7e3dd; border-radius: 10px; background: white; }
-    .bracket-card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .bracket-teams { display: grid; gap: 8px; }
-    .bracket-team-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-radius: 8px; background: #f7faf8; padding: 10px 12px; }
-    .bracket-team-row strong { margin-top: 0; color: #17211d; font-size: 0.88rem; }
-    .bracket-meta { color: #53645d; font-size: 0.82rem; }
+    .bracket-lane + .bracket-lane { margin-top: 24px; }
+    .bracket-lane h3 { margin: 0 0 12px; font-size: 0.95rem; }
+    .bracket-scroll { overflow-x: auto; overflow-y: visible; padding-bottom: 10px; }
+    .bracket-canvas { max-width: none; }
+    .bracket-canvas-svg { overflow: visible; }
+    .bracket-card-slot { display: block; }
+    .public-bracket-card { position: relative; width: 100%; height: 100%; }
+    .public-bracket-card-shell { width: 100%; height: 100%; }
+    .public-bracket-time-badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: inline-flex;
+      max-width: calc(100% - 20px);
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      padding: 5px 12px;
+      background: color-mix(in srgb, var(--primary) 92%, #0f172a);
+      color: white;
+      font-size: 0.72rem;
+      font-weight: 800;
+      line-height: 1;
+      text-align: center;
+      white-space: nowrap;
+      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+      z-index: 2;
+    }
+    .public-bracket-card.is-losers .public-bracket-time-badge {
+      background: color-mix(in srgb, #ea580c 88%, #7c2d12);
+    }
+    .public-bracket-card-inner {
+      display: flex;
+      height: 100%;
+      flex-direction: column;
+      gap: 12px;
+      border: 2px solid color-mix(in srgb, var(--primary) 22%, #cbd5e1);
+      border-radius: 16px;
+      background: white;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+      padding: 18px 16px 16px;
+    }
+    .public-bracket-card.is-losers .public-bracket-card-inner {
+      border-color: #fdba74;
+    }
+    .public-bracket-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      color: #53645d;
+      font-size: 0.8rem;
+      font-weight: 700;
+    }
+    .public-bracket-match-label { color: #17211d; }
+    .public-bracket-field-label {
+      max-width: 112px;
+      text-align: right;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .public-bracket-team-list { display: grid; gap: 10px; margin-top: 4px; }
+    .public-bracket-team-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 48px;
+      border-radius: 10px;
+      background: #f7faf8;
+      padding: 12px 14px;
+    }
+    .public-bracket-team-name {
+      min-width: 0;
+      color: #17211d;
+      font-size: 0.92rem;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+    .public-bracket-team-score {
+      margin-top: 0;
+      flex-shrink: 0;
+      color: #17211d;
+      font-size: 0.84rem;
+      font-weight: 800;
+      text-align: right;
+      white-space: nowrap;
+    }
+    .bracket-canvas path { vector-effect: non-scaling-stroke; }
     @media (max-width: 720px) {
       .event-layout { grid-template-columns: 1fr; }
       .event-grid { grid-template-columns: 1fr; }
@@ -701,7 +868,7 @@ const renderWidgetDocument = (
       .widget-detail-header { flex-direction: column; }
       .widget-detail-controls { width: 100%; justify-content: flex-start; }
       .widget-select-group { width: 100%; min-width: 0; }
-      .bracket-column { min-width: 220px; }
+      .public-bracket-field-label { max-width: 92px; }
     }
   </style>
 </head>

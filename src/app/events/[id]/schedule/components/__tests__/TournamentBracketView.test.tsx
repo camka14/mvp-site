@@ -639,7 +639,7 @@ describe('TournamentBracketView', () => {
       expect(screen.getByText('match-lbRoot3')).toBeInTheDocument();
     });
 
-    const connectorPaths = document.querySelectorAll('svg path[marker-end=\"url(#arrowhead)\"]');
+    const connectorPaths = document.querySelectorAll('svg path[marker-end=\"url(#schedule-arrowhead-losers)\"]');
     expect(connectorPaths.length).toBeGreaterThan(0);
   });
 });

@@ -1,6 +1,13 @@
 import { formatDisplayDateTime } from '@/lib/dateUtils';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
+import type {
+  BracketCanvasConnection,
+  BracketCanvasContentSize,
+  BracketCanvasMetrics,
+  BracketCanvasPosition,
+} from '@/lib/bracketCanvasLayout';
+import { buildBracketCanvasLayout } from '@/lib/bracketCanvasLayout';
 import {
   buildBracketDivisionOptions,
   collectConnectedBracketMatchIds,
@@ -15,7 +22,6 @@ import {
   Match,
   Tournament,
 } from '@/server/scheduler/types';
-import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
 export type PublicWidgetDivisionOption = {
   value: string;
@@ -33,17 +39,21 @@ export type PublicBracketWidgetMatchCard = {
   team2Points: number[];
 };
 
-export type PublicBracketWidgetColumn = {
-  label: string;
-  matches: PublicBracketWidgetMatchCard[];
+export type PublicBracketWidgetLane = {
+  matchIds: string[];
+  cardsById: Record<string, PublicBracketWidgetMatchCard>;
+  metrics: BracketCanvasMetrics;
+  positionById: Record<string, BracketCanvasPosition>;
+  contentSize: BracketCanvasContentSize;
+  connections: BracketCanvasConnection[];
 };
 
 export type PublicBracketWidgetView = {
   divisionOptions: PublicWidgetDivisionOption[];
   selectedDivisionId: string | null;
   selectedDivisionName: string | null;
-  winnersColumns: PublicBracketWidgetColumn[];
-  losersColumns: PublicBracketWidgetColumn[];
+  winnersLane: PublicBracketWidgetLane | null;
+  losersLane: PublicBracketWidgetLane | null;
   hasLosersBracket: boolean;
 };
 
@@ -92,15 +102,15 @@ const getMatchDivisionLabel = (match: Match): string | null => (
   ?? getDivisionLabel(match.team2?.division)
 );
 
-const getFieldLabel = (match: Match): string => {
-  return getFieldDisplayName(
+const getFieldLabel = (match: Match): string => (
+  getFieldDisplayName(
     {
       id: normalizeToken(match.field?.id),
       name: normalizeToken(match.field?.name) ?? '',
     },
     'Field TBD',
-  );
-};
+  )
+);
 
 const getFeedLabel = (
   previousMatch: Match,
@@ -154,62 +164,38 @@ const buildMatchCard = (
   team2Points: Array.isArray(match.team2Points) ? match.team2Points : [],
 });
 
-const buildLaneColumns = (
+const buildLane = (
   matchesById: Record<string, Match>,
-  normalizedNodes: Record<string, { previousLeftId: string | null; previousRightId: string | null }>,
-  losersBracket: boolean,
-): PublicBracketWidgetColumn[] => {
-  const laneMatches = Object.values(matchesById)
-    .filter((match) => Boolean(match.losersBracket) === losersBracket)
-    .sort((left, right) => {
-      const leftId = Number.isFinite(left.matchId) ? Number(left.matchId) : Number.MAX_SAFE_INTEGER;
-      const rightId = Number.isFinite(right.matchId) ? Number(right.matchId) : Number.MAX_SAFE_INTEGER;
-      return leftId - rightId || left.id.localeCompare(right.id);
-    });
-
-  if (!laneMatches.length) {
-    return [];
+  options: {
+    losersBracket: boolean;
+    rootMatchId?: string | null;
+  },
+): PublicBracketWidgetLane | null => {
+  const layout = buildBracketCanvasLayout(matchesById, {
+    isLosersBracket: options.losersBracket,
+    rootMatchId: options.rootMatchId,
+    allowRelationFallbackWhenIdBlank: true,
+  });
+  const matchIds = Object.keys(layout.positionById);
+  if (!matchIds.length) {
+    return null;
   }
 
-  const laneMatchIdSet = new Set(laneMatches.map((match) => match.id));
-  const roundById = new Map<string, number>();
-
-  const getRound = (matchId: string): number => {
-    const existing = roundById.get(matchId);
-    if (typeof existing === 'number') {
-      return existing;
-    }
-
-    const previousIds = [
-      normalizedNodes[matchId]?.previousLeftId ?? null,
-      normalizedNodes[matchId]?.previousRightId ?? null,
-    ].filter((previousId): previousId is string => Boolean(previousId && laneMatchIdSet.has(previousId)));
-
-    const round = previousIds.length
-      ? Math.max(...previousIds.map((previousId) => getRound(previousId))) + 1
-      : 0;
-    roundById.set(matchId, round);
-    return round;
+  return {
+    matchIds,
+    cardsById: Object.fromEntries(
+      matchIds
+        .map((matchId) => {
+          const match = layout.treeById[matchId];
+          return match ? [matchId, buildMatchCard(match)] : null;
+        })
+        .filter((entry): entry is [string, PublicBracketWidgetMatchCard] => Boolean(entry)),
+    ),
+    metrics: layout.metrics,
+    positionById: layout.positionById,
+    contentSize: layout.contentSize,
+    connections: layout.connections,
   };
-
-  laneMatches.forEach((match) => {
-    getRound(match.id);
-  });
-
-  const matchesByRound = new Map<number, Match[]>();
-  laneMatches.forEach((match) => {
-    const round = roundById.get(match.id) ?? 0;
-    const roundMatches = matchesByRound.get(round) ?? [];
-    roundMatches.push(match);
-    matchesByRound.set(round, roundMatches);
-  });
-
-  return Array.from(matchesByRound.entries())
-    .sort((left, right) => left[0] - right[0])
-    .map(([round, roundMatches]) => ({
-      label: losersBracket ? `Losers Round ${round + 1}` : `Round ${round + 1}`,
-      matches: roundMatches.map((match) => buildMatchCard(match)),
-    }));
 };
 
 export const buildPublicBracketWidgetView = (
@@ -247,8 +233,8 @@ export const buildPublicBracketWidgetView = (
       divisionOptions,
       selectedDivisionId,
       selectedDivisionName: divisionOptions.find((option) => option.value === selectedDivisionId)?.label ?? null,
-      winnersColumns: [],
-      losersColumns: [],
+      winnersLane: null,
+      losersLane: null,
       hasLosersBracket: false,
     };
   }
@@ -260,26 +246,24 @@ export const buildPublicBracketWidgetView = (
     }
     return acc;
   }, {});
+  const hasLosersMatches = Object.values(selectedMatchesById).some((match) => Boolean(match.losersBracket));
 
-  const graphNodes: BracketNode[] = Object.values(selectedMatchesById).map((match) => ({
-    id: match.id,
-    matchId: match.matchId ?? null,
-    winnerNextMatchId: match.winnerNextMatch?.id ?? null,
-    loserNextMatchId: match.loserNextMatch?.id ?? null,
-    previousLeftId: match.previousLeftMatch?.id ?? null,
-    previousRightId: match.previousRightMatch?.id ?? null,
-  }));
-  const graph = validateAndNormalizeBracketGraph(graphNodes);
-
-  const winnersColumns = buildLaneColumns(selectedMatchesById, graph.normalizedById, false);
-  const losersColumns = buildLaneColumns(selectedMatchesById, graph.normalizedById, true);
+  const winnersLane = buildLane(selectedMatchesById, {
+    losersBracket: false,
+    rootMatchId: selectedRootMatch.id,
+  });
+  const losersLane = hasLosersMatches
+    ? buildLane(selectedMatchesById, {
+        losersBracket: true,
+      })
+    : null;
 
   return {
     divisionOptions,
     selectedDivisionId,
     selectedDivisionName: divisionOptions.find((option) => option.value === selectedDivisionId)?.label ?? null,
-    winnersColumns,
-    losersColumns,
-    hasLosersBracket: losersColumns.length > 0,
+    winnersLane,
+    losersLane,
+    hasLosersBracket: Boolean(losersLane && losersLane.matchIds.length > 0),
   };
 };

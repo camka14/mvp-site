@@ -385,7 +385,7 @@ describe('publicOrganizationCatalog', () => {
     buildDivisionStandingsResponseMock.mockReturnValue({
       divisionName: 'Open Division',
       standings: [
-        { position: 1, teamName: 'Aces', draws: 0, finalPoints: 9, pointsDelta: 0 },
+        { position: 1, teamName: 'Aces', wins: 3, losses: 1, draws: 0, finalPoints: 9, pointsDelta: 0 },
       ],
     });
 
@@ -458,8 +458,27 @@ describe('publicOrganizationCatalog', () => {
       divisionOptions: [{ value: 'open', label: 'Open Division' }],
       selectedDivisionId: 'open',
       selectedDivisionName: 'Open Division',
-      winnersColumns: [{ label: 'Round 1', matches: [] }],
-      losersColumns: [],
+      winnersLane: {
+        matchIds: ['match_1'],
+        cardsById: {},
+        metrics: {
+          cardWidth: 288,
+          cardHeight: 200,
+          gapX: 48,
+          gapY: 12,
+          levelStep: 112,
+          paddingLeft: 28,
+          paddingRight: 28,
+          paddingTop: 16,
+          paddingBottom: 48,
+        },
+        positionById: {
+          match_1: { x: 0, y: 0, round: 0, level: 0 },
+        },
+        contentSize: { width: 344, height: 264 },
+        connections: [],
+      },
+      losersLane: null,
       hasLosersBracket: false,
     });
 
@@ -477,7 +496,9 @@ describe('publicOrganizationCatalog', () => {
       currentEvent: expect.objectContaining({ id: 'tournament_1' }),
       selectedDivisionId: 'open',
       selectedDivisionName: 'Open Division',
-      winnersColumns: [{ label: 'Round 1', matches: [] }],
+      winnersLane: expect.objectContaining({
+        matchIds: ['match_1'],
+      }),
       hasLosersBracket: false,
     }));
   });

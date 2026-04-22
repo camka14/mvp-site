@@ -7,8 +7,9 @@ import { TournamentBracket, Match, UserData, Division, Team } from '@/types';
 import MatchCard from './MatchCard';
 
 import ScoreUpdateModal from './ScoreUpdateModal';
-import { xor } from '@/app/utils';
 import { Paper, Group, Button, ActionIcon, Text, SegmentedControl, Badge } from '@mantine/core';
+import BracketCanvas from '@/components/bracket/BracketCanvas';
+import { buildBracketCanvasLayout } from '@/lib/bracketCanvasLayout';
 
 type BracketTeamSlot = 'team1' | 'team2';
 
@@ -66,90 +67,6 @@ const normalizeMatchRefId = (value: unknown): string => {
         return '';
     }
     return value.trim();
-};
-
-type MatchLinkResolver = (idValue: unknown, relationValue: unknown) => Match | undefined;
-
-const collectUniqueChildren = (match: Match, resolveLink: MatchLinkResolver): Match[] => {
-    const left = resolveLink(match.previousLeftId, match.previousLeftMatch);
-    const right = resolveLink(match.previousRightId, match.previousRightMatch);
-    const children: Match[] = [];
-    if (left) {
-        children.push(left);
-    }
-    if (right && (!left || right.$id !== left.$id)) {
-        children.push(right);
-    }
-    return children;
-};
-
-const resolveMatchRefId = (idValue: unknown, relationValue: unknown): string => {
-    const explicit = normalizeMatchRefId(idValue);
-    if (explicit) {
-        return explicit;
-    }
-    return extractEntityId(relationValue);
-};
-
-const collectLosersChildrenByNextLinks = (match: Match, matchesById: Record<string, Match>): Match[] =>
-    Object.values(matchesById)
-        .filter((candidate) => {
-            if (!candidate?.$id || candidate.$id === match.$id) {
-                return false;
-            }
-            const nextId = candidate.losersBracket
-                ? resolveMatchRefId(candidate.winnerNextMatchId, candidate.winnerNextMatch)
-                : resolveMatchRefId(candidate.loserNextMatchId, candidate.loserNextMatch);
-            return nextId === match.$id;
-        })
-        .sort((left, right) => {
-            const leftMatchId = typeof left.matchId === 'number' ? left.matchId : -Infinity;
-            const rightMatchId = typeof right.matchId === 'number' ? right.matchId : -Infinity;
-            if (leftMatchId !== rightMatchId) {
-                return rightMatchId - leftMatchId;
-            }
-            return left.$id.localeCompare(right.$id);
-        });
-
-const collectLosersChildren = (
-    match: Match,
-    resolveLink: MatchLinkResolver,
-    matchesById: Record<string, Match>,
-): Match[] => {
-    const orderedUnique = new Map<string, Match>();
-    const nextLinkedChildren = collectLosersChildrenByNextLinks(match, matchesById);
-
-    nextLinkedChildren.forEach((child) => {
-        if (child.$id && !orderedUnique.has(child.$id)) {
-            orderedUnique.set(child.$id, child);
-        }
-    });
-
-    collectUniqueChildren(match, resolveLink).forEach((child) => {
-        if (child.$id && !orderedUnique.has(child.$id)) {
-            const winnerNextId = resolveMatchRefId(child.winnerNextMatchId, child.winnerNextMatch);
-            const loserNextId = resolveMatchRefId(child.loserNextMatchId, child.loserNextMatch);
-            const losersRouteTargetId = child.losersBracket ? winnerNextId : loserNextId;
-            const pointsElsewhereInLosersView = losersRouteTargetId.length > 0 && losersRouteTargetId !== match.$id;
-
-            if (!pointsElsewhereInLosersView) {
-                orderedUnique.set(child.$id, child);
-            }
-        }
-    });
-
-    return Array.from(orderedUnique.values()).slice(0, 2);
-};
-
-const selectLoserTraversalChildren = (children: Match[]): Match[] => {
-    if (children.length <= 1) {
-        return children;
-    }
-    const loserChildren = children.filter((child) => child.losersBracket);
-    if (loserChildren.length === 0) {
-        return children;
-    }
-    return loserChildren;
 };
 
 const normalizeDivisionDetailsList = (input: unknown): Division[] => {
@@ -410,9 +327,6 @@ export default function TournamentBracketView({
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [isLosersBracket, setIsLosersBracket] = useState(false);
     const [isUnplacedDockCollapsed, setIsUnplacedDockCollapsed] = useState(false);
-    const matchRefs = useRef<Record<string, HTMLDivElement | null>>({});
-    const contentRef = useRef<HTMLDivElement>(null);
-    const [connections, setConnections] = useState<{ fromId: string; toId: string; x1: number; y1: number; x2: number; y2: number }[]>([]);
     const matchesById = useMemo<Record<string, Match>>(
         () => Object.fromEntries(Object.values(bracket.matches).map((match) => [match.$id, match])),
         [bracket.matches],
@@ -531,88 +445,6 @@ export default function TournamentBracketView({
         });
     }, [bracket.matches, bracket.tournament]);
 
-    // Compute positions based on rounds (x) and yCenterById (y)
-    const CARD_W = 288; // matches MatchCard bracket width
-    const CARD_H = 200; // fixed bracket card height for deterministic connector layout
-    const GAP_X = 48;
-    const GAP_Y = 12;   // per-level extra spacing
-    const LEVEL_STEP = Math.round(CARD_H / 2 + GAP_Y);
-    // Padding inside the scroll canvas. Top padding prevents the time badge (-top-3)
-    // from being clipped, and bottom padding keeps the last match card from touching the edge.
-    // Side padding keeps edge controls (add buttons) fully visible for leaf/final nodes.
-    const PAD_LEFT = 28;
-    const PAD_RIGHT = 28;
-    const PAD_TOP = 16;
-    const PAD_BOTTOM = 48;
-
-    // Map if needed in future: const matchesById = useMemo(() => Object.fromEntries(bracket.matches.map(m => [m.$id, m])), [bracket.matches]);
-
-    // Subset of matches for current view.
-    const viewById = useMemo(() => {
-        if (isLosersBracket) {
-            const filteredEntries = Object.entries(bracket.matches).filter(([, match]) => {
-                const hasPrevious =
-                    Boolean(resolveLinkFromAll(match.previousLeftId, match.previousLeftMatch)) ||
-                    Boolean(resolveLinkFromAll(match.previousRightId, match.previousRightMatch));
-
-                const hasNext =
-                    Boolean(resolveLinkFromAll(match.winnerNextMatchId, match.winnerNextMatch)) ||
-                    Boolean(resolveLinkFromAll(match.loserNextMatchId, match.loserNextMatch));
-
-                return hasPrevious || hasNext;
-            });
-            return Object.fromEntries(filteredEntries);
-        }
-
-        const map: Record<string, Match> = {};
-
-        // Winners view: include matches in current bracket.
-        Object.values(bracket.matches).forEach(m => {
-            if (m.losersBracket === isLosersBracket) {
-                map[m.$id] = m;
-            }
-        });
-
-        // Winners view: include one-hop children even if from opposite bracket.
-        Object.values(map).forEach(parent => {
-            const children = collectUniqueChildren(parent, resolveLinkFromAll);
-            children.forEach((child) => {
-                map[child.$id] = child;
-            });
-        });
-
-        const filteredEntries = Object.entries(map).filter(([, match]) => {
-            const hasPrevious =
-                Boolean(resolveLinkFromAll(match.previousLeftId, match.previousLeftMatch)) ||
-                Boolean(resolveLinkFromAll(match.previousRightId, match.previousRightMatch));
-
-            const hasNext =
-                Boolean(resolveLinkFromAll(match.winnerNextMatchId, match.winnerNextMatch)) ||
-                Boolean(resolveLinkFromAll(match.loserNextMatchId, match.loserNextMatch));
-
-            return hasPrevious || hasNext;
-        });
-
-        return Object.fromEntries(filteredEntries);
-    }, [bracket.matches, isLosersBracket, resolveLinkFromAll]);
-
-    const resolveLinkFromView = useCallback((idValue: unknown, relationValue: unknown): Match | undefined => {
-        const id = normalizeMatchRefId(idValue);
-        if (id && viewById[id]) {
-            return viewById[id];
-        }
-        // Keep layout tied to explicit IDs so partial edit-state links don't over-count children.
-        const hasExplicitId = typeof idValue === 'string' && idValue.trim().length > 0;
-        if (!hasExplicitId) {
-            return undefined;
-        }
-        const relationId = extractEntityId(relationValue);
-        if (relationId && viewById[relationId]) {
-            return viewById[relationId];
-        }
-        return undefined;
-    }, [viewById]);
-
     const hasLoserMatches = useMemo(
         () => Object.values(bracket.matches).some(match => match.losersBracket),
         [bracket.matches],
@@ -624,132 +456,16 @@ export default function TournamentBracketView({
         }
     }, [hasLoserMatches, isLosersBracket]);
 
-    // Terminals: no winnerNext within current view's bracket.
-    const terminalIds = useMemo(() => Object.values(viewById)
-        .filter(m => m.losersBracket === isLosersBracket)
-        .filter((m) => {
-            const winnerNext = resolveLinkFromView(m.winnerNextMatchId, m.winnerNextMatch);
-            return !winnerNext || winnerNext.losersBracket !== isLosersBracket;
-        })
-        .map(m => m.$id), [viewById, isLosersBracket, resolveLinkFromView]);
-
-    const tournamentRootIds = useMemo(() => {
-        if (!isLosersBracket) {
-            return [] as string[];
-        }
-        return Object.values(viewById)
-            .filter((match) => {
-                const winnerNext = resolveLinkFromView(match.winnerNextMatchId, match.winnerNextMatch);
-                const loserNext = resolveLinkFromView(match.loserNextMatchId, match.loserNextMatch);
-                return !winnerNext && !loserNext;
-            })
-            .map((match) => match.$id);
-    }, [isLosersBracket, resolveLinkFromView, viewById]);
-
-    // Choose a root terminal (prefer highest matchId).
-    const rootId = useMemo(() => {
-        const candidateIds = isLosersBracket && tournamentRootIds.length > 0
-            ? tournamentRootIds
-            : terminalIds;
-        let best: string | null = null;
-        let bestMatchId = -Infinity;
-        for (const id of candidateIds) {
-            const m = viewById[id];
-            const key = m?.matchId ?? 0;
-            if (key > bestMatchId || (key === bestMatchId && (!best || id.localeCompare(best) < 0))) { best = id; bestMatchId = key; }
-        }
-        return best;
-    }, [isLosersBracket, terminalIds, tournamentRootIds, viewById]);
-
-    const treeConnectivity = useMemo(() => {
-        const connectedIds = new Set<string>();
-        const traversedIds = new Set<string>();
-        if (!rootId) {
-            return { connectedIds, traversedIds };
-        }
-
-        const visitWinners = (id: string) => {
-            if (traversedIds.has(id)) {
-                return;
-            }
-            traversedIds.add(id);
-            connectedIds.add(id);
-            const match = viewById[id];
-            if (!match || match.losersBracket !== isLosersBracket) {
-                return;
-            }
-            const children = collectUniqueChildren(match, resolveLinkFromView);
-            children.forEach((child) => {
-                if (child.$id) {
-                    visitWinners(child.$id);
-                }
-            });
-        };
-
-        const visitLosers = (id: string) => {
-            if (traversedIds.has(id)) {
-                return;
-            }
-            traversedIds.add(id);
-            const match = viewById[id];
-            if (!match) {
-                return;
-            }
-            connectedIds.add(id);
-            const children = collectLosersChildren(match, resolveLinkFromView, viewById);
-            children.forEach((child) => {
-                if (child.$id) {
-                    connectedIds.add(child.$id);
-                }
-            });
-            const nextChildren = selectLoserTraversalChildren(children);
-            nextChildren.forEach((child) => {
-                if (child.$id) {
-                    visitLosers(child.$id);
-                }
-            });
-        };
-
-        if (isLosersBracket) {
-            visitLosers(rootId);
-        } else {
-            visitWinners(rootId);
-        }
-        return { connectedIds, traversedIds };
-    }, [isLosersBracket, rootId, viewById, resolveLinkFromView]);
-
-    const connectedTreeIds = treeConnectivity.connectedIds;
-    const traversedTreeIds = treeConnectivity.traversedIds;
-
-    const treeById = useMemo(() => {
-        if (!connectedTreeIds.size) {
-            return {} as Record<string, Match>;
-        }
-        return Object.fromEntries(
-            Object.entries(viewById).filter(([id]) => connectedTreeIds.has(id)),
-        );
-    }, [connectedTreeIds, viewById]);
-
+    const bracketLayout = useMemo(
+        () => buildBracketCanvasLayout(matchesById, { isLosersBracket }),
+        [matchesById, isLosersBracket],
+    );
+    const treeById = bracketLayout.treeById;
     const unplacedMatches = useMemo(
-        () => Object.values(viewById)
-            .filter((match) => {
-                if (connectedTreeIds.has(match.$id)) {
-                    return false;
-                }
-                if (isLosersBracket) {
-                    return true;
-                }
-                return match.losersBracket === isLosersBracket;
-            })
-            .sort((left, right) => {
-                const leftMatchId = typeof left.matchId === 'number' ? left.matchId : -Infinity;
-                const rightMatchId = typeof right.matchId === 'number' ? right.matchId : -Infinity;
-                if (leftMatchId !== rightMatchId) {
-                    return rightMatchId - leftMatchId;
-                }
-                return left.$id.localeCompare(right.$id);
-            }),
-        [connectedTreeIds, isLosersBracket, viewById],
+        () => bracketLayout.unplacedMatchIds
+            .map((matchId) => bracketLayout.viewById[matchId])
+            .filter((match): match is Match => Boolean(match)),
+        [bracketLayout.unplacedMatchIds, bracketLayout.viewById],
     );
 
     useEffect(() => {
@@ -757,218 +473,10 @@ export default function TournamentBracketView({
             setIsUnplacedDockCollapsed(false);
         }
     }, [isUnplacedDockCollapsed, unplacedMatches.length]);
-
-    const resolveLinkFromTree = useCallback((idValue: unknown, relationValue: unknown): Match | undefined => {
-        const id = normalizeMatchRefId(idValue);
-        if (id && treeById[id]) {
-            return treeById[id];
-        }
-        const hasExplicitId = typeof idValue === 'string' && idValue.trim().length > 0;
-        if (!hasExplicitId) {
-            return undefined;
-        }
-        const relationId = extractEntityId(relationValue);
-        if (relationId && treeById[relationId]) {
-            return treeById[relationId];
-        }
-        return undefined;
-    }, [treeById]);
-
-    // Helper: children of a node with layout-only filtering.
-    const getChildrenLimited = useCallback((m: Match): Match[] => {
-        if (isLosersBracket) {
-            if (!traversedTreeIds.has(m.$id)) {
-                return [];
-            }
-            return collectLosersChildren(m, resolveLinkFromTree, treeById);
-        }
-        const children = collectUniqueChildren(m, resolveLinkFromTree);
-        // Winners view keeps legacy bracket-bound traversal.
-        if (m.losersBracket !== isLosersBracket) {
-            return [];
-        }
-        return children;
-    }, [resolveLinkFromTree, isLosersBracket, traversedTreeIds, treeById]);
-
-    // Compute round indices from root with one-hop cross-bracket rule, then invert so leaves are round 0
-    const roundIndexById = useMemo(() => {
-        const depth = new Map<string, number>();
-        if (!rootId) return depth;
-        const visit = (id: string, d: number) => {
-            const cur = depth.get(id);
-            if (cur !== undefined && cur <= d) return;
-            depth.set(id, d);
-            const m = treeById[id];
-            if (!m) return;
-            const children = getChildrenLimited(m);
-            for (const c of children) visit(c.$id, d + 1);
-        };
-        visit(rootId, 0);
-        let maxD = 0;
-        depth.forEach(v => { if (v > maxD) maxD = v; });
-        const rounds = new Map<string, number>();
-        depth.forEach((d, id) => { rounds.set(id, maxD - d); });
-        // For nodes not connected to root (edge case), place at round 0
-        Object.keys(treeById).forEach(id => { if (!rounds.has(id)) rounds.set(id, 0); });
-        return rounds;
-    }, [rootId, treeById, getChildrenLimited]);
-
-    // Pair-depth per node: counts two-child splits along deepest path; single-child chains don't increment
-    const pairDepthById = useMemo(() => {
-            const memo = new Map<string, number>();
-            const dfs = (id: string): number => {
-                if (memo.has(id)) return memo.get(id)!;
-            const m = treeById[id];
-            if (!m) { memo.set(id, 0); return 0; }
-            const kids = getChildrenLimited(m);
-
-            if (kids.length === 0) { memo.set(id, 0); return 0; }
-            if (kids.length === 1) { const v = dfs(kids[0].$id); memo.set(id, v); return v; }
-            
-            const leftHasKids = getChildrenLimited(kids[0]).length > 0
-            const rightHasKids = getChildrenLimited(kids[1]).length > 0
-
-            const v = 1 + Math.max(dfs(kids[0].$id), dfs(kids[1].$id)) - (xor(!leftHasKids, !rightHasKids) ? 0.5 : 0);
-            memo.set(id, v);
-            return v;
-        };
-        Object.keys(treeById).forEach(id => dfs(id));
-        return memo;
-    }, [treeById, getChildrenLimited]);
-
-    // Y centers via symmetric offsets: delta = 2 * max(nLeft, nRight) * LEVEL_STEP; single child keeps same center
-    const yCenterById = useMemo(() => {
-        const centers = new Map<string, number>();
-        if (!rootId) return centers;
-        const visit = (id: string, center: number) => {
-            centers.set(id, center);
-            const m = treeById[id];
-            if (!m) return;
-            const kids = getChildrenLimited(m);
-            if (kids.length === 1) {
-                const only = kids[0];
-                if (!centers.has(only.$id)) visit(only.$id, center);
-            } else if (kids.length === 2) {
-                const left = kids[0];
-                const right = kids[1];
-                const nLeft = Math.round(pairDepthById.get(left.$id) ?? 0);
-                const nRight = Math.round(pairDepthById.get(right.$id) ?? 0);
-                const n = Math.max(nLeft, nRight);
-                var delta = (n ? (2 * n) : 1) * LEVEL_STEP;
-
-                if (getChildrenLimited(left).length === 0) {
-                    delta = LEVEL_STEP
-                }
-
-                if (getChildrenLimited(right).length === 0) {
-                    delta = LEVEL_STEP
-                }
-
-                if (!centers.has(left.$id)) visit(left.$id, center - delta);
-                if (!centers.has(right.$id)) visit(right.$id, center + delta);
-            }
-        };
-        visit(rootId, 0);
-        return centers;
-    }, [rootId, treeById, getChildrenLimited, pairDepthById, LEVEL_STEP]);
-
-    const positionById = useMemo(() => {
-        const positions = new Map<string, { x: number; y: number; round: number; level: number }>();
-        if (!rootId) return positions;
-        let minCenter = Infinity;
-        yCenterById.forEach(c => { if (c < minCenter) minCenter = c; });
-        if (!isFinite(minCenter)) minCenter = 0;
-        for (const id of Object.keys(treeById)) {
-            const round = roundIndexById.get(id) ?? 0;
-            const center = yCenterById.get(id) ?? 0;
-            const y = center - minCenter;
-            positions.set(id, { x: round * (CARD_W + GAP_X), y, round, level: 0 });
-        }
-        return positions;
-    }, [rootId, yCenterById, roundIndexById, treeById]);
-
-    const contentSize = useMemo(() => {
-        let maxX = 0, maxY = 0;
-        positionById.forEach(p => { maxX = Math.max(maxX, p.x + CARD_W); maxY = Math.max(maxY, p.y + CARD_H); });
-        return {
-            width: Math.max(0, maxX) + PAD_LEFT + PAD_RIGHT,
-            height: Math.max(0, maxY) + PAD_TOP + PAD_BOTTOM,
-        };
-    }, [positionById]);
-
-    // Removed older tree/round generation helpers in favor of absolute layout computation
-
-    // Build connections following view rules for "next" matches
-    const calculateConnections = useCallback(() => {
-        const conns: { fromId: string; toId: string; x1: number; y1: number; x2: number; y2: number }[] = [];
-        if (!positionById.size) { setConnections(conns); return; }
-
-        const getNextTarget = (m: Match): Match | undefined => {
-            if (!isLosersBracket) {
-                // Winners view: only next winner match
-                const t = resolveLinkFromTree(m.winnerNextMatchId, m.winnerNextMatch);
-                return t && t.losersBracket === false ? t : undefined;
-            } else {
-                const winnerNextId = resolveMatchRefId(m.winnerNextMatchId, m.winnerNextMatch);
-                const loserNextId = resolveMatchRefId(m.loserNextMatchId, m.loserNextMatch);
-
-                if (m.losersBracket) {
-                    // Losers view: LB matches route primarily via winnerNext.
-                    if (winnerNextId) {
-                        return treeById[winnerNextId];
-                    }
-                    // Fallback for partial data.
-                    if (loserNextId) {
-                        return treeById[loserNextId];
-                    }
-                    return undefined;
-                }
-
-                // Losers view: WB matches route primarily via loserNext.
-                if (loserNextId) {
-                    return treeById[loserNextId];
-                }
-                // Fallback for partial data when loserNext is missing.
-                if (winnerNextId) {
-                    return treeById[winnerNextId];
-                }
-                return undefined;
-            }
-        };
-
-        Object.values(treeById).forEach(m => {
-            const fromPos = positionById.get(m.$id);
-            if (!fromPos) return;
-            const target = getNextTarget(m);
-            if (!target) return;
-            const toPos = positionById.get(target.$id);
-            if (!toPos) return;
-            conns.push({
-                fromId: m.$id,
-                toId: target.$id,
-                x1: PAD_LEFT + fromPos.x + CARD_W,
-                y1: PAD_TOP + fromPos.y + CARD_H / 2,
-                x2: PAD_LEFT + toPos.x,
-                y2: PAD_TOP + toPos.y + CARD_H / 2,
-            });
-        });
-
-        setConnections(conns);
-    }, [positionById, treeById, isLosersBracket, resolveLinkFromTree, CARD_H]);
-
-    useEffect(() => { calculateConnections(); }, [calculateConnections]);
-
-    useEffect(() => {
-        const handleResize = () => {
-            calculateConnections();
-        };
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, [calculateConnections]);
-
-    //
-
-    // Removed BracketNode in absolute layout
+    const canvasMatchIds = useMemo(
+        () => Object.keys(bracketLayout.positionById),
+        [bracketLayout.positionById],
+    );
 
     // Simple zoom control functions using CSS zoom
     const handleZoomIn = () => {
@@ -1159,6 +667,77 @@ export default function TournamentBracketView({
         setSelectedMatch(null);
     };
 
+    const renderResolvedMatchCard = useCallback((match: Match, className: string) => {
+        const team1Id = extractEntityId((match as any).team1)
+            || (typeof match.team1Id === 'string' ? match.team1Id.trim() : '');
+        const team2Id = extractEntityId((match as any).team2)
+            || (typeof match.team2Id === 'string' ? match.team2Id.trim() : '');
+        const teamOfficialId = extractEntityId((match as any).teamOfficial)
+            || (typeof match.teamOfficialId === 'string' ? match.teamOfficialId.trim() : '');
+        const officialId = extractEntityId((match as any).official)
+            || (typeof match.officialId === 'string' ? match.officialId.trim() : '');
+        const resolvedTeam1 = (match.team1 && typeof match.team1 === 'object')
+            ? match.team1
+            : (team1Id ? teamsById.get(team1Id) ?? null : null);
+        const resolvedTeam2 = (match.team2 && typeof match.team2 === 'object')
+            ? match.team2
+            : (team2Id ? teamsById.get(team2Id) ?? null : null);
+        const resolvedTeamOfficial = (match.teamOfficial && typeof match.teamOfficial === 'object')
+            ? match.teamOfficial
+            : (teamOfficialId ? teamsById.get(teamOfficialId) ?? null : null);
+        const resolvedOfficial = (match.official && typeof match.official === 'object')
+            ? match.official
+            : (officialId ? officialsById.get(officialId) ?? null : null);
+        const resolvedMatch: Match = {
+            ...match,
+            team1: resolvedTeam1 as Match['team1'],
+            team2: resolvedTeam2 as Match['team2'],
+            teamOfficial: resolvedTeamOfficial as Match['teamOfficial'],
+            official: resolvedOfficial as Match['official'],
+            team1Id: team1Id || match.team1Id || undefined,
+            team2Id: team2Id || match.team2Id || undefined,
+            teamOfficialId: teamOfficialId || match.teamOfficialId || undefined,
+            officialId: officialId || match.officialId || undefined,
+            previousLeftMatch: resolveLinkFromAll(match.previousLeftId, match.previousLeftMatch),
+            previousRightMatch: resolveLinkFromAll(match.previousRightId, match.previousRightMatch),
+        };
+        const canInternalManage = canManageMatch(resolvedMatch);
+        const highlightCurrentUser = matchInvolvesCurrentUser(resolvedMatch);
+        const clickable = hasExternalMatchClick || canInternalManage;
+        const hasConflict = conflictMatchIdSet.has(resolvedMatch.$id);
+        const team1Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team1`];
+        const team2Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team2`];
+
+        return (
+            <MatchCard
+                match={resolvedMatch}
+                onClick={clickable ? () => handleMatchClick(resolvedMatch) : undefined}
+                canManage={false}
+                className={className}
+                highlightCurrentUser={highlightCurrentUser}
+                showDate={showDateOnMatches}
+                team1Placeholder={team1Placeholder}
+                team2Placeholder={team2Placeholder}
+                hasConflict={hasConflict}
+                officialUsersById={officialLookupById}
+                showEventOfficialNames={showEventOfficialNames}
+            />
+        );
+    }, [
+        canManageMatch,
+        conflictMatchIdSet,
+        handleMatchClick,
+        hasExternalMatchClick,
+        leaguePlayoffPlaceholderAssignments,
+        matchInvolvesCurrentUser,
+        officialLookupById,
+        officialsById,
+        resolveLinkFromAll,
+        showDateOnMatches,
+        showEventOfficialNames,
+        teamsById,
+    ]);
+
     return (
         <div
             ref={rootRef}
@@ -1206,111 +785,24 @@ export default function TournamentBracketView({
                     className="flex-1 min-h-0 min-w-0 overflow-auto"
                 >
                     <div
-                        ref={contentRef}
-                        className="relative inline-block"
                         style={{
                             zoom: zoomLevel, // CSS zoom property
-                            width: contentSize.width,
-                            height: contentSize.height,
                         }}
                     >
-                        {/* Absolutely positioned matches */}
-                        {Object.values(treeById).length === 0 ? (
-                        <Text c="dimmed">No matches</Text>
-	                    ) : (
-	                        <>
-		                            {Object.values(treeById).map((m) => {
-		                                const pos = positionById.get(m.$id);
-		                                if (!pos) return null;
-                                    const team1Id = extractEntityId((m as any).team1)
-                                        || (typeof m.team1Id === 'string' ? m.team1Id.trim() : '');
-                                    const team2Id = extractEntityId((m as any).team2)
-                                        || (typeof m.team2Id === 'string' ? m.team2Id.trim() : '');
-                                    const teamOfficialId = extractEntityId((m as any).teamOfficial)
-                                        || (typeof m.teamOfficialId === 'string' ? m.teamOfficialId.trim() : '');
-                                    const officialId = extractEntityId((m as any).official)
-                                        || (typeof m.officialId === 'string' ? m.officialId.trim() : '');
-                                    const resolvedTeam1 = (m.team1 && typeof m.team1 === 'object')
-                                        ? m.team1
-                                        : (team1Id ? teamsById.get(team1Id) ?? null : null);
-                                    const resolvedTeam2 = (m.team2 && typeof m.team2 === 'object')
-                                        ? m.team2
-                                        : (team2Id ? teamsById.get(team2Id) ?? null : null);
-                                    const resolvedTeamOfficial = (m.teamOfficial && typeof m.teamOfficial === 'object')
-                                        ? m.teamOfficial
-                                        : (teamOfficialId ? teamsById.get(teamOfficialId) ?? null : null);
-                                    const resolvedOfficial = (m.official && typeof m.official === 'object')
-                                        ? m.official
-                                        : (officialId ? officialsById.get(officialId) ?? null : null);
-	                                    const resolvedMatch: Match = {
-	                                        ...m,
-                                        team1: resolvedTeam1 as Match['team1'],
-                                        team2: resolvedTeam2 as Match['team2'],
-                                        teamOfficial: resolvedTeamOfficial as Match['teamOfficial'],
-                                        official: resolvedOfficial as Match['official'],
-                                        team1Id: team1Id || m.team1Id || undefined,
-                                        team2Id: team2Id || m.team2Id || undefined,
-                                        teamOfficialId: teamOfficialId || m.teamOfficialId || undefined,
-                                        officialId: officialId || m.officialId || undefined,
-	                                        previousLeftMatch:
-                                            resolveLinkFromAll(m.previousLeftId, m.previousLeftMatch),
-	                                        previousRightMatch:
-                                            resolveLinkFromAll(m.previousRightId, m.previousRightMatch),
-                                    };
-	                                const canInternalManage = canManageMatch(resolvedMatch);
-	                                const highlightCurrentUser = matchInvolvesCurrentUser(resolvedMatch);
-	                                const clickable = hasExternalMatchClick || canInternalManage;
-                                    const hasConflict = conflictMatchIdSet.has(resolvedMatch.$id);
-	                                // Keep bracket card shape identical between edit and non-edit modes.
-	                                const manageHint = false;
-                                    const team1Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team1`];
-                                    const team2Placeholder = leaguePlayoffPlaceholderAssignments[`${resolvedMatch.$id}:team2`];
-	                                return (
-	                                    <div
-	                                        key={m.$id}
-                                        ref={(el) => { matchRefs.current[m.$id] = el; }}
-                                        className="absolute"
-                                        style={{
-                                            left: PAD_LEFT + pos.x,
-                                            top: PAD_TOP + pos.y,
-                                            width: CARD_W,
-                                            height: CARD_H,
-                                        }}
-                                    >
-	                                        <MatchCard
-	                                            match={resolvedMatch}
-	                                            onClick={clickable ? () => handleMatchClick(resolvedMatch) : undefined}
-	                                            canManage={manageHint}
-	                                            className="w-full h-full"
-	                                            highlightCurrentUser={highlightCurrentUser}
-                                                showDate={showDateOnMatches}
-                                                team1Placeholder={team1Placeholder}
-                                                team2Placeholder={team2Placeholder}
-                                                hasConflict={hasConflict}
-                                                officialUsersById={officialLookupById}
-                                                showEventOfficialNames={showEventOfficialNames}
-	                                        />
-	                                    </div>
-	                                );
-	                            })}
-	                        </>
-	                    )}
-
-                        {/* SVG overlay for arrows */}
-                        <svg className="pointer-events-none absolute inset-0 z-10" width="100%" height="100%">
-                            <defs>
-                                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
-                                    <polygon points="0 0, 10 3.5, 0 7" fill="var(--mvp-neutral-400)" />
-                                </marker>
-                            </defs>
-                            {connections.map((c) => {
-                                const midX = (c.x1 + c.x2) / 2;
-                                const d = `M ${c.x1} ${c.y1} L ${midX} ${c.y1} L ${midX} ${c.y2} L ${c.x2} ${c.y2}`;
-                                return (
-                                    <path key={`${c.fromId}-${c.toId}`} d={d} stroke="var(--mvp-neutral-400)" strokeWidth="2" fill="none" strokeLinecap="square" markerEnd="url(#arrowhead)" />
-                                );
-                            })}
-                        </svg>
+                        <BracketCanvas
+                            layout={bracketLayout}
+                            matchIds={canvasMatchIds}
+                            markerId={`schedule-arrowhead-${isLosersBracket ? 'losers' : 'winners'}`}
+                            className="relative inline-block"
+                            svgClassName="pointer-events-none absolute inset-0 z-10"
+                            connectionStroke="var(--mvp-neutral-400)"
+                            arrowFill="var(--mvp-neutral-400)"
+                            emptyState={<Text c="dimmed">No matches</Text>}
+                            renderCard={(matchId) => {
+                                const match = treeById[matchId];
+                                return match ? renderResolvedMatchCard(match, 'w-full h-full') : null;
+                            }}
+                        />
                     </div>
                 </div>
 
@@ -1340,27 +832,10 @@ export default function TournamentBracketView({
                                 <div className="flex-1 overflow-y-auto px-2 pb-2">
                                     <div className="space-y-3">
                                         {unplacedMatches.map((match) => {
-                                            const canInternalManage = canManageMatch(match);
-                                            const highlightCurrentUser = matchInvolvesCurrentUser(match);
-                                            const clickable = hasExternalMatchClick || canInternalManage;
-                                            const hasConflict = conflictMatchIdSet.has(match.$id);
-                                            const team1Placeholder = leaguePlayoffPlaceholderAssignments[`${match.$id}:team1`];
-                                            const team2Placeholder = leaguePlayoffPlaceholderAssignments[`${match.$id}:team2`];
                                             return (
-                                                <MatchCard
-                                                    key={`unplaced-${match.$id}`}
-                                                    match={match}
-                                                    onClick={clickable ? () => handleMatchClick(match) : undefined}
-                                                    canManage={false}
-                                                    className="w-full"
-                                                    highlightCurrentUser={highlightCurrentUser}
-                                                    showDate={showDateOnMatches}
-                                                    team1Placeholder={team1Placeholder}
-                                                    team2Placeholder={team2Placeholder}
-                                                    hasConflict={hasConflict}
-                                                    officialUsersById={officialLookupById}
-                                                    showEventOfficialNames={showEventOfficialNames}
-                                                />
+                                                <div key={`unplaced-${match.$id}`}>
+                                                    {renderResolvedMatchCard(match, 'w-full')}
+                                                </div>
                                             );
                                         })}
                                     </div>

@@ -92,6 +92,8 @@ const standingsPage = {
       {
         position: 1,
         teamName: 'Aces',
+        wins: 3,
+        losses: 1,
         draws: 0,
         finalPoints: 9,
         pointsDelta: 0,
@@ -118,29 +120,88 @@ const bracketPage = {
   ],
   selectedDivisionId: 'open',
   selectedDivisionName: 'Open Division',
-  winnersColumns: [
-    {
-      label: 'Round 1',
-      matches: [
-        {
-          id: 'match_1',
-          matchId: 1,
-          fieldLabel: 'Court 1',
-          startLabel: 'May 10, 5:00 PM',
-          team1Name: 'Aces',
-          team2Name: 'Bumpers',
-          team1Points: [21, 21],
-          team2Points: [18, 17],
-        },
-      ],
+  winnersLane: {
+    matchIds: ['match_1', 'match_2'],
+    cardsById: {
+      match_1: {
+        id: 'match_1',
+        matchId: 1,
+        fieldLabel: 'Court 1',
+        startLabel: 'May 10, 5:00 PM',
+        team1Name: 'Aces',
+        team2Name: 'Bumpers',
+        team1Points: [21, 21],
+        team2Points: [18, 17],
+      },
+      match_2: {
+        id: 'match_2',
+        matchId: 2,
+        fieldLabel: 'Court 2',
+        startLabel: 'May 10, 6:00 PM',
+        team1Name: 'Spikes',
+        team2Name: 'Blocks',
+        team1Points: [21, 15, 15],
+        team2Points: [18, 21, 10],
+      },
     },
-  ],
-  losersColumns: [
-    {
-      label: 'Losers Round 1',
-      matches: [],
+    metrics: {
+      cardWidth: 288,
+      cardHeight: 200,
+      gapX: 48,
+      gapY: 12,
+      levelStep: 112,
+      paddingLeft: 28,
+      paddingRight: 28,
+      paddingTop: 16,
+      paddingBottom: 48,
     },
-  ],
+    positionById: {
+      match_1: { x: 0, y: 0, round: 0, level: 0 },
+      match_2: { x: 336, y: 56, round: 1, level: 0 },
+    },
+    contentSize: { width: 680, height: 320 },
+    connections: [
+      {
+        fromId: 'match_1',
+        toId: 'match_2',
+        x1: 316,
+        y1: 116,
+        x2: 364,
+        y2: 172,
+      },
+    ],
+  },
+  losersLane: {
+    matchIds: ['match_3'],
+    cardsById: {
+      match_3: {
+        id: 'match_3',
+        matchId: 3,
+        fieldLabel: 'Court 3',
+        startLabel: 'May 10, 7:00 PM',
+        team1Name: 'Drops',
+        team2Name: 'Digs',
+        team1Points: [21, 19],
+        team2Points: [16, 17],
+      },
+    },
+    metrics: {
+      cardWidth: 288,
+      cardHeight: 200,
+      gapX: 48,
+      gapY: 12,
+      levelStep: 112,
+      paddingLeft: 28,
+      paddingRight: 28,
+      paddingTop: 16,
+      paddingBottom: 48,
+    },
+    positionById: {
+      match_3: { x: 0, y: 0, round: 0, level: 0 },
+    },
+    contentSize: { width: 344, height: 264 },
+    connections: [],
+  },
   hasLosersBracket: true,
 };
 
@@ -237,6 +298,10 @@ describe('GET /embed/[slug]/[kind]', () => {
     expect(html).toContain('data-widget-page="1"');
     expect(html).toContain('data-widget-page="3"');
     expect(html).toContain('Aces');
+    expect(html).toContain('<th>W</th>');
+    expect(html).toContain('<th>L</th>');
+    expect(html).toContain('<td>3</td>');
+    expect(html).toContain('<td>1</td>');
   });
 
   it('renders bracket widgets with winners and losers lanes', async () => {
@@ -254,7 +319,12 @@ describe('GET /embed/[slug]/[kind]', () => {
     expect(html).toContain('Bracket view');
     expect(html).toContain('Winners Bracket');
     expect(html).toContain('Losers Bracket');
-    expect(html).toContain('Round 1');
+    expect(html).toContain('class="bracket-canvas"');
+    expect(html).toContain('data-bracket-match-id="match_1"');
+    expect(html).toContain('id="public-bracket-winners-arrowhead"');
+    expect(html).toContain('marker-end="url(#public-bracket-winners-arrowhead)"');
+    expect(html).toContain('stroke="#aeb9c7"');
+    expect(html).toContain('fill="#aeb9c7"');
     expect(html).toContain('Court 1');
     expect(html).toContain('Aces');
     expect(html).toContain('Bumpers');
