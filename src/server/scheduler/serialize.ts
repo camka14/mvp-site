@@ -44,7 +44,6 @@ const serializeTeam = (team: Team) => ({
 
 const serializeField = (field: PlayingField) => ({
   id: field.id,
-  fieldNumber: field.fieldNumber,
   organizationId: field.organizationId ?? null,
   divisions: field.divisions.map((division) => division.id),
   name: field.name,
@@ -254,7 +253,6 @@ const serializeTeamLegacy = (team: Team) => ({
 const serializeFieldLegacy = (field: PlayingField) => ({
   $id: field.id,
   id: field.id,
-  fieldNumber: field.fieldNumber,
   organizationId: field.organizationId ?? null,
   divisions: field.divisions.map((division) => division.id),
   name: field.name,

@@ -33,13 +33,12 @@ const cloneLocalFields = (
   idFactory: () => string,
 ): { fields: Field[]; idMap: Map<string, string> } => {
   const idMap = new Map<string, string>();
-  const fields = sourceFields.map((field, idx) => {
+  const fields = sourceFields.map((field) => {
     const nextId = idFactory();
     idMap.set(field.$id, nextId);
     return {
       ...field,
       $id: nextId,
-      fieldNumber: Number.isFinite(field.fieldNumber) ? field.fieldNumber : idx + 1,
       // Ensure these don't carry over hydrated backrefs that can cause cycles or unintended coupling.
       matches: undefined,
       events: undefined,

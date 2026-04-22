@@ -1,0 +1,1 @@
+ALTER TABLE "Fields" DROP COLUMN IF EXISTS "fieldNumber";

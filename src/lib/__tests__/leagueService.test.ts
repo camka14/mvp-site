@@ -30,7 +30,6 @@ describe('leagueService', () => {
         location: '',
         lat: 0,
         long: 0,
-        fieldNumber: 1,
       };
 
       const slot: TimeSlot = {

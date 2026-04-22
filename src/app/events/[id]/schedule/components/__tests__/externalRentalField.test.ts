@@ -10,7 +10,6 @@ const makeField = (overrides: Partial<Field> = {}): Field => ({
   location: '',
   lat: 0,
   long: 0,
-  fieldNumber: 1,
   ...overrides,
 });
 

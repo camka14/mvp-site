@@ -33,6 +33,19 @@ import { calculateMvpAndStripeFees } from '@/lib/billingFees';
 import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
+import {
+  buildBracketDivisionOptions,
+  collectConnectedBracketMatchIds as collectConnectedMatchIds,
+  getBracketDivisionId as getDivisionId,
+  getBracketDivisionLabel as getDivisionLabel,
+  getBracketMatchDivisionId as getMatchDivisionId,
+  getBracketMatchDivisionLabel as getMatchDivisionLabel,
+  getBracketRootMatches,
+  hasBracketConnections as isPlayoffBracketMatch,
+  pickPreferredBracketRootMatch as pickPreferredRootMatch,
+  toBracketDivisionKey as toDivisionKey,
+} from '@/lib/bracketViewCore';
 import { formatStandingsDelta, formatStandingsPoints } from '@/lib/standingsDisplay';
 import { toEventPayload } from '@/types';
 import { formatBillAmount } from '@/types';
@@ -483,47 +496,6 @@ const clearMatchReferencesToTarget = (match: Match, removedMatchId: string): Mat
   return next;
 };
 
-const toDivisionKey = (divisionId: string | null | undefined): string | null => {
-  const normalized = normalizeDivisionToken(divisionId);
-  return normalized ? normalized.toLowerCase() : null;
-};
-
-const getDivisionId = (division: unknown): string | null => {
-  if (typeof division === 'string') {
-    return normalizeDivisionToken(division);
-  }
-
-  if (!division || typeof division !== 'object') {
-    return null;
-  }
-
-  const divisionRecord = division as Record<string, unknown>;
-  return (
-    normalizeDivisionToken(divisionRecord.id) ??
-    normalizeDivisionToken(divisionRecord.$id) ??
-    normalizeDivisionToken(divisionRecord.key) ??
-    normalizeDivisionToken(divisionRecord.name)
-  );
-};
-
-const getDivisionLabel = (division: unknown): string | null => {
-  if (typeof division === 'string') {
-    return normalizeDivisionToken(division);
-  }
-
-  if (!division || typeof division !== 'object') {
-    return null;
-  }
-
-  const divisionRecord = division as Record<string, unknown>;
-  return (
-    normalizeDivisionToken(divisionRecord.name) ??
-    normalizeDivisionToken(divisionRecord.id) ??
-    normalizeDivisionToken(divisionRecord.$id) ??
-    normalizeDivisionToken(divisionRecord.key)
-  );
-};
-
 const getDivisionKind = (division: unknown): 'LEAGUE' | 'PLAYOFF' | null => {
   if (!division || typeof division !== 'object') {
     return null;
@@ -573,32 +545,6 @@ const getDivisionTeamIds = (division: unknown): string[] => {
   );
 };
 
-const getTeamDivision = (team: Match['team1'] | Match['team2']): unknown => {
-  if (!team) {
-    return null;
-  }
-
-  return team.division;
-};
-
-const getMatchDivisionId = (match: Match): string | null =>
-  getDivisionId(match.division) ??
-  getDivisionId(getTeamDivision(match.team1)) ??
-  getDivisionId(getTeamDivision(match.team2));
-
-const getMatchDivisionLabel = (match: Match): string | null =>
-  getDivisionLabel(match.division) ??
-  getDivisionLabel(getTeamDivision(match.team1)) ??
-  getDivisionLabel(getTeamDivision(match.team2));
-
-const isPlayoffBracketMatch = (match: Match): boolean =>
-  Boolean(
-    match.previousLeftId ||
-    match.previousRightId ||
-    match.winnerNextMatchId ||
-    match.loserNextMatchId,
-  );
-
 const shouldResetBracketMatchForRebuild = (event: Event, match: Match): boolean => {
   if (event.eventType === 'TOURNAMENT') {
     return true;
@@ -617,79 +563,6 @@ const toClearedBracketMatchUpdate = (match: Match): Partial<Match> & { $id: stri
   officialCheckedIn: false,
   locked: false,
 });
-
-const pickPreferredRootMatch = (matches: Match[]): Match | null => {
-  if (matches.length === 0) {
-    return null;
-  }
-
-  return matches.reduce<Match>((best, current) => {
-    const bestMatchId = Number.isFinite(best.matchId) ? Number(best.matchId) : Number.NEGATIVE_INFINITY;
-    const currentMatchId = Number.isFinite(current.matchId) ? Number(current.matchId) : Number.NEGATIVE_INFINITY;
-
-    if (currentMatchId > bestMatchId) {
-      return current;
-    }
-    if (currentMatchId < bestMatchId) {
-      return best;
-    }
-    return current.$id.localeCompare(best.$id) < 0 ? current : best;
-  }, matches[0]);
-};
-
-const collectConnectedMatchIds = (matches: Record<string, Match>, rootMatchId: string): Set<string> => {
-  if (!matches[rootMatchId]) {
-    return new Set<string>();
-  }
-
-  const adjacency = new Map<string, Set<string>>();
-  const ensureNode = (id: string) => {
-    if (!adjacency.has(id)) {
-      adjacency.set(id, new Set<string>());
-    }
-  };
-  const connectNodes = (firstId?: string | null, secondId?: string | null) => {
-    if (!firstId || !secondId || !matches[firstId] || !matches[secondId]) {
-      return;
-    }
-    ensureNode(firstId);
-    ensureNode(secondId);
-    adjacency.get(firstId)?.add(secondId);
-    adjacency.get(secondId)?.add(firstId);
-  };
-
-  Object.keys(matches).forEach(ensureNode);
-  Object.values(matches).forEach((match) => {
-    connectNodes(match.$id, match.previousLeftId);
-    connectNodes(match.$id, match.previousRightId);
-    connectNodes(match.$id, match.winnerNextMatchId);
-    connectNodes(match.$id, match.loserNextMatchId);
-  });
-
-  const visited = new Set<string>();
-  const stack: string[] = [rootMatchId];
-
-  while (stack.length > 0) {
-    const currentId = stack.pop();
-    if (!currentId || visited.has(currentId) || !matches[currentId]) {
-      continue;
-    }
-
-    visited.add(currentId);
-    const neighbors = adjacency.get(currentId);
-    if (!neighbors) {
-      continue;
-    }
-
-    neighbors.forEach((neighborId) => {
-      if (!visited.has(neighborId)) {
-        stack.push(neighborId);
-      }
-    });
-  }
-
-  return visited;
-};
 
 type MatchConflictPair = {
   firstId: string;
@@ -737,22 +610,13 @@ const getConflictMatchLabel = (match: Match): string => {
 };
 
 const getConflictFieldLabel = (match: Match): string => {
-  const relationFieldName = typeof match.field?.name === 'string' ? match.field.name.trim() : '';
-  if (relationFieldName.length > 0) {
-    return relationFieldName;
-  }
-  if (typeof match.field?.fieldNumber === 'number' && Number.isFinite(match.field.fieldNumber) && match.field.fieldNumber > 0) {
-    return `Field ${match.field.fieldNumber}`;
-  }
-  const relationFieldId = normalizeIdToken(match.field?.$id);
-  if (relationFieldId) {
-    return `field ${relationFieldId}`;
-  }
-  const fieldId = normalizeIdToken(match.fieldId);
-  if (fieldId) {
-    return `field ${fieldId}`;
-  }
-  return 'an unassigned field';
+  return getFieldDisplayName(
+    {
+      $id: normalizeIdToken(match.field?.$id) ?? normalizeIdToken(match.fieldId) ?? undefined,
+      name: typeof match.field?.name === 'string' ? match.field.name : '',
+    },
+    'an unassigned field',
+  );
 };
 
 const buildMatchConflictAlertMessage = ({
@@ -1017,7 +881,6 @@ function EventScheduleContent() {
   const rentalEndParam = searchParams?.get('rentalEnd') || undefined;
   const rentalFieldIdParam = searchParams?.get('rentalFieldId') || undefined;
   const rentalFieldNameParam = searchParams?.get('rentalFieldName') || undefined;
-  const rentalFieldNumberParam = searchParams?.get('rentalFieldNumber') || undefined;
   const rentalLocationParam = searchParams?.get('rentalLocation') || undefined;
   const rentalLatParam = searchParams?.get('rentalLat') || undefined;
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
@@ -1463,14 +1326,6 @@ function EventScheduleContent() {
       ? rentalFieldsById.get(primaryRentalFieldId)
       : undefined;
 
-    const fallbackFieldNumber = (() => {
-      if (typeof rentalFieldFromOrg?.fieldNumber === 'number') {
-        return rentalFieldFromOrg.fieldNumber;
-      }
-      const parsed = rentalFieldNumberParam ? Number(rentalFieldNumberParam) : NaN;
-      return Number.isFinite(parsed) ? parsed : 1;
-    })();
-
     const rentalField: Field | undefined = (() => {
       if (rentalFieldFromOrg) {
         return rentalFieldFromOrg as Field;
@@ -1480,8 +1335,7 @@ function EventScheduleContent() {
       }
       return {
         $id: primaryRentalFieldId,
-        name: rentalFieldNameParam?.trim() || `Field ${fallbackFieldNumber}`,
-        fieldNumber: fallbackFieldNumber,
+        name: rentalFieldNameParam?.trim() || primaryRentalFieldId,
         location: rentalLocationParam ?? '',
         lat: rentalCoordinates?.[1] ?? 0,
         long: rentalCoordinates?.[0] ?? 0,
@@ -1506,7 +1360,7 @@ function EventScheduleContent() {
       defaults.coordinates = derivedCoordinates;
     }
     const resolvedFields = allRentalFieldIds
-      .map((fieldId, index) => {
+      .map((fieldId) => {
         const fromOrganization = rentalFieldsById.get(fieldId);
         if (fromOrganization) {
           return fromOrganization;
@@ -1516,8 +1370,7 @@ function EventScheduleContent() {
         }
         return {
           $id: fieldId,
-          name: `Field ${index + 1}`,
-          fieldNumber: index + 1,
+          name: fieldId,
           location: rentalLocationParam ?? rentalOrganization?.location ?? '',
           lat: rentalCoordinates?.[1] ?? 0,
           long: rentalCoordinates?.[0] ?? 0,
@@ -1570,7 +1423,6 @@ function EventScheduleContent() {
     normalizedRentalEnd,
     rentalFieldIdParam,
     rentalFieldNameParam,
-    rentalFieldNumberParam,
     rentalLocationParam,
     normalizedRentalStart,
   ]);
@@ -5206,28 +5058,19 @@ function EventScheduleContent() {
       return [];
     }
 
-    return Object.values(playoffMatchesMap).filter(
-      (match) => !match.winnerNextMatchId || !playoffMatchesMap[match.winnerNextMatchId],
-    );
+    return getBracketRootMatches(playoffMatchesMap);
   }, [playoffMatchesMap]);
 
   const bracketDivisionOptions = useMemo<DivisionOption[]>(() => {
-    const labels = new Map<string, string>();
+    if (!playoffMatchesMap) {
+      return [];
+    }
 
-    playoffRootMatches.forEach((match) => {
-      const divisionId = getMatchDivisionId(match);
-      const divisionKey = toDivisionKey(divisionId);
-      if (!divisionId || !divisionKey || labels.has(divisionKey)) {
-        return;
-      }
-
-      labels.set(divisionKey, divisionLabelsByKey.get(divisionKey) ?? getMatchDivisionLabel(match) ?? divisionId);
+    return buildBracketDivisionOptions(playoffMatchesMap, {
+      labelByDivisionKey: divisionLabelsByKey,
+      resolveLabel: (match, divisionId) => getMatchDivisionLabel(match) ?? divisionId,
     });
-
-    return Array.from(labels.entries())
-      .map(([value, label]) => ({ value, label }))
-      .sort((left, right) => left.label.localeCompare(right.label));
-  }, [divisionLabelsByKey, playoffRootMatches]);
+  }, [divisionLabelsByKey, playoffMatchesMap]);
 
   useEffect(() => {
     if (bracketDivisionOptions.length === 0) {

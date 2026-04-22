@@ -95,7 +95,6 @@ describe('FieldsTabContent calendar navigation', () => {
           location: '',
           lat: 0,
           long: 0,
-          fieldNumber: 1,
           rentalSlotIds: ['slot_1'],
           rentalSlots: [
             {
@@ -200,7 +199,6 @@ describe('FieldsTabContent calendar navigation', () => {
           location: '',
           lat: 0,
           long: 0,
-          fieldNumber: 1,
           rentalSlotIds: ['slot_1'],
           rentalSlots: [
             {

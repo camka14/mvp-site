@@ -749,7 +749,6 @@ describe('publicOrganizationCatalog', () => {
       {
         id: 'field_1',
         name: 'Main Field',
-        fieldNumber: 1,
         location: 'Main Park',
         rentalSlotIds: ['slot_1'],
       },

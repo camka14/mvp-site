@@ -53,7 +53,6 @@ describe('field routes', () => {
       location: null,
       lat: null,
       long: null,
-      fieldNumber: 1,
       heading: null,
       inUse: null,
       organizationId: 'org_1',
@@ -62,7 +61,7 @@ describe('field routes', () => {
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    const res = await POST(jsonRequest({ id: 'field_1', name: 'Court A', fieldNumber: 1, organizationId: 'org_1' }));
+    const res = await POST(jsonRequest({ id: 'field_1', name: 'Court A', organizationId: 'org_1' }));
     const json = await res.json();
 
     expect(res.status).toBe(201);
@@ -77,7 +76,7 @@ describe('field routes', () => {
       ownerId: 'owner_1',
     });
 
-    const res = await POST(jsonRequest({ id: 'field_1', fieldNumber: 1, organizationId: 'org_1' }));
+    const res = await POST(jsonRequest({ id: 'field_1', organizationId: 'org_1' }));
     const json = await res.json();
 
     expect(res.status).toBe(403);

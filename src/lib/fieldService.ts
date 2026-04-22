@@ -13,7 +13,6 @@ export interface CreateFieldData {
   location?: string;
   lat?: number;
   long?: number;
-  fieldNumber: number;
   heading?: number;
   inUse?: boolean;
   organization?: Organization;
@@ -26,7 +25,6 @@ export interface UpdateFieldData {
   location?: string;
   lat?: number;
   long?: number;
-  fieldNumber?: number;
   heading?: number;
   inUse?: boolean;
 }
@@ -50,7 +48,6 @@ class FieldService {
       location: data.location,
       lat: data.lat,
       long: data.long,
-      fieldNumber: data.fieldNumber,
       heading: data.heading,
       inUse: data.inUse,
       organizationId: data.organization?.$id
@@ -76,7 +73,6 @@ class FieldService {
       ...(data.location !== undefined ? { location: data.location } : {}),
       ...(data.lat !== undefined ? { lat: data.lat } : {}),
       ...(data.long !== undefined ? { long: data.long } : {}),
-      ...(data.fieldNumber !== undefined ? { fieldNumber: data.fieldNumber } : {}),
       ...(data.heading !== undefined ? { heading: data.heading } : {}),
       ...(data.inUse !== undefined ? { inUse: data.inUse } : {}),
     };
@@ -159,7 +155,6 @@ class FieldService {
   private mapRowToField(row: any): Field {
     const lat = typeof row.lat === 'number' ? row.lat : Number(row.lat ?? 0);
     const long = typeof row.long === 'number' ? row.long : Number(row.long ?? 0);
-    const fieldNumber = typeof row.fieldNumber === 'number' ? row.fieldNumber : Number(row.fieldNumber ?? 0);
     const heading = typeof row.heading === 'number' ? row.heading : Number(row.heading ?? NaN);
     const inUse = typeof row.inUse === 'boolean' ? row.inUse : row.inUse !== undefined ? Boolean(row.inUse) : undefined;
     const rentalSlotIds = Array.isArray(row.rentalSlotIds)
@@ -172,7 +167,10 @@ class FieldService {
       location: row.location ?? '',
       lat: Number.isFinite(lat) ? lat : 0,
       long: Number.isFinite(long) ? long : 0,
-      fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
+      createdAt: row.createdAt ?? row.$createdAt ?? null,
+      updatedAt: row.updatedAt ?? row.$updatedAt ?? null,
+      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
+      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
       heading: Number.isFinite(heading) ? heading : undefined,
       inUse: inUse,
       divisions: Array.isArray(row.divisions) ? row.divisions : undefined,

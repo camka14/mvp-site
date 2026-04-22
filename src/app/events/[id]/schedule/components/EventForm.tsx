@@ -58,6 +58,7 @@ import {
     normalizeRequiredSignerType,
 } from '@/lib/templateSignerTypes';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
+import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
@@ -1071,7 +1072,7 @@ const fieldsEqual = (left: Field[], right: Field[]): boolean => {
         if (
             first?.$id !== second?.$id
             || (first?.name ?? '') !== (second?.name ?? '')
-            || (first?.fieldNumber ?? 0) !== (second?.fieldNumber ?? 0)
+            || (first?.$createdAt ?? first?.createdAt ?? '') !== (second?.$createdAt ?? second?.createdAt ?? '')
             || (first?.location ?? '') !== (second?.location ?? '')
             || Number(first?.lat ?? 0) !== Number(second?.lat ?? 0)
             || Number(first?.long ?? 0) !== Number(second?.long ?? 0)
@@ -3699,20 +3700,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return sanitizeFieldsForForm(immutableFields);
             }
             if (hostedOrganizationId && Array.isArray(resolvedOrganizationFields) && resolvedOrganizationFields.length) {
-                return sanitizeFieldsForForm(resolvedOrganizationFields as Field[]).sort(
-                    (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
-                );
+                return sortFieldsByCreatedAt(sanitizeFieldsForForm(resolvedOrganizationFields as Field[]));
             }
             if (activeEditingEvent?.fields?.length) {
-                return sanitizeFieldsForForm(activeEditingEvent.fields).sort(
-                    (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
-                );
+                return sortFieldsByCreatedAt(sanitizeFieldsForForm(activeEditingEvent.fields));
             }
             if (!hostedOrganizationId) {
                 return Array.from({ length: defaultFieldCount }, (_, idx) => ({
                     $id: createClientId(),
                     name: `Field ${idx + 1}`,
-                    fieldNumber: idx + 1,
                     location: '',
                 } as Field));
             }
@@ -4001,9 +3997,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? resolvedOrganization.fields
                     .map((field) => {
                         const fieldId = normalizeEntityId((field as Field | undefined)?.$id) ?? '';
-                        const fieldNumber = Number((field as Field | undefined)?.fieldNumber ?? '');
+                        const fieldCreatedAt = String((field as Field | undefined)?.$createdAt ?? (field as Field | undefined)?.createdAt ?? '').trim();
                         const fieldName = String((field as Field | undefined)?.name ?? '').trim();
-                        return `${fieldId}:${Number.isFinite(fieldNumber) ? fieldNumber : ''}:${fieldName}`;
+                        return `${fieldId}:${fieldCreatedAt}:${fieldName}`;
                     })
                     .sort()
                     .join('|')
@@ -5377,14 +5373,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
                 return allowedFieldIdSet ? allowedFieldIdSet.has(fieldId) : true;
             })
-            .map((field, index) => ({
+            .map((field) => ({
                 value: field.$id,
-                label: field.name?.trim()
-                    || (
-                        typeof field.fieldNumber === 'number' && Number.isFinite(field.fieldNumber)
-                            ? `Field ${field.fieldNumber}`
-                            : `Field ${index + 1}`
-                    ),
+                label: getFieldDisplayName(field),
             }));
     }, [fields, selectedFieldIds]);
     const eventOfficialByUserId = useMemo(
@@ -6838,17 +6829,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         setFields(prev => {
-            const normalized: Field[] = prev.slice(0, fieldCount).map((field, index) => ({
-                ...field,
-                fieldNumber: index + 1,
-            } as Field));
+            const normalized: Field[] = prev.slice(0, fieldCount);
 
             if (normalized.length < fieldCount) {
                 for (let index = normalized.length; index < fieldCount; index += 1) {
                     normalized.push({
                         $id: createClientId(),
                         name: `Field ${index + 1}`,
-                        fieldNumber: index + 1,
                         location: '',
                         lat: 0,
                         long: 0,
@@ -6865,9 +6852,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (shouldManageLocalFields || isOrganizationManagedEvent || !activeEditingEvent?.fields?.length) {
             return;
         }
-        const sorted = sanitizeFieldsForForm(activeEditingEvent.fields).sort(
-            (a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0),
-        );
+        const sorted = sortFieldsByCreatedAt(sanitizeFieldsForForm(activeEditingEvent.fields));
         setFields(sorted, { shouldDirty: false });
     }, [activeEditingEvent?.fields, isOrganizationManagedEvent, setFields, shouldManageLocalFields]);
 
@@ -7384,17 +7369,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         const hydrateOrganizationFields = async () => {
-            const sortByFieldNumber = (nextFields: Field[]) =>
-                [...nextFields].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
-
             const seededFields = Array.isArray(resolvedOrganization?.fields)
-                ? sortByFieldNumber(sanitizeFieldsForForm(resolvedOrganization.fields as Field[]))
+                ? sortFieldsByCreatedAt(sanitizeFieldsForForm(resolvedOrganization.fields as Field[]))
                 : [];
             if (seededFields.length) {
-                    setFields(seededFields, { shouldDirty: false });
+                setFields(seededFields, { shouldDirty: false, shouldValidate: false });
                 setFieldsLoading(false);
                 return;
             }
+            setFields([], { shouldDirty: false, shouldValidate: false });
 
             try {
                 setFieldsLoading(true);
@@ -7409,7 +7392,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
 
                 let resolvedFields = Array.isArray(fetchedOrganization?.fields)
-                    ? sortByFieldNumber(sanitizeFieldsForForm(fetchedOrganization.fields as Field[]))
+                    ? sortFieldsByCreatedAt(sanitizeFieldsForForm(fetchedOrganization.fields as Field[]))
                     : seededFields;
                 if (!resolvedFields.length) {
                     const fallbackOrganizationId = fetchedOrganization?.$id
@@ -7418,11 +7401,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     if (fallbackOrganizationId) {
                         const fetchedFields = await fieldService.listFields({ organizationId: fallbackOrganizationId });
                         if (cancelled) return;
-                        resolvedFields = sortByFieldNumber(sanitizeFieldsForForm(fetchedFields));
+                        resolvedFields = sortFieldsByCreatedAt(sanitizeFieldsForForm(fetchedFields));
                     }
                 }
                 if (resolvedFields.length) {
-                    setFields(resolvedFields, { shouldDirty: false });
+                    setFields(resolvedFields, { shouldDirty: false, shouldValidate: false });
+                } else {
+                    setFields([], { shouldDirty: false, shouldValidate: false });
                 }
             } catch (error) {
                 console.warn('Failed to hydrate organization fields for event form:', error);
@@ -7483,7 +7468,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             .filter((field): field is Field & { $id: string } => typeof field.$id === 'string' && field.$id.length > 0)
             .map((field) => ({
                 value: field.$id,
-                label: field.name?.trim() || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Field'),
+                label: getFieldDisplayName(field),
             }));
     }, [selectedFields]);
 
@@ -8186,9 +8171,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         } else {
             const localFields = hasImmutableFields ? immutableFields : fields;
             if (localFields.length) {
-                draft.fields = localFields.map((field, idx) => ({
+                draft.fields = localFields.map((field) => ({
                     ...field,
-                    fieldNumber: field.fieldNumber ?? idx + 1,
                 }));
                 const fieldIds = toIdList(localFields);
                 if (fieldIds.length) {
@@ -9612,7 +9596,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         {fields.map((field, index) => (
                                             <div key={field.$id} className="grid grid-cols-1 gap-3">
                                                 <TextInput
-                                                    label={`Field ${field.fieldNumber ?? index + 1} Name`}
+                                                    label={`${getFieldDisplayName(field, 'Field')} Name`}
                                                     value={field.name ?? ''}
                                                     maw={420}
                                                     maxLength={MAX_MEDIUM_TEXT_LENGTH}
@@ -9650,12 +9634,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             <Collapse in={!collapsedSections['section-match-rules']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
                                 <div id="section-match-rules-content" className="mt-4">
                                     <MatchRulesSection
-                                        sport={eventData.sportConfig ?? sportsById.get(String(eventData.sportId ?? '').trim()) ?? undefined}
+                                        sport={selectedSportForOfficials ?? undefined}
                                         usesSets={eventData.eventType === 'LEAGUE'
                                             ? Boolean(leagueData.usesSets)
                                             : eventData.eventType === 'TOURNAMENT'
                                                 ? Boolean(tournamentData.usesSets)
-                                                : Boolean((eventData.sportConfig ?? sportsById.get(String(eventData.sportId ?? '').trim()))?.usePointsPerSetWin)}
+                                                : Boolean(selectedSportForOfficials?.usePointsPerSetWin)}
                                         setsPerMatch={eventData.eventType === 'LEAGUE' ? leagueData.setsPerMatch : undefined}
                                         winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
                                         officialPositions={eventData.officialPositions}

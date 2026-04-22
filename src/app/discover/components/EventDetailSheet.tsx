@@ -34,6 +34,7 @@ import { familyService, FamilyChild } from '@/lib/familyService';
 import { registrationService, type DivisionRegistrationSelection, ConsentLinks, EventRegistration } from '@/lib/registrationService';
 import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { buildDivisionCapacityBreakdown, isDivisionAtCapacity, resolveDivisionCapacitySnapshot } from '@/lib/divisionCapacity';
@@ -3815,13 +3816,13 @@ export default function EventDetailSheet({
                                                                                                 : []
                                                                                     ).map((fieldId: string) => {
                                                                                         const resolved = scheduleFieldNamesById.get(fieldId);
-                                                                                        if (resolved?.name?.trim()) {
-                                                                                            return resolved.name.trim();
-                                                                                        }
-                                                                                        if (resolved && Number.isFinite(Number(resolved.fieldNumber))) {
-                                                                                            return `Field ${resolved.fieldNumber}`;
-                                                                                        }
-                                                                                        return fieldId;
+                                                                                        return getFieldDisplayName(
+                                                                                            {
+                                                                                                $id: fieldId,
+                                                                                                name: resolved?.name ?? '',
+                                                                                            },
+                                                                                            fieldId,
+                                                                                        );
                                                                                     }),
                                                                                 );
                                                                                 const divisionNames = uniqueNonEmptyStrings(

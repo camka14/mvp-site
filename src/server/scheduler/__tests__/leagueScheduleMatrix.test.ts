@@ -31,7 +31,6 @@ const buildFields = (division: Division, count: number): Record<string, PlayingF
     const id = `field_${index}`;
     fields[id] = new PlayingField({
       id,
-      fieldNumber: index,
       divisions: [division],
       matches: [],
       events: [],

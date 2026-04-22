@@ -5,6 +5,7 @@ import { Modal, Stack, Group, Text, Button, Alert, Select, Divider, Checkbox, Sw
 import { DateTimePicker } from '@mantine/dates';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
 import type { EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, Team, UserData } from '@/types';
@@ -490,7 +491,7 @@ export default function MatchEditModal({
       }
       acc.push({
         value: fieldId,
-        label: field.name || `Field ${field.fieldNumber ?? ''}`.trim(),
+        label: getFieldDisplayName(field),
       });
       return acc;
     }, []),

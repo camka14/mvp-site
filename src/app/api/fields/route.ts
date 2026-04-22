@@ -27,7 +27,6 @@ const createSchema = z.object({
   location: z.string().optional(),
   lat: z.number().optional(),
   long: z.number().optional(),
-  fieldNumber: z.number().optional(),
   heading: z.number().optional(),
   inUse: z.boolean().optional(),
   organizationId: z.string().optional(),
@@ -56,7 +55,7 @@ export async function GET(req: NextRequest) {
 
   const fields = await prisma.fields.findMany({
     where,
-    orderBy: { fieldNumber: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { name: 'asc' }, { id: 'asc' }],
   });
 
   return NextResponse.json({ fields: withLegacyList(fields) }, { status: 200 });
@@ -97,7 +96,6 @@ export async function POST(req: NextRequest) {
       location: data.location ?? null,
       lat: data.lat ?? null,
       long: data.long ?? null,
-      fieldNumber: data.fieldNumber ?? 0,
       heading: data.heading ?? null,
       inUse: data.inUse ?? null,
       organizationId: orgId,

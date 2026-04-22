@@ -21,6 +21,7 @@ import { DatePickerInput, DateTimePicker, TimeInput } from '@mantine/dates';
 import type { Field, LeagueConfig, Sport, TimeSlot } from '@/types';
 import type { WeeklySlotConflict } from '@/lib/leagueService';
 import { formatDisplayDate, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 
 const DROPDOWN_PROPS = { withinPortal: true, zIndex: 1800 };
 const MAX_STANDARD_NUMBER = 99_999;
@@ -272,7 +273,6 @@ const createFieldStub = (fieldId: string, label?: string): Field => ({
   location: '',
   lat: 0,
   long: 0,
-  fieldNumber: 0,
 });
 
 export interface LeagueSlotForm {
@@ -350,7 +350,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
     ? fieldOptions
     : fields.map((field) => ({
         value: field.$id,
-        label: field.name || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Unnamed field'),
+        label: getFieldDisplayName(field, 'Unnamed field'),
       }));
 
   const setsPerMatch = leagueData.setsPerMatch ?? 1;
@@ -675,7 +675,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           const field = fieldLookup.get(fieldId) ?? null;
                           return {
                             value: fieldId,
-                            label: field?.name || (field?.fieldNumber ? `Field ${field.fieldNumber}` : fieldId),
+                            label: getFieldDisplayName(field ?? { $id: fieldId, name: '' }, fieldId),
                           };
                         }),
                       ].map((option) => [option.value, option]),

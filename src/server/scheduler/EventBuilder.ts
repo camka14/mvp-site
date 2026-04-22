@@ -712,7 +712,6 @@ export class EventBuilder {
     for (const [fieldId, field] of Object.entries(this.event.fields)) {
       tournamentFields[fieldId] = new PlayingField({
         id: field.id,
-        fieldNumber: field.fieldNumber,
         organizationId: field.organizationId,
         divisions: tournamentDivisions,
         matches: [],

@@ -73,7 +73,6 @@ describe('eventTemplates', () => {
       location: 'Denver',
       lat: 0,
       long: 0,
-      fieldNumber: 1,
     };
 
     const slotA: TimeSlot = {
@@ -207,7 +206,6 @@ describe('eventTemplates', () => {
           location: 'Denver',
           lat: 0,
           long: 0,
-          fieldNumber: 1,
           divisions: [openSourceId, 'advanced'],
         } as any,
         {
@@ -216,7 +214,6 @@ describe('eventTemplates', () => {
           location: 'Denver',
           lat: 0,
           long: 0,
-          fieldNumber: 2,
           divisions: [advancedSourceId],
         } as any,
       ],
@@ -444,7 +441,6 @@ describe('eventTemplates', () => {
             location: 'Denver',
             lat: 0,
             long: 0,
-            fieldNumber: 1,
             divisions: [templateOpenId],
           } as any,
         ],

@@ -24,7 +24,6 @@ test.describe("rental purchase (fields flow)", () => {
       rentalOrgId: SEED_ORG.id,
       rentalFieldId: SEED_FIELD.id,
       rentalFieldName: SEED_FIELD.name,
-      rentalFieldNumber: String(SEED_FIELD.fieldNumber),
       rentalLocation: SEED_FIELD.location,
       rentalLat: String(SEED_FIELD.lat),
       rentalLng: String(SEED_FIELD.long),

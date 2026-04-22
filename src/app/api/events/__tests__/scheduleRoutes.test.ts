@@ -244,7 +244,6 @@ describe('schedule routes', () => {
         fields: [
           {
             id: 'field_inline_1',
-            fieldNumber: 1,
             divisions: ['open'],
           },
         ],
@@ -271,7 +270,6 @@ describe('schedule routes', () => {
         fields: [
           expect.objectContaining({
             id: 'field_inline_1',
-            fieldNumber: 1,
             divisions: ['open'],
           }),
         ],
@@ -337,7 +335,6 @@ describe('schedule routes', () => {
           fields: [
             {
               id: 'field_inline_2',
-              fieldNumber: 2,
               divisions: ['open'],
             },
           ],
@@ -369,7 +366,6 @@ describe('schedule routes', () => {
         fields: [
           expect.objectContaining({
             id: 'field_inline_2',
-            fieldNumber: 2,
             divisions: ['open'],
           }),
         ],
@@ -454,6 +450,33 @@ describe('schedule routes', () => {
     expect(deleteMatchesByEventMock).not.toHaveBeenCalled();
     expect(saveMatchesMock).not.toHaveBeenCalled();
     expect(saveEventScheduleMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when an organization has no saved fields for a new event document', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValueOnce(null);
+    upsertEventFromPayloadMock.mockRejectedValueOnce(
+      new Error('Organization events require at least one saved field. Create a field for this organization before creating an event.'),
+    );
+
+    const res = await schedulePost(
+      jsonRequest('http://localhost/api/events/schedule', {
+        eventDocument: {
+          $id: 'event_1',
+          organizationId: 'org_1',
+          eventType: 'EVENT',
+        },
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json).toEqual(expect.objectContaining({
+      error: 'Organization events require at least one saved field. Create a field for this organization before creating an event.',
+    }));
+    expect(scheduleEventMock).not.toHaveBeenCalled();
+    expect(deleteMatchesByEventMock).not.toHaveBeenCalled();
+    expect(saveMatchesMock).not.toHaveBeenCalled();
   });
 
   it('returns 500 when schedule match persistence fails in eventId schedule route', async () => {
@@ -1965,7 +1988,7 @@ describe('schedule routes', () => {
         },
       ],
       fields: {
-        field_1: { id: 'field_1', fieldNumber: 1, name: 'Court 1' },
+        field_1: { id: 'field_1', name: 'Court 1' },
       },
       timeSlots: [],
     });
@@ -2027,7 +2050,7 @@ describe('schedule routes', () => {
           start: new Date('2026-01-02T09:00:00.000Z'),
           end: new Date('2026-01-02T10:00:00.000Z'),
           division: { id: 'open', name: 'Open' },
-          field: { id: 'field_1', fieldNumber: 1, name: 'Court 1' },
+          field: { id: 'field_1', name: 'Court 1' },
           teamOfficial: null,
           official: null,
           officialAssignments: [],
@@ -2037,7 +2060,7 @@ describe('schedule routes', () => {
       officials: [{ id: 'official_1' }],
       divisions: [{ id: 'open', name: 'Open' }],
       fields: {
-        field_1: { id: 'field_1', fieldNumber: 1, name: 'Court 1' },
+        field_1: { id: 'field_1', name: 'Court 1' },
       },
       timeSlots: [],
     });

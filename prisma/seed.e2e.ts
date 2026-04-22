@@ -490,7 +490,6 @@ const seed = async (): Promise<void> => {
     await prisma.fields.create({
       data: {
         id: SEED_FIELD.id,
-        fieldNumber: SEED_FIELD.fieldNumber,
         lat: SEED_FIELD.lat,
         long: SEED_FIELD.long,
         name: SEED_FIELD.name,

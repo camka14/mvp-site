@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { getTeamAvatarUrl, getUserAvatarUrl, Match, UserData } from '@/types';
 import { formatDisplayDateTime, formatDisplayTime } from '@/lib/dateUtils';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 
 interface MatchCardProps {
     match: Match;
@@ -230,16 +231,7 @@ function MatchCard({
             return explicitLabel;
         }
 
-        const relationName = match.field?.name?.trim();
-        if (relationName) {
-            return relationName;
-        }
-
-        if (typeof match.field?.fieldNumber === 'number' && match.field.fieldNumber > 0) {
-            return `Field ${match.field.fieldNumber}`;
-        }
-
-        return 'Field TBD';
+        return getFieldDisplayName(match.field, 'Field TBD');
     })();
 
     const clickable = typeof onClick === 'function';

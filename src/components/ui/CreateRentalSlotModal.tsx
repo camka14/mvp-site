@@ -7,6 +7,7 @@ import type { Field, TimeSlot } from '@/types';
 import { fieldService, type ManageRentalSlotResult } from '@/lib/fieldService';
 import { apiRequest } from '@/lib/apiClient';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 
@@ -469,7 +470,7 @@ export default function CreateRentalSlotModal({
             <Text fw={500}>{slot ? 'Field' : 'Fields'}</Text>
             <Text size="sm" c="dimmed">
               {targetFields.length > 0
-                ? targetFields.map((targetField) => targetField.name || `Field ${targetField.fieldNumber ?? ''}`).join(', ')
+                ? targetFields.map((targetField) => getFieldDisplayName(targetField)).join(', ')
                 : 'Select a field to continue'}
             </Text>
           </div>

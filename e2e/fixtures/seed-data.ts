@@ -67,7 +67,6 @@ export const SEED_ORG = {
 export const SEED_FIELD = {
   id: "field_1",
   name: "Court A",
-  fieldNumber: 1,
   location: "Test City",
   lat: 37.7749,
   long: -122.4194,

@@ -13,7 +13,6 @@ const buildDivision = () => new Division('OPEN', 'Open');
 const buildField = (division: Division) =>
   new PlayingField({
     id: 'field_1',
-    fieldNumber: 1,
     divisions: [division],
     matches: [],
     events: [],
@@ -24,7 +23,6 @@ const buildField = (division: Division) =>
 const buildFieldById = (id: string, division: Division) =>
   new PlayingField({
     id,
-    fieldNumber: 1,
     divisions: [division],
     matches: [],
     events: [],

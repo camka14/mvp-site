@@ -69,7 +69,6 @@
       {
         "id": "field_1",
         "name": "Court A",
-        "fieldNumber": 1,
         "location": "Sports Center",
         "lat": 0,
         "long": 0
@@ -89,7 +88,6 @@
         "field": {
           "id": "field_1",
           "name": "Court A",
-          "fieldNumber": 1,
           "location": "Sports Center",
           "lat": 0,
           "long": 0

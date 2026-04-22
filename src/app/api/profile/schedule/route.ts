@@ -145,7 +145,7 @@ export async function GET(req: NextRequest) {
     fieldIds.length
       ? prisma.fields.findMany({
           where: { id: { in: fieldIds } },
-          orderBy: { fieldNumber: 'asc' },
+          orderBy: [{ createdAt: 'asc' }, { name: 'asc' }, { id: 'asc' }],
         })
       : Promise.resolve([]),
     relatedTeamIds.length && teamsDelegate?.findMany

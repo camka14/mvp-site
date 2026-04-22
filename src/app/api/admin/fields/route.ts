@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
       prisma.fields.count({ where }),
       prisma.fields.findMany({
         where,
-        orderBy: [{ updatedAt: 'desc' }, { fieldNumber: 'asc' }],
+        orderBy: [{ createdAt: 'asc' }, { name: 'asc' }, { id: 'asc' }],
         skip: offset,
         take: limit,
       }),

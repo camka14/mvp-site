@@ -42,7 +42,6 @@ describe('GET /api/admin/fields', () => {
       {
         id: 'field_1',
         name: 'Court 1',
-        fieldNumber: 1,
         organizationId: 'org_1',
         updatedAt: new Date('2026-03-01T10:00:00Z'),
       },

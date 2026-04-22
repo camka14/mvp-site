@@ -270,7 +270,6 @@ const buildWeeklyParentEvent = ({
       {
         $id: 'field_1',
         name: 'Main Court',
-        fieldNumber: 1,
         location: 'Main',
         lat: 0,
         long: 0,
@@ -1067,7 +1066,6 @@ describe('League schedule page', () => {
             {
               id: 'field_slot_1',
               name: 'Court A',
-              fieldNumber: 1,
               location: '',
               lat: 0,
               long: 0,
@@ -1285,7 +1283,6 @@ describe('League schedule page', () => {
         {
           $id: 'field_local_1',
           name: 'Court A',
-          fieldNumber: 1,
           location: '',
           lat: 0,
           long: 0,
@@ -1294,7 +1291,6 @@ describe('League schedule page', () => {
         {
           $id: 'field_local_2',
           name: 'Court B',
-          fieldNumber: 2,
           location: '',
           lat: 0,
           long: 0,
@@ -1514,7 +1510,6 @@ describe('League schedule page', () => {
           {
             $id: 'field_template_1',
             name: 'Template Court',
-            fieldNumber: 2,
             location: 'Template Arena',
             lat: 37.3,
             long: -121.9,
@@ -1532,7 +1527,6 @@ describe('League schedule page', () => {
         {
           $id: 'field_org_1',
           name: 'Org Court',
-          fieldNumber: 1,
           location: 'Organization HQ',
           lat: 42.0,
           long: -83.0,
@@ -1637,7 +1631,6 @@ describe('League schedule page', () => {
         {
           id: 'field_1',
           name: 'Court A',
-          fieldNumber: 1,
           location: '',
           lat: 0,
           long: 0,
@@ -1660,7 +1653,6 @@ describe('League schedule page', () => {
           field: {
             id: 'field_1',
             name: 'Court A',
-            fieldNumber: 1,
             location: '',
             lat: 0,
             long: 0,
@@ -1732,7 +1724,6 @@ describe('League schedule page', () => {
         {
           id: 'field_1',
           name: 'Court A',
-          fieldNumber: 1,
           location: '',
           lat: 0,
           long: 0,
@@ -1755,7 +1746,6 @@ describe('League schedule page', () => {
           field: {
             id: 'field_1',
             name: 'Court A',
-            fieldNumber: 1,
             location: '',
             lat: 0,
             long: 0,
@@ -2264,7 +2254,6 @@ describe('League schedule page', () => {
         {
           $id: 'field_local_1',
           name: 'Court A',
-          fieldNumber: 1,
           location: '',
           lat: 0,
           long: 0,
@@ -2359,7 +2348,6 @@ describe('League schedule page', () => {
         {
           $id: 'field_tournament_1',
           name: 'Court A',
-          fieldNumber: 1,
           location: '',
           lat: 0,
           long: 0,
@@ -3216,7 +3204,6 @@ describe('League schedule page', () => {
             $id: 'field_1',
             id: 'field_1',
             name: 'Rental Field',
-            fieldNumber: 1,
             organizationId: 'org_rental',
             organization: { $id: 'org_rental' },
           },

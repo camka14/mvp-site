@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, Button, Group, TextInput, NumberInput } from '@mantine/core';
+import { Modal, Button, Group, TextInput } from '@mantine/core';
 import type { Field, Organization } from '@/types';
 import { fieldService } from '@/lib/fieldService';
 import LocationSelector from '@/components/location/LocationSelector';
@@ -20,7 +20,6 @@ type FieldFormState = {
   location: string;
   lat: string | number;
   long: string | number;
-  fieldNumber: number;
   organization?: Organization;
 };
 
@@ -30,7 +29,6 @@ const createEmptyState = (organization?: Organization): FieldFormState => ({
   location: '',
   lat: '',
   long: '',
-  fieldNumber: 1,
   organization: organization
 });
 
@@ -53,7 +51,6 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
         location: field.location || '',
         lat: typeof field.lat === 'number' ? field.lat : '',
         long: typeof field.long === 'number' ? field.long : '',
-        fieldNumber: typeof field.fieldNumber === 'number' ? field.fieldNumber : 1,
         organization: field.organization
       });
     } else {
@@ -61,7 +58,7 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
     }
   }, [isOpen, field, organization]);
 
-  const isValid = form.name.trim().length > 0 && form.fieldNumber > 0;
+  const isValid = form.name.trim().length > 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,7 +71,6 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
         location: form.location.trim() || undefined,
         lat: form.lat === '' ? undefined : Number(form.lat),
         long: form.long === '' ? undefined : Number(form.long),
-        fieldNumber: Number(form.fieldNumber),
         organization: form.organization || undefined,
       };
       const saved = isEditMode && payload.$id
@@ -84,7 +80,6 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
             location: payload.location,
             lat: payload.lat,
             long: payload.long,
-            fieldNumber: payload.fieldNumber,
           })
         : await fieldService.createField(payload);
       onFieldSaved?.(saved);
@@ -110,16 +105,6 @@ export default function CreateFieldModal(props: CreateFieldModalProps) {
           }}
           required
         />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <NumberInput
-            label="Field Number"
-            min={1}
-            value={form.fieldNumber}
-            onChange={(val) => setForm(prev => ({ ...prev, fieldNumber: Math.max(1, Number(val) || 1) }))}
-            required
-          />
-        </div>
 
         <LocationSelector
           value={form.location}

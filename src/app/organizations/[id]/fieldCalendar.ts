@@ -1,5 +1,6 @@
 import { addMinutes } from 'date-fns';
 import type { Field, Match, Event as EventRecord, TimeSlot } from '@/types';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 
 const ONE_HOUR_IN_MINUTES = 60;
 
@@ -57,7 +58,7 @@ type CalendarRange = { start: Date; end: Date } | null;
 
 export const buildFieldCalendarEvents = (fields: Field[], range: CalendarRange = null): FieldCalendarEntry[] => {
   return fields.flatMap((field) => {
-    const baseTitle = field.name || `Field ${field.fieldNumber}`;
+    const baseTitle = getFieldDisplayName(field);
     const events = (field.events || []).filter((evt) => {
       const eventType = typeof evt.eventType === 'string' ? evt.eventType.toUpperCase() : '';
       const hasParentWeeklyEvent = (

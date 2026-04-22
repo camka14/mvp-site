@@ -11,14 +11,13 @@ const context = {
 
 const buildDivision = () => new Division('OPEN', 'Open');
 
-const buildField = (id: string, fieldNumber: number, division: Division) => new PlayingField({
+const buildField = (id: string, labelNumber: number, division: Division) => new PlayingField({
   id,
-  fieldNumber,
   divisions: [division],
   matches: [],
   events: [],
   rentalSlots: [],
-  name: `Court ${fieldNumber}`,
+  name: `Court ${labelNumber}`,
 });
 
 const buildTeams = (count: number, division: Division) => {

@@ -190,7 +190,6 @@ model Fields {
   id             String    @id
   createdAt      DateTime?
   updatedAt      DateTime?
-  fieldNumber    Int
   lat            Float?
   long           Float?
   heading        Float?

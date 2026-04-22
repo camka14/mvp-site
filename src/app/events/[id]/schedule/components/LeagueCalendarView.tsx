@@ -13,6 +13,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 
 import type { Field, Match, Team, UserData } from '@/types';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 import MatchCard from './MatchCard';
 
 interface LeagueCalendarViewProps {
@@ -142,17 +143,7 @@ const resolveTeamLabel = (match: Match, key: 'team1' | 'team2') => {
 
 const resolveFieldLabel = (field?: Field | null): string | null => {
   if (!field) return null;
-
-  const name = typeof field.name === 'string' ? field.name.trim() : '';
-  if (name.length > 0) {
-    return name;
-  }
-
-  if (typeof field.fieldNumber === 'number' && Number.isFinite(field.fieldNumber) && field.fieldNumber > 0) {
-    return `Field ${field.fieldNumber}`;
-  }
-
-  return null;
+  return getFieldDisplayName(field, '') || null;
 };
 
 const resolveMatchFieldId = (match: Match): string | null => {

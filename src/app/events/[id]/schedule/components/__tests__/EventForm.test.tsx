@@ -709,7 +709,7 @@ describe('EventForm dirty state', () => {
       eventType: 'LEAGUE',
       teamSignup: true,
       noFixedEndDateTime: true,
-      fields: [{ $id: 'field_1', name: 'Field 1', fieldNumber: 1, location: 'Main Gym' }],
+      fields: [{ $id: 'field_1', name: 'Field 1', location: 'Main Gym' }],
       fieldIds: ['field_1'],
       selectedFieldIds: ['field_1'],
       timeSlots: [
@@ -761,7 +761,7 @@ describe('EventForm dirty state', () => {
       start: '2026-04-20T09:00:00',
       end: '2026-06-01T17:00:00',
       noFixedEndDateTime: false,
-      fields: [{ $id: 'field_1', name: 'Field 1', fieldNumber: 1, location: 'Main Gym' }],
+      fields: [{ $id: 'field_1', name: 'Field 1', location: 'Main Gym' }],
       fieldIds: ['field_1'],
       selectedFieldIds: ['field_1'],
       timeSlots: [
@@ -807,7 +807,7 @@ describe('EventForm dirty state', () => {
       start: '2026-04-20T09:00:00',
       end: '2026-05-03T01:20:00',
       noFixedEndDateTime: true,
-      fields: [{ $id: 'field_1', name: 'Field 1', fieldNumber: 1, location: 'Main Gym' }],
+      fields: [{ $id: 'field_1', name: 'Field 1', location: 'Main Gym' }],
       fieldIds: ['field_1'],
       selectedFieldIds: ['field_1'],
       timeSlots: [
@@ -1406,7 +1406,6 @@ describe('EventForm dirty state', () => {
         {
           $id: 'field_1',
           name: 'Field 1',
-          fieldNumber: 1,
           location: 'Main Gym',
         },
       ];

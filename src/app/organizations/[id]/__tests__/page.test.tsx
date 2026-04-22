@@ -9,7 +9,6 @@ describe('buildFieldCalendarEvents', () => {
     location: '',
     lat: 0,
     long: 0,
-    fieldNumber: 1,
   } as Field;
 
   it('creates calendar entries for matches with start and end times', () => {

@@ -80,7 +80,7 @@ describe('GET /api/profile/schedule', () => {
       },
     ]);
     prismaMock.fields.findMany.mockResolvedValue([
-      { id: 'field_1', fieldNumber: 1, name: 'Field 1' },
+      { id: 'field_1', name: 'Field 1' },
     ]);
     prismaMock.teams.findMany
       .mockResolvedValueOnce([
@@ -240,7 +240,7 @@ describe('GET /api/profile/schedule', () => {
     ]);
     prismaMock.matches.findMany.mockResolvedValue([]);
     prismaMock.fields.findMany.mockResolvedValue([
-      { id: 'field_1', fieldNumber: 1, name: 'Field 1' },
+      { id: 'field_1', name: 'Field 1' },
     ]);
 
     const response = await GET(new NextRequest('http://localhost/api/profile/schedule'));

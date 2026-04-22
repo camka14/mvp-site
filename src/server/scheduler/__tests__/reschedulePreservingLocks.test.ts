@@ -48,7 +48,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
       id: 'field_1',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -213,7 +212,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
       id: 'field_non_repeating',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -352,7 +350,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
       id: 'field_multi_day',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -484,7 +481,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const fieldOne = new PlayingField({
       id: 'field_multi_1',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -493,7 +489,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const fieldTwo = new PlayingField({
       id: 'field_multi_2',
-      fieldNumber: 2,
       divisions: [division],
       matches: [],
       events: [],
@@ -647,7 +642,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
 
     const field = new PlayingField({
       id: 'field_split_playoff',
-      fieldNumber: 1,
       divisions: [regularDivision, playoffDivision],
       matches: [],
       events: [],
@@ -756,7 +750,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
       id: 'field_dependency',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -915,7 +908,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
       id: 'field_open_ended',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -1056,7 +1048,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
       id: 'field_tournament_refs',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -1203,7 +1194,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field1 = new PlayingField({
       id: 'field_schedule_mode_1',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -1212,7 +1202,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const field2 = new PlayingField({
       id: 'field_schedule_mode_2',
-      fieldNumber: 2,
       divisions: [division],
       matches: [],
       events: [],
@@ -1365,7 +1354,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field1 = new PlayingField({
       id: 'field_off_mode_1',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],
@@ -1374,7 +1362,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     });
     const field2 = new PlayingField({
       id: 'field_off_mode_2',
-      fieldNumber: 2,
       divisions: [division],
       matches: [],
       events: [],
@@ -1505,7 +1492,6 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({
       id: 'field_staffing_reschedule',
-      fieldNumber: 1,
       divisions: [division],
       matches: [],
       events: [],

@@ -259,7 +259,6 @@ export class TimeSlot {
 
 export class PlayingField implements Resource {
   id: string;
-  fieldNumber: number;
   organizationId?: string | null;
   divisions: Division[];
   matches: Match[];
@@ -269,7 +268,6 @@ export class PlayingField implements Resource {
 
   constructor(params: {
     id: string;
-    fieldNumber: number;
     organizationId?: string | null;
     divisions?: Division[];
     matches?: Match[];
@@ -278,7 +276,6 @@ export class PlayingField implements Resource {
     name?: string;
   }) {
     this.id = params.id;
-    this.fieldNumber = params.fieldNumber;
     this.organizationId = params.organizationId ?? null;
     this.divisions = params.divisions ?? [];
     this.matches = params.matches ?? [];

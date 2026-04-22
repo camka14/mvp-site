@@ -88,6 +88,8 @@ export class LeaguePlayoffTeamCountValidationError extends Error {
 export const isLeaguePlayoffTeamCountValidationError = (
   error: unknown,
 ): error is LeaguePlayoffTeamCountValidationError => error instanceof LeaguePlayoffTeamCountValidationError;
+const ORGANIZATION_EVENT_FIELDS_REQUIRED_MESSAGE =
+  'Organization events require at least one saved field. Create a field for this organization before creating an event.';
 
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
   const message = error instanceof Error ? error.message : String(error ?? '');
@@ -1094,7 +1096,6 @@ const buildFields = (
     );
     fields[row.id] = new PlayingField({
       id: row.id,
-      fieldNumber: row.fieldNumber ?? 0,
       organizationId: row.organizationId ?? null,
       divisions,
       matches: [],
@@ -2116,6 +2117,7 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const resolvedMatchRules = resolveMatchRules({
     sportTemplate: (sportRow as any)?.matchRulesTemplate,
     eventOverride: (event as any).matchRulesOverride,
+    autoCreatePointMatchIncidents: (event as any).autoCreatePointMatchIncidents,
     usesSets: event.usesSets,
     setsPerMatch: event.setsPerMatch,
     winnerSetCount: event.winnerSetCount,
@@ -3102,9 +3104,20 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         ownerId: true,
         hostIds: true,
         officialIds: true,
-      },
+        _count: {
+          select: {
+            fields: true,
+          },
+        },
+      } as any,
     })
     : null;
+  const organizationFieldCount = typeof (organizationAccess as any)?._count?.fields === 'number'
+    ? Number((organizationAccess as any)._count.fields)
+    : null;
+  if (!existingEvent && resolvedOrganizationId && organizationFieldCount === 0) {
+    throw new Error(ORGANIZATION_EVENT_FIELDS_REQUIRED_MESSAGE);
+  }
   const organizationStaffMembers = resolvedOrganizationId && client.staffMembers?.findMany
     ? await client.staffMembers.findMany({
       where: { organizationId: resolvedOrganizationId },
@@ -3611,7 +3624,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: fieldId },
       create: {
         id: fieldId,
-        fieldNumber: field.fieldNumber ?? 0,
         lat: field.lat ?? null,
         long: field.long ?? null,
         heading: field.heading ?? null,
@@ -3625,7 +3637,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         updatedAt: new Date(),
       },
       update: {
-        fieldNumber: field.fieldNumber ?? 0,
         lat: field.lat ?? null,
         long: field.long ?? null,
         heading: field.heading ?? null,

@@ -1942,10 +1942,6 @@ class EventService {
     const lat = typeof row.lat === "number" ? row.lat : Number(row.lat ?? 0);
     const long =
       typeof row.long === "number" ? row.long : Number(row.long ?? 0);
-    const fieldNumber =
-      typeof row.fieldNumber === "number"
-        ? row.fieldNumber
-        : Number(row.fieldNumber ?? 0);
 
     const field: Field = {
       $id: String(row.$id ?? row.id ?? ""),
@@ -1953,7 +1949,10 @@ class EventService {
       location: row.location ?? "",
       lat: Number.isFinite(lat) ? lat : 0,
       long: Number.isFinite(long) ? long : 0,
-      fieldNumber: Number.isFinite(fieldNumber) ? fieldNumber : 0,
+      createdAt: row.createdAt ?? row.$createdAt ?? null,
+      updatedAt: row.updatedAt ?? row.$updatedAt ?? null,
+      $createdAt: typeof row.$createdAt === "string" ? row.$createdAt : undefined,
+      $updatedAt: typeof row.$updatedAt === "string" ? row.$updatedAt : undefined,
       divisions: Array.isArray(row.divisions) ? row.divisions : undefined,
       organization: row.organization ?? row.organizationId ?? undefined,
       rentalSlotIds: Array.isArray(row.rentalSlotIds)

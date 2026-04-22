@@ -73,7 +73,6 @@ describe('PATCH /api/fields/[id]', () => {
     prismaMock.fields.update.mockResolvedValueOnce({
       id: 'field_1',
       name: 'Court A',
-      fieldNumber: 3,
       organizationId: null,
       rentalSlotIds: [],
       createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -84,7 +83,6 @@ describe('PATCH /api/fields/[id]', () => {
       patchRequest({
         field: {
           name: 'Court A',
-          fieldNumber: 3,
         },
       }),
       { params: Promise.resolve({ id: 'field_1' }) },
@@ -97,7 +95,6 @@ describe('PATCH /api/fields/[id]', () => {
         where: { id: 'field_1' },
         data: expect.objectContaining({
           name: 'Court A',
-          fieldNumber: 3,
           updatedAt: expect.any(Date),
         }),
       }),

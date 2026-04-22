@@ -27,7 +27,6 @@ export interface LeagueScheduleResponse {
 export interface LeagueFieldTemplateInput {
   key: string;
   name: string;
-  fieldNumber: number;
 }
 
 export interface LeagueSlotCreationInput {

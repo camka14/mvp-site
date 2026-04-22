@@ -28,7 +28,6 @@ const buildTeams = (division: Division, count: number): Record<string, Team> => 
 const buildField = (division: Division): Record<string, PlayingField> => ({
   field_1: new PlayingField({
     id: 'field_1',
-    fieldNumber: 1,
     divisions: [division],
     matches: [],
     events: [],

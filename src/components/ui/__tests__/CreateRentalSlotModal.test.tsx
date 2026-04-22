@@ -33,7 +33,6 @@ describe('CreateRentalSlotModal multi-field creation', () => {
       {
         $id: 'field_main',
         name: 'Main',
-        fieldNumber: 1,
         location: '',
         lat: 0,
         long: 0,
@@ -43,7 +42,6 @@ describe('CreateRentalSlotModal multi-field creation', () => {
       {
         $id: 'field_aux',
         name: 'Aux',
-        fieldNumber: 2,
         location: '',
         lat: 0,
         long: 0,

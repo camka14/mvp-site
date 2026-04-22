@@ -33,6 +33,7 @@ import { formatPrice } from '@/types';
 import { buildFieldCalendarEvents, type FieldCalendarEntry } from './fieldCalendar';
 import { resolveFieldIdsForCalendarHydration } from './fieldCalendarHydration';
 import { formatDisplayDate, formatDisplayDateTime, formatDisplayTime, formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { notifications } from '@mantine/notifications';
 import { organizationService } from '@/lib/organizationService';
 import { createId } from '@/lib/id';
@@ -97,7 +98,6 @@ export type RentalSelectionCheckoutPayload = {
   fieldIds: string[];
   primaryFieldId: string | null;
   primaryFieldName: string | null;
-  primaryFieldNumber: number | null;
   location: string;
   coordinates?: [number, number];
   requiredTemplateIds: string[];
@@ -446,10 +446,10 @@ export default function FieldsTabContent({
     };
   }, [organization, organizationId]);
 
-  const fields = useMemo<Field[]>(() => org?.fields ?? [], [org?.fields]);
+  const fields = useMemo<Field[]>(() => sortFieldsByCreatedAt(org?.fields ?? []), [org?.fields]);
   const fieldOptions = useMemo(() => fields.map((field) => ({
     value: field.$id,
-    label: field.name || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Field'),
+    label: getFieldDisplayName(field),
   })), [fields]);
   const fieldLabelById = useMemo(
     () => new Map(fieldOptions.map((option) => [option.value, option.label])),
@@ -461,7 +461,7 @@ export default function FieldsTabContent({
         ? []
         : fields.map((field) => ({
           id: field.$id,
-          title: field.name || (field.fieldNumber ? `Field ${field.fieldNumber}` : 'Field'),
+          title: getFieldDisplayName(field),
         }))
     ),
     [canManage, fields],
@@ -658,7 +658,7 @@ export default function FieldsTabContent({
         resourceId: selectedFieldIds[0],
         resource: { type: 'selection' },
         metaType: 'selection',
-        fieldName: selectedField.name ?? `Field ${selectedField.fieldNumber}`,
+        fieldName: getFieldDisplayName(selectedField),
       }];
     }
 
@@ -696,7 +696,7 @@ export default function FieldsTabContent({
           resourceId: fieldId,
           resource: { type: 'selection', slotKey: selectionItem.key },
           metaType: 'selection',
-          fieldName: field.name ?? `Field ${field.fieldNumber ?? ''}`,
+          fieldName: getFieldDisplayName(field),
         });
       });
     });
@@ -1176,7 +1176,7 @@ export default function FieldsTabContent({
           }));
           if (!matchedRentalSlot) {
             errors.push(
-              `${field.name || `Field ${field.fieldNumber}`} is unavailable for ${formatDisplayDateTime(dateRange.start)} - ${formatDisplayDateTime(dateRange.end)}.`,
+              `${getFieldDisplayName(field)} is unavailable for ${formatDisplayDateTime(dateRange.start)} - ${formatDisplayDateTime(dateRange.end)}.`,
             );
             return;
           }
@@ -1557,11 +1557,8 @@ export default function FieldsTabContent({
       params.set('rentalFieldId', primaryField.$id);
       params.set(
         'rentalFieldName',
-        primaryField.name?.trim() || (primaryField.fieldNumber ? `Field ${primaryField.fieldNumber}` : 'Field'),
+        getFieldDisplayName(primaryField),
       );
-      if (primaryField.fieldNumber !== undefined) {
-        params.set('rentalFieldNumber', String(primaryField.fieldNumber));
-      }
       if (primaryField.location) {
         params.set('rentalLocation', primaryField.location);
       }
@@ -1604,9 +1601,8 @@ export default function FieldsTabContent({
         fieldIds: allFieldIds,
         primaryFieldId: primaryField?.$id ?? null,
         primaryFieldName: primaryField
-          ? primaryField.name?.trim() || (primaryField.fieldNumber ? `Field ${primaryField.fieldNumber}` : 'Field')
+          ? getFieldDisplayName(primaryField)
           : null,
-        primaryFieldNumber: typeof primaryField?.fieldNumber === 'number' ? primaryField.fieldNumber : null,
         location: primaryField?.location || org?.location || '',
         coordinates: typeof primaryField?.lat === 'number'
           && Number.isFinite(primaryField.lat)
@@ -2098,9 +2094,9 @@ export default function FieldsTabContent({
           setOrg((prev) => {
             if (!prev) return prev;
             const prevFields = Array.isArray(prev.fields) ? prev.fields : [];
-            const nextFields = prevFields.some((field) => field.$id === savedField.$id)
+            const nextFields = sortFieldsByCreatedAt(prevFields.some((field) => field.$id === savedField.$id)
               ? prevFields.map((field) => (field.$id === savedField.$id ? savedField : field))
-              : [...prevFields, savedField].sort((a, b) => (a.fieldNumber ?? 0) - (b.fieldNumber ?? 0));
+              : [...prevFields, savedField]);
 
             return { ...prev, fields: nextFields };
           });

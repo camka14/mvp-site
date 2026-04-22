@@ -27,16 +27,16 @@ describe('fieldService', () => {
   });
 
   it('creates a field via apiRequest', async () => {
-    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A', fieldNumber: 1 });
+    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A' });
 
-    const field = await fieldService.createField({ name: 'Court A', fieldNumber: 1 });
+    const field = await fieldService.createField({ name: 'Court A' });
 
     expect(apiRequestMock).toHaveBeenCalledWith('/api/fields', expect.objectContaining({ method: 'POST' }));
     expect(field.$id).toBe('field_1');
   });
 
   it('updates a field via apiRequest', async () => {
-    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A', fieldNumber: 1 });
+    apiRequestMock.mockResolvedValue({ $id: 'field_1', name: 'Court A' });
 
     const field = await fieldService.updateField({ $id: 'field_1', name: 'Court A' });
 
@@ -49,7 +49,7 @@ describe('fieldService', () => {
 
   it('lists fields by ids', async () => {
     apiRequestMock
-      .mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A', fieldNumber: 1, rentalSlotIds: ['slot_1'] }] })
+      .mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A', rentalSlotIds: ['slot_1'] }] })
       .mockResolvedValueOnce({
         timeSlots: [
           {
@@ -73,7 +73,7 @@ describe('fieldService', () => {
 
   it('hydrates events and matches when range provided', async () => {
     apiRequestMock
-      .mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A', fieldNumber: 1 }] })
+      .mockResolvedValueOnce({ fields: [{ $id: 'field_1', name: 'Court A' }] })
       .mockResolvedValueOnce({ timeSlots: [] });
     eventServiceMock.getEventsForFieldInRange.mockResolvedValue([{ $id: 'evt_1', name: 'Tournament' } as any]);
     eventServiceMock.getMatchesForFieldInRange.mockResolvedValue([
@@ -92,7 +92,7 @@ describe('fieldService', () => {
   });
 
   it('forwards rental overlap option when requested', async () => {
-    const field = { $id: 'field_1', name: 'Court A', fieldNumber: 1 } as any;
+    const field = { $id: 'field_1', name: 'Court A' } as any;
     const range = { start: '2024-01-01T00:00:00Z', end: '2024-01-07T00:00:00Z' };
 
     await fieldService.getFieldEventsMatches(field, range, { rentalOverlapOnly: true, includeMatches: true });
@@ -112,7 +112,7 @@ describe('fieldService', () => {
   });
 
   it('skips match hydration when rental overlap mode is enabled', async () => {
-    const field = { $id: 'field_1', name: 'Court A', fieldNumber: 1 } as any;
+    const field = { $id: 'field_1', name: 'Court A' } as any;
     const range = { start: '2024-01-01T00:00:00Z', end: '2024-01-07T00:00:00Z' };
 
     await fieldService.getFieldEventsMatches(field, range, { rentalOverlapOnly: true, includeMatches: false });
@@ -146,7 +146,7 @@ describe('fieldService', () => {
       }
 
       if (url === '/api/fields/field_1') {
-        return { $id: 'field_1', name: 'Court A', fieldNumber: 1, rentalSlotIds: [createdSlotId] };
+        return { $id: 'field_1', name: 'Court A', rentalSlotIds: [createdSlotId] };
       }
 
       if (typeof url === 'string' && url.startsWith(`/api/time-slots?ids=${createdSlotId}`)) {
@@ -167,7 +167,7 @@ describe('fieldService', () => {
     });
 
     const result = await fieldService.createRentalSlot(
-      { $id: 'field_1', name: 'Court A', fieldNumber: 1 } as any,
+      { $id: 'field_1', name: 'Court A' } as any,
       { dayOfWeek: 1 },
     );
 

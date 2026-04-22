@@ -20,7 +20,7 @@ Hosts and players need a schedule view that can be read by field, not only by da
 ## Surprises & Discoveries
 
 - Observation: The month event renderer already prints a field label fallback from `match.field`, but week/day cards depend on `MatchCard`, which only prints a field when `match.field` is present.
-  Evidence: `MatchCard.tsx` currently renders `{match.field && <div ...>Field {match.field.fieldNumber}</div>}`.
+  Evidence: `MatchCard.tsx` rendered the hydrated field label directly and dropped it entirely when the relation was missing.
 - Observation: Jest path matching with Next.js bracketed route segments (`[id]`) can fail when passed directly as a positional test pattern.
   Evidence: `npm test -- src/app/events/[id]/schedule/__tests__/page.test.tsx` returned “No tests found”; `npm test -- --runTestsByPath "src/app/events/[id]/schedule/__tests__/page.test.tsx"` passed.
 - Observation: React Big Calendar can throw when `view` is not present in the current `views` array (for example, `view='month'` while in resource mode with `views=['day','week']`).

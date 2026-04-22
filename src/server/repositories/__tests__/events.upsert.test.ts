@@ -90,7 +90,6 @@ const baseEventPayload = () => ({
   fields: [
     {
       $id: 'field_1',
-      fieldNumber: 1,
       name: 'Court A',
       location: 'Main Gym',
       lat: 0,
@@ -380,8 +379,8 @@ describe('upsertEventFromPayload', () => {
       divisions: ['OPEN'],
       fieldIds: ['field_old'],
       fields: [
-        { $id: 'field_1', fieldNumber: 1, name: 'Court A', divisions: ['OPEN'] },
-        { $id: 'field_2', fieldNumber: 2, name: 'Court B', divisions: ['OPEN'] },
+        { $id: 'field_1', name: 'Court A', divisions: ['OPEN'] },
+        { $id: 'field_2', name: 'Court B', divisions: ['OPEN'] },
       ],
       timeSlots: [
         {
@@ -425,7 +424,6 @@ describe('upsertEventFromPayload', () => {
       fields: [
         {
           $id: 'field_1',
-          fieldNumber: 1,
           name: 'Court A',
           divisions: [],
         },
@@ -446,7 +444,6 @@ describe('upsertEventFromPayload', () => {
       fields: [
         {
           $id: 'field_1',
-          fieldNumber: 1,
           name: 'Court A',
           divisions: ['OPEN'],
           // rentalSlotIds intentionally omitted
@@ -472,7 +469,6 @@ describe('upsertEventFromPayload', () => {
       fields: [
         {
           $id: 'field_1',
-          fieldNumber: 1,
           name: 'Court A',
           divisions: ['OPEN'],
           organizationId: null,
@@ -496,7 +492,6 @@ describe('upsertEventFromPayload', () => {
       fields: [
         {
           $id: 'field_1',
-          fieldNumber: 1,
           name: 'Court A',
           divisions: [],
         },
@@ -519,7 +514,6 @@ describe('upsertEventFromPayload', () => {
       fields: [
         {
           $id: 'field_1',
-          fieldNumber: 1,
           name: 'Court A',
           divisions: [],
         },
@@ -1050,6 +1044,29 @@ describe('upsertEventFromPayload', () => {
     expect(eventUpsertArgs.update.price).toBe(0);
   });
 
+  it('rejects new organization events when the organization has no saved fields', async () => {
+    const client = createMockClient();
+    client.organizations.findUnique.mockResolvedValueOnce({
+      ownerId: 'owner_1',
+      hostIds: ['owner_1'],
+      officialIds: [],
+      _count: { fields: 0 },
+    });
+
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'EVENT',
+      organizationId: 'org_1',
+      end: '2026-01-05T11:00:00.000Z',
+      timeSlots: [],
+    };
+
+    await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
+      'Organization events require at least one saved field. Create a field for this organization before creating an event.',
+    );
+    expect(client.events.upsert).not.toHaveBeenCalled();
+  });
+
   it('retries event upsert without unknown Prisma arguments', async () => {
     const client = createMockClient();
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
@@ -1176,7 +1193,6 @@ describe('upsertEventFromPayload', () => {
       fields: [
         {
           $id: 'field_1',
-          fieldNumber: 1,
           name: 'Court A',
           location: 'Main Gym',
           lat: 0,

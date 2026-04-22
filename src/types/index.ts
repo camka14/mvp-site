@@ -505,7 +505,10 @@ export interface Field {
   location: string;
   lat: number;
   long: number;
-  fieldNumber: number;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+  $createdAt?: string | null;
+  $updatedAt?: string | null;
   heading?: number;
   inUse?: boolean;
   rentalSlotIds?: string[];

@@ -114,7 +114,6 @@ const buildLeagueEventDocument = (params: {
   fields: [
     {
       $id: params.fieldId,
-      fieldNumber: 1,
       name: "Mobile League Court",
       location: SEED_ORG.location,
       lat: SEED_ORG.coordinates[1],

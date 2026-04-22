@@ -97,7 +97,6 @@ describe('event save route', () => {
           {
             id: 'field_inline_1',
             name: 'Inline Field',
-            fieldNumber: 1,
             divisions: ['open'],
           },
         ],
@@ -125,7 +124,6 @@ describe('event save route', () => {
         fields: [
           expect.objectContaining({
             id: 'field_inline_1',
-            fieldNumber: 1,
             divisions: ['open'],
           }),
         ],
@@ -182,6 +180,35 @@ describe('event save route', () => {
     expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
     expect(saveMatchesMock).not.toHaveBeenCalled();
     expect(saveEventScheduleMock).not.toHaveBeenCalled();
+    expect(notifySocialAudienceOfEventCreationMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when an organization has no saved fields for a new event', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValueOnce(null);
+    upsertEventFromPayloadMock.mockRejectedValueOnce(
+      new Error('Organization events require at least one saved field. Create a field for this organization before creating an event.'),
+    );
+
+    const res = await eventsPost(
+      postRequest('http://localhost/api/events', {
+        id: 'event_1',
+        event: {
+          name: 'Org Event',
+          eventType: 'EVENT',
+          organizationId: 'org_1',
+          start: '2026-01-01T00:00:00.000Z',
+          end: '2026-02-01T00:00:00.000Z',
+        },
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(400);
+    expect(json).toEqual(expect.objectContaining({
+      error: 'Organization events require at least one saved field. Create a field for this organization before creating an event.',
+    }));
+    expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
     expect(notifySocialAudienceOfEventCreationMock).not.toHaveBeenCalled();
   });
 });

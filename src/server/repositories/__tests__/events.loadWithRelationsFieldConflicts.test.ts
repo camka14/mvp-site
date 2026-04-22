@@ -74,7 +74,6 @@ const createClient = (eventOverrides: Record<string, unknown> = {}): LoadClient 
       findMany: jest.fn().mockResolvedValue([
         {
           id: 'field_1',
-          fieldNumber: 1,
           organizationId: null,
           divisions: ['open'],
           name: 'Court A',
@@ -191,7 +190,6 @@ describe('loadEventWithRelations field conflict hydration', () => {
     client.fields.findMany.mockResolvedValue([
       {
         id: 'field_1',
-        fieldNumber: 1,
         organizationId: 'org_1',
         divisions: ['open'],
         name: 'Court A',
@@ -235,7 +233,6 @@ describe('loadEventWithRelations field conflict hydration', () => {
     client.fields.findMany.mockResolvedValue([
       {
         id: 'field_1',
-        fieldNumber: 1,
         organizationId: 'facility_org',
         divisions: ['open'],
         name: 'Court A',

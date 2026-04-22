@@ -153,14 +153,12 @@ describe('event schedule route - split divisions regression', () => {
     prismaMock.fields.findMany.mockResolvedValue([
       {
         id: 'field_beginner',
-        fieldNumber: 1,
         organizationId: null,
         divisions: ['beginner'],
         name: 'Court Beginner',
       },
       {
         id: 'field_advanced',
-        fieldNumber: 2,
         organizationId: null,
         divisions: ['advanced'],
         name: 'Court Advanced',
@@ -342,14 +340,12 @@ describe('event schedule route - split divisions regression', () => {
     prismaMock.fields.findMany.mockResolvedValue([
       {
         id: 'field_beginner',
-        fieldNumber: 1,
         organizationId: null,
         divisions: ['beginner'],
         name: 'Court Beginner',
       },
       {
         id: 'field_advanced',
-        fieldNumber: 2,
         organizationId: null,
         divisions: ['advanced'],
         name: 'Court Advanced',
@@ -514,7 +510,6 @@ describe('event schedule route - split divisions regression', () => {
     prismaMock.fields.findMany.mockResolvedValue([
       {
         id: 'field_beginner',
-        fieldNumber: 1,
         organizationId: null,
         divisions: ['beginner'],
         name: 'Court Beginner',

@@ -17,7 +17,6 @@ const context = {
 const buildField = (id: string, divisions: Division[]) =>
   new PlayingField({
     id,
-    fieldNumber: 1,
     divisions,
     matches: [],
     events: [],

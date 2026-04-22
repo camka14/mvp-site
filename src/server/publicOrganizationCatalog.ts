@@ -7,6 +7,7 @@ import {
 } from '@/server/publicWidgetBracket';
 import { loadEventWithRelations } from '@/server/repositories/events';
 import { TEAM_REGISTRATION_STARTED_TTL_MS } from '@/server/teams/teamOpenRegistration';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
 
 export type PublicCatalogSurface = 'page' | 'widget' | 'any';
@@ -248,14 +249,14 @@ const toClientField = (
 ): Field => {
   const rentalSlotIds = normalizeIdList(field.rentalSlotIds)
     .filter((slotId) => rentalSlotsById.has(slotId));
-  const fieldNumber = normalizeNumber(field.fieldNumber, 0);
   return {
     $id: String(field.id),
-    name: normalizeNullableString(field.name) ?? (fieldNumber ? `Field ${fieldNumber}` : 'Field'),
+    name: normalizeNullableString(field.name) ?? '',
     location: normalizeNullableString(field.location) ?? organizationLocation ?? '',
     lat: normalizeNumber(field.lat),
     long: normalizeNumber(field.long),
-    fieldNumber,
+    createdAt: toIsoString(field.createdAt),
+    updatedAt: toIsoString(field.updatedAt),
     heading: typeof field.heading === 'number' ? field.heading : undefined,
     inUse: typeof field.inUse === 'boolean' ? field.inUse : undefined,
     rentalSlotIds,
@@ -1121,7 +1122,7 @@ export const listPublicOrganizationRentals = async (
 ): Promise<PublicOrganizationRentalCard[]> => {
   const fields = await (prisma as any).fields.findMany({
     where: { organizationId: organization.id },
-    orderBy: [{ fieldNumber: 'asc' }, { name: 'asc' }],
+    orderBy: [{ createdAt: 'asc' }, { name: 'asc' }, { id: 'asc' }],
   });
   const fieldBySlotId = new Map<string, Record<string, any>>();
   fields.forEach((field: Record<string, any>) => {
@@ -1144,7 +1145,10 @@ export const listPublicOrganizationRentals = async (
     return {
       id: String(slot.id),
       fieldId: String(field.id ?? ''),
-      fieldName: String(field.name ?? `Field ${field.fieldNumber ?? ''}`).trim() || 'Rental field',
+      fieldName: getFieldDisplayName(
+        { id: String(field.id ?? ''), name: normalizeNullableString(field.name) ?? '' },
+        'Rental field',
+      ),
       location: typeof field.location === 'string' ? field.location : organization.location,
       priceCents: typeof slot.price === 'number' ? slot.price : 0,
       start: toIsoString(slot.startDate),
@@ -1175,7 +1179,7 @@ export const getPublicOrganizationRentalSelectionData = async (
 
   const fieldRows = await (prisma as any).fields.findMany({
     where: { organizationId: organization.id },
-    orderBy: [{ fieldNumber: 'asc' }, { name: 'asc' }],
+    orderBy: [{ createdAt: 'asc' }, { name: 'asc' }, { id: 'asc' }],
   });
   const slotIds = Array.from(new Set(fieldRows.flatMap((field: Record<string, any>) => normalizeIdList(field.rentalSlotIds))));
   const slotRows = slotIds.length

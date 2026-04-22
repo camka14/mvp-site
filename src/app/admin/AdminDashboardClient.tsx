@@ -6,6 +6,7 @@ import Navigation from '@/components/layout/Navigation';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
+import { getFieldDisplayName } from '@/lib/fieldUtils';
 import {
   organizationVerificationStatusLabel,
   resolveOrganizationVerificationStatus,
@@ -902,7 +903,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                       {fieldsState.items.map((field) => (
                         <Table.Tr key={field.$id}>
                           <Table.Td>
-                            {field.name || `Field ${field.fieldNumber ?? 'n/a'}`}
+                            {getFieldDisplayName(field)}
                           </Table.Td>
                           <Table.Td>{field.organization?.name ?? 'Unassigned'}</Table.Td>
                           <Table.Td>{field.location || '—'}</Table.Td>

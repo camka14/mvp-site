@@ -194,7 +194,6 @@ describe('eventService', () => {
       location: 'Denver',
       lat: 39.7392,
       long: -104.9903,
-      fieldNumber: 1,
       heading: 90,
       inUse: true,
       divisions: [

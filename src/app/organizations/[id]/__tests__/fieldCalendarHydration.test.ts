@@ -7,7 +7,6 @@ const field = (id: string): Field => ({
   $id: id,
   name: id,
   location: '',
-  fieldNumber: 0,
   lat: 0,
   long: 0,
 });

@@ -481,14 +481,6 @@ const normalizeTeamIds = (value: unknown): string[] => {
   );
 };
 
-const normalizeFieldNumber = (value: unknown, fallback: number): number => {
-  const numeric = Number(value);
-  if (Number.isInteger(numeric) && numeric > 0) {
-    return numeric;
-  }
-  return fallback;
-};
-
 const normalizeNullableNumber = (value: unknown): number | null => {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value;
@@ -2021,7 +2013,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
               }
             : {};
           const fieldData = {
-            fieldNumber: normalizeFieldNumber(field.fieldNumber, index + 1),
             lat: normalizeNullableNumber(field.lat),
             long: normalizeNullableNumber(field.long),
             heading: normalizeNullableNumber(field.heading),

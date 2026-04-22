@@ -976,7 +976,6 @@ const buildTemplateBracket = (
   for (const field of Object.values(league.fields)) {
     tournamentFields[field.id] = new PlayingField({
       id: field.id,
-      fieldNumber: field.fieldNumber,
       organizationId: field.organizationId ?? null,
       divisions: [playoffDivision],
       matches: [],
