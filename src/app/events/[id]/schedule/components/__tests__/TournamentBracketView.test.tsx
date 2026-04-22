@@ -458,6 +458,69 @@ const buildUnifiedLeaguePlayoffBracketWithStaleByeRelation = (): TournamentBrack
   };
 };
 
+const buildUnifiedMultiDivisionLeagueBracketWithSavedCarrySeed = (): TournamentBracket => {
+  const playInMatch = buildMatch('md1', {
+    matchId: 91,
+    team1Seed: 8,
+    team2Seed: 9,
+    division: { id: 'league_open', name: 'CoEd Open • 18+' } as Match['division'],
+    winnerNextMatchId: 'md2',
+  });
+  const byeCarryMatch = buildMatch('md2', {
+    matchId: 95,
+    team1Seed: 1,
+    division: { id: 'league_open', name: 'CoEd Open • 18+' } as Match['division'],
+    previousLeftId: 'md1',
+    winnerNextMatchId: 'md4',
+  });
+  const quarterfinal = buildMatch('md3', {
+    matchId: 97,
+    team1Seed: 4,
+    team2Seed: 5,
+    division: { id: 'league_open', name: 'CoEd Open • 18+' } as Match['division'],
+    winnerNextMatchId: 'md4',
+  });
+  const semifinal = buildMatch('md4', {
+    matchId: 103,
+    division: { id: 'league_open', name: 'CoEd Open • 18+' } as Match['division'],
+    previousLeftId: 'md2',
+    previousRightId: 'md3',
+  });
+
+  return {
+    tournament: {
+      includePlayoffs: true,
+      splitLeaguePlayoffDivisions: false,
+      playoffTeamCount: 10,
+      divisions: ['league_open', 'league_premier'],
+      divisionDetails: [
+        {
+          id: 'league_open',
+          name: 'CoEd Open • 18+',
+          playoffTeamCount: 10,
+          playoffPlacementDivisionIds: [],
+        },
+        {
+          id: 'league_premier',
+          name: 'CoEd Premier • 18+',
+          playoffTeamCount: 10,
+          playoffPlacementDivisionIds: [],
+        },
+      ],
+      playoffDivisionDetails: [],
+    } as TournamentBracket['tournament'],
+    matches: {
+      [playInMatch.$id]: playInMatch,
+      [byeCarryMatch.$id]: byeCarryMatch,
+      [quarterfinal.$id]: quarterfinal,
+      [semifinal.$id]: semifinal,
+    },
+    teams: [],
+    isHost: false,
+    canManage: false,
+  };
+};
+
 const buildScheduledLeagueBracket = (playoffTeamCount: number): TournamentBracket => {
   const context = {
     log: () => {},
@@ -719,6 +782,12 @@ describe('TournamentBracketView', () => {
     expect(screen.getByText('1st place (Open)')).toBeInTheDocument();
     expect(screen.getByText('8th place (Open)')).toBeInTheDocument();
     expect(screen.getByText('9th place (Open)')).toBeInTheDocument();
+  });
+
+  it('renders carried bye placeholders in non-split multi-division brackets even when the saved seed is on the dependency side', () => {
+    renderWithMantine(<TournamentBracketView bracket={buildUnifiedMultiDivisionLeagueBracketWithSavedCarrySeed()} />);
+
+    expect(screen.getByText('1st place (CoEd Open • 18+)')).toBeInTheDocument();
   });
 
   it('renders carried bye placeholders on the actual 10-team bracket nodes', () => {

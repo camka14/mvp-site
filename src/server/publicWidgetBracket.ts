@@ -236,12 +236,33 @@ const buildMappedPlacementLabelsForPlayoffDivision = (
   sourceDivisions: Division[],
   allDivisionDetails: Division[],
   eventPlayoffTeamCount?: number,
+  options?: {
+    implicitSelfMappings?: boolean;
+  },
 ): string[] => {
+  const allowImplicitSelfMappings = Boolean(options?.implicitSelfMappings);
+  const resolvePlacementMappings = (division: Division): string[] => {
+    const explicitMappings = Array.isArray(division.playoffPlacementDivisionIds)
+      ? division.playoffPlacementDivisionIds
+      : [];
+    const hasExplicitMapping = explicitMappings.some((divisionId) => normalizeDivisionIdentifier(divisionId).length > 0);
+    if (hasExplicitMapping || !allowImplicitSelfMappings) {
+      return explicitMappings;
+    }
+
+    const divisionPlayoffTeamCount = typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
+      ? Math.max(0, Math.trunc(division.playoffTeamCount))
+      : undefined;
+    const placementLimit = divisionPlayoffTeamCount ?? eventPlayoffTeamCount ?? 0;
+    if (placementLimit <= 0) {
+      return [];
+    }
+    return Array.from({ length: placementLimit }, () => division.id);
+  };
+
   const labels: string[] = [];
   const maxPlacementIndex = sourceDivisions.reduce((maxValue, division) => {
-    const mappedLength = Array.isArray(division.playoffPlacementDivisionIds)
-      ? division.playoffPlacementDivisionIds.length
-      : 0;
+    const mappedLength = resolvePlacementMappings(division).length;
     const divisionPlayoffTeamCount = typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
       ? Math.max(0, Math.trunc(division.playoffTeamCount))
       : undefined;
@@ -250,9 +271,7 @@ const buildMappedPlacementLabelsForPlayoffDivision = (
 
   for (let placementIndex = 0; placementIndex < maxPlacementIndex; placementIndex += 1) {
     for (const division of sourceDivisions) {
-      const mappedDivisionIds = Array.isArray(division.playoffPlacementDivisionIds)
-        ? division.playoffPlacementDivisionIds
-        : [];
+      const mappedDivisionIds = resolvePlacementMappings(division);
       const divisionPlayoffTeamCount = typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
         ? Math.max(0, Math.trunc(division.playoffTeamCount))
         : undefined;
@@ -273,28 +292,33 @@ const buildMappedPlacementLabelsForPlayoffDivision = (
   return labels;
 };
 
-const buildDirectPlacementLabelsForDivision = (
-  divisionId: string,
-  divisions: Division[],
-  allDivisionDetails: Division[],
-  eventPlayoffTeamCount?: number,
-): string[] => {
-  const division = divisions.find((candidate) => divisionsEquivalent(candidate.id, divisionId));
-  if (!division) {
-    return [];
+const resolveEntrantSlotSeeds = (
+  match: Match,
+  leftEntrantSlot: boolean,
+  rightEntrantSlot: boolean,
+): { team1Seed: number | null; team2Seed: number | null } => {
+  const team1Seed = normalizeBracketSeed(match.team1Seed);
+  const team2Seed = normalizeBracketSeed(match.team2Seed);
+  if (leftEntrantSlot === rightEntrantSlot) {
+    return { team1Seed, team2Seed };
   }
 
-  const playoffTeamCount = typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
-    ? Math.max(0, Math.trunc(division.playoffTeamCount))
-    : eventPlayoffTeamCount ?? 0;
-  if (playoffTeamCount <= 0) {
-    return [];
+  const seedCount = Number(typeof team1Seed === 'number') + Number(typeof team2Seed === 'number');
+  if (seedCount !== 1) {
+    return { team1Seed, team2Seed };
   }
 
-  const divisionLabel = resolveDivisionDisplayName(division, allDivisionDetails);
-  return Array.from({ length: playoffTeamCount }, (_, index) => (
-    `${formatOrdinalPlacement(index + 1)} place (${divisionLabel})`
-  ));
+  const carriedSeed = team1Seed ?? team2Seed;
+  if (leftEntrantSlot) {
+    return {
+      team1Seed: carriedSeed,
+      team2Seed: null,
+    };
+  }
+  return {
+    team1Seed: null,
+    team2Seed: carriedSeed,
+  };
 };
 
 const buildLeaguePlayoffPlaceholderAssignments = (
@@ -313,10 +337,6 @@ const buildLeaguePlayoffPlaceholderAssignments = (
     return {};
   }
 
-  const mappedDivisions = orderedDivisions.filter((division) =>
-    Array.isArray(division.playoffPlacementDivisionIds)
-    && division.playoffPlacementDivisionIds.some((divisionId) => normalizeDivisionIdentifier(divisionId).length > 0),
-  );
   const allDivisionDetails = [...event.divisions, ...event.playoffDivisions];
   const matchesById = Object.fromEntries(matches.map((match) => [match.id, match]));
   const slots: PlayoffBracketSlot[] = [];
@@ -342,8 +362,7 @@ const buildLeaguePlayoffPlaceholderAssignments = (
     if (!leftEntrantSlot && !rightEntrantSlot) {
       return;
     }
-    const team1Seed = normalizeBracketSeed(match.team1Seed);
-    const team2Seed = normalizeBracketSeed(match.team2Seed);
+    const { team1Seed, team2Seed } = resolveEntrantSlotSeeds(match, leftEntrantSlot, rightEntrantSlot);
     if (leftEntrantSlot) {
       slots.push({ matchId: match.id, slot: 'team1', seed: team1Seed, divisionId });
     }
@@ -369,22 +388,13 @@ const buildLeaguePlayoffPlaceholderAssignments = (
 
   const result: Record<string, string> = {};
   slotsByDivision.forEach((divisionSlots, divisionId) => {
-    const mappedLabels = mappedDivisions.length > 0
-      ? buildMappedPlacementLabelsForPlayoffDivision(
-          divisionId,
-          mappedDivisions,
-          allDivisionDetails,
-          event.playoffTeamCount,
-        )
-      : [];
-    const labels = mappedLabels.length === 0 && !event.splitLeaguePlayoffDivisions
-      ? buildDirectPlacementLabelsForDivision(
-          divisionId,
-          orderedDivisions,
-          allDivisionDetails,
-          event.playoffTeamCount,
-        )
-      : mappedLabels;
+    const labels = buildMappedPlacementLabelsForPlayoffDivision(
+      divisionId,
+      orderedDivisions,
+      allDivisionDetails,
+      event.playoffTeamCount,
+      { implicitSelfMappings: !event.splitLeaguePlayoffDivisions },
+    );
     if (labels.length === 0) {
       return;
     }

@@ -298,4 +298,67 @@ describe('buildPublicBracketWidgetView', () => {
       team2Name: '2nd place (Open)',
     }));
   });
+
+  it('renders carried bye labels for a non-split league even when the saved seed is on the dependency side', () => {
+    const open = {
+      id: 'division_open',
+      name: 'CoEd Open • 18+',
+      playoffTeamCount: 10,
+      playoffPlacementDivisionIds: [],
+    };
+    const premier = {
+      id: 'division_premier',
+      name: 'CoEd Premier • 18+',
+      playoffTeamCount: 10,
+      playoffPlacementDivisionIds: [],
+    };
+    const playInOne = createMatch('match_91', 91, open.id);
+    const carryOne = createMatch('match_95', 95, open.id);
+    const quarterOne = createMatch('match_97', 97, open.id);
+    const semifinalOne = createMatch('match_103', 103, open.id);
+    const semifinalTwo = createMatch('match_105', 105, open.id);
+
+    playInOne.team1Seed = 8;
+    playInOne.team2Seed = 9;
+    playInOne.winnerNextMatch = carryOne;
+
+    carryOne.team1Seed = 1;
+    (carryOne as any).previousLeftId = playInOne.id;
+    carryOne.previousLeftMatch = playInOne;
+    carryOne.winnerNextMatch = semifinalOne;
+
+    quarterOne.team1Seed = 4;
+    quarterOne.team2Seed = 5;
+    quarterOne.winnerNextMatch = semifinalOne;
+
+    semifinalOne.previousLeftMatch = carryOne;
+    semifinalOne.previousRightMatch = quarterOne;
+    (semifinalOne as any).previousLeftId = carryOne.id;
+    (semifinalOne as any).previousRightId = quarterOne.id;
+
+    semifinalTwo.team1Seed = 3;
+    semifinalTwo.team2Seed = 6;
+
+    const view = buildPublicBracketWidgetView({
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      splitLeaguePlayoffDivisions: false,
+      playoffTeamCount: 10,
+      divisions: [open, premier],
+      playoffDivisions: [],
+      matches: {
+        [playInOne.id]: playInOne,
+        [carryOne.id]: carryOne,
+        [quarterOne.id]: quarterOne,
+        [semifinalOne.id]: semifinalOne,
+        [semifinalTwo.id]: semifinalTwo,
+      },
+    } as any, open.id);
+
+    expect(view).not.toBeNull();
+    expect(view?.winnersLane?.cardsById.match_95).toEqual(expect.objectContaining({
+      team1Name: 'Winner of match #91',
+      team2Name: '1st place (CoEd Open • 18+)',
+    }));
+  });
 });

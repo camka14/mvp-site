@@ -904,6 +904,316 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     expect(rescheduledDependent?.team2Seed).toBe(12);
   });
 
+  it('moves a carried playoff seed back onto the open entrant slot when rescheduling', () => {
+    const division = new Division('open', 'Open');
+    const field = new PlayingField({
+      id: 'field_playoff_seed_normalization',
+      divisions: [division],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court Playoff',
+    });
+    const teamA = new Team({
+      id: 'team_a',
+      captainId: 'captain_a',
+      division,
+      name: 'Team A',
+      matches: [],
+      playerIds: [],
+    });
+    const teamB = new Team({
+      id: 'team_b',
+      captainId: 'captain_b',
+      division,
+      name: 'Team B',
+      matches: [],
+      playerIds: [],
+    });
+    const teamC = new Team({
+      id: 'team_c',
+      captainId: 'captain_c',
+      division,
+      name: 'Team C',
+      matches: [],
+      playerIds: [],
+    });
+    const teamD = new Team({
+      id: 'team_d',
+      captainId: 'captain_d',
+      division,
+      name: 'Team D',
+      matches: [],
+      playerIds: [],
+    });
+
+    const eventStart = new Date('2026-03-02T10:00:00.000Z');
+    const eventEnd = new Date('2026-03-02T16:00:00.000Z');
+
+    const qualifierMatch = createMatch({
+      id: 'match_playin',
+      matchId: 1,
+      start: new Date('2026-03-02T10:00:00.000Z'),
+      end: new Date('2026-03-02T11:00:00.000Z'),
+      field,
+      division,
+      team1: teamA,
+      team2: teamB,
+      eventId: 'event_playoff_seed_normalization',
+    });
+    qualifierMatch.team1Seed = 8;
+    qualifierMatch.team2Seed = 9;
+    qualifierMatch.setResults = [0, 0, 0];
+
+    const carriedMatch = createMatch({
+      id: 'match_carry',
+      matchId: 2,
+      start: new Date('2026-03-02T12:00:00.000Z'),
+      end: new Date('2026-03-02T13:00:00.000Z'),
+      field,
+      division,
+      team1: teamC,
+      team2: teamD,
+      eventId: 'event_playoff_seed_normalization',
+    });
+    carriedMatch.team1 = null;
+    carriedMatch.team2 = null;
+    carriedMatch.team1Seed = 1;
+    carriedMatch.team2Seed = null;
+    carriedMatch.previousLeftMatch = qualifierMatch;
+    qualifierMatch.winnerNextMatch = carriedMatch;
+    carriedMatch.setResults = [0, 0, 0];
+
+    const event = new League({
+      id: 'event_playoff_seed_normalization',
+      name: 'Playoff Seed Normalization League',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams: {
+        [teamA.id]: teamA,
+        [teamB.id]: teamB,
+        [teamC.id]: teamC,
+        [teamD.id]: teamD,
+      },
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [division],
+      fields: { [field.id]: field },
+      matches: {
+        [qualifierMatch.id]: qualifierMatch,
+        [carriedMatch.id]: carriedMatch,
+      },
+      officials: [],
+      eventType: 'LEAGUE',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      setsPerMatch: 3,
+      pointsToVictory: [],
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      doTeamsOfficiate: false,
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_playoff_seed_normalization',
+          dayOfWeek: 0,
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 16 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(event);
+    const rescheduledCarry = result.matches.find((match) => match.id === carriedMatch.id);
+
+    expect(rescheduledCarry).toBeDefined();
+    expect(rescheduledCarry?.team1Seed).toBeNull();
+    expect(rescheduledCarry?.team2Seed).toBe(1);
+    expect(rescheduledCarry?.previousLeftMatch?.id).toBe(qualifierMatch.id);
+  });
+
+  it('normalizes carried playoff seeds for non-split multi-division leagues when rescheduling', () => {
+    const open = new Division('open', 'CoEd Open • 18+');
+    const premier = new Division('premier', 'CoEd Premier • 18+');
+    const field = new PlayingField({
+      id: 'field_multi_division_playoff_seed_normalization',
+      divisions: [open, premier],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court Multi Division',
+    });
+    const makeTeam = (id: string, division: Division) => new Team({
+      id,
+      captainId: `captain_${id}`,
+      division,
+      name: id,
+      matches: [],
+      playerIds: [],
+    });
+    const openTeam1 = makeTeam('open_team_1', open);
+    const openTeam2 = makeTeam('open_team_2', open);
+    const premierTeam1 = makeTeam('premier_team_1', premier);
+    const premierTeam2 = makeTeam('premier_team_2', premier);
+
+    const eventStart = new Date('2026-03-02T10:00:00.000Z');
+    const eventEnd = new Date('2026-03-02T18:00:00.000Z');
+
+    const openQualifier = createMatch({
+      id: 'match_open_playin',
+      matchId: 91,
+      start: new Date('2026-03-02T10:00:00.000Z'),
+      end: new Date('2026-03-02T11:00:00.000Z'),
+      field,
+      division: open,
+      team1: openTeam1,
+      team2: openTeam2,
+      eventId: 'event_multi_division_playoff_seed_normalization',
+    });
+    openQualifier.team1Seed = 8;
+    openQualifier.team2Seed = 9;
+    openQualifier.setResults = [0, 0, 0];
+
+    const openCarry = createMatch({
+      id: 'match_open_carry',
+      matchId: 95,
+      start: new Date('2026-03-02T12:00:00.000Z'),
+      end: new Date('2026-03-02T13:00:00.000Z'),
+      field,
+      division: open,
+      team1: openTeam1,
+      team2: openTeam2,
+      eventId: 'event_multi_division_playoff_seed_normalization',
+    });
+    openCarry.team1 = null;
+    openCarry.team2 = null;
+    openCarry.team1Seed = 1;
+    openCarry.team2Seed = null;
+    openCarry.previousLeftMatch = openQualifier;
+    openQualifier.winnerNextMatch = openCarry;
+    openCarry.setResults = [0, 0, 0];
+
+    const premierQualifier = createMatch({
+      id: 'match_premier_playin',
+      matchId: 92,
+      start: new Date('2026-03-02T11:00:00.000Z'),
+      end: new Date('2026-03-02T12:00:00.000Z'),
+      field,
+      division: premier,
+      team1: premierTeam1,
+      team2: premierTeam2,
+      eventId: 'event_multi_division_playoff_seed_normalization',
+    });
+    premierQualifier.team1Seed = 8;
+    premierQualifier.team2Seed = 9;
+    premierQualifier.setResults = [0, 0, 0];
+
+    const premierCarry = createMatch({
+      id: 'match_premier_carry',
+      matchId: 96,
+      start: new Date('2026-03-02T13:00:00.000Z'),
+      end: new Date('2026-03-02T14:00:00.000Z'),
+      field,
+      division: premier,
+      team1: premierTeam1,
+      team2: premierTeam2,
+      eventId: 'event_multi_division_playoff_seed_normalization',
+    });
+    premierCarry.team1 = null;
+    premierCarry.team2 = null;
+    premierCarry.team1Seed = 1;
+    premierCarry.team2Seed = null;
+    premierCarry.previousLeftMatch = premierQualifier;
+    premierQualifier.winnerNextMatch = premierCarry;
+    premierCarry.setResults = [0, 0, 0];
+
+    const event = new League({
+      id: 'event_multi_division_playoff_seed_normalization',
+      name: 'Multi Division Playoff Seed Normalization League',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams: {
+        [openTeam1.id]: openTeam1,
+        [openTeam2.id]: openTeam2,
+        [premierTeam1.id]: premierTeam1,
+        [premierTeam2.id]: premierTeam2,
+      },
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [open, premier],
+      playoffDivisions: [],
+      splitLeaguePlayoffDivisions: false,
+      fields: { [field.id]: field },
+      matches: {
+        [openQualifier.id]: openQualifier,
+        [openCarry.id]: openCarry,
+        [premierQualifier.id]: premierQualifier,
+        [premierCarry.id]: premierCarry,
+      },
+      officials: [],
+      eventType: 'LEAGUE',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      setsPerMatch: 3,
+      pointsToVictory: [],
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 10,
+      doTeamsOfficiate: false,
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_multi_division_playoff_seed_normalization',
+          dayOfWeek: 0,
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 18 * 60,
+          field: field.id,
+          divisions: [open, premier],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(event);
+    const rescheduledOpenCarry = result.matches.find((match) => match.id === openCarry.id);
+    const rescheduledPremierCarry = result.matches.find((match) => match.id === premierCarry.id);
+
+    expect(rescheduledOpenCarry?.team1Seed).toBeNull();
+    expect(rescheduledOpenCarry?.team2Seed).toBe(1);
+    expect(rescheduledPremierCarry?.team1Seed).toBeNull();
+    expect(rescheduledPremierCarry?.team2Seed).toBe(1);
+  });
+
   it('extends open-ended reschedule windows so matches can spill into later weeks', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({

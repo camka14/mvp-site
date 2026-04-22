@@ -454,6 +454,38 @@ type PendingDependencyAssignment = {
   team2Seed: number | null;
 };
 
+const normalizePendingDependencySeedSlots = (
+  match: Match,
+  snapshot: PendingDependencyAssignment,
+): { team1Seed: number | null; team2Seed: number | null } => {
+  const team1Seed = snapshot.team1Seed;
+  const team2Seed = snapshot.team2Seed;
+  const dependencyCount = Number(Boolean(match.previousLeftMatch)) + Number(Boolean(match.previousRightMatch));
+  if (dependencyCount !== 1) {
+    return { team1Seed, team2Seed };
+  }
+  if (snapshot.team1 || snapshot.team2) {
+    return { team1Seed, team2Seed };
+  }
+
+  const seedCount = Number(typeof team1Seed === 'number') + Number(typeof team2Seed === 'number');
+  if (seedCount !== 1) {
+    return { team1Seed, team2Seed };
+  }
+
+  const carriedSeed = team1Seed ?? team2Seed;
+  if (match.previousLeftMatch) {
+    return {
+      team1Seed: null,
+      team2Seed: carriedSeed,
+    };
+  }
+  return {
+    team1Seed: carriedSeed,
+    team2Seed: null,
+  };
+};
+
 const detachPendingDependencyAssignments = (match: Match): PendingDependencyAssignment => {
   const snapshot: PendingDependencyAssignment = {
     match,
@@ -474,11 +506,12 @@ const detachPendingDependencyAssignments = (match: Match): PendingDependencyAssi
 
 const restorePendingDependencyAssignments = (snapshot: PendingDependencyAssignment): void => {
   const { match } = snapshot;
+  const normalizedSeeds = normalizePendingDependencySeedSlots(match, snapshot);
   match.team1 = snapshot.team1;
   match.team2 = snapshot.team2;
   match.teamOfficial = snapshot.teamOfficial;
-  match.team1Seed = snapshot.team1Seed;
-  match.team2Seed = snapshot.team2Seed;
+  match.team1Seed = normalizedSeeds.team1Seed;
+  match.team2Seed = normalizedSeeds.team2Seed;
   attachMatchToParticipants(match);
 };
 

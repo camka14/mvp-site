@@ -204,12 +204,33 @@ const buildMappedPlacementLabelsForPlayoffDivision = (
     mappingDivisionDetails: Division[],
     allDivisionDetails: Division[],
     eventPlayoffTeamCount?: number,
+    options?: {
+        implicitSelfMappings?: boolean;
+    },
 ): string[] => {
+    const allowImplicitSelfMappings = Boolean(options?.implicitSelfMappings);
+    const resolvePlacementMappings = (detail: Division): string[] => {
+        const explicitMappings = Array.isArray(detail.playoffPlacementDivisionIds)
+            ? detail.playoffPlacementDivisionIds
+            : [];
+        const hasExplicitMapping = explicitMappings.some((divisionId) => normalizeDivisionIdentifier(divisionId).length > 0);
+        if (hasExplicitMapping || !allowImplicitSelfMappings) {
+            return explicitMappings;
+        }
+
+        const detailTeamCount = typeof detail.playoffTeamCount === 'number'
+            ? Math.max(0, Math.trunc(detail.playoffTeamCount))
+            : undefined;
+        const placementLimit = detailTeamCount ?? eventPlayoffTeamCount ?? 0;
+        if (placementLimit <= 0) {
+            return [];
+        }
+        return Array.from({ length: placementLimit }, () => detail.id);
+    };
+
     const labels: string[] = [];
     const maxPlacementIndex = mappingDivisionDetails.reduce((maxValue, detail) => {
-        const mappedLength = Array.isArray(detail.playoffPlacementDivisionIds)
-            ? detail.playoffPlacementDivisionIds.length
-            : 0;
+        const mappedLength = resolvePlacementMappings(detail).length;
         const detailTeamCount = typeof detail.playoffTeamCount === 'number'
             ? Math.max(0, Math.trunc(detail.playoffTeamCount))
             : undefined;
@@ -218,9 +239,7 @@ const buildMappedPlacementLabelsForPlayoffDivision = (
 
     for (let placementIndex = 0; placementIndex < maxPlacementIndex; placementIndex += 1) {
         for (const detail of mappingDivisionDetails) {
-            const mappedDivisionIds = Array.isArray(detail.playoffPlacementDivisionIds)
-                ? detail.playoffPlacementDivisionIds
-                : [];
+            const mappedDivisionIds = resolvePlacementMappings(detail);
             const detailTeamCount = typeof detail.playoffTeamCount === 'number'
                 ? Math.max(0, Math.trunc(detail.playoffTeamCount))
                 : undefined;
@@ -241,31 +260,33 @@ const buildMappedPlacementLabelsForPlayoffDivision = (
     return labels;
 };
 
-const buildDirectPlacementLabelsForDivision = (
-    divisionId: string,
-    divisionDetails: Division[],
-    allDivisionDetails: Division[],
-    eventPlayoffTeamCount?: number,
-): string[] => {
-    const detail = divisionDetails.find((candidate) =>
-        divisionsEquivalent(candidate.id, divisionId) ||
-        divisionsEquivalent(candidate.key, divisionId),
-    );
-    if (!detail) {
-        return [];
+const resolveEntrantSlotSeeds = (
+    match: Match,
+    leftEntrantSlot: boolean,
+    rightEntrantSlot: boolean,
+): { team1Seed: number | null; team2Seed: number | null } => {
+    const team1Seed = normalizeBracketSeed(match.team1Seed);
+    const team2Seed = normalizeBracketSeed(match.team2Seed);
+    if (leftEntrantSlot === rightEntrantSlot) {
+        return { team1Seed, team2Seed };
     }
 
-    const playoffTeamCount = typeof detail.playoffTeamCount === 'number'
-        ? Math.max(0, Math.trunc(detail.playoffTeamCount))
-        : eventPlayoffTeamCount ?? 0;
-    if (playoffTeamCount <= 0) {
-        return [];
+    const seedCount = Number(typeof team1Seed === 'number') + Number(typeof team2Seed === 'number');
+    if (seedCount !== 1) {
+        return { team1Seed, team2Seed };
     }
 
-    const divisionLabel = resolveDivisionDisplayName(detail, allDivisionDetails);
-    return Array.from({ length: playoffTeamCount }, (_, index) => (
-        `${formatOrdinalPlacement(index + 1)} place (${divisionLabel})`
-    ));
+    const carriedSeed = team1Seed ?? team2Seed;
+    if (leftEntrantSlot) {
+        return {
+            team1Seed: carriedSeed,
+            team2Seed: null,
+        };
+    }
+    return {
+        team1Seed: null,
+        team2Seed: carriedSeed,
+    };
 };
 
 const buildLeaguePlayoffPlaceholderAssignments = ({
@@ -288,11 +309,6 @@ const buildLeaguePlayoffPlaceholderAssignments = ({
     }
 
     const orderedDetails = orderDivisionDetailsForMappings(eventDivisionIds, divisionDetails);
-    const mappedDetails = orderedDetails.filter((detail) =>
-        Array.isArray(detail.playoffPlacementDivisionIds) &&
-        detail.playoffPlacementDivisionIds.some((divisionId) => normalizeDivisionIdentifier(divisionId).length > 0),
-    );
-
     if (orderedDetails.length === 0) {
         return {};
     }
@@ -313,30 +329,21 @@ const buildLeaguePlayoffPlaceholderAssignments = ({
 
     const result: Record<string, string> = {};
     slotsByPlayoffDivision.forEach((divisionSlots, playoffDivisionId) => {
-        const labels = mappedDetails.length > 0
-            ? buildMappedPlacementLabelsForPlayoffDivision(
-                playoffDivisionId,
-                mappedDetails,
-                allDivisionDetails,
-                eventPlayoffTeamCount,
-            )
-            : [];
-        const fallbackLabels = labels.length === 0 && !splitLeaguePlayoffDivisions
-            ? buildDirectPlacementLabelsForDivision(
-                playoffDivisionId,
-                orderedDetails,
-                allDivisionDetails,
-                eventPlayoffTeamCount,
-            )
-            : labels;
-        if (fallbackLabels.length === 0) {
+        const labels = buildMappedPlacementLabelsForPlayoffDivision(
+            playoffDivisionId,
+            orderedDetails,
+            allDivisionDetails,
+            eventPlayoffTeamCount,
+            { implicitSelfMappings: !splitLeaguePlayoffDivisions },
+        );
+        if (labels.length === 0) {
             return;
         }
         divisionSlots.forEach((slot) => {
             if (typeof slot.seed !== 'number' || !Number.isFinite(slot.seed) || slot.seed < 1) {
                 return;
             }
-            const label = fallbackLabels[slot.seed - 1];
+            const label = labels[slot.seed - 1];
             if (!label) {
                 return;
             }
@@ -468,8 +475,7 @@ export default function TournamentBracketView({
             if (!leftEntrantSlot && !rightEntrantSlot) {
                 return;
             }
-            const team1Seed = normalizeBracketSeed(match.team1Seed);
-            const team2Seed = normalizeBracketSeed(match.team2Seed);
+            const { team1Seed, team2Seed } = resolveEntrantSlotSeeds(match, leftEntrantSlot, rightEntrantSlot);
             if (leftEntrantSlot) {
                 slots.push({ matchId: match.$id, slot: 'team1', seed: team1Seed, playoffDivisionId });
             }
