@@ -1,6 +1,7 @@
 import { formatDisplayDateTime } from '@/lib/dateUtils';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { normalizeBracketSeed } from '@/lib/bracketSeeds';
 import type {
   BracketCanvasConnection,
   BracketCanvasContentSize,
@@ -18,6 +19,7 @@ import {
   toBracketDivisionKey,
 } from '@/lib/bracketViewCore';
 import {
+  Division,
   League,
   Match,
   Tournament,
@@ -55,6 +57,15 @@ export type PublicBracketWidgetView = {
   winnersLane: PublicBracketWidgetLane | null;
   losersLane: PublicBracketWidgetLane | null;
   hasLosersBracket: boolean;
+};
+
+type BracketTeamSlot = 'team1' | 'team2';
+
+type PlayoffBracketSlot = {
+  matchId: string;
+  slot: BracketTeamSlot;
+  seed: number | null;
+  divisionId: string;
 };
 
 const normalizeToken = (value: unknown): string | null => {
@@ -102,6 +113,296 @@ const getMatchDivisionLabel = (match: Match): string | null => (
   ?? getDivisionLabel(match.team2?.division)
 );
 
+const normalizeDivisionIdentifier = (value: unknown): string => (
+  normalizeToken(value)?.toLowerCase() ?? ''
+);
+
+const divisionsEquivalent = (left: unknown, right: unknown): boolean => {
+  const normalizedLeft = normalizeDivisionIdentifier(left);
+  const normalizedRight = normalizeDivisionIdentifier(right);
+  return normalizedLeft.length > 0 && normalizedLeft === normalizedRight;
+};
+
+const extractDivisionIdentifier = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+  const row = value as { id?: unknown; $id?: unknown; key?: unknown };
+  const candidates = [row.id, row.$id, row.key];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return '';
+};
+
+const extractEntityId = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (!value || typeof value !== 'object') {
+    return '';
+  }
+  const row = value as { id?: unknown; $id?: unknown };
+  const candidates = [row.id, row.$id];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  }
+  return '';
+};
+
+const hasResolvedMatchLink = (
+  idValue: unknown,
+  relationValue: unknown,
+  matchesById: Record<string, Match>,
+): boolean => {
+  const explicitId = normalizeToken(idValue);
+  if (explicitId && matchesById[explicitId]) {
+    return true;
+  }
+  if (idValue === null || (typeof idValue === 'string' && idValue.trim().length === 0)) {
+    return false;
+  }
+  const relationId = extractEntityId(relationValue);
+  return relationId.length > 0 && Boolean(matchesById[relationId]);
+};
+
+const formatOrdinalPlacement = (position: number): string => {
+  const value = Math.max(1, Math.trunc(position || 1));
+  const modHundred = value % 100;
+  if (modHundred >= 11 && modHundred <= 13) {
+    return `${value}th`;
+  }
+  switch (value % 10) {
+    case 1:
+      return `${value}st`;
+    case 2:
+      return `${value}nd`;
+    case 3:
+      return `${value}rd`;
+    default:
+      return `${value}th`;
+  }
+};
+
+const orderDivisionDetailsForMappings = (divisionIds: string[], divisions: Division[]): Division[] => {
+  if (divisions.length === 0) {
+    return [];
+  }
+  const remaining = [...divisions];
+  const ordered: Division[] = [];
+
+  divisionIds.forEach((divisionId) => {
+    const matchedIndex = remaining.findIndex((division) =>
+      divisionsEquivalent(division.id, divisionId),
+    );
+    if (matchedIndex >= 0) {
+      ordered.push(remaining.splice(matchedIndex, 1)[0]);
+    }
+  });
+
+  return [...ordered, ...remaining];
+};
+
+const resolveDivisionDisplayName = (division: Division, allDivisionDetails: Division[]): string => {
+  const explicitName = normalizeToken(division.name);
+  if (explicitName) {
+    return explicitName;
+  }
+
+  const fallbackIdentifier = extractDivisionIdentifier(division);
+  if (fallbackIdentifier.length > 0) {
+    const matched = allDivisionDetails.find((candidate) =>
+      divisionsEquivalent(candidate.id, fallbackIdentifier),
+    );
+    const matchedName = normalizeToken(matched?.name);
+    if (matchedName) {
+      return matchedName;
+    }
+    return fallbackIdentifier;
+  }
+
+  return 'TBD';
+};
+
+const buildMappedPlacementLabelsForPlayoffDivision = (
+  playoffDivisionId: string,
+  sourceDivisions: Division[],
+  allDivisionDetails: Division[],
+  eventPlayoffTeamCount?: number,
+): string[] => {
+  const labels: string[] = [];
+  const maxPlacementIndex = sourceDivisions.reduce((maxValue, division) => {
+    const mappedLength = Array.isArray(division.playoffPlacementDivisionIds)
+      ? division.playoffPlacementDivisionIds.length
+      : 0;
+    const divisionPlayoffTeamCount = typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
+      ? Math.max(0, Math.trunc(division.playoffTeamCount))
+      : undefined;
+    return Math.max(maxValue, Math.max(mappedLength, divisionPlayoffTeamCount ?? eventPlayoffTeamCount ?? 0));
+  }, 0);
+
+  for (let placementIndex = 0; placementIndex < maxPlacementIndex; placementIndex += 1) {
+    for (const division of sourceDivisions) {
+      const mappedDivisionIds = Array.isArray(division.playoffPlacementDivisionIds)
+        ? division.playoffPlacementDivisionIds
+        : [];
+      const divisionPlayoffTeamCount = typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
+        ? Math.max(0, Math.trunc(division.playoffTeamCount))
+        : undefined;
+      const placementLimit = divisionPlayoffTeamCount ?? eventPlayoffTeamCount ?? mappedDivisionIds.length;
+      if (placementIndex >= placementLimit) {
+        continue;
+      }
+      const mappedDivisionId = mappedDivisionIds[placementIndex] ?? '';
+      if (!divisionsEquivalent(mappedDivisionId, playoffDivisionId)) {
+        continue;
+      }
+      labels.push(
+        `${formatOrdinalPlacement(placementIndex + 1)} place (${resolveDivisionDisplayName(division, allDivisionDetails)})`,
+      );
+    }
+  }
+
+  return labels;
+};
+
+const buildDirectPlacementLabelsForDivision = (
+  divisionId: string,
+  divisions: Division[],
+  allDivisionDetails: Division[],
+  eventPlayoffTeamCount?: number,
+): string[] => {
+  const division = divisions.find((candidate) => divisionsEquivalent(candidate.id, divisionId));
+  if (!division) {
+    return [];
+  }
+
+  const playoffTeamCount = typeof division.playoffTeamCount === 'number' && Number.isFinite(division.playoffTeamCount)
+    ? Math.max(0, Math.trunc(division.playoffTeamCount))
+    : eventPlayoffTeamCount ?? 0;
+  if (playoffTeamCount <= 0) {
+    return [];
+  }
+
+  const divisionLabel = resolveDivisionDisplayName(division, allDivisionDetails);
+  return Array.from({ length: playoffTeamCount }, (_, index) => (
+    `${formatOrdinalPlacement(index + 1)} place (${divisionLabel})`
+  ));
+};
+
+const buildLeaguePlayoffPlaceholderAssignments = (
+  event: League,
+  matches: Match[],
+): Record<string, string> => {
+  if (!event.includePlayoffs || matches.length === 0) {
+    return {};
+  }
+
+  const orderedDivisions = orderDivisionDetailsForMappings(
+    event.divisions.map((division) => division.id),
+    event.divisions,
+  );
+  if (orderedDivisions.length === 0) {
+    return {};
+  }
+
+  const mappedDivisions = orderedDivisions.filter((division) =>
+    Array.isArray(division.playoffPlacementDivisionIds)
+    && division.playoffPlacementDivisionIds.some((divisionId) => normalizeDivisionIdentifier(divisionId).length > 0),
+  );
+  const allDivisionDetails = [...event.divisions, ...event.playoffDivisions];
+  const matchesById = Object.fromEntries(matches.map((match) => [match.id, match]));
+  const slots: PlayoffBracketSlot[] = [];
+
+  matches.forEach((match) => {
+    if (match.losersBracket) {
+      return;
+    }
+    const divisionId = extractDivisionIdentifier(match.division);
+    if (divisionId.length === 0) {
+      return;
+    }
+    const leftEntrantSlot = !hasResolvedMatchLink(
+      (match as { previousLeftId?: unknown }).previousLeftId,
+      match.previousLeftMatch,
+      matchesById,
+    );
+    const rightEntrantSlot = !hasResolvedMatchLink(
+      (match as { previousRightId?: unknown }).previousRightId,
+      match.previousRightMatch,
+      matchesById,
+    );
+    if (!leftEntrantSlot && !rightEntrantSlot) {
+      return;
+    }
+    const team1Seed = normalizeBracketSeed(match.team1Seed);
+    const team2Seed = normalizeBracketSeed(match.team2Seed);
+    if (leftEntrantSlot) {
+      slots.push({ matchId: match.id, slot: 'team1', seed: team1Seed, divisionId });
+    }
+    if (rightEntrantSlot) {
+      slots.push({ matchId: match.id, slot: 'team2', seed: team2Seed, divisionId });
+    }
+  });
+
+  if (slots.length === 0) {
+    return {};
+  }
+
+  const slotsByDivision = new Map<string, PlayoffBracketSlot[]>();
+  slots.forEach((slot) => {
+    const normalizedDivisionId = normalizeDivisionIdentifier(slot.divisionId);
+    if (normalizedDivisionId.length === 0) {
+      return;
+    }
+    const bucket = slotsByDivision.get(normalizedDivisionId) ?? [];
+    bucket.push(slot);
+    slotsByDivision.set(normalizedDivisionId, bucket);
+  });
+
+  const result: Record<string, string> = {};
+  slotsByDivision.forEach((divisionSlots, divisionId) => {
+    const mappedLabels = mappedDivisions.length > 0
+      ? buildMappedPlacementLabelsForPlayoffDivision(
+          divisionId,
+          mappedDivisions,
+          allDivisionDetails,
+          event.playoffTeamCount,
+        )
+      : [];
+    const labels = mappedLabels.length === 0 && !event.splitLeaguePlayoffDivisions
+      ? buildDirectPlacementLabelsForDivision(
+          divisionId,
+          orderedDivisions,
+          allDivisionDetails,
+          event.playoffTeamCount,
+        )
+      : mappedLabels;
+    if (labels.length === 0) {
+      return;
+    }
+    divisionSlots.forEach((slot) => {
+      if (typeof slot.seed !== 'number' || !Number.isFinite(slot.seed) || slot.seed < 1) {
+        return;
+      }
+      const label = labels[slot.seed - 1];
+      if (!label) {
+        return;
+      }
+      result[`${slot.matchId}:${slot.slot}`] = label;
+    });
+  });
+
+  return result;
+};
+
 const getFieldLabel = (match: Match): string => (
   getFieldDisplayName(
     {
@@ -138,10 +439,15 @@ const getTeamLabel = (
   team: Match['team1'] | Match['team2'],
   previousMatch: Match | null | undefined,
   slot: 'team1' | 'team2',
+  placeholder?: string,
 ): string => {
   const explicit = normalizeToken(team?.name);
   if (explicit) {
     return explicit;
+  }
+  const normalizedPlaceholder = normalizeToken(placeholder);
+  if (normalizedPlaceholder) {
+    return normalizedPlaceholder;
   }
   if (previousMatch) {
     return getFeedLabel(previousMatch, currentMatch, slot);
@@ -151,6 +457,7 @@ const getTeamLabel = (
 
 const buildMatchCard = (
   match: Match,
+  placeholderAssignments: Record<string, string>,
 ): PublicBracketWidgetMatchCard => ({
   id: match.id,
   matchId: Number.isFinite(match.matchId) ? match.matchId ?? null : null,
@@ -158,8 +465,20 @@ const buildMatchCard = (
   startLabel: match.start instanceof Date && !Number.isNaN(match.start.getTime())
     ? formatDisplayDateTime(match.start)
     : 'Time TBD',
-  team1Name: getTeamLabel(match, match.team1, match.previousLeftMatch, 'team1'),
-  team2Name: getTeamLabel(match, match.team2, match.previousRightMatch, 'team2'),
+  team1Name: getTeamLabel(
+    match,
+    match.team1,
+    match.previousLeftMatch,
+    'team1',
+    placeholderAssignments[`${match.id}:team1`],
+  ),
+  team2Name: getTeamLabel(
+    match,
+    match.team2,
+    match.previousRightMatch,
+    'team2',
+    placeholderAssignments[`${match.id}:team2`],
+  ),
   team1Points: Array.isArray(match.team1Points) ? match.team1Points : [],
   team2Points: Array.isArray(match.team2Points) ? match.team2Points : [],
 });
@@ -169,6 +488,7 @@ const buildLane = (
   options: {
     losersBracket: boolean;
     rootMatchId?: string | null;
+    placeholderAssignments?: Record<string, string>;
   },
 ): PublicBracketWidgetLane | null => {
   const layout = buildBracketCanvasLayout(matchesById, {
@@ -187,7 +507,7 @@ const buildLane = (
       matchIds
         .map((matchId) => {
           const match = layout.treeById[matchId];
-          return match ? [matchId, buildMatchCard(match)] : null;
+          return match ? [matchId, buildMatchCard(match, options.placeholderAssignments ?? {})] : null;
         })
         .filter((entry): entry is [string, PublicBracketWidgetMatchCard] => Boolean(entry)),
     ),
@@ -202,6 +522,7 @@ export const buildPublicBracketWidgetView = (
   event: Tournament | League,
   requestedDivisionId?: string | null,
 ): PublicBracketWidgetView | null => {
+  const isLeagueEvent = event instanceof League || (event as { eventType?: unknown }).eventType === 'LEAGUE';
   const bracketMatches = Object.values(event.matches ?? {}).filter(hasBracketConnections);
   if (!bracketMatches.length) {
     return null;
@@ -247,14 +568,19 @@ export const buildPublicBracketWidgetView = (
     return acc;
   }, {});
   const hasLosersMatches = Object.values(selectedMatchesById).some((match) => Boolean(match.losersBracket));
+  const placeholderAssignments = isLeagueEvent
+    ? buildLeaguePlayoffPlaceholderAssignments(event as League, Object.values(selectedMatchesById))
+    : {};
 
   const winnersLane = buildLane(selectedMatchesById, {
     losersBracket: false,
     rootMatchId: selectedRootMatch.id,
+    placeholderAssignments,
   });
   const losersLane = hasLosersMatches
     ? buildLane(selectedMatchesById, {
         losersBracket: true,
+        placeholderAssignments,
       })
     : null;
 

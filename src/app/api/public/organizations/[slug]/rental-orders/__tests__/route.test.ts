@@ -4,8 +4,13 @@ import { NextRequest } from 'next/server';
 
 const organizationsFindUniqueMock = jest.fn();
 const fieldsFindManyMock = jest.fn();
+const timeSlotsFindManyMock = jest.fn();
+const prismaTransactionMock = jest.fn();
 const requireSessionMock = jest.fn();
 const assertNoEventFieldSchedulingConflictsMock = jest.fn();
+const txEventsFindUniqueMock = jest.fn();
+const txEventsCreateMock = jest.fn();
+const txTimeSlotsCreateMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -15,6 +20,10 @@ jest.mock('@/lib/prisma', () => ({
     fields: {
       findMany: (...args: any[]) => fieldsFindManyMock(...args),
     },
+    timeSlots: {
+      findMany: (...args: any[]) => timeSlotsFindManyMock(...args),
+    },
+    $transaction: (...args: any[]) => prismaTransactionMock(...args),
   },
 }));
 
@@ -58,6 +67,20 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    timeSlotsFindManyMock.mockResolvedValue([]);
+    assertNoEventFieldSchedulingConflictsMock.mockResolvedValue(undefined);
+    txEventsFindUniqueMock.mockResolvedValue(null);
+    txEventsCreateMock.mockResolvedValue({});
+    txTimeSlotsCreateMock.mockResolvedValue({});
+    prismaTransactionMock.mockImplementation(async (callback: any) => callback({
+      events: {
+        findUnique: txEventsFindUniqueMock,
+        create: txEventsCreateMock,
+      },
+      timeSlots: {
+        create: txTimeSlotsCreateMock,
+      },
+    }));
   });
 
   it('returns 400 when the organization has no configured sports', async () => {
@@ -130,5 +153,60 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
     expect(response.status).toBe(400);
     expect(json.error).toMatch(/not available/i);
     expect(fieldsFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it('creates the private rental event with the organization logo as the event image', async () => {
+    organizationsFindUniqueMock.mockResolvedValue({
+      id: 'org_1',
+      name: 'Summit',
+      logoId: 'file_logo_1',
+      sports: ['Indoor Volleyball'],
+      location: 'Main Gym',
+      address: '123 Main St',
+      coordinates: [-122.4, 37.8],
+      ownerId: 'owner_1',
+      publicPageEnabled: true,
+    });
+    fieldsFindManyMock.mockResolvedValue([
+      {
+        id: 'field_1',
+        name: 'Court 1',
+        rentalSlotIds: ['slot_1'],
+        location: 'Main Gym',
+        long: -122.4,
+        lat: 37.8,
+      },
+    ]);
+    timeSlotsFindManyMock.mockResolvedValue([
+      {
+        id: 'slot_1',
+        startDate: '2026-04-21T16:00:00.000Z',
+        endDate: '2026-04-21T19:00:00.000Z',
+        repeating: false,
+        price: 0,
+        requiredTemplateIds: [],
+        hostRequiredTemplateIds: [],
+      },
+    ]);
+
+    const response = await POST(createRequest({
+      eventId: 'event_1',
+      selections: [baseSelection],
+      sportId: 'Indoor Volleyball',
+    }), { params });
+    const json = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(json).toEqual({
+      eventId: 'event_1',
+      totalCents: 0,
+    });
+    expect(txEventsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        id: 'event_1',
+        imageId: 'file_logo_1',
+        organizationId: 'org_1',
+      }),
+    }));
   });
 });

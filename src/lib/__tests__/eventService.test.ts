@@ -319,7 +319,15 @@ describe('eventService', () => {
         },
       ],
       requiredTemplateIds: ['template_event_1'],
+      waitList: ['user_wait_legacy'],
+      freeAgents: ['user_free_legacy'],
       attendees: 8,
+      participantCount: 8,
+      participantCapacity: 16,
+      status: 'published',
+      leagueConfig: { useHeadToHead: true },
+      refType: 'legacy_ref',
+      resolvedMatchRules: { scoringModel: 'POINTS' },
     } as any;
 
     await eventService.updateEvent('evt_1', eventUpdate, {
@@ -369,6 +377,15 @@ describe('eventService', () => {
     );
     expect((options?.body as any)?.event?.fields?.[0]?.matches).toBeUndefined();
     expect((options?.body as any)?.event?.timeSlots?.[0]?.event).toBeUndefined();
+    expect((options?.body as any)?.event?.waitList).toBeUndefined();
+    expect((options?.body as any)?.event?.freeAgents).toBeUndefined();
+    expect((options?.body as any)?.event?.attendees).toBeUndefined();
+    expect((options?.body as any)?.event?.participantCount).toBeUndefined();
+    expect((options?.body as any)?.event?.participantCapacity).toBeUndefined();
+    expect((options?.body as any)?.event?.status).toBeUndefined();
+    expect((options?.body as any)?.event?.leagueConfig).toBeUndefined();
+    expect((options?.body as any)?.event?.refType).toBeUndefined();
+    expect((options?.body as any)?.event?.resolvedMatchRules).toBeUndefined();
     expect(apiRequestMock.mock.calls[1][0]).toBe('/api/events/evt_1');
     expect(apiRequestMock.mock.calls[2][0]).toBe('/api/league-scoring-configs/cfg_1');
   });

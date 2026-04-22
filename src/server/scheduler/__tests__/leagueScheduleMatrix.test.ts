@@ -165,4 +165,49 @@ describe('league schedule matrix', () => {
       expect(match.start.getTime()).toBeLessThan(match.end.getTime());
     }
   });
+
+  it('preserves direct seed slots on carried-through bye matches', () => {
+    const division = buildDivision();
+    const teams = buildTeams(9, division);
+    const fields = buildFields(division, 4);
+    const timeSlots = buildTimeSlots(Object.keys(fields));
+
+    const league = new League({
+      id: 'league_bye_seed_slots',
+      name: 'Bye Seed Slots',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 11, 31, 22, 0, 0),
+      maxParticipants: 9,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      officials: [],
+      fields,
+      timeSlots,
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 9,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const playoffMatches = scheduled.matches.filter((match) => (
+      Boolean(match.previousLeftMatch || match.previousRightMatch || match.winnerNextMatch || match.loserNextMatch)
+    ));
+
+    const carriedSeedMatch = playoffMatches.find((match) => {
+      const previousCount = Number(Boolean(match.previousLeftMatch)) + Number(Boolean(match.previousRightMatch));
+      const directSeedCount = Number(typeof match.team1Seed === 'number') + Number(typeof match.team2Seed === 'number');
+      return previousCount === 1 && directSeedCount === 1;
+    });
+
+    expect(carriedSeedMatch).toBeTruthy();
+    expect([carriedSeedMatch?.team1Seed ?? null, carriedSeedMatch?.team2Seed ?? null]).toContain(1);
+  });
 });

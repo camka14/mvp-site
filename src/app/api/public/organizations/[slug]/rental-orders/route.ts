@@ -288,6 +288,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     select: {
       id: true,
       name: true,
+      logoId: true,
       sports: true,
       location: true,
       address: true,
@@ -462,7 +463,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           prize: null,
           registrationCutoffHours: 0,
           seedColor: 0,
-          imageId: '',
+          imageId: typeof organization.logoId === 'string' ? organization.logoId.trim() : '',
           fieldCount: fieldIds.length,
           winnerBracketPointsToVictory: [],
           loserBracketPointsToVictory: [],

@@ -10,6 +10,7 @@ import ScoreUpdateModal from './ScoreUpdateModal';
 import { Paper, Group, Button, ActionIcon, Text, SegmentedControl, Badge } from '@mantine/core';
 import BracketCanvas from '@/components/bracket/BracketCanvas';
 import { buildBracketCanvasLayout } from '@/lib/bracketCanvasLayout';
+import { normalizeBracketSeed } from '@/lib/bracketSeeds';
 
 type BracketTeamSlot = 'team1' | 'team2';
 
@@ -67,6 +68,22 @@ const normalizeMatchRefId = (value: unknown): string => {
         return '';
     }
     return value.trim();
+};
+
+const hasResolvedMatchLink = (
+    idValue: unknown,
+    relationValue: unknown,
+    matchesById: Record<string, Match>,
+): boolean => {
+    const id = normalizeMatchRefId(idValue);
+    if (id.length > 0 && Boolean(matchesById[id])) {
+        return true;
+    }
+    if (idValue === null || (typeof idValue === 'string' && idValue.trim().length === 0)) {
+        return false;
+    }
+    const relationId = extractEntityId(relationValue);
+    return relationId.length > 0 && Boolean(matchesById[relationId]);
 };
 
 const normalizeDivisionDetailsList = (input: unknown): Division[] => {
@@ -224,24 +241,54 @@ const buildMappedPlacementLabelsForPlayoffDivision = (
     return labels;
 };
 
+const buildDirectPlacementLabelsForDivision = (
+    divisionId: string,
+    divisionDetails: Division[],
+    allDivisionDetails: Division[],
+    eventPlayoffTeamCount?: number,
+): string[] => {
+    const detail = divisionDetails.find((candidate) =>
+        divisionsEquivalent(candidate.id, divisionId) ||
+        divisionsEquivalent(candidate.key, divisionId),
+    );
+    if (!detail) {
+        return [];
+    }
+
+    const playoffTeamCount = typeof detail.playoffTeamCount === 'number'
+        ? Math.max(0, Math.trunc(detail.playoffTeamCount))
+        : eventPlayoffTeamCount ?? 0;
+    if (playoffTeamCount <= 0) {
+        return [];
+    }
+
+    const divisionLabel = resolveDivisionDisplayName(detail, allDivisionDetails);
+    return Array.from({ length: playoffTeamCount }, (_, index) => (
+        `${formatOrdinalPlacement(index + 1)} place (${divisionLabel})`
+    ));
+};
+
 const buildLeaguePlayoffPlaceholderAssignments = ({
     eventDivisionIds,
     divisionDetails,
     allDivisionDetails,
     eventPlayoffTeamCount,
+    splitLeaguePlayoffDivisions,
     slots,
 }: {
     eventDivisionIds: string[];
     divisionDetails: Division[];
     allDivisionDetails: Division[];
     eventPlayoffTeamCount?: number;
+    splitLeaguePlayoffDivisions?: boolean;
     slots: PlayoffBracketSlot[];
 }): Record<string, string> => {
     if (divisionDetails.length === 0 || slots.length === 0) {
         return {};
     }
 
-    const orderedDetails = orderDivisionDetailsForMappings(eventDivisionIds, divisionDetails).filter((detail) =>
+    const orderedDetails = orderDivisionDetailsForMappings(eventDivisionIds, divisionDetails);
+    const mappedDetails = orderedDetails.filter((detail) =>
         Array.isArray(detail.playoffPlacementDivisionIds) &&
         detail.playoffPlacementDivisionIds.some((divisionId) => normalizeDivisionIdentifier(divisionId).length > 0),
     );
@@ -266,20 +313,30 @@ const buildLeaguePlayoffPlaceholderAssignments = ({
 
     const result: Record<string, string> = {};
     slotsByPlayoffDivision.forEach((divisionSlots, playoffDivisionId) => {
-        const labels = buildMappedPlacementLabelsForPlayoffDivision(
-            playoffDivisionId,
-            orderedDetails,
-            allDivisionDetails,
-            eventPlayoffTeamCount,
-        );
-        if (labels.length === 0) {
+        const labels = mappedDetails.length > 0
+            ? buildMappedPlacementLabelsForPlayoffDivision(
+                playoffDivisionId,
+                mappedDetails,
+                allDivisionDetails,
+                eventPlayoffTeamCount,
+            )
+            : [];
+        const fallbackLabels = labels.length === 0 && !splitLeaguePlayoffDivisions
+            ? buildDirectPlacementLabelsForDivision(
+                playoffDivisionId,
+                orderedDetails,
+                allDivisionDetails,
+                eventPlayoffTeamCount,
+            )
+            : labels;
+        if (fallbackLabels.length === 0) {
             return;
         }
         divisionSlots.forEach((slot) => {
             if (typeof slot.seed !== 'number' || !Number.isFinite(slot.seed) || slot.seed < 1) {
                 return;
             }
-            const label = labels[slot.seed - 1];
+            const label = fallbackLabels[slot.seed - 1];
             if (!label) {
                 return;
             }
@@ -381,6 +438,9 @@ export default function TournamentBracketView({
         [officialsById],
     );
     const leaguePlayoffPlaceholderAssignments = useMemo<Record<string, string>>(() => {
+        if (!bracket.tournament.includePlayoffs) {
+            return {};
+        }
         const eventDivisionIds = extractEventDivisionOrder(bracket.tournament.divisions);
         const allDivisionDetails = collectAllDivisionDetails(bracket.tournament);
         const divisionDetails = (() => {
@@ -403,23 +463,13 @@ export default function TournamentBracketView({
             if (playoffDivisionId.length === 0) {
                 return;
             }
-            const leftEntrantSlot = !(
-                match.previousLeftMatch ||
-                match.previousLeftId
-            );
-            const rightEntrantSlot = !(
-                match.previousRightMatch ||
-                match.previousRightId
-            );
+            const leftEntrantSlot = !hasResolvedMatchLink(match.previousLeftId, match.previousLeftMatch, matchesById);
+            const rightEntrantSlot = !hasResolvedMatchLink(match.previousRightId, match.previousRightMatch, matchesById);
             if (!leftEntrantSlot && !rightEntrantSlot) {
                 return;
             }
-            const team1Seed = typeof match.team1Seed === 'number'
-                ? match.team1Seed
-                : null;
-            const team2Seed = typeof match.team2Seed === 'number'
-                ? match.team2Seed
-                : null;
+            const team1Seed = normalizeBracketSeed(match.team1Seed);
+            const team2Seed = normalizeBracketSeed(match.team2Seed);
             if (leftEntrantSlot) {
                 slots.push({ matchId: match.$id, slot: 'team1', seed: team1Seed, playoffDivisionId });
             }
@@ -441,9 +491,10 @@ export default function TournamentBracketView({
             divisionDetails,
             allDivisionDetails,
             eventPlayoffTeamCount,
+            splitLeaguePlayoffDivisions: Boolean(bracket.tournament.splitLeaguePlayoffDivisions),
             slots,
         });
-    }, [bracket.matches, bracket.tournament]);
+    }, [bracket.matches, bracket.tournament, matchesById]);
 
     const hasLoserMatches = useMemo(
         () => Object.values(bracket.matches).some(match => match.losersBracket),

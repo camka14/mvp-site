@@ -74,9 +74,59 @@ const buildLeagueFixture = () => {
     division,
     team1,
     team2,
-    team1Points: [21, 21, 15],
-    team2Points: [10, 19, 21],
-    setResults: [1, 1, 2],
+    team1Points: [0],
+    team2Points: [9],
+    setResults: [2],
+    matchRulesSnapshot: {
+      scoringModel: 'POINTS_ONLY',
+      pointIncidentRequiresParticipant: true,
+    },
+    resolvedMatchRules: {
+      scoringModel: 'POINTS_ONLY',
+      pointIncidentRequiresParticipant: true,
+    },
+    segments: [
+      {
+        id: 'segment_1',
+        matchId: 'match_1',
+        sequence: 1,
+        status: 'COMPLETE',
+        scores: {
+          team_1: 0,
+          team_2: 0,
+        },
+        winnerEventTeamId: 'team_1',
+      },
+    ],
+    incidents: [
+      {
+        id: 'incident_1',
+        matchId: 'match_1',
+        segmentId: 'segment_1',
+        eventTeamId: 'team_1',
+        incidentType: 'GOAL',
+        sequence: 1,
+        linkedPointDelta: 1,
+      },
+      {
+        id: 'incident_2',
+        matchId: 'match_1',
+        segmentId: 'segment_1',
+        eventTeamId: 'team_1',
+        incidentType: 'GOAL',
+        sequence: 2,
+        linkedPointDelta: 1,
+      },
+      {
+        id: 'incident_3',
+        matchId: 'match_1',
+        segmentId: 'segment_1',
+        eventTeamId: 'team_2',
+        incidentType: 'GOAL',
+        sequence: 3,
+        linkedPointDelta: 1,
+      },
+    ],
     previousLeftMatch: null,
     previousRightMatch: null,
     winnerNextMatch: null,
@@ -146,6 +196,22 @@ describe('standings routes', () => {
     expect(loadEventWithRelationsMock).toHaveBeenCalledWith('event_1');
     expect(requireSessionMock).not.toHaveBeenCalled();
     expect(canManageEventMock).not.toHaveBeenCalled();
+
+    const json = await res.json();
+    const team1Row = json.division.standings.find((row: any) => row.teamId === 'team_1');
+    const team2Row = json.division.standings.find((row: any) => row.teamId === 'team_2');
+    expect(team1Row).toMatchObject({
+      wins: 1,
+      losses: 0,
+      draws: 0,
+      basePoints: 3,
+    });
+    expect(team2Row).toMatchObject({
+      wins: 0,
+      losses: 1,
+      draws: 0,
+      basePoints: 0,
+    });
   });
 
   it('GET requires host/admin authorization for template events', async () => {

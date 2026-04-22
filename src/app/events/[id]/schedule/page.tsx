@@ -35,6 +35,11 @@ import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import {
+  shouldUseServerStandingsRows,
+  teamBelongsToSelectedStandingsDivision,
+} from '@/lib/standingsRows';
+import { deriveStandingsMatchResult } from '@/lib/standingsMatchScoring';
+import {
   buildBracketDivisionOptions,
   collectConnectedBracketMatchIds as collectConnectedMatchIds,
   getBracketDivisionId as getDivisionId,
@@ -650,11 +655,13 @@ const buildMatchConflictAlertMessage = ({
 };
 
 
-type StandingsSortField = 'team' | 'draws' | 'points';
+type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
 
 type StandingsRow = {
   teamId: string;
   teamName: string;
+  wins: number;
+  losses: number;
   draws: number;
   goalsFor: number;
   goalsAgainst: number;
@@ -5136,37 +5143,37 @@ function EventScheduleContent() {
   );
 
   const baseStandings = useMemo<StandingsRow[]>(() => {
-    if (
-      standingsDivisionData
-      && selectedStandingsDivision
-      && toDivisionKey(standingsDivisionData.divisionId) === toDivisionKey(selectedStandingsDivision)
-    ) {
-      return standingsDivisionData.standings.map((row) => ({
-        teamId: row.teamId,
-        teamName: row.teamName,
-        draws: row.draws,
-        goalsFor: row.goalsFor,
-        goalsAgainst: row.goalsAgainst,
-        goalDifference: row.goalDifference,
-        matchesPlayed: row.matchesPlayed,
-        points: row.finalPoints,
-        basePoints: row.basePoints,
-        finalPoints: row.finalPoints,
-        pointsDelta: row.pointsDelta,
-      }));
-    }
-
     if (!activeEvent) {
       return [];
     }
 
     const selectedDivisionKey = toDivisionKey(selectedStandingsDivision);
+    const selectedDivisionTeamIds = new Set<string>();
+    const divisionSources = Array.isArray(activeEvent.divisionDetails)
+      ? activeEvent.divisionDetails
+      : Array.isArray(activeEvent.divisions)
+        ? activeEvent.divisions
+        : [];
+    if (selectedDivisionKey) {
+      divisionSources.forEach((division) => {
+        if (toDivisionKey(getDivisionId(division)) !== selectedDivisionKey) {
+          return;
+        }
+        getDivisionTeamIds(division).forEach((teamId) => selectedDivisionTeamIds.add(teamId));
+      });
+    }
+
     const teamsArray = Array.isArray(activeEvent.teams) ? (activeEvent.teams as Team[]) : [];
     const teamsById = new Map<string, Team>();
     teamsArray.forEach((team) => {
       if (team?.$id) {
-        const teamDivisionKey = toDivisionKey(getDivisionId(team.division));
-        if (selectedDivisionKey && teamDivisionKey !== selectedDivisionKey) {
+        const teamDivisionId = getDivisionId(team.division);
+        if (!teamBelongsToSelectedStandingsDivision({
+          selectedDivisionId: selectedStandingsDivision,
+          selectedDivisionTeamIds,
+          teamId: team.$id,
+          teamDivisionId,
+        })) {
           return;
         }
         teamsById.set(team.$id, team);
@@ -5186,6 +5193,8 @@ function EventScheduleContent() {
         rows.set(teamId, {
           teamId,
           teamName: resolved?.name || `Team ${teamId.slice(0, 6)}`,
+          wins: 0,
+          losses: 0,
           draws: 0,
           goalsFor: 0,
           goalsAgainst: 0,
@@ -5202,11 +5211,6 @@ function EventScheduleContent() {
         ensureRow(team.$id, team);
       }
     });
-
-    const sumPoints = (values: number[] | null | undefined): number =>
-      Array.isArray(values)
-        ? values.reduce((total, value) => (Number.isFinite(value) ? total + Number(value) : total), 0)
-        : 0;
 
     activeMatches.forEach((match) => {
       if (playoffMatchIds.has(match.$id)) {
@@ -5238,46 +5242,26 @@ function EventScheduleContent() {
         return;
       }
 
-      const setResults = Array.isArray(match.setResults) ? match.setResults : [];
-      const team1Wins = setResults.filter((result) => result === 1).length;
-      const team2Wins = setResults.filter((result) => result === 2).length;
-      const allSetsResolved = setResults.length > 0 && setResults.every((result) => result === 1 || result === 2);
-
-      const team1Total = sumPoints(match.team1Points);
-      const team2Total = sumPoints(match.team2Points);
-
-      let outcome: 'team1' | 'team2' | 'draw' | null = null;
-      if (team1Wins > team2Wins) {
-        outcome = 'team1';
-      } else if (team2Wins > team1Wins) {
-        outcome = 'team2';
-      } else if (allSetsResolved) {
-        outcome = 'draw';
-      } else if (team1Total > 0 || team2Total > 0) {
-        if (team1Total > team2Total) {
-          outcome = 'team1';
-        } else if (team2Total > team1Total) {
-          outcome = 'team2';
-        } else {
-          outcome = 'draw';
-        }
-      }
-
-      if (!outcome) {
+      const result = deriveStandingsMatchResult(match);
+      if (!result.outcome) {
         return;
       }
 
-      row1.goalsFor += team1Total;
-      row1.goalsAgainst += team2Total;
-      row2.goalsFor += team2Total;
-      row2.goalsAgainst += team1Total;
+      row1.goalsFor += result.team1Total;
+      row1.goalsAgainst += result.team2Total;
+      row2.goalsFor += result.team2Total;
+      row2.goalsAgainst += result.team1Total;
       row1.matchesPlayed += 1;
       row2.matchesPlayed += 1;
 
-      if (outcome === 'team1') {
+      if (result.outcome === 'team1') {
+        row1.wins += 1;
+        row2.losses += 1;
         row1.points += leagueScoring.pointsForWin;
         row2.points += leagueScoring.pointsForLoss;
-      } else if (outcome === 'team2') {
+      } else if (result.outcome === 'team2') {
+        row2.wins += 1;
+        row1.losses += 1;
         row2.points += leagueScoring.pointsForWin;
         row1.points += leagueScoring.pointsForLoss;
       } else {
@@ -5295,7 +5279,33 @@ function EventScheduleContent() {
       row.pointsDelta = 0;
     });
 
-    return Array.from(rows.values()).map((row) => ({ ...row }));
+    const localRows = Array.from(rows.values()).map((row) => ({ ...row }));
+    const serverRows = standingsDivisionData?.standings.map((row) => ({
+      teamId: row.teamId,
+      teamName: row.teamName,
+      wins: row.wins,
+      losses: row.losses,
+      draws: row.draws,
+      goalsFor: row.goalsFor,
+      goalsAgainst: row.goalsAgainst,
+      goalDifference: row.goalDifference,
+      matchesPlayed: row.matchesPlayed,
+      points: row.finalPoints,
+      basePoints: row.basePoints,
+      finalPoints: row.finalPoints,
+      pointsDelta: row.pointsDelta,
+    })) ?? [];
+
+    if (shouldUseServerStandingsRows({
+      selectedDivisionId: selectedStandingsDivision,
+      loadedDivisionId: standingsDivisionData?.divisionId ?? null,
+      localRowCount: localRows.length,
+      serverRowCount: serverRows.length,
+    })) {
+      return serverRows;
+    }
+
+    return localRows;
   }, [
     activeEvent,
     activeMatches,
@@ -5344,6 +5354,12 @@ function EventScheduleContent() {
       switch (standingsSort.field) {
         case 'team':
           comparison = a.teamName.localeCompare(b.teamName);
+          break;
+        case 'wins':
+          comparison = a.wins - b.wins;
+          break;
+        case 'losses':
+          comparison = a.losses - b.losses;
           break;
         case 'draws':
           comparison = a.draws - b.draws;
@@ -8860,6 +8876,24 @@ function EventScheduleContent() {
                               <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
                                 <UnstyledButton
                                   className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                  onClick={() => handleStandingsSortChange('wins')}
+                                >
+                                  W
+                                  {renderSortIndicator('wins')}
+                                </UnstyledButton>
+                              </Table.Th>
+                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <UnstyledButton
+                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
+                                  onClick={() => handleStandingsSortChange('losses')}
+                                >
+                                  L
+                                  {renderSortIndicator('losses')}
+                                </UnstyledButton>
+                              </Table.Th>
+                              <Table.Th className="w-16 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">
+                                <UnstyledButton
+                                  className="flex w-full items-center justify-end gap-1 text-sm font-semibold text-gray-700"
                                   onClick={() => handleStandingsSortChange('draws')}
                                 >
                                   D
@@ -8889,6 +8923,8 @@ function EventScheduleContent() {
                                 <Table.Tr key={row.teamId}>
                                   <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
                                   <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
+                                  <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
+                                  <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
                                   <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>
                                   <Table.Td className="text-right text-sm font-semibold text-gray-900">
                                     {canManageStandings ? (

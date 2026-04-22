@@ -1,4 +1,5 @@
 import { Brackets } from './Brackets';
+import { deriveStandingsMatchResult } from '@/lib/standingsMatchScoring';
 import {
   Division,
   League,
@@ -15,6 +16,8 @@ export type LeagueStanding = {
   teamId: string;
   teamName: string;
   team: Team | null;
+  wins: number;
+  losses: number;
   draws: number;
   goalsFor: number;
   goalsAgainst: number;
@@ -46,8 +49,6 @@ const normalizeToken = (value: unknown): string | null => {
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : null;
 };
-
-const sumPoints = (points: number[]): number => points.reduce((total, value) => (Number.isFinite(value) ? total + value : total), 0);
 
 export const isPlayoffMatch = (match: Match): boolean => (
   Boolean(match.previousLeftMatch || match.previousRightMatch || match.winnerNextMatch || match.loserNextMatch)
@@ -187,6 +188,8 @@ export const computeLeagueStandings = (
         teamId: teamObj.id,
         teamName: teamObj.name || teamObj.id,
         team: teamObj,
+        wins: 0,
+        losses: 0,
         draws: 0,
         goalsFor: 0,
         goalsAgainst: 0,
@@ -208,10 +211,6 @@ export const computeLeagueStandings = (
   }
 
   for (const match of matches) {
-    if (!isMatchScored(match)) {
-      continue;
-    }
-
     const team1 = match.team1;
     const team2 = match.team2;
     if (options?.includedTeamIds) {
@@ -226,46 +225,26 @@ export const computeLeagueStandings = (
       continue;
     }
 
-    const setResults = match.setResults ?? [];
-    const team1Wins = setResults.filter((result) => result === 1).length;
-    const team2Wins = setResults.filter((result) => result === 2).length;
-    const allSetsResolved = Boolean(setResults.length) && setResults.every((result) => result === 1 || result === 2);
-
-    const team1Total = sumPoints(match.team1Points ?? []);
-    const team2Total = sumPoints(match.team2Points ?? []);
-
-    let outcome: 'team1' | 'team2' | 'draw' | null = null;
-    if (team1Wins > team2Wins) {
-      outcome = 'team1';
-    } else if (team2Wins > team1Wins) {
-      outcome = 'team2';
-    } else if (allSetsResolved) {
-      outcome = 'draw';
-    } else if (team1Total > 0 || team2Total > 0) {
-      if (team1Total > team2Total) {
-        outcome = 'team1';
-      } else if (team2Total > team1Total) {
-        outcome = 'team2';
-      } else {
-        outcome = 'draw';
-      }
-    }
-
-    if (!outcome) {
+    const result = deriveStandingsMatchResult(match);
+    if (!result.outcome) {
       continue;
     }
 
-    row1.goalsFor += team1Total;
-    row1.goalsAgainst += team2Total;
-    row2.goalsFor += team2Total;
-    row2.goalsAgainst += team1Total;
+    row1.goalsFor += result.team1Total;
+    row1.goalsAgainst += result.team2Total;
+    row2.goalsFor += result.team2Total;
+    row2.goalsAgainst += result.team1Total;
     row1.matchesPlayed += 1;
     row2.matchesPlayed += 1;
 
-    if (outcome === 'team1') {
+    if (result.outcome === 'team1') {
+      row1.wins += 1;
+      row2.losses += 1;
       row1.basePoints += pointsForWin;
       row2.basePoints += pointsForLoss;
-    } else if (outcome === 'team2') {
+    } else if (result.outcome === 'team2') {
+      row2.wins += 1;
+      row1.losses += 1;
       row2.basePoints += pointsForWin;
       row1.basePoints += pointsForLoss;
     } else {

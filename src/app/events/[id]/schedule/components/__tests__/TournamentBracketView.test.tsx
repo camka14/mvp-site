@@ -2,6 +2,17 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 
 import type { Match, TournamentBracket } from '@/types';
+import { scheduleEvent } from '@/server/scheduler/scheduleEvent';
+import { rescheduleEventMatchesPreservingLocks } from '@/server/scheduler/reschedulePreservingLocks';
+import {
+  Division as SchedulerDivision,
+  League as SchedulerLeague,
+  PlayingField as SchedulerPlayingField,
+  Team as SchedulerTeam,
+  TimeSlot as SchedulerTimeSlot,
+} from '@/server/scheduler/types';
+import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 
 import TournamentBracketView from '../TournamentBracketView';
 import { renderWithMantine } from '../../../../../../../test/utils/renderWithMantine';
@@ -339,6 +350,307 @@ const buildSplitLeaguePlayoffBracket = (): TournamentBracket => {
   };
 };
 
+const buildUnifiedLeaguePlayoffBracket = (): TournamentBracket => {
+  const semifinalA = buildMatch('u1', {
+    matchId: 1,
+    team1Seed: 1,
+    team2Seed: 4,
+    division: { id: 'league_open', name: 'Open' } as Match['division'],
+    winnerNextMatchId: 'u3',
+  });
+  const semifinalB = buildMatch('u2', {
+    matchId: 2,
+    team1Seed: 2,
+    team2Seed: 3,
+    division: { id: 'league_open', name: 'Open' } as Match['division'],
+    winnerNextMatchId: 'u3',
+  });
+  const finalMatch = buildMatch('u3', {
+    matchId: 3,
+    division: { id: 'league_open', name: 'Open' } as Match['division'],
+    previousLeftId: 'u1',
+    previousRightId: 'u2',
+  });
+
+  return {
+    tournament: {
+      includePlayoffs: true,
+      splitLeaguePlayoffDivisions: false,
+      playoffTeamCount: 4,
+      divisions: ['league_open'],
+      divisionDetails: [
+        {
+          id: 'league_open',
+          name: 'Open',
+          playoffTeamCount: 4,
+          playoffPlacementDivisionIds: [],
+        },
+      ],
+      playoffDivisionDetails: [],
+    } as TournamentBracket['tournament'],
+    matches: {
+      [semifinalA.$id]: semifinalA,
+      [semifinalB.$id]: semifinalB,
+      [finalMatch.$id]: finalMatch,
+    },
+    teams: [],
+    isHost: false,
+    canManage: false,
+  };
+};
+
+const buildUnifiedLeaguePlayoffBracketWithStaleByeRelation = (): TournamentBracket => {
+  const playInMatch = buildMatch('b1', {
+    matchId: 91,
+    team1Seed: 8,
+    team2Seed: 9,
+    division: { id: 'league_open', name: 'Open' } as Match['division'],
+    winnerNextMatchId: 'b2',
+  });
+  const byeCarryMatch = buildMatch('b2', {
+    matchId: 95,
+    team2Seed: '1' as unknown as number,
+    division: { id: 'league_open', name: 'Open' } as Match['division'],
+    previousLeftId: 'b1',
+    previousRightId: undefined,
+    previousRightMatch: { $id: 'stale_seed_source' } as Match['previousRightMatch'],
+    winnerNextMatchId: 'b4',
+  });
+  const quarterfinal = buildMatch('b3', {
+    matchId: 97,
+    team1Seed: 4,
+    team2Seed: 5,
+    division: { id: 'league_open', name: 'Open' } as Match['division'],
+    winnerNextMatchId: 'b4',
+  });
+  const finalMatch = buildMatch('b4', {
+    matchId: 103,
+    division: { id: 'league_open', name: 'Open' } as Match['division'],
+    previousLeftId: 'b2',
+    previousRightId: 'b3',
+  });
+
+  return {
+    tournament: {
+      includePlayoffs: true,
+      splitLeaguePlayoffDivisions: false,
+      playoffTeamCount: 9,
+      divisions: ['league_open'],
+      divisionDetails: [
+        {
+          id: 'league_open',
+          name: 'Open',
+          playoffTeamCount: 9,
+          playoffPlacementDivisionIds: [],
+        },
+      ],
+      playoffDivisionDetails: [],
+    } as TournamentBracket['tournament'],
+    matches: {
+      [playInMatch.$id]: playInMatch,
+      [byeCarryMatch.$id]: byeCarryMatch,
+      [quarterfinal.$id]: quarterfinal,
+      [finalMatch.$id]: finalMatch,
+    },
+    teams: [],
+    isHost: false,
+    canManage: false,
+  };
+};
+
+const buildScheduledLeagueBracket = (playoffTeamCount: number): TournamentBracket => {
+  const context = {
+    log: () => {},
+    error: () => {},
+  };
+  const division = new SchedulerDivision('league_open', 'CoEd Open 18+');
+  const field = new SchedulerPlayingField({
+    id: 'field_main',
+    divisions: [division],
+    matches: [],
+    events: [],
+    rentalSlots: [],
+    name: 'Main',
+  });
+  const teams: Record<string, SchedulerTeam> = {};
+  for (let index = 1; index <= playoffTeamCount; index += 1) {
+    const id = `team_${index}`;
+    teams[id] = new SchedulerTeam({
+      id,
+      captainId: `captain_${index}`,
+      division,
+      name: `Team ${index}`,
+      matches: [],
+      playerIds: [],
+    });
+  }
+
+  const scheduled = scheduleEvent({
+    event: new SchedulerLeague({
+      id: 'league_nine_team_component_test',
+      name: 'Nine Team League',
+      start: new Date('2026-07-01T08:00:00.000Z'),
+      end: new Date('2026-08-31T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: playoffTeamCount,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: true,
+      teams,
+      divisions: [division],
+      playoffDivisions: [],
+      splitLeaguePlayoffDivisions: false,
+      officials: [],
+      fields: {
+        [field.id]: field,
+      },
+      timeSlots: [
+        new SchedulerTimeSlot({
+          id: 'slot_component_real_bracket',
+          dayOfWeek: 0,
+          startDate: new Date('2026-07-01T00:00:00.000Z'),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 22 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    }),
+  }, context);
+
+  const serializedEvent = serializeEventLegacy(scheduled.event);
+  const serializedMatches = serializeMatchesLegacy(scheduled.matches);
+  const tournament = normalizeApiEvent({
+    ...serializedEvent,
+    matches: serializedMatches,
+  } as TournamentBracket['tournament']);
+  if (!tournament) {
+    throw new Error('Expected serialized event');
+  }
+
+  return {
+    tournament,
+    matches: Object.fromEntries(
+      serializedMatches.map((match) => {
+        const normalizedMatch = normalizeApiMatch(match as Match);
+        return [normalizedMatch.$id, normalizedMatch];
+      }),
+    ),
+    teams: Array.isArray(tournament.teams) ? tournament.teams : [],
+    isHost: false,
+    canManage: false,
+  };
+};
+
+const buildScheduledNineTeamLeagueBracket = (): TournamentBracket => buildScheduledLeagueBracket(9);
+
+const buildScheduledTenTeamLeagueBracket = (): TournamentBracket => buildScheduledLeagueBracket(10);
+
+const buildRescheduledNineTeamLeagueBracket = (): TournamentBracket => {
+  const context = {
+    log: () => {},
+    error: () => {},
+  };
+  const division = new SchedulerDivision('league_open', 'CoEd Open 18+');
+  const field = new SchedulerPlayingField({
+    id: 'field_main_reschedule',
+    divisions: [division],
+    matches: [],
+    events: [],
+    rentalSlots: [],
+    name: 'Main',
+  });
+  const teams: Record<string, SchedulerTeam> = {};
+  for (let index = 1; index <= 9; index += 1) {
+    const id = `team_reschedule_${index}`;
+    teams[id] = new SchedulerTeam({
+      id,
+      captainId: `captain_reschedule_${index}`,
+      division,
+      name: `Team ${index}`,
+      matches: [],
+      playerIds: [],
+    });
+  }
+
+  const initial = scheduleEvent({
+    event: new SchedulerLeague({
+      id: 'league_nine_team_reschedule_test',
+      name: 'Nine Team League Rescheduled',
+      start: new Date('2026-07-01T08:00:00.000Z'),
+      end: new Date('2026-08-31T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 9,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: true,
+      teams,
+      divisions: [division],
+      playoffDivisions: [],
+      splitLeaguePlayoffDivisions: false,
+      officials: [],
+      fields: {
+        [field.id]: field,
+      },
+      timeSlots: [
+        new SchedulerTimeSlot({
+          id: 'slot_component_rescheduled_bracket',
+          dayOfWeek: 0,
+          startDate: new Date('2026-07-01T00:00:00.000Z'),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 22 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 9,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    }),
+  }, context);
+
+  const rescheduled = rescheduleEventMatchesPreservingLocks(initial.event);
+  const serializedEvent = serializeEventLegacy(rescheduled.event);
+  const serializedMatches = serializeMatchesLegacy(rescheduled.matches);
+  const tournament = normalizeApiEvent({
+    ...serializedEvent,
+    matches: serializedMatches,
+  } as TournamentBracket['tournament']);
+  if (!tournament) {
+    throw new Error('Expected serialized event');
+  }
+
+  return {
+    tournament,
+    matches: Object.fromEntries(
+      serializedMatches.map((match) => {
+        const normalizedMatch = normalizeApiMatch(match as Match);
+        return [normalizedMatch.$id, normalizedMatch];
+      }),
+    ),
+    teams: Array.isArray(tournament.teams) ? tournament.teams : [],
+    isHost: false,
+    canManage: false,
+  };
+};
+
 function BracketDivisionSwitchHarness() {
   const [winnersOnly, setWinnersOnly] = useState(false);
   const bracket = winnersOnly ? buildWinnersOnlyBracket() : buildBracketWithLosers();
@@ -390,6 +702,61 @@ describe('TournamentBracketView', () => {
     expect(screen.getByText('1st place (League B)')).toBeInTheDocument();
     expect(screen.getByText('2nd place (League A)')).toBeInTheDocument();
     expect(screen.getByText('2nd place (League B)')).toBeInTheDocument();
+  });
+
+  it('uses direct league placements for empty first-round placeholders when playoffs are not split', () => {
+    renderWithMantine(<TournamentBracketView bracket={buildUnifiedLeaguePlayoffBracket()} />);
+
+    expect(screen.getByText('1st place (Open)')).toBeInTheDocument();
+    expect(screen.getByText('4th place (Open)')).toBeInTheDocument();
+    expect(screen.getByText('2nd place (Open)')).toBeInTheDocument();
+    expect(screen.getByText('3rd place (Open)')).toBeInTheDocument();
+  });
+
+  it('keeps bye-seed placeholders when the open slot only has a stale relation object', () => {
+    renderWithMantine(<TournamentBracketView bracket={buildUnifiedLeaguePlayoffBracketWithStaleByeRelation()} />);
+
+    expect(screen.getByText('1st place (Open)')).toBeInTheDocument();
+    expect(screen.getByText('8th place (Open)')).toBeInTheDocument();
+    expect(screen.getByText('9th place (Open)')).toBeInTheDocument();
+  });
+
+  it('renders carried bye placeholders on the actual 10-team bracket nodes', () => {
+    const bracket = buildScheduledTenTeamLeagueBracket();
+    const carriedSeedMatches = Object.values(bracket.matches).filter((match) => {
+      const previousCount = Number(Boolean(match.previousLeftId)) + Number(Boolean(match.previousRightId));
+      const directSeedCount = Number(match.team1Seed !== null && match.team1Seed !== undefined)
+        + Number(match.team2Seed !== null && match.team2Seed !== undefined);
+      return previousCount === 1 && directSeedCount === 1;
+    });
+
+    expect(carriedSeedMatches).toHaveLength(2);
+
+    renderWithMantine(<TournamentBracketView bracket={bracket} />);
+
+    const carriedCardText = carriedSeedMatches.map((match) => (
+      screen.getByText(`match-${match.$id}`).parentElement?.textContent ?? ''
+    ));
+
+    expect(carriedCardText).toEqual(expect.arrayContaining([
+      expect.stringContaining('1st place (CoEd Open 18+)'),
+      expect.stringContaining('2nd place (CoEd Open 18+)'),
+    ]));
+  });
+
+  it('keeps bye placeholders after rescheduling an existing 9-team bracket', () => {
+    const bracket = buildRescheduledNineTeamLeagueBracket();
+    const seed1Match = Object.values(bracket.matches).find((match) => (
+      (match.team1Seed === 1 || match.team2Seed === 1)
+      && (Boolean(match.previousLeftId || match.previousLeftMatch) || Boolean(match.previousRightId || match.previousRightMatch))
+    ));
+
+    expect(seed1Match).toBeTruthy();
+
+    renderWithMantine(<TournamentBracketView bracket={bracket} />);
+
+    const seed1Card = screen.getByText(`match-${seed1Match!.$id}`).parentElement;
+    expect(seed1Card).toHaveTextContent('1st place (CoEd Open 18+)');
   });
 
   it('uses explicit previous IDs for edit-layout child offsets when relation objects are stale', () => {

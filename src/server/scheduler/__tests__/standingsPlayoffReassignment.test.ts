@@ -292,4 +292,79 @@ describe('standings playoff reassignment', () => {
       expect(assignedCounts.get(teamId)).toBe(1);
     }
   });
+
+  it('preserves carried bye seeds on the actual quarterfinal nodes for a 10-team league playoff', () => {
+    const open = new Division(
+      'open',
+      'Open',
+      [],
+      null,
+      12,
+      10,
+      'LEAGUE',
+      [],
+    );
+    const field = buildField('field_open', [open]);
+    const teams = buildTeamsForDivision('open', 10, open);
+
+    const league = new League({
+      id: 'league_ten_team_bye_reassignment',
+      name: 'League Ten Team Bye Reassignment',
+      start: new Date('2026-01-05T08:00:00.000Z'),
+      end: new Date('2026-03-30T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 12,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: true,
+      teams,
+      divisions: [open],
+      playoffDivisions: [],
+      splitLeaguePlayoffDivisions: false,
+      officials: [],
+      fields: {
+        [field.id]: field,
+      },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_open_playoff',
+          dayOfWeek: 1,
+          startDate: new Date('2026-01-05T08:00:00.000Z'),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: field.id,
+          divisions: [open],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 10,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const scheduledLeague = scheduled.event as League;
+
+    applyLeagueDivisionPlayoffReassignment(scheduledLeague, open.id, context);
+
+    const carriedSeedMatches = getPlayoffMatches(scheduledLeague, open.id).filter((match) => {
+      const previousCount = Number(Boolean(match.previousLeftMatch)) + Number(Boolean(match.previousRightMatch));
+      const directSeedCount = Number(typeof match.team1Seed === 'number') + Number(typeof match.team2Seed === 'number');
+      return previousCount === 1 && directSeedCount === 1;
+    });
+
+    expect(carriedSeedMatches).toHaveLength(2);
+    expect(carriedSeedMatches.map((match) => match.matchId).sort((left, right) => left - right)).toEqual([69, 71]);
+    expect(
+      carriedSeedMatches
+        .map((match) => (typeof match.team1Seed === 'number' ? match.team1Seed : match.team2Seed))
+        .sort((left, right) => (left ?? 0) - (right ?? 0)),
+    ).toEqual([1, 2]);
+  });
 });

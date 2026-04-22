@@ -10,6 +10,7 @@ import type {
   TimeSlot,
   UserData,
 } from '@/types';
+import { normalizeBracketSeed } from '@/lib/bracketSeeds';
 
 type ApiEntity = {
   $id?: string | number | null;
@@ -55,6 +56,8 @@ export const normalizeApiMatch = (input: Match): Match => {
   return {
     ...match,
     locked: Boolean((match as any).locked),
+    team1Seed: normalizeBracketSeed((match as any).team1Seed),
+    team2Seed: normalizeBracketSeed((match as any).team2Seed),
     segments: Array.isArray(match.segments)
       ? match.segments.map((segment) => withLegacyId(segment))
       : match.segments,

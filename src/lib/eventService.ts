@@ -34,6 +34,7 @@ import {
   normalizeOutgoingEventDocument,
 } from "./apiMappers";
 import { resolveOrganizationVerificationStatus } from "@/lib/organizationVerification";
+import { normalizeBracketSeed } from "@/lib/bracketSeeds";
 import { createSport } from "@/types/defaults";
 
 export interface LeagueGenerationOptions {
@@ -483,26 +484,36 @@ class EventService {
         ...(hasTimeSlotsOverride ? { timeSlots: options.timeSlots } : {}),
       } as Event;
       const payload = toEventPayload(payloadSource) as Record<string, unknown>;
-      delete payload.matches;
-      delete payload.teams;
-      delete payload.organization;
-      delete payload.sport;
-      delete payload.players;
-      delete payload.officials;
-      delete payload.assistantHosts;
-      delete payload.staffInvites;
-      delete payload.id;
-      delete payload.$id;
-      delete payload.createdAt;
-      delete payload.$createdAt;
-      delete payload.updatedAt;
-      delete payload.$updatedAt;
-      delete payload.organizationId;
-      delete payload.parentEvent;
-      delete payload.fieldCount;
-      delete payload.status;
-      delete payload.leagueConfig;
-      delete payload.refType;
+      [
+        "matches",
+        "teams",
+        "organization",
+        "sport",
+        "players",
+        "officials",
+        "assistantHosts",
+        "staffInvites",
+        "waitList",
+        "freeAgents",
+        "attendees",
+        "participantCount",
+        "participantCapacity",
+        "resolvedMatchRules",
+        "id",
+        "$id",
+        "createdAt",
+        "$createdAt",
+        "updatedAt",
+        "$updatedAt",
+        "organizationId",
+        "parentEvent",
+        "fieldCount",
+        "status",
+        "leagueConfig",
+        "refType",
+      ].forEach((key) => {
+        delete payload[key];
+      });
 
       if (!hasFieldsOverride) {
         delete payload.fields;
@@ -2357,8 +2368,8 @@ class EventService {
       start: input.start,
       end: input.end,
       locked: Boolean(input.locked),
-      team1Seed: input.team1Seed,
-      team2Seed: input.team2Seed,
+      team1Seed: normalizeBracketSeed(input.team1Seed),
+      team2Seed: normalizeBracketSeed(input.team2Seed),
       teamOfficialSeed:
         typeof input.teamOfficialSeed === "number" &&
         Number.isFinite(input.teamOfficialSeed)
