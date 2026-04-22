@@ -3104,16 +3104,13 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         ownerId: true,
         hostIds: true,
         officialIds: true,
-        _count: {
-          select: {
-            fields: true,
-          },
-        },
       } as any,
     })
     : null;
-  const organizationFieldCount = typeof (organizationAccess as any)?._count?.fields === 'number'
-    ? Number((organizationAccess as any)._count.fields)
+  const organizationFieldCount = resolvedOrganizationId
+    ? await client.fields.count({
+      where: { organizationId: resolvedOrganizationId },
+    } as any)
     : null;
   if (!existingEvent && resolvedOrganizationId && organizationFieldCount === 0) {
     throw new Error(ORGANIZATION_EVENT_FIELDS_REQUIRED_MESSAGE);

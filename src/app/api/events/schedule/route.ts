@@ -55,6 +55,11 @@ const isFixedEndValidationError = (error: unknown): boolean => {
     || message.includes('End date/time must be after start date/time');
 };
 
+const isOrganizationFieldRequirementError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('Organization events require at least one saved field');
+};
+
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession(req);
@@ -179,6 +184,10 @@ export async function POST(req: NextRequest) {
     }
     if (isFixedEndValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid schedule window';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isOrganizationFieldRequirementError(error)) {
+      const message = error instanceof Error ? error.message : 'Organization field is required';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Schedule event failed', error);

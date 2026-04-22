@@ -84,6 +84,8 @@ type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   onEventClick: (event: Event) => void;
   onCreateEvent: () => void;
   showCreateEventButton?: boolean;
+  createEventDisabled?: boolean;
+  createEventHelperText?: string | null;
   hideWeeklyChildren?: boolean;
   setHideWeeklyChildren?: (value: boolean) => void;
 };
@@ -120,6 +122,8 @@ export default function EventsTabContent<TEventType extends string = Event['even
     onEventClick,
     onCreateEvent,
     showCreateEventButton = true,
+    createEventDisabled = false,
+    createEventHelperText = null,
     hideWeeklyChildren = false,
     setHideWeeklyChildren,
   } = props;
@@ -474,9 +478,16 @@ export default function EventsTabContent<TEventType extends string = Event['even
             </div>
           </Group>
           {showCreateEventButton && (
-            <Button size="md" onClick={onCreateEvent}>
-              Create event
-            </Button>
+            <div style={{ minWidth: 260 }}>
+              <Button size="md" fullWidth onClick={onCreateEvent} disabled={createEventDisabled}>
+                Create event
+              </Button>
+              {createEventHelperText && (
+                <Text size="xs" c={createEventDisabled ? 'red' : 'dimmed'} mt={6}>
+                  {createEventHelperText}
+                </Text>
+              )}
+            </div>
           )}
         </Group>
       </div>

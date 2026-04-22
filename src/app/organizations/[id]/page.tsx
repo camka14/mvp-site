@@ -73,6 +73,7 @@ export default function OrganizationDetailPage() {
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORG_EVENTS_LIMIT = 18;
 const ORG_EVENTS_DEFAULT_MAX_DISTANCE = 50;
+const ORG_EVENT_CREATE_FIELD_REQUIRED_TEXT = 'Create a field for this organization before creating an event.';
 const ORG_HOSTED_EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const;
 const ORG_EVENT_TYPE_OPTIONS = [...ORG_HOSTED_EVENT_TYPE_OPTIONS, 'RENTAL'] as const;
 const PRODUCT_PERIOD_OPTIONS: Array<{ label: string; value: Product['period'] }> = [
@@ -391,6 +392,18 @@ function OrganizationDetailContent() {
       && org
       && user.homePageOrganizationId === org.$id,
   );
+  const organizationFieldCount = useMemo(
+    () => (
+      Array.isArray(org?.fields)
+        ? org.fields.filter((field) => typeof field?.$id === 'string' && field.$id.trim().length > 0).length
+        : 0
+    ),
+    [org?.fields],
+  );
+  const canCreateOrganizationEvents = isOwner && organizationFieldCount > 0;
+  const createEventHelperText = isOwner && organizationFieldCount === 0
+    ? ORG_EVENT_CREATE_FIELD_REQUIRED_TEXT
+    : null;
   const canToggleHomePagePreference = Boolean(isOrganizationRoleMember || isCurrentOrganizationHomePage);
   const hasVisibleTeams = useMemo(
     () => Array.isArray(org?.teams) && org.teams.length > 0,
@@ -1412,6 +1425,9 @@ function OrganizationDetailContent() {
   );
 
   const navigateToEventCreate = useCallback((templateId?: string | null) => {
+    if (!canCreateOrganizationEvents) {
+      return;
+    }
     const newId = createId();
     const normalizedTemplateId = templateId?.trim();
     router.push(
@@ -1422,10 +1438,10 @@ function OrganizationDetailContent() {
         skipTemplatePrompt: !normalizedTemplateId,
       }),
     );
-  }, [id, router]);
+  }, [canCreateOrganizationEvents, id, router]);
 
   const handleCreateEvent = useCallback(() => {
-    if (!isOwner) {
+    if (!canCreateOrganizationEvents) {
       return;
     }
     setSelectedCreateEventTemplateId((previous) => {
@@ -1438,7 +1454,7 @@ function OrganizationDetailContent() {
     if (org?.$id && !eventTemplatesLoading && eventTemplates.length === 0) {
       void loadEventTemplates(org.$id);
     }
-  }, [eventTemplates, eventTemplatesLoading, isOwner, loadEventTemplates, org?.$id]);
+  }, [canCreateOrganizationEvents, eventTemplates, eventTemplatesLoading, loadEventTemplates, org?.$id]);
 
   const handleCreateEventWithoutTemplate = useCallback(() => {
     setEventTemplateCreateModalOpen(false);
@@ -2331,6 +2347,8 @@ function OrganizationDetailContent() {
                 onEventClick={handleOrganizationEventClick}
                 onCreateEvent={handleCreateEvent}
                 showCreateEventButton={isOwner}
+                createEventDisabled={!canCreateOrganizationEvents}
+                createEventHelperText={createEventHelperText}
                 hideWeeklyChildren={hideWeeklyChildEvents}
                 setHideWeeklyChildren={setHideWeeklyChildEvents}
               />

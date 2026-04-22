@@ -585,6 +585,11 @@ const isDivisionAssignmentValidationError = (error: unknown): boolean => {
     || normalized.includes('assigned to multiple divisions');
 };
 
+const isOrganizationFieldRequirementError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.includes('Organization events require at least one saved field');
+};
+
 const resolveSessionContext = async (
   req: NextRequest,
 ): Promise<{ userId: string; isAdmin: boolean } | null> => {
@@ -968,6 +973,10 @@ export async function POST(req: NextRequest) {
     }
     if (isDivisionAssignmentValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid division team assignments';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isOrganizationFieldRequirementError(error)) {
+      const message = error instanceof Error ? error.message : 'Organization field is required';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     if (isLeaguePlayoffTeamCountValidationError(error)) {

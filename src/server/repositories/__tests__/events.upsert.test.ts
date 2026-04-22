@@ -17,7 +17,7 @@ type MockClient = {
   userData: { findUnique: jest.Mock };
   leagueScoringConfigs: { upsert: jest.Mock };
   eventOfficials: { findMany: jest.Mock; deleteMany: jest.Mock; create: jest.Mock };
-  fields: { findUnique: jest.Mock; findMany: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
+  fields: { findUnique: jest.Mock; findMany: jest.Mock; count: jest.Mock; upsert: jest.Mock; deleteMany: jest.Mock };
   matches: { findMany: jest.Mock; deleteMany: jest.Mock };
   divisions: { findMany: jest.Mock; deleteMany: jest.Mock; upsert: jest.Mock };
   teams: { upsert: jest.Mock };
@@ -57,6 +57,7 @@ const createMockClient = (): MockClient => ({
   fields: {
     findUnique: jest.fn().mockResolvedValue(null),
     findMany: jest.fn().mockResolvedValue([]),
+    count: jest.fn().mockResolvedValue(1),
     upsert: jest.fn().mockResolvedValue(undefined),
     deleteMany: jest.fn().mockResolvedValue(undefined),
   },
@@ -1050,8 +1051,8 @@ describe('upsertEventFromPayload', () => {
       ownerId: 'owner_1',
       hostIds: ['owner_1'],
       officialIds: [],
-      _count: { fields: 0 },
     });
+    client.fields.count.mockResolvedValueOnce(0);
 
     const payload = {
       ...baseEventPayload(),
