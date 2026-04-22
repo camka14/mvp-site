@@ -1723,13 +1723,22 @@ const buildMatches = (
   segmentRowsByMatchId: Map<string, any[]> = new Map(),
   incidentRowsByMatchId: Map<string, any[]> = new Map(),
   resolvedMatchRules: ReturnType<typeof resolveMatchRules> | null = null,
+  hydration: {
+    segmentMatchIds?: Set<string> | null;
+    incidentMatchIds?: Set<string> | null;
+  } = {},
 ) => {
   const divisionLookup = new Map(divisions.map((division) => [division.id, division]));
   const officialLookup = new Map(officials.map((official) => [official.id, official]));
   const eventOfficialsById = new Map(event.eventOfficials.map((official) => [official.id, official]));
   const positionCountsById = new Map(event.officialPositions.map((position) => [position.id, position.count]));
+  const segmentMatchIds = hydration.segmentMatchIds ?? null;
+  const incidentMatchIds = hydration.incidentMatchIds ?? null;
   const matches: Record<string, Match> = {};
   for (const row of rows) {
+    const rowMatchId = normalizeEntityId(row.id) ?? String(row.id ?? '');
+    const shouldHydrateSegments = !segmentMatchIds || segmentMatchIds.has(rowMatchId);
+    const shouldHydrateIncidents = !incidentMatchIds || incidentMatchIds.has(rowMatchId);
     const normalizedDivisionId = normalizeDivisionKey(row.division);
     const division = normalizedDivisionId && divisionLookup.has(normalizedDivisionId)
       ? (divisionLookup.get(normalizedDivisionId) as Division)
@@ -1759,12 +1768,13 @@ const buildMatches = (
     const primaryOfficialCheckedIn = officialAssignments.length
       ? deriveLegacyOfficialCheckedInFromAssignments(officialAssignments)
       : row.officialCheckedIn ?? false;
-    const persistedSegments = (segmentRowsByMatchId.get(row.id) ?? [])
-      .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
-      .map(serializeMatchSegmentRow);
-    const legacySegments = persistedSegments.length
-      ? []
-      : buildLegacySegments({
+    const persistedSegments = shouldHydrateSegments
+      ? (segmentRowsByMatchId.get(row.id) ?? [])
+        .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
+        .map(serializeMatchSegmentRow)
+      : [];
+    const legacySegments = shouldHydrateSegments && !persistedSegments.length
+      ? buildLegacySegments({
           eventId: row.eventId ?? event.id,
           matchId: row.id,
           team1Id: row.team1Id ?? null,
@@ -1774,13 +1784,18 @@ const buildMatches = (
           setResults: ensureArray(row.setResults),
           start,
           end,
-        });
-    const segments = persistedSegments.length ? persistedSegments : legacySegments;
-    const incidents = (incidentRowsByMatchId.get(row.id) ?? [])
-      .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
-      .map(serializeMatchIncidentRow);
+        })
+      : [];
+    const segments = shouldHydrateSegments ? (persistedSegments.length ? persistedSegments : legacySegments) : [];
+    const incidents = shouldHydrateIncidents
+      ? (incidentRowsByMatchId.get(row.id) ?? [])
+        .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
+        .map(serializeMatchIncidentRow)
+      : [];
     const winnerEventTeamId = normalizeEntityId(row.winnerEventTeamId)
-      ?? segments.find((segment) => segment.status === 'COMPLETE' && segment.winnerEventTeamId)?.winnerEventTeamId
+      ?? (shouldHydrateSegments
+        ? segments.find((segment) => segment.status === 'COMPLETE' && segment.winnerEventTeamId)?.winnerEventTeamId
+        : null)
       ?? null;
     const match = new Match({
       id: row.id,
@@ -1831,6 +1846,18 @@ const buildMatches = (
     if (!end) {
       (match as unknown as { end: Date | null }).end = null;
     }
+    Object.defineProperty(match, hydratedMatchSegmentsSymbol, {
+      configurable: true,
+      enumerable: false,
+      value: shouldHydrateSegments,
+      writable: true,
+    });
+    Object.defineProperty(match, hydratedMatchIncidentsSymbol, {
+      configurable: true,
+      enumerable: false,
+      value: shouldHydrateIncidents,
+      writable: true,
+    });
     matches[row.id] = match;
   }
   // Wire pointers
@@ -1856,11 +1883,34 @@ const buildMatches = (
   return matches;
 };
 
-export const loadEventWithRelations = async (eventId: string, client: PrismaLike = prisma): Promise<League | Tournament> => {
+const hydratedMatchSegmentsSymbol = Symbol('hydratedMatchSegments');
+const hydratedMatchIncidentsSymbol = Symbol('hydratedMatchIncidents');
+
+type LoadEventWithRelationsOptions = {
+  hydratedMatchDetailIds?: string[] | null;
+  includeTeamPlayers?: boolean;
+  includeTeamRegistrations?: boolean;
+};
+
+const shouldPersistHydratedMatchSegments = (match: Match): boolean => (
+  ((match as Match & { [hydratedMatchSegmentsSymbol]?: boolean })[hydratedMatchSegmentsSymbol] ?? true) !== false
+);
+
+const shouldPersistHydratedMatchIncidents = (match: Match): boolean => (
+  ((match as Match & { [hydratedMatchIncidentsSymbol]?: boolean })[hydratedMatchIncidentsSymbol] ?? true) !== false
+);
+
+export const loadEventWithRelations = async (
+  eventId: string,
+  client: PrismaLike = prisma,
+  options: LoadEventWithRelationsOptions = {},
+): Promise<League | Tournament> => {
   const event = await client.events.findUnique({ where: { id: eventId } });
   if (!event) {
     throw new Error('Event not found');
   }
+  const includeTeamPlayers = options.includeTeamPlayers !== false;
+  const includeTeamRegistrations = options.includeTeamRegistrations !== false;
 
   const eventDivisionIds = ensureStringArray(event.divisions);
   const allDivisionRows = await client.divisions.findMany({
@@ -1957,12 +2007,16 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     client.matches.findMany({ where: { eventId: event.id } }),
     event.leagueScoringConfigId ? client.leagueScoringConfigs.findUnique({ where: { id: event.leagueScoringConfigId } }) : Promise.resolve(null),
   ]);
-  const teamPlayerIds = Array.from(new Set(
-    (teamRows as any[]).flatMap((row) => ensureStringArray((row as any).playerIds)),
-  ));
+  const teamPlayerIds = includeTeamPlayers
+    ? Array.from(new Set(
+        (teamRows as any[]).flatMap((row) => ensureStringArray((row as any).playerIds)),
+      ))
+    : [];
   const [teamPlayerRows, eventRegistrationRows] = await Promise.all([
-    teamPlayerIds.length ? client.userData.findMany({ where: { id: { in: teamPlayerIds } } }) : Promise.resolve([]),
-    teamIdsToLoad.length && typeof (client as any).eventRegistrations?.findMany === 'function'
+    includeTeamPlayers && teamPlayerIds.length
+      ? client.userData.findMany({ where: { id: { in: teamPlayerIds } } })
+      : Promise.resolve([]),
+    includeTeamRegistrations && teamIdsToLoad.length && typeof (client as any).eventRegistrations?.findMany === 'function'
       ? (client as any).eventRegistrations.findMany({
           where: {
             eventId: event.id,
@@ -2023,12 +2077,22 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
   const matchIds = (matchRows as any[])
     .map((row) => normalizeEntityId(row.id))
     .filter((id): id is string => Boolean(id));
+  const hydratedMatchDetailIdSet = Array.isArray(options.hydratedMatchDetailIds)
+    ? new Set(
+        options.hydratedMatchDetailIds
+          .map((value) => normalizeEntityId(value))
+          .filter((value): value is string => Boolean(value)),
+      )
+    : null;
+  const matchDetailIdsToLoad = hydratedMatchDetailIdSet
+    ? matchIds.filter((id) => hydratedMatchDetailIdSet.has(id))
+    : matchIds;
   const [segmentRows, incidentRows] = await Promise.all([
-    matchIds.length && typeof (client as any).matchSegments?.findMany === 'function'
-      ? (client as any).matchSegments.findMany({ where: { matchId: { in: matchIds } } })
+    matchDetailIdsToLoad.length && typeof (client as any).matchSegments?.findMany === 'function'
+      ? (client as any).matchSegments.findMany({ where: { matchId: { in: matchDetailIdsToLoad } } })
       : Promise.resolve([]),
-    matchIds.length && typeof (client as any).matchIncidents?.findMany === 'function'
-      ? (client as any).matchIncidents.findMany({ where: { matchId: { in: matchIds } } })
+    matchDetailIdsToLoad.length && typeof (client as any).matchIncidents?.findMany === 'function'
+      ? (client as any).matchIncidents.findMany({ where: { matchId: { in: matchDetailIdsToLoad } } })
       : Promise.resolve([]),
   ]);
   const segmentRowsByMatchId = new Map<string, any[]>();
@@ -2219,11 +2283,27 @@ export const loadEventWithRelations = async (eventId: string, client: PrismaLike
     segmentRowsByMatchId,
     incidentRowsByMatchId,
     resolvedMatchRules,
+    {
+      segmentMatchIds: hydratedMatchDetailIdSet,
+      incidentMatchIds: hydratedMatchDetailIdSet,
+    },
   );
   constructed.matches = matches;
   (constructed as any).parentEvent = normalizedParentEvent;
   return constructed;
 };
+
+export const loadEventForMatchMutation = async (
+  eventId: string,
+  matchId: string,
+  client: PrismaLike = prisma,
+): Promise<League | Tournament> => (
+  loadEventWithRelations(eventId, client, {
+    hydratedMatchDetailIds: [matchId],
+    includeTeamPlayers: false,
+    includeTeamRegistrations: false,
+  })
+);
 
 export const saveMatches = async (
   eventId: string,
@@ -2231,6 +2311,10 @@ export const saveMatches = async (
   client: PrismaLike = prisma,
 ) => {
   const now = new Date();
+  const segmentMatchIds = new Set<string>();
+  const incidentMatchIds = new Set<string>();
+  const segmentRows: Array<Record<string, unknown>> = [];
+  const incidentRows: Array<Record<string, unknown>> = [];
   for (const match of matches) {
     const isBracketMatch = Boolean(
       match.previousLeftMatch || match.previousRightMatch || match.winnerNextMatch || match.loserNextMatch,
@@ -2296,11 +2380,24 @@ export const saveMatches = async (
       create: { ...data, createdAt: now },
       update: updateData,
     });
-    if (typeof (client as any).matchSegments?.upsert === 'function' && Array.isArray(match.segments)) {
+    if (
+      shouldPersistHydratedMatchSegments(match)
+      && Array.isArray(match.segments)
+      && (
+        typeof (client as any).matchSegments?.upsert === 'function'
+        || (
+          typeof (client as any).matchSegments?.deleteMany === 'function'
+          && typeof (client as any).matchSegments?.createMany === 'function'
+        )
+      )
+    ) {
+      segmentMatchIds.add(match.id);
       for (const segment of match.segments) {
         const segmentId = segment.id || `${match.id}_segment_${segment.sequence}`;
-        const segmentData = {
+        segmentRows.push({
           id: segmentId,
+          createdAt: now,
+          updatedAt: now,
           eventId,
           matchId: match.id,
           sequence: segment.sequence,
@@ -2312,20 +2409,27 @@ export const saveMatches = async (
           resultType: segment.resultType ?? null,
           statusReason: segment.statusReason ?? null,
           metadata: segment.metadata ?? null,
-          updatedAt: now,
-        };
-        await (client as any).matchSegments.upsert({
-          where: { matchId_sequence: { matchId: match.id, sequence: segment.sequence } },
-          create: { ...segmentData, createdAt: now },
-          update: segmentData,
         });
       }
     }
-    if (typeof (client as any).matchIncidents?.upsert === 'function' && Array.isArray(match.incidents)) {
+    if (
+      shouldPersistHydratedMatchIncidents(match)
+      && Array.isArray(match.incidents)
+      && (
+        typeof (client as any).matchIncidents?.upsert === 'function'
+        || (
+          typeof (client as any).matchIncidents?.deleteMany === 'function'
+          && typeof (client as any).matchIncidents?.createMany === 'function'
+        )
+      )
+    ) {
+      incidentMatchIds.add(match.id);
       for (const incident of match.incidents) {
         const incidentId = incident.id || `${match.id}_incident_${incident.sequence}`;
-        const incidentData = {
+        incidentRows.push({
           id: incidentId,
+          createdAt: now,
+          updatedAt: now,
           eventId,
           matchId: match.id,
           segmentId: incident.segmentId ?? null,

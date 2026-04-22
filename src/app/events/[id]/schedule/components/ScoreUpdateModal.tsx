@@ -36,6 +36,7 @@ import {
 type ScorePayload = {
   matchId: string;
   segments: MatchSegment[];
+  finalize?: boolean;
   scoreSet?: {
     segmentId?: string | null;
     sequence: number;
@@ -49,6 +50,7 @@ type ScorePayload = {
   team1Points: number[];
   team2Points: number[];
   setResults: number[];
+  time?: string;
 };
 
 type MatchRosterParticipantOption = {
@@ -516,7 +518,6 @@ export default function ScoreUpdateModal({
   const [pendingPoint, setPendingPoint] = useState<{ teamId: string; delta: number } | null>(null);
   const [deletedIncidentIds, setDeletedIncidentIds] = useState<Set<string>>(() => new Set());
   const [optimisticIncidents, setOptimisticIncidents] = useState<MatchIncident[]>([]);
-  const finalizedRef = useRef(false);
   const incidentQueueRef = useRef<MatchIncidentOperation[]>([]);
   const incidentQueueTimerRef = useRef<number | null>(null);
   const incidentRetryAttemptRef = useRef(0);
@@ -738,7 +739,6 @@ export default function ScoreUpdateModal({
   };
 
   useEffect(() => {
-    finalizedRef.current = false;
     const persistedIncidentIds = new Set(
       (Array.isArray(match.incidents) ? match.incidents : [])
         .map((incident) => entityId(incident))
@@ -1230,7 +1230,9 @@ export default function ScoreUpdateModal({
     const next = segments.map((segment, index) => (
       index === activeIndex ? { ...segment, status: 'COMPLETE', winnerEventTeamId, endedAt } satisfies MatchSegment : segment
     ));
+    const shouldFinalize = matchComplete(next);
     const nextPayload = payload(next, {
+      ...(shouldFinalize ? { finalize: true, time: endedAt } : {}),
       segmentOperations: [{
         id: activeSegment.id,
         sequence: activeSegment.sequence,
@@ -1253,9 +1255,8 @@ export default function ScoreUpdateModal({
     setSegments(next);
     const nextOpen = next.findIndex((segment) => segment.status !== 'COMPLETE');
     if (nextOpen >= 0) setActiveIndex(nextOpen);
-    if (onMatchComplete && !finalizedRef.current && matchComplete(next)) {
+    if (shouldFinalize && onMatchComplete && !onSetComplete && !onScoreChange) {
       await onMatchComplete({ ...nextPayload, eventId: tournament.$id });
-      finalizedRef.current = true;
     }
   };
 
@@ -1279,7 +1280,9 @@ export default function ScoreUpdateModal({
       alert('Incident updates are still waiting to sync. Please retry once the queue starts moving.');
       return;
     }
+    const shouldFinalize = matchComplete(next);
     const nextPayload = payload(next, {
+      ...(shouldFinalize ? { finalize: true, time: endedAt } : {}),
       segmentOperations: next.map((segment) => ({
         id: segment.id,
         sequence: segment.sequence,
@@ -1292,9 +1295,8 @@ export default function ScoreUpdateModal({
     try {
       if (onScoreChange) await onScoreChange(nextPayload);
       else if (onSubmit) await onSubmit(match.$id, nextPayload.team1Points, nextPayload.team2Points, nextPayload.setResults);
-      if (onMatchComplete && !finalizedRef.current && matchComplete(next)) {
+      if (shouldFinalize && onMatchComplete && !onScoreChange) {
         await onMatchComplete({ ...nextPayload, eventId: tournament.$id });
-        finalizedRef.current = true;
       }
     } catch (error) {
       console.error('Failed to update match:', error);
@@ -1809,7 +1811,11 @@ export default function ScoreUpdateModal({
                 Confirm {labelForSegment(rules, activeSegment?.sequence ?? 1)}
               </Button>
             )}
-            {canManage && <Button onClick={saveMatch} loading={loading} disabled={!isTimedMatch && rules.scoringModel === 'SETS' && !matchComplete()}>Save Match</Button>}
+            {canManage && isTimedMatch && rules.scoringModel === 'POINTS_ONLY' && (
+              <Button onClick={saveMatch} loading={loading}>
+                Finish Match
+              </Button>
+            )}
           </Group>
         </Group>
       </Stack>

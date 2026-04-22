@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
+import { loadEventForMatchMutation, loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import {
   applyMatchUpdates,
@@ -24,6 +24,11 @@ import { shouldFreezeMatchRulesSnapshot } from '@/server/matches/matchOperations
 import type { MatchIncident, MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
+
+const MATCH_UPDATE_TRANSACTION_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 60_000,
+} as const;
 
 const scoreMapSchema = z.record(z.string(), z.number());
 const lifecycleSchema = z.object({
@@ -928,7 +933,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Event not found', { status: 404 });
       }
       const isHostOrAdmin = await canManageEvent(session, eventAccess, tx);
-      const event = await loadEventWithRelations(eventId, tx);
+      const event = await loadEventForMatchMutation(eventId, matchId, tx);
       const officialPositions = Array.isArray(event.officialPositions) ? event.officialPositions : [];
       const eventOfficials = Array.isArray(event.eventOfficials) ? event.eventOfficials : [];
       const positionCountsById = new Map(officialPositions.map((position) => [position.id, position.count]));
@@ -1172,7 +1177,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       await saveMatches(eventId, Object.values(event.matches), tx);
 
       return targetMatch;
-    });
+    }, MATCH_UPDATE_TRANSACTION_OPTIONS);
 
     return NextResponse.json({ match: serializeMatchesLegacy([result])[0] }, { status: 200 });
   } catch (error) {

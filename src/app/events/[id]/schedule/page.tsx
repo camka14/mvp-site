@@ -7354,6 +7354,7 @@ function EventScheduleContent() {
   type MatchOperationPayload = {
     matchId: string;
     segments?: MatchSegment[];
+    finalize?: boolean;
     scoreSet?: {
       segmentId?: string | null;
       sequence: number;
@@ -7367,6 +7368,7 @@ function EventScheduleContent() {
     team1Points: number[];
     team2Points: number[];
     setResults: number[];
+    time?: string;
   };
 
   const handleScoreChange = useCallback(
@@ -7376,10 +7378,12 @@ function EventScheduleContent() {
       team2Points,
       setResults,
       scoreSet,
+      finalize,
       segmentOperations,
       incidentOperations,
       lifecycle,
       officialCheckIn,
+      time,
     }: MatchOperationPayload) => {
       const targetEventId = activeEvent?.$id ?? eventId;
       if (!targetEventId) return;
@@ -7402,10 +7406,12 @@ function EventScheduleContent() {
           updated = await tournamentService.addMatchIncident(targetEventId, matchId, incidentOperations[0]);
         } else if (hasOperations) {
           updated = await tournamentService.updateMatchOperations(targetEventId, matchId, {
+            finalize,
             segmentOperations,
             incidentOperations,
             lifecycle,
             officialCheckIn,
+            time,
           });
         } else {
           updated = await tournamentService.updateMatchScores(targetEventId, matchId, { team1Points, team2Points, setResults });
@@ -7425,46 +7431,25 @@ function EventScheduleContent() {
       team1Points,
       team2Points,
       setResults,
+      finalize,
       segmentOperations,
       incidentOperations,
+      time,
     }: MatchOperationPayload) => {
       const targetEventId = activeEvent?.$id ?? eventId;
       if (!targetEventId) return;
       const hasOperations = Boolean(segmentOperations?.length) || Boolean(incidentOperations?.length);
       const updated = hasOperations
         ? await tournamentService.updateMatchOperations(targetEventId, matchId, {
+            finalize,
             segmentOperations,
             incidentOperations,
+            time,
           })
         : await tournamentService.updateMatch(targetEventId, matchId, { team1Points, team2Points, setResults });
       applyMatchUpdate(updated as Match);
     },
     [applyMatchUpdate, activeEvent?.$id, eventId],
-  );
-
-  const handleMatchComplete = useCallback(
-    async ({
-      matchId,
-      team1Points,
-      team2Points,
-      setResults,
-      eventId,
-      segmentOperations,
-    }: {
-      matchId: string;
-      team1Points: number[];
-      team2Points: number[];
-      setResults: number[];
-      eventId?: string;
-      segmentOperations?: MatchSegmentOperation[];
-    }) => {
-      const targetEventId = eventId ?? activeEvent?.$id;
-      if (!targetEventId || activeEvent?.eventType === 'EVENT') {
-        return;
-      }
-      await tournamentService.completeMatch(targetEventId, matchId, { team1Points, team2Points, setResults, segmentOperations });
-    },
-    [activeEvent?.$id, activeEvent?.eventType],
   );
 
   const handleScoreSubmit = useCallback(
@@ -9777,7 +9762,6 @@ function EventScheduleContent() {
           canManage={canUserManageScore(scoreUpdateMatch)}
           onScoreChange={handleScoreChange}
           onSetComplete={handleSetComplete}
-          onMatchComplete={handleMatchComplete}
           onSubmit={handleScoreSubmit}
           onClose={() => {
             setIsScoreModalOpen(false);

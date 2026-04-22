@@ -695,6 +695,7 @@ class EventService {
     }>(path, {
       method: "POST",
       body: payload,
+      timeoutMs: SCHEDULE_REQUEST_TIMEOUT_MS,
     });
 
     const normalizedMatches = Array.isArray(result?.matches)
@@ -2907,3 +2908,4 @@ class EventService {
 }
 
 export const eventService = new EventService();
+const SCHEDULE_REQUEST_TIMEOUT_MS = 60_000;

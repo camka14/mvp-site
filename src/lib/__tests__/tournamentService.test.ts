@@ -25,8 +25,29 @@ describe('tournamentService', () => {
 
     expect(apiRequestMock).toHaveBeenCalledWith(
       '/api/events/event_1/matches/match_1',
-      expect.objectContaining({ method: 'PATCH' }),
+      expect.objectContaining({ method: 'PATCH', timeoutMs: 60_000 }),
     );
     expect(result.$id).toBe('match_1');
+  });
+
+  it('uses the extended timeout when finalizing a match', async () => {
+    apiRequestMock.mockResolvedValue({});
+
+    await tournamentService.completeMatch('event_1', 'match_1', {
+      setResults: [1, 0],
+      team1Points: [25],
+      team2Points: [21],
+    } as any);
+
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      '/api/events/event_1/matches/match_1',
+      expect.objectContaining({
+        method: 'PATCH',
+        timeoutMs: 60_000,
+        body: expect.objectContaining({
+          finalize: true,
+        }),
+      }),
+    );
   });
 });

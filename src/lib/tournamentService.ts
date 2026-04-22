@@ -16,6 +16,8 @@ import { authService } from './auth';
 import { apiRequest } from './apiClient';
 import { normalizeApiMatch } from './apiMappers';
 
+const MATCH_UPDATE_TIMEOUT_MS = 60_000;
+
 export type LeagueStandingsDivisionRow = {
     position: number;
     teamId: string;
@@ -385,6 +387,7 @@ class TournamentService {
             const response = await apiRequest<{ match: Match }>(`/api/events/${eventId}/matches/${matchId}`, {
                 method: 'PATCH',
                 body: payload,
+                timeoutMs: MATCH_UPDATE_TIMEOUT_MS,
             });
 
             if (!response?.match) {
@@ -495,6 +498,7 @@ class TournamentService {
                     team2Points: payload.team2Points,
                     time: nowIso,
                 },
+                timeoutMs: MATCH_UPDATE_TIMEOUT_MS,
             });
         } catch (error) {
             console.error('Failed to finalize match via event manager:', error);

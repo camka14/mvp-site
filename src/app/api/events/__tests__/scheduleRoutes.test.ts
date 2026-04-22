@@ -62,6 +62,7 @@ jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 
 jest.mock('@/server/repositories/events', () => ({
   loadEventWithRelations: (...args: any[]) => loadEventWithRelationsMock(...args),
+  loadEventForMatchMutation: (...args: any[]) => loadEventWithRelationsMock(...args),
   persistScheduledRosterTeams: (...args: any[]) => persistScheduledRosterTeamsMock(...args),
   saveEventSchedule: (...args: any[]) => saveEventScheduleMock(...args),
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
@@ -292,7 +293,7 @@ describe('schedule routes', () => {
       expect.any(Function),
       expect.objectContaining({
         maxWait: 10_000,
-        timeout: 20_000,
+        timeout: 60_000,
       }),
     );
   });
@@ -388,7 +389,7 @@ describe('schedule routes', () => {
       expect.any(Function),
       expect.objectContaining({
         maxWait: 10_000,
-        timeout: 20_000,
+        timeout: 60_000,
       }),
     );
   });
@@ -566,7 +567,7 @@ describe('schedule routes', () => {
       expect.any(Function),
       expect.objectContaining({
         maxWait: 10_000,
-        timeout: 20_000,
+        timeout: 60_000,
       }),
     );
   });
@@ -840,6 +841,139 @@ describe('schedule routes', () => {
     const savedMatch = saveMatchesMock.mock.calls[0][1][0];
     expect(savedMatch.status).toBe('IN_PROGRESS');
     expect(savedMatch.actualStart).toEqual(new Date('2026-04-19T10:00:00.000Z'));
+  });
+
+  it('finalizes a match in the same PATCH that confirms the deciding segment', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: [] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: [] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      resolvedMatchRules: {
+        scoringModel: 'PERIODS',
+        segmentCount: 2,
+        pointIncidentRequiresParticipant: false,
+      },
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          team1,
+          team2,
+          team1Points: [1, 2],
+          team2Points: [0, 1],
+          setResults: [1, 0],
+          status: 'IN_PROGRESS',
+          winnerEventTeamId: null,
+          segments: [
+            {
+              id: 'match_1_segment_1',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 1,
+              status: 'COMPLETE',
+              scores: { team_1: 1, team_2: 0 },
+              winnerEventTeamId: 'team_1',
+            },
+            {
+              id: 'match_1_segment_2',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 2,
+              status: 'IN_PROGRESS',
+              scores: { team_1: 2, team_2: 1 },
+              winnerEventTeamId: null,
+            },
+          ],
+          incidents: [],
+          matchRulesSnapshot: null,
+          resolvedMatchRules: {
+            scoringModel: 'PERIODS',
+            segmentCount: 2,
+            pointIncidentRequiresParticipant: false,
+          },
+        },
+      },
+      teams: {
+        team_1: team1,
+        team_2: team2,
+      },
+      officials: [],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    finalizeMatchMock.mockImplementation((_event: any, match: any) => {
+      match.status = 'COMPLETE';
+      match.resultStatus = 'OFFICIAL';
+      match.actualEnd = new Date('2026-04-19T11:00:00.000Z');
+      return { updatedMatch: match, seededTeamIds: [] };
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1', status: 'COMPLETE' }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        finalize: true,
+        time: '2026-04-19T11:00:00.000Z',
+        segmentOperations: [
+          {
+            id: 'match_1_segment_2',
+            sequence: 2,
+            status: 'COMPLETE',
+            scores: { team_1: 2, team_2: 1 },
+            winnerEventTeamId: 'team_1',
+            endedAt: '2026-04-19T11:00:00.000Z',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.objectContaining({
+        maxWait: 10_000,
+        timeout: 60_000,
+      }),
+    );
+    expect(finalizeMatchMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'match_1',
+        winnerEventTeamId: 'team_1',
+        team1Points: [1, 2],
+        team2Points: [0, 1],
+        segments: [
+          expect.objectContaining({
+            sequence: 1,
+            status: 'COMPLETE',
+            winnerEventTeamId: 'team_1',
+          }),
+          expect.objectContaining({
+            sequence: 2,
+            status: 'COMPLETE',
+            winnerEventTeamId: 'team_1',
+          }),
+        ],
+      }),
+      expect.anything(),
+      expect.any(Date),
+    );
+    const savedMatch = saveMatchesMock.mock.calls[0][1][0];
+    expect(savedMatch.status).toBe('COMPLETE');
+    expect(savedMatch.resultStatus).toBe('OFFICIAL');
+    expect(savedMatch.actualEnd).toEqual(new Date('2026-04-19T11:00:00.000Z'));
   });
 
   it('updates a match when user is host', async () => {

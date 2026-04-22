@@ -25,7 +25,7 @@ export const dynamic = 'force-dynamic';
 
 const SCHEDULE_TRANSACTION_OPTIONS = {
   maxWait: 10_000,
-  timeout: 20_000,
+  timeout: 60_000,
 } as const;
 
 const scheduleSchema = z.object({

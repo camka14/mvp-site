@@ -91,7 +91,7 @@ describe('ScoreUpdateModal', () => {
     jest.useRealTimers();
   });
 
-  it('uses a single set for timed events and keeps Save Match available', () => {
+  it('uses a single set for timed events and keeps Finish Match available', () => {
     renderWithMantine(
       <ScoreUpdateModal
         match={buildMatch()}
@@ -103,7 +103,7 @@ describe('ScoreUpdateModal', () => {
     );
 
     expect(screen.getByText(/Best of 1/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save Match' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Finish Match' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: /Confirm Set/i })).not.toBeInTheDocument();
   });
 
@@ -132,7 +132,7 @@ describe('ScoreUpdateModal', () => {
     });
   });
 
-  it('writes a single-set winner when saving a timed match score', async () => {
+  it('writes a single-set winner when finishing a timed match score', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 
     renderWithMantine(
@@ -150,11 +150,82 @@ describe('ScoreUpdateModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Save Match' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Finish Match' }));
 
     await waitFor(() => {
       expect(onSubmit).toHaveBeenCalledWith('match_1', [3], [1], [1]);
     });
+  });
+
+  it('finalizes the match when the deciding segment is confirmed and hides the manual finish button', async () => {
+    const onSetComplete = jest.fn().mockResolvedValue(undefined);
+    const rules = buildRules({ scoringModel: 'PERIODS', segmentCount: 2, segmentLabel: 'Half' });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: teamWithPlayer,
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [1, 2],
+          team2Points: [0, 1],
+          setResults: [1, 0],
+          matchRulesSnapshot: rules,
+          segments: [
+            {
+              id: 'match_1_segment_1',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 1,
+              status: 'COMPLETE',
+              scores: { team_a: 1, team_b: 0 },
+              winnerEventTeamId: 'team_a',
+              endedAt: '2026-04-19T10:20:00.000Z',
+            },
+            {
+              id: 'match_1_segment_2',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 2,
+              status: 'IN_PROGRESS',
+              scores: { team_a: 2, team_b: 1 },
+              winnerEventTeamId: null,
+            },
+          ],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          resolvedMatchRules: rules,
+        })}
+        canManage
+        onSetComplete={onSetComplete}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Finish Match' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Half 2' }));
+
+    await waitFor(() => {
+      expect(onSetComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onSetComplete.mock.calls[0][0]).toEqual(expect.objectContaining({
+      finalize: true,
+      time: expect.any(String),
+    }));
+    expect(onSetComplete.mock.calls[0][0].segmentOperations).toEqual([
+      expect.objectContaining({
+        id: 'match_1_segment_2',
+        sequence: 2,
+        status: 'COMPLETE',
+        scores: { team_a: 2, team_b: 1 },
+        winnerEventTeamId: 'team_a',
+        endedAt: expect.any(String),
+      }),
+    ]);
   });
 
   it('shows a field location toggle and expands the embedded map', () => {
