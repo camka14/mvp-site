@@ -47,6 +47,12 @@ const basketballMatchRulesTemplate = {
   pointIncidentRequiresParticipant: false,
 };
 
+const basketballOfficialPositionTemplates = [
+  { name: 'Referee', count: 2 },
+  { name: 'Scorekeeper', count: 1 },
+  { name: 'Timekeeper', count: 1 },
+];
+
 describe('GET /api/sports', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -98,6 +104,7 @@ describe('GET /api/sports', () => {
         canUseShootout: false,
       }),
     );
+    expect(basketball?.officialPositionTemplates).toEqual(basketballOfficialPositionTemplates);
     expect(volleyball?.matchRulesTemplate).toEqual(
       expect.objectContaining({
         supportsOvertime: false,
@@ -114,6 +121,10 @@ describe('GET /api/sports', () => {
         autoCreatePointIncidentType: 'RUN',
       }),
     );
+    expect(baseball?.officialPositionTemplates).toEqual([
+      { name: 'Plate Umpire', count: 1 },
+      { name: 'Base Umpire', count: 2 },
+    ]);
     expect(payload.sports.map((sport: any) => sport.name)).toEqual(
       expect.arrayContaining(['Indoor Soccer', 'Indoor Volleyball']),
     );
@@ -164,6 +175,7 @@ describe('GET /api/sports', () => {
       {
         id: 'Basketball',
         name: 'Basketball',
+        officialPositionTemplates: basketballOfficialPositionTemplates,
         matchRulesTemplate: basketballMatchRulesTemplate,
         usePointsForWin: true,
         usePointsForLoss: true,
@@ -186,6 +198,7 @@ describe('GET /api/sports', () => {
       {
         id: 'Basketball',
         name: 'Basketball',
+        officialPositionTemplates: basketballOfficialPositionTemplates,
         matchRulesTemplate: basketballMatchRulesTemplate,
         usePointsForWin: null,
         usePointsForLoss: null,
@@ -219,11 +232,48 @@ describe('GET /api/sports', () => {
     });
   });
 
+  it('backfills null official position templates using default sport settings', async () => {
+    const seededSports = [
+      {
+        id: 'Basketball',
+        name: 'Basketball',
+        officialPositionTemplates: null,
+        matchRulesTemplate: basketballMatchRulesTemplate,
+        usePointsForWin: true,
+        usePointsForLoss: true,
+        usePointsPerGoalScored: false,
+        usePointsPerGoalConceded: false,
+      },
+    ];
+    prismaMock.sports.findMany
+      .mockResolvedValueOnce(seededSports)
+      .mockResolvedValueOnce([
+        {
+          ...seededSports[0],
+          officialPositionTemplates: basketballOfficialPositionTemplates,
+        },
+      ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/sports'));
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.sports.update).toHaveBeenCalledWith({
+      where: { id: 'Basketball' },
+      data: {
+        officialPositionTemplates: basketballOfficialPositionTemplates,
+      },
+    });
+  });
+
   it('backfills missing match rule template fields using default sport settings', async () => {
     const seededSports = [
       {
         id: 'Baseball',
         name: 'Baseball',
+        officialPositionTemplates: [
+          { name: 'Plate Umpire', count: 1 },
+          { name: 'Base Umpire', count: 2 },
+        ],
         matchRulesTemplate: {
           scoringModel: 'INNINGS',
         },
