@@ -537,6 +537,42 @@ describe('eventService', () => {
     expect(event?.attendees).toBe(2);
   });
 
+  it('preserves persisted match rule settings when hydrating an event', async () => {
+    const matchRulesOverride = {
+      scoringModel: 'SETS',
+      segmentCount: 3,
+      supportsOvertime: true,
+      supportedIncidentTypes: ['DISCIPLINE', 'NOTE', 'ADMIN'],
+    };
+    const resolvedMatchRules = {
+      scoringModel: 'SETS',
+      segmentCount: 3,
+      segmentLabel: 'Set',
+      supportsDraw: false,
+      supportsOvertime: true,
+      supportsShootout: false,
+      canUseOvertime: true,
+      canUseShootout: false,
+      officialRoles: ['R1'],
+      supportedIncidentTypes: ['DISCIPLINE', 'NOTE', 'ADMIN'],
+      autoCreatePointIncidentType: 'POINT',
+      pointIncidentRequiresParticipant: true,
+    };
+    apiRequestMock.mockResolvedValue({
+      ...baseEventRow,
+      eventType: 'LEAGUE',
+      matchRulesOverride,
+      autoCreatePointMatchIncidents: true,
+      resolvedMatchRules,
+    });
+
+    const event = await eventService.getEventWithRelations('evt_1');
+
+    expect(event?.matchRulesOverride).toEqual(matchRulesOverride);
+    expect(event?.autoCreatePointMatchIncidents).toBe(true);
+    expect(event?.resolvedMatchRules).toEqual(resolvedMatchRules);
+  });
+
   it('skips field cleanup when deleting an unpublished organization event', async () => {
     apiRequestMock.mockResolvedValue({});
 

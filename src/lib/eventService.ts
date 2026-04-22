@@ -1090,6 +1090,23 @@ class EventService {
             ),
           )
         : [];
+    const normalizeObjectValue = (
+      value: unknown,
+    ): Record<string, unknown> | null | undefined => {
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        return { ...(value as Record<string, unknown>) };
+      }
+      if (value === null) {
+        return null;
+      }
+      return undefined;
+    };
+    const normalizedMatchRulesOverride = normalizeObjectValue(
+      row.matchRulesOverride,
+    ) as Event["matchRulesOverride"];
+    const normalizedResolvedMatchRules = normalizeObjectValue(
+      row.resolvedMatchRules,
+    ) as Event["resolvedMatchRules"];
 
     return {
       $id: row.$id,
@@ -1358,6 +1375,18 @@ class EventService {
             ? row.teamOfficialsMaySwap
             : false
           : false,
+      matchRulesOverride:
+        normalizedMatchRulesOverride === undefined
+          ? null
+          : normalizedMatchRulesOverride,
+      autoCreatePointMatchIncidents:
+        typeof row.autoCreatePointMatchIncidents === "boolean"
+          ? row.autoCreatePointMatchIncidents
+          : false,
+      resolvedMatchRules:
+        normalizedResolvedMatchRules === undefined
+          ? null
+          : normalizedResolvedMatchRules,
       refType: row.refType,
       pointsToVictory: row.pointsToVictory,
       allowPaymentPlans: !!row.allowPaymentPlans,

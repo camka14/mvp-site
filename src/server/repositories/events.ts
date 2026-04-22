@@ -3196,6 +3196,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       officialIds: true,
       officialPositions: true as any,
       officialSchedulingMode: true as any,
+      matchRulesOverride: true as any,
+      autoCreatePointMatchIncidents: true,
       sportId: true,
     },
   });
@@ -3535,6 +3537,28 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     payload.officialSchedulingMode,
     normalizeOfficialSchedulingMode((existingEvent as any)?.officialSchedulingMode),
   );
+  const payloadIncludesMatchRulesOverride = Object.prototype.hasOwnProperty.call(payload, 'matchRulesOverride');
+  const normalizedMatchRulesOverride = (() => {
+    if (payloadIncludesMatchRulesOverride) {
+      const value = payload.matchRulesOverride;
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return { ...(value as Record<string, unknown>) };
+      }
+      return null;
+    }
+
+    const existingMatchRulesOverride = (existingEvent as any)?.matchRulesOverride;
+    if (existingMatchRulesOverride && typeof existingMatchRulesOverride === 'object' && !Array.isArray(existingMatchRulesOverride)) {
+      return { ...(existingMatchRulesOverride as Record<string, unknown>) };
+    }
+    return existingMatchRulesOverride === null ? null : undefined;
+  })();
+  const payloadIncludesAutoCreatePointMatchIncidents = Object.prototype.hasOwnProperty.call(payload, 'autoCreatePointMatchIncidents');
+  const normalizedAutoCreatePointMatchIncidents = payloadIncludesAutoCreatePointMatchIncidents
+    ? coerceBoolean(payload.autoCreatePointMatchIncidents, false)
+    : typeof (existingEvent as any)?.autoCreatePointMatchIncidents === 'boolean'
+      ? Boolean((existingEvent as any).autoCreatePointMatchIncidents)
+      : undefined;
 
   const eventData = {
     id,
@@ -3599,6 +3623,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     teamOfficialsMaySwap: normalizedTeamOfficialsMaySwap,
     officialIds: compatibilityOfficialIds,
     officialPositions: resolvedOfficialPositions,
+    ...(normalizedMatchRulesOverride !== undefined ? { matchRulesOverride: normalizedMatchRulesOverride } : {}),
+    ...(normalizedAutoCreatePointMatchIncidents !== undefined
+      ? { autoCreatePointMatchIncidents: normalizedAutoCreatePointMatchIncidents }
+      : {}),
     allowPaymentPlans: normalizedEventAllowPaymentPlans,
     installmentCount: normalizedEventInstallmentCount,
     installmentDueDates: normalizedEventInstallmentDueDates,

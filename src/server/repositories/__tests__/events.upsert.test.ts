@@ -1335,6 +1335,84 @@ describe('upsertEventFromPayload', () => {
       }),
     );
   });
+
+  it('persists match rules overrides and point-incident automation settings', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      matchRulesOverride: {
+        segmentCount: 2,
+        supportsOvertime: true,
+        supportsShootout: false,
+        supportedIncidentTypes: ['DISCIPLINE', 'NOTE'],
+      },
+      autoCreatePointMatchIncidents: true,
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create).toEqual(
+      expect.objectContaining({
+        matchRulesOverride: payload.matchRulesOverride,
+        autoCreatePointMatchIncidents: true,
+      }),
+    );
+    expect(eventUpsertArgs.update).toEqual(
+      expect.objectContaining({
+        matchRulesOverride: payload.matchRulesOverride,
+        autoCreatePointMatchIncidents: true,
+      }),
+    );
+  });
+
+  it('preserves stored match rules when an update payload omits them', async () => {
+    const client = createMockClient();
+    const existingMatchRulesOverride = {
+      segmentCount: 4,
+      supportsOvertime: true,
+      supportedIncidentTypes: ['DISCIPLINE', 'NOTE', 'ADMIN'],
+    };
+    client.events.findUnique.mockResolvedValueOnce({
+      fieldIds: ['field_1'],
+      timeSlotIds: [],
+      eventType: 'LEAGUE',
+      end: new Date('2026-03-05T09:00:00.000Z'),
+      noFixedEndDateTime: false,
+      leagueScoringConfigId: null,
+      hostId: 'host_1',
+      organizationId: null,
+      parentEvent: null,
+      officialIds: [],
+      officialPositions: [],
+      officialSchedulingMode: 'SCHEDULE',
+      sportId: 'sport_1',
+      matchRulesOverride: existingMatchRulesOverride,
+      autoCreatePointMatchIncidents: true,
+    });
+    const payload = {
+      ...baseEventPayload(),
+      divisions: ['OPEN'],
+      description: 'Updated details only',
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArgs = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArgs.create).toEqual(
+      expect.objectContaining({
+        matchRulesOverride: existingMatchRulesOverride,
+        autoCreatePointMatchIncidents: true,
+      }),
+    );
+    expect(eventUpsertArgs.update).toEqual(
+      expect.objectContaining({
+        matchRulesOverride: existingMatchRulesOverride,
+        autoCreatePointMatchIncidents: true,
+      }),
+    );
+  });
 });
 
 describe('persistScheduledRosterTeams', () => {
