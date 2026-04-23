@@ -108,6 +108,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
               }),
             ),
           );
+        }
+        if (reassignedPlayoffDivisionIds.length || seededTeamIds.length) {
           await saveMatches(eventId, Object.values(league.matches), tx);
         }
       }

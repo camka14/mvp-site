@@ -5,6 +5,7 @@ import { execSync } from "node:child_process";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/lib/authServer";
+import { ensureDefaultSports } from "../src/server/defaultSports";
 import {
   SEED_CAMKA,
   SEED_DEV_USERS,
@@ -245,7 +246,6 @@ const clearSeedRecords = async (prisma: PrismaClient): Promise<void> => {
   await prisma.timeSlots.deleteMany({ where: { id: { in: targetedTimeSlotIds } } });
   await prisma.fields.deleteMany({ where: { id: { in: targetedFieldIds } } });
   await prisma.organizations.deleteMany({ where: { id: SEED_ORG.id } });
-  await prisma.sports.deleteMany({ where: { id: SEED_SPORT.id } });
   await prisma.file.deleteMany({ where: { id: SEED_IMAGE.id } });
   await prisma.file.deleteMany({
     where: { id: { startsWith: CAMKA_UPLOAD_ID_PREFIX } },
@@ -583,14 +583,7 @@ const seed = async (): Promise<void> => {
       },
     });
 
-    await prisma.sports.create({
-      data: {
-        id: SEED_SPORT.id,
-        name: SEED_SPORT.name,
-        createdAt: now,
-        updatedAt: now,
-      },
-    });
+    await ensureDefaultSports(prisma);
 
     await prisma.organizations.create({
       data: {

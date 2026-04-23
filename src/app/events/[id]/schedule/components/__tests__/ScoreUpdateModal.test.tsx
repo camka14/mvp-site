@@ -1,3 +1,4 @@
+import { useState, type ComponentProps } from 'react';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import type { Event, Match, Team } from '@/types';
@@ -81,6 +82,46 @@ const teamWithPlayer = {
     jerseyNumber: '9',
   }],
 } as Match['team1'];
+
+const createDeferred = () => {
+  let resolve!: () => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<void>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+};
+
+const advanceDirectScoreDebounce = async () => {
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+};
+
+const renderMutableMatchModal = (
+  initialMatch: Match,
+  props: Omit<ComponentProps<typeof ScoreUpdateModal>, 'match'>,
+) => {
+  let setCurrentMatch: ((next: Match) => void) | null = null;
+
+  function Wrapper() {
+    const [currentMatch, setCurrentMatchState] = useState(initialMatch);
+    setCurrentMatch = setCurrentMatchState;
+    return <ScoreUpdateModal match={currentMatch} {...props} />;
+  }
+
+  const rendered = renderWithMantine(<Wrapper />);
+
+  return {
+    ...rendered,
+    setMatch: async (next: Match) => {
+      await act(async () => {
+        setCurrentMatch?.(next);
+      });
+    },
+  };
+};
 
 describe('ScoreUpdateModal', () => {
   beforeEach(() => {
@@ -340,6 +381,7 @@ describe('ScoreUpdateModal', () => {
   });
 
   it('uses score set writes instead of scoring incidents for non-player scoring', async () => {
+    jest.useFakeTimers();
     const onScoreChange = jest.fn().mockResolvedValue(undefined);
     const rules = buildRules();
 
@@ -378,6 +420,10 @@ describe('ScoreUpdateModal', () => {
     );
 
     fireEvent.click(screen.getAllByRole('button', { name: '-' })[0]);
+
+    expect(onScoreChange).not.toHaveBeenCalled();
+
+    await advanceDirectScoreDebounce();
 
     await waitFor(() => {
       expect(onScoreChange).toHaveBeenCalledTimes(1);
@@ -436,6 +482,7 @@ describe('ScoreUpdateModal', () => {
   });
 
   it('uses score set writes for non-player plus and minus while the modal is open', async () => {
+    jest.useFakeTimers();
     const onScoreChange = jest.fn().mockResolvedValue(undefined);
     const rules = buildRules();
 
@@ -465,6 +512,12 @@ describe('ScoreUpdateModal', () => {
     );
 
     fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+
+    expect(onScoreChange).not.toHaveBeenCalled();
+
+    await advanceDirectScoreDebounce();
 
     await waitFor(() => {
       expect(onScoreChange).toHaveBeenCalledTimes(1);
@@ -473,23 +526,237 @@ describe('ScoreUpdateModal', () => {
       segmentId: 'match_1_segment_1',
       sequence: 1,
       eventTeamId: 'team_a',
-      points: 1,
+      points: 3,
     });
     expect(onScoreChange.mock.calls[0][0].incidentOperations).toBeUndefined();
+    expect(onScoreChange.mock.calls[0][0].team1Points).toEqual([3, 0]);
+  });
 
-    fireEvent.click(screen.getAllByRole('button', { name: '-' })[0]);
+  it('keeps locally incremented score visible when stale match props rerender before the debounced sync fires', async () => {
+    jest.useFakeTimers();
+    const onScoreChange = jest.fn().mockResolvedValue(undefined);
+    const rules = buildRules();
+    const staleMatch = buildMatch({
+      team1Id: 'team_a',
+      team2Id: 'team_b',
+      team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+      team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+      team1Points: [0, 0],
+      team2Points: [0, 0],
+      setResults: [0, 0],
+      matchRulesSnapshot: rules,
+      segments: buildSegments(),
+      incidents: [],
+    });
+    const tournament = buildEvent({
+      autoCreatePointMatchIncidents: true,
+      resolvedMatchRules: rules,
+    });
 
+    const { setMatch } = renderMutableMatchModal(staleMatch, {
+      tournament,
+      canManage: true,
+      onScoreChange,
+      onClose: jest.fn(),
+      isOpen: true,
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+
+    expect(screen.getAllByText(/^1$/).length).toBeGreaterThan(0);
+
+    await setMatch(buildMatch({
+      ...staleMatch,
+      team1: staleMatch.team1,
+      team2: staleMatch.team2,
+      matchRulesSnapshot: rules,
+      segments: buildSegments(),
+      incidents: [],
+    }));
+
+    expect(screen.getAllByText(/^1$/).length).toBeGreaterThan(0);
+    expect(onScoreChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps a newer local score visible when an older debounced response resolves first', async () => {
+    jest.useFakeTimers();
+    const firstSync = createDeferred();
+    const secondSync = createDeferred();
+    const onScoreChange = jest.fn()
+      .mockImplementationOnce(() => firstSync.promise)
+      .mockImplementationOnce(() => secondSync.promise);
+    const rules = buildRules();
+    const tournament = buildEvent({
+      autoCreatePointMatchIncidents: true,
+      resolvedMatchRules: rules,
+    });
+
+    const { setMatch } = renderMutableMatchModal(buildMatch({
+      team1Id: 'team_a',
+      team2Id: 'team_b',
+      team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+      team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+      team1Points: [0, 0],
+      team2Points: [0, 0],
+      setResults: [0, 0],
+      matchRulesSnapshot: rules,
+      segments: buildSegments(),
+      incidents: [],
+    }), {
+      tournament,
+      canManage: true,
+      onScoreChange,
+      onClose: jest.fn(),
+      isOpen: true,
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+    await advanceDirectScoreDebounce();
+    await waitFor(() => {
+      expect(onScoreChange).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+    expect(screen.getAllByText(/^2$/).length).toBeGreaterThan(0);
+
+    firstSync.resolve();
+    await act(async () => {
+      await firstSync.promise;
+    });
+
+    await setMatch(buildMatch({
+      team1Id: 'team_a',
+      team2Id: 'team_b',
+      team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+      team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+      team1Points: [1, 0],
+      team2Points: [0, 0],
+      setResults: [0, 0],
+      matchRulesSnapshot: rules,
+      segments: buildSegments(1, 0),
+      incidents: [],
+    }));
+
+    expect(screen.getAllByText(/^2$/).length).toBeGreaterThan(0);
+
+    await advanceDirectScoreDebounce();
     await waitFor(() => {
       expect(onScoreChange).toHaveBeenCalledTimes(2);
     });
-    expect(onScoreChange.mock.calls[1][0].scoreSet).toEqual({
-      segmentId: 'match_1_segment_1',
-      sequence: 1,
-      eventTeamId: 'team_a',
-      points: 0,
+
+    secondSync.resolve();
+    await act(async () => {
+      await secondSync.promise;
     });
-    expect(onScoreChange.mock.calls[1][0].incidentOperations).toBeUndefined();
-    expect(onScoreChange.mock.calls[1][0].team1Points).toEqual([0, 0]);
+  });
+
+  it('cancels a pending debounced score post when confirming the segment', async () => {
+    jest.useFakeTimers();
+    const onScoreChange = jest.fn().mockResolvedValue(undefined);
+    const onSetComplete = jest.fn().mockResolvedValue(undefined);
+    const rules = buildRules();
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [0, 0],
+          team2Points: [0, 0],
+          setResults: [0, 0],
+          matchRulesSnapshot: rules,
+          segments: buildSegments(),
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          autoCreatePointMatchIncidents: true,
+          resolvedMatchRules: rules,
+        })}
+        canManage
+        onScoreChange={onScoreChange}
+        onSetComplete={onSetComplete}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Half 1' }));
+
+    await waitFor(() => {
+      expect(onSetComplete).toHaveBeenCalledTimes(1);
+    });
+
+    await advanceDirectScoreDebounce();
+
+    expect(onScoreChange).not.toHaveBeenCalled();
+  });
+
+  it('keeps a failed debounced direct score locally and uses it when confirming the segment', async () => {
+    jest.useFakeTimers();
+    const onScoreChange = jest.fn().mockRejectedValueOnce(new Error('offline'));
+    const onSetComplete = jest.fn().mockResolvedValue(undefined);
+    const rules = buildRules();
+    const tournament = buildEvent({
+      autoCreatePointMatchIncidents: true,
+      resolvedMatchRules: rules,
+    });
+    const staleMatch = buildMatch({
+      team1Id: 'team_a',
+      team2Id: 'team_b',
+      team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+      team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+      team1Points: [0, 0],
+      team2Points: [0, 0],
+      setResults: [0, 0],
+      matchRulesSnapshot: rules,
+      segments: buildSegments(),
+      incidents: [],
+    });
+
+    const { setMatch } = renderMutableMatchModal(staleMatch, {
+      tournament,
+      canManage: true,
+      onScoreChange,
+      onSetComplete,
+      onClose: jest.fn(),
+      isOpen: true,
+    });
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+
+    await advanceDirectScoreDebounce();
+
+    await waitFor(() => {
+      expect(onScoreChange).toHaveBeenCalledTimes(1);
+    });
+
+    await setMatch(buildMatch({
+      ...staleMatch,
+      team1: staleMatch.team1,
+      team2: staleMatch.team2,
+      matchRulesSnapshot: rules,
+      segments: buildSegments(),
+      incidents: [],
+    }));
+
+    expect(screen.getAllByText(/^1$/).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Half 1' }));
+
+    await waitFor(() => {
+      expect(onSetComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onSetComplete.mock.calls[0][0].segmentOperations).toEqual([
+      expect.objectContaining({
+        id: 'match_1_segment_1',
+        status: 'COMPLETE',
+        scores: { team_a: 1, team_b: 0 },
+        winnerEventTeamId: 'team_a',
+      }),
+    ]);
   });
 
   it('renders match details with resolved officials and compact scoring incident labels', async () => {

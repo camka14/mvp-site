@@ -1,5 +1,5 @@
 import { renderWithMantine } from '../../../../../../test/utils/renderWithMantine';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import LeagueSchedulePage from '../page';
 import { apiRequest } from '@/lib/apiClient';
 import { eventService } from '@/lib/eventService';
@@ -410,6 +410,10 @@ describe('League schedule page', () => {
     (organizationService.getOrganizationById as jest.Mock).mockResolvedValue(undefined);
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('shows the terms modal on event creation until consent is accepted', async () => {
     const setUserMock = jest.fn();
     useAppMock.mockReturnValue({
@@ -758,11 +762,16 @@ describe('League schedule page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Match Details' }));
     expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
 
+    jest.useFakeTimers();
     const plusButton = screen.getAllByRole('button', { name: '+' })[0];
     fireEvent.click(plusButton);
 
+    await act(async () => {
+      jest.advanceTimersByTime(500);
+    });
+
     await waitFor(() => {
-        expect(apiRequestMock).toHaveBeenCalledWith(
+      expect(apiRequestMock).toHaveBeenCalledWith(
         '/api/events/event_1/matches/match_1/score',
         expect.objectContaining({ method: 'POST' }),
       );

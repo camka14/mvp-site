@@ -3,6 +3,7 @@
 import { scheduleEvent } from '@/server/scheduler/scheduleEvent';
 import {
   applyLeagueDivisionPlayoffReassignment,
+  computeLeagueDivisionStandings,
   isPlayoffMatch,
   normalizeLeaguePlayoffPlacementMappings,
   validateDivisionPlayoffMapping,
@@ -351,13 +352,33 @@ describe('standings playoff reassignment', () => {
     const scheduled = scheduleEvent({ event: league }, context);
     const scheduledLeague = scheduled.event as League;
 
-    applyLeagueDivisionPlayoffReassignment(scheduledLeague, open.id, context);
+    const reassignment = applyLeagueDivisionPlayoffReassignment(scheduledLeague, open.id, context);
+    const expectedTeamIdBySeed = new Map(
+      computeLeagueDivisionStandings(scheduledLeague, open.id)
+        .slice(0, 10)
+        .map((row, index) => [index + 1, row.teamId] as const),
+    );
 
     const carriedSeedMatches = getPlayoffMatches(scheduledLeague, open.id).filter((match) => {
       const previousCount = Number(Boolean(match.previousLeftMatch)) + Number(Boolean(match.previousRightMatch));
       const directSeedCount = Number(typeof match.team1Seed === 'number') + Number(typeof match.team2Seed === 'number');
       return previousCount === 1 && directSeedCount === 1;
     });
+    const seededMatches = getPlayoffMatches(scheduledLeague, open.id).filter((match) => (
+      typeof match.team1Seed === 'number' || typeof match.team2Seed === 'number'
+    ));
+
+    expect(reassignment.affectedPlayoffDivisionIds).toEqual([]);
+    expect(reassignment.seededTeamIds).toHaveLength(10);
+    expect(seededMatches.length).toBeGreaterThan(0);
+    for (const match of seededMatches) {
+      if (typeof match.team1Seed === 'number') {
+        expect(match.team1?.id ?? null).toBe(expectedTeamIdBySeed.get(match.team1Seed) ?? null);
+      }
+      if (typeof match.team2Seed === 'number') {
+        expect(match.team2?.id ?? null).toBe(expectedTeamIdBySeed.get(match.team2Seed) ?? null);
+      }
+    }
 
     expect(carriedSeedMatches).toHaveLength(2);
     expect(carriedSeedMatches.map((match) => match.matchId).sort((left, right) => left - right)).toEqual([69, 71]);

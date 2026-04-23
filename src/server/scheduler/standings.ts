@@ -110,6 +110,17 @@ export const getPlayoffDivisionById = (league: League, divisionId: string): Divi
   return null;
 };
 
+const getPlayoffAssignmentDivisionById = (league: League, divisionId: string): Division | null => {
+  const playoffDivision = getPlayoffDivisionById(league, divisionId);
+  if (playoffDivision) {
+    return playoffDivision;
+  }
+  if (!league.splitLeaguePlayoffDivisions) {
+    return getLeagueDivisionById(league, divisionId);
+  }
+  return null;
+};
+
 export const getLeagueDivisionTeamIds = (league: League, divisionId: string): Set<string> => {
   const normalizedDivisionId = normalizeToken(divisionId);
   const teamIds = new Set<string>();
@@ -1002,13 +1013,88 @@ const buildTemplateBracket = (
   return findPlayoffRootMatch(matches);
 };
 
+const getPlayoffMatchesForDivision = (league: League, divisionId: string): Match[] => {
+  const normalizedDivisionId = normalizeToken(divisionId);
+  if (!normalizedDivisionId) {
+    return [];
+  }
+  return Object.values(league.matches).filter(
+    (match) => normalizeToken(match.division?.id) === normalizedDivisionId && isPlayoffMatch(match),
+  );
+};
+
+const assignTeamsToSameDivisionPlayoffMatches = (
+  league: League,
+  divisionId: string,
+  teams: Team[],
+): string[] => {
+  const leagueDivision = getLeagueDivisionById(league, divisionId);
+  if (!leagueDivision) {
+    return [];
+  }
+
+  const playoffMatches = getPlayoffMatchesForDivision(league, leagueDivision.id);
+  if (!playoffMatches.length) {
+    return [];
+  }
+
+  const seededTeamIds = teams.map((team) => team.id);
+  const originalSeedsByMatchId = new Map(
+    playoffMatches.map((match) => [
+      match.id,
+      {
+        team1Seed: typeof match.team1Seed === 'number' ? match.team1Seed : null,
+        team2Seed: typeof match.team2Seed === 'number' ? match.team2Seed : null,
+      },
+    ]),
+  );
+  clearPendingPlayoffAssignments(playoffMatches);
+  if (teams.length < 2) {
+    return [];
+  }
+
+  const teamsBySeed = new Map<number, Team>();
+  teams.forEach((team, index) => {
+    teamsBySeed.set(index + 1, team);
+  });
+
+  for (const match of playoffMatches) {
+    const originalSeeds = originalSeedsByMatchId.get(match.id);
+    if (!originalSeeds) {
+      continue;
+    }
+
+    match.team1Seed = originalSeeds.team1Seed;
+    match.team2Seed = originalSeeds.team2Seed;
+
+    if (typeof originalSeeds.team1Seed === 'number') {
+      const seededTeam = teamsBySeed.get(originalSeeds.team1Seed);
+      if (seededTeam) {
+        assignTeamToMatch(match, 'team1', seededTeam, originalSeeds.team1Seed);
+      }
+    }
+    if (typeof originalSeeds.team2Seed === 'number') {
+      const seededTeam = teamsBySeed.get(originalSeeds.team2Seed);
+      if (seededTeam) {
+        assignTeamToMatch(match, 'team2', seededTeam, originalSeeds.team2Seed);
+      }
+    }
+  }
+
+  if (league.doTeamsOfficiate) {
+    assignTeamOfficialsForKnownMatches(playoffMatches, teams);
+  }
+
+  return seededTeamIds;
+};
+
 export const assignTeamsToPlayoffDivisionMatches = (
   league: League,
   playoffDivisionId: string,
   teams: Team[],
   context: SchedulerContext = noopContext,
 ): string[] => {
-  const playoffDivision = getPlayoffDivisionById(league, playoffDivisionId);
+  const playoffDivision = getPlayoffAssignmentDivisionById(league, playoffDivisionId);
   if (!playoffDivision) {
     return [];
   }
@@ -1018,9 +1104,7 @@ export const assignTeamsToPlayoffDivisionMatches = (
     return [];
   }
 
-  const playoffMatches = Object.values(league.matches).filter(
-    (match) => normalizeToken(match.division?.id) === normalizedPlayoffDivisionId && isPlayoffMatch(match),
-  );
+  const playoffMatches = getPlayoffMatchesForDivision(league, normalizedPlayoffDivisionId);
   if (!playoffMatches.length) {
     return [];
   }
@@ -1089,6 +1173,27 @@ export const applyLeagueDivisionPlayoffReassignment = (
   const playoffTeamCount = getDivisionPlayoffTeamCount(league, leagueDivision);
   if (playoffTeamCount <= 0) {
     return { affectedPlayoffDivisionIds: [], seededTeamIds: [], teamIdsByPlayoffDivision: {} };
+  }
+
+  if (!league.splitLeaguePlayoffDivisions) {
+    const entrants = computeLeagueDivisionStandings(
+      league,
+      leagueDivision.id,
+      leagueDivision.standingsOverrides ?? null,
+    )
+      .slice(0, playoffTeamCount)
+      .map((standing) => standing.team)
+      .filter((team): team is Team => Boolean(team));
+    const assignedTeamIds = assignTeamsToSameDivisionPlayoffMatches(
+      league,
+      leagueDivision.id,
+      entrants,
+    );
+    return {
+      affectedPlayoffDivisionIds: [],
+      seededTeamIds: Array.from(new Set(assignedTeamIds)),
+      teamIdsByPlayoffDivision: {},
+    };
   }
 
   const affectedPlayoffDivisionIds = Array.from(

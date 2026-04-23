@@ -110,6 +110,115 @@ export const resolveMatchRules = (params: {
   };
 };
 
+const positiveIntOrZero = (value: unknown): number => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 0;
+  }
+  return Math.trunc(numeric);
+};
+
+const hasMatchLink = (value: unknown): boolean => {
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const row = value as { id?: unknown; $id?: unknown };
+  return Boolean(
+    (typeof row.id === 'string' && row.id.trim().length > 0)
+      || (typeof row.$id === 'string' && row.$id.trim().length > 0),
+  );
+};
+
+const isBracketMatch = (params: {
+  losersBracket?: boolean | null;
+  previousLeftId?: string | null;
+  previousRightId?: string | null;
+  winnerNextMatchId?: string | null;
+  loserNextMatchId?: string | null;
+  previousLeftMatch?: unknown;
+  previousRightMatch?: unknown;
+  winnerNextMatch?: unknown;
+  loserNextMatch?: unknown;
+}): boolean => (
+  params.losersBracket === true
+  || hasMatchLink(params.previousLeftId)
+  || hasMatchLink(params.previousRightId)
+  || hasMatchLink(params.winnerNextMatchId)
+  || hasMatchLink(params.loserNextMatchId)
+  || hasMatchLink(params.previousLeftMatch)
+  || hasMatchLink(params.previousRightMatch)
+  || hasMatchLink(params.winnerNextMatch)
+  || hasMatchLink(params.loserNextMatch)
+);
+
+export const resolveMatchRulesForContext = (params: {
+  baseRules?: ResolvedMatchRules | null;
+  eventType?: string | null;
+  usesSets?: boolean | null;
+  setsPerMatch?: number | null;
+  winnerSetCount?: number | null;
+  loserSetCount?: number | null;
+  losersBracket?: boolean | null;
+  previousLeftId?: string | null;
+  previousRightId?: string | null;
+  winnerNextMatchId?: string | null;
+  loserNextMatchId?: string | null;
+  previousLeftMatch?: unknown;
+  previousRightMatch?: unknown;
+  winnerNextMatch?: unknown;
+  loserNextMatch?: unknown;
+  existingSegmentCount?: number | null;
+  existingTeam1PointCount?: number | null;
+  existingTeam2PointCount?: number | null;
+  existingResultCount?: number | null;
+}): ResolvedMatchRules | null => {
+  if (!params.baseRules) {
+    return null;
+  }
+  const fallbackSegmentCount = Math.max(
+    positiveIntOrZero(params.existingSegmentCount),
+    positiveIntOrZero(params.existingTeam1PointCount),
+    positiveIntOrZero(params.existingTeam2PointCount),
+    positiveIntOrZero(params.existingResultCount),
+    1,
+  );
+
+  if (params.baseRules.scoringModel === 'POINTS_ONLY') {
+    return { ...params.baseRules, segmentCount: 1 };
+  }
+  if (params.baseRules.scoringModel !== 'SETS') {
+    return {
+      ...params.baseRules,
+      segmentCount: Math.max(positiveIntOrZero(params.baseRules.segmentCount), fallbackSegmentCount, 1),
+    };
+  }
+
+  const contextualSetCount = params.losersBracket
+    ? positiveIntOrZero(params.loserSetCount)
+    : params.eventType === 'LEAGUE' && !isBracketMatch(params)
+      ? Math.max(
+          positiveIntOrZero(params.setsPerMatch),
+          positiveIntOrZero(params.winnerSetCount),
+        )
+      : Math.max(
+          positiveIntOrZero(params.winnerSetCount),
+          positiveIntOrZero(params.setsPerMatch),
+        );
+
+  return {
+    ...params.baseRules,
+    segmentCount: Math.max(
+      positiveIntOrZero(params.baseRules.segmentCount),
+      contextualSetCount,
+      fallbackSegmentCount,
+      1,
+    ),
+  };
+};
+
 export const shouldFreezeMatchRulesSnapshot = (params: {
   segmentOperations?: Array<{ scores?: Record<string, number> | null | undefined }>;
   incidentOperations?: unknown[];

@@ -24,6 +24,7 @@ const canManageEventMock = jest.fn();
 const acquireEventLockMock = jest.fn();
 const loadEventWithRelationsMock = jest.fn();
 const saveMatchesMock = jest.fn();
+const applyLeagueDivisionPlayoffReassignmentMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -33,6 +34,13 @@ jest.mock('@/server/repositories/events', () => ({
   loadEventWithRelations: (...args: any[]) => loadEventWithRelationsMock(...args),
   saveMatches: (...args: any[]) => saveMatchesMock(...args),
 }));
+jest.mock('@/server/scheduler/standings', () => {
+  const actual = jest.requireActual('@/server/scheduler/standings');
+  return {
+    ...actual,
+    applyLeagueDivisionPlayoffReassignment: (...args: any[]) => applyLeagueDivisionPlayoffReassignmentMock(...args),
+  };
+});
 
 import { GET as standingsGet, PATCH as standingsPatch } from '@/app/api/events/[eventId]/standings/route';
 import { POST as standingsConfirm } from '@/app/api/events/[eventId]/standings/confirm/route';
@@ -175,6 +183,11 @@ describe('standings routes', () => {
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     canManageEventMock.mockResolvedValue(true);
     acquireEventLockMock.mockResolvedValue(undefined);
+    applyLeagueDivisionPlayoffReassignmentMock.mockReturnValue({
+      affectedPlayoffDivisionIds: [],
+      seededTeamIds: [],
+      teamIdsByPlayoffDivision: {},
+    });
     eventsMock.findUnique.mockResolvedValue({
       id: 'event_1',
       state: 'PUBLISHED',
@@ -284,5 +297,35 @@ describe('standings routes', () => {
     const json = await res.json();
     expect(json.applyReassignment).toBe(false);
     expect(json.seededTeamIds).toEqual([]);
+  });
+
+  it('POST confirm persists same-division playoff seed assignments even without split playoff divisions', async () => {
+    applyLeagueDivisionPlayoffReassignmentMock.mockReturnValueOnce({
+      affectedPlayoffDivisionIds: [],
+      seededTeamIds: ['team_1', 'team_2'],
+      teamIdsByPlayoffDivision: {},
+    });
+
+    const res = await standingsConfirm(
+      makePostRequest({
+        divisionId: 'division_1',
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(saveMatchesMock).toHaveBeenCalledWith(
+      'event_1',
+      expect.any(Array),
+      expect.objectContaining({
+        events: eventsMock,
+        divisions: divisionsMock,
+      }),
+    );
+    expect(divisionsMock.update).toHaveBeenCalledTimes(1);
+
+    const json = await res.json();
+    expect(json.seededTeamIds).toEqual(['team_1', 'team_2']);
+    expect(json.reassignedPlayoffDivisionIds).toEqual([]);
   });
 });

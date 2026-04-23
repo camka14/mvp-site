@@ -1,5 +1,6 @@
 import {
   resolveMatchRules,
+  resolveMatchRulesForContext,
   shouldFreezeMatchRulesSnapshot,
 } from '@/server/matches/matchOperations';
 
@@ -130,6 +131,53 @@ describe('resolveMatchRules', () => {
       supportsDraw: false,
       canUseShootout: true,
       supportsShootout: true,
+    }));
+  });
+
+  it('promotes league playoff bracket matches to the configured winner set count', () => {
+    expect(resolveMatchRulesForContext({
+      baseRules: resolveMatchRules({
+        usesSets: true,
+        setsPerMatch: 1,
+        winnerSetCount: 3,
+        officialPositions: [{ id: 'ref', name: 'Referee' }],
+      }),
+      eventType: 'LEAGUE',
+      usesSets: true,
+      setsPerMatch: 1,
+      winnerSetCount: 3,
+      loserSetCount: 1,
+      winnerNextMatchId: 'match_final',
+      existingSegmentCount: 1,
+      existingTeam1PointCount: 1,
+      existingTeam2PointCount: 1,
+      existingResultCount: 1,
+    })).toEqual(expect.objectContaining({
+      scoringModel: 'SETS',
+      segmentCount: 3,
+    }));
+  });
+
+  it('keeps loser bracket matches on the configured loser set count', () => {
+    expect(resolveMatchRulesForContext({
+      baseRules: resolveMatchRules({
+        usesSets: true,
+        setsPerMatch: 1,
+        winnerSetCount: 3,
+      }),
+      eventType: 'TOURNAMENT',
+      usesSets: true,
+      setsPerMatch: 1,
+      winnerSetCount: 3,
+      loserSetCount: 1,
+      losersBracket: true,
+      existingSegmentCount: 1,
+      existingTeam1PointCount: 1,
+      existingTeam2PointCount: 1,
+      existingResultCount: 1,
+    })).toEqual(expect.objectContaining({
+      scoringModel: 'SETS',
+      segmentCount: 1,
     }));
   });
 });

@@ -37,6 +37,7 @@ type ScorePayload = {
   matchId: string;
   segments: MatchSegment[];
   finalize?: boolean;
+  directScoreVersion?: number;
   scoreSet?: {
     segmentId?: string | null;
     sequence: number;
@@ -74,6 +75,14 @@ interface ScoreUpdateModalProps {
   onClose: () => void;
   isOpen: boolean;
 }
+
+type PendingDirectScoreSync = {
+  editVersion: number;
+  segmentId?: string | null;
+  sequence: number;
+  eventTeamId: string;
+  points: number;
+};
 
 const entityId = (value: unknown): string | null => {
   if (!value || typeof value !== 'object') return null;
@@ -322,6 +331,7 @@ const pendingIncidentStorageKey = (eventId: string | null | undefined, matchId: 
 
 const INCIDENT_RETRY_DELAYS_MS = [3000, 15000, 30000] as const;
 const INCIDENT_CONFIRM_NO_PROGRESS_TIMEOUT_MS = 10000;
+const DIRECT_SCORE_DEBOUNCE_MS = 500;
 
 const sleep = (milliseconds: number) => new Promise((resolve) => {
   window.setTimeout(resolve, milliseconds);
@@ -491,6 +501,39 @@ const buildSegments = (match: Match, length: number, team1Id: string | null, tea
   });
 };
 
+const cloneSegmentsForState = (source: MatchSegment[]): MatchSegment[] => (
+  source.map((segment) => ({
+    ...segment,
+    scores: { ...(segment.scores ?? {}) },
+  }))
+);
+
+const segmentStateKey = (segment: Pick<MatchSegment, 'id' | '$id' | 'sequence'>): string => (
+  segment.id ?? segment.$id ?? `sequence:${segment.sequence}`
+);
+
+const mergeSegmentOverride = (
+  source: MatchSegment[],
+  override: MatchSegment[] | null,
+): MatchSegment[] => {
+  if (!override?.length) {
+    return cloneSegmentsForState(source);
+  }
+  const overrideByKey = new Map(override.map((segment) => [segmentStateKey(segment), {
+    ...segment,
+    scores: { ...(segment.scores ?? {}) },
+  }]));
+  const merged = cloneSegmentsForState(source).map((segment) => (
+    overrideByKey.get(segmentStateKey(segment)) ?? segment
+  ));
+  overrideByKey.forEach((segment, key) => {
+    if (!merged.some((entry) => segmentStateKey(entry) === key)) {
+      merged.push(segment);
+    }
+  });
+  return merged.sort((left, right) => left.sequence - right.sequence);
+};
+
 export default function ScoreUpdateModal({
   match,
   tournament,
@@ -527,7 +570,11 @@ export default function ScoreUpdateModal({
   const incidentRetryAttemptRef = useRef(0);
   const processingIncidentQueueRef = useRef(false);
   const segmentsRef = useRef<MatchSegment[]>([]);
-  const scoreSetSyncRef = useRef<Promise<unknown>>(Promise.resolve());
+  const localSegmentOverrideRef = useRef<MatchSegment[] | null>(null);
+  const directScoreSyncTimerRef = useRef<number | null>(null);
+  const directScoreEditVersionRef = useRef(0);
+  const directScoreInvalidatedThroughVersionRef = useRef(0);
+  const pendingDirectScoreSyncRef = useRef<PendingDirectScoreSync | null>(null);
 
   const team1Id = match.team1Id ?? entityId(match.team1);
   const team2Id = match.team2Id ?? entityId(match.team2);
@@ -742,6 +789,40 @@ export default function ScoreUpdateModal({
     }
   };
 
+  const clearDirectScoreSyncTimer = () => {
+    if (directScoreSyncTimerRef.current) {
+      window.clearTimeout(directScoreSyncTimerRef.current);
+      directScoreSyncTimerRef.current = null;
+    }
+  };
+
+  const applyLocalSegmentState = (next: MatchSegment[]) => {
+    const cloned = cloneSegmentsForState(next);
+    localSegmentOverrideRef.current = cloneSegmentsForState(cloned);
+    segmentsRef.current = cloned;
+    setSegments(cloned);
+    return cloned;
+  };
+
+  const cancelPendingDirectScoreSync = (invalidateQueuedSyncs = false) => {
+    clearDirectScoreSyncTimer();
+    if (invalidateQueuedSyncs) {
+      directScoreInvalidatedThroughVersionRef.current = Math.max(
+        directScoreInvalidatedThroughVersionRef.current,
+        directScoreEditVersionRef.current,
+      );
+    }
+    pendingDirectScoreSyncRef.current = null;
+  };
+
+  useEffect(() => {
+    localSegmentOverrideRef.current = null;
+    pendingDirectScoreSyncRef.current = null;
+    directScoreEditVersionRef.current = 0;
+    directScoreInvalidatedThroughVersionRef.current = 0;
+    clearDirectScoreSyncTimer();
+  }, [match.$id]);
+
   useEffect(() => {
     const persistedIncidentIds = new Set(
       (Array.isArray(match.incidents) ? match.incidents : [])
@@ -756,9 +837,18 @@ export default function ScoreUpdateModal({
     const incidentFallbackSegments = useScoringIncidentsForScore
       ? applyMatchIncidentDeltas(persistedSegments, match.incidents, rules)
       : persistedSegments;
-    const next = applyPendingIncidentDeltas(incidentFallbackSegments, queuedActions);
+    const next = mergeSegmentOverride(
+      applyPendingIncidentDeltas(incidentFallbackSegments, queuedActions),
+      localSegmentOverrideRef.current,
+    );
+    segmentsRef.current = next;
     setSegments(next);
-    setActiveIndex(Math.max(0, next.findIndex((segment) => segment.status !== 'COMPLETE')));
+    setActiveIndex((current) => {
+      if (localSegmentOverrideRef.current?.length && current >= 0 && current < next.length) {
+        return current;
+      }
+      return Math.max(0, next.findIndex((segment) => segment.status !== 'COMPLETE'));
+    });
     setDeletedIncidentIds(new Set(
       queuedActions
         .filter((operation) => operation.action === 'DELETE')
@@ -803,6 +893,11 @@ export default function ScoreUpdateModal({
       setShowDetails(false);
       setPendingPoint(null);
       setEditingActualTimes(false);
+      localSegmentOverrideRef.current = null;
+      pendingDirectScoreSyncRef.current = null;
+      directScoreEditVersionRef.current = 0;
+      directScoreInvalidatedThroughVersionRef.current = 0;
+      clearDirectScoreSyncTimer();
     }
   }, [isOpen, match.$id]);
 
@@ -812,6 +907,7 @@ export default function ScoreUpdateModal({
 
   useEffect(() => () => {
     clearIncidentQueueTimer();
+    clearDirectScoreSyncTimer();
   }, []);
 
   useEffect(() => {
@@ -857,6 +953,40 @@ export default function ScoreUpdateModal({
       console.warn('Match operation update failed:', error);
       return false;
     }
+  };
+
+  const syncPendingDirectScore = async (editVersion: number): Promise<void> => {
+    const pendingSync = pendingDirectScoreSyncRef.current;
+    if (!pendingSync || pendingSync.editVersion !== editVersion) {
+      return;
+    }
+    if (editVersion <= directScoreInvalidatedThroughVersionRef.current) {
+      pendingDirectScoreSyncRef.current = null;
+      return;
+    }
+    const success = await emit(payload(segmentsRef.current, {
+      directScoreVersion: editVersion,
+      scoreSet: {
+        segmentId: pendingSync.segmentId,
+        sequence: pendingSync.sequence,
+        eventTeamId: pendingSync.eventTeamId,
+        points: pendingSync.points,
+      },
+    }));
+    if (success && pendingDirectScoreSyncRef.current?.editVersion === editVersion) {
+      pendingDirectScoreSyncRef.current = null;
+    }
+  };
+
+  const scheduleDirectScoreSync = (pendingSync: PendingDirectScoreSync) => {
+    clearDirectScoreSyncTimer();
+    if (pendingSync.editVersion <= directScoreInvalidatedThroughVersionRef.current) {
+      return;
+    }
+    directScoreSyncTimerRef.current = window.setTimeout(() => {
+      directScoreSyncTimerRef.current = null;
+      void syncPendingDirectScore(pendingSync.editVersion);
+    }, DIRECT_SCORE_DEBOUNCE_MS);
   };
 
   const executeNextIncidentAction = async (): Promise<boolean> => {
@@ -960,24 +1090,22 @@ export default function ScoreUpdateModal({
 
   const updateScore = (eventTeamId: string | null, delta: number) => {
     if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
-    const next = applyScoreDelta(segments, eventTeamId, delta);
+    const next = applyLocalSegmentState(applyScoreDelta(segmentsRef.current, eventTeamId, delta));
     const nextSegment = next.find((segment) => {
       const segmentId = segment.id ?? segment.$id;
       const activeSegmentId = activeSegment.id ?? activeSegment.$id;
       return (activeSegmentId && segmentId === activeSegmentId) || segment.sequence === activeSegment.sequence;
     });
-    setSegments(next);
-    const nextPayload = payload(next, {
-      scoreSet: {
-        segmentId: activeSegment.id,
-        sequence: activeSegment.sequence,
-        eventTeamId,
-        points: score(nextSegment?.scores?.[eventTeamId]),
-      },
-    });
-    scoreSetSyncRef.current = scoreSetSyncRef.current
-      .catch(() => undefined)
-      .then(() => emit(nextPayload));
+    const nextPendingSync = {
+      editVersion: directScoreEditVersionRef.current + 1,
+      segmentId: activeSegment.id ?? activeSegment.$id ?? null,
+      sequence: activeSegment.sequence,
+      eventTeamId,
+      points: score(nextSegment?.scores?.[eventTeamId]),
+    } satisfies PendingDirectScoreSync;
+    directScoreEditVersionRef.current = nextPendingSync.editVersion;
+    pendingDirectScoreSyncRef.current = nextPendingSync;
+    scheduleDirectScoreSync(nextPendingSync);
   };
 
   const createScoringIncident = (
@@ -989,9 +1117,7 @@ export default function ScoreUpdateModal({
     } = {},
   ) => {
     if (!canManage || !activeSegment || !eventTeamId || activeSegment.status === 'COMPLETE') return;
-    const next = applyScoreDelta(segments, eventTeamId, 1);
-    setSegments(next);
-    segmentsRef.current = next;
+    const next = applyLocalSegmentState(applyScoreDelta(segmentsRef.current, eventTeamId, 1));
     const incidentOperation: MatchIncidentOperation = {
       action: 'CREATE',
       id: nextIncidentId(),
@@ -1051,9 +1177,7 @@ export default function ScoreUpdateModal({
     if (retryIndex < 0) return false;
     const [operation] = incidentQueueRef.current.splice(retryIndex, 1);
     writePendingIncidentActions(incidentRetryStorageKey, incidentQueueRef.current);
-    const next = applyScoreDelta(segments, eventTeamId, -score(operation.linkedPointDelta));
-    setSegments(next);
-    segmentsRef.current = next;
+    applyLocalSegmentState(applyScoreDelta(segmentsRef.current, eventTeamId, -score(operation.linkedPointDelta)));
     if (operation.id) {
       setDeletedIncidentIds((current) => new Set(current).add(operation.id!));
       setOptimisticIncidents((current) => current.filter((incident) => (entityId(incident) ?? incident.id) !== operation.id));
@@ -1068,12 +1192,8 @@ export default function ScoreUpdateModal({
     const linkedDelta = score(incident.linkedPointDelta);
     const shouldAdjustScore = isScoringIncidentType(incident.incidentType, rules) && Boolean(incident.eventTeamId) && linkedDelta > 0;
     const next = shouldAdjustScore
-      ? applyScoreDelta(segments, incident.eventTeamId ?? null, -linkedDelta, incident.segmentId)
-      : segments;
-    if (shouldAdjustScore) {
-      setSegments(next);
-      segmentsRef.current = next;
-    }
+      ? applyLocalSegmentState(applyScoreDelta(segmentsRef.current, incident.eventTeamId ?? null, -linkedDelta, incident.segmentId))
+      : segmentsRef.current;
     setDeletedIncidentIds((current) => new Set(current).add(incidentId));
     setOptimisticIncidents((current) => current.filter((entry) => (entityId(entry) ?? entry.id) !== incidentId));
     if (editingIncidentId === incidentId) resetIncidentForm();
@@ -1123,7 +1243,7 @@ export default function ScoreUpdateModal({
     const previousDelta = wasScoring ? score(existing.linkedPointDelta) : 0;
     const nextDelta = nextIsScoring ? Math.max(1, score(existing.linkedPointDelta) || 1) : 0;
     const targetSegmentId = existing.segmentId ?? activeSegment?.id ?? null;
-    let next = segments;
+    let next = segmentsRef.current;
     if (previousDelta && existing.eventTeamId) {
       next = applyScoreDelta(next, existing.eventTeamId, -previousDelta, existing.segmentId);
     }
@@ -1154,8 +1274,7 @@ export default function ScoreUpdateModal({
       linkedPointDelta: incidentOperation.linkedPointDelta ?? null,
       note: incidentOperation.note ?? null,
     };
-    setSegments(next);
-    segmentsRef.current = next;
+    applyLocalSegmentState(next);
     setOptimisticIncidents((current) => [
       ...current.filter((incident) => (entityId(incident) ?? incident.id) !== editingIncidentId),
       optimisticIncident,
@@ -1223,6 +1342,7 @@ export default function ScoreUpdateModal({
       return;
     }
     setSegmentConfirming(true);
+    cancelPendingDirectScoreSync(true);
     const incidentQueueDrained = await drainIncidentQueueForConfirmation();
     if (!incidentQueueDrained) {
       setSegmentConfirming(false);
@@ -1231,7 +1351,7 @@ export default function ScoreUpdateModal({
     }
     const winnerEventTeamId = team1Score > team2Score ? team1Id : team2Score > team1Score ? team2Id : null;
     const endedAt = new Date().toISOString();
-    const next = segments.map((segment, index) => (
+    const next = segmentsRef.current.map((segment, index) => (
       index === activeIndex ? { ...segment, status: 'COMPLETE', winnerEventTeamId, endedAt } satisfies MatchSegment : segment
     ));
     const shouldFinalize = matchComplete(next);
@@ -1256,7 +1376,7 @@ export default function ScoreUpdateModal({
     } finally {
       setSegmentConfirming(false);
     }
-    setSegments(next);
+    applyLocalSegmentState(next);
     const nextOpen = next.findIndex((segment) => segment.status !== 'COMPLETE');
     if (nextOpen >= 0) setActiveIndex(nextOpen);
     if (shouldFinalize && onMatchComplete && !onSetComplete && !onScoreChange) {
@@ -1268,7 +1388,7 @@ export default function ScoreUpdateModal({
     setLoading(true);
     const endedAt = new Date().toISOString();
     const next = isTimedMatch
-      ? segments.map((segment, index) => {
+      ? segmentsRef.current.map((segment, index) => {
           if (index !== 0 || !team1Id || !team2Id) return segment;
           return {
             ...segment,
@@ -1277,7 +1397,8 @@ export default function ScoreUpdateModal({
             winnerEventTeamId: team1Score > team2Score ? team1Id : team2Score > team1Score ? team2Id : null,
           } satisfies MatchSegment;
         })
-      : segments;
+      : segmentsRef.current;
+    cancelPendingDirectScoreSync(true);
     const incidentQueueDrained = await drainIncidentQueueForConfirmation();
     if (!incidentQueueDrained) {
       setLoading(false);
@@ -1299,6 +1420,7 @@ export default function ScoreUpdateModal({
     try {
       if (onScoreChange) await onScoreChange(nextPayload);
       else if (onSubmit) await onSubmit(match.$id, nextPayload.team1Points, nextPayload.team2Points, nextPayload.setResults);
+      applyLocalSegmentState(next);
       if (shouldFinalize && onMatchComplete && !onScoreChange) {
         await onMatchComplete({ ...nextPayload, eventId: tournament.$id });
       }
@@ -1314,8 +1436,8 @@ export default function ScoreUpdateModal({
     if (!activeSegment) return;
     const isScoring = isScoringIncidentType(incidentType, rules);
     const next = isScoring && incidentTeamId
-      ? applyScoreDelta(segments, incidentTeamId, 1)
-      : segments;
+      ? applyLocalSegmentState(applyScoreDelta(segmentsRef.current, incidentTeamId, 1))
+      : segmentsRef.current;
     const incidentOperation: MatchIncidentOperation = {
       action: 'CREATE',
       id: nextIncidentId(),
@@ -1328,8 +1450,6 @@ export default function ScoreUpdateModal({
       linkedPointDelta: isScoring ? 1 : null,
       note: incidentNote.trim() || null,
     };
-    if (isScoring) setSegments(next);
-    segmentsRef.current = next;
     const optimisticIncident: MatchIncident = {
       id: incidentOperation.id!,
       eventId: tournament.$id ?? match.eventId ?? null,
@@ -1361,7 +1481,7 @@ export default function ScoreUpdateModal({
   };
 
   const checkIn = (assignment: any) => {
-    void emit(payload(segments, {
+    void emit(payload(segmentsRef.current, {
       officialCheckIn: {
         positionId: assignment.positionId,
         slotIndex: assignment.slotIndex,
@@ -1386,7 +1506,7 @@ export default function ScoreUpdateModal({
       actualStart: nextStart ? nextStart.toISOString() : null,
       actualEnd: nextEnd ? nextEnd.toISOString() : null,
     };
-    const success = await emit(payload(segments, { lifecycle }));
+    const success = await emit(payload(segmentsRef.current, { lifecycle }));
     setActualTimesSaving(false);
     if (!success) {
       setActualStartValue(previousStart);

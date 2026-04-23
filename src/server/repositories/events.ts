@@ -49,6 +49,7 @@ import {
 import {
   buildLegacySegments,
   resolveMatchRules,
+  resolveMatchRulesForContext,
   serializeMatchIncidentRow,
   serializeMatchSegmentRow,
 } from '@/server/matches/matchOperations';
@@ -1787,6 +1788,24 @@ const buildMatches = (
         })
       : [];
     const segments = shouldHydrateSegments ? (persistedSegments.length ? persistedSegments : legacySegments) : [];
+    const contextualResolvedMatchRules = row.matchRulesSnapshot
+      ?? resolveMatchRulesForContext({
+        baseRules: resolvedMatchRules,
+        eventType: event.eventType,
+        usesSets: event.usesSets,
+        setsPerMatch: (event as any).setsPerMatch ?? null,
+        winnerSetCount: (event as any).winnerSetCount ?? null,
+        loserSetCount: (event as any).loserSetCount ?? null,
+        losersBracket: Boolean(row.losersBracket),
+        previousLeftId: row.previousLeftId ?? null,
+        previousRightId: row.previousRightId ?? null,
+        winnerNextMatchId: row.winnerNextMatchId ?? null,
+        loserNextMatchId: row.loserNextMatchId ?? null,
+        existingSegmentCount: segments.length,
+        existingTeam1PointCount: ensureArray(row.team1Points).length,
+        existingTeam2PointCount: ensureArray(row.team2Points).length,
+        existingResultCount: ensureArray(row.setResults).length,
+      });
     const incidents = shouldHydrateIncidents
       ? (incidentRowsByMatchId.get(row.id) ?? [])
         .sort((left, right) => Number(left.sequence ?? 0) - Number(right.sequence ?? 0))
@@ -1827,7 +1846,7 @@ const buildMatches = (
       statusReason: row.statusReason ?? null,
       winnerEventTeamId,
       matchRulesSnapshot: row.matchRulesSnapshot ?? null,
-      resolvedMatchRules: row.matchRulesSnapshot ?? resolvedMatchRules,
+      resolvedMatchRules: contextualResolvedMatchRules,
       segments,
       incidents,
       bufferMs: matchBufferMs(event),

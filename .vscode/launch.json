@@ -6,7 +6,6 @@
       "type": "node-terminal",
       "request": "launch",
       "preLaunchTask": "mvp: stop stale dev servers",
-      "postDebugTask": "mvp: stop stale dev servers",
       "restart": false,
       "command": "npm run dev:plain -- --webpack",
       "cwd": "${workspaceFolder}",
@@ -22,7 +21,6 @@
       "type": "node-terminal",
       "request": "launch",
       "preLaunchTask": "mvp: stop stale dev servers",
-      "postDebugTask": "mvp: stop stale dev servers",
       "restart": false,
       "command": "npm run dev -- --webpack",
       "cwd": "${workspaceFolder}",
@@ -38,7 +36,6 @@
       "type": "node-terminal",
       "request": "launch",
       "preLaunchTask": "mvp: stop stale dev servers",
-      "postDebugTask": "mvp: stop stale dev servers",
       "restart": false,
       "command": "npm run dev:plain -- --webpack",
       "cwd": "${workspaceFolder}"

@@ -20,7 +20,10 @@ import { sendPushToUsers } from '@/server/pushNotifications';
 import {
   normalizeMatchOfficialAssignments,
 } from '@/server/officials/config';
-import { shouldFreezeMatchRulesSnapshot } from '@/server/matches/matchOperations';
+import {
+  resolveMatchRulesForContext,
+  shouldFreezeMatchRulesSnapshot,
+} from '@/server/matches/matchOperations';
 import type { MatchIncident, MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -1093,8 +1096,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         segmentOperations: parsed.data.segmentOperations,
         incidentOperations: sanitizedIncidentOperations,
       }) && !targetMatch.matchRulesSnapshot) {
-        targetMatch.matchRulesSnapshot = (event as any).resolvedMatchRules ?? null;
-        targetMatch.resolvedMatchRules = (event as any).resolvedMatchRules ?? null;
+        const contextualMatchRules = resolveMatchRulesForContext({
+          baseRules: (event as any).resolvedMatchRules ?? targetMatch.resolvedMatchRules ?? null,
+          eventType: event.eventType,
+          usesSets: event.usesSets,
+          setsPerMatch: (event as any).setsPerMatch ?? null,
+          winnerSetCount: (event as any).winnerSetCount ?? null,
+          loserSetCount: (event as any).loserSetCount ?? null,
+          losersBracket: Boolean(targetMatch.losersBracket),
+          previousLeftMatch: targetMatch.previousLeftMatch,
+          previousRightMatch: targetMatch.previousRightMatch,
+          winnerNextMatch: targetMatch.winnerNextMatch,
+          loserNextMatch: targetMatch.loserNextMatch,
+          existingSegmentCount: Array.isArray(targetMatch.segments) ? targetMatch.segments.length : 0,
+          existingTeam1PointCount: Array.isArray(targetMatch.team1Points) ? targetMatch.team1Points.length : 0,
+          existingTeam2PointCount: Array.isArray(targetMatch.team2Points) ? targetMatch.team2Points.length : 0,
+          existingResultCount: Array.isArray(targetMatch.setResults) ? targetMatch.setResults.length : 0,
+        });
+        targetMatch.matchRulesSnapshot = contextualMatchRules;
+        targetMatch.resolvedMatchRules = contextualMatchRules;
       }
       if (parsed.data.lifecycle) {
         if (!isHostOrAdmin) {
