@@ -388,7 +388,8 @@ export const CanonicalTeamsScalarFieldEnum = {
   organizationId: 'organizationId',
   createdBy: 'createdBy',
   openRegistration: 'openRegistration',
-  registrationPriceCents: 'registrationPriceCents'
+  registrationPriceCents: 'registrationPriceCents',
+  requiredTemplateIds: 'requiredTemplateIds'
 } as const
 
 export type CanonicalTeamsScalarFieldEnum = (typeof CanonicalTeamsScalarFieldEnum)[keyof typeof CanonicalTeamsScalarFieldEnum]
@@ -400,10 +401,15 @@ export const TeamRegistrationsScalarFieldEnum = {
   updatedAt: 'updatedAt',
   teamId: 'teamId',
   userId: 'userId',
+  parentId: 'parentId',
+  registrantType: 'registrantType',
+  rosterRole: 'rosterRole',
   status: 'status',
   jerseyNumber: 'jerseyNumber',
   position: 'position',
   isCaptain: 'isCaptain',
+  consentDocumentId: 'consentDocumentId',
+  consentStatus: 'consentStatus',
   createdBy: 'createdBy'
 } as const
 
@@ -892,6 +898,7 @@ export const SignedDocumentsScalarFieldEnum = {
   hostId: 'hostId',
   organizationId: 'organizationId',
   eventId: 'eventId',
+  teamId: 'teamId',
   status: 'status',
   signedAt: 'signedAt',
   signerEmail: 'signerEmail',
@@ -933,6 +940,7 @@ export const BoldSignSyncOperationsScalarFieldEnum = {
   idempotencyKey: 'idempotencyKey',
   organizationId: 'organizationId',
   eventId: 'eventId',
+  teamId: 'teamId',
   templateDocumentId: 'templateDocumentId',
   signedDocumentRecordId: 'signedDocumentRecordId',
   templateId: 'templateId',

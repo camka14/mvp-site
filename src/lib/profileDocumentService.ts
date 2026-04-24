@@ -6,6 +6,8 @@ export type ProfileDocumentCard = {
   status: 'UNSIGNED' | 'SIGNED';
   eventId?: string;
   eventName?: string;
+  teamId?: string;
+  teamName?: string;
   organizationId?: string;
   organizationName: string;
   templateId: string;

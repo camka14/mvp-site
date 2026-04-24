@@ -248,10 +248,17 @@ export interface TeamPlayerRegistration {
   id: string;
   teamId?: string | null;
   userId: string;
+  registrantId?: string;
+  parentId?: string | null;
+  registrantType?: string;
+  rosterRole?: string;
   status: string;
   jerseyNumber?: string | null;
   position?: string | null;
   isCaptain?: boolean;
+  consentDocumentId?: string | null;
+  consentStatus?: string | null;
+  createdBy?: string | null;
 }
 
 export interface Sport {
@@ -555,6 +562,7 @@ export interface Team {
   createdBy?: string | null;
   openRegistration?: boolean;
   registrationPriceCents?: number;
+  requiredTemplateIds?: string[];
   $createdAt?: string;
   $updatedAt?: string;
   // Expanded relationships

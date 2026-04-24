@@ -13,6 +13,12 @@ import { useChat } from "@/context/ChatContext";
 import { useChatUI } from "@/context/ChatUIContext";
 import { authService } from "@/lib/auth";
 import { billingAddressService } from "@/lib/billingAddressService";
+import {
+  isSupportedBillingCountryCode,
+  isSupportedUsStateCode,
+  normalizeBillingCountryCode,
+  normalizeUsStateCode,
+} from "@/lib/billingAddressOptions";
 import { userService, type UserSocialGraph } from "@/lib/userService";
 import {
   familyService,
@@ -61,6 +67,7 @@ import { paymentService } from "@/lib/paymentService";
 import { billService } from "@/lib/billService";
 import { teamService } from "@/lib/teamService";
 import PaymentModal from "@/components/ui/PaymentModal";
+import BillingAddressFields from "@/components/ui/BillingAddressFields";
 import { ManageTeams } from "@/app/teams/page";
 import RefundRequestsList from "@/components/ui/RefundRequestsList";
 import ProfileInvitesSection from "@/components/ui/ProfileInvitesSection";
@@ -139,9 +146,9 @@ const normalizeBillingAddress = (
   line1: value?.line1 ?? "",
   line2: value?.line2 ?? "",
   city: value?.city ?? "",
-  state: value?.state ?? "",
+  state: normalizeUsStateCode(value?.state),
   postalCode: value?.postalCode ?? "",
-  countryCode: value?.countryCode ?? "US",
+  countryCode: normalizeBillingCountryCode(value?.countryCode),
 });
 
 const formatBillingAddressLabel = (value?: BillingAddress | null): string => {
@@ -541,6 +548,14 @@ function ProfilePageContent() {
         );
         return;
       }
+      if (!isSupportedUsStateCode(normalizedBillingAddress.state)) {
+        setError("Select a supported billing state.");
+        return;
+      }
+      if (!isSupportedBillingCountryCode(normalizedBillingAddress.countryCode)) {
+        setError("Only United States billing addresses are supported right now.");
+        return;
+      }
 
       const [profileResult, billingResult] = await Promise.allSettled([
         userService.updateProfile(user.$id, {
@@ -555,9 +570,9 @@ function ProfilePageContent() {
           line1: normalizedBillingAddress.line1.trim(),
           line2: normalizedBillingAddress.line2?.trim() || "",
           city: normalizedBillingAddress.city.trim(),
-          state: normalizedBillingAddress.state.trim().toUpperCase(),
+          state: normalizeUsStateCode(normalizedBillingAddress.state),
           postalCode: normalizedBillingAddress.postalCode.trim(),
-          countryCode: normalizedBillingAddress.countryCode.trim().toUpperCase(),
+          countryCode: normalizeBillingCountryCode(normalizedBillingAddress.countryCode),
         }),
       ]);
 
@@ -1476,9 +1491,9 @@ function ProfilePageContent() {
   const handleStartSigningDocument = useCallback(
     (document: ProfileDocumentCard) => {
       if (!user) return;
-      if (!document.eventId) {
+      if (!document.eventId && !document.teamId) {
         setDocumentsError(
-          "Cannot sign this document because the event is missing.",
+          "Cannot sign this document because the source record is missing.",
         );
         return;
       }
@@ -1525,8 +1540,7 @@ function ProfilePageContent() {
     if (
       !activeSigningDocument ||
       !user ||
-      !authUser?.email ||
-      !activeSigningDocument.eventId
+      !authUser?.email
     ) {
       return;
     }
@@ -1546,6 +1560,7 @@ function ProfilePageContent() {
           email: authUser.email,
           password: signPassword,
           eventId: activeSigningDocument.eventId,
+          teamId: activeSigningDocument.teamId,
         }),
       });
       const result = await response.json().catch(() => ({}));
@@ -1555,6 +1570,7 @@ function ProfilePageContent() {
 
       const links = await boldsignService.createSignLinks({
         eventId: activeSigningDocument.eventId,
+        teamId: activeSigningDocument.teamId,
         user,
         userEmail: authUser.email,
         templateId: activeSigningDocument.templateId,
@@ -1602,8 +1618,8 @@ function ProfilePageContent() {
       documentId: string;
       type: SignStep["type"];
     }): Promise<{ operationId?: string; syncStatus?: string }> => {
-      if (!activeSigningDocument?.eventId || !user) {
-        throw new Error("Event and user are required to record signatures.");
+      if ((!activeSigningDocument?.eventId && !activeSigningDocument?.teamId) || !user) {
+        throw new Error("A signing source and user are required to record signatures.");
       }
       const signingUserId =
         activeSigningDocument.signerContext === "child" &&
@@ -1619,6 +1635,7 @@ function ProfilePageContent() {
           templateId: payload.templateId,
           documentId: payload.documentId,
           eventId: activeSigningDocument.eventId,
+          teamId: activeSigningDocument.teamId,
           type: payload.type,
           userId: signingUserId,
           childUserId: activeSigningDocument.childUserId,
@@ -3351,7 +3368,11 @@ function ProfilePageContent() {
                         </div>
                         <div className="space-y-1">
                           <Text size="xs" c="dimmed">
-                            Event: {document.eventName ?? "Event"}
+                            {document.eventName
+                              ? `Event: ${document.eventName}`
+                              : document.teamName
+                                ? `Team: ${document.teamName}`
+                                : "Source: Document"}
                           </Text>
                           <Text size="xs" c="dimmed">
                             Signer: {document.signerContextLabel}
@@ -3439,7 +3460,11 @@ function ProfilePageContent() {
                         </div>
                         <div className="space-y-1">
                           <Text size="xs" c="dimmed">
-                            Event: {document.eventName ?? "Event"}
+                            {document.eventName
+                              ? `Event: ${document.eventName}`
+                              : document.teamName
+                                ? `Team: ${document.teamName}`
+                                : "Source: Document"}
                           </Text>
                           <Text size="xs" c="dimmed">
                             Signed: {formatDateTimeLabel(document.signedAt)}
@@ -3975,71 +4000,11 @@ function ProfilePageContent() {
               Loading billing address...
             </Text>
           ) : (
-            <>
-              <TextInput
-                label="Address line 1"
-                value={billingAddressData.line1}
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setBillingAddressData((prev) => ({ ...prev, line1: value }));
-                }}
-                required
-              />
-              <TextInput
-                label="Address line 2"
-                value={billingAddressData.line2 ?? ""}
-                onChange={(event) => {
-                  const value = event.currentTarget.value;
-                  setBillingAddressData((prev) => ({ ...prev, line2: value }));
-                }}
-              />
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                <TextInput
-                  label="City"
-                  value={billingAddressData.city}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setBillingAddressData((prev) => ({ ...prev, city: value }));
-                  }}
-                  required
-                />
-                <TextInput
-                  label="State"
-                  value={billingAddressData.state}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setBillingAddressData((prev) => ({ ...prev, state: value }));
-                  }}
-                  required
-                />
-              </SimpleGrid>
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
-                <TextInput
-                  label="ZIP code"
-                  value={billingAddressData.postalCode}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setBillingAddressData((prev) => ({
-                      ...prev,
-                      postalCode: value,
-                    }));
-                  }}
-                  required
-                />
-                <TextInput
-                  label="Country"
-                  value={billingAddressData.countryCode}
-                  onChange={(event) => {
-                    const value = event.currentTarget.value;
-                    setBillingAddressData((prev) => ({
-                      ...prev,
-                      countryCode: value,
-                    }));
-                  }}
-                  required
-                />
-              </SimpleGrid>
-            </>
+            <BillingAddressFields
+              value={billingAddressData}
+              onChange={setBillingAddressData}
+              onValidationMessage={setBillingAddressError}
+            />
           )}
         </div>
       </Paper>
@@ -4374,9 +4339,11 @@ function ProfilePageContent() {
                 Signed at{" "}
                 {formatDateTimeLabel(selectedSignedTextDocument.signedAt)}
               </Text>
-              {selectedSignedTextDocument.eventName && (
+              {(selectedSignedTextDocument.eventName || selectedSignedTextDocument.teamName) && (
                 <Text size="sm" c="dimmed">
-                  Event: {selectedSignedTextDocument.eventName}
+                  {selectedSignedTextDocument.eventName
+                    ? `Event: ${selectedSignedTextDocument.eventName}`
+                    : `Team: ${selectedSignedTextDocument.teamName}`}
                 </Text>
               )}
               <Paper

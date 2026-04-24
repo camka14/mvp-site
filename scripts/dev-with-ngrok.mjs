@@ -6,6 +6,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const nextCli = require.resolve('next/dist/bin/next');
+const DEFAULT_NGROK_DOMAIN = 'untarnished-berserkly-everette.ngrok-free.dev';
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -506,8 +507,11 @@ const startNgrok = async (port) => {
   }
   console.log(`[dev] using ngrok binary: ${ngrokBin}`);
   const ngrokArgs = ['http', String(port), '--log', 'stdout'];
-  if (process.env.NGROK_DOMAIN?.trim()) {
-    ngrokArgs.push('--domain', process.env.NGROK_DOMAIN.trim());
+  const ngrokDomain = process.env.NGROK_DOMAIN?.trim()
+    || process.env.MVP_DEV_NGROK_DOMAIN?.trim()
+    || DEFAULT_NGROK_DOMAIN;
+  if (ngrokDomain) {
+    ngrokArgs.push('--domain', ngrokDomain);
   }
   if (process.env.NGROK_REGION?.trim()) {
     ngrokArgs.push('--region', process.env.NGROK_REGION.trim());
@@ -568,6 +572,8 @@ const run = async () => {
   const port = parsePort(args);
   const enableNgrok = isFlagEnabled(process.env.MVP_DEV_ENABLE_NGROK, true);
   const enableStripeListen = isFlagEnabled(process.env.MVP_DEV_ENABLE_STRIPE_LISTEN, true);
+  const requireNgrok = isFlagEnabled(process.env.MVP_DEV_REQUIRE_NGROK, false);
+  const requireStripeListen = isFlagEnabled(process.env.MVP_DEV_REQUIRE_STRIPE_LISTEN, false);
 
   let ngrokProc = null;
   let publicUrl = null;
@@ -577,6 +583,9 @@ const run = async () => {
   if (enableNgrok) {
     const ngrokResult = await startNgrok(port);
     if (ngrokResult.error) {
+      if (requireNgrok) {
+        throw ngrokResult.error;
+      }
       console.warn(`[dev] ngrok unavailable; continuing without tunnel (${ngrokResult.error.message})`);
     } else {
       ngrokProc = ngrokResult.ngrokProc;
@@ -609,6 +618,9 @@ const run = async () => {
   if (enableStripeListen) {
     const stripeResult = await startStripeListener(port);
     if (stripeResult.error) {
+      if (requireStripeListen) {
+        throw stripeResult.error;
+      }
       console.warn(`[dev] stripe listen unavailable; continuing without local webhook forward (${stripeResult.error.message})`);
       console.warn(
         `[dev] run manually: stripe listen --events payment_intent.succeeded --forward-to http://localhost:${port}/api/billing/webhook`,

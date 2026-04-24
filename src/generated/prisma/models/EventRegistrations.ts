@@ -745,14 +745,6 @@ export type EventRegistrationsSumOrderByAggregateInput = {
   ageAtEvent?: Prisma.SortOrder
 }
 
-export type EnumEventRegistrationsRegistrantTypeEnumFieldUpdateOperationsInput = {
-  set?: $Enums.EventRegistrationsRegistrantTypeEnum
-}
-
-export type EnumEventRegistrationsRosterRoleEnumFieldUpdateOperationsInput = {
-  set?: $Enums.EventRegistrationsRosterRoleEnum
-}
-
 export type EnumEventRegistrationsStatusEnumFieldUpdateOperationsInput = {
   set?: $Enums.EventRegistrationsStatusEnum
 }

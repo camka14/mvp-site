@@ -68,6 +68,7 @@ export type PublicOrganizationTeamCard = {
   isFull: boolean;
   openRegistration: boolean;
   registrationPriceCents: number;
+  requiredTemplateIds: string[];
   registrationUrl: string | null;
 };
 
@@ -145,6 +146,7 @@ export type PublicOrganizationTeamRegistrationData = {
     isFull: boolean;
     openRegistration: boolean;
     registrationPriceCents: number;
+    requiredTemplateIds: string[];
   };
 };
 
@@ -1050,6 +1052,7 @@ export const listPublicOrganizationTeams = async (
     isFull: normalizeNumber(team.teamSize) > 0 && (occupancyByTeamId.get(String(team.id)) ?? 0) >= normalizeNumber(team.teamSize),
     openRegistration: Boolean(team.openRegistration),
     registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
+    requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
     registrationUrl: team.openRegistration && !(normalizeNumber(team.teamSize) > 0 && (occupancyByTeamId.get(String(team.id)) ?? 0) >= normalizeNumber(team.teamSize))
       ? formatTeamRegistrationUrl(organization.slug, String(team.id))
       : null,
@@ -1077,6 +1080,7 @@ const mapPublicTeamCard = (
     isFull,
     openRegistration: Boolean(team.openRegistration),
     registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
+    requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
   };
 };
 

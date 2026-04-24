@@ -11,17 +11,29 @@ export type CanonicalPlayerRegistration = {
   updatedAt?: Date | null;
   teamId: string;
   userId: string;
+  parentId?: string | null;
+  registrantType?: string | null;
+  rosterRole?: string | null;
   status: string;
   jerseyNumber?: string | null;
   position?: string | null;
   isCaptain?: boolean | null;
+  consentDocumentId?: string | null;
+  consentStatus?: string | null;
   createdBy?: string | null;
 };
 
 export type TeamRegistrationMetadataInput = {
   userId?: unknown;
+  registrantId?: unknown;
+  parentId?: unknown;
+  registrantType?: unknown;
+  rosterRole?: unknown;
   jerseyNumber?: unknown;
   position?: unknown;
+  consentDocumentId?: unknown;
+  consentStatus?: unknown;
+  createdBy?: unknown;
 };
 
 export type CanonicalStaffAssignment = {
@@ -52,6 +64,7 @@ type CanonicalTeamRow = {
   createdBy?: string | null;
   openRegistration?: boolean | null;
   registrationPriceCents?: number | null;
+  requiredTemplateIds?: string[] | null;
 };
 
 type EventTeamRow = {
@@ -144,29 +157,49 @@ export const applyCanonicalTeamRegistrationMetadata = async (params: {
       return;
     }
 
-    const userId = normalizeId(registration.userId);
-    if (!userId) {
-      return;
-    }
+      const userId = normalizeId(registration.userId);
+      const registrantId = normalizeId(registration.registrantId);
+      const targetUserId = userId ?? registrantId;
+      if (!targetUserId) {
+        return;
+      }
 
-    const data: Record<string, unknown> = { updatedAt: now };
-    if (hasOwn(registration, 'jerseyNumber')) {
-      data.jerseyNumber = normalizeJerseyNumber(registration.jerseyNumber);
-    }
-    if (hasOwn(registration, 'position')) {
-      data.position = normalizeId(registration.position);
-    }
-    if (Object.keys(data).length === 1) {
-      return;
-    }
+      const data: Record<string, unknown> = { updatedAt: now };
+      if (hasOwn(registration, 'parentId')) {
+        data.parentId = normalizeId(registration.parentId);
+      }
+      if (hasOwn(registration, 'registrantType')) {
+        data.registrantType = normalizeId(registration.registrantType)?.toUpperCase() ?? 'SELF';
+      }
+      if (hasOwn(registration, 'rosterRole')) {
+        data.rosterRole = normalizeId(registration.rosterRole)?.toUpperCase() ?? 'PARTICIPANT';
+      }
+      if (hasOwn(registration, 'jerseyNumber')) {
+        data.jerseyNumber = normalizeJerseyNumber(registration.jerseyNumber);
+      }
+      if (hasOwn(registration, 'position')) {
+        data.position = normalizeId(registration.position);
+      }
+      if (hasOwn(registration, 'consentDocumentId')) {
+        data.consentDocumentId = normalizeId(registration.consentDocumentId);
+      }
+      if (hasOwn(registration, 'consentStatus')) {
+        data.consentStatus = normalizeId(registration.consentStatus);
+      }
+      if (hasOwn(registration, 'createdBy')) {
+        data.createdBy = normalizeId(registration.createdBy);
+      }
+      if (Object.keys(data).length === 1) {
+        return;
+      }
 
-    await teamRegistrationsDelegate.updateMany({
-      where: {
-        teamId: params.teamId,
-        userId,
-      },
-      data,
-    });
+      await teamRegistrationsDelegate.updateMany({
+        where: {
+          teamId: params.teamId,
+          userId: targetUserId,
+        },
+        data,
+      });
   }));
 };
 
@@ -194,6 +227,7 @@ export const serializeCanonicalTeam = (params: {
     ...params.team,
     openRegistration: Boolean(params.team.openRegistration),
     registrationPriceCents: Math.max(0, Math.round(params.team.registrationPriceCents ?? 0)),
+    requiredTemplateIds: normalizeIdList(params.team.requiredTemplateIds),
     playerIds: activePlayerRegistrations.map((row) => row.userId),
     pending: invitedPlayerRegistrations.map((row) => row.userId),
     captainId: normalizeId(captainRegistration?.userId) ?? '',
@@ -203,9 +237,15 @@ export const serializeCanonicalTeam = (params: {
     assistantCoachIds: assistantCoachAssignments.map((row) => row.userId),
     playerRegistrations: params.playerRegistrations.map((row) => withLegacyFields({
       ...row,
+      registrantId: normalizeId(row.userId) ?? '',
+      parentId: normalizeId(row.parentId),
+      registrantType: normalizeId(row.registrantType)?.toUpperCase() ?? 'SELF',
+      rosterRole: normalizeId(row.rosterRole)?.toUpperCase() ?? 'PARTICIPANT',
       jerseyNumber: normalizeJerseyNumber(row.jerseyNumber),
       position: normalizeId(row.position),
       isCaptain: Boolean(row.isCaptain),
+      consentDocumentId: normalizeId(row.consentDocumentId),
+      consentStatus: normalizeId(row.consentStatus),
     })),
     staffAssignments: params.staffAssignments.map((row) => withLegacyFields({
       ...row,
@@ -218,6 +258,7 @@ const serializeLegacyEventTeam = (team: EventTeamRow) => withLegacyFields({
   ...team,
   openRegistration: false,
   registrationPriceCents: 0,
+  requiredTemplateIds: [],
   kind: normalizeId(team.kind) ?? 'REGISTERED',
   playerIds: normalizeIdList(team.playerIds),
   playerRegistrationIds: normalizeIdList(team.playerRegistrationIds),
@@ -237,26 +278,36 @@ const buildFallbackCanonicalTeam = (team: EventTeamRow): ReturnType<typeof seria
       id: buildCanonicalTeamRegistrationId(team.id, userId),
       createdAt: team.createdAt ?? null,
       updatedAt: team.updatedAt ?? null,
-      teamId: team.id,
-      userId,
-      status: 'ACTIVE',
-      jerseyNumber: null,
-      position: null,
-      isCaptain: userId === normalizeId(team.captainId),
-      createdBy: normalizeId(team.managerId),
-    })),
+        teamId: team.id,
+        userId,
+        parentId: null,
+        registrantType: 'SELF',
+        rosterRole: 'PARTICIPANT',
+        status: 'ACTIVE',
+        jerseyNumber: null,
+        position: null,
+        isCaptain: userId === normalizeId(team.captainId),
+        consentDocumentId: null,
+        consentStatus: null,
+        createdBy: normalizeId(team.managerId),
+      })),
     ...normalizeIdList(team.pending).map((userId) => ({
       id: buildCanonicalTeamRegistrationId(team.id, userId),
       createdAt: team.createdAt ?? null,
       updatedAt: team.updatedAt ?? null,
-      teamId: team.id,
-      userId,
-      status: 'INVITED',
-      jerseyNumber: null,
-      position: null,
-      isCaptain: false,
-      createdBy: normalizeId(team.managerId),
-    })),
+        teamId: team.id,
+        userId,
+        parentId: null,
+        registrantType: 'SELF',
+        rosterRole: 'PARTICIPANT',
+        status: 'INVITED',
+        jerseyNumber: null,
+        position: null,
+        isCaptain: false,
+        consentDocumentId: null,
+        consentStatus: null,
+        createdBy: normalizeId(team.managerId),
+      })),
   ];
   const staffAssignments: CanonicalStaffAssignment[] = [
     ...(normalizeId(team.managerId) ? [{
@@ -306,10 +357,11 @@ const buildFallbackCanonicalTeam = (team: EventTeamRow): ReturnType<typeof seria
       profileImageId: normalizeId(team.profileImageId),
       sport: normalizeId(team.sport),
       organizationId: null,
-      createdBy: normalizeId(team.managerId),
-      openRegistration: false,
-      registrationPriceCents: 0,
-    },
+        createdBy: normalizeId(team.managerId),
+        openRegistration: false,
+        registrationPriceCents: 0,
+        requiredTemplateIds: [],
+      },
     playerRegistrations,
     staffAssignments,
   });

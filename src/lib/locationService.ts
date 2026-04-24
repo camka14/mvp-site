@@ -9,7 +9,71 @@ export interface LocationInfo extends LocationCoordinates {
   country?: string;
   zipCode?: string;
   formattedAddress?: string;
+  line1?: string;
+  line2?: string;
+  name?: string;
 }
+
+export type PlacePrediction = {
+  description: string;
+  placeId: string;
+};
+
+export type PlacePredictionOptions = {
+  types?: string[];
+  componentRestrictions?: {
+    country?: string | string[];
+  };
+};
+
+const extractLocationInfoFromPlaceResult = (result: any): LocationInfo => {
+  const geometryLocation = result.geometry?.location;
+  const info: LocationInfo = {
+    lat: typeof geometryLocation?.lat === 'function' ? geometryLocation.lat() : geometryLocation?.lat ?? 0,
+    lng: typeof geometryLocation?.lng === 'function' ? geometryLocation.lng() : geometryLocation?.lng ?? 0,
+    formattedAddress: typeof result.formatted_address === 'string' ? result.formatted_address : undefined,
+    name: typeof result.name === 'string' ? result.name : undefined,
+  };
+
+  let streetNumber = '';
+  let route = '';
+  let subpremise = '';
+  let postalCode = '';
+  let postalCodeSuffix = '';
+  let fallbackCity = '';
+
+  result.address_components?.forEach((component: any) => {
+    const types = component.types ?? [];
+    if (types.includes('street_number')) {
+      streetNumber = component.long_name;
+    } else if (types.includes('route')) {
+      route = component.long_name;
+    } else if (types.includes('subpremise')) {
+      subpremise = component.long_name;
+    } else if (types.includes('locality')) {
+      info.city = component.long_name;
+    } else if (types.includes('postal_town')) {
+      fallbackCity = component.long_name;
+    } else if (types.includes('sublocality') || types.includes('administrative_area_level_2')) {
+      fallbackCity ||= component.long_name;
+    } else if (types.includes('administrative_area_level_1')) {
+      info.state = component.short_name;
+    } else if (types.includes('postal_code')) {
+      postalCode = component.long_name;
+    } else if (types.includes('postal_code_suffix')) {
+      postalCodeSuffix = component.long_name;
+    } else if (types.includes('country')) {
+      info.country = component.short_name;
+    }
+  });
+
+  info.city ||= fallbackCity;
+  info.zipCode = postalCodeSuffix && postalCode ? `${postalCode}-${postalCodeSuffix}` : postalCode;
+  info.line1 = [streetNumber, route].filter(Boolean).join(' ').trim() || undefined;
+  info.line2 = subpremise || undefined;
+
+  return info;
+};
 
 class LocationService {
   private googleApiKey?: string;
@@ -186,14 +250,19 @@ class LocationService {
     return new g.maps.places.AutocompleteSessionToken();
   }
 
-  async getPlacePredictions(query: string, sessionToken?: any): Promise<Array<{ description: string; placeId: string }>> {
+  async getPlacePredictions(
+    query: string,
+    sessionToken?: any,
+    options: PlacePredictionOptions = {},
+  ): Promise<PlacePrediction[]> {
     this.ensureBrowser();
     if (!query.trim()) return [];
     await this.loadPlacesLibrary();
     const g = (window as any).google;
     const svc = new g.maps.places.AutocompleteService();
-    const request: any = { input: query, types: ['(cities)'] };
+    const request: any = { input: query, types: options.types ?? ['(cities)'] };
     if (sessionToken) request.sessionToken = sessionToken;
+    if (options.componentRestrictions) request.componentRestrictions = options.componentRestrictions;
     return new Promise((resolve, reject) => {
       svc.getPlacePredictions(request, (preds: any[], status: any) => {
         const ok = g.maps.places.PlacesServiceStatus.OK;
@@ -214,7 +283,7 @@ class LocationService {
     const g = (window as any).google;
     const container = document.createElement('div');
     const svc = new g.maps.places.PlacesService(container);
-    const req: any = { placeId, fields: ['geometry.location', 'address_components'] };
+    const req: any = { placeId, fields: ['geometry.location', 'address_components', 'formatted_address', 'name'] };
     if (sessionToken) req.sessionToken = sessionToken;
     return new Promise((resolve, reject) => {
       svc.getDetails(req, (result: any, status: any) => {
@@ -222,23 +291,7 @@ class LocationService {
           reject(new Error(`Place details error: ${status}`));
           return;
         }
-        const info: LocationInfo = {
-          lat: result.geometry.location.lat(),
-          lng: result.geometry.location.lng()
-        };
-        result.address_components?.forEach((component: any) => {
-          const types = component.types;
-          if (types.includes('locality')) {
-            info.city = component.long_name;
-          } else if (types.includes('administrative_area_level_1')) {
-            info.state = component.short_name;
-          } else if (types.includes('postal_code')) {
-            info.zipCode = component.long_name;
-          } else if (types.includes('country')) {
-            info.country = component.short_name;
-          }
-        });
-        resolve(info);
+        resolve(extractLocationInfoFromPlaceResult(result));
       });
     });
   }

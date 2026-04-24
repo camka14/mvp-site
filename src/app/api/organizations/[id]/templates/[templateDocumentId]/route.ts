@@ -92,8 +92,12 @@ export async function DELETE(
     );
   }
 
-  const [eventsToUpdate, timeSlotsToUpdate] = await Promise.all([
+  const [eventsToUpdate, teamsToUpdate, timeSlotsToUpdate] = await Promise.all([
     prisma.events.findMany({
+      where: { requiredTemplateIds: { has: templateDocumentId } },
+      select: { id: true, requiredTemplateIds: true },
+    }),
+    prisma.canonicalTeams.findMany({
       where: { requiredTemplateIds: { has: templateDocumentId } },
       select: { id: true, requiredTemplateIds: true },
     }),
@@ -114,6 +118,13 @@ export async function DELETE(
       where: { id: event.id },
       data: {
         requiredTemplateIds: event.requiredTemplateIds.filter((entry) => entry !== templateDocumentId),
+        updatedAt: now,
+      },
+    })),
+    ...teamsToUpdate.map((team) => prisma.canonicalTeams.update({
+      where: { id: team.id },
+      data: {
+        requiredTemplateIds: team.requiredTemplateIds.filter((entry) => entry !== templateDocumentId),
         updatedAt: now,
       },
     })),

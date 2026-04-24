@@ -1,9 +1,16 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Alert, Button, Group, Loader, Modal, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Group, Loader, Modal, Stack, Text } from '@mantine/core';
 import { billingAddressService } from '@/lib/billingAddressService';
+import {
+  isSupportedBillingCountryCode,
+  isSupportedUsStateCode,
+  normalizeBillingCountryCode,
+  normalizeUsStateCode,
+} from '@/lib/billingAddressOptions';
 import type { BillingAddress } from '@/types';
+import BillingAddressFields from './BillingAddressFields';
 
 const EMPTY_BILLING_ADDRESS: BillingAddress = {
   line1: '',
@@ -18,9 +25,9 @@ const normalizeBillingAddress = (value?: BillingAddress | null): BillingAddress 
   line1: value?.line1 ?? '',
   line2: value?.line2 ?? '',
   city: value?.city ?? '',
-  state: value?.state ?? '',
+  state: normalizeUsStateCode(value?.state),
   postalCode: value?.postalCode ?? '',
-  countryCode: value?.countryCode ?? 'US',
+  countryCode: normalizeBillingCountryCode(value?.countryCode),
 });
 
 type BillingAddressModalProps = {
@@ -75,19 +82,16 @@ export default function BillingAddressModal({
     };
   }, [opened]);
 
-  const updateField = (field: keyof BillingAddress, value: string) => {
-    setBillingAddress((current) => ({
-      ...current,
-      [field]: value,
-    }));
-  };
-
   const validate = (): string | null => {
     if (!billingAddress.line1.trim()) return 'Address line 1 is required.';
     if (!billingAddress.city.trim()) return 'City is required.';
     if (!billingAddress.state.trim()) return 'State is required.';
+    if (!isSupportedUsStateCode(billingAddress.state)) return 'Select a supported billing state.';
     if (!billingAddress.postalCode.trim()) return 'ZIP code is required.';
     if (!billingAddress.countryCode.trim()) return 'Country is required.';
+    if (!isSupportedBillingCountryCode(billingAddress.countryCode)) {
+      return 'Only United States billing addresses are supported right now.';
+    }
     return null;
   };
 
@@ -105,9 +109,9 @@ export default function BillingAddressModal({
       line1: billingAddress.line1.trim(),
       line2: billingAddress.line2?.trim() || '',
       city: billingAddress.city.trim(),
-      state: billingAddress.state.trim().toUpperCase(),
+      state: normalizeUsStateCode(billingAddress.state),
       postalCode: billingAddress.postalCode.trim(),
-      countryCode: billingAddress.countryCode.trim().toUpperCase(),
+      countryCode: normalizeBillingCountryCode(billingAddress.countryCode),
     };
 
     try {
@@ -132,42 +136,10 @@ export default function BillingAddressModal({
           </Group>
         ) : (
           <>
-            <TextInput
-              label="Address line 1"
-              value={billingAddress.line1}
-              onChange={(event) => updateField('line1', event.currentTarget.value)}
-              required
-            />
-            <TextInput
-              label="Address line 2"
-              value={billingAddress.line2 ?? ''}
-              onChange={(event) => updateField('line2', event.currentTarget.value)}
-            />
-            <TextInput
-              label="City"
-              value={billingAddress.city}
-              onChange={(event) => updateField('city', event.currentTarget.value)}
-              required
-            />
-            <Group grow align="flex-start">
-              <TextInput
-                label="State"
-                value={billingAddress.state}
-                onChange={(event) => updateField('state', event.currentTarget.value)}
-                required
-              />
-              <TextInput
-                label="ZIP code"
-                value={billingAddress.postalCode}
-                onChange={(event) => updateField('postalCode', event.currentTarget.value)}
-                required
-              />
-            </Group>
-            <TextInput
-              label="Country"
-              value={billingAddress.countryCode}
-              onChange={(event) => updateField('countryCode', event.currentTarget.value)}
-              required
+            <BillingAddressFields
+              value={billingAddress}
+              onChange={setBillingAddress}
+              onValidationMessage={setError}
             />
           </>
         )}

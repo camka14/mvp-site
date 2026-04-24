@@ -76,6 +76,7 @@ npm run dev
 
 `npm run dev` now starts ngrok (when available) and injects a public redirect URL for BoldSign (`BOLDSIGN_DEV_REDIRECT_BASE_URL`) to avoid browser Private Network Access blocks after signing. To disable this behavior: `MVP_DEV_ENABLE_NGROK=0 npm run dev`.
 It also injects `PUBLIC_WEB_BASE_URL` (for canonical web links) and `STRIPE_CONNECT_REDIRECT_URI` (for Stripe OAuth callback), so localhost is not sent as `redirect_uri`.
+The default reserved dev tunnel is `https://untarnished-berserkly-everette.ngrok-free.dev`; override it with `NGROK_DOMAIN` or `MVP_DEV_NGROK_DOMAIN` if needed. VS Code launch configs require ngrok and Stripe listener startup so broken webhook forwarding fails immediately.
 
 For automatic tunneling, install and authenticate ngrok on your machine first (`ngrok config add-authtoken <token>`). If ngrok is not available, dev server still starts but BoldSign localhost redirect issues will remain.
 When running in WSL, the dev wrapper also attempts to resolve Windows-installed ngrok (`where ngrok` / `Get-Command ngrok`). You can force a specific binary path with `NGROK_BIN=/mnt/c/.../ngrok.exe npm run dev`.

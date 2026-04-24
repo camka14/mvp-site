@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { calculateAgeOnDate } from '@/lib/age';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { handleApiRouteError } from '@/server/http/routeErrors';
 import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
-import { leaveTeam, findTeamRegistration, reserveTeamRegistrationSlot } from '@/server/teams/teamOpenRegistration';
+import { findTeamRegistration, reserveTeamRegistrationSlot } from '@/server/teams/teamOpenRegistration';
 import {
   dispatchRequiredTeamDocuments,
   getTeamRegistrationSignatureState,
 } from '@/server/teams/teamRegistrationDocuments';
 
 export const dynamic = 'force-dynamic';
+
+const schema = z.object({
+  childId: z.string().min(1),
+}).passthrough();
 
 const toUniqueStrings = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -28,11 +33,25 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
   };
 };
 
+const normalizeEmail = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession(req);
+    const body = await req.json().catch(() => null);
+    const parsed = schema.safeParse(body ?? {});
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'childId is required.', details: parsed.error.flatten() }, { status: 400 });
+    }
+
     const { id } = await params;
-    const [teamRow, userProfile] = await Promise.all([
+    const [teamRow, parentProfile] = await Promise.all([
       loadCanonicalTeamById(id),
       prisma.userData.findUnique({
         where: { id: session.userId },
@@ -42,42 +61,42 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!teamRow) {
       return NextResponse.json({ error: 'Team not found.' }, { status: 404 });
     }
-    if (!userProfile) {
+    if (!parentProfile) {
       return NextResponse.json({ error: 'User profile not found.' }, { status: 404 });
     }
 
-    const age = calculateAgeOnDate(userProfile.dateOfBirth, new Date());
-    if (!Number.isFinite(age)) {
+    const parentAge = calculateAgeOnDate(parentProfile.dateOfBirth, new Date());
+    if (!Number.isFinite(parentAge)) {
       return NextResponse.json({ error: 'Invalid date of birth' }, { status: 400 });
     }
+    if (parentAge < 18) {
+      return NextResponse.json({ error: 'Only adults can register a child.' }, { status: 403 });
+    }
 
-    let registrantId = session.userId;
-    let registrantType: 'SELF' | 'CHILD' = 'SELF';
-    let parentId: string | null = null;
-    if (age < 18) {
-      const parentLink = await prisma.parentChildLinks.findFirst({
+    const childId = parsed.data.childId;
+    const [parentLink, childSensitive] = await Promise.all([
+      prisma.parentChildLinks.findFirst({
         where: {
-          childId: session.userId,
+          parentId: session.userId,
+          childId,
           status: 'ACTIVE',
         },
-        orderBy: { updatedAt: 'desc' },
-        select: { parentId: true },
-      });
-      if (!parentLink?.parentId) {
-        return NextResponse.json(
-          { error: 'No linked parent/guardian found. Ask a parent to add you first.' },
-          { status: 403 },
-        );
-      }
-      registrantType = 'CHILD';
-      parentId = parentLink.parentId;
+        select: { id: true },
+      }),
+      prisma.sensitiveUserData.findFirst({
+        where: { userId: childId },
+        select: { email: true },
+      }),
+    ]);
+    if (!parentLink) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const signatureState = await getTeamRegistrationSignatureState({
       teamId: id,
-      registrantId,
-      registrantType,
-      parentId,
+      registrantId: childId,
+      registrantType: 'CHILD',
+      parentId: session.userId,
     });
     const needsConsent = signatureState.eligibleTemplateIds.length > 0 && !signatureState.hasCompletedRequiredSignatures;
     const consentDispatch = needsConsent
@@ -85,18 +104,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         teamId: id,
         organizationId: signatureState.organizationId,
         requiredTemplateIds: signatureState.missingTemplateIds,
-        ...(registrantType === 'SELF'
-          ? { participantUserId: registrantId }
-          : {
-            parentUserId: parentId,
-            childUserId: registrantId,
-          }),
+        parentUserId: session.userId,
+        childUserId: childId,
       })
       : null;
 
     const existingRegistration = await findTeamRegistration({
       teamId: id,
-      registrantId,
+      registrantId: childId,
     });
     const nextConsentStatus = signatureState.eligibleTemplateIds.length === 0
       ? null
@@ -115,11 +130,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const result = await reserveTeamRegistrationSlot({
       teamId: id,
-      userId: registrantId,
+      userId: childId,
       actorUserId: session.userId,
       status: nextStatus,
-      registrantType,
-      parentId,
+      registrantType: 'CHILD',
+      parentId: session.userId,
       rosterRole: 'PARTICIPANT',
       consentDocumentId: nextConsentDocumentId,
       consentStatus: nextConsentStatus,
@@ -133,8 +148,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const team = await loadCanonicalTeamById(id);
     const registration = await findTeamRegistration({
       teamId: id,
-      registrantId,
+      registrantId: childId,
     });
+    const childEmail = normalizeEmail(childSensitive?.email);
+    const warnings = consentDispatch?.errors.length ? consentDispatch.errors : undefined;
+
     return NextResponse.json({
       registrationId: result.registrationId,
       status: result.status,
@@ -143,36 +161,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ? {
           documentId: nextConsentDocumentId,
           status: nextConsentStatus,
+          childEmail,
           requiresChildEmail: consentDispatch?.missingChildEmail ?? false,
         }
         : undefined,
-      warnings: consentDispatch?.errors.length ? consentDispatch.errors : undefined,
+      warnings,
       team: team ? withTeamRoleAliases(team as Record<string, any>) : null,
     }, { status: 200 });
   } catch (error) {
-    return handleApiRouteError(error, 'Failed to register self for team');
-  }
-}
-
-export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
-    const session = await requireSession(req);
-    const { id } = await params;
-    const result = await leaveTeam({
-      teamId: id,
-      userId: session.userId,
-      now: new Date(),
-    });
-    if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
-    }
-
-    const team = await loadCanonicalTeamById(id);
-    return NextResponse.json({
-      left: true,
-      team: team ? withTeamRoleAliases(team as Record<string, any>) : null,
-    }, { status: 200 });
-  } catch (error) {
-    return handleApiRouteError(error, 'Failed to leave team');
+    return handleApiRouteError(error, 'Failed to register child for team');
   }
 }

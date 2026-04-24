@@ -7,6 +7,33 @@ import { inferDivisionDetails } from '@/lib/divisionTypes';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 export type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
+export type TeamRegistrationConsent = {
+    documentId?: string | null;
+    status?: string | null;
+    childEmail?: string | null;
+    requiresChildEmail?: boolean;
+};
+
+export type TeamRegistrationResult = {
+    registrationId?: string;
+    status?: string;
+    registration?: TeamPlayerRegistration | null;
+    consent?: TeamRegistrationConsent;
+    warnings?: string[];
+    team?: Team | null;
+};
+
+export type TeamRegistrationCheckoutTarget = {
+    id?: string;
+    teamId: string;
+    registrantId?: string;
+    userId?: string;
+    parentId?: string | null;
+    registrantType?: string;
+    rosterRole?: string;
+    consentDocumentId?: string | null;
+    consentStatus?: string | null;
+};
 
 class TeamService {
     async getTeamById(
@@ -122,15 +149,16 @@ class TeamService {
         sport: string = 'Indoor Volleyball',
         maxPlayers: number = 6,
         profileImageId?: string,
-        options?: {
-            divisionTypeId?: string;
-            divisionTypeName?: string;
-            addSelfAsPlayer?: boolean;
-            organizationId?: string;
-            openRegistration?: boolean;
-            registrationPriceCents?: number;
-        },
-    ): Promise<Team> {
+          options?: {
+              divisionTypeId?: string;
+              divisionTypeName?: string;
+              addSelfAsPlayer?: boolean;
+              organizationId?: string;
+              openRegistration?: boolean;
+              registrationPriceCents?: number;
+              requiredTemplateIds?: string[];
+          },
+      ): Promise<Team> {
         try {
             const inferredDivision = inferDivisionDetails({
                 identifier: division,
@@ -152,10 +180,11 @@ class TeamService {
                 teamSize: maxPlayers,
                 profileImageId: profileImageId || '',
                 addSelfAsPlayer,
-                organizationId: options?.organizationId,
-                openRegistration: options?.openRegistration ?? false,
-                registrationPriceCents: options?.openRegistration ? Math.max(0, Math.round(options?.registrationPriceCents ?? 0)) : 0,
-            };
+                  organizationId: options?.organizationId,
+                  openRegistration: options?.openRegistration ?? false,
+                  registrationPriceCents: options?.openRegistration ? Math.max(0, Math.round(options?.registrationPriceCents ?? 0)) : 0,
+                  requiredTemplateIds: Array.isArray(options?.requiredTemplateIds) ? options.requiredTemplateIds : [],
+              };
 
             const response = await apiRequest<any>('/api/teams', {
                 method: 'POST',
@@ -245,15 +274,22 @@ class TeamService {
                     return null;
                 }
 
-                return {
-                    id,
-                    teamId,
-                    userId,
-                    status: typeof row?.status === 'string' ? row.status : '',
-                    jerseyNumber,
-                    position,
-                    isCaptain: Boolean(row?.isCaptain),
-                } satisfies TeamPlayerRegistration;
+                  return {
+                      id,
+                      teamId,
+                      userId,
+                      registrantId: typeof row?.registrantId === 'string' ? row.registrantId : userId,
+                      parentId: typeof row?.parentId === 'string' ? row.parentId : null,
+                      registrantType: typeof row?.registrantType === 'string' ? row.registrantType : 'SELF',
+                      rosterRole: typeof row?.rosterRole === 'string' ? row.rosterRole : 'PARTICIPANT',
+                      status: typeof row?.status === 'string' ? row.status : '',
+                      jerseyNumber,
+                      position,
+                      isCaptain: Boolean(row?.isCaptain),
+                      consentDocumentId: typeof row?.consentDocumentId === 'string' ? row.consentDocumentId : null,
+                      consentStatus: typeof row?.consentStatus === 'string' ? row.consentStatus : null,
+                      createdBy: typeof row?.createdBy === 'string' ? row.createdBy : null,
+                  } satisfies TeamPlayerRegistration;
             })
             .filter((row: TeamPlayerRegistration | null): row is TeamPlayerRegistration => Boolean(row));
     }
@@ -310,15 +346,18 @@ class TeamService {
             organizationId: typeof row.organizationId === 'string' && row.organizationId.trim().length > 0
                 ? row.organizationId
                 : null,
-            createdBy: typeof row.createdBy === 'string' && row.createdBy.trim().length > 0
-                ? row.createdBy
-                : null,
-            openRegistration: Boolean(row.openRegistration),
-            registrationPriceCents: typeof row.registrationPriceCents === 'number'
-                ? Math.max(0, Math.round(row.registrationPriceCents))
-                : 0,
-            $createdAt: row.$createdAt,
-            $updatedAt: row.$updatedAt,
+              createdBy: typeof row.createdBy === 'string' && row.createdBy.trim().length > 0
+                  ? row.createdBy
+                  : null,
+              openRegistration: Boolean(row.openRegistration),
+              registrationPriceCents: typeof row.registrationPriceCents === 'number'
+                  ? Math.max(0, Math.round(row.registrationPriceCents))
+                  : 0,
+              requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
+                  ? row.requiredTemplateIds.filter((value: any): value is string => typeof value === 'string' && value.trim().length > 0)
+                  : [],
+              $createdAt: row.$createdAt,
+              $updatedAt: row.$updatedAt,
             currentSize: playerIds.length,
             isFull: playerIds.length >= teamSize,
             avatarUrl: '',
@@ -439,8 +478,8 @@ class TeamService {
 
     async updateTeamDetails(
         teamId: string,
-        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize' | 'captainId' | 'openRegistration' | 'registrationPriceCents' | 'playerRegistrations'>>,
-    ): Promise<Team | undefined> {
+        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize' | 'captainId' | 'openRegistration' | 'registrationPriceCents' | 'requiredTemplateIds' | 'playerRegistrations'>>,
+      ): Promise<Team | undefined> {
         try {
             const response = await apiRequest<any>(`/api/teams/${teamId}`, {
                 method: 'PATCH',
@@ -537,19 +576,77 @@ class TeamService {
         }
     }
 
-    async registerForTeam(teamId: string): Promise<Team | undefined> {
+    async registerSelfForTeam(teamId: string): Promise<TeamRegistrationResult> {
         try {
-            const response = await apiRequest<{ team?: any; error?: string }>(`/api/teams/${teamId}/registrations/self`, {
+            const response = await apiRequest<{
+                registrationId?: string;
+                status?: string;
+                registration?: any;
+                consent?: TeamRegistrationConsent;
+                warnings?: string[];
+                team?: any;
+                error?: string;
+            }>(`/api/teams/${teamId}/registrations/self`, {
                 method: 'POST',
             });
             if (response?.error) {
                 throw new Error(response.error);
             }
-            return response?.team ? this.mapRowToTeam(response.team) : this.getTeamById(teamId);
+            return {
+                registrationId: response?.registrationId,
+                status: response?.status,
+                registration: response?.registration
+                    ? this.mapRowToPlayerRegistrations([response.registration])[0] ?? null
+                    : null,
+                consent: response?.consent,
+                warnings: Array.isArray(response?.warnings) ? response.warnings : [],
+                team: response?.team ? this.mapRowToTeam(response.team) : null,
+            };
         } catch (error) {
-            console.error('Failed to register for team:', error);
+            console.error('Failed to register self for team:', error);
             throw error;
         }
+    }
+
+    async registerChildForTeam(teamId: string, childId: string): Promise<TeamRegistrationResult> {
+        try {
+            const response = await apiRequest<{
+                registrationId?: string;
+                status?: string;
+                registration?: any;
+                consent?: TeamRegistrationConsent;
+                warnings?: string[];
+                team?: any;
+                error?: string;
+            }>(`/api/teams/${teamId}/registrations/child`, {
+                method: 'POST',
+                body: { childId },
+            });
+            if (response?.error) {
+                throw new Error(response.error);
+            }
+            return {
+                registrationId: response?.registrationId,
+                status: response?.status,
+                registration: response?.registration
+                    ? this.mapRowToPlayerRegistrations([response.registration])[0] ?? null
+                    : null,
+                consent: response?.consent,
+                warnings: Array.isArray(response?.warnings) ? response.warnings : [],
+                team: response?.team ? this.mapRowToTeam(response.team) : null,
+            };
+        } catch (error) {
+            console.error('Failed to register child for team:', error);
+            throw error;
+        }
+    }
+
+    async registerForTeam(teamId: string): Promise<Team | undefined> {
+        const result = await this.registerSelfForTeam(teamId);
+        if (result.team) {
+            return result.team;
+        }
+        return this.getTeamById(teamId);
     }
 
     async leaveTeam(teamId: string): Promise<Team | undefined> {

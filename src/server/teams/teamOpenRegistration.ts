@@ -31,6 +31,9 @@ type TeamBillingContext = {
   connectedAccountId: string | null;
 };
 
+export type TeamRegistrationRegistrantType = 'SELF' | 'CHILD';
+export type TeamRegistrationRosterRole = 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGENT';
+
 type RegistrationResult =
   | { ok: true; registrationId: string; status: 'ACTIVE' | 'STARTED' }
   | { ok: false; status: number; error: string };
@@ -46,7 +49,63 @@ const normalizeCents = (value: unknown): number => {
   return 0;
 };
 
-const buildTeamRegistrationId = (teamId: string, userId: string) => `${teamId}__${userId}`;
+const normalizeRegistrantType = (value: unknown): TeamRegistrationRegistrantType => (
+  String(value ?? '').trim().toUpperCase() === 'CHILD' ? 'CHILD' : 'SELF'
+);
+
+const normalizeRosterRole = (value: unknown): TeamRegistrationRosterRole => {
+  const normalized = String(value ?? '').trim().toUpperCase();
+  if (normalized === 'WAITLIST' || normalized === 'FREE_AGENT') {
+    return normalized;
+  }
+  return 'PARTICIPANT';
+};
+
+const teamRegistrationSelect = {
+  id: true,
+  teamId: true,
+  userId: true,
+  parentId: true,
+  registrantType: true,
+  rosterRole: true,
+  status: true,
+  jerseyNumber: true,
+  position: true,
+  isCaptain: true,
+  consentDocumentId: true,
+  consentStatus: true,
+  createdBy: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+export const buildTeamRegistrationId = (teamId: string, userId: string) => `${teamId}__${userId}`;
+
+export const findTeamRegistration = async ({
+  teamId,
+  registrantId,
+  client = prisma,
+}: {
+  teamId: string;
+  registrantId: string;
+  client?: PrismaLike;
+}) => {
+  const normalizedTeamId = normalizeId(teamId);
+  const normalizedRegistrantId = normalizeId(registrantId);
+  if (!normalizedTeamId || !normalizedRegistrantId) {
+    return null;
+  }
+
+  return client.teamRegistrations.findUnique({
+    where: {
+      teamId_userId: {
+        teamId: normalizedTeamId,
+        userId: normalizedRegistrantId,
+      },
+    },
+    select: teamRegistrationSelect,
+  });
+};
 
 const sortRegistrationRows = <T extends { id: string; createdAt: Date | null }>(rows: T[]): T[] => (
   [...rows].sort((left, right) => {
@@ -204,16 +263,33 @@ export const reserveTeamRegistrationSlot = async ({
   userId,
   actorUserId,
   status,
+  registrantType = 'SELF',
+  parentId,
+  rosterRole = 'PARTICIPANT',
+  consentDocumentId,
+  consentStatus,
+  allowStartedWithoutPayment = false,
   now,
 }: {
   teamId: string | null;
   userId: string | null;
   actorUserId: string;
   status: 'ACTIVE' | 'STARTED';
+  registrantType?: TeamRegistrationRegistrantType;
+  parentId?: string | null;
+  rosterRole?: TeamRegistrationRosterRole;
+  consentDocumentId?: string | null;
+  consentStatus?: string | null;
+  allowStartedWithoutPayment?: boolean;
   now: Date;
 }): Promise<RegistrationResult> => {
   const normalizedTeamId = normalizeId(teamId);
   const normalizedUserId = normalizeId(userId);
+  const normalizedParentId = normalizeId(parentId);
+  const normalizedRegistrantType = normalizeRegistrantType(registrantType);
+  const normalizedRosterRole = normalizeRosterRole(rosterRole);
+  const normalizedConsentDocumentId = normalizeId(consentDocumentId);
+  const normalizedConsentStatus = normalizeId(consentStatus);
   if (!normalizedTeamId) {
     return { ok: false, status: 400, error: 'Team id is required.' };
   }
@@ -247,7 +323,7 @@ export const reserveTeamRegistrationSlot = async ({
     if (status === ACTIVE_MEMBER_STATUS && priceCents > 0) {
       return { ok: false, status: 402, error: 'Payment is required to register for this team.' };
     }
-    if (status === STARTED_MEMBER_STATUS && priceCents <= 0) {
+    if (status === STARTED_MEMBER_STATUS && priceCents <= 0 && !allowStartedWithoutPayment) {
       return { ok: false, status: 409, error: 'This team does not require payment.' };
     }
 
@@ -278,10 +354,15 @@ export const reserveTeamRegistrationSlot = async ({
       },
       select: {
         id: true,
+        parentId: true,
+        registrantType: true,
+        rosterRole: true,
         status: true,
         jerseyNumber: true,
         position: true,
         isCaptain: true,
+        consentDocumentId: true,
+        consentStatus: true,
         createdAt: true,
         createdBy: true,
       },
@@ -290,10 +371,23 @@ export const reserveTeamRegistrationSlot = async ({
     if (existingStatus === ACTIVE_MEMBER_STATUS) {
       return { ok: false, status: 409, error: 'You are already registered for this team.' };
     }
-    if (existingStatus === STARTED_MEMBER_STATUS && status === STARTED_MEMBER_STATUS) {
+    if (existing && existingStatus === STARTED_MEMBER_STATUS && status === STARTED_MEMBER_STATUS) {
+      await tx.teamRegistrations.update({
+        where: { id: existing.id },
+        data: {
+          parentId: normalizedParentId,
+          registrantType: normalizedRegistrantType as any,
+          rosterRole: normalizedRosterRole as any,
+          consentDocumentId: normalizedConsentDocumentId,
+          consentStatus: normalizedConsentStatus,
+          updatedAt: now,
+          createdAt: existing.createdAt ?? now,
+          createdBy: existing.createdBy ?? actorUserId,
+        },
+      });
       return { ok: true, registrationId: existing?.id ?? registrationId, status };
     }
-    if (existingStatus === STARTED_MEMBER_STATUS) {
+    if (existing && existingStatus === STARTED_MEMBER_STATUS) {
       return { ok: false, status: 409, error: 'You are already registered for this team.' };
     }
 
@@ -307,10 +401,15 @@ export const reserveTeamRegistrationSlot = async ({
           id: registrationId,
           teamId: normalizedTeamId,
           userId: normalizedUserId,
+          parentId: normalizedParentId,
+          registrantType: normalizedRegistrantType as any,
+          rosterRole: normalizedRosterRole as any,
           status: status as any,
           jerseyNumber: null,
           position: null,
           isCaptain: false,
+          consentDocumentId: normalizedConsentDocumentId,
+          consentStatus: normalizedConsentStatus,
           createdBy: actorUserId,
           createdAt: now,
           updatedAt: now,
@@ -320,8 +419,13 @@ export const reserveTeamRegistrationSlot = async ({
       await tx.teamRegistrations.update({
         where: { id: existing.id },
         data: {
+          parentId: normalizedParentId,
+          registrantType: normalizedRegistrantType as any,
+          rosterRole: normalizedRosterRole as any,
           status: status as any,
           isCaptain: false,
+          consentDocumentId: normalizedConsentDocumentId,
+          consentStatus: normalizedConsentStatus,
           updatedAt: now,
           createdAt: existing.createdAt ?? now,
           createdBy: existing.createdBy ?? actorUserId,
@@ -339,10 +443,15 @@ export const reserveTeamRegistrationSlot = async ({
       await tx.teamRegistrations.update({
         where: { id: existing.id },
         data: {
+          parentId: existing.parentId,
+          registrantType: existing.registrantType,
+          rosterRole: existing.rosterRole,
           status: existing.status,
           jerseyNumber: existing.jerseyNumber,
           position: existing.position,
           isCaptain: existing.isCaptain,
+          consentDocumentId: existing.consentDocumentId,
+          consentStatus: existing.consentStatus,
           createdBy: existing.createdBy,
           createdAt: existing.createdAt,
           updatedAt: now,
@@ -381,17 +490,32 @@ export const registerForTeam = async ({
   teamId,
   userId,
   actorUserId,
+  registrantType = 'SELF',
+  parentId,
+  rosterRole = 'PARTICIPANT',
+  consentDocumentId,
+  consentStatus,
   now = new Date(),
 }: {
   teamId: string | null;
   userId: string | null;
   actorUserId: string;
+  registrantType?: TeamRegistrationRegistrantType;
+  parentId?: string | null;
+  rosterRole?: TeamRegistrationRosterRole;
+  consentDocumentId?: string | null;
+  consentStatus?: string | null;
   now?: Date;
 }) => reserveTeamRegistrationSlot({
   teamId,
   userId,
   actorUserId,
   status: ACTIVE_MEMBER_STATUS,
+  registrantType,
+  parentId,
+  rosterRole,
+  consentDocumentId,
+  consentStatus,
   now,
 });
 

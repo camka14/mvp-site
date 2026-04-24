@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Button, Group, TextInput, Select as MantineSelect, NumberInput, SimpleGrid, Checkbox } from '@mantine/core';
+import { Alert, Modal, Button, Group, TextInput, Select as MantineSelect, NumberInput, SimpleGrid, Checkbox, MultiSelect, Text } from '@mantine/core';
 import { Team, UserData, SPORTS_LIST } from '@/types';
+import { apiRequest } from '@/lib/apiClient';
 import { teamService } from '@/lib/teamService';
 import {
   buildDivisionName,
@@ -97,6 +98,9 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
   const [teamSize, setTeamSize] = useState(6);
   const [addSelfAsPlayer, setAddSelfAsPlayer] = useState(true);
   const [profileImageId, setProfileImageId] = useState('');
+  const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(false);
+  const [selectedRequiredTemplateIds, setSelectedRequiredTemplateIds] = useState<string[]>([]);
 
   const sportOptions = useMemo(() => (
     Array.from(new Set([...SPORTS_LIST, sport].map((value) => value.trim()).filter((value) => value.length > 0)))
@@ -128,6 +132,52 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     }
     setError(null);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    if (!organizationId) {
+      setTemplateOptions([]);
+      setTemplatesLoading(false);
+      setSelectedRequiredTemplateIds([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadTemplates = async () => {
+      try {
+        setTemplatesLoading(true);
+        const response = await apiRequest<{ templates?: any[] }>(`/api/organizations/${organizationId}/templates`);
+        if (cancelled) {
+          return;
+        }
+        const rows = Array.isArray(response.templates) ? response.templates : [];
+        const options = rows
+          .map((row) => ({
+            value: String(row.$id ?? row.id ?? '').trim(),
+            label: String(row.title ?? 'Untitled template'),
+            status: String(row.status ?? '').trim().toUpperCase(),
+          }))
+          .filter((row) => row.value.length > 0 && row.status !== 'ARCHIVED')
+          .map(({ value, label }) => ({ value, label }));
+        setTemplateOptions(options);
+      } catch (loadError) {
+        if (!cancelled) {
+          setTemplateOptions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setTemplatesLoading(false);
+        }
+      }
+    };
+
+    void loadTemplates();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, organizationId]);
 
   useEffect(() => {
     const fallback = getDefaultDivisionTypeSelections(sport);
@@ -176,6 +226,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     setAddSelfAsPlayer(true);
     setProfileImageId('');
     setSelectedTeamImageUrl('');
+    setSelectedRequiredTemplateIds([]);
     setError(null);
   };
 
@@ -225,6 +276,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
           divisionTypeName: nextDivisionTypeName,
           addSelfAsPlayer,
           organizationId,
+          requiredTemplateIds: organizationId ? selectedRequiredTemplateIds : [],
         },
       );
       if (newTeam) {
@@ -312,6 +364,27 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
           checked={addSelfAsPlayer}
           onChange={(e) => setAddSelfAsPlayer(e.currentTarget.checked)}
         />
+
+        {organizationId && (
+          <div>
+            <MultiSelect
+              label="Required Documents"
+              data={templateOptions}
+              value={selectedRequiredTemplateIds}
+              onChange={setSelectedRequiredTemplateIds}
+              placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+              searchable
+              clearable
+              disabled={templatesLoading}
+              nothingFoundMessage="No templates found"
+            />
+            {!templatesLoading && templateOptions.length === 0 && (
+              <Text size="xs" c="dimmed" mt={4}>
+                No templates available for this organization yet.
+              </Text>
+            )}
+          </div>
+        )}
 
         <div>
           <label className="form-label">Team Logo (Optional)</label>

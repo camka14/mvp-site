@@ -7,8 +7,15 @@
       "request": "launch",
       "preLaunchTask": "mvp: stop stale dev servers",
       "restart": false,
-      "command": "npm run dev:plain -- --webpack",
+      "command": "npm run dev -- --webpack",
       "cwd": "${workspaceFolder}",
+      "env": {
+        "NGROK_DOMAIN": "untarnished-berserkly-everette.ngrok-free.dev",
+        "MVP_DEV_ENABLE_NGROK": "1",
+        "MVP_DEV_REQUIRE_NGROK": "1",
+        "MVP_DEV_ENABLE_STRIPE_LISTEN": "1",
+        "MVP_DEV_REQUIRE_STRIPE_LISTEN": "1"
+      },
       "serverReadyAction": {
         "action": "debugWithChrome",
         "pattern": "Local:\\s+(https?://[^\\s]+)",
@@ -24,6 +31,13 @@
       "restart": false,
       "command": "npm run dev -- --webpack",
       "cwd": "${workspaceFolder}",
+      "env": {
+        "NGROK_DOMAIN": "untarnished-berserkly-everette.ngrok-free.dev",
+        "MVP_DEV_ENABLE_NGROK": "1",
+        "MVP_DEV_REQUIRE_NGROK": "1",
+        "MVP_DEV_ENABLE_STRIPE_LISTEN": "1",
+        "MVP_DEV_REQUIRE_STRIPE_LISTEN": "1"
+      },
       "serverReadyAction": {
         "action": "debugWithChrome",
         "pattern": "Local:\\s+(https?://[^\\s]+)",
@@ -37,8 +51,15 @@
       "request": "launch",
       "preLaunchTask": "mvp: stop stale dev servers",
       "restart": false,
-      "command": "npm run dev:plain -- --webpack",
-      "cwd": "${workspaceFolder}"
+      "command": "npm run dev -- --webpack",
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NGROK_DOMAIN": "untarnished-berserkly-everette.ngrok-free.dev",
+        "MVP_DEV_ENABLE_NGROK": "1",
+        "MVP_DEV_REQUIRE_NGROK": "1",
+        "MVP_DEV_ENABLE_STRIPE_LISTEN": "1",
+        "MVP_DEV_REQUIRE_STRIPE_LISTEN": "1"
+      }
     }
   ]
 }

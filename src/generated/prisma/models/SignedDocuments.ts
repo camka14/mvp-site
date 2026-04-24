@@ -45,6 +45,7 @@ export type SignedDocumentsMinAggregateOutputType = {
   hostId: string | null
   organizationId: string | null
   eventId: string | null
+  teamId: string | null
   status: string | null
   signedAt: string | null
   signerEmail: string | null
@@ -65,6 +66,7 @@ export type SignedDocumentsMaxAggregateOutputType = {
   hostId: string | null
   organizationId: string | null
   eventId: string | null
+  teamId: string | null
   status: string | null
   signedAt: string | null
   signerEmail: string | null
@@ -85,6 +87,7 @@ export type SignedDocumentsCountAggregateOutputType = {
   hostId: number
   organizationId: number
   eventId: number
+  teamId: number
   status: number
   signedAt: number
   signerEmail: number
@@ -115,6 +118,7 @@ export type SignedDocumentsMinAggregateInputType = {
   hostId?: true
   organizationId?: true
   eventId?: true
+  teamId?: true
   status?: true
   signedAt?: true
   signerEmail?: true
@@ -135,6 +139,7 @@ export type SignedDocumentsMaxAggregateInputType = {
   hostId?: true
   organizationId?: true
   eventId?: true
+  teamId?: true
   status?: true
   signedAt?: true
   signerEmail?: true
@@ -155,6 +160,7 @@ export type SignedDocumentsCountAggregateInputType = {
   hostId?: true
   organizationId?: true
   eventId?: true
+  teamId?: true
   status?: true
   signedAt?: true
   signerEmail?: true
@@ -262,6 +268,7 @@ export type SignedDocumentsGroupByOutputType = {
   hostId: string | null
   organizationId: string | null
   eventId: string | null
+  teamId: string | null
   status: string | null
   signedAt: string | null
   signerEmail: string | null
@@ -305,6 +312,7 @@ export type SignedDocumentsWhereInput = {
   hostId?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   organizationId?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   eventId?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
+  teamId?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   status?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   signedAt?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   signerEmail?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
@@ -325,6 +333,7 @@ export type SignedDocumentsOrderByWithRelationInput = {
   hostId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
+  teamId?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrderInput | Prisma.SortOrder
   signedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   signerEmail?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -348,6 +357,7 @@ export type SignedDocumentsWhereUniqueInput = Prisma.AtLeast<{
   hostId?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   organizationId?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   eventId?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
+  teamId?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   status?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   signedAt?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
   signerEmail?: Prisma.StringNullableFilter<"SignedDocuments"> | string | null
@@ -368,6 +378,7 @@ export type SignedDocumentsOrderByWithAggregationInput = {
   hostId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
+  teamId?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrderInput | Prisma.SortOrder
   signedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   signerEmail?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -396,6 +407,7 @@ export type SignedDocumentsScalarWhereWithAggregatesInput = {
   hostId?: Prisma.StringNullableWithAggregatesFilter<"SignedDocuments"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"SignedDocuments"> | string | null
   eventId?: Prisma.StringNullableWithAggregatesFilter<"SignedDocuments"> | string | null
+  teamId?: Prisma.StringNullableWithAggregatesFilter<"SignedDocuments"> | string | null
   status?: Prisma.StringNullableWithAggregatesFilter<"SignedDocuments"> | string | null
   signedAt?: Prisma.StringNullableWithAggregatesFilter<"SignedDocuments"> | string | null
   signerEmail?: Prisma.StringNullableWithAggregatesFilter<"SignedDocuments"> | string | null
@@ -416,6 +428,7 @@ export type SignedDocumentsCreateInput = {
   hostId?: string | null
   organizationId?: string | null
   eventId?: string | null
+  teamId?: string | null
   status?: string | null
   signedAt?: string | null
   signerEmail?: string | null
@@ -436,6 +449,7 @@ export type SignedDocumentsUncheckedCreateInput = {
   hostId?: string | null
   organizationId?: string | null
   eventId?: string | null
+  teamId?: string | null
   status?: string | null
   signedAt?: string | null
   signerEmail?: string | null
@@ -456,6 +470,7 @@ export type SignedDocumentsUpdateInput = {
   hostId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signedAt?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signerEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -476,6 +491,7 @@ export type SignedDocumentsUncheckedUpdateInput = {
   hostId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signedAt?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signerEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -496,6 +512,7 @@ export type SignedDocumentsCreateManyInput = {
   hostId?: string | null
   organizationId?: string | null
   eventId?: string | null
+  teamId?: string | null
   status?: string | null
   signedAt?: string | null
   signerEmail?: string | null
@@ -516,6 +533,7 @@ export type SignedDocumentsUpdateManyMutationInput = {
   hostId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signedAt?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signerEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -536,6 +554,7 @@ export type SignedDocumentsUncheckedUpdateManyInput = {
   hostId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   status?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signedAt?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signerEmail?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -556,6 +575,7 @@ export type SignedDocumentsCountOrderByAggregateInput = {
   hostId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   status?: Prisma.SortOrder
   signedAt?: Prisma.SortOrder
   signerEmail?: Prisma.SortOrder
@@ -580,6 +600,7 @@ export type SignedDocumentsMaxOrderByAggregateInput = {
   hostId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   status?: Prisma.SortOrder
   signedAt?: Prisma.SortOrder
   signerEmail?: Prisma.SortOrder
@@ -600,6 +621,7 @@ export type SignedDocumentsMinOrderByAggregateInput = {
   hostId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   status?: Prisma.SortOrder
   signedAt?: Prisma.SortOrder
   signerEmail?: Prisma.SortOrder
@@ -626,6 +648,7 @@ export type SignedDocumentsSelect<ExtArgs extends runtime.Types.Extensions.Inter
   hostId?: boolean
   organizationId?: boolean
   eventId?: boolean
+  teamId?: boolean
   status?: boolean
   signedAt?: boolean
   signerEmail?: boolean
@@ -646,6 +669,7 @@ export type SignedDocumentsSelectCreateManyAndReturn<ExtArgs extends runtime.Typ
   hostId?: boolean
   organizationId?: boolean
   eventId?: boolean
+  teamId?: boolean
   status?: boolean
   signedAt?: boolean
   signerEmail?: boolean
@@ -666,6 +690,7 @@ export type SignedDocumentsSelectUpdateManyAndReturn<ExtArgs extends runtime.Typ
   hostId?: boolean
   organizationId?: boolean
   eventId?: boolean
+  teamId?: boolean
   status?: boolean
   signedAt?: boolean
   signerEmail?: boolean
@@ -686,6 +711,7 @@ export type SignedDocumentsSelectScalar = {
   hostId?: boolean
   organizationId?: boolean
   eventId?: boolean
+  teamId?: boolean
   status?: boolean
   signedAt?: boolean
   signerEmail?: boolean
@@ -695,7 +721,7 @@ export type SignedDocumentsSelectScalar = {
   requestId?: boolean
 }
 
-export type SignedDocumentsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "signedDocumentId" | "templateId" | "userId" | "documentName" | "hostId" | "organizationId" | "eventId" | "status" | "signedAt" | "signerEmail" | "roleIndex" | "signerRole" | "ipAddress" | "requestId", ExtArgs["result"]["signedDocuments"]>
+export type SignedDocumentsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "signedDocumentId" | "templateId" | "userId" | "documentName" | "hostId" | "organizationId" | "eventId" | "teamId" | "status" | "signedAt" | "signerEmail" | "roleIndex" | "signerRole" | "ipAddress" | "requestId", ExtArgs["result"]["signedDocuments"]>
 
 export type $SignedDocumentsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "SignedDocuments"
@@ -711,6 +737,7 @@ export type $SignedDocumentsPayload<ExtArgs extends runtime.Types.Extensions.Int
     hostId: string | null
     organizationId: string | null
     eventId: string | null
+    teamId: string | null
     status: string | null
     signedAt: string | null
     signerEmail: string | null
@@ -1151,6 +1178,7 @@ export interface SignedDocumentsFieldRefs {
   readonly hostId: Prisma.FieldRef<"SignedDocuments", 'String'>
   readonly organizationId: Prisma.FieldRef<"SignedDocuments", 'String'>
   readonly eventId: Prisma.FieldRef<"SignedDocuments", 'String'>
+  readonly teamId: Prisma.FieldRef<"SignedDocuments", 'String'>
   readonly status: Prisma.FieldRef<"SignedDocuments", 'String'>
   readonly signedAt: Prisma.FieldRef<"SignedDocuments", 'String'>
   readonly signerEmail: Prisma.FieldRef<"SignedDocuments", 'String'>

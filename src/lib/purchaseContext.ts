@@ -53,6 +53,23 @@ const extractEntityId = (value: unknown): string | null => {
   return normalizeString(row.$id ?? row.id ?? row.teamId);
 };
 
+const extractTeamRegistrationTeamId = (value: unknown): string | null => {
+  if (!value || typeof value !== 'object') {
+    return normalizeString(value);
+  }
+  const row = value as Record<string, unknown>;
+  const team = row.team && typeof row.team === 'object'
+    ? (row.team as Record<string, unknown>)
+    : null;
+  return normalizeString(
+    row.teamId
+      ?? team?.$id
+      ?? team?.id
+      ?? row.$id
+      ?? row.id,
+  );
+};
+
 export const resolvePurchaseContext = async ({
   productId,
   event,
@@ -109,7 +126,7 @@ export const resolvePurchaseContext = async ({
     };
   }
 
-  const teamRegistrationId = extractEntityId(teamRegistration);
+  const teamRegistrationId = extractTeamRegistrationTeamId(teamRegistration);
   if (teamRegistrationId) {
     const team = await prisma.canonicalTeams.findUnique({
       where: { id: teamRegistrationId },

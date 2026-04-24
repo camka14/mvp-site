@@ -54,6 +54,7 @@ const createSchema = z.object({
   organizationId: z.string().nullable().optional(),
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
+  requiredTemplateIds: z.array(z.string()).optional(),
   playerRegistrations: z.array(playerRegistrationInputSchema).optional(),
 }).passthrough();
 
@@ -74,6 +75,32 @@ const uniqueStrings = (values: unknown[] | null | undefined): string[] => (
     ),
   )
 );
+
+const normalizeTemplateIds = (value: unknown): string[] => uniqueStrings(
+  Array.isArray(value) ? value : [],
+);
+
+const resolveValidatedRequiredTemplateIds = async (
+  organizationId: string | null,
+  templateIds: string[],
+): Promise<string[]> => {
+  if (!organizationId || !templateIds.length) {
+    return [];
+  }
+  const templates = await prisma.templateDocuments.findMany({
+    where: {
+      id: { in: templateIds },
+      organizationId,
+    },
+    select: { id: true },
+  });
+  const foundIds = new Set(templates.map((template) => template.id));
+  const missingIds = templateIds.filter((templateId) => !foundIds.has(templateId));
+  if (missingIds.length) {
+    throw new Error(`Required team document templates not found: ${missingIds.join(', ')}`);
+  }
+  return templateIds;
+};
 
 const withTeamRoleAliases = (team: Record<string, any>) => {
   const formatted = withLegacyFields(team);
@@ -180,6 +207,7 @@ export async function POST(req: NextRequest) {
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
   const divisionTypeName = normalizeText(data.divisionTypeName) ?? inferredDivision.divisionTypeName;
   const organizationId = normalizeText(data.organizationId);
+  const requestedRequiredTemplateIds = normalizeTemplateIds(data.requiredTemplateIds);
   if (organizationId) {
     const organization = await prisma.organizations.findUnique({
       where: { id: organizationId },
@@ -188,6 +216,13 @@ export async function POST(req: NextRequest) {
     if (!organization || !await canManageOrganization(session, organization)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+  }
+  let requiredTemplateIds: string[] = [];
+  try {
+    requiredTemplateIds = await resolveValidatedRequiredTemplateIds(organizationId, requestedRequiredTemplateIds);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid required team documents.';
+    return NextResponse.json({ error: message }, { status: 400 });
   }
   let registrationSettings: { openRegistration: boolean; registrationPriceCents: number };
   try {
@@ -229,6 +264,7 @@ export async function POST(req: NextRequest) {
           createdBy: session.userId,
           openRegistration: registrationSettings.openRegistration,
           registrationPriceCents: registrationSettings.registrationPriceCents,
+          requiredTemplateIds,
           createdAt: now,
           updatedAt: now,
         },
@@ -271,6 +307,7 @@ export async function POST(req: NextRequest) {
       profileImageId: data.profileImageId ?? null,
       openRegistration: registrationSettings.openRegistration,
       registrationPriceCents: registrationSettings.registrationPriceCents,
+      requiredTemplateIds,
       createdAt: new Date(),
       updatedAt: new Date(),
     });

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import { syncAllTeamRegistrationConsentStatusesForRegistrant } from '@/server/teams/teamRegistrationDocuments';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,6 +11,7 @@ const createSchema = z.object({
   documentId: z.string().optional(),
   templateId: z.string(),
   eventId: z.string().optional(),
+  teamId: z.string().optional(),
   userId: z.string().optional(),
   userEmail: z.string().optional(),
 }).passthrough();
@@ -42,6 +44,7 @@ export async function GET(req: NextRequest) {
   const documentId = params.get('documentId');
   const templateId = params.get('templateId');
   const eventId = params.get('eventId');
+  const teamId = params.get('teamId');
   const userId = params.get('userId') ?? session.userId;
 
   if (!session.isAdmin && userId !== session.userId) {
@@ -69,6 +72,7 @@ export async function GET(req: NextRequest) {
   if (documentId) where.signedDocumentId = documentId;
   if (templateId) where.templateId = templateId;
   if (eventId) where.eventId = eventId;
+  if (teamId) where.teamId = teamId;
 
   const docs = await prisma.signedDocuments.findMany({
     where,
@@ -101,6 +105,7 @@ export async function POST(req: NextRequest) {
       hostId: null,
       organizationId: null,
       eventId: parsed.data.eventId ?? null,
+      teamId: parsed.data.teamId ?? null,
       status: 'SIGNED',
       signedAt: new Date().toISOString(),
       signerEmail: parsed.data.userEmail ?? null,
@@ -112,6 +117,12 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date(),
     },
   });
+
+  if (parsed.data.teamId) {
+    await syncAllTeamRegistrationConsentStatusesForRegistrant({
+      registrantId: userId,
+    });
+  }
 
   return NextResponse.json(withLegacyFields(record), { status: 201 });
 }

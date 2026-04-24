@@ -29,9 +29,11 @@ import {
 } from '@/server/repositories/rentalCheckoutLocks';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
 import {
+  findTeamRegistration,
   releaseStartedTeamRegistration,
   reserveTeamRegistrationSlot,
 } from '@/server/teams/teamOpenRegistration';
+import { getTeamRegistrationSignatureState } from '@/server/teams/teamRegistrationDocuments';
 import {
   isWeeklyParentEvent,
   isWeeklyOccurrenceJoinClosed,
@@ -75,6 +77,49 @@ const extractEntityId = (value: unknown): string | null => {
   }
   const row = value as Record<string, unknown>;
   return normalizeString(row.$id ?? row.id ?? row.teamId);
+};
+
+type TeamRegistrationCheckoutTarget = {
+  teamId: string | null;
+  registrantId: string | null;
+  registrantType: 'SELF' | 'CHILD';
+  parentId: string | null;
+  rosterRole: 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGENT';
+  consentDocumentId: string | null;
+  consentStatus: string | null;
+};
+
+const parseTeamRegistrationCheckoutTarget = (params: {
+  teamRegistration: unknown;
+  fallbackTeamId: string | null;
+  fallbackUserId: string | null;
+}): TeamRegistrationCheckoutTarget => {
+  const row = params.teamRegistration && typeof params.teamRegistration === 'object'
+    ? params.teamRegistration as Record<string, unknown>
+    : null;
+  const embeddedTeam = row?.team && typeof row.team === 'object'
+    ? row.team as Record<string, unknown>
+    : null;
+  const registrantType = String(row?.registrantType ?? '').trim().toUpperCase() === 'CHILD' ? 'CHILD' : 'SELF';
+  const rosterRoleValue = String(row?.rosterRole ?? '').trim().toUpperCase();
+  const rosterRole = rosterRoleValue === 'WAITLIST' || rosterRoleValue === 'FREE_AGENT'
+    ? rosterRoleValue
+    : 'PARTICIPANT';
+
+  return {
+    teamId: normalizeString(row?.teamId ?? embeddedTeam?.$id ?? embeddedTeam?.id ?? row?.$id ?? row?.id)
+      ?? params.fallbackTeamId,
+    registrantId: normalizeString(
+      row?.registrantId
+        ?? row?.userId
+        ?? row?.childId,
+    ) ?? params.fallbackUserId,
+    registrantType,
+    parentId: normalizeString(row?.parentId),
+    rosterRole,
+    consentDocumentId: normalizeString(row?.consentDocumentId),
+    consentStatus: normalizeString(row?.consentStatus),
+  };
 };
 
 const buildLineItemReference = ({
@@ -556,9 +601,13 @@ export async function POST(req: NextRequest) {
   const userId = extractEntityId(payload.user);
   const eventId = extractEntityId(payload.event);
   const requestedPurchaseType = normalizeString(payload.purchaseType);
-  const teamRegistrationId = extractEntityId(payload.teamRegistration)
-    ?? (requestedPurchaseType === 'team_registration' ? extractEntityId(payload.team) : null);
-  const teamId = teamRegistrationId ?? extractEntityId(payload.team);
+  const directTeamId = extractEntityId(payload.team);
+  const teamCheckoutTarget = parseTeamRegistrationCheckoutTarget({
+    teamRegistration: payload.teamRegistration,
+    fallbackTeamId: requestedPurchaseType === 'team_registration' ? directTeamId : null,
+    fallbackUserId: userId ?? session.userId,
+  });
+  const teamId = teamCheckoutTarget.teamId ?? directTeamId;
   const slotId = normalizeString(payload.slotId);
   const occurrenceDate = normalizeString(payload.occurrenceDate);
   const divisionSelectionInput = normalizeDivisionInput(payloadRow);
@@ -640,6 +689,56 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unable to resolve purchase details.';
     return NextResponse.json({ error: message }, { status: 400 });
+  }
+
+  let existingTeamRegistration: Awaited<ReturnType<typeof findTeamRegistration>> | null = null;
+  if (resolvedPurchase.purchaseType === 'team_registration') {
+    const registrantId = teamCheckoutTarget.registrantId ?? userId ?? session.userId;
+    if (!teamId || !registrantId) {
+      return NextResponse.json({ error: 'Registrant and team are required for team checkout.' }, { status: 400 });
+    }
+
+    existingTeamRegistration = await findTeamRegistration({
+      teamId,
+      registrantId,
+    });
+    if (existingTeamRegistration) {
+      teamCheckoutTarget.parentId = normalizeString(existingTeamRegistration.parentId) ?? teamCheckoutTarget.parentId;
+      teamCheckoutTarget.registrantType = String(existingTeamRegistration.registrantType ?? '').trim().toUpperCase() === 'CHILD'
+        ? 'CHILD'
+        : teamCheckoutTarget.registrantType;
+      teamCheckoutTarget.rosterRole = String(existingTeamRegistration.rosterRole ?? '').trim().toUpperCase() === 'WAITLIST'
+        ? 'WAITLIST'
+        : String(existingTeamRegistration.rosterRole ?? '').trim().toUpperCase() === 'FREE_AGENT'
+          ? 'FREE_AGENT'
+          : teamCheckoutTarget.rosterRole;
+      teamCheckoutTarget.consentDocumentId = normalizeString(existingTeamRegistration.consentDocumentId)
+        ?? teamCheckoutTarget.consentDocumentId;
+    }
+
+    const signatureState = await getTeamRegistrationSignatureState({
+      teamId,
+      registrantId,
+      registrantType: teamCheckoutTarget.registrantType,
+      parentId: teamCheckoutTarget.parentId,
+    });
+    if (!signatureState.hasCompletedRequiredSignatures) {
+      const missingLabel = signatureState.missingTemplateLabels[0];
+      const errorMessage = signatureState.missingChildEmail
+        ? 'Child email is required before team documents can be signed.'
+        : missingLabel
+          ? `Team document must be signed before checkout: ${signatureState.missingTemplateLabels.join(', ')}`
+          : 'Required team documents must be signed before checkout.';
+      return NextResponse.json({
+        error: errorMessage,
+        missingTemplateIds: signatureState.missingTemplateIds,
+        missingTemplateLabels: signatureState.missingTemplateLabels,
+        consentStatus: signatureState.consentStatus,
+        requiresChildEmail: signatureState.missingChildEmail,
+      }, { status: 403 });
+    }
+
+    teamCheckoutTarget.consentStatus = signatureState.consentStatus ?? 'completed';
   }
 
   if (resolvedPurchase.amountCents <= 0) {
@@ -781,7 +880,9 @@ export async function POST(req: NextRequest) {
   }
 
   const actorUserId = normalizeString(session?.userId) ?? userId ?? 'system:purchase-intent';
-  const checkoutUserId = userId ?? session.userId;
+  const checkoutUserId = resolvedPurchase.purchaseType === 'team_registration'
+    ? (teamCheckoutTarget.registrantId ?? userId ?? session.userId)
+    : (userId ?? session.userId);
   let reservedRegistrationId: string | null = null;
   let reservedRentalWindow: RentalCheckoutWindow | null = null;
 
@@ -806,6 +907,13 @@ export async function POST(req: NextRequest) {
       userId: checkoutUserId,
       actorUserId,
       status: 'STARTED',
+      registrantType: teamCheckoutTarget.registrantType,
+      parentId: teamCheckoutTarget.parentId,
+      rosterRole: teamCheckoutTarget.rosterRole,
+      consentDocumentId: teamCheckoutTarget.consentDocumentId
+        ?? normalizeString(existingTeamRegistration?.consentDocumentId),
+      consentStatus: teamCheckoutTarget.consentStatus
+        ?? normalizeString(existingTeamRegistration?.consentStatus),
       now: new Date(),
     });
     if (!reservationResult.ok) {
@@ -873,6 +981,7 @@ export async function POST(req: NextRequest) {
     };
 
     appendMetadata(metadata, 'user_id', checkoutUserId);
+    appendMetadata(metadata, 'buyer_user_id', actorUserId);
     appendMetadata(metadata, 'team_id', teamId);
     appendMetadata(metadata, 'event_id', eventId);
     appendMetadata(metadata, 'product_id', payload.productId ?? resolvedPurchase.product?.id);
@@ -909,6 +1018,11 @@ export async function POST(req: NextRequest) {
       appendMetadata(metadata, 'rental_host_template_ids', hostRequiredTemplateIds.join(','));
     }
     appendMetadata(metadata, 'registration_id', reservedRegistrationId);
+    appendMetadata(metadata, 'team_registration_registrant_type', teamCheckoutTarget.registrantType);
+    appendMetadata(metadata, 'team_registration_parent_id', teamCheckoutTarget.parentId);
+    appendMetadata(metadata, 'team_registration_roster_role', teamCheckoutTarget.rosterRole);
+    appendMetadata(metadata, 'team_registration_consent_document_id', teamCheckoutTarget.consentDocumentId);
+    appendMetadata(metadata, 'team_registration_consent_status', teamCheckoutTarget.consentStatus);
     appendMetadata(metadata, 'product_name', resolvedPurchase.product?.name);
     appendMetadata(metadata, 'product_description', resolvedPurchase.product?.description);
     appendMetadata(metadata, 'product_period', resolvedPurchase.product?.period);

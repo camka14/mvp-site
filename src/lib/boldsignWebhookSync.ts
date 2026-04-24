@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { syncChildRegistrationConsentStatus } from '@/lib/childConsentProgress';
+import { syncAllTeamRegistrationConsentStatusesForRegistrant } from '@/server/teams/teamRegistrationDocuments';
 import {
   BOLDSIGN_OPERATION_STATUSES,
   BOLDSIGN_OPERATION_TYPES,
@@ -721,14 +722,28 @@ const resolveSignerDocumentStatus = (params: {
 
 const inferEventContextForDocumentProjection = async (params: {
   explicitEventId: string | null;
+  explicitTeamId: string | null;
   explicitOrganizationId: string | null;
   templateDocumentId: string | null;
   childUserId: string | null;
   representativeUserId: string | null;
-}): Promise<{ eventId: string | null; organizationId: string | null }> => {
+}): Promise<{ eventId: string | null; teamId: string | null; organizationId: string | null }> => {
+  if (params.explicitTeamId) {
+    const team = await prisma.canonicalTeams.findUnique({
+      where: { id: params.explicitTeamId },
+      select: { organizationId: true },
+    });
+    return {
+      eventId: params.explicitEventId,
+      teamId: params.explicitTeamId,
+      organizationId: params.explicitOrganizationId ?? team?.organizationId ?? null,
+    };
+  }
+
   if (!params.templateDocumentId) {
     return {
       eventId: params.explicitEventId,
+      teamId: params.explicitTeamId,
       organizationId: params.explicitOrganizationId,
     };
   }
@@ -746,17 +761,19 @@ const inferEventContextForDocumentProjection = async (params: {
   if (candidateEvents.length === 0) {
     return {
       eventId: params.explicitEventId,
+      teamId: params.explicitTeamId,
       organizationId: params.explicitOrganizationId,
     };
   }
 
   const candidateEventIds = candidateEvents.map((row) => row.id);
-  const selectEvent = (eventId: string | null): { eventId: string | null; organizationId: string | null } => {
+  const selectEvent = (eventId: string | null): { eventId: string | null; teamId: string | null; organizationId: string | null } => {
     const selected = eventId
       ? candidateEvents.find((row) => row.id === eventId)
       : candidateEvents[0];
     return {
       eventId: selected?.id ?? eventId,
+      teamId: null,
       organizationId: params.explicitOrganizationId ?? selected?.organizationId ?? null,
     };
   };
@@ -1030,6 +1047,14 @@ const updateRegistrationConsentByDocumentId = async (params: {
     where: { consentDocumentId: params.documentId },
     data,
   });
+
+  await prisma.teamRegistrations.updateMany({
+    where: { consentDocumentId: params.documentId },
+    data: {
+      consentStatus: update.consentStatus,
+      updatedAt: now,
+    },
+  });
 };
 
 const syncChildConsentFromRows = async (rows: Array<{
@@ -1054,6 +1079,34 @@ const syncChildConsentFromRows = async (rows: Array<{
   }
 };
 
+const syncTeamConsentFromRows = async (rows: Array<{
+  teamId: string | null;
+  userId: string | null;
+  hostId: string | null;
+  signerRole: string | null;
+}>) => {
+  const registrantIds = new Set<string>();
+
+  for (const row of rows) {
+    if (!row.teamId) {
+      continue;
+    }
+
+    const normalizedSignerRole = normalizeText(row.signerRole)?.toLowerCase();
+    const registrantId = normalizedSignerRole === 'participant'
+      ? pickString(row.userId)
+      : pickString(row.hostId);
+    if (!registrantId) {
+      continue;
+    }
+    registrantIds.add(registrantId);
+  }
+
+  for (const registrantId of registrantIds) {
+    await syncAllTeamRegistrationConsentStatusesForRegistrant({ registrantId });
+  }
+};
+
 const createOrUpdateSignedDocumentProjection = async (params: {
   event: ParsedBoldSignWebhookEvent;
   operation: BoldSignSyncOperation | null;
@@ -1064,6 +1117,7 @@ const createOrUpdateSignedDocumentProjection = async (params: {
     templateId: string | null;
     templateDocumentId: string | null;
     eventId: string | null;
+    teamId: string | null;
     organizationId: string | null;
     userId: string | null;
     childUserId: string | null;
@@ -1083,6 +1137,7 @@ const createOrUpdateSignedDocumentProjection = async (params: {
         templateId: null,
         templateDocumentId: null,
         eventId: null,
+        teamId: null,
         organizationId: null,
         userId: null,
         childUserId: null,
@@ -1181,6 +1236,7 @@ const createOrUpdateSignedDocumentProjection = async (params: {
 
   const inferredContext = await inferEventContextForDocumentProjection({
     explicitEventId: pickString(operation?.eventId, operationPayload.eventId),
+    explicitTeamId: pickString(operation?.teamId, operationPayload.teamId),
     explicitOrganizationId: pickString(
       operation?.organizationId,
       operationPayload.organizationId,
@@ -1283,6 +1339,7 @@ const createOrUpdateSignedDocumentProjection = async (params: {
           hostId,
           organizationId: inferredContext.organizationId,
           eventId: inferredContext.eventId,
+          teamId: inferredContext.teamId,
           status: nextStatus,
           signedAt: nextSignedAt ?? undefined,
           signerEmail,
@@ -1317,6 +1374,7 @@ const createOrUpdateSignedDocumentProjection = async (params: {
         hostId,
         organizationId: inferredContext.organizationId,
         eventId: inferredContext.eventId,
+        teamId: inferredContext.teamId,
         status: nextStatus,
         signedAt: nextSignedAt,
         signerEmail,
@@ -1377,6 +1435,7 @@ const createOrUpdateSignedDocumentProjection = async (params: {
       templateId,
       templateDocumentId,
       eventId: inferredContext.eventId,
+      teamId: inferredContext.teamId,
       organizationId: inferredContext.organizationId,
       userId: preferredProjection?.userId ?? representativeUserId,
       childUserId,
@@ -1417,11 +1476,14 @@ const projectDocumentEvent = async (event: ParsedBoldSignWebhookEvent): Promise<
       where: { signedDocumentId: event.documentId },
       select: {
         eventId: true,
+        teamId: true,
+        userId: true,
         hostId: true,
         signerRole: true,
       },
     });
     await syncChildConsentFromRows(rows);
+    await syncTeamConsentFromRows(rows);
   }
 
   const isSignedEvent = SIGNED_EVENT_TYPES.has(event.eventToken);
@@ -1440,6 +1502,7 @@ const projectDocumentEvent = async (event: ParsedBoldSignWebhookEvent): Promise<
       idempotencyKey: `webhook-document:${event.documentId}`,
       organizationId: projection.projectionContext.organizationId,
       eventId: projection.projectionContext.eventId,
+      teamId: projection.projectionContext.teamId,
       templateDocumentId: projection.projectionContext.templateDocumentId,
       signedDocumentRecordId: projection.rowId,
       templateId: projection.projectionContext.templateId,
@@ -1485,6 +1548,7 @@ const projectDocumentEvent = async (event: ParsedBoldSignWebhookEvent): Promise<
       await updateOperationState(operation.id, {
         status: nextStatus,
         documentId: event.documentId,
+        teamId: projection.projectionContext.teamId ?? operation.teamId ?? null,
         signedDocumentRecordId: projection.rowId ?? operation.signedDocumentRecordId ?? null,
         lastError: nextStatus === BOLDSIGN_OPERATION_STATUSES.FAILED
           ? (event.errorMessage ?? operation.lastError ?? 'BoldSign document flow failed.')
@@ -1868,6 +1932,7 @@ export const createDocumentSendOperation = async (params: {
   idempotencyKey: string;
   organizationId?: string | null;
   eventId?: string | null;
+  teamId?: string | null;
   templateDocumentId?: string | null;
   templateId?: string | null;
   documentId: string;
@@ -1884,6 +1949,7 @@ export const createDocumentSendOperation = async (params: {
     idempotencyKey: params.idempotencyKey,
     organizationId: params.organizationId ?? null,
     eventId: params.eventId ?? null,
+    teamId: params.teamId ?? null,
     templateDocumentId: params.templateDocumentId ?? null,
     templateId: params.templateId ?? null,
     documentId: params.documentId,

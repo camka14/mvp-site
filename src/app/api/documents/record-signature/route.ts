@@ -5,6 +5,10 @@ import { requireSession } from '@/lib/permissions';
 import { normalizeSignerContext, type SignerContext } from '@/lib/templateSignerTypes';
 import { syncChildRegistrationConsentStatus } from '@/lib/childConsentProgress';
 import {
+  syncAllTeamRegistrationConsentStatusesForRegistrant,
+  syncTeamRegistrationConsentStatus,
+} from '@/server/teams/teamRegistrationDocuments';
+import {
   BOLDSIGN_OPERATION_STATUSES,
   BOLDSIGN_OPERATION_TYPES,
   createOrUpdateBoldSignOperation,
@@ -16,6 +20,7 @@ const schema = z.object({
   templateId: z.string(),
   documentId: z.string(),
   eventId: z.string().optional(),
+  teamId: z.string().optional(),
   userId: z.string().optional(),
   childUserId: z.string().optional(),
   signerContext: z.string().optional(),
@@ -180,6 +185,20 @@ export async function POST(request: NextRequest) {
       select: { organizationId: true },
     })
     : null;
+  const teamId = normalizeText(parsed.data.teamId);
+  const team = teamId
+    ? await prisma.canonicalTeams.findUnique({
+      where: { id: teamId },
+      select: { organizationId: true },
+    })
+    : null;
+  if (teamId && !team) {
+    return NextResponse.json({ error: 'Team not found.' }, { status: 404 });
+  }
+  const signedTemplate = await prisma.templateDocuments.findUnique({
+    where: { id: parsed.data.templateId },
+    select: { signOnce: true },
+  });
 
   const scopedChildUserId = childUserId ?? (signerContext === 'child' ? userId : null);
   const normalizedType = normalizeText(parsed.data.type)?.toUpperCase();
@@ -199,6 +218,7 @@ export async function POST(request: NextRequest) {
       documentId: parsed.data.documentId,
       templateDocumentId: parsed.data.templateId,
       eventId: eventId ?? null,
+      teamId: teamId ?? null,
       userId,
       childUserId: scopedChildUserId,
       signerRole: signerContext,
@@ -207,6 +227,7 @@ export async function POST(request: NextRequest) {
       payload: {
         templateId: parsed.data.templateId,
         eventId: eventId ?? null,
+        teamId: teamId ?? null,
         signerContext,
       },
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
@@ -214,6 +235,7 @@ export async function POST(request: NextRequest) {
 
     await updateBoldSignOperationById(operation.id, {
       eventId: eventId ?? operation.eventId ?? null,
+      teamId: teamId ?? operation.teamId ?? null,
       templateDocumentId: operation.templateDocumentId ?? parsed.data.templateId,
       documentId: parsed.data.documentId,
       userId,
@@ -225,6 +247,7 @@ export async function POST(request: NextRequest) {
         ...(operation.payload ?? {}),
         templateId: parsed.data.templateId,
         eventId: eventId ?? null,
+        teamId: teamId ?? null,
         signerContext,
         acknowledgedAt: new Date().toISOString(),
       },
@@ -240,6 +263,7 @@ export async function POST(request: NextRequest) {
   const now = new Date();
   const nextSignedAt = isTextSignature ? now.toISOString() : null;
   const nextStatus = isTextSignature ? 'SIGNED' : 'UNSIGNED';
+  const scopedTeamId = signedTemplate?.signOnce ? null : teamId;
   const existing = await prisma.signedDocuments.findFirst({
     where: {
       templateId: parsed.data.templateId,
@@ -247,11 +271,13 @@ export async function POST(request: NextRequest) {
       signerRole: signerContext,
       hostId: scopedChildUserId,
       ...(eventId ? { eventId } : {}),
+      ...(scopedTeamId ? { teamId: scopedTeamId } : {}),
     },
     orderBy: { updatedAt: 'desc' },
     select: {
       id: true,
       organizationId: true,
+      teamId: true,
       status: true,
       signedAt: true,
     },
@@ -269,8 +295,9 @@ export async function POST(request: NextRequest) {
         signerEmail: normalizeText(parsed.data.user?.email) ?? null,
         signerRole: signerContext,
         hostId: scopedChildUserId,
-        organizationId: existing.organizationId ?? event?.organizationId ?? null,
+        organizationId: existing.organizationId ?? event?.organizationId ?? team?.organizationId ?? null,
         eventId: eventId ?? null,
+        teamId: existing.teamId ?? teamId ?? null,
         ipAddress: resolveIpAddress(request),
         requestId: request.headers.get('x-request-id') ?? null,
       },
@@ -284,8 +311,9 @@ export async function POST(request: NextRequest) {
         userId,
         documentName: parsed.data.type === 'TEXT' ? 'Text Waiver' : 'Signed Document',
         hostId: scopedChildUserId,
-        organizationId: event?.organizationId ?? null,
+        organizationId: event?.organizationId ?? team?.organizationId ?? null,
         eventId: eventId ?? null,
+        teamId: teamId ?? null,
         status: nextStatus,
         signedAt: nextSignedAt,
         signerEmail: normalizeText(parsed.data.user?.email) ?? null,
@@ -298,11 +326,6 @@ export async function POST(request: NextRequest) {
       },
     });
   }
-
-  const signedTemplate = await prisma.templateDocuments.findUnique({
-    where: { id: parsed.data.templateId },
-    select: { signOnce: true },
-  });
 
   if (scopedChildUserId && signedTemplate?.signOnce) {
     const registrations = await prisma.eventRegistrations.findMany({
@@ -344,6 +367,21 @@ export async function POST(request: NextRequest) {
       eventId,
       childUserId: scopedChildUserId,
     });
+  }
+
+  if (teamId) {
+    const teamRegistrantId = scopedChildUserId ?? userId;
+    if (signedTemplate?.signOnce) {
+      await syncAllTeamRegistrationConsentStatusesForRegistrant({
+        registrantId: teamRegistrantId,
+      });
+    } else {
+      await syncTeamRegistrationConsentStatus({
+        teamId,
+        registrantId: teamRegistrantId,
+        parentUserId: signerContext === 'parent_guardian' ? userId : undefined,
+      });
+    }
   }
 
   return NextResponse.json({ ok: true }, { status: 200 });

@@ -479,6 +479,7 @@ model CanonicalTeams {
   createdBy        String?
   openRegistration Boolean   @default(false)
   registrationPriceCents Int @default(0)
+  requiredTemplateIds String[] @default([])
 
   @@index([organizationId])
   @@index([createdBy])
@@ -491,10 +492,15 @@ model TeamRegistrations {
   updatedAt    DateTime?
   teamId       String
   userId       String
+  parentId     String?
+  registrantType EventRegistrationsRegistrantTypeEnum @default(SELF)
+  rosterRole   EventRegistrationsRosterRoleEnum @default(PARTICIPANT)
   status       TeamMembershipStatusEnum @default(ACTIVE)
   jerseyNumber String?
   position     String?
   isCaptain    Boolean?                @default(false)
+  consentDocumentId String?
+  consentStatus String?
   createdBy    String?
 
   @@unique([teamId, userId])
@@ -961,6 +967,7 @@ model SignedDocuments {
   hostId           String?
   organizationId   String?
   eventId          String?
+  teamId           String?
   status           String?
   signedAt         String?
   signerEmail      String?
@@ -1001,6 +1008,7 @@ model BoldSignSyncOperations {
   idempotencyKey         String                          @unique
   organizationId         String?
   eventId                String?
+  teamId                 String?
   templateDocumentId     String?
   signedDocumentRecordId String?
   templateId             String?
@@ -1021,6 +1029,7 @@ model BoldSignSyncOperations {
   @@index([templateId])
   @@index([documentId])
   @@index([eventId])
+  @@index([teamId])
 }
 
 model ParentChildLinks {

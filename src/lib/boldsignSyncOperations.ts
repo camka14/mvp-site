@@ -32,6 +32,7 @@ export type BoldSignSyncOperation = {
   idempotencyKey: string;
   organizationId?: string | null;
   eventId?: string | null;
+  teamId?: string | null;
   templateDocumentId?: string | null;
   signedDocumentRecordId?: string | null;
   templateId?: string | null;
@@ -88,6 +89,7 @@ export const createOrUpdateBoldSignOperation = async (params: {
   idempotencyKey: string;
   organizationId?: string | null;
   eventId?: string | null;
+  teamId?: string | null;
   templateDocumentId?: string | null;
   signedDocumentRecordId?: string | null;
   templateId?: string | null;
@@ -114,6 +116,7 @@ export const createOrUpdateBoldSignOperation = async (params: {
     status: params.status,
     organizationId: normalizeText(params.organizationId) ?? null,
     eventId: normalizeText(params.eventId) ?? null,
+    teamId: normalizeText(params.teamId) ?? null,
     templateDocumentId: normalizeText(params.templateDocumentId) ?? null,
     signedDocumentRecordId: normalizeText(params.signedDocumentRecordId) ?? null,
     templateId: normalizeText(params.templateId) ?? null,
@@ -177,6 +180,7 @@ export const updateBoldSignOperationById = async (
       ...(patch.idempotencyKey ? { idempotencyKey: patch.idempotencyKey } : {}),
       ...(patch.organizationId !== undefined ? { organizationId: normalizeText(patch.organizationId) ?? null } : {}),
       ...(patch.eventId !== undefined ? { eventId: normalizeText(patch.eventId) ?? null } : {}),
+      ...(patch.teamId !== undefined ? { teamId: normalizeText(patch.teamId) ?? null } : {}),
       ...(patch.templateDocumentId !== undefined
         ? { templateDocumentId: normalizeText(patch.templateDocumentId) ?? null }
         : {}),
@@ -223,6 +227,7 @@ export const findLatestBoldSignOperation = async (params: {
   templateId?: string | null;
   documentId?: string | null;
   idempotencyKey?: string | null;
+  teamId?: string | null;
 }): Promise<BoldSignSyncOperation | null> => {
   if (params.idempotencyKey) {
     const row = await prismaAny.boldSignSyncOperations.findUnique({
@@ -242,6 +247,10 @@ export const findLatestBoldSignOperation = async (params: {
   }
   if (documentId) {
     where.documentId = documentId;
+  }
+  const teamId = normalizeText(params.teamId);
+  if (teamId) {
+    where.teamId = teamId;
   }
   if (!Object.keys(where).length) {
     return null;

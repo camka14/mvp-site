@@ -22,6 +22,7 @@ const hasOrganizationDocumentAccess = async (params: {
   isAdmin: boolean;
   organizationId?: string | null;
   eventId?: string | null;
+  teamId?: string | null;
 }): Promise<boolean> => {
   if (params.isAdmin) {
     return true;
@@ -29,6 +30,7 @@ const hasOrganizationDocumentAccess = async (params: {
 
   let organizationId = params.organizationId ?? null;
   let eventId = params.eventId ?? null;
+  let teamId = params.teamId ?? null;
 
   if (!organizationId && eventId) {
     const event = await prisma.events.findUnique({
@@ -42,6 +44,17 @@ const hasOrganizationDocumentAccess = async (params: {
     if (Array.isArray(event.userIds) && event.userIds.includes(params.sessionUserId)) {
       return true;
     }
+  }
+
+  if (!organizationId && teamId) {
+    const team = await prisma.canonicalTeams.findUnique({
+      where: { id: teamId },
+      select: { organizationId: true },
+    });
+    if (!team) {
+      return false;
+    }
+    organizationId = team.organizationId;
   }
 
   if (!organizationId) {
@@ -86,6 +99,36 @@ const hasOrganizationDocumentAccess = async (params: {
     }
   }
 
+  if (teamId) {
+    const registration = await prisma.teamRegistrations.findFirst({
+      where: {
+        teamId,
+        status: { in: ['STARTED', 'ACTIVE'] },
+        OR: [
+          { userId: params.sessionUserId },
+          { parentId: params.sessionUserId },
+          { createdBy: params.sessionUserId },
+        ],
+      },
+      select: { id: true },
+    });
+    if (registration) {
+      return true;
+    }
+
+    const staffAssignment = await prisma.teamStaffAssignments.findFirst({
+      where: {
+        teamId,
+        userId: params.sessionUserId,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    if (staffAssignment) {
+      return true;
+    }
+  }
+
   return false;
 };
 
@@ -106,6 +149,7 @@ export async function GET(
       documentName: true,
       organizationId: true,
       eventId: true,
+      teamId: true,
     },
   });
   if (!signedDocument) {
@@ -118,6 +162,7 @@ export async function GET(
       isAdmin: session.isAdmin,
       organizationId: signedDocument.organizationId,
       eventId: signedDocument.eventId,
+      teamId: signedDocument.teamId,
     });
     if (!canAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

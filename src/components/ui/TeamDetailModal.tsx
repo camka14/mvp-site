@@ -2,12 +2,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox } from '@mantine/core';
-import { Invite, Team, UserData, Event, PaymentIntent, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice } from '@/types';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect } from '@mantine/core';
+import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
 import { useApp } from '@/app/providers';
+import { apiRequest } from '@/lib/apiClient';
 import { teamService } from '@/lib/teamService';
-import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import {
     buildDivisionName,
@@ -16,7 +16,8 @@ import {
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
 import { ImageSelectionModal } from './ImageSelectionModal';
-import PaymentModal, { type PaymentEventSummary } from './PaymentModal';
+import TeamRegistrationFlow from './TeamRegistrationFlow';
+import { type PaymentEventSummary } from './PaymentModal';
 
 interface TeamDetailModalProps {
     currentTeam: Team;
@@ -166,11 +167,15 @@ export default function TeamDetailModal({
     const [draftRegistrationPriceDollars, setDraftRegistrationPriceDollars] = useState(
         ((currentTeam.registrationPriceCents ?? 0) / 100),
     );
+    const [draftRequiredTemplateIds, setDraftRequiredTemplateIds] = useState<string[]>(
+        Array.isArray(currentTeam.requiredTemplateIds)
+            ? currentTeam.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+            : [],
+    );
+    const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
+    const [templatesLoading, setTemplatesLoading] = useState(false);
     const [jerseyNumbersByUserId, setJerseyNumbersByUserId] = useState<Record<string, string>>({});
-    const [registeringForTeam, setRegisteringForTeam] = useState(false);
     const [leavingTeam, setLeavingTeam] = useState(false);
-    const [teamRegistrationPaymentData, setTeamRegistrationPaymentData] = useState<PaymentIntent | null>(null);
-    const [teamRegistrationPaymentOpen, setTeamRegistrationPaymentOpen] = useState(false);
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
     const [inviteMode, setInviteMode] = useState<'search' | 'email'>('search');
     const [emailInviteInput, setEmailInviteInput] = useState('');
@@ -216,29 +221,7 @@ export default function TeamDetailModal({
         });
         return byUserId;
     }, [currentTeam.playerRegistrations]);
-    const currentUserRegistration = useMemo(() => {
-        if (!user?.$id || !Array.isArray(currentTeam.playerRegistrations)) {
-            return null;
-        }
-        return currentTeam.playerRegistrations.find((registration) => registration.userId === user.$id) ?? null;
-    }, [currentTeam.playerRegistrations, user?.$id]);
-    const currentUserRegistrationStatus = String(currentUserRegistration?.status ?? '').trim().toUpperCase();
-    const isCurrentUserActiveMember = currentUserRegistrationStatus === 'ACTIVE' || currentTeam.playerIds.includes(user?.$id ?? '');
-    const isCurrentUserPendingTeamRegistration = currentUserRegistrationStatus === 'STARTED';
-    const reservedOrActiveRegistrationCount = useMemo(() => {
-        const registrations = Array.isArray(currentTeam.playerRegistrations) ? currentTeam.playerRegistrations : [];
-        const counted = registrations.filter((registration) => {
-            const status = String(registration.status ?? '').trim().toUpperCase();
-            return status === 'ACTIVE' || status === 'STARTED';
-        });
-        return Math.max(counted.length, currentTeam.playerIds.length);
-    }, [currentTeam.playerIds.length, currentTeam.playerRegistrations]);
-    const teamHasCapacity = !currentTeam.teamSize || reservedOrActiveRegistrationCount < currentTeam.teamSize;
     const showSelfServiceRegistrationActions = Boolean(user?.$id) && !canManageTeam;
-    const canStartTeamRegistration = showSelfServiceRegistrationActions
-        && Boolean(currentTeam.openRegistration)
-        && !isCurrentUserActiveMember
-        && (isCurrentUserPendingTeamRegistration || teamHasCapacity);
     const selectedRoleLabel = (() => {
         switch (selectedInviteRole) {
             case 'team_manager':
@@ -592,10 +575,64 @@ export default function TeamDetailModal({
         currentTeam.divisionTypeId,
         currentTeam.openRegistration,
         currentTeam.registrationPriceCents,
+        currentTeam.requiredTemplateIds,
         currentTeam.sport,
         currentTeam.teamSize,
         resolveDraftDivisionDisplayName,
     ]);
+
+    useEffect(() => {
+        setDraftRequiredTemplateIds(
+            Array.isArray(currentTeam.requiredTemplateIds)
+                ? currentTeam.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+                : [],
+        );
+    }, [currentTeam.requiredTemplateIds]);
+
+    useEffect(() => {
+        if (!isOpen) {
+            return;
+        }
+        if (!currentTeam.organizationId) {
+            setTemplateOptions([]);
+            setTemplatesLoading(false);
+            return;
+        }
+
+        let cancelled = false;
+        const loadTemplates = async () => {
+            try {
+                setTemplatesLoading(true);
+                const response = await apiRequest<{ templates?: any[] }>(`/api/organizations/${currentTeam.organizationId}/templates`);
+                if (cancelled) {
+                    return;
+                }
+                const rows = Array.isArray(response.templates) ? response.templates : [];
+                const options = rows
+                    .map((row) => ({
+                        value: String(row.$id ?? row.id ?? '').trim(),
+                        label: String(row.title ?? 'Untitled template'),
+                        status: String(row.status ?? '').trim().toUpperCase(),
+                    }))
+                    .filter((row) => row.value.length > 0 && row.status !== 'ARCHIVED')
+                    .map(({ value, label }) => ({ value, label }));
+                setTemplateOptions(options);
+            } catch (loadError) {
+                if (!cancelled) {
+                    setTemplateOptions([]);
+                }
+            } finally {
+                if (!cancelled) {
+                    setTemplatesLoading(false);
+                }
+            }
+        };
+
+        void loadTemplates();
+        return () => {
+            cancelled = true;
+        };
+    }, [currentTeam.organizationId, isOpen]);
 
     useEffect(() => {
         const nextJerseyNumbers: Record<string, string> = {};
@@ -753,6 +790,7 @@ export default function TeamDetailModal({
             captainId: nextCaptainId,
             openRegistration: draftOpenRegistration,
             registrationPriceCents: nextRegistrationPriceCents,
+            requiredTemplateIds: currentTeam.organizationId ? draftRequiredTemplateIds : [],
             playerRegistrations: teamPlayers.map((player) => {
                 const existingRegistration = activePlayerRegistrationByUserId.get(player.$id);
                 return {
@@ -958,45 +996,6 @@ export default function TeamDetailModal({
         } catch (error) {
             console.error('Failed to remove player:', error);
             setError('Failed to remove player');
-        }
-    };
-
-    const handleRegisterForTeam = async () => {
-        if (!user) {
-            notifications.show({ color: 'red', message: 'Sign in to register for this team.' });
-            return;
-        }
-        if (registeringForTeam) {
-            return;
-        }
-        setRegisteringForTeam(true);
-        setError(null);
-        try {
-            if (registrationPriceCents > 0) {
-                const paymentData = await paymentService.createTeamRegistrationPaymentIntent(user, currentTeam);
-                setTeamRegistrationPaymentData(paymentData);
-                setTeamRegistrationPaymentOpen(true);
-                return;
-            }
-
-            const updated = await teamService.registerForTeam(currentTeam.$id);
-            if (updated) {
-                onTeamUpdated?.(updated);
-            }
-            notifications.show({ color: 'green', message: 'You are registered for this team.' });
-        } catch (registerError) {
-            const message = registerError instanceof Error ? registerError.message : 'Failed to register for team.';
-            setError(message);
-            notifications.show({ color: 'red', message });
-        } finally {
-            setRegisteringForTeam(false);
-        }
-    };
-
-    const handleTeamRegistrationPaymentSuccess = async () => {
-        const refreshed = await teamService.getTeamById(currentTeam.$id, true);
-        if (refreshed) {
-            onTeamUpdated?.(refreshed);
         }
     };
 
@@ -1256,6 +1255,26 @@ export default function TeamDetailModal({
                                     disabled={!draftOpenRegistration || !canChargeForTeamRegistration}
                                 />
                             </SimpleGrid>
+                            {currentTeam.organizationId && (
+                                <div className="mt-3">
+                                    <MultiSelect
+                                        label="Required Documents"
+                                        data={templateOptions}
+                                        value={draftRequiredTemplateIds}
+                                        onChange={setDraftRequiredTemplateIds}
+                                        placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+                                        searchable
+                                        clearable
+                                        disabled={templatesLoading}
+                                        nothingFoundMessage="No templates found"
+                                    />
+                                    {!templatesLoading && templateOptions.length === 0 && (
+                                        <Text size="xs" c="dimmed" mt={4}>
+                                            No templates available for this organization yet.
+                                        </Text>
+                                    )}
+                                </div>
+                            )}
                             {teamPlayers.length > 0 && (
                                 <Paper withBorder radius="md" p="sm" mt="sm">
                                     <Text fw={500} size="sm" mb="xs">Player jersey numbers</Text>
@@ -1704,52 +1723,77 @@ export default function TeamDetailModal({
                     )}
 
                     {showSelfServiceRegistrationActions && (
-                        <Paper withBorder radius="md" p="md" mb="md">
-                            {isCurrentUserActiveMember ? (
-                                <Group justify="space-between" align="center">
-                                    <div>
-                                        <Title order={5}>Team membership</Title>
-                                        <Text size="sm" c="dimmed">You are on this team.</Text>
-                                    </div>
-                                    <Button
-                                        color="red"
-                                        variant="light"
-                                        loading={leavingTeam}
-                                        onClick={() => { void handleLeaveTeam(); }}
-                                    >
-                                        Leave Team
-                                    </Button>
-                                </Group>
-                            ) : (
-                                <Group justify="space-between" align="center">
-                                    <div>
-                                        <Title order={5}>Team registration</Title>
-                                        <Text size="sm" c="dimmed">
-                                            {currentTeam.openRegistration
-                                                ? `Registration is ${formatPrice(registrationPriceCents)}.`
-                                                : 'Registration is not open for this team.'}
-                                        </Text>
-                                        {isCurrentUserPendingTeamRegistration && (
-                                            <Text size="xs" c="dimmed">Your registration is waiting for payment confirmation.</Text>
-                                        )}
-                                        {currentTeam.openRegistration && !teamHasCapacity && !isCurrentUserPendingTeamRegistration && (
-                                            <Text size="xs" c="red">This team is full.</Text>
-                                        )}
-                                    </div>
-                                    <Button
-                                        disabled={!canStartTeamRegistration}
-                                        loading={registeringForTeam}
-                                        onClick={() => { void handleRegisterForTeam(); }}
-                                    >
-                                        {isCurrentUserPendingTeamRegistration
-                                            ? 'Resume Payment'
-                                            : teamHasCapacity
-                                            ? 'Register for Team'
-                                            : 'Team Full'}
-                                    </Button>
-                                </Group>
+                        <TeamRegistrationFlow
+                            team={currentTeam}
+                            user={user}
+                            paymentSummary={teamPaymentSummary}
+                            onRequireAuth={() => {
+                                notifications.show({ color: 'red', message: 'Sign in to register for this team.' });
+                            }}
+                            onTeamUpdated={(updatedTeam) => {
+                                onTeamUpdated?.(updatedTeam);
+                            }}
+                            onErrorChange={setError}
+                        >
+                            {(flow) => (
+                                <Paper withBorder radius="md" p="md" mb="md">
+                                    {flow.currentUserActiveMember ? (
+                                        <Group justify="space-between" align="center">
+                                            <div>
+                                                <Title order={5}>Team membership</Title>
+                                                <Text size="sm" c="dimmed">You are on this team.</Text>
+                                            </div>
+                                            <Group>
+                                                {flow.actionVisible && flow.shouldOfferDocumentReview && (
+                                                    <Button
+                                                        variant="default"
+                                                        loading={flow.actionLoading}
+                                                        onClick={() => { flow.openFlow(); }}
+                                                        disabled={flow.actionDisabled}
+                                                    >
+                                                        {flow.actionLabel}
+                                                    </Button>
+                                                )}
+                                                <Button
+                                                    color="red"
+                                                    variant="light"
+                                                    loading={leavingTeam}
+                                                    onClick={() => { void handleLeaveTeam(); }}
+                                                >
+                                                    Leave Team
+                                                </Button>
+                                            </Group>
+                                        </Group>
+                                    ) : (
+                                        <Group justify="space-between" align="center">
+                                            <div>
+                                                <Title order={5}>Team registration</Title>
+                                                <Text size="sm" c="dimmed">
+                                                    {flow.team.openRegistration
+                                                        ? `Registration is ${formatPrice(Math.max(0, Math.round(flow.team.registrationPriceCents ?? 0)))}.`
+                                                        : 'Registration is not open for this team.'}
+                                                </Text>
+                                                {flow.currentUserPendingRegistration && (
+                                                    <Text size="xs" c="dimmed">Your registration is waiting for payment confirmation.</Text>
+                                                )}
+                                                {flow.team.openRegistration && !flow.teamHasCapacity && !flow.currentUserPendingRegistration && (
+                                                    <Text size="xs" c="red">This team is full.</Text>
+                                                )}
+                                            </div>
+                                            {flow.actionVisible && (
+                                                <Button
+                                                    disabled={flow.actionDisabled}
+                                                    loading={flow.actionLoading}
+                                                    onClick={() => { flow.openFlow(); }}
+                                                >
+                                                    {flow.actionLabel}
+                                                </Button>
+                                            )}
+                                        </Group>
+                                    )}
+                                </Paper>
                             )}
-                        </Paper>
+                        </TeamRegistrationFlow>
                     )}
 
                     {/* Delete Team Section */}
@@ -1782,13 +1826,6 @@ export default function TeamDetailModal({
                 onSelect={handleChangeImage}
                 onClose={() => setImagePickerOpen(false)}
                 isOpen={imagePickerOpen}
-            />
-            <PaymentModal
-                isOpen={teamRegistrationPaymentOpen}
-                onClose={() => setTeamRegistrationPaymentOpen(false)}
-                event={teamPaymentSummary}
-                paymentData={teamRegistrationPaymentData}
-                onPaymentSuccess={handleTeamRegistrationPaymentSuccess}
             />
         </>
     );

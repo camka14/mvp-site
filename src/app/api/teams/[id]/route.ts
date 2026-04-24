@@ -54,6 +54,7 @@ const teamPatchSchema = z.object({
   profileImage: z.string().optional(),
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
+  requiredTemplateIds: z.array(z.string()).optional(),
   parentTeamId: z.string().nullable().optional(),
   playerRegistrations: z.array(playerRegistrationPatchSchema).optional(),
 }).strict();
@@ -79,6 +80,7 @@ const VERSIONED_PROFILE_FIELDS: ReadonlySet<string> = new Set([
   'teamSize',
   'openRegistration',
   'registrationPriceCents',
+  'requiredTemplateIds',
   'playerIds',
   'captainId',
   'managerId',
@@ -118,6 +120,38 @@ const toUniqueStrings = (value: unknown): string[] => {
         .filter(Boolean),
     ),
   );
+};
+
+const normalizeTemplateIds = (value: unknown): string[] => (
+  Array.from(
+    new Set(
+      (Array.isArray(value) ? value : [])
+        .map((entry) => normalizeText(entry))
+        .filter((entry): entry is string => Boolean(entry)),
+    ),
+  )
+);
+
+const resolveValidatedRequiredTemplateIds = async (
+  organizationId: string | null,
+  templateIds: string[],
+): Promise<string[]> => {
+  if (!organizationId || !templateIds.length) {
+    return [];
+  }
+  const templates = await prisma.templateDocuments.findMany({
+    where: {
+      id: { in: templateIds },
+      organizationId,
+    },
+    select: { id: true },
+  });
+  const foundIds = new Set(templates.map((template) => template.id));
+  const missingIds = templateIds.filter((templateId) => !foundIds.has(templateId));
+  if (missingIds.length) {
+    throw new Error(`Required team document templates not found: ${missingIds.join(', ')}`);
+  }
+  return templateIds;
 };
 
 const normalizeNumber = (value: unknown, fallback: number): number => {
@@ -162,6 +196,7 @@ type TeamState = {
   profileImageId: string | null;
   openRegistration: boolean;
   registrationPriceCents: number;
+  requiredTemplateIds: string[];
 };
 
 const buildTeamState = (
@@ -234,6 +269,9 @@ const buildTeamState = (
     registrationPriceCents: hasOwn(payload, 'registrationPriceCents')
       ? Math.max(0, Math.round(normalizeNumber(payload.registrationPriceCents, 0)))
       : Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))),
+    requiredTemplateIds: hasOwn(payload, 'requiredTemplateIds')
+      ? normalizeTemplateIds(payload.requiredTemplateIds)
+      : normalizeTemplateIds(existing.requiredTemplateIds),
   };
 };
 
@@ -273,6 +311,12 @@ const hasVersionedProfileChanges = (
       case 'registrationPriceCents':
         if (Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))) !== next.registrationPriceCents) return true;
         break;
+      case 'requiredTemplateIds': {
+        const previous = [...normalizeTemplateIds(existing.requiredTemplateIds)].sort();
+        const updated = [...next.requiredTemplateIds].sort();
+        if (!arraysEqual(previous, updated)) return true;
+        break;
+      }
       case 'playerIds': {
         const previous = [...toUniqueStrings(existing.playerIds)].sort();
         const updated = [...next.playerIds].sort();
@@ -476,6 +520,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         return NextResponse.json({ error: message }, { status: 400 });
       }
     }
+    try {
+      nextState.requiredTemplateIds = await resolveValidatedRequiredTemplateIds(
+        normalizeText((existingCanonical as Record<string, any>).organizationId),
+        nextState.requiredTemplateIds,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid required team documents.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
     const shouldSyncDerivedTeams = hasVersionedProfileChanges(payload, existingCanonical as Record<string, any>, nextState);
     const updated = await prisma.$transaction(async (tx) => {
       await tx.canonicalTeams.update({
@@ -490,6 +543,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           profileImageId: nextState.profileImageId,
           openRegistration: nextState.openRegistration,
           registrationPriceCents: nextState.registrationPriceCents,
+          requiredTemplateIds: nextState.requiredTemplateIds,
           updatedAt: now,
         },
       });
@@ -634,6 +688,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: message }, { status: 400 });
     }
   }
+  try {
+    nextState.requiredTemplateIds = await resolveValidatedRequiredTemplateIds(
+      normalizeText((existing as Record<string, any>).organizationId),
+      nextState.requiredTemplateIds,
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Invalid required team documents.';
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
 
   const updated = await prisma.$transaction(async (tx) => {
     const txTeams = getTeamsDelegate(tx);
@@ -644,10 +707,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const canonical = await updateTeamWithCompatibility(
       txTeams,
       { id },
-      {
-        ...nextState,
-        updatedAt: now,
-      },
+        {
+          ...nextState,
+          updatedAt: now,
+        },
     );
     await applyCanonicalTeamRegistrationMetadata({
       client: tx,

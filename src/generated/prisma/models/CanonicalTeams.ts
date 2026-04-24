@@ -95,6 +95,7 @@ export type CanonicalTeamsCountAggregateOutputType = {
   createdBy: number
   openRegistration: number
   registrationPriceCents: number
+  requiredTemplateIds: number
   _all: number
 }
 
@@ -168,6 +169,7 @@ export type CanonicalTeamsCountAggregateInputType = {
   createdBy?: true
   openRegistration?: true
   registrationPriceCents?: true
+  requiredTemplateIds?: true
   _all?: true
 }
 
@@ -274,6 +276,7 @@ export type CanonicalTeamsGroupByOutputType = {
   createdBy: string | null
   openRegistration: boolean
   registrationPriceCents: number
+  requiredTemplateIds: string[]
   _count: CanonicalTeamsCountAggregateOutputType | null
   _avg: CanonicalTeamsAvgAggregateOutputType | null
   _sum: CanonicalTeamsSumAggregateOutputType | null
@@ -316,6 +319,7 @@ export type CanonicalTeamsWhereInput = {
   createdBy?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   openRegistration?: Prisma.BoolFilter<"CanonicalTeams"> | boolean
   registrationPriceCents?: Prisma.IntFilter<"CanonicalTeams"> | number
+  requiredTemplateIds?: Prisma.StringNullableListFilter<"CanonicalTeams">
 }
 
 export type CanonicalTeamsOrderByWithRelationInput = {
@@ -335,6 +339,7 @@ export type CanonicalTeamsOrderByWithRelationInput = {
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   openRegistration?: Prisma.SortOrder
   registrationPriceCents?: Prisma.SortOrder
+  requiredTemplateIds?: Prisma.SortOrder
 }
 
 export type CanonicalTeamsWhereUniqueInput = Prisma.AtLeast<{
@@ -357,6 +362,7 @@ export type CanonicalTeamsWhereUniqueInput = Prisma.AtLeast<{
   createdBy?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   openRegistration?: Prisma.BoolFilter<"CanonicalTeams"> | boolean
   registrationPriceCents?: Prisma.IntFilter<"CanonicalTeams"> | number
+  requiredTemplateIds?: Prisma.StringNullableListFilter<"CanonicalTeams">
 }, "id">
 
 export type CanonicalTeamsOrderByWithAggregationInput = {
@@ -376,6 +382,7 @@ export type CanonicalTeamsOrderByWithAggregationInput = {
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   openRegistration?: Prisma.SortOrder
   registrationPriceCents?: Prisma.SortOrder
+  requiredTemplateIds?: Prisma.SortOrder
   _count?: Prisma.CanonicalTeamsCountOrderByAggregateInput
   _avg?: Prisma.CanonicalTeamsAvgOrderByAggregateInput
   _max?: Prisma.CanonicalTeamsMaxOrderByAggregateInput
@@ -403,6 +410,7 @@ export type CanonicalTeamsScalarWhereWithAggregatesInput = {
   createdBy?: Prisma.StringNullableWithAggregatesFilter<"CanonicalTeams"> | string | null
   openRegistration?: Prisma.BoolWithAggregatesFilter<"CanonicalTeams"> | boolean
   registrationPriceCents?: Prisma.IntWithAggregatesFilter<"CanonicalTeams"> | number
+  requiredTemplateIds?: Prisma.StringNullableListFilter<"CanonicalTeams">
 }
 
 export type CanonicalTeamsCreateInput = {
@@ -422,6 +430,7 @@ export type CanonicalTeamsCreateInput = {
   createdBy?: string | null
   openRegistration?: boolean
   registrationPriceCents?: number
+  requiredTemplateIds?: Prisma.CanonicalTeamsCreaterequiredTemplateIdsInput | string[]
 }
 
 export type CanonicalTeamsUncheckedCreateInput = {
@@ -441,6 +450,7 @@ export type CanonicalTeamsUncheckedCreateInput = {
   createdBy?: string | null
   openRegistration?: boolean
   registrationPriceCents?: number
+  requiredTemplateIds?: Prisma.CanonicalTeamsCreaterequiredTemplateIdsInput | string[]
 }
 
 export type CanonicalTeamsUpdateInput = {
@@ -460,6 +470,7 @@ export type CanonicalTeamsUpdateInput = {
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   openRegistration?: Prisma.BoolFieldUpdateOperationsInput | boolean
   registrationPriceCents?: Prisma.IntFieldUpdateOperationsInput | number
+  requiredTemplateIds?: Prisma.CanonicalTeamsUpdaterequiredTemplateIdsInput | string[]
 }
 
 export type CanonicalTeamsUncheckedUpdateInput = {
@@ -479,6 +490,7 @@ export type CanonicalTeamsUncheckedUpdateInput = {
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   openRegistration?: Prisma.BoolFieldUpdateOperationsInput | boolean
   registrationPriceCents?: Prisma.IntFieldUpdateOperationsInput | number
+  requiredTemplateIds?: Prisma.CanonicalTeamsUpdaterequiredTemplateIdsInput | string[]
 }
 
 export type CanonicalTeamsCreateManyInput = {
@@ -498,6 +510,7 @@ export type CanonicalTeamsCreateManyInput = {
   createdBy?: string | null
   openRegistration?: boolean
   registrationPriceCents?: number
+  requiredTemplateIds?: Prisma.CanonicalTeamsCreaterequiredTemplateIdsInput | string[]
 }
 
 export type CanonicalTeamsUpdateManyMutationInput = {
@@ -517,6 +530,7 @@ export type CanonicalTeamsUpdateManyMutationInput = {
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   openRegistration?: Prisma.BoolFieldUpdateOperationsInput | boolean
   registrationPriceCents?: Prisma.IntFieldUpdateOperationsInput | number
+  requiredTemplateIds?: Prisma.CanonicalTeamsUpdaterequiredTemplateIdsInput | string[]
 }
 
 export type CanonicalTeamsUncheckedUpdateManyInput = {
@@ -536,6 +550,7 @@ export type CanonicalTeamsUncheckedUpdateManyInput = {
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   openRegistration?: Prisma.BoolFieldUpdateOperationsInput | boolean
   registrationPriceCents?: Prisma.IntFieldUpdateOperationsInput | number
+  requiredTemplateIds?: Prisma.CanonicalTeamsUpdaterequiredTemplateIdsInput | string[]
 }
 
 export type CanonicalTeamsCountOrderByAggregateInput = {
@@ -555,6 +570,7 @@ export type CanonicalTeamsCountOrderByAggregateInput = {
   createdBy?: Prisma.SortOrder
   openRegistration?: Prisma.SortOrder
   registrationPriceCents?: Prisma.SortOrder
+  requiredTemplateIds?: Prisma.SortOrder
 }
 
 export type CanonicalTeamsAvgOrderByAggregateInput = {
@@ -609,6 +625,15 @@ export type CanonicalTeamsSumOrderByAggregateInput = {
   registrationPriceCents?: Prisma.SortOrder
 }
 
+export type CanonicalTeamsCreaterequiredTemplateIdsInput = {
+  set: string[]
+}
+
+export type CanonicalTeamsUpdaterequiredTemplateIdsInput = {
+  set?: string[]
+  push?: string | string[]
+}
+
 
 
 export type CanonicalTeamsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -628,6 +653,7 @@ export type CanonicalTeamsSelect<ExtArgs extends runtime.Types.Extensions.Intern
   createdBy?: boolean
   openRegistration?: boolean
   registrationPriceCents?: boolean
+  requiredTemplateIds?: boolean
 }, ExtArgs["result"]["canonicalTeams"]>
 
 export type CanonicalTeamsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -647,6 +673,7 @@ export type CanonicalTeamsSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   createdBy?: boolean
   openRegistration?: boolean
   registrationPriceCents?: boolean
+  requiredTemplateIds?: boolean
 }, ExtArgs["result"]["canonicalTeams"]>
 
 export type CanonicalTeamsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -666,6 +693,7 @@ export type CanonicalTeamsSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   createdBy?: boolean
   openRegistration?: boolean
   registrationPriceCents?: boolean
+  requiredTemplateIds?: boolean
 }, ExtArgs["result"]["canonicalTeams"]>
 
 export type CanonicalTeamsSelectScalar = {
@@ -685,9 +713,10 @@ export type CanonicalTeamsSelectScalar = {
   createdBy?: boolean
   openRegistration?: boolean
   registrationPriceCents?: boolean
+  requiredTemplateIds?: boolean
 }
 
-export type CanonicalTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "division" | "divisionTypeId" | "divisionTypeName" | "wins" | "losses" | "teamSize" | "profileImageId" | "sport" | "organizationId" | "createdBy" | "openRegistration" | "registrationPriceCents", ExtArgs["result"]["canonicalTeams"]>
+export type CanonicalTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "division" | "divisionTypeId" | "divisionTypeName" | "wins" | "losses" | "teamSize" | "profileImageId" | "sport" | "organizationId" | "createdBy" | "openRegistration" | "registrationPriceCents" | "requiredTemplateIds", ExtArgs["result"]["canonicalTeams"]>
 
 export type $CanonicalTeamsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "CanonicalTeams"
@@ -709,6 +738,7 @@ export type $CanonicalTeamsPayload<ExtArgs extends runtime.Types.Extensions.Inte
     createdBy: string | null
     openRegistration: boolean
     registrationPriceCents: number
+    requiredTemplateIds: string[]
   }, ExtArgs["result"]["canonicalTeams"]>
   composites: {}
 }
@@ -1148,6 +1178,7 @@ export interface CanonicalTeamsFieldRefs {
   readonly createdBy: Prisma.FieldRef<"CanonicalTeams", 'String'>
   readonly openRegistration: Prisma.FieldRef<"CanonicalTeams", 'Boolean'>
   readonly registrationPriceCents: Prisma.FieldRef<"CanonicalTeams", 'Int'>
+  readonly requiredTemplateIds: Prisma.FieldRef<"CanonicalTeams", 'String[]'>
 }
     
 

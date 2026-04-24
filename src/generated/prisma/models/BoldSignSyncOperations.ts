@@ -43,6 +43,7 @@ export type BoldSignSyncOperationsMinAggregateOutputType = {
   idempotencyKey: string | null
   organizationId: string | null
   eventId: string | null
+  teamId: string | null
   templateDocumentId: string | null
   signedDocumentRecordId: string | null
   templateId: string | null
@@ -68,6 +69,7 @@ export type BoldSignSyncOperationsMaxAggregateOutputType = {
   idempotencyKey: string | null
   organizationId: string | null
   eventId: string | null
+  teamId: string | null
   templateDocumentId: string | null
   signedDocumentRecordId: string | null
   templateId: string | null
@@ -93,6 +95,7 @@ export type BoldSignSyncOperationsCountAggregateOutputType = {
   idempotencyKey: number
   organizationId: number
   eventId: number
+  teamId: number
   templateDocumentId: number
   signedDocumentRecordId: number
   templateId: number
@@ -129,6 +132,7 @@ export type BoldSignSyncOperationsMinAggregateInputType = {
   idempotencyKey?: true
   organizationId?: true
   eventId?: true
+  teamId?: true
   templateDocumentId?: true
   signedDocumentRecordId?: true
   templateId?: true
@@ -154,6 +158,7 @@ export type BoldSignSyncOperationsMaxAggregateInputType = {
   idempotencyKey?: true
   organizationId?: true
   eventId?: true
+  teamId?: true
   templateDocumentId?: true
   signedDocumentRecordId?: true
   templateId?: true
@@ -179,6 +184,7 @@ export type BoldSignSyncOperationsCountAggregateInputType = {
   idempotencyKey?: true
   organizationId?: true
   eventId?: true
+  teamId?: true
   templateDocumentId?: true
   signedDocumentRecordId?: true
   templateId?: true
@@ -292,6 +298,7 @@ export type BoldSignSyncOperationsGroupByOutputType = {
   idempotencyKey: string
   organizationId: string | null
   eventId: string | null
+  teamId: string | null
   templateDocumentId: string | null
   signedDocumentRecordId: string | null
   templateId: string | null
@@ -341,6 +348,7 @@ export type BoldSignSyncOperationsWhereInput = {
   idempotencyKey?: Prisma.StringFilter<"BoldSignSyncOperations"> | string
   organizationId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
   eventId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
+  teamId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
   templateDocumentId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
   signedDocumentRecordId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
   templateId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
@@ -367,6 +375,7 @@ export type BoldSignSyncOperationsOrderByWithRelationInput = {
   idempotencyKey?: Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
+  teamId?: Prisma.SortOrderInput | Prisma.SortOrder
   templateDocumentId?: Prisma.SortOrderInput | Prisma.SortOrder
   signedDocumentRecordId?: Prisma.SortOrderInput | Prisma.SortOrder
   templateId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -396,6 +405,7 @@ export type BoldSignSyncOperationsWhereUniqueInput = Prisma.AtLeast<{
   status?: Prisma.EnumBoldSignSyncOperationStatusEnumFilter<"BoldSignSyncOperations"> | $Enums.BoldSignSyncOperationStatusEnum
   organizationId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
   eventId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
+  teamId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
   templateDocumentId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
   signedDocumentRecordId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
   templateId?: Prisma.StringNullableFilter<"BoldSignSyncOperations"> | string | null
@@ -422,6 +432,7 @@ export type BoldSignSyncOperationsOrderByWithAggregationInput = {
   idempotencyKey?: Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
+  teamId?: Prisma.SortOrderInput | Prisma.SortOrder
   templateDocumentId?: Prisma.SortOrderInput | Prisma.SortOrder
   signedDocumentRecordId?: Prisma.SortOrderInput | Prisma.SortOrder
   templateId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -456,6 +467,7 @@ export type BoldSignSyncOperationsScalarWhereWithAggregatesInput = {
   idempotencyKey?: Prisma.StringWithAggregatesFilter<"BoldSignSyncOperations"> | string
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"BoldSignSyncOperations"> | string | null
   eventId?: Prisma.StringNullableWithAggregatesFilter<"BoldSignSyncOperations"> | string | null
+  teamId?: Prisma.StringNullableWithAggregatesFilter<"BoldSignSyncOperations"> | string | null
   templateDocumentId?: Prisma.StringNullableWithAggregatesFilter<"BoldSignSyncOperations"> | string | null
   signedDocumentRecordId?: Prisma.StringNullableWithAggregatesFilter<"BoldSignSyncOperations"> | string | null
   templateId?: Prisma.StringNullableWithAggregatesFilter<"BoldSignSyncOperations"> | string | null
@@ -482,6 +494,7 @@ export type BoldSignSyncOperationsCreateInput = {
   idempotencyKey: string
   organizationId?: string | null
   eventId?: string | null
+  teamId?: string | null
   templateDocumentId?: string | null
   signedDocumentRecordId?: string | null
   templateId?: string | null
@@ -508,6 +521,7 @@ export type BoldSignSyncOperationsUncheckedCreateInput = {
   idempotencyKey: string
   organizationId?: string | null
   eventId?: string | null
+  teamId?: string | null
   templateDocumentId?: string | null
   signedDocumentRecordId?: string | null
   templateId?: string | null
@@ -534,6 +548,7 @@ export type BoldSignSyncOperationsUpdateInput = {
   idempotencyKey?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   templateDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signedDocumentRecordId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   templateId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -560,6 +575,7 @@ export type BoldSignSyncOperationsUncheckedUpdateInput = {
   idempotencyKey?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   templateDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signedDocumentRecordId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   templateId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -586,6 +602,7 @@ export type BoldSignSyncOperationsCreateManyInput = {
   idempotencyKey: string
   organizationId?: string | null
   eventId?: string | null
+  teamId?: string | null
   templateDocumentId?: string | null
   signedDocumentRecordId?: string | null
   templateId?: string | null
@@ -612,6 +629,7 @@ export type BoldSignSyncOperationsUpdateManyMutationInput = {
   idempotencyKey?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   templateDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signedDocumentRecordId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   templateId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -638,6 +656,7 @@ export type BoldSignSyncOperationsUncheckedUpdateManyInput = {
   idempotencyKey?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  teamId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   templateDocumentId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   signedDocumentRecordId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   templateId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -664,6 +683,7 @@ export type BoldSignSyncOperationsCountOrderByAggregateInput = {
   idempotencyKey?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   templateDocumentId?: Prisma.SortOrder
   signedDocumentRecordId?: Prisma.SortOrder
   templateId?: Prisma.SortOrder
@@ -694,6 +714,7 @@ export type BoldSignSyncOperationsMaxOrderByAggregateInput = {
   idempotencyKey?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   templateDocumentId?: Prisma.SortOrder
   signedDocumentRecordId?: Prisma.SortOrder
   templateId?: Prisma.SortOrder
@@ -719,6 +740,7 @@ export type BoldSignSyncOperationsMinOrderByAggregateInput = {
   idempotencyKey?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  teamId?: Prisma.SortOrder
   templateDocumentId?: Prisma.SortOrder
   signedDocumentRecordId?: Prisma.SortOrder
   templateId?: Prisma.SortOrder
@@ -758,6 +780,7 @@ export type BoldSignSyncOperationsSelect<ExtArgs extends runtime.Types.Extension
   idempotencyKey?: boolean
   organizationId?: boolean
   eventId?: boolean
+  teamId?: boolean
   templateDocumentId?: boolean
   signedDocumentRecordId?: boolean
   templateId?: boolean
@@ -784,6 +807,7 @@ export type BoldSignSyncOperationsSelectCreateManyAndReturn<ExtArgs extends runt
   idempotencyKey?: boolean
   organizationId?: boolean
   eventId?: boolean
+  teamId?: boolean
   templateDocumentId?: boolean
   signedDocumentRecordId?: boolean
   templateId?: boolean
@@ -810,6 +834,7 @@ export type BoldSignSyncOperationsSelectUpdateManyAndReturn<ExtArgs extends runt
   idempotencyKey?: boolean
   organizationId?: boolean
   eventId?: boolean
+  teamId?: boolean
   templateDocumentId?: boolean
   signedDocumentRecordId?: boolean
   templateId?: boolean
@@ -836,6 +861,7 @@ export type BoldSignSyncOperationsSelectScalar = {
   idempotencyKey?: boolean
   organizationId?: boolean
   eventId?: boolean
+  teamId?: boolean
   templateDocumentId?: boolean
   signedDocumentRecordId?: boolean
   templateId?: boolean
@@ -853,7 +879,7 @@ export type BoldSignSyncOperationsSelectScalar = {
   expiresAt?: boolean
 }
 
-export type BoldSignSyncOperationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "operationType" | "status" | "idempotencyKey" | "organizationId" | "eventId" | "templateDocumentId" | "signedDocumentRecordId" | "templateId" | "documentId" | "userId" | "childUserId" | "signerRole" | "signerEmail" | "roleIndex" | "requestId" | "ipAddress" | "payload" | "lastError" | "completedAt" | "expiresAt", ExtArgs["result"]["boldSignSyncOperations"]>
+export type BoldSignSyncOperationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "operationType" | "status" | "idempotencyKey" | "organizationId" | "eventId" | "teamId" | "templateDocumentId" | "signedDocumentRecordId" | "templateId" | "documentId" | "userId" | "childUserId" | "signerRole" | "signerEmail" | "roleIndex" | "requestId" | "ipAddress" | "payload" | "lastError" | "completedAt" | "expiresAt", ExtArgs["result"]["boldSignSyncOperations"]>
 
 export type $BoldSignSyncOperationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "BoldSignSyncOperations"
@@ -867,6 +893,7 @@ export type $BoldSignSyncOperationsPayload<ExtArgs extends runtime.Types.Extensi
     idempotencyKey: string
     organizationId: string | null
     eventId: string | null
+    teamId: string | null
     templateDocumentId: string | null
     signedDocumentRecordId: string | null
     templateId: string | null
@@ -1313,6 +1340,7 @@ export interface BoldSignSyncOperationsFieldRefs {
   readonly idempotencyKey: Prisma.FieldRef<"BoldSignSyncOperations", 'String'>
   readonly organizationId: Prisma.FieldRef<"BoldSignSyncOperations", 'String'>
   readonly eventId: Prisma.FieldRef<"BoldSignSyncOperations", 'String'>
+  readonly teamId: Prisma.FieldRef<"BoldSignSyncOperations", 'String'>
   readonly templateDocumentId: Prisma.FieldRef<"BoldSignSyncOperations", 'String'>
   readonly signedDocumentRecordId: Prisma.FieldRef<"BoldSignSyncOperations", 'String'>
   readonly templateId: Prisma.FieldRef<"BoldSignSyncOperations", 'String'>

@@ -20,6 +20,8 @@ type ProfileDocumentCard = {
   status: 'UNSIGNED' | 'SIGNED';
   eventId?: string;
   eventName?: string;
+  teamId?: string;
+  teamName?: string;
   organizationId?: string;
   organizationName: string;
   templateId: string;
@@ -123,6 +125,19 @@ const buildEventScopeKey = (params: {
   childUserId?: string;
 }): string => {
   return `${params.eventId}::${buildTemplateScopeKey({
+    templateId: params.templateId,
+    signerContext: params.signerContext,
+    childUserId: params.childUserId,
+  })}`;
+};
+
+const buildTeamScopeKey = (params: {
+  teamId: string;
+  templateId: string;
+  signerContext: SignerContext;
+  childUserId?: string;
+}) => {
+  return `${params.teamId}::${buildTemplateScopeKey({
     templateId: params.templateId,
     signerContext: params.signerContext,
     childUserId: params.childUserId,
@@ -274,6 +289,29 @@ export async function GET(_req: NextRequest) {
   });
   const selfEmail = normalizeText(selfSensitive?.email);
   const userIsLinkedChild = parentLinksForSelf.length > 0;
+  const relevantProfileUserIds = Array.from(new Set(
+    [userId, ...linkedChildIds]
+      .map((value) => normalizeText(value))
+      .filter((value): value is string => Boolean(value)),
+  ));
+  const teamRegistrations = await prisma.teamRegistrations.findMany({
+    where: {
+      status: { in: ['STARTED', 'ACTIVE'] },
+      OR: [
+        { userId: { in: relevantProfileUserIds } },
+        { parentId: userId },
+      ],
+    },
+    select: {
+      id: true,
+      teamId: true,
+      userId: true,
+      parentId: true,
+      registrantType: true,
+      status: true,
+      consentStatus: true,
+    },
+  });
   const registrationChildIds = registrations
     .filter((registration) =>
       normalizeText(registration.parentId) === userId
@@ -296,6 +334,7 @@ export async function GET(_req: NextRequest) {
         signedDocumentId: true,
         templateId: true,
         eventId: true,
+        teamId: true,
         userId: true,
         hostId: true,
         signerRole: true,
@@ -342,14 +381,42 @@ export async function GET(_req: NextRequest) {
     },
   });
 
+  const relevantProfileTeamIds = Array.from(new Set([
+    ...teamIds,
+    ...linkedChildTeamIds,
+    ...teamRegistrations
+      .map((registration) => normalizeText(registration.teamId))
+      .filter((value): value is string => Boolean(value)),
+  ]));
+  const discoverableTeams = relevantProfileTeamIds.length
+    ? await prisma.canonicalTeams.findMany({
+      where: { id: { in: relevantProfileTeamIds } },
+      select: {
+        id: true,
+        name: true,
+        organizationId: true,
+        requiredTemplateIds: true,
+        updatedAt: true,
+      },
+    })
+    : [];
+
   const eventById = new Map(discoverableEvents.map((event) => [event.id, event]));
+  const teamById = new Map(discoverableTeams.map((team) => [team.id, team]));
 
   const requiredTemplateIds = Array.from(new Set(
-    discoverableEvents.flatMap((event) =>
-      Array.isArray(event.requiredTemplateIds)
-        ? event.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-        : [],
-    ),
+    [
+      ...discoverableEvents.flatMap((event) =>
+        Array.isArray(event.requiredTemplateIds)
+          ? event.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+          : [],
+      ),
+      ...discoverableTeams.flatMap((team) =>
+        Array.isArray(team.requiredTemplateIds)
+          ? team.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+          : [],
+      ),
+    ],
   ));
 
   const signedTemplateIds = Array.from(new Set(
@@ -538,9 +605,109 @@ export async function GET(_req: NextRequest) {
     }
   });
 
+  const childRegistrationByTeamAndChild = new Map<string, { consentStatus?: string; registrationStatus?: string }>();
+  const childAssociationsByTeam = new Map<string, Array<{
+    childUserId: string;
+    childName?: string;
+    childEmail?: string;
+    consentStatus?: string;
+    registrationStatus?: string;
+    requiresChildEmail: boolean;
+    statusNote?: string;
+  }>>();
+  const childTeamAssociationKeys = new Set<string>();
+  const addChildTeamAssociation = (params: {
+    teamId: string;
+    childUserId: string;
+    childName?: string;
+    childEmail?: string;
+    consentStatus?: string;
+    registrationStatus?: string;
+  }) => {
+    const associationKey = `${params.teamId}:${params.childUserId}`;
+    if (childTeamAssociationKeys.has(associationKey)) {
+      return;
+    }
+    childTeamAssociationKeys.add(associationKey);
+
+    const normalizedConsentStatus = normalizeText(params.consentStatus) ?? undefined;
+    const normalizedRegistrationStatus = normalizeText(params.registrationStatus) ?? undefined;
+    const requiresChildEmail = !params.childEmail;
+    const statusNote = requiresChildEmail
+      ? 'Child email is required before child signer links can be sent.'
+      : undefined;
+
+    const next = childAssociationsByTeam.get(params.teamId) ?? [];
+    next.push({
+      childUserId: params.childUserId,
+      childName: normalizeText(params.childName) ?? undefined,
+      childEmail: params.childEmail,
+      consentStatus: normalizedConsentStatus,
+      registrationStatus: normalizedRegistrationStatus,
+      requiresChildEmail,
+      statusNote,
+    });
+    childAssociationsByTeam.set(params.teamId, next);
+  };
+
+  teamRegistrations.forEach((registration) => {
+    const teamId = normalizeText(registration.teamId);
+    const childUserId = normalizeText(registration.userId);
+    const registrantType = normalizeText(registration.registrantType)?.toUpperCase();
+    if (!teamId || !childUserId || registrantType !== 'CHILD') {
+      return;
+    }
+    childRegistrationByTeamAndChild.set(`${teamId}:${childUserId}`, {
+      consentStatus: normalizeText(registration.consentStatus),
+      registrationStatus: normalizeText(registration.status),
+    });
+    addChildTeamAssociation({
+      teamId,
+      childUserId,
+      childName: childNameById.get(childUserId),
+      childEmail: childEmailById.get(childUserId) || undefined,
+      consentStatus: normalizeText(registration.consentStatus),
+      registrationStatus: normalizeText(registration.status),
+    });
+  });
+
+  linkedChildIds.forEach((childUserId) => {
+    const childTeamIds = childTeamIdsByIdWithSlots.get(childUserId)
+      ?? childTeamIdsById.get(childUserId)
+      ?? [];
+    childTeamIds.forEach((teamId) => {
+      const registrationMeta = childRegistrationByTeamAndChild.get(`${teamId}:${childUserId}`);
+      addChildTeamAssociation({
+        teamId,
+        childUserId,
+        childName: childNameById.get(childUserId),
+        childEmail: childEmailById.get(childUserId) || undefined,
+        consentStatus: registrationMeta?.consentStatus,
+        registrationStatus: registrationMeta?.registrationStatus,
+      });
+    });
+  });
+
+  if (userIsLinkedChild) {
+    relevantTeamIds.forEach((teamId) => {
+      const registrationMeta = childRegistrationByTeamAndChild.get(`${teamId}:${userId}`);
+      addChildTeamAssociation({
+        teamId,
+        childUserId: userId,
+        childName: childNameById.get(userId),
+        childEmail: selfEmail ?? undefined,
+        consentStatus: registrationMeta?.consentStatus,
+        registrationStatus: registrationMeta?.registrationStatus,
+      });
+    });
+  }
+
   const organizationIds = Array.from(new Set([
     ...discoverableEvents
       .map((event) => normalizeText(event.organizationId))
+      .filter((value): value is string => Boolean(value)),
+    ...discoverableTeams
+      .map((team) => normalizeText(team.organizationId))
       .filter((value): value is string => Boolean(value)),
     ...templates
       .map((template) => normalizeText(template.organizationId))
@@ -562,9 +729,30 @@ export async function GET(_req: NextRequest) {
   const discoverableEventsSorted = [...discoverableEvents].sort(
     (left, right) => toTimestamp(right.start) - toTimestamp(left.start),
   );
+  const discoverableTeamsSorted = [...discoverableTeams].sort((left, right) => {
+    const leftTime = toTimestamp(left.updatedAt ?? null);
+    const rightTime = toTimestamp(right.updatedAt ?? null);
+    if (leftTime !== rightTime) {
+      return rightTime - leftTime;
+    }
+    return (normalizeText(left.name) ?? '').localeCompare(normalizeText(right.name) ?? '', undefined, { sensitivity: 'base' });
+  });
+  const selfProfileTeamIds = new Set(
+    [
+      ...relevantTeamIds,
+      ...teamRegistrations
+        .filter((registration) =>
+          normalizeText(registration.userId) === userId
+          && normalizeText(registration.registrantType)?.toUpperCase() !== 'CHILD',
+        )
+        .map((registration) => normalizeText(registration.teamId))
+        .filter((value): value is string => Boolean(value)),
+    ],
+  );
 
   const signedByTemplateScope = new Map<string, { id: string; signedAt?: string; createdAt?: Date; status?: string | null }>();
   const signedByEventScope = new Map<string, { id: string; signedAt?: string; createdAt?: Date; status?: string | null }>();
+  const signedByTeamScope = new Map<string, { id: string; signedAt?: string; createdAt?: Date; status?: string | null }>();
 
   signedDocuments.forEach((document) => {
     if (!isSignedStatus(document.status) && !isRevokedStatus(document.status)) {
@@ -605,24 +793,43 @@ export async function GET(_req: NextRequest) {
     }
 
     const eventId = normalizeText(document.eventId);
-    if (!eventId) {
-      return;
-    }
-    const eventScopeKey = buildEventScopeKey({
-      eventId,
-      templateId,
-      signerContext,
-      childUserId,
-    });
-    const existingByEvent = signedByEventScope.get(eventScopeKey);
-    const existingByEventTime = toTimestamp(existingByEvent?.signedAt ?? existingByEvent?.createdAt ?? null);
-    if (!existingByEvent || currentTime > existingByEventTime) {
-      signedByEventScope.set(eventScopeKey, {
-        id: document.id,
-        signedAt: normalizeText(document.signedAt) ?? undefined,
-        createdAt: document.createdAt ?? undefined,
-        status: document.status,
+    if (eventId) {
+      const eventScopeKey = buildEventScopeKey({
+        eventId,
+        templateId,
+        signerContext,
+        childUserId,
       });
+      const existingByEvent = signedByEventScope.get(eventScopeKey);
+      const existingByEventTime = toTimestamp(existingByEvent?.signedAt ?? existingByEvent?.createdAt ?? null);
+      if (!existingByEvent || currentTime > existingByEventTime) {
+        signedByEventScope.set(eventScopeKey, {
+          id: document.id,
+          signedAt: normalizeText(document.signedAt) ?? undefined,
+          createdAt: document.createdAt ?? undefined,
+          status: document.status,
+        });
+      }
+    }
+
+    const teamId = normalizeText(document.teamId);
+    if (teamId) {
+      const teamScopeKey = buildTeamScopeKey({
+        teamId,
+        templateId,
+        signerContext,
+        childUserId,
+      });
+      const existingByTeam = signedByTeamScope.get(teamScopeKey);
+      const existingByTeamTime = toTimestamp(existingByTeam?.signedAt ?? existingByTeam?.createdAt ?? null);
+      if (!existingByTeam || currentTime > existingByTeamTime) {
+        signedByTeamScope.set(teamScopeKey, {
+          id: document.id,
+          signedAt: normalizeText(document.signedAt) ?? undefined,
+          createdAt: document.createdAt ?? undefined,
+          status: document.status,
+        });
+      }
     }
   });
 
@@ -790,11 +997,175 @@ export async function GET(_req: NextRequest) {
     });
   });
 
+  discoverableTeamsSorted.forEach((team) => {
+    const templateIds = Array.isArray(team.requiredTemplateIds)
+      ? team.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
+      : [];
+    if (!templateIds.length) {
+      return;
+    }
+
+    templateIds.forEach((templateId) => {
+      const template = templateById.get(templateId);
+      if (!template) {
+        return;
+      }
+
+      const requiredSignerType = normalizeRequiredSignerType(template.requiredSignerType);
+      const signerContexts: Array<{
+        signerContext: SignerContext;
+        childUserId?: string;
+        childName?: string;
+        childEmail?: string;
+        consentStatus?: string;
+        requiresChildEmail?: boolean;
+        statusNote?: string;
+      }> = [];
+      const childRows = childAssociationsByTeam.get(team.id) ?? [];
+
+      if (requiredSignerType === 'PARTICIPANT' && selfProfileTeamIds.has(team.id)) {
+        signerContexts.push({ signerContext: 'participant' });
+      }
+      if (requiredSignerType === 'PARENT_GUARDIAN' || requiredSignerType === 'PARENT_GUARDIAN_CHILD') {
+        childRows.forEach((childRow) => {
+          signerContexts.push({
+            signerContext: 'parent_guardian',
+            childUserId: childRow.childUserId,
+            childName: childRow.childName,
+            childEmail: childRow.childEmail,
+            consentStatus: childRow.consentStatus,
+            requiresChildEmail: childRow.requiresChildEmail,
+            statusNote: childRow.statusNote,
+          });
+        });
+      }
+      if (requiredSignerType === 'CHILD' || requiredSignerType === 'PARENT_GUARDIAN_CHILD') {
+        childRows.forEach((childRow) => {
+          signerContexts.push({
+            signerContext: 'child',
+            childUserId: childRow.childUserId,
+            childName: childRow.childName,
+            childEmail: childRow.childEmail,
+            consentStatus: childRow.consentStatus,
+            requiresChildEmail: childRow.requiresChildEmail,
+            statusNote: childRow.statusNote,
+          });
+        });
+      }
+
+      signerContexts.forEach((context) => {
+        const scopedChildUserId = context.signerContext === 'participant' ? undefined : context.childUserId;
+        const templateScopeKey = buildTemplateScopeKey({
+          templateId: template.id,
+          signerContext: context.signerContext,
+          childUserId: scopedChildUserId,
+        });
+        if (template.signOnce) {
+          if (signOnceUnsignedScopeKeys.has(templateScopeKey)) {
+            return;
+          }
+          signOnceUnsignedScopeKeys.add(templateScopeKey);
+        }
+        const signed = template.signOnce
+          ? signedByTemplateScope.get(templateScopeKey)
+          : signedByTeamScope.get(buildTeamScopeKey({
+            teamId: team.id,
+            templateId: template.id,
+            signerContext: context.signerContext,
+            childUserId: scopedChildUserId,
+          }));
+        if (signed) {
+          return;
+        }
+
+        const cardId = template.signOnce
+          ? `once:${templateScopeKey}`
+          : `team:${team.id}:${template.id}:${context.signerContext}:${context.childUserId ?? 'self'}`;
+        if (unsignedCardKeys.has(cardId)) {
+          return;
+        }
+        unsignedCardKeys.add(cardId);
+        if (context.signerContext === 'child' && scopedChildUserId) {
+          const currentChildUnsignedCount = childUnsignedCountsByChildId.get(scopedChildUserId) ?? 0;
+          childUnsignedCountsByChildId.set(scopedChildUserId, currentChildUnsignedCount + 1);
+        }
+
+        const viewerCanProxyChildSignature = canViewerProxyChildSignature({
+          signerContext: context.signerContext,
+          viewerUserId: userId,
+          childUserId: scopedChildUserId,
+          childEmail: context.childEmail,
+        });
+        if (
+          !viewerCanProxyChildSignature
+          && !isSignerContextVisibleForViewer({
+            viewerUserId: userId,
+            signerContext: context.signerContext,
+            childUserId: scopedChildUserId,
+          })
+        ) {
+          return;
+        }
+
+        const organizationDisplay = getDisplayOrganizationName({
+          eventOrganizationId: team.organizationId,
+          templateOrganizationId: template.organizationId,
+          organizationsById,
+        });
+        const childMustSignFromOwnAccount = isChildSignatureRestrictedToChildAccount({
+          signerContext: context.signerContext,
+          viewerUserId: userId,
+          childUserId: context.childUserId,
+          childEmail: context.childEmail,
+        });
+        const requiresChildEmailForViewer = Boolean(
+          context.signerContext === 'child'
+          && context.requiresChildEmail
+          && !viewerCanProxyChildSignature,
+        );
+        const statusNotes = [
+          requiresChildEmailForViewer ? context.statusNote : undefined,
+          childMustSignFromOwnAccount ? 'Waiting on child signature from the child account.' : undefined,
+          viewerCanProxyChildSignature ? 'Child email is missing. Parent/guardian can sign on behalf of this child.' : undefined,
+        ].filter((value): value is string => Boolean(value && value.trim()));
+        const statusNote = statusNotes.length ? statusNotes.join(' ') : undefined;
+
+        unsignedCards.push({
+          id: cardId,
+          status: 'UNSIGNED',
+          teamId: team.id,
+          teamName: normalizeText(team.name) ?? 'Team',
+          organizationId: organizationDisplay.organizationId,
+          organizationName: organizationDisplay.organizationName,
+          templateId: template.id,
+          title: normalizeText(template.title) ?? 'Required Document',
+          type: normalizeTemplateType(template.type),
+          requiredSignerType,
+          requiredSignerLabel: getRequiredSignerTypeLabel(requiredSignerType),
+          signerContext: context.signerContext,
+          signerContextLabel: getSignerContextLabel(context.signerContext),
+          childUserId: context.childUserId,
+          childName: context.childName,
+          childEmail: context.childEmail,
+          consentStatus: context.consentStatus,
+          requiresChildEmail: requiresChildEmailForViewer,
+          statusNote,
+          content: normalizeTemplateType(template.type) === 'TEXT' ? normalizeText(template.content) : undefined,
+        });
+      });
+    });
+  });
+
   unsignedCards.sort((left, right) => {
     const leftEventStart = toTimestamp(eventById.get(left.eventId ?? '')?.start ?? null);
     const rightEventStart = toTimestamp(eventById.get(right.eventId ?? '')?.start ?? null);
     if (leftEventStart !== rightEventStart) {
       return rightEventStart - leftEventStart;
+    }
+    const leftTeamUpdatedAt = toTimestamp(teamById.get(left.teamId ?? '')?.updatedAt ?? null);
+    const rightTeamUpdatedAt = toTimestamp(teamById.get(right.teamId ?? '')?.updatedAt ?? null);
+    if (leftTeamUpdatedAt !== rightTeamUpdatedAt) {
+      return rightTeamUpdatedAt - leftTeamUpdatedAt;
     }
     return left.title.localeCompare(right.title, undefined, { sensitivity: 'base' });
   });
@@ -804,6 +1175,7 @@ export async function GET(_req: NextRequest) {
     .filter((document) => isSignedStatus(document.status))
     .forEach((document) => {
       const event = normalizeText(document.eventId) ? eventById.get(normalizeText(document.eventId) as string) : undefined;
+      const team = normalizeText(document.teamId) ? teamById.get(normalizeText(document.teamId) as string) : undefined;
       const template = templateById.get(document.templateId);
       const requiredSignerType = normalizeRequiredSignerType(template?.requiredSignerType);
       const signerContext = normalizeSignerContextValue(document.signerRole) ?? (
@@ -820,6 +1192,7 @@ export async function GET(_req: NextRequest) {
         childUserId,
       }))?.status;
       const scopedEventId = normalizeText(document.eventId);
+      const scopedTeamId = normalizeText(document.teamId);
       const latestEventScopeStatus = scopedEventId
         ? signedByEventScope.get(buildEventScopeKey({
           eventId: scopedEventId,
@@ -828,9 +1201,17 @@ export async function GET(_req: NextRequest) {
           childUserId,
         }))?.status
         : undefined;
+      const latestTeamScopeStatus = scopedTeamId
+        ? signedByTeamScope.get(buildTeamScopeKey({
+          teamId: scopedTeamId,
+          templateId: document.templateId,
+          signerContext,
+          childUserId,
+        }))?.status
+        : undefined;
       const latestScopeStatus = (template?.signOnce ?? false)
         ? latestTemplateScopeStatus
-        : (latestEventScopeStatus ?? latestTemplateScopeStatus);
+        : (latestEventScopeStatus ?? latestTeamScopeStatus ?? latestTemplateScopeStatus);
       if (isRevokedStatus(latestScopeStatus)) {
         return;
       }
@@ -844,7 +1225,7 @@ export async function GET(_req: NextRequest) {
         return;
       }
       const organizationDisplay = getDisplayOrganizationName({
-        eventOrganizationId: event?.organizationId,
+        eventOrganizationId: event?.organizationId ?? team?.organizationId,
         templateOrganizationId: template?.organizationId,
         organizationsById,
       });
@@ -856,6 +1237,8 @@ export async function GET(_req: NextRequest) {
         status: 'SIGNED',
         eventId: event?.id ?? normalizeText(document.eventId),
         eventName: normalizeText(event?.name) ?? undefined,
+        teamId: team?.id ?? normalizeText(document.teamId),
+        teamName: normalizeText(team?.name) ?? undefined,
         organizationId: organizationDisplay.organizationId,
         organizationName: organizationDisplay.organizationName,
         templateId: normalizeText(document.templateId) ?? '',

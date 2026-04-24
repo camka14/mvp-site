@@ -12,6 +12,7 @@ import type {
 import { buildPayload } from './utils';
 import type { DivisionRegistrationSelection } from '@/lib/registrationService';
 import type { WeeklyOccurrenceSelection } from '@/lib/eventService';
+import type { TeamRegistrationCheckoutTarget } from './teamService';
 
 type PaymentOrganizationContext = Partial<Organization>;
 
@@ -157,6 +158,7 @@ class PaymentService {
   async createTeamRegistrationPaymentIntent(
     user: UserData,
     team: Team,
+    teamRegistration?: TeamRegistrationCheckoutTarget,
     organization?: PaymentOrganizationContext,
     billingAddress?: BillingAddress,
   ): Promise<PaymentIntent> {
@@ -168,7 +170,10 @@ class PaymentService {
         purchaseType: 'team_registration',
         user,
         team,
-        teamRegistration: { teamId: team.$id },
+        teamRegistration: {
+          ...(teamRegistration ?? {}),
+          teamId: teamRegistration?.teamId ?? team.$id,
+        },
         organization,
         billingAddress,
       };

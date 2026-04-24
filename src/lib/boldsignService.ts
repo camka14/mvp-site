@@ -178,7 +178,8 @@ class BoldSignService {
   }
 
   async createSignLinks(params: {
-    eventId: string;
+    eventId?: string;
+    teamId?: string;
     user: UserData;
     userEmail: string;
     templateId?: string;
@@ -188,8 +189,17 @@ class BoldSignService {
     childEmail?: string;
     timeoutMs?: number;
   }): Promise<SignStep[]> {
+    const targetPath = params.teamId
+      ? `/api/teams/${params.teamId}/sign`
+      : params.eventId
+        ? `/api/events/${params.eventId}/sign`
+        : null;
+    if (!targetPath) {
+      throw new Error('Event or team is required to create sign links.');
+    }
+
     const result = await apiRequest<SignLinksResponse>(
-      `/api/events/${params.eventId}/sign`,
+      targetPath,
       {
         method: 'POST',
         timeoutMs: params.timeoutMs,
