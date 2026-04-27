@@ -55,10 +55,16 @@ npm install
   - `BOLDSIGN_RECONCILE_SECRET` (required for scheduled reconcile cron auth in production)
   - `STRIPE_CONNECT_CLIENT_ID` (required for Stripe Connect OAuth onboarding + fallback management flows)
   - `STRIPE_CONNECT_REDIRECT_URI` (optional, full callback URL override for Stripe Connect OAuth; use when Stripe app settings require a specific host)
-  - SMTP email invites:
+  - Email delivery:
+  - Gmail API OAuth sender:
+  - `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_REFRESH_TOKEN`
+  - `GMAIL_SENDER_EMAIL` (mailbox authorized by OAuth, for example `noreply@razumly.com`)
+  - `SMTP_FROM`, `SMTP_FROM_NAME`, `SMTP_REPLY_TO` (message headers; `SMTP_FROM` may be a verified Gmail send-as alias)
+  - Demo request notifications:
+  - `DEMO_REQUEST_TO` (comma-separated inbox list)
+  - SMTP fallback:
   - `SMTP_URL` (or configure host/port/user/password below)
   - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`
-  - `SMTP_FROM`, `SMTP_FROM_NAME`, `SMTP_REPLY_TO`
   - Gmail fallback: `GMAIL_USER`, `GMAIL_PASSWORD`
   - Invite link/app prompt URL controls:
   - `PUBLIC_WEB_BASE_URL` (canonical origin used in invite emails; recommended in production)
@@ -88,6 +94,9 @@ When running in WSL, the dev wrapper also attempts to resolve Windows-installed 
 - `npm start` — run built app
 - `npm run test` — Jest suite
 - `npm run lint` — Next.js lint
+
+- `npm run gmail:oauth:url` - print the Google consent URL for the Gmail API sender account
+- `npm run gmail:oauth:token -- --code "<code>"` - exchange a Google OAuth callback code for `GMAIL_OAUTH_REFRESH_TOKEN`
 
 ## Local Stripe Webhooks
 - Preferred local run: `npm run dev`

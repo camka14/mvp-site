@@ -29,6 +29,7 @@ type FeatureSection = {
 
 type LandingPageProps = {
   brandHref?: string;
+  heroMediaLayout?: 'stacked' | 'horizontal';
 };
 
 const featureSections = [
@@ -118,17 +119,17 @@ const featureSections = [
   },
   {
     id: 'documents',
-    title: 'Waivers and required docs, signed digitally.',
+    title: 'Create signable documents for every commitment.',
     points: [
-      'Use document templates with event-level requirements.',
-      'Track signed records by player and event.',
-      'Give organizers instant visibility into compliance.',
+      'Build reusable agreements for rentals, event registration, and team participation.',
+      'Attach signature requirements to the exact flow where they belong.',
+      'Track who has signed before players, teams, or renters are cleared.',
     ],
     webImage: {
-      src: '/landing/teams_auth_screenshot_web.png',
-      alt: 'Web team management dashboard',
-      width: 1440,
-      height: 900,
+      src: '/landing/document_creation_web.png',
+      alt: 'Web signable document creation screen',
+      width: 1919,
+      height: 907,
     },
     mobileImage: null,
   },
@@ -222,13 +223,14 @@ const integrations = [
   },
 ];
 
-export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
+export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacked' }: LandingPageProps) {
   const { user, loading, isAuthenticated, isGuest } = useApp();
   const router = useRouter();
   const [startingGuestSession, setStartingGuestSession] = useState(false);
   const [guestError, setGuestError] = useState('');
   const appHref = getHomePathForUser(user);
   const showAppCta = isAuthenticated && !isGuest;
+  const isHeroMediaHorizontal = heroMediaLayout === 'horizontal';
   const landingImageProps = {
     unoptimized: true,
   } as const;
@@ -281,14 +283,22 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
             <a href="#resources" className="landing-nav-link transition">Resources</a>
           </nav>
 
-          <div className="flex items-center gap-2 sm:gap-3">
+          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
             {showAppCta ? (
-              <Link
-                href={appHref}
-                className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
-              >
-                Go to app
-              </Link>
+              <>
+                <Link
+                  href="/request-demo"
+                  className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
+                >
+                  Request demo
+                </Link>
+                <Link
+                  href={appHref}
+                  className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
+                >
+                  Go to app
+                </Link>
+              </>
             ) : (
               <>
                 <Link
@@ -296,6 +306,12 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
                   className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
                 >
                   Sign in
+                </Link>
+                <Link
+                  href="/request-demo"
+                  className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
+                >
+                  Request demo
                 </Link>
                 <Link
                   href="/login"
@@ -324,12 +340,20 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
 
             <div className="flex flex-wrap gap-3">
               {showAppCta ? (
-                <Link
-                  href={appHref}
-                  className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                >
-                  Go to app
-                </Link>
+                <>
+                  <Link
+                    href={appHref}
+                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Go to app
+                  </Link>
+                  <Link
+                    href="/request-demo"
+                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Request demo
+                  </Link>
+                </>
               ) : (
                 <>
                   <Link
@@ -343,6 +367,12 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
                     className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
                   >
                     Sign in
+                  </Link>
+                  <Link
+                    href="/request-demo"
+                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Request demo
                   </Link>
                   <button
                     type="button"
@@ -368,7 +398,7 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
 
           <div className="relative" data-reveal data-delay="1">
             <div className="landing-shot landing-surface-strong rounded-3xl p-4">
-              <div className="landing-hero-stack space-y-4">
+              <div className={`landing-hero-stack ${isHeroMediaHorizontal ? 'landing-hero-stack-horizontal' : ''}`}>
                 <div className="landing-shot-image landing-shot-image-equal">
                   <Image
                     {...landingImageProps}
@@ -380,7 +410,7 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
                     className="landing-shot-image-content landing-shot-image-content-equal"
                   />
                 </div>
-                <div className="flex justify-center">
+                <div className="landing-hero-phone-wrap flex justify-center">
                   <div className="landing-phone-frame landing-phone-frame-hero">
                     <div className="landing-phone-screen">
                       <Image
@@ -414,14 +444,14 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
         </section>
 
         <section id="product" className="landing-anchor-section container-responsive py-16">
-          <div className="mb-8">
+          <div className="mb-8 text-center">
             <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Two sides of the platform</h2>
-            <p className="landing-section-copy mt-3 max-w-3xl">
+            <p className="landing-section-copy mx-auto mt-3 max-w-3xl">
               Organizers run operations from the web dashboard while players and parents stay aligned from mobile.
             </p>
           </div>
           <div className="grid gap-6 lg:grid-cols-2">
-            <article className="landing-surface rounded-3xl p-6">
+            <article className="landing-surface rounded-3xl p-6 text-center">
               <p className="landing-label text-xs uppercase tracking-[0.16em]">For Organizers (Web)</p>
               <ul className="landing-section-copy mt-4 space-y-2 text-sm">
                 <li>Create events, leagues, and tournaments</li>
@@ -443,7 +473,7 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
               </div>
             </article>
 
-            <article className="landing-surface rounded-3xl p-6">
+            <article className="landing-surface rounded-3xl p-6 text-center">
               <p className="landing-label-alt text-xs uppercase tracking-[0.16em]">For Players and Parents (Mobile)</p>
               <ul className="landing-section-copy mt-4 space-y-2 text-sm">
                 <li>Discover and join events quickly</li>
@@ -485,40 +515,38 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
                     ))}
                   </ul>
                 </div>
-                <div className="landing-surface-soft landing-section-copy rounded-2xl p-5 text-sm">
-                  <div className="rounded-xl">
-                    <div className={`landing-media-grid grid gap-3 ${feature.mobileImage ? 'landing-media-grid-paired' : ''}`}>
-                      <div className={`landing-shot-image ${feature.mobileImage ? 'landing-media-pair-item' : ''}`}>
-                        <Image
-                          {...landingImageProps}
-                          src={feature.webImage.src}
-                          alt={feature.webImage.alt}
-                          width={feature.webImage.width}
-                          height={feature.webImage.height}
-                          sizes={
-                            feature.mobileImage
-                              ? '(min-width: 1280px) 832px, (min-width: 1024px) 64vw, 100vw'
-                              : '(min-width: 1280px) 960px, (min-width: 1024px) 72vw, 100vw'
-                          }
-                          className={`landing-shot-image-content ${feature.mobileImage ? 'landing-shot-image-content-equal' : ''}`}
-                        />
-                      </div>
-                      {feature.mobileImage ? (
-                        <div className="landing-phone-frame landing-phone-frame-compact landing-phone-frame-equal landing-media-pair-item">
-                          <div className="landing-phone-screen">
-                            <Image
-                              {...landingImageProps}
-                              src={feature.mobileImage.src}
-                              alt={feature.mobileImage.alt}
-                              width={feature.mobileImage.width}
-                              height={feature.mobileImage.height}
-                              sizes="(min-width: 1024px) 12vw, 40vw"
-                              className="landing-phone-image"
-                            />
-                          </div>
-                        </div>
-                      ) : null}
+                <div className="min-w-0 p-5">
+                  <div className={`landing-media-grid grid gap-3 ${feature.mobileImage ? 'landing-media-grid-paired' : ''}`}>
+                    <div className={`landing-shot-image ${feature.mobileImage ? 'landing-media-pair-item' : ''}`}>
+                      <Image
+                        {...landingImageProps}
+                        src={feature.webImage.src}
+                        alt={feature.webImage.alt}
+                        width={feature.webImage.width}
+                        height={feature.webImage.height}
+                        sizes={
+                          feature.mobileImage
+                            ? '(min-width: 1280px) 832px, (min-width: 1024px) 64vw, 100vw'
+                            : '(min-width: 1280px) 960px, (min-width: 1024px) 72vw, 100vw'
+                        }
+                        className={`landing-shot-image-content ${feature.mobileImage ? 'landing-shot-image-content-equal' : ''}`}
+                      />
                     </div>
+                    {feature.mobileImage ? (
+                      <div className="landing-phone-frame landing-phone-frame-compact landing-phone-frame-equal landing-media-pair-item">
+                        <div className="landing-phone-screen">
+                          <Image
+                            {...landingImageProps}
+                            src={feature.mobileImage.src}
+                            alt={feature.mobileImage.alt}
+                            width={feature.mobileImage.width}
+                            height={feature.mobileImage.height}
+                            sizes="(min-width: 1024px) 12vw, 40vw"
+                            className="landing-phone-image"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </article>
@@ -554,6 +582,11 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
               We can connect BracketIQ to your existing website so your public pages stay in sync with the platform.
               That can include event listings, registration flows, schedules, standings, payment links, and other live
               event data your audience already expects to find on your website.
+            </p>
+            <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
+              We can also provide branded BracketIQ public pages and embeddable widgets, including iframe and script
+              snippets for events, teams, rentals, products, standings, and brackets. Widgets keep visitors on your
+              website for browsing, then open the right BracketIQ page for registration, checkout, and document signing.
             </p>
             <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
               Reach out to{' '}
@@ -711,12 +744,20 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               {showAppCta ? (
-                <Link
-                  href={appHref}
-                  className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                >
-                  Go to app
-                </Link>
+                <>
+                  <Link
+                    href={appHref}
+                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Go to app
+                  </Link>
+                  <Link
+                    href="/request-demo"
+                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Request demo
+                  </Link>
+                </>
               ) : (
                 <>
                   <Link
@@ -724,6 +765,12 @@ export default function LandingPage({ brandHref = '/' }: LandingPageProps) {
                     className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
                   >
                     Sign up
+                  </Link>
+                  <Link
+                    href="/request-demo"
+                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
+                  >
+                    Request demo
                   </Link>
                   <button
                     type="button"

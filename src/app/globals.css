@@ -930,6 +930,33 @@ summary::-webkit-details-marker {
   color: var(--mvp-danger);
 }
 
+.landing-success {
+  border: 1px solid color-mix(in srgb, var(--mvp-success) 45%, transparent);
+  background: var(--mvp-success-soft);
+  color: var(--mvp-success);
+}
+
+.landing-form-label {
+  display: block;
+  color: var(--landing-text);
+}
+
+.landing-form-control {
+  border: 1px solid var(--landing-border);
+  background: var(--landing-surface-strong);
+  color: var(--landing-text);
+}
+
+.landing-form-control::placeholder {
+  color: var(--landing-text-muted);
+}
+
+.landing-form-control:focus {
+  border-color: var(--mvp-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--mvp-focus-ring);
+}
+
 .landing-surface {
   border: 1px solid var(--landing-border-soft);
   background: var(--landing-surface);
@@ -1021,6 +1048,26 @@ summary::-webkit-details-marker {
   object-position: center center;
 }
 
+.landing-hero-stack {
+  display: grid;
+  gap: 1rem;
+  align-items: center;
+}
+
+@media (min-width: 768px) {
+  .landing-hero-stack-horizontal {
+    grid-template-columns: minmax(0, 3fr) minmax(7.5rem, 0.95fr);
+  }
+
+  .landing-hero-stack-horizontal .landing-hero-phone-wrap {
+    min-width: 0;
+  }
+
+  .landing-hero-stack-horizontal .landing-phone-frame-hero {
+    --landing-phone-frame-width: min(100%, clamp(8rem, 10vw, 12rem));
+  }
+}
+
 .landing-media-grid-paired {
   grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
@@ -1028,7 +1075,7 @@ summary::-webkit-details-marker {
 
 @media (min-width: 640px) {
   .landing-media-grid-paired {
-    grid-template-columns: minmax(0, 3fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 4.7fr) minmax(0, 1fr);
   }
 }
 
@@ -1036,6 +1083,16 @@ summary::-webkit-details-marker {
   height: 100%;
   min-height: 0;
   align-self: stretch;
+}
+
+.landing-media-grid-paired .landing-shot-image {
+  aspect-ratio: 1919 / 907;
+}
+
+.landing-media-grid-paired .landing-shot-image-content {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .landing-phone-frame {
@@ -1051,24 +1108,11 @@ summary::-webkit-details-marker {
     inset 0 0 0 0.08rem rgba(255, 255, 255, 0.16);
 }
 
-.landing-phone-frame::before {
-  content: '';
-  position: absolute;
-  top: 0.34rem;
-  left: 50%;
-  z-index: 2;
-  width: 34%;
-  height: 0.95rem;
-  transform: translateX(-50%);
-  border-radius: 0 0 0.8rem 0.8rem;
-  background: #0f172a;
-}
-
 .landing-phone-screen {
   overflow: hidden;
   border-radius: 1.6rem;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: #f8fafc;
+  border: 0;
+  background: #0f172a;
 }
 
 .landing-phone-frame-compact {
