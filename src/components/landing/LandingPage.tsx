@@ -725,7 +725,6 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
 
         <section id="platform" className="landing-anchor-section container-responsive py-20">
           <div className="landing-section-heading landing-section-heading-center landing-section-heading-compact">
-            <p className="landing-label">Platform</p>
             <h2 className="landing-section-title">Web for staff. Mobile for everyone else.</h2>
             <p className="landing-section-copy">
               Staff manage the operation from the dashboard. Players and parents follow along from mobile.
