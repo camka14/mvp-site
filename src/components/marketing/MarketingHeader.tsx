@@ -89,7 +89,7 @@ export default function MarketingHeader({
             <span className="landing-brand-name">BracketIQ</span>
           </Link>
 
-          <nav className="landing-nav landing-header-pill hidden items-center gap-1 lg:flex" aria-label="Primary navigation">
+          <nav className="landing-nav landing-header-pill hidden items-center gap-1 xl:flex" aria-label="Primary navigation">
             {navItems.map((item) => (
               <a key={item.href} href={item.href} className="landing-nav-link">
                 {item.label}
@@ -97,7 +97,7 @@ export default function MarketingHeader({
             ))}
           </nav>
 
-          <div className="landing-header-actions landing-header-pill hidden items-center justify-end gap-2 md:flex">
+          <div className="landing-header-actions landing-header-pill hidden items-center justify-end gap-2 xl:flex">
             {showAppCta ? (
               <>
                 {!hideRequestDemoCta ? (
@@ -130,7 +130,7 @@ export default function MarketingHeader({
 
           <button
             type="button"
-            className="landing-menu-button inline-flex md:hidden"
+            className="landing-menu-button inline-flex xl:hidden"
             aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
             aria-expanded={isMobileMenuOpen}
             onClick={() => setIsMobileMenuOpen((open) => !open)}
@@ -140,7 +140,7 @@ export default function MarketingHeader({
         </div>
 
         {isMobileMenuOpen ? (
-          <div className="landing-mobile-menu md:hidden">
+          <div className="landing-mobile-menu xl:hidden">
             <nav className="grid gap-2" aria-label="Mobile navigation">
               {navItems.map((item) => (
                 <a key={item.href} href={item.href} className="landing-mobile-nav-link" onClick={closeMobileMenu}>

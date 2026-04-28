@@ -187,12 +187,12 @@ const BRACKET_NODES = [
 const STICKY_FEATURE_SECTIONS = featureSections;
 
 const FEATURE_STORY_THEMES = [
-  'radial-gradient(circle at 78% 18%, rgba(56, 189, 248, 0.36), transparent 30%), linear-gradient(180deg, #075985 0%, #0f766e 48%, #f97316 100%)',
-  'radial-gradient(circle at 76% 16%, rgba(244, 114, 182, 0.34), transparent 30%), linear-gradient(180deg, #3730a3 0%, #7e22ce 46%, #e11d48 100%)',
-  'radial-gradient(circle at 78% 18%, rgba(190, 242, 100, 0.3), transparent 30%), linear-gradient(180deg, #047857 0%, #4d7c0f 46%, #ca8a04 100%)',
-  'radial-gradient(circle at 76% 16%, rgba(251, 113, 133, 0.32), transparent 30%), linear-gradient(180deg, #1e1b4b 0%, #9d174d 48%, #fb7185 100%)',
-  'radial-gradient(circle at 78% 18%, rgba(45, 212, 191, 0.32), transparent 30%), linear-gradient(180deg, #1d4ed8 0%, #0891b2 48%, #16a34a 100%)',
-  'radial-gradient(circle at 78% 18%, rgba(251, 191, 36, 0.36), transparent 30%), linear-gradient(180deg, #0f172a 0%, #164e63 48%, #f59e0b 100%)',
+  'radial-gradient(circle at 78% 18%, rgba(125, 211, 252, 0.38), transparent 30%), linear-gradient(150deg, #082f5f 0%, #075985 52%, #0891b2 100%)',
+  'radial-gradient(circle at 78% 18%, rgba(253, 186, 116, 0.34), transparent 30%), linear-gradient(150deg, #4a1d12 0%, #9a3412 52%, #b45309 100%)',
+  'radial-gradient(circle at 76% 16%, rgba(134, 239, 172, 0.34), transparent 30%), linear-gradient(150deg, #064e3b 0%, #047857 52%, #4d7c0f 100%)',
+  'radial-gradient(circle at 76% 16%, rgba(165, 180, 252, 0.36), transparent 30%), linear-gradient(150deg, #1e1b4b 0%, #3730a3 52%, #2563eb 100%)',
+  'radial-gradient(circle at 78% 18%, rgba(251, 113, 133, 0.34), transparent 30%), linear-gradient(150deg, #4a174f 0%, #9d174d 52%, #be123c 100%)',
+  'radial-gradient(circle at 78% 18%, rgba(250, 204, 21, 0.34), transparent 30%), linear-gradient(150deg, #0b1220 0%, #243447 52%, #854d0e 100%)',
 ] as const;
 
 const heroScreenshots = {
@@ -413,11 +413,11 @@ function OperationsFeatureStory({ landingImageProps }: { landingImageProps: Land
 
   return (
     <section id="operations" className="landing-anchor-section landing-operations-section relative overflow-clip">
-      <div className="lg:hidden">
+      <div className="xl:hidden">
         <StaticOperationsContent landingImageProps={landingImageProps} />
       </div>
 
-      <div ref={storyRef} className="relative z-10 hidden h-[600vh] lg:block">
+      <div ref={storyRef} className="relative z-10 hidden h-[600vh] xl:block">
         <div className="sticky top-0 h-screen overflow-hidden [perspective:1600px]">
           {STICKY_FEATURE_SECTIONS.map((feature, index) => (
             <FeatureStoryPage
@@ -430,7 +430,7 @@ function OperationsFeatureStory({ landingImageProps }: { landingImageProps: Land
               landingImageProps={landingImageProps}
             />
           ))}
-          <div className="pointer-events-none absolute bottom-8 left-1/2 z-50 w-[min(68rem,72vw)] -translate-x-1/2">
+          <div className="landing-feature-progress pointer-events-none absolute bottom-4 left-1/2 z-50 w-[min(58rem,70vw)] -translate-x-1/2">
             <FeatureBracketProgress activeIndex={activeIndex} progress={scrollYProgress} />
           </div>
         </div>
@@ -542,40 +542,40 @@ function FeatureStoryPage({
       }}
     >
       <div className="landing-feature-story-grid" aria-hidden="true" />
-      <div className="pointer-events-none absolute right-10 top-7 z-20 font-sans text-[8.5rem] font-light leading-none text-white/80">
+      <div className="pointer-events-none absolute right-10 top-20 z-20 font-sans text-[7rem] font-light leading-none text-white/80 2xl:text-[8rem]">
         {String(index + 1).padStart(2, '0')}
       </div>
 
-      <div className="relative z-10 mx-auto grid h-full max-w-[1840px] grid-cols-[0.46fr_1.54fr] items-center gap-24 px-12 py-8 2xl:gap-28 2xl:px-16">
+      <div className="relative z-10 mx-auto grid h-full max-w-[1840px] grid-cols-[0.44fr_1.56fr] items-center gap-16 px-12 pb-32 pt-24 2xl:gap-24 2xl:px-16">
         <aside className="min-w-0">
           <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-2 text-xs font-black uppercase tracking-wide text-white shadow-sm backdrop-blur">
             <Icon className="h-4 w-4" aria-hidden="true" />
             {feature.eyebrow}
           </div>
 
-          <h2 className="mt-5 max-w-2xl text-6xl font-normal leading-[0.94] text-white xl:text-7xl">
+          <h2 className="mt-5 max-w-2xl text-6xl font-normal leading-[0.94] text-white xl:text-[4.25rem] 2xl:text-7xl">
             {feature.title}
           </h2>
 
-          <p className="mt-7 max-w-md text-lg font-semibold leading-8 text-white/74">
+          <p className="mt-5 max-w-md text-base font-semibold leading-7 text-white/74 2xl:mt-7 2xl:text-lg 2xl:leading-8">
             Six connected rounds for scheduling, rosters, payments, documents, communication, and live operations.
           </p>
 
           <ul
-            className="mt-8 grid grid-cols-2 border border-white/18 text-base font-semibold text-white/88"
+            className="mt-6 grid grid-cols-2 border border-white/18 text-base font-semibold text-white/88 2xl:mt-8"
             aria-label={`${feature.eyebrow} highlights`}
           >
             {feature.points.map((point) => (
-              <li key={point} className="flex min-h-[4.75rem] items-center gap-3 border-r border-white/18 px-6 last:border-r-0">
+              <li key={point} className="flex min-h-[4rem] items-center gap-3 border-r border-white/18 px-5 last:border-r-0 2xl:min-h-[4.75rem] 2xl:px-6">
                 <span className="h-2 w-2 rounded-sm bg-white" aria-hidden="true" />
                 {point}
               </li>
             ))}
           </ul>
 
-          <ul className="mt-9 grid gap-4">
+          <ul className="mt-6 grid gap-3 2xl:mt-9 2xl:gap-4">
             {feature.details.map((detail) => (
-              <li key={detail} className="flex items-center gap-3 text-lg font-semibold text-white/86">
+              <li key={detail} className="flex items-center gap-3 text-base font-semibold text-white/86 2xl:text-lg">
                 <CheckCircle2 className="h-5 w-5 shrink-0 text-white" aria-hidden="true" />
                 {detail}
               </li>
@@ -583,8 +583,8 @@ function FeatureStoryPage({
           </ul>
         </aside>
 
-        <div className="relative flex min-h-[48rem] flex-col justify-end pb-5">
-          <div className="relative h-[min(58vh,640px)] min-h-[31rem]">
+        <div className="relative flex min-h-[34rem] flex-col justify-end pb-2">
+          <div className="relative h-[min(48vh,500px)] min-h-[26rem]">
             <div className="absolute left-8 top-7 z-20 flex items-center gap-2 rounded-full border border-white/18 bg-white/12 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-sm backdrop-blur">
               BracketIQ
               <span className="h-1 w-1 rounded-full bg-white/50" />
@@ -679,7 +679,7 @@ function FeatureScene({
 }) {
   return (
     <div className="absolute inset-0">
-      <div className="absolute left-[2%] top-[13%] w-[82%] overflow-hidden rounded-[2.6rem] bg-white shadow-[0_46px_120px_-72px_rgba(15,23,42,0.82)] ring-1 ring-slate-200/80">
+      <div className="absolute left-[2%] top-[13%] w-[74%] overflow-hidden rounded-[2.2rem] bg-white shadow-[0_46px_120px_-72px_rgba(15,23,42,0.82)] ring-1 ring-slate-200/80 2xl:w-[78%] 2xl:rounded-[2.6rem]">
         <Image
           {...landingImageProps}
           src={feature.webImage.src}
@@ -692,7 +692,7 @@ function FeatureScene({
       </div>
 
       {feature.mobileImage ? (
-        <div className="absolute right-[1%] top-[5%] w-44 overflow-hidden rounded-[2.25rem] border-[7px] border-slate-950 bg-slate-950 shadow-[0_38px_86px_-48px_rgba(15,23,42,0.84)] xl:w-52">
+        <div className="absolute right-[1%] top-[5%] w-40 overflow-hidden rounded-[2.25rem] border-[7px] border-slate-950 bg-slate-950 shadow-[0_38px_86px_-48px_rgba(15,23,42,0.84)] 2xl:w-48">
           <Image
             {...landingImageProps}
             src={feature.mobileImage.src}
