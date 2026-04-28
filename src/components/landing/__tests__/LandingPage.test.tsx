@@ -140,16 +140,17 @@ describe('LandingPage', () => {
   it('renders the compact workflow steps', () => {
     render(<LandingPage />);
 
-    expect(screen.getAllByRole('heading', { name: /build the event/i }).length).toBeGreaterThan(0);
-    expect(screen.getByRole('heading', { name: /live everywhere/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/one source of truth/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/ready for teams/i).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/live operations/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: /from setup to game day/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /set up the operating model/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /open registration and schedules/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /manage game day from the same system/i })).toBeInTheDocument();
   });
 
-  it('renders feature screenshots in the vertical operations section', () => {
+  it('renders feature screenshots in the pinned operations section', () => {
     render(<LandingPage />);
 
+    expect(screen.getAllByRole('heading', { name: /schedule courts fast/i }).length).toBeGreaterThan(0);
+    expect(screen.getByLabelText(/operations progress/i)).toBeInTheDocument();
     expect(screen.getByAltText('Web field and scheduling view').closest('.landing-surface-soft')).toBeNull();
     expect(screen.getByAltText('Mobile schedule view').closest('.landing-surface-soft')).toBeNull();
     expect(screen.getByAltText('Web field and scheduling view').closest('article')).toHaveClass('landing-operation-scroll-panel');

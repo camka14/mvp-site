@@ -39,6 +39,7 @@ type FeatureSection = {
   title: string;
   eyebrow: string;
   points: string[];
+  details: string[];
   webImage: {
     src: string;
     alt: string;
@@ -73,6 +74,7 @@ const featureSections = [
     eyebrow: 'Scheduling',
     title: 'Schedule courts fast.',
     points: ['Courts + fields', 'Conflict checks'],
+    details: ['Place resources quickly', 'See conflicts before publishing', 'Keep the full day visible'],
     webImage: {
       src: '/landing/schedule_screenshot_web.png',
       alt: 'Web field and scheduling view',
@@ -92,6 +94,7 @@ const featureSections = [
     eyebrow: 'Registration',
     title: 'Rosters stay ready.',
     points: ['Teams', 'Attendance'],
+    details: ['Track team status', 'Manage waitlists', 'Confirm attendance'],
     webImage: {
       src: '/landing/team_managment_web.png',
       alt: 'Web team management and roster view',
@@ -111,6 +114,7 @@ const featureSections = [
     eyebrow: 'Payments',
     title: 'Payments, reconciled.',
     points: ['Checkout', 'Refunds'],
+    details: ['Collect from mobile', 'Match Stripe records', 'Handle refunds cleanly'],
     webImage: {
       src: '/landing/payment_screen_web.png',
       alt: 'Web payment flow and checkout summary',
@@ -130,6 +134,7 @@ const featureSections = [
     eyebrow: 'Documents',
     title: 'Documents signed.',
     points: ['Waivers', 'Clearance'],
+    details: ['Attach required forms', 'Reuse templates', 'Clearance status'],
     webImage: {
       src: '/landing/document_creation_web.png',
       alt: 'Web signable document creation screen',
@@ -144,6 +149,7 @@ const featureSections = [
     eyebrow: 'Communication',
     title: 'Updates in context.',
     points: ['Chat', 'Announcements'],
+    details: ['Message the right group', 'Send event updates', 'Keep context attached'],
     webImage: {
       src: '/landing/discover_screen_web.png',
       alt: 'Web discover feed and updates view',
@@ -158,6 +164,7 @@ const featureSections = [
     eyebrow: 'Personal Schedules',
     title: 'Everyone knows where to be.',
     points: ['Game times', 'Locations'],
+    details: ['Show each assignment', 'Surface locations', 'Reflect schedule changes'],
     webImage: {
       src: '/landing/my_schedule_auth_screenshot_web.png',
       alt: 'Web personal schedule dashboard',
@@ -240,51 +247,18 @@ const platformColumns = [
 const workflowSteps = [
   {
     label: 'Build',
-    title: 'Build the event.',
-    detail: 'Courts, fields, divisions, docs, pricing.',
-    outcome: 'One source of truth',
-    chips: ['Courts', 'Fields', 'Docs', 'Pricing'],
-    previewTitle: 'Event setup',
-    previewMetric: '4 setup layers',
-    previewRows: [
-      ['Divisions', 'Ready'],
-      ['Fields', 'Mapped'],
-      ['Documents', 'Attached'],
-      ['Pricing', 'Live'],
-    ],
-    icon: LayoutDashboard,
+    title: 'Set up the operating model',
+    detail: 'Create the event, divisions, fields, documents, pricing, and registration paths from one clean admin surface.',
   },
   {
     label: 'Publish',
-    title: 'Open registration.',
-    detail: 'Schedules, checkout, signatures, live pages.',
-    outcome: 'Ready for teams',
-    chips: ['Schedules', 'Checkout', 'Waivers', 'Pages'],
-    previewTitle: 'Registration launch',
-    previewMetric: 'Live everywhere',
-    previewRows: [
-      ['Schedule', 'Published'],
-      ['Checkout', 'Enabled'],
-      ['Waivers', 'Required'],
-      ['Website', 'Synced'],
-    ],
-    icon: CalendarDays,
+    title: 'Open registration and schedules',
+    detail: 'Let teams and players join, pay, sign documents, and see what is live on web, mobile, or your existing site.',
   },
   {
     label: 'Run',
-    title: 'Run game day.',
-    detail: 'Updates, chat, brackets, last-minute changes.',
-    outcome: 'Live operations',
-    chips: ['Updates', 'Chat', 'Brackets', 'Changes'],
-    previewTitle: 'Game day control',
-    previewMetric: 'Active command',
-    previewRows: [
-      ['Bracket', 'Updated'],
-      ['Announcements', 'Sent'],
-      ['Chat', 'Open'],
-      ['Changes', 'Synced'],
-    ],
-    icon: Radio,
+    title: 'Manage game day from the same system',
+    detail: 'Update brackets, send announcements, keep chat moving, and make changes without rebuilding the operation.',
   },
 ];
 
@@ -395,12 +369,12 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
   const [startingGuestSession, setStartingGuestSession] = useState(false);
   const [guestError, setGuestError] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeWorkflowIndex, setActiveWorkflowIndex] = useState(0);
-  const workflowStepRefs = useRef<Array<HTMLElement | null>>([]);
+  const [activeOperationIndex, setActiveOperationIndex] = useState(0);
+  const operationPanelRefs = useRef<Array<HTMLElement | null>>([]);
   const appHref = getHomePathForUser(user);
   const showAppCta = isAuthenticated && !isGuest;
   const isHeroMediaHorizontal = heroMediaLayout === 'horizontal';
-  const activeWorkflowStep = workflowSteps[activeWorkflowIndex] ?? workflowSteps[0];
+  const activeOperationFeature = featureSections[activeOperationIndex] ?? featureSections[0];
   const landingImageProps = {
     unoptimized: true,
   } as const;
@@ -412,10 +386,10 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
 
     let frame = 0;
 
-    const updateActiveStep = () => {
+    const updateActiveOperation = () => {
       frame = 0;
       const activeY = window.innerHeight * 0.48;
-      const nextStep = workflowStepRefs.current
+      const nextOperation = operationPanelRefs.current
         .map((node, index) => {
           if (!node) {
             return null;
@@ -435,8 +409,8 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
         .filter((item): item is { index: number; distance: number } => Boolean(item))
         .sort((a, b) => a.distance - b.distance)[0];
 
-      if (nextStep) {
-        setActiveWorkflowIndex(nextStep.index);
+      if (nextOperation) {
+        setActiveOperationIndex(nextOperation.index);
       }
     };
 
@@ -444,10 +418,10 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
       if (frame) {
         return;
       }
-      frame = window.requestAnimationFrame(updateActiveStep);
+      frame = window.requestAnimationFrame(updateActiveOperation);
     };
 
-    updateActiveStep();
+    updateActiveOperation();
     window.addEventListener('scroll', handleScroll, { passive: true });
     window.addEventListener('resize', handleScroll);
 
@@ -786,65 +760,96 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
         </section>
 
         <section id="operations" className="landing-anchor-section landing-operations-section container-responsive pb-20">
-          <h2 className="sr-only">Operations</h2>
+          <div className="landing-operations-pin-panel">
+            <div className="landing-section-heading landing-section-heading-compact landing-operation-pin-heading">
+              <div key={activeOperationFeature.id} className="landing-operation-active-copy">
+                <p className="landing-operation-active-label">{activeOperationFeature.eyebrow}</p>
+                <h2 id="landing-operations-title" className="landing-section-title mt-3">
+                  {activeOperationFeature.title}
+                </h2>
+                <ul className="landing-operation-active-points" aria-label={`${activeOperationFeature.eyebrow} highlights`}>
+                  {activeOperationFeature.points.map((point) => (
+                    <li key={point}>
+                      <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="landing-operation-progress" aria-label="Operations progress">
+                {featureSections.map((feature, index) => (
+                  <span
+                    key={feature.id}
+                    className={index === activeOperationIndex ? 'is-active' : ''}
+                    aria-current={index === activeOperationIndex ? 'step' : undefined}
+                  >
+                    {String(index + 1).padStart(2, '0')}
+                  </span>
+                ))}
+              </div>
+            </div>
 
-          <div className="landing-operation-scroll" aria-label="Operations feature sections">
-            {featureSections.map((feature, index) => {
-              const Icon = feature.icon;
-              const featureCount = `${String(index + 1).padStart(2, '0')} / ${String(featureSections.length).padStart(2, '0')}`;
-              return (
-                <article key={feature.id} className="landing-operation-scroll-panel">
-                  <div className="landing-operation-scroll-copy">
-                    <div className="flex items-start justify-between gap-4">
+            <div className="landing-operation-scroll" aria-label="Operations feature sections">
+              {featureSections.map((feature, index) => {
+                const Icon = feature.icon;
+                return (
+                  <article
+                    key={feature.id}
+                    ref={(node) => {
+                      operationPanelRefs.current[index] = node;
+                    }}
+                    data-operation-index={index}
+                    className={`landing-operation-scroll-panel ${index === activeOperationIndex ? 'is-active' : ''}`}
+                  >
+                    <div className="landing-operation-scroll-copy">
+                      <h3 className="sr-only">{feature.title}</h3>
                       <div className="landing-icon-box">
                         <Icon aria-hidden="true" className="h-5 w-5" />
                       </div>
-                      <span className="landing-operation-code">{feature.eyebrow}</span>
+                      <p className="landing-operation-feature-label">Key features</p>
+                      <ul className="landing-check-list landing-operation-feature-list">
+                        {feature.details.map((detail) => (
+                          <li key={detail}>
+                            <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                            <span>{detail}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <h3 className="landing-card-title mt-5">{feature.title}</h3>
-                    <ul className="landing-check-list mt-5">
-                      {feature.points.map((point) => (
-                        <li key={point}>
-                          <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                          <span>{point}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <span className="landing-operation-step">{featureCount}</span>
-                  </div>
 
-                  <div className={`landing-operation-scroll-media landing-media-grid grid gap-3 ${feature.mobileImage ? 'landing-media-grid-paired' : ''}`}>
-                    <div className={`landing-shot-image ${feature.mobileImage ? 'landing-media-pair-item' : ''}`}>
-                      <Image
-                        {...landingImageProps}
-                        src={feature.webImage.src}
-                        alt={feature.webImage.alt}
-                        width={feature.webImage.width}
-                        height={feature.webImage.height}
-                        sizes="(min-width: 1280px) 760px, (min-width: 1024px) 54vw, 100vw"
-                        className={`landing-shot-image-content ${feature.mobileImage ? 'landing-shot-image-content-equal' : ''}`}
-                        loading={feature.webImage.src === heroScreenshots.web.src ? 'eager' : undefined}
-                      />
-                    </div>
-                    {feature.mobileImage ? (
-                      <div className="landing-phone-frame landing-phone-frame-compact landing-phone-frame-equal landing-media-pair-item">
-                        <div className="landing-phone-screen">
-                          <Image
-                            {...landingImageProps}
-                            src={feature.mobileImage.src}
-                            alt={feature.mobileImage.alt}
-                            width={feature.mobileImage.width}
-                            height={feature.mobileImage.height}
-                            sizes="(min-width: 1024px) 12vw, 36vw"
-                            className="landing-phone-image"
-                          />
-                        </div>
+                    <div className={`landing-operation-scroll-media landing-media-grid grid gap-3 ${feature.mobileImage ? 'landing-media-grid-paired' : ''}`}>
+                      <div className={`landing-shot-image ${feature.mobileImage ? 'landing-media-pair-item' : ''}`}>
+                        <Image
+                          {...landingImageProps}
+                          src={feature.webImage.src}
+                          alt={feature.webImage.alt}
+                          width={feature.webImage.width}
+                          height={feature.webImage.height}
+                          sizes="(min-width: 1280px) 760px, (min-width: 1024px) 54vw, 100vw"
+                          className={`landing-shot-image-content ${feature.mobileImage ? 'landing-shot-image-content-equal' : ''}`}
+                          loading={feature.webImage.src === heroScreenshots.web.src ? 'eager' : undefined}
+                        />
                       </div>
-                    ) : null}
-                  </div>
-                </article>
-              );
-            })}
+                      {feature.mobileImage ? (
+                        <div className="landing-phone-frame landing-phone-frame-compact landing-phone-frame-equal landing-media-pair-item">
+                          <div className="landing-phone-screen">
+                            <Image
+                              {...landingImageProps}
+                              src={feature.mobileImage.src}
+                              alt={feature.mobileImage.alt}
+                              width={feature.mobileImage.width}
+                              height={feature.mobileImage.height}
+                              sizes="(min-width: 1024px) 12vw, 36vw"
+                              className="landing-phone-image"
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
           </div>
         </section>
 
@@ -852,85 +857,19 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
           <div className="landing-workflow-panel">
             <div className="landing-section-heading landing-section-heading-compact landing-workflow-heading">
               <p className="landing-label">How it works</p>
-              <div key={activeWorkflowStep.label} className="landing-workflow-active-copy">
-                <p className="landing-workflow-active-label">{activeWorkflowStep.label}</p>
-                <h2 id="landing-workflow-title" className="landing-section-title mt-3">
-                  {activeWorkflowStep.title}
-                </h2>
-                <p className="landing-section-copy mt-4">{activeWorkflowStep.detail}</p>
-                <div className="landing-workflow-outcome landing-workflow-heading-outcome">
-                  <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                  <span>{activeWorkflowStep.outcome}</span>
-                </div>
-              </div>
-              <div className="landing-workflow-progress" aria-label="Workflow progress">
-                {workflowSteps.map((step, index) => (
-                  <span
-                    key={step.label}
-                    className={index === activeWorkflowIndex ? 'is-active' : ''}
-                    aria-current={index === activeWorkflowIndex ? 'step' : undefined}
-                  >
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                ))}
-              </div>
+              <h2 id="landing-workflow-title" className="landing-section-title mt-3">
+                From setup to game day, the same system keeps moving.
+              </h2>
             </div>
-            <div className="landing-workflow-stack">
-              {workflowSteps.map((step, index) => {
-                const Icon = step.icon;
-
-                return (
-                  <article
-                    key={step.label}
-                    ref={(node) => {
-                      workflowStepRefs.current[index] = node;
-                    }}
-                    data-workflow-index={index}
-                    className={`landing-workflow-step ${index === activeWorkflowIndex ? 'is-active' : ''}`}
-                  >
-                    <div className="landing-workflow-step-copy">
-                      <div className="landing-workflow-step-top">
-                        <span className="landing-workflow-icon">
-                          <Icon aria-hidden="true" className="h-5 w-5" />
-                        </span>
-                        <span className="landing-step-index">{String(index + 1).padStart(2, '0')}</span>
-                      </div>
-                      <p className="landing-operation-code">{step.label}</p>
-                      <h3>{step.title}</h3>
-                      <p>{step.detail}</p>
-                      <div className="landing-workflow-chip-row" aria-label={`${step.label} workflow details`}>
-                        {step.chips.map((chip) => (
-                          <span key={chip}>{chip}</span>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="landing-workflow-preview" aria-label={`${step.label} preview`}>
-                      <div className="landing-workflow-preview-top">
-                        <div>
-                          <p className="landing-operation-code">{step.previewTitle}</p>
-                          <h4>{step.previewMetric}</h4>
-                        </div>
-                        <div className="landing-workflow-preview-live">
-                          <span />
-                          Active
-                        </div>
-                      </div>
-                      <div className="landing-workflow-preview-screen">
-                        {step.previewRows.map(([name, value]) => (
-                          <div key={name} className="landing-workflow-preview-row">
-                            <span>{name}</span>
-                            <strong>{value}</strong>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="landing-workflow-preview-footer">
-                        <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                        <span>{step.outcome}</span>
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
+            <div className="landing-workflow-grid">
+              {workflowSteps.map((step, index) => (
+                <article key={step.label} className="landing-workflow-step">
+                  <span className="landing-step-index">{String(index + 1).padStart(2, '0')}</span>
+                  <p className="landing-operation-code">{step.label}</p>
+                  <h3>{step.title}</h3>
+                  <p>{step.detail}</p>
+                </article>
+              ))}
             </div>
           </div>
         </section>
