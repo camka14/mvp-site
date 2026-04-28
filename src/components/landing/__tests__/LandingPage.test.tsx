@@ -149,9 +149,12 @@ describe('LandingPage', () => {
   it('renders the connected platform layers', () => {
     render(<LandingPage />);
 
-    expect(screen.getByRole('heading', { name: /web for staff\. mobile for everyone else/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: /run tournaments from the web\. keep everyone updated from mobile\./i }),
+    ).toBeInTheDocument();
     expect(screen.getByText('Organizer console').closest('article')).toHaveClass('landing-platform-card');
-    expect(screen.getByText('Mobile participant layer').closest('article')).toHaveClass('landing-platform-card');
+    expect(screen.getByText('Mobile participant app').closest('article')).toHaveClass('landing-platform-card');
+    expect(screen.queryByText(/staff manage events/i)).not.toBeInTheDocument();
   });
 
   it('renders a supported use cases section', () => {
@@ -175,11 +178,11 @@ describe('LandingPage', () => {
     render(<LandingPage />);
 
     expect(screen.getAllByRole('heading', { name: /schedule courts fast/i }).length).toBeGreaterThan(0);
-    expect(screen.getByLabelText(/operations progress/i)).toBeInTheDocument();
-    expect(screen.getByAltText('Web field and scheduling view').closest('.landing-surface-soft')).toBeNull();
-    expect(screen.getByAltText('Mobile schedule view').closest('.landing-surface-soft')).toBeNull();
-    expect(screen.getByAltText('Web field and scheduling view').closest('article')).toHaveClass('landing-operation-scroll-panel');
-    expect(screen.getByAltText('Web team management and roster view').closest('article')).toHaveClass('landing-operation-scroll-panel');
+    expect(screen.getAllByRole('img', { name: /feature progress toward the final/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText('Web field and scheduling view')[0].closest('.landing-surface-soft')).toBeNull();
+    expect(screen.getAllByAltText('Mobile schedule view')[0].closest('.landing-surface-soft')).toBeNull();
+    expect(screen.getAllByAltText('Web field and scheduling view').length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText('Web team management and roster view').length).toBeGreaterThan(0);
   });
 
   it('presents signable document creation for rentals, events, and teams', () => {
@@ -188,7 +191,7 @@ describe('LandingPage', () => {
     expect(screen.getByRole('heading', { name: /documents signed/i })).toBeInTheDocument();
     expect(screen.getAllByText(/waivers/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/clearance/i).length).toBeGreaterThan(0);
-    expect(screen.getByAltText('Web signable document creation screen')).toBeInTheDocument();
+    expect(screen.getAllByAltText('Web signable document creation screen').length).toBeGreaterThan(0);
   });
 
   it('opens and closes the mobile navigation menu', () => {

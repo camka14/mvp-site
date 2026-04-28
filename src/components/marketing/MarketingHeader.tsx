@@ -2,7 +2,7 @@
 
 import Image from 'next/image';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Menu, X } from 'lucide-react';
 import { useApp } from '@/app/providers';
 import { getHomePathForUser } from '@/lib/homePage';
@@ -32,8 +32,40 @@ export default function MarketingHeader({
 }: MarketingHeaderProps) {
   const { user, isAuthenticated, isGuest } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isHeaderJoined, setIsHeaderJoined] = useState(false);
+  const isHeaderJoinedRef = useRef(false);
   const appHref = getHomePathForUser(user);
   const showAppCta = isAuthenticated && !isGuest;
+
+  useEffect(() => {
+    let frameId = 0;
+
+    const updateHeaderState = () => {
+      frameId = 0;
+      const nextIsJoined = isHeaderJoinedRef.current ? window.scrollY > 28 : window.scrollY > 92;
+
+      if (nextIsJoined !== isHeaderJoinedRef.current) {
+        isHeaderJoinedRef.current = nextIsJoined;
+        setIsHeaderJoined(nextIsJoined);
+      }
+    };
+
+    const onScroll = () => {
+      if (frameId === 0) {
+        frameId = window.requestAnimationFrame(updateHeaderState);
+      }
+    };
+
+    updateHeaderState();
+    window.addEventListener('scroll', onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frameId !== 0) {
+        window.cancelAnimationFrame(frameId);
+      }
+    };
+  }, []);
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
   const navItems = marketingNavItems.map((item) => ({
@@ -42,7 +74,7 @@ export default function MarketingHeader({
   }));
 
   return (
-    <header className="landing-header sticky top-0 z-30">
+    <header className="landing-header z-30" data-scrolled={isHeaderJoined ? 'true' : 'false'}>
       <div className="container-responsive py-3">
         <div className="landing-header-shell flex min-h-14 items-center justify-between gap-4 px-3 sm:px-4">
           <Link href={brandHref} className="landing-brand inline-flex items-center gap-3" onClick={closeMobileMenu}>
@@ -57,7 +89,7 @@ export default function MarketingHeader({
             <span className="landing-brand-name">BracketIQ</span>
           </Link>
 
-          <nav className="landing-nav hidden items-center gap-1 lg:flex" aria-label="Primary navigation">
+          <nav className="landing-nav landing-header-pill hidden items-center gap-1 lg:flex" aria-label="Primary navigation">
             {navItems.map((item) => (
               <a key={item.href} href={item.href} className="landing-nav-link">
                 {item.label}
@@ -65,7 +97,7 @@ export default function MarketingHeader({
             ))}
           </nav>
 
-          <div className="hidden items-center justify-end gap-2 md:flex">
+          <div className="landing-header-actions landing-header-pill hidden items-center justify-end gap-2 md:flex">
             {showAppCta ? (
               <>
                 {!hideRequestDemoCta ? (
