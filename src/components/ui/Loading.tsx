@@ -24,7 +24,7 @@ function LoadingSpinner({
           alt="BracketIQ logo"
           width={72}
           height={72}
-          className="h-[72px] w-[72px]"
+          className="h-[72px] w-[72px] rounded-[14%]"
           priority
         />
       ) : null}

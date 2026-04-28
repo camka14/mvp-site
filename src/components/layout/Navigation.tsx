@@ -97,7 +97,7 @@ export default function Navigation() {
               alt="BracketIQ logo"
               width={40}
               height={40}
-              className="h-10 w-10"
+              className="h-10 w-10 rounded-[14%]"
               priority
             />
             <span className="text-xl font-bold text-slate-900">BracketIQ</span>

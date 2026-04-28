@@ -911,7 +911,7 @@ summary::-webkit-details-marker {
   display: block;
   width: 2.5rem;
   height: 2.5rem;
-  border-radius: var(--landing-control-radius);
+  border-radius: 14%;
   box-shadow: 0 12px 24px -18px rgba(14, 14, 16, 0.76);
 }
 
