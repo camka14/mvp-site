@@ -29,7 +29,6 @@ import {
   X,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { authService } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
@@ -364,7 +363,7 @@ const feeHighlights = [
 ];
 
 export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacked' }: LandingPageProps) {
-  const { user, loading, isAuthenticated, isGuest } = useApp();
+  const { user, isAuthenticated, isGuest } = useApp();
   const router = useRouter();
   const [startingGuestSession, setStartingGuestSession] = useState(false);
   const [guestError, setGuestError] = useState('');
@@ -389,32 +388,35 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
     const updateActiveOperation = () => {
       frame = 0;
       const activeY = window.innerHeight * 0.48;
-      const nextOperation = operationPanelRefs.current
-        .map((node, index) => {
-          if (!node) {
-            return null;
-          }
 
-          const rect = node.getBoundingClientRect();
-          if (rect.bottom < 0 || rect.top > window.innerHeight) {
-            return null;
-          }
+      let nextOperationIndex: number | null = null;
+      let nextOperationDistance = Number.POSITIVE_INFINITY;
 
-          const panelFocus = rect.top + rect.height * 0.42;
-          return {
-            index,
-            distance: Math.abs(panelFocus - activeY),
-          };
-        })
-        .filter((item): item is { index: number; distance: number } => Boolean(item))
-        .sort((a, b) => a.distance - b.distance)[0];
+      operationPanelRefs.current.forEach((node, index) => {
+        if (!node) {
+          return;
+        }
 
-      if (nextOperation) {
-        setActiveOperationIndex(nextOperation.index);
+        const rect = node.getBoundingClientRect();
+        if (rect.bottom < 0 || rect.top > window.innerHeight) {
+          return;
+        }
+
+        const panelFocus = rect.top + rect.height * 0.42;
+        const distance = Math.abs(panelFocus - activeY);
+        if (distance < nextOperationDistance) {
+          nextOperationIndex = index;
+          nextOperationDistance = distance;
+        }
+      });
+
+      if (nextOperationIndex !== null) {
+        const nextIndex = nextOperationIndex;
+        setActiveOperationIndex((currentIndex) => (currentIndex === nextIndex ? currentIndex : nextIndex));
       }
     };
 
-    const handleScroll = () => {
+    const scheduleActiveOperationUpdate = () => {
       if (frame) {
         return;
       }
@@ -422,15 +424,30 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
     };
 
     updateActiveOperation();
-    window.addEventListener('scroll', handleScroll, { passive: true });
-    window.addEventListener('resize', handleScroll);
+    const observer = 'IntersectionObserver' in window
+      ? new IntersectionObserver(scheduleActiveOperationUpdate, {
+          root: null,
+          rootMargin: '-18% 0px -34% 0px',
+          threshold: [0, 0.2, 0.4, 0.6, 0.8, 1],
+        })
+      : null;
+
+    operationPanelRefs.current.forEach((node) => {
+      if (node) {
+        observer?.observe(node);
+      }
+    });
+
+    window.addEventListener('scroll', scheduleActiveOperationUpdate, { passive: true });
+    window.addEventListener('resize', scheduleActiveOperationUpdate);
 
     return () => {
       if (frame) {
         window.cancelAnimationFrame(frame);
       }
-      window.removeEventListener('scroll', handleScroll);
-      window.removeEventListener('resize', handleScroll);
+      observer?.disconnect();
+      window.removeEventListener('scroll', scheduleActiveOperationUpdate);
+      window.removeEventListener('resize', scheduleActiveOperationUpdate);
     };
   }, []);
 
@@ -449,10 +466,6 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
       setStartingGuestSession(false);
     }
   };
-
-  if (loading) {
-    return <Loading fullScreen text="Loading..." />;
-  }
 
   return (
     <div className="landing-root min-h-screen">
@@ -646,7 +659,7 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
                     height={heroScreenshots.web.height}
                     sizes="(min-width: 1024px) 54vw, 100vw"
                     className="landing-shot-image-content landing-shot-image-content-equal"
-                    loading="eager"
+                    preload
                   />
                 </div>
                 <div className="landing-hero-phone-wrap flex justify-center">
@@ -660,7 +673,7 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
                         height={heroScreenshots.mobile.height}
                         sizes="(min-width: 1024px) 12vw, 52vw"
                         className="landing-phone-image"
-                        loading="eager"
+                        preload
                       />
                     </div>
                   </div>
@@ -762,7 +775,7 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
         <section id="operations" className="landing-anchor-section landing-operations-section container-responsive pb-20">
           <div className="landing-operations-pin-panel">
             <div className="landing-section-heading landing-section-heading-compact landing-operation-pin-heading">
-              <div key={activeOperationFeature.id} className="landing-operation-active-copy">
+              <div className="landing-operation-active-copy">
                 <p className="landing-operation-active-label">{activeOperationFeature.eyebrow}</p>
                 <h2 id="landing-operations-title" className="landing-section-title mt-3">
                   {activeOperationFeature.title}
@@ -1083,7 +1096,7 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
         </section>
 
         <section className="container-responsive pb-10">
-          <div className="landing-cta">
+          <div className="landing-cta landing-final-cta">
             <div>
               <p className="landing-label-alt">Next step</p>
               <h2 className="landing-section-title mt-3">Bring the next event into one system.</h2>
@@ -1092,7 +1105,7 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
                 one organized system.
               </p>
             </div>
-            <div className="mt-7 flex flex-wrap gap-3">
+            <div className="mt-7 flex flex-wrap justify-center gap-3">
               {showAppCta ? (
                 <>
                   <Link href={appHref} className="landing-btn-primary landing-btn-large">

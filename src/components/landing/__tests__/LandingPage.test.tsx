@@ -59,6 +59,24 @@ describe('LandingPage', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
+  it('keeps the marketing page visible while auth state resolves', () => {
+    useAppMock.mockReturnValue({
+      user: null,
+      loading: true,
+      isGuest: false,
+      isAuthenticated: false,
+    });
+
+    render(<LandingPage />);
+
+    expect(
+      screen.getByRole('heading', {
+        name: /bring your facility operations into one command center/i,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Loading\.\.\.$/i)).not.toBeInTheDocument();
+  });
+
   it('renders a single app CTA for signed-in users on the landing page', () => {
     useAppMock.mockReturnValue({
       user: { homePageOrganizationId: 'org_42' },
