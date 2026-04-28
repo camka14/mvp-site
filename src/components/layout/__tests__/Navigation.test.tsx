@@ -43,7 +43,12 @@ describe('Navigation', () => {
     global.fetch = fetchMock as unknown as typeof fetch;
 
     useAppMock.mockReturnValue({
-      user: { homePageOrganizationId: 'org_42' },
+      user: {
+        firstName: 'Profile',
+        lastName: 'Name',
+        userName: 'profile_name',
+        homePageOrganizationId: 'org_42',
+      },
       authUser: { $id: 'user_1', email: 'user@example.com', name: 'Taylor' },
       setUser: jest.fn(),
       setAuthUser: jest.fn(),
@@ -55,5 +60,12 @@ describe('Navigation', () => {
     render(<Navigation />);
 
     expect(screen.getByRole('link', { name: /info/i })).toHaveAttribute('href', '/info');
+  });
+
+  it('shows the hydrated profile name instead of the stale auth name', () => {
+    render(<Navigation />);
+
+    expect(screen.getByRole('link', { name: /profile name/i })).toHaveAttribute('href', '/profile');
+    expect(screen.queryByText('Taylor')).not.toBeInTheDocument();
   });
 });

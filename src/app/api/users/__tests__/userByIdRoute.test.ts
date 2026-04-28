@@ -5,6 +5,7 @@ import { NextRequest } from 'next/server';
 const prismaMock = {
   authUser: {
     findUnique: jest.fn(),
+    update: jest.fn(),
   },
   userData: {
     findUnique: jest.fn(),
@@ -106,6 +107,29 @@ describe('PATCH /api/users/[id]', () => {
     expect(prismaMock.userData.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'user_1' },
       data: expect.objectContaining({ userName: 'updated_name' }),
+    }));
+    expect(prismaMock.authUser.update).not.toHaveBeenCalled();
+  });
+
+  it('syncs the auth display name when profile names change', async () => {
+    prismaMock.userData.update.mockResolvedValue({
+      id: 'user_1',
+      firstName: 'Samuel',
+      lastName: 'Razumovskiy',
+      userName: 'testuser',
+    });
+
+    const response = await patchUserById(
+      buildJsonRequest('http://localhost/api/users/user_1', {
+        data: { firstName: 'Samuel', lastName: 'Razumovskiy' },
+      }),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.authUser.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'user_1' },
+      data: expect.objectContaining({ name: 'Samuel Razumovskiy' }),
     }));
   });
 

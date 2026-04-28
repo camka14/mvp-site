@@ -7,7 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { authService } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
-import { NavItem } from '@/types';
+import { getUserFullName, NavItem } from '@/types';
 
 const baseNav: NavItem[] = [
   { label: 'Info', href: '/info' },
@@ -82,6 +82,9 @@ export default function Navigation() {
     );
   const homeHref = getHomePathForUser(user);
   const isProfileActive = pathname === '/profile' || pathname.startsWith('/profile/');
+  const fallbackName = authUser.email.split('@')[0];
+  const userDisplayName = user ? getUserFullName(user) : authUser.name || fallbackName;
+  const userInitial = userDisplayName.slice(0, 1).toUpperCase();
 
   return (
     <nav className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -142,10 +145,10 @@ export default function Navigation() {
                   }`}
                 >
                   <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700">
-                    {(authUser.name || authUser.email.split('@')[0]).slice(0, 1).toUpperCase()}
+                    {userInitial}
                   </div>
                   <span className="text-sm font-medium">
-                    {authUser.name || authUser.email.split('@')[0]}
+                    {userDisplayName}
                   </span>
                 </Link>
 
@@ -184,11 +187,11 @@ export default function Navigation() {
                 onClick={() => setIsMenuOpen(false)}
               >
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-sm font-semibold text-slate-700">
-                  {(authUser.name || authUser.email.split('@')[0]).slice(0, 1).toUpperCase()}
+                  {userInitial}
                 </div>
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">
-                    {authUser.name || authUser.email.split('@')[0]}
+                    {userDisplayName}
                   </div>
                   <div className="text-xs opacity-75">Profile</div>
                 </div>

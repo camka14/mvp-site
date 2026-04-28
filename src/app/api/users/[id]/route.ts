@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
+import { applyNameCaseToUserFields, formatNameParts, normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession, assertUserAccess, getOptionalSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { hasOrganizationStaffAccess } from '@/server/accessControl';
@@ -219,15 +219,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   try {
     const updatedAt = new Date();
+    const nextFirstName = Object.prototype.hasOwnProperty.call(nextData, 'firstName')
+      ? (nextData.firstName as string | null)
+      : currentUser.firstName;
+    const nextLastName = Object.prototype.hasOwnProperty.call(nextData, 'lastName')
+      ? (nextData.lastName as string | null)
+      : currentUser.lastName;
     const requiredProfileFieldsCompletedAt = resolveRequiredProfileFieldsCompletedAt({
       authUser,
       profile: {
-        firstName: Object.prototype.hasOwnProperty.call(nextData, 'firstName')
-          ? (nextData.firstName as string | null)
-          : currentUser.firstName,
-        lastName: Object.prototype.hasOwnProperty.call(nextData, 'lastName')
-          ? (nextData.lastName as string | null)
-          : currentUser.lastName,
+        firstName: nextFirstName,
+        lastName: nextLastName,
         dateOfBirth: Object.prototype.hasOwnProperty.call(nextData, 'dateOfBirth')
           ? (nextData.dateOfBirth as Date)
           : currentUser.dateOfBirth,
@@ -243,6 +245,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         updatedAt,
       },
     });
+    if (
+      Object.prototype.hasOwnProperty.call(nextData, 'firstName') ||
+      Object.prototype.hasOwnProperty.call(nextData, 'lastName')
+    ) {
+      await prisma.authUser.update({
+        where: { id },
+        data: {
+          name: formatNameParts(nextFirstName, nextLastName) || null,
+          updatedAt,
+        },
+      });
+    }
     const [updatedWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([updated], prisma);
     return NextResponse.json({ user: withLegacyFields(applyNameCaseToUserFields(updatedWithDerivedTeamIds)) }, { status: 200 });
   } catch (error) {
