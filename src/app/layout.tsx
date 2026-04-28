@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Roboto_Flex } from 'next/font/google';
+import { Archivo, IBM_Plex_Mono, Roboto_Flex } from 'next/font/google';
 import './globals.css';
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -19,6 +19,17 @@ import { SITE_URL } from '@/lib/siteUrl';
 const robotoFlex = Roboto_Flex({
   subsets: ['latin'],
   display: 'swap',
+});
+const landingHeading = Archivo({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-landing-heading',
+});
+const landingMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  display: 'swap',
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-landing-mono',
 });
 const mvpPrimary = [...MOBILE_APP_MANTINE_PRIMARY_SCALE] as MantineColorsTuple;
 const theme = createTheme({
@@ -82,7 +93,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
   const iosSmartAppBannerContent = getIosSmartAppBannerMetaContent();
 
   return (
-    <html lang="en" className={robotoFlex.className}>
+    <html lang="en" className={`${robotoFlex.className} ${landingHeading.variable} ${landingMono.variable}`}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="apple-itunes-app" content={iosSmartAppBannerContent} />

@@ -3,7 +3,32 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowRight,
+  BadgeCheck,
+  BadgeDollarSign,
+  Banknote,
+  CalendarDays,
+  CheckCircle2,
+  CreditCard,
+  FileSignature,
+  Globe2,
+  LayoutDashboard,
+  MapPinned,
+  Menu,
+  MessageSquareText,
+  MonitorSmartphone,
+  PanelsTopLeft,
+  Radio,
+  ReceiptText,
+  ShieldCheck,
+  Sparkles,
+  UsersRound,
+  WalletCards,
+  X,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { authService } from '@/lib/auth';
@@ -12,6 +37,7 @@ import { getHomePathForUser } from '@/lib/homePage';
 type FeatureSection = {
   id: string;
   title: string;
+  eyebrow: string;
   points: string[];
   webImage: {
     src: string;
@@ -25,6 +51,7 @@ type FeatureSection = {
     width: number;
     height: number;
   } | null;
+  icon: LucideIcon;
 };
 
 type LandingPageProps = {
@@ -32,36 +59,20 @@ type LandingPageProps = {
   heroMediaLayout?: 'stacked' | 'horizontal';
 };
 
+const navItems = [
+  { label: 'Platform', href: '#platform' },
+  { label: 'Operations', href: '#operations' },
+  { label: 'Integrations', href: '#integrations' },
+  { label: 'Fees', href: '#fees' },
+  { label: 'Resources', href: '#resources' },
+];
+
 const featureSections = [
   {
-    id: 'event-engine',
-    title: 'Events, teams, matches, and standings - structured.',
-    points: [
-      'Create events, leagues, and tournaments with clean division logic.',
-      'Build schedules with teams, brackets, and match dependencies.',
-      'Publish results and standings in one source of truth.',
-    ],
-    webImage: {
-      src: '/landing/bracket_screenshot_web.png',
-      alt: 'Web bracket and standings screen',
-      width: 1919,
-      height: 906,
-    },
-    mobileImage: {
-      src: '/landing/bracket_mobile.png',
-      alt: 'Mobile bracket screen',
-      width: 1344,
-      height: 2992,
-    },
-  },
-  {
-    id: 'fields-scheduling',
-    title: 'Place fields/courts and schedule time slots fast.',
-    points: [
-      'Assign resources, courts, and game windows from one scheduler.',
-      'Use map placement and field layout context when planning.',
-      'Keep operations conflict-aware as events scale.',
-    ],
+    id: 'scheduling',
+    eyebrow: 'Scheduling',
+    title: 'Schedule courts fast.',
+    points: ['Courts + fields', 'Conflict checks'],
     webImage: {
       src: '/landing/schedule_screenshot_web.png',
       alt: 'Web field and scheduling view',
@@ -74,15 +85,13 @@ const featureSections = [
       width: 1344,
       height: 2992,
     },
+    icon: MapPinned,
   },
   {
-    id: 'registration',
-    title: "Registration that doesn't break on game day.",
-    points: [
-      'Support individual and team registration flows.',
-      'Track participant status, waitlists, and attendance quickly.',
-      'Support parent or guardian registration paths where required.',
-    ],
+    id: 'registrations',
+    eyebrow: 'Registration',
+    title: 'Rosters stay ready.',
+    points: ['Teams', 'Attendance'],
     webImage: {
       src: '/landing/team_managment_web.png',
       alt: 'Web team management and roster view',
@@ -95,15 +104,13 @@ const featureSections = [
       width: 1344,
       height: 2992,
     },
+    icon: UsersRound,
   },
   {
     id: 'payments',
-    title: 'Collect payments and reconcile automatically.',
-    points: [
-      'Run checkout from mobile with event context.',
-      'Process billing with server-side Stripe reconciliation.',
-      'Handle billing records and refund workflows when needed.',
-    ],
+    eyebrow: 'Payments',
+    title: 'Payments, reconciled.',
+    points: ['Checkout', 'Refunds'],
     webImage: {
       src: '/landing/payment_screen_web.png',
       alt: 'Web payment flow and checkout summary',
@@ -116,15 +123,13 @@ const featureSections = [
       width: 1344,
       height: 2992,
     },
+    icon: CreditCard,
   },
   {
     id: 'documents',
-    title: 'Create signable documents for every commitment.',
-    points: [
-      'Build reusable agreements for rentals, event registration, and team participation.',
-      'Attach signature requirements to the exact flow where they belong.',
-      'Track who has signed before players, teams, or renters are cleared.',
-    ],
+    eyebrow: 'Documents',
+    title: 'Documents signed.',
+    points: ['Waivers', 'Clearance'],
     webImage: {
       src: '/landing/document_creation_web.png',
       alt: 'Web signable document creation screen',
@@ -132,15 +137,13 @@ const featureSections = [
       height: 907,
     },
     mobileImage: null,
+    icon: FileSignature,
   },
   {
     id: 'communication',
-    title: 'Communication built into the event.',
-    points: [
-      'Run team and event chat groups without external tools.',
-      'Send topic notifications and organizer announcements.',
-      'Keep players and parents synced in real time.',
-    ],
+    eyebrow: 'Communication',
+    title: 'Updates in context.',
+    points: ['Chat', 'Announcements'],
     webImage: {
       src: '/landing/discover_screen_web.png',
       alt: 'Web discover feed and updates view',
@@ -148,15 +151,13 @@ const featureSections = [
       height: 899,
     },
     mobileImage: null,
+    icon: MessageSquareText,
   },
   {
-    id: 'my-schedule',
-    title: 'Personal schedules stay organized.',
-    points: [
-      'Give players one place to see upcoming games and assignments.',
-      'Keep event times and locations visible without extra coordination.',
-      'Reduce no-shows with clear schedule visibility.',
-    ],
+    id: 'personal-schedules',
+    eyebrow: 'Personal Schedules',
+    title: 'Everyone knows where to be.',
+    points: ['Game times', 'Locations'],
     webImage: {
       src: '/landing/my_schedule_auth_screenshot_web.png',
       alt: 'Web personal schedule dashboard',
@@ -164,6 +165,7 @@ const featureSections = [
       height: 900,
     },
     mobileImage: null,
+    icon: CalendarDays,
   },
 ] satisfies FeatureSection[];
 
@@ -182,13 +184,135 @@ const heroScreenshots = {
   },
 };
 
+const utilitySignals = [
+  { label: 'Web + mobile', detail: 'One operating layer for staff and participants.', icon: MonitorSmartphone },
+  { label: 'Free app access', detail: 'Run events without a platform subscription.', icon: BadgeCheck },
+  { label: '1-3% payment fee', detail: 'Fees only apply when payments are processed.', icon: CreditCard },
+  { label: 'Website integration included', detail: 'Publish live event data where your audience already goes.', icon: Globe2 },
+];
+
+const commandStats = [
+  { label: 'Schedules', value: 'Live', detail: 'Courts, fields, brackets' },
+  { label: 'Payments', value: '1-3%', detail: 'Only on processed payments' },
+  { label: 'Documents', value: 'Signed', detail: 'Waivers and agreements' },
+  { label: 'Updates', value: 'Instant', detail: 'Chat and notifications' },
+];
+
+const platformColumns = [
+  {
+    label: 'Organizer console',
+    title: 'A web dashboard for facility and tournament operations.',
+    points: [
+      'Create events, leagues, and tournaments',
+      'Manage teams, divisions, schedules',
+      'Handle payments, payouts, and billing',
+      'Broadcast updates and announcements',
+      'Track documents and waivers',
+    ],
+    image: {
+      src: '/landing/org_home_web.png',
+      alt: 'Web organizer organization home dashboard screenshot',
+      width: 1919,
+      height: 909,
+    },
+    icon: PanelsTopLeft,
+  },
+  {
+    label: 'Mobile participant layer',
+    title: 'A mobile app for players, parents, and teams.',
+    points: [
+      'Discover and join events quickly',
+      'Pay fees and track registration status',
+      'Chat in team and group channels',
+      'Receive push notifications instantly',
+      'View schedules, locations, and updates',
+    ],
+    image: {
+      src: '/landing/discover_screen_mobile.png',
+      alt: 'Mobile discover screenshot',
+      width: 1344,
+      height: 2992,
+    },
+    icon: MonitorSmartphone,
+  },
+];
+
+const workflowSteps = [
+  {
+    label: 'Build',
+    title: 'Build the event.',
+    detail: 'Courts, fields, divisions, docs, pricing.',
+    outcome: 'One source of truth',
+    chips: ['Courts', 'Fields', 'Docs', 'Pricing'],
+    previewTitle: 'Event setup',
+    previewMetric: '4 setup layers',
+    previewRows: [
+      ['Divisions', 'Ready'],
+      ['Fields', 'Mapped'],
+      ['Documents', 'Attached'],
+      ['Pricing', 'Live'],
+    ],
+    icon: LayoutDashboard,
+  },
+  {
+    label: 'Publish',
+    title: 'Open registration.',
+    detail: 'Schedules, checkout, signatures, live pages.',
+    outcome: 'Ready for teams',
+    chips: ['Schedules', 'Checkout', 'Waivers', 'Pages'],
+    previewTitle: 'Registration launch',
+    previewMetric: 'Live everywhere',
+    previewRows: [
+      ['Schedule', 'Published'],
+      ['Checkout', 'Enabled'],
+      ['Waivers', 'Required'],
+      ['Website', 'Synced'],
+    ],
+    icon: CalendarDays,
+  },
+  {
+    label: 'Run',
+    title: 'Run game day.',
+    detail: 'Updates, chat, brackets, last-minute changes.',
+    outcome: 'Live operations',
+    chips: ['Updates', 'Chat', 'Brackets', 'Changes'],
+    previewTitle: 'Game day control',
+    previewMetric: 'Active command',
+    previewRows: [
+      ['Bracket', 'Updated'],
+      ['Announcements', 'Sent'],
+      ['Chat', 'Open'],
+      ['Changes', 'Synced'],
+    ],
+    icon: Radio,
+  },
+];
+
 const useCases = [
-  'Tournaments',
-  'Leagues',
-  'Clubs',
-  'Training Camps',
-  'Facility Programs',
-  'Community Events',
+  {
+    label: 'Tournaments',
+    detail: 'Brackets, pools, payments',
+  },
+  {
+    label: 'Leagues',
+    detail: 'Recurring schedules, standings',
+  },
+  {
+    label: 'Clubs',
+    detail: 'Teams, rosters, communication',
+  },
+  {
+    label: 'Training Camps',
+    detail: 'Sessions, courts, attendance',
+  },
+  {
+    label: 'Facility Programs',
+    detail: 'Events, rentals, documents',
+  },
+  {
+    label: 'Community Events',
+    detail: 'Discovery, updates, registration',
+  },
 ];
 
 const integrations = [
@@ -223,17 +347,120 @@ const integrations = [
   },
 ];
 
+const resourceHighlights = [
+  {
+    label: 'Format',
+    title: 'Build the bracket.',
+    detail: 'Pools, playoffs, divisions',
+    icon: LayoutDashboard,
+  },
+  {
+    label: 'Conflicts',
+    title: 'Protect the schedule.',
+    detail: 'Courts, times, capacity',
+    icon: CalendarDays,
+  },
+  {
+    label: 'Updates',
+    title: 'Keep teams synced.',
+    detail: 'Changes, chat, alerts',
+    icon: Sparkles,
+  },
+];
+
+const feeHighlights = [
+  {
+    title: 'No subscription',
+    detail: 'Run events without a monthly platform bill.',
+    value: '$0',
+    icon: WalletCards,
+  },
+  {
+    title: '1-3% payment fee',
+    detail: 'Only when BracketIQ processes payments.',
+    value: '1-3%',
+    icon: BadgeDollarSign,
+  },
+  {
+    title: 'No payments required',
+    detail: 'Use BracketIQ even when collecting elsewhere.',
+    value: 'Free',
+    icon: ShieldCheck,
+  },
+];
+
 export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacked' }: LandingPageProps) {
   const { user, loading, isAuthenticated, isGuest } = useApp();
   const router = useRouter();
   const [startingGuestSession, setStartingGuestSession] = useState(false);
   const [guestError, setGuestError] = useState('');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [activeWorkflowIndex, setActiveWorkflowIndex] = useState(0);
+  const workflowStepRefs = useRef<Array<HTMLElement | null>>([]);
   const appHref = getHomePathForUser(user);
   const showAppCta = isAuthenticated && !isGuest;
   const isHeroMediaHorizontal = heroMediaLayout === 'horizontal';
+  const activeWorkflowStep = workflowSteps[activeWorkflowIndex] ?? workflowSteps[0];
   const landingImageProps = {
     unoptimized: true,
   } as const;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    let frame = 0;
+
+    const updateActiveStep = () => {
+      frame = 0;
+      const activeY = window.innerHeight * 0.48;
+      const nextStep = workflowStepRefs.current
+        .map((node, index) => {
+          if (!node) {
+            return null;
+          }
+
+          const rect = node.getBoundingClientRect();
+          if (rect.bottom < 0 || rect.top > window.innerHeight) {
+            return null;
+          }
+
+          const panelFocus = rect.top + rect.height * 0.42;
+          return {
+            index,
+            distance: Math.abs(panelFocus - activeY),
+          };
+        })
+        .filter((item): item is { index: number; distance: number } => Boolean(item))
+        .sort((a, b) => a.distance - b.distance)[0];
+
+      if (nextStep) {
+        setActiveWorkflowIndex(nextStep.index);
+      }
+    };
+
+    const handleScroll = () => {
+      if (frame) {
+        return;
+      }
+      frame = window.requestAnimationFrame(updateActiveStep);
+    };
+
+    updateActiveStep();
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('resize', handleScroll);
+
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('resize', handleScroll);
+    };
+  }, []);
+
+  const closeMobileMenu = () => setIsMobileMenuOpen(false);
 
   const handleContinueAsGuest = async () => {
     if (startingGuestSession) return;
@@ -255,130 +482,151 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
 
   return (
     <div className="landing-root min-h-screen">
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="landing-aura landing-aura-left" />
-        <div className="landing-aura landing-aura-right" />
-        <div className="landing-grid-pattern" />
-      </div>
+      <header className="landing-header sticky top-0 z-30">
+        <div className="container-responsive py-3">
+          <div className="landing-header-shell flex min-h-14 items-center justify-between gap-4 px-3 sm:px-4">
+            <Link href={brandHref} className="landing-brand inline-flex items-center gap-3" onClick={closeMobileMenu}>
+              <Image
+                src="/BIQ_drawing.svg"
+                alt="BracketIQ logo"
+                width={44}
+                height={44}
+                className="landing-brand-mark"
+                priority
+              />
+              <span className="landing-brand-name">BracketIQ</span>
+            </Link>
 
-      <header className="landing-header sticky top-0 z-20 backdrop-blur-lg">
-        <div className="container-responsive flex items-center justify-between py-4">
-          <Link href={brandHref} className="landing-brand inline-flex items-center gap-3 text-lg font-semibold tracking-wide">
-            <Image
-              src="/BIQ_drawing.svg"
-              alt="BracketIQ logo"
-              width={40}
-              height={40}
-              className="h-10 w-10"
-              priority
-            />
-            <span>BracketIQ</span>
-          </Link>
+            <nav className="landing-nav hidden items-center gap-1 lg:flex" aria-label="Primary navigation">
+              {navItems.map((item) => (
+                <a key={item.href} href={item.href} className="landing-nav-link">
+                  {item.label}
+                </a>
+              ))}
+            </nav>
 
-          <nav className="landing-nav hidden items-center gap-6 text-sm md:flex">
-            <a href="#product" className="landing-nav-link transition">Product</a>
-            <a href="#integrations" className="landing-nav-link transition">Integrations</a>
-            <a href="#use-cases" className="landing-nav-link transition">Use Cases</a>
-            <a href="#fees" className="landing-nav-link transition">Fees</a>
-            <a href="#resources" className="landing-nav-link transition">Resources</a>
-          </nav>
+            <div className="hidden items-center justify-end gap-2 md:flex">
+              {showAppCta ? (
+                <>
+                  <Link href="/request-demo" className="landing-btn-secondary landing-btn-compact">
+                    Request demo
+                  </Link>
+                  <Link href={appHref} className="landing-btn-primary landing-btn-compact">
+                    Go to app
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <Link href="/login" className="landing-btn-secondary landing-btn-compact">
+                    Sign in
+                  </Link>
+                  <Link href="/request-demo" className="landing-btn-secondary landing-btn-compact">
+                    Request demo
+                  </Link>
+                  <Link href="/login" className="landing-btn-primary landing-btn-compact">
+                    Sign up
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                  </Link>
+                </>
+              )}
+            </div>
 
-          <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3">
-            {showAppCta ? (
-              <>
-                <Link
-                  href="/request-demo"
-                  className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
-                >
-                  Request demo
-                </Link>
-                <Link
-                  href={appHref}
-                  className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
-                >
-                  Go to app
-                </Link>
-              </>
-            ) : (
-              <>
-                <Link
-                  href="/login"
-                  className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
-                >
-                  Sign in
-                </Link>
-                <Link
-                  href="/request-demo"
-                  className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
-                >
-                  Request demo
-                </Link>
-                <Link
-                  href="/login"
-                  className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-4 text-sm font-semibold transition"
-                >
-                  Sign up
-                </Link>
-              </>
-            )}
+            <button
+              type="button"
+              className="landing-menu-button inline-flex md:hidden"
+              aria-label={isMobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
+              aria-expanded={isMobileMenuOpen}
+              onClick={() => setIsMobileMenuOpen((open) => !open)}
+            >
+              {isMobileMenuOpen ? <X aria-hidden="true" className="h-5 w-5" /> : <Menu aria-hidden="true" className="h-5 w-5" />}
+            </button>
           </div>
+
+          {isMobileMenuOpen ? (
+            <div className="landing-mobile-menu md:hidden">
+              <nav className="grid gap-2" aria-label="Mobile navigation">
+                {navItems.map((item) => (
+                  <a key={item.href} href={item.href} className="landing-mobile-nav-link" onClick={closeMobileMenu}>
+                    {item.label}
+                  </a>
+                ))}
+              </nav>
+              <div className="mt-4 grid gap-2">
+                {showAppCta ? (
+                  <>
+                    <Link href="/request-demo" className="landing-btn-secondary landing-btn-full" onClick={closeMobileMenu}>
+                      Request demo
+                    </Link>
+                    <Link href={appHref} className="landing-btn-primary landing-btn-full" onClick={closeMobileMenu}>
+                      Go to app
+                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link href="/login" className="landing-btn-secondary landing-btn-full" onClick={closeMobileMenu}>
+                      Sign in
+                    </Link>
+                    <Link href="/request-demo" className="landing-btn-secondary landing-btn-full" onClick={closeMobileMenu}>
+                      Request demo
+                    </Link>
+                    <Link href="/login" className="landing-btn-primary landing-btn-full" onClick={closeMobileMenu}>
+                      Sign up
+                      <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
         </div>
       </header>
 
       <main className="relative">
-        <section className="container-responsive grid gap-10 pb-20 pt-16 lg:grid-cols-[0.9fr_1.1fr] lg:pt-24">
-          <div className="space-y-7" data-reveal>
-            <p className="landing-kicker inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
-              Combined Platform: Web + Mobile
+        <section className="landing-hero-section container-responsive pb-16 pt-14 lg:pb-24 lg:pt-20">
+          <div className="landing-hero-copy mx-auto max-w-5xl space-y-7 text-center" data-reveal>
+            <p className="landing-kicker inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase">
+              <Radio aria-hidden="true" className="h-4 w-4" />
+              Facility operations platform
             </p>
-            <h1 className="landing-title max-w-xl text-4xl font-semibold leading-tight sm:text-5xl">
-              Run leagues, tournaments, and sports events in one platform.
-            </h1>
-            <p className="landing-copy max-w-2xl text-base sm:text-lg">
-              Create events, place fields, manage teams, collect payments, send updates, and keep everyone in sync across the web dashboard and mobile app.
-            </p>
+            <div className="space-y-5">
+              <h1 className="landing-title mx-auto max-w-5xl text-5xl font-semibold leading-none sm:text-6xl lg:text-7xl">
+                Bring your facility operations into one command center.
+              </h1>
+              <p className="landing-copy mx-auto max-w-2xl text-base sm:text-lg">
+                Create events, assign courts and fields, collect payments, publish schedules, and support teams from one clean web and mobile platform.
+              </p>
+            </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap justify-center gap-3">
               {showAppCta ? (
                 <>
-                  <Link
-                    href={appHref}
-                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href={appHref} className="landing-btn-primary landing-btn-large">
                     Go to app
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
                   </Link>
-                  <Link
-                    href="/request-demo"
-                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href="/request-demo" className="landing-btn-secondary landing-btn-large">
                     Request demo
                   </Link>
                 </>
               ) : (
                 <>
-                  <Link
-                    href="/login"
-                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href="/login" className="landing-btn-primary landing-btn-large">
                     Sign up
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
                   </Link>
-                  <Link
-                    href="/login"
-                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href="/login" className="landing-btn-secondary landing-btn-large">
                     Sign in
                   </Link>
-                  <Link
-                    href="/request-demo"
-                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href="/request-demo" className="landing-btn-secondary landing-btn-large">
                     Request demo
                   </Link>
                   <button
                     type="button"
                     onClick={handleContinueAsGuest}
                     disabled={startingGuestSession}
-                    className="landing-btn-outline inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                    className="landing-btn-outline landing-btn-large disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {startingGuestSession ? 'Opening discover...' : 'Continue as guest'}
                   </button>
@@ -386,28 +634,45 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
               )}
             </div>
 
-            <p className="landing-support text-sm">
-              Payments, chat, notifications, and waivers included.
-            </p>
+            <div className="landing-support-grid" aria-label="Included platform capabilities">
+              {['Payments', 'Chat', 'Notifications', 'Waivers'].map((label) => (
+                <span key={label} className="landing-support-chip">
+                  <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                  {label}
+                </span>
+              ))}
+            </div>
             {guestError ? (
-              <p className="landing-error rounded-xl px-4 py-3 text-sm">
+              <p className="landing-error px-4 py-3 text-sm" role="alert">
                 {guestError}
               </p>
             ) : null}
           </div>
 
-          <div className="relative" data-reveal data-delay="1">
-            <div className="landing-shot landing-surface-strong rounded-3xl p-4">
+          <div className="landing-command-wrap mx-auto mt-12 w-full max-w-7xl" data-reveal data-delay="1">
+            <div className="landing-command-console">
+              <div className="landing-command-header">
+                <div>
+                  <p className="landing-command-label">Live operations view</p>
+                  <p className="landing-command-title">Discover dashboard</p>
+                </div>
+                <div className="landing-command-status">
+                  <span aria-hidden="true" />
+                  Online
+                </div>
+              </div>
+
               <div className={`landing-hero-stack ${isHeroMediaHorizontal ? 'landing-hero-stack-horizontal' : ''}`}>
-                <div className="landing-shot-image landing-shot-image-equal">
+                <div className="landing-shot-image landing-shot-image-equal landing-command-screen">
                   <Image
                     {...landingImageProps}
                     src={heroScreenshots.web.src}
                     alt={heroScreenshots.web.alt}
                     width={heroScreenshots.web.width}
                     height={heroScreenshots.web.height}
-                    sizes="(min-width: 1024px) 44vw, 100vw"
+                    sizes="(min-width: 1024px) 54vw, 100vw"
                     className="landing-shot-image-content landing-shot-image-content-equal"
+                    loading="eager"
                   />
                 </div>
                 <div className="landing-hero-phone-wrap flex justify-center">
@@ -419,104 +684,137 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
                         alt={heroScreenshots.mobile.alt}
                         width={heroScreenshots.mobile.width}
                         height={heroScreenshots.mobile.height}
-                        sizes="(min-width: 1024px) 18vw, 52vw"
+                        sizes="(min-width: 1024px) 12vw, 52vw"
                         className="landing-phone-image"
+                        loading="eager"
                       />
                     </div>
                   </div>
                 </div>
               </div>
+
+              <div className="landing-command-stats">
+                {commandStats.map((stat) => (
+                  <article key={stat.label} className="landing-stat-tile">
+                    <p className="landing-stat-label">{stat.label}</p>
+                    <p className="landing-stat-value">{stat.value}</p>
+                    <p className="landing-stat-detail">{stat.detail}</p>
+                  </article>
+                ))}
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="landing-band">
-          <div className="container-responsive landing-section-copy flex flex-wrap items-center justify-between gap-3 py-5 text-sm">
-            <p>Built for tournament hosts, leagues, and facilities.</p>
-            <div className="flex flex-wrap gap-2">
-              {['Community Sports', 'Regional Leagues', 'Tournament Ops', 'Club Networks'].map((label) => (
-                <span key={label} className="landing-tag rounded-full px-3 py-1 text-xs">
-                  {label}
-                </span>
-              ))}
-            </div>
+        <section className="landing-proof-band">
+          <div className="container-responsive grid gap-3 py-5 md:grid-cols-4">
+            {utilitySignals.map((signal) => {
+              const Icon = signal.icon;
+              return (
+                <article key={signal.label} className="landing-proof-item">
+                  <Icon aria-hidden="true" className="h-5 w-5" />
+                  <div>
+                    <h2 className="landing-proof-label">{signal.label}</h2>
+                    <p className="landing-proof-detail">{signal.detail}</p>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
 
-        <section id="product" className="landing-anchor-section container-responsive py-16">
-          <div className="mb-8 text-center">
-            <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Two sides of the platform</h2>
-            <p className="landing-section-copy mx-auto mt-3 max-w-3xl">
-              Organizers run operations from the web dashboard while players and parents stay aligned from mobile.
+        <section id="platform" className="landing-anchor-section container-responsive py-20">
+          <div className="landing-section-heading landing-section-heading-center landing-section-heading-compact">
+            <p className="landing-label">Platform</p>
+            <h2 className="landing-section-title">Web for staff. Mobile for everyone else.</h2>
+            <p className="landing-section-copy">
+              Staff manage the operation from the dashboard. Players and parents follow along from mobile.
             </p>
           </div>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <article className="landing-surface rounded-3xl p-6 text-center">
-              <p className="landing-label text-xs uppercase tracking-[0.16em]">For Organizers (Web)</p>
-              <ul className="landing-section-copy mt-4 space-y-2 text-sm">
-                <li>Create events, leagues, and tournaments</li>
-                <li>Manage teams, divisions, schedules</li>
-                <li>Handle payments, payouts, and billing</li>
-                <li>Broadcast updates and announcements</li>
-                <li>Track documents and waivers</li>
-              </ul>
-              <div className="landing-shot-image landing-shot-image-equal mt-5">
-                <Image
-                  {...landingImageProps}
-                  src="/landing/org_home_web.png"
-                  alt="Web organizer organization home dashboard screenshot"
-                  width={1919}
-                  height={909}
-                  sizes="(min-width: 1280px) 560px, (min-width: 1024px) 44vw, 100vw"
-                  className="landing-shot-image-content landing-shot-image-content-equal"
-                />
-              </div>
-            </article>
 
-            <article className="landing-surface rounded-3xl p-6 text-center">
-              <p className="landing-label-alt text-xs uppercase tracking-[0.16em]">For Players and Parents (Mobile)</p>
-              <ul className="landing-section-copy mt-4 space-y-2 text-sm">
-                <li>Discover and join events quickly</li>
-                <li>Pay fees and track registration status</li>
-                <li>Chat in team and group channels</li>
-                <li>Receive push notifications instantly</li>
-                <li>View schedules, locations, and updates</li>
-              </ul>
-              <div className="landing-phone-frame landing-phone-frame-two-sides mt-5">
-                <div className="landing-phone-screen">
-                  <Image
-                    {...landingImageProps}
-                    src="/landing/discover_screen_mobile.png"
-                    alt="Mobile discover screenshot"
-                    width={1344}
-                    height={2992}
-                    sizes="(min-width: 1280px) 18rem, (min-width: 768px) 34vw, 48vw"
-                    className="landing-phone-image"
-                  />
-                </div>
-              </div>
-            </article>
+          <div className="mt-10 grid gap-5 lg:grid-cols-2">
+            {platformColumns.map((column) => {
+              const Icon = column.icon;
+              const isMobileLayer = column.label.includes('Mobile');
+              return (
+                <article key={column.label} className="landing-platform-card">
+                  <div className="flex items-start gap-3">
+                    <div className="landing-icon-box">
+                      <Icon aria-hidden="true" className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="landing-label">{column.label}</p>
+                      <h3 className="landing-card-title">{column.title}</h3>
+                    </div>
+                  </div>
+                  <ul className="landing-check-list mt-5">
+                    {column.points.map((point) => (
+                      <li key={point}>
+                        <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                        <span>{point}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className={isMobileLayer ? 'landing-phone-frame landing-phone-frame-two-sides mt-6' : 'landing-shot-image landing-shot-image-equal mt-6'}>
+                    {isMobileLayer ? (
+                      <div className="landing-phone-screen">
+                        <Image
+                          {...landingImageProps}
+                          src={column.image.src}
+                          alt={column.image.alt}
+                          width={column.image.width}
+                          height={column.image.height}
+                          sizes="(min-width: 1280px) 18rem, (min-width: 768px) 34vw, 58vw"
+                          className="landing-phone-image"
+                        />
+                      </div>
+                    ) : (
+                      <Image
+                        {...landingImageProps}
+                        src={column.image.src}
+                        alt={column.image.alt}
+                        width={column.image.width}
+                        height={column.image.height}
+                        sizes="(min-width: 1280px) 560px, (min-width: 1024px) 44vw, 100vw"
+                        className="landing-shot-image-content landing-shot-image-content-equal"
+                      />
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
 
-        <section className="container-responsive space-y-10 pb-16">
-          {featureSections.map((feature, index) => {
-            const reverse = index % 2 === 1;
-            return (
-              <article
-                key={feature.id}
-                className={`landing-surface grid gap-6 rounded-3xl p-6 lg:items-center ${reverse ? 'lg:grid-cols-[3fr_1fr] lg:[&>*:first-child]:order-2' : 'lg:grid-cols-[1fr_3fr]'}`}
-              >
-                <div className="space-y-4">
-                  <h3 className="landing-section-title text-2xl font-semibold">{feature.title}</h3>
-                  <ul className="landing-section-copy space-y-2 text-sm sm:text-base">
-                    {feature.points.map((point) => (
-                      <li key={point}>{point}</li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="min-w-0 p-5">
-                  <div className={`landing-media-grid grid gap-3 ${feature.mobileImage ? 'landing-media-grid-paired' : ''}`}>
+        <section id="operations" className="landing-anchor-section landing-operations-section container-responsive pb-20">
+          <h2 className="sr-only">Operations</h2>
+
+          <div className="landing-operation-scroll" aria-label="Operations feature sections">
+            {featureSections.map((feature, index) => {
+              const Icon = feature.icon;
+              const featureCount = `${String(index + 1).padStart(2, '0')} / ${String(featureSections.length).padStart(2, '0')}`;
+              return (
+                <article key={feature.id} className="landing-operation-scroll-panel">
+                  <div className="landing-operation-scroll-copy">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="landing-icon-box">
+                        <Icon aria-hidden="true" className="h-5 w-5" />
+                      </div>
+                      <span className="landing-operation-code">{feature.eyebrow}</span>
+                    </div>
+                    <h3 className="landing-card-title mt-5">{feature.title}</h3>
+                    <ul className="landing-check-list mt-5">
+                      {feature.points.map((point) => (
+                        <li key={point}>
+                          <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                          <span>{point}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <span className="landing-operation-step">{featureCount}</span>
+                  </div>
+
+                  <div className={`landing-operation-scroll-media landing-media-grid grid gap-3 ${feature.mobileImage ? 'landing-media-grid-paired' : ''}`}>
                     <div className={`landing-shot-image ${feature.mobileImage ? 'landing-media-pair-item' : ''}`}>
                       <Image
                         {...landingImageProps}
@@ -524,12 +822,9 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
                         alt={feature.webImage.alt}
                         width={feature.webImage.width}
                         height={feature.webImage.height}
-                        sizes={
-                          feature.mobileImage
-                            ? '(min-width: 1280px) 832px, (min-width: 1024px) 64vw, 100vw'
-                            : '(min-width: 1280px) 960px, (min-width: 1024px) 72vw, 100vw'
-                        }
+                        sizes="(min-width: 1280px) 760px, (min-width: 1024px) 54vw, 100vw"
                         className={`landing-shot-image-content ${feature.mobileImage ? 'landing-shot-image-content-equal' : ''}`}
+                        loading={feature.webImage.src === heroScreenshots.web.src ? 'eager' : undefined}
                       />
                     </div>
                     {feature.mobileImage ? (
@@ -541,253 +836,358 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
                             alt={feature.mobileImage.alt}
                             width={feature.mobileImage.width}
                             height={feature.mobileImage.height}
-                            sizes="(min-width: 1024px) 12vw, 40vw"
+                            sizes="(min-width: 1024px) 12vw, 36vw"
                             className="landing-phone-image"
                           />
                         </div>
                       </div>
                     ) : null}
                   </div>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="landing-workflow-section container-responsive pb-20" aria-labelledby="landing-workflow-title">
+          <div className="landing-workflow-panel">
+            <div className="landing-section-heading landing-section-heading-compact landing-workflow-heading">
+              <p className="landing-label">How it works</p>
+              <div key={activeWorkflowStep.label} className="landing-workflow-active-copy">
+                <p className="landing-workflow-active-label">{activeWorkflowStep.label}</p>
+                <h2 id="landing-workflow-title" className="landing-section-title mt-3">
+                  {activeWorkflowStep.title}
+                </h2>
+                <p className="landing-section-copy mt-4">{activeWorkflowStep.detail}</p>
+                <div className="landing-workflow-outcome landing-workflow-heading-outcome">
+                  <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                  <span>{activeWorkflowStep.outcome}</span>
                 </div>
-              </article>
-            );
-          })}
-        </section>
-
-        <section className="container-responsive pb-16">
-          <div className="landing-surface rounded-3xl p-6">
-            <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">How it works</h2>
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              {[
-                'Create your event and set up fields and schedules',
-                'Teams and players join, sign docs, and pay',
-                'Run game day with updates, chat, and notifications',
-              ].map((step, index) => (
-                <div key={step} className="landing-surface-soft rounded-2xl p-4">
-                  <p className="landing-step text-xs font-semibold uppercase tracking-[0.14em]">Step {index + 1}</p>
-                  <p className="landing-section-copy mt-2 text-sm">{step}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section id="integrations" className="landing-anchor-section container-responsive pb-16">
-          <div className="landing-surface-strong rounded-3xl p-8">
-            <p className="landing-label text-xs uppercase tracking-[0.16em]">Website Integration</p>
-            <h2 className="landing-section-title mt-3 text-3xl font-semibold sm:text-4xl">
-              We integrate our API with your website for free.
-            </h2>
-            <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
-              We can connect BracketIQ to your existing website so your public pages stay in sync with the platform.
-              That can include event listings, registration flows, schedules, standings, payment links, and other live
-              event data your audience already expects to find on your website.
-            </p>
-            <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
-              We can also provide branded BracketIQ public pages and embeddable widgets, including iframe and script
-              snippets for events, teams, rentals, products, standings, and brackets. Widgets keep visitors on your
-              website for browsing, then open the right BracketIQ page for registration, checkout, and document signing.
-            </p>
-            <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
-              Reach out to{' '}
-              <a
-                href="mailto:support@bracket-iq.com"
-                className="font-semibold text-[var(--landing-accent-text)] underline underline-offset-4"
-              >
-                support@bracket-iq.com
-              </a>{' '}
-              for more details regarding website integration, implementation options, and setup support.
-            </p>
-          </div>
-        </section>
-
-        <section id="use-cases" className="landing-anchor-section container-responsive pb-16">
-          <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Use cases</h2>
-          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {useCases.map((useCase) => (
-              <article key={useCase} className="landing-surface landing-section-copy rounded-2xl p-5">
-                <p className="font-medium">{useCase}</p>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section id="resources" className="landing-anchor-section container-responsive pb-16">
-          <div className="landing-surface rounded-3xl p-6 lg:p-8">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div className="max-w-3xl">
-                <h2 className="landing-section-title text-2xl font-semibold sm:text-3xl">Guides and platform resources</h2>
-                <p className="landing-section-copy mt-3 text-sm sm:text-base">
-                  New on the BracketIQ blog: practical scheduling guides for organizers who need cleaner brackets,
-                  clearer updates, and fewer tournament-day surprises.
-                </p>
               </div>
-              <Link
-                href="/blog"
-                className="landing-btn-secondary inline-flex min-h-11 items-center justify-center self-start rounded-full px-5 text-sm font-semibold transition"
-              >
-                Browse all guides
-              </Link>
-            </div>
-
-            <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)] lg:items-start">
-              <article className="landing-surface-soft rounded-3xl p-5 sm:p-6">
-                <div className="flex flex-wrap items-center gap-3">
-                  <p className="landing-label text-xs uppercase tracking-[0.16em]">Featured Guide</p>
-                  <span className="rounded-full border border-slate-300/70 bg-white/80 px-3 py-1 text-[0.72rem] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                    New
+              <div className="landing-workflow-progress" aria-label="Workflow progress">
+                {workflowSteps.map((step, index) => (
+                  <span
+                    key={step.label}
+                    className={index === activeWorkflowIndex ? 'is-active' : ''}
+                    aria-current={index === activeWorkflowIndex ? 'step' : undefined}
+                  >
+                    {String(index + 1).padStart(2, '0')}
                   </span>
-                </div>
-                <h3 className="landing-section-title mt-4 text-2xl font-semibold">
-                  Tournament schedule maker
-                </h3>
-                <p className="landing-section-copy mt-3 max-w-2xl text-sm sm:text-base">
-                  Learn how to choose the right format, review conflicts before publishing, and keep updates moving
-                  when the bracket changes on game day.
-                </p>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {['Format selection', 'Conflict review', 'Live updates'].map((item) => (
-                    <span
-                      key={item}
-                      className="rounded-full border border-slate-300/70 bg-white/80 px-3 py-1 text-xs font-medium text-slate-700"
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Link
-                    href="/blog/tournament-schedule-maker"
-                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
-                    Read the guide
-                  </Link>
-                  <Link
-                    href="/blog"
-                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
-                    Visit the blog
-                  </Link>
-                </div>
-              </article>
-
-              <div className="landing-surface-soft rounded-3xl p-5 sm:p-6">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="landing-section-title text-xl font-semibold">Integrations and platform stack</h3>
-                  <p className="landing-section-copy text-sm">Payments, maps, documents, and push notifications.</p>
-                </div>
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {integrations.map((integration) => (
-                    <article
-                      key={integration.name}
-                      className={`landing-pill flex min-h-24 items-center justify-center rounded-2xl px-4 py-3 ${integration.name === 'Google Maps' ? 'gap-2' : ''}`}
-                    >
-                      <Image
-                        src={integration.logoSrc}
-                        alt={integration.logoAlt}
-                        width={integration.logoWidth}
-                        height={integration.logoHeight}
-                        className={`w-auto shrink-0 ${integration.name === 'Google Maps' ? 'h-10' : 'h-8'}`}
-                      />
-                      {integration.wordmarkText ? (
-                        <span className="landing-pill-wordmark whitespace-nowrap text-base font-semibold">
-                          {integration.wordmarkText}
-                        </span>
-                      ) : null}
-                    </article>
-                  ))}
-                </div>
+                ))}
               </div>
+            </div>
+            <div className="landing-workflow-stack">
+              {workflowSteps.map((step, index) => {
+                const Icon = step.icon;
+
+                return (
+                  <article
+                    key={step.label}
+                    ref={(node) => {
+                      workflowStepRefs.current[index] = node;
+                    }}
+                    data-workflow-index={index}
+                    className={`landing-workflow-step ${index === activeWorkflowIndex ? 'is-active' : ''}`}
+                  >
+                    <div className="landing-workflow-step-copy">
+                      <div className="landing-workflow-step-top">
+                        <span className="landing-workflow-icon">
+                          <Icon aria-hidden="true" className="h-5 w-5" />
+                        </span>
+                        <span className="landing-step-index">{String(index + 1).padStart(2, '0')}</span>
+                      </div>
+                      <p className="landing-operation-code">{step.label}</p>
+                      <h3>{step.title}</h3>
+                      <p>{step.detail}</p>
+                      <div className="landing-workflow-chip-row" aria-label={`${step.label} workflow details`}>
+                        {step.chips.map((chip) => (
+                          <span key={chip}>{chip}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="landing-workflow-preview" aria-label={`${step.label} preview`}>
+                      <div className="landing-workflow-preview-top">
+                        <div>
+                          <p className="landing-operation-code">{step.previewTitle}</p>
+                          <h4>{step.previewMetric}</h4>
+                        </div>
+                        <div className="landing-workflow-preview-live">
+                          <span />
+                          Active
+                        </div>
+                      </div>
+                      <div className="landing-workflow-preview-screen">
+                        {step.previewRows.map(([name, value]) => (
+                          <div key={name} className="landing-workflow-preview-row">
+                            <span>{name}</span>
+                            <strong>{value}</strong>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="landing-workflow-preview-footer">
+                        <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                        <span>{step.outcome}</span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </section>
 
-        <section id="fees" className="landing-anchor-section container-responsive pb-16">
-          <div className="landing-surface rounded-3xl p-6 sm:p-8">
-            <p className="landing-label text-xs uppercase tracking-[0.16em]">Free To Use</p>
-            <h2 className="landing-section-title mt-3 text-3xl font-semibold sm:text-4xl">
-              Free app access. Fees only apply when you process payments.
-            </h2>
-            <p className="landing-section-copy mt-3 max-w-3xl text-base leading-8">
-              BracketIQ is free to use for event operations. If you collect payments through the platform, we only
-              take a 1-3% fee on processed payments. If you do not process payments, there is nothing to pay.
-            </p>
-            <div className="mt-6 grid gap-4 md:grid-cols-3">
-              {[
-                {
-                  title: 'No subscription',
-                  detail: 'There is no app subscription or setup cost required to run your events.',
-                },
-                {
-                  title: '1-3% payment fee',
-                  detail: 'Fees apply only when BracketIQ processes payments through the platform.',
-                },
-                {
-                  title: 'No payments required',
-                  detail: 'Run free events or manage collections elsewhere without platform charges.',
-                },
-              ].map((item) => (
-                <article key={item.title} className="landing-surface-soft rounded-2xl p-5">
-                  <h3 className="landing-section-title text-lg font-semibold">{item.title}</h3>
-                  <p className="landing-section-copy mt-2 text-sm">{item.detail}</p>
+        <section id="integrations" className="landing-anchor-section container-responsive pb-20">
+          <div className="landing-integration-panel">
+            <div className="landing-integration-copy landing-section-heading-compact">
+              <p className="landing-label">Website Integration</p>
+              <h2 className="landing-section-title mt-3">Your site stays live.</h2>
+              <p className="landing-section-copy mt-5">
+                Publish schedules, brackets, registration, payments, and documents from BracketIQ to the website your
+                facility already uses.
+              </p>
+              <div className="landing-integration-chip-row" aria-label="Website integration capabilities">
+                {['Event pages', 'Embeds', 'Checkout', 'Documents'].map((item) => (
+                  <span key={item}>{item}</span>
+                ))}
+              </div>
+            </div>
+
+            <div className="landing-integration-visual" aria-label="Connected integration services">
+              <div className="landing-website-node">
+                <Globe2 aria-hidden="true" className="h-5 w-5" />
+                <div>
+                  <span>Your website</span>
+                  <strong>Live event data</strong>
+                </div>
+              </div>
+              {integrations.map((integration) => (
+                <article key={integration.name} className={`landing-integration-logo ${integration.name === 'Google Maps' ? 'gap-2' : ''}`}>
+                  <Image
+                    src={integration.logoSrc}
+                    alt={integration.logoAlt}
+                    width={integration.logoWidth}
+                    height={integration.logoHeight}
+                    className={`w-auto shrink-0 ${integration.name === 'Google Maps' ? 'h-10' : 'h-8'}`}
+                  />
+                  {integration.wordmarkText ? (
+                    <span className="landing-pill-wordmark whitespace-nowrap text-base font-semibold">
+                      {integration.wordmarkText}
+                    </span>
+                  ) : null}
                 </article>
               ))}
             </div>
           </div>
         </section>
 
+        <section id="use-cases" className="landing-anchor-section landing-use-case-section container-responsive pb-20">
+          <div className="landing-section-heading landing-section-heading-center landing-section-heading-compact">
+            <p className="landing-label">Use cases</p>
+            <h2 className="landing-section-title mt-3">Built for every run of play.</h2>
+          </div>
+
+          <div className="landing-use-case-row">
+            <div className="landing-use-case-copy">
+              <p className="landing-label">Use cases</p>
+              <h3>One operating layer for the programs that fill your facility.</h3>
+              <p>
+                Mix leagues, rentals, camps, clubs, and tournaments without changing systems for each format.
+              </p>
+              <div className="landing-use-case-list">
+                {useCases.map((useCase) => (
+                  <article key={useCase.label} className="landing-use-case">
+                    <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                    <div>
+                      <h4>{useCase.label}</h4>
+                      <p>{useCase.detail}</p>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div className="landing-use-case-visual">
+              <div className="landing-use-case-visual-image">
+                <Image
+                  {...landingImageProps}
+                  src="/landing/org_home_web.png"
+                  alt="Facility operations dashboard for mixed programs"
+                  width={1919}
+                  height={909}
+                  sizes="(min-width: 1280px) 760px, (min-width: 768px) 58vw, 100vw"
+                  className="landing-use-case-image-content"
+                />
+              </div>
+              <div className="landing-use-case-visual-card landing-use-case-visual-card-primary">
+                <span>Formats</span>
+                <strong>6</strong>
+              </div>
+              <div className="landing-use-case-visual-card landing-use-case-visual-card-secondary">
+                <span>System</span>
+                <strong>One</strong>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="resources" className="landing-anchor-section container-responsive pb-20">
+          <div className="landing-resource-panel">
+            <div className="landing-resource-copy">
+              <p className="landing-label">Resources</p>
+              <h2 className="landing-section-title mt-3">Playbooks for better event days.</h2>
+              <p className="landing-section-copy mt-4">
+                Short guides for scheduling, payments, and team updates.
+              </p>
+              <Link href="/blog/tournament-schedule-maker" className="landing-btn-primary landing-btn-large mt-7">
+                Read schedule guide
+                <ArrowRight aria-hidden="true" className="h-4 w-4" />
+              </Link>
+            </div>
+
+            <div className="landing-resource-board" aria-label="Resource highlights">
+              <article className="landing-featured-guide">
+                <div className="landing-featured-guide-header">
+                  <p className="landing-operation-code">Featured guide</p>
+                  <span>12 min</span>
+                </div>
+                <h3>Tournament schedule maker</h3>
+                <ul className="landing-resource-point-list">
+                  {['Choose format', 'Check conflicts', 'Publish updates'].map((item) => (
+                    <li key={item}>
+                      <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+
+              <div className="landing-resource-highlight-grid">
+                {resourceHighlights.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <article key={item.label} className="landing-resource-highlight">
+                      <div className="landing-icon-box">
+                        <Icon aria-hidden="true" className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="landing-operation-code">{item.label}</p>
+                        <h3>{item.title}</h3>
+                        <p>{item.detail}</p>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="fees" className="landing-anchor-section container-responsive pb-20">
+          <div className="landing-fees-panel">
+            <div className="landing-fees-copy landing-section-heading-compact">
+              <p className="landing-label">Free To Use</p>
+              <h2 className="landing-section-title mt-3">Free to use. Pay only on processing.</h2>
+              <p className="landing-section-copy mt-4">
+                Run events without a subscription. BracketIQ only takes a 1-3% fee when payments are processed.
+              </p>
+            </div>
+
+            <div className="landing-payment-visual" aria-hidden="true">
+              <span className="landing-money-float landing-money-float-one">$</span>
+              <span className="landing-money-float landing-money-float-two">USD</span>
+              <span className="landing-money-float landing-money-float-three">$</span>
+              <div className="landing-payment-terminal">
+                <div className="landing-payment-terminal-header">
+                  <div>
+                    <p>Payment flow</p>
+                    <h3>Processed only when needed</h3>
+                  </div>
+                  <div className="landing-payment-live">
+                    <span />
+                    Live
+                  </div>
+                </div>
+                <div className="landing-payment-total-row">
+                  <Banknote aria-hidden="true" className="h-6 w-6" />
+                  <div>
+                    <p>Platform access</p>
+                    <strong>$0</strong>
+                  </div>
+                </div>
+                <div className="landing-payment-meter">
+                  <span />
+                </div>
+                <div className="landing-payment-fee-row">
+                  <div>
+                    <p>Processing fee</p>
+                    <strong>1-3%</strong>
+                  </div>
+                  <ReceiptText aria-hidden="true" className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+
+            <div className="landing-fee-grid">
+              {feeHighlights.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <article key={item.title} className="landing-fee-card">
+                    <div className="landing-fee-card-top">
+                      <Icon aria-hidden="true" className="h-5 w-5" />
+                      <span>{item.value}</span>
+                    </div>
+                    <h3>{item.title}</h3>
+                    <p>{item.detail}</p>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
         <section className="container-responsive pb-10">
-          <div className="landing-cta rounded-3xl p-8">
-            <h2 className="landing-section-title text-3xl font-semibold sm:text-4xl">Ready to run your next event on BracketIQ?</h2>
-            <p className="landing-cta-copy mt-3 max-w-2xl">
-              Start with your first league, tournament, or event and invite your teams immediately.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
+          <div className="landing-cta">
+            <div>
+              <p className="landing-label-alt">Next step</p>
+              <h2 className="landing-section-title mt-3">Bring the next event into one system.</h2>
+              <p className="landing-cta-copy mt-4">
+                Start with your first league, tournament, facility program, or rental workflow and bring your teams into
+                one organized system.
+              </p>
+            </div>
+            <div className="mt-7 flex flex-wrap gap-3">
               {showAppCta ? (
                 <>
-                  <Link
-                    href={appHref}
-                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href={appHref} className="landing-btn-primary landing-btn-large">
                     Go to app
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
                   </Link>
-                  <Link
-                    href="/request-demo"
-                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href="/request-demo" className="landing-btn-secondary landing-btn-large">
                     Request demo
                   </Link>
                 </>
               ) : (
                 <>
-                  <Link
-                    href="/login"
-                    className="landing-btn-primary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href="/login" className="landing-btn-primary landing-btn-large">
                     Sign up
+                    <ArrowRight aria-hidden="true" className="h-4 w-4" />
                   </Link>
-                  <Link
-                    href="/request-demo"
-                    className="landing-btn-secondary inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition"
-                  >
+                  <Link href="/request-demo" className="landing-btn-secondary landing-btn-large">
                     Request demo
                   </Link>
                   <button
                     type="button"
                     onClick={handleContinueAsGuest}
                     disabled={startingGuestSession}
-                    className="landing-btn-outline inline-flex min-h-11 items-center justify-center rounded-full px-5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60"
+                    className="landing-btn-outline landing-btn-large disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Continue as guest
+                    {startingGuestSession ? 'Opening discover...' : 'Continue as guest'}
                   </button>
                 </>
               )}
             </div>
           </div>
         </section>
-
       </main>
-
     </div>
   );
 }
