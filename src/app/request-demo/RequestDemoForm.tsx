@@ -1,6 +1,7 @@
 'use client';
 
 import { ChangeEvent, FormEvent, useState } from 'react';
+import { ArrowRight } from 'lucide-react';
 
 type DemoFormData = {
   name: string;
@@ -96,7 +97,7 @@ export default function RequestDemoForm() {
   };
 
   return (
-    <form className="landing-surface rounded-3xl p-6 sm:p-8" onSubmit={handleSubmit}>
+    <form className="landing-surface-strong marketing-demo-form rounded-3xl p-6 sm:p-8" onSubmit={handleSubmit}>
       <input
         aria-hidden="true"
         autoComplete="off"
@@ -117,6 +118,7 @@ export default function RequestDemoForm() {
             maxLength={120}
             name="name"
             onChange={handleChange}
+            placeholder="Morgan Host"
             required
             type="text"
             value={formData.name}
@@ -131,6 +133,7 @@ export default function RequestDemoForm() {
             maxLength={254}
             name="email"
             onChange={handleChange}
+            placeholder="morgan@club.com"
             required
             type="email"
             value={formData.email}
@@ -145,6 +148,7 @@ export default function RequestDemoForm() {
             maxLength={160}
             name="organization"
             onChange={handleChange}
+            placeholder="Northside Volleyball Club"
             required
             type="text"
             value={formData.organization}
@@ -159,6 +163,7 @@ export default function RequestDemoForm() {
             maxLength={120}
             name="role"
             onChange={handleChange}
+            placeholder="Director, facility manager, coach"
             type="text"
             value={formData.role}
           />
@@ -172,6 +177,7 @@ export default function RequestDemoForm() {
             maxLength={40}
             name="phone"
             onChange={handleChange}
+            placeholder="Optional"
             type="tel"
             value={formData.phone}
           />
@@ -214,6 +220,7 @@ export default function RequestDemoForm() {
             maxLength={2000}
             name="message"
             onChange={handleChange}
+            placeholder="Tell us about the event formats, registration flow, schedule pressure, or payment setup you want to improve."
             value={formData.message}
           />
         </label>
@@ -236,6 +243,7 @@ export default function RequestDemoForm() {
         type="submit"
       >
         {isSubmitting ? 'Sending request...' : 'Send demo request'}
+        {!isSubmitting ? <ArrowRight aria-hidden="true" className="h-4 w-4" /> : null}
       </button>
     </form>
   );

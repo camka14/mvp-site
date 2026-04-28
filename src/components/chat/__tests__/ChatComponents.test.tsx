@@ -93,4 +93,18 @@ describe('ChatComponents', () => {
     expect(screen.queryByTestId('chat-drawer')).not.toBeInTheDocument();
     expect(screen.queryByTestId('invite-users-modal')).not.toBeInTheDocument();
   });
+
+  it('does not render chat UI on the request demo page', () => {
+    useAppMock.mockReturnValue({
+      loading: false,
+      isAuthenticated: true,
+      isGuest: false,
+    });
+    usePathnameMock.mockReturnValue('/request-demo');
+
+    render(<ChatComponents />);
+
+    expect(screen.queryByTestId('chat-drawer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('invite-users-modal')).not.toBeInTheDocument();
+  });
 });

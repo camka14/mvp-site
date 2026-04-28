@@ -3399,8 +3399,279 @@ summary::-webkit-details-marker {
   margin-inline: auto;
 }
 
+.landing-root main > section.marketing-page-hero.container-responsive,
+.landing-root main > section.marketing-article-hero.container-responsive {
+  padding-top: clamp(3rem, 5.6vw, 5.25rem);
+  padding-bottom: clamp(4.25rem, 7vw, 6.5rem);
+}
+
+.landing-root main > section.marketing-page-hero.container-responsive::before,
+.landing-root main > section.marketing-article-hero.container-responsive::before {
+  display: none;
+}
+
+.marketing-page-hero,
+.marketing-article-hero {
+  isolation: isolate;
+}
+
+.marketing-hero-copy {
+  min-width: 0;
+}
+
+.marketing-signal-grid {
+  display: grid;
+  max-width: 44rem;
+  gap: 0.7rem;
+}
+
+.marketing-signal-card {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 0.9rem;
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.48);
+  padding: 0.9rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74), 0 18px 40px -34px rgba(14, 14, 16, 0.58);
+  backdrop-filter: blur(16px) saturate(130%);
+}
+
+.marketing-signal-card h2 {
+  color: var(--landing-ink);
+  font-family: var(--landing-font-heading);
+  font-size: 1.05rem;
+  font-weight: 760;
+  line-height: 1.12;
+}
+
+.marketing-signal-card p {
+  margin-top: 0.35rem;
+  color: var(--landing-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.marketing-form-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.marketing-form-wrap::before,
+.marketing-featured-guide-card::before,
+.marketing-article-shell::before {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 28% 44%, rgba(44, 129, 201, 0.24), transparent 44%),
+    radial-gradient(circle at 72% 56%, rgba(35, 167, 128, 0.16), transparent 46%);
+  filter: blur(20px) saturate(128%);
+}
+
+.marketing-form-wrap::before {
+  inset: 8% -5% auto 22%;
+  z-index: -1;
+  height: min(28rem, 70%);
+}
+
+.marketing-form-header {
+  padding: 0 0 1rem;
+}
+
+.marketing-demo-form {
+  position: relative;
+}
+
+.marketing-demo-form .landing-form-control {
+  min-width: 0;
+}
+
+.marketing-featured-guide-card {
+  position: relative;
+  overflow: hidden;
+  padding: clamp(0.95rem, 2vw, 1.2rem);
+}
+
+.marketing-featured-guide-card::before {
+  inset: auto -20% -38% 18%;
+  z-index: 0;
+  height: 65%;
+  opacity: 0.74;
+}
+
+.marketing-featured-guide-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.marketing-guide-metrics {
+  display: grid;
+  gap: 0.7rem;
+  margin-top: 0.5rem;
+}
+
+@media (min-width: 520px) {
+  .marketing-guide-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.marketing-guide-metrics article,
+.marketing-article-brief div div {
+  display: flex;
+  min-height: 3.2rem;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.58);
+  color: var(--landing-blue-strong);
+  padding: 0.75rem;
+  font-size: 0.84rem;
+  font-weight: 780;
+  line-height: 1.35;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.marketing-guide-metrics svg,
+.marketing-article-brief svg {
+  flex: 0 0 auto;
+  color: var(--landing-blue);
+}
+
+.marketing-section-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  border-top: 1px solid rgba(14, 14, 16, 0.08);
+  padding-top: clamp(1rem, 2vw, 1.35rem);
+}
+
+@media (min-width: 768px) {
+  .marketing-section-row {
+    flex-direction: row;
+    align-items: end;
+    justify-content: space-between;
+  }
+}
+
+.marketing-blog-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.marketing-blog-card {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.marketing-blog-card::before {
+  content: '';
+  position: absolute;
+  inset: auto -16% -42% 24%;
+  height: 68%;
+  pointer-events: none;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 30% 50%, rgba(21, 85, 141, 0.12), transparent 48%),
+    radial-gradient(circle at 70% 50%, rgba(35, 167, 128, 0.1), transparent 52%);
+  filter: blur(22px);
+}
+
+.marketing-blog-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.marketing-blog-card:hover {
+  transform: translateY(-2px);
+}
+
+.marketing-article-brief {
+  align-self: stretch;
+}
+
+.marketing-article-brief > div > div {
+  justify-content: flex-start;
+}
+
+.marketing-article-shell {
+  position: relative;
+  overflow: hidden;
+}
+
+.marketing-article-shell::before {
+  inset: auto -18% -20% 32%;
+  height: 22rem;
+  opacity: 0.64;
+}
+
+.marketing-article-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+.marketing-faq-item {
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(14, 14, 16, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.marketing-cta {
+  position: relative;
+  overflow: hidden;
+}
+
 .blog-article > :first-child {
   margin-top: 0;
+}
+
+.blog-article {
+  color: var(--landing-text);
+  font-size: 1.02rem;
+  line-height: 1.82;
+}
+
+.blog-article h2,
+.blog-article h3 {
+  color: var(--landing-ink);
+  font-family: var(--landing-font-heading);
+  line-height: 1.08;
+  text-wrap: balance;
+}
+
+.blog-article h2 {
+  margin-top: 3rem;
+  font-size: clamp(1.9rem, 3vw, 2.75rem);
+  font-weight: 620;
+}
+
+.blog-article h3 {
+  margin-top: 2rem;
+  font-size: clamp(1.32rem, 2vw, 1.8rem);
+  font-weight: 660;
+}
+
+.blog-article p,
+.blog-article ul,
+.blog-article ol {
+  margin-top: 1.1rem;
+}
+
+.blog-article ul,
+.blog-article ol {
+  padding-left: 1.2rem;
+}
+
+.blog-article li + li {
+  margin-top: 0.45rem;
+}
+
+.blog-article li::marker {
+  color: var(--landing-blue);
 }
 
 .blog-article code {

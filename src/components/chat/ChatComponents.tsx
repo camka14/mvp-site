@@ -8,7 +8,10 @@ import { useApp } from '@/app/providers';
 export function ChatComponents() {
     const { loading, isAuthenticated, isGuest } = useApp();
     const pathname = usePathname();
-    const isMarketingPage = pathname === '/' || pathname === '/blog' || pathname.startsWith('/blog/');
+    const isMarketingPage = pathname === '/'
+        || pathname === '/request-demo'
+        || pathname === '/blog'
+        || pathname.startsWith('/blog/');
 
     if (loading || !isAuthenticated || isGuest || isMarketingPage) {
         return null;
