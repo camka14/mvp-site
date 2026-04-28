@@ -149,6 +149,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         try {
             const state = chatTermsState ?? await fetchChatTermsState();
             if (state?.accepted) {
+                chatTermsAcceptedRef.current = true;
                 return true;
             }
             setChatTermsModalOpen(true);

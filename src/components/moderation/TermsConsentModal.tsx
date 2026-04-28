@@ -47,7 +47,7 @@ export function TermsConsentModal({
     : DEFAULT_SUMMARY;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/45 px-4">
+    <div className="pointer-events-auto fixed inset-0 z-[70] flex items-center justify-center bg-black/45 px-4">
       <div className="w-full max-w-lg rounded-lg bg-white p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>

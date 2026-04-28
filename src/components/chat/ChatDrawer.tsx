@@ -29,6 +29,7 @@ export function ChatDrawer() {
     const { isChatListOpen, openChatWindows, openChatList, isFloatingButtonVisible } = useChatUI();
     const [mounted, setMounted] = useState(false);
     const pollingRef = useRef(false);
+    const openAfterTermsAcceptedRef = useRef(false);
     const uniqueOpenChatWindows = useMemo(
         () => Array.from(new Set(openChatWindows)),
         [openChatWindows],
@@ -106,10 +107,23 @@ export function ChatDrawer() {
     const handleOpenChatList = async () => {
         const allowed = await ensureChatAccess();
         if (!allowed) {
+            openAfterTermsAcceptedRef.current = true;
             return;
         }
         await loadChatGroups();
         openChatList();
+    };
+
+    const handleAcceptChatTerms = async () => {
+        const accepted = await acceptChatTerms();
+        if (!accepted) {
+            return;
+        }
+        if (openAfterTermsAcceptedRef.current) {
+            openAfterTermsAcceptedRef.current = false;
+            await loadChatGroups();
+            openChatList();
+        }
     };
 
     const chatWindowWidth = 320; // Width of each chat window
@@ -157,7 +171,7 @@ export function ChatDrawer() {
                 open={chatTermsModalOpen}
                 state={chatTermsState}
                 loading={chatTermsLoading}
-                onAccept={() => { void acceptChatTerms(); }}
+                onAccept={() => { void handleAcceptChatTerms(); }}
                 onClose={closeChatTermsModal}
                 allowClose
             />

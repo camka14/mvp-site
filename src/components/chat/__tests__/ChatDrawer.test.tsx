@@ -184,6 +184,51 @@ describe('ChatDrawer', () => {
     expect(openChatListMock).not.toHaveBeenCalled();
   });
 
+  it('opens the chat list after accepting terms from the chat button flow', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const ensureChatAccessMock = jest.fn().mockResolvedValue(false);
+    const acceptChatTermsMock = jest.fn().mockResolvedValue(true);
+    const loadChatGroupsMock = jest.fn().mockResolvedValue(undefined);
+    const openChatListMock = jest.fn();
+
+    useChatMock.mockReturnValue({
+      chatGroups: [],
+      loadMessages: jest.fn().mockResolvedValue(undefined),
+      loadChatGroups: loadChatGroupsMock,
+      markChatViewed: jest.fn(),
+      chatTermsState: {
+        version: '2026-04-14',
+        url: '/terms',
+        summary: ['There is no tolerance for objectionable content or abusive users.'],
+        accepted: false,
+        acceptedAt: null,
+      },
+      chatTermsLoading: false,
+      chatTermsModalOpen: true,
+      ensureChatAccess: ensureChatAccessMock,
+      acceptChatTerms: acceptChatTermsMock,
+      closeChatTermsModal: jest.fn(),
+    });
+    useChatUIMock.mockReturnValue({
+      isChatListOpen: false,
+      openChatWindows: [],
+      openChatList: openChatListMock,
+      isFloatingButtonVisible: true,
+    });
+
+    render(<ChatDrawer />);
+    await act(async () => {});
+
+    await user.click(screen.getByLabelText('Open chat'));
+    await user.click(screen.getByText('Agree'));
+
+    await waitFor(() => {
+      expect(acceptChatTermsMock).toHaveBeenCalled();
+    });
+    expect(loadChatGroupsMock).toHaveBeenCalledWith();
+    expect(openChatListMock).toHaveBeenCalled();
+  });
+
   it('shows the chat terms modal and records agreement', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const acceptChatTermsMock = jest.fn().mockResolvedValue(undefined);
