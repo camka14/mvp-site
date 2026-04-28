@@ -55,6 +55,7 @@ type FeatureSection = {
 
 type LandingPageProps = {
   brandHref?: string;
+  anchorHrefPrefix?: string;
   heroMediaLayout?: 'stacked' | 'horizontal';
 };
 
@@ -353,7 +354,11 @@ const feeHighlights = [
   },
 ];
 
-export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacked' }: LandingPageProps) {
+export default function LandingPage({
+  brandHref = '/',
+  anchorHrefPrefix = '',
+  heroMediaLayout = 'stacked',
+}: LandingPageProps) {
   const { user, isAuthenticated, isGuest } = useApp();
   const router = useRouter();
   const [startingGuestSession, setStartingGuestSession] = useState(false);
@@ -457,7 +462,7 @@ export default function LandingPage({ brandHref = '/', heroMediaLayout = 'stacke
 
   return (
     <div className="landing-root min-h-screen">
-      <MarketingHeader brandHref={brandHref} />
+      <MarketingHeader brandHref={brandHref} anchorHrefPrefix={anchorHrefPrefix} />
 
       <main className="relative">
         <section className="landing-hero-section container-responsive pb-16 pt-14 lg:pb-24 lg:pt-20">

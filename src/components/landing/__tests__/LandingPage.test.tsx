@@ -131,6 +131,13 @@ describe('LandingPage', () => {
     expect(screen.getByRole('link', { name: /bracketiq/i })).toHaveAttribute('href', '/info');
   });
 
+  it('can route section nav links through the info route', () => {
+    render(<LandingPage brandHref="/info" anchorHrefPrefix="/info" />);
+
+    expect(screen.getByRole('link', { name: /^platform$/i })).toHaveAttribute('href', '/info#platform');
+    expect(screen.getByRole('link', { name: /^fees$/i })).toHaveAttribute('href', '/info#fees');
+  });
+
   it('can render the hero screenshots in a horizontal layout', () => {
     render(<LandingPage heroMediaLayout="horizontal" />);
 

@@ -44,7 +44,7 @@ export default function RequestDemoPage() {
         <div className="landing-grid-pattern" />
       </div>
 
-      <MarketingHeader anchorHrefPrefix="/" hideRequestDemoCta />
+      <MarketingHeader anchorHrefPrefix="/info" hideRequestDemoCta />
 
       <main className="relative">
         <section className="marketing-page-hero container-responsive relative grid gap-10 pb-16 pt-12 lg:grid-cols-[0.82fr_1.18fr] lg:items-start lg:pb-24 lg:pt-16">

@@ -17,11 +17,11 @@ const marketingNavItems = [
 
 type MarketingHeaderProps = {
   brandHref?: string;
-  anchorHrefPrefix?: '' | '/';
+  anchorHrefPrefix?: string;
   hideRequestDemoCta?: boolean;
 };
 
-const resolveAnchorHref = (href: string, prefix: '' | '/') => (
+const resolveAnchorHref = (href: string, prefix: string) => (
   prefix ? `${prefix}${href}` : href
 );
 

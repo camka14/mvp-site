@@ -84,7 +84,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         <div className="landing-grid-pattern" />
       </div>
 
-      <MarketingHeader anchorHrefPrefix="/" />
+      <MarketingHeader anchorHrefPrefix="/info" />
 
       <main className="relative">
         <section className="marketing-article-hero container-responsive relative grid gap-8 pb-12 pt-12 lg:grid-cols-[minmax(0,0.92fr)_minmax(18rem,0.42fr)] lg:items-end lg:pb-16 lg:pt-16">
