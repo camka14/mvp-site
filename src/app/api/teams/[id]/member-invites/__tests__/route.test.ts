@@ -222,4 +222,58 @@ describe('/api/teams/[id]/member-invites POST', () => {
     }));
     expect(sendInviteEmailsMock).toHaveBeenCalledWith([expect.objectContaining({ id: 'invite_1' })], 'http://localhost');
   });
+
+  it('rejects player invites when team registrations already fill the team', async () => {
+    txMock.canonicalTeams.findUnique.mockResolvedValue({
+      id: 'team_1',
+      name: 'Test team',
+      division: 'Open',
+      divisionTypeId: 'open',
+      divisionTypeName: 'Open',
+      wins: null,
+      losses: null,
+      teamSize: 2,
+      profileImageId: null,
+      sport: 'Basketball',
+      organizationId: 'org_1',
+      createdBy: 'manager_1',
+      openRegistration: false,
+      registrationPriceCents: 0,
+      requiredTemplateIds: [],
+    });
+    txMock.teamRegistrations.findMany.mockResolvedValue([
+      {
+        id: 'team_1__manager_1',
+        teamId: 'team_1',
+        userId: 'manager_1',
+        status: 'ACTIVE',
+        isCaptain: true,
+      },
+      {
+        id: 'team_1__pending_1',
+        teamId: 'team_1',
+        userId: 'pending_1',
+        status: 'INVITED',
+        isCaptain: false,
+      },
+    ]);
+
+    const response = await POST(
+      new NextRequest('http://localhost/api/teams/team_1/member-invites', {
+        method: 'POST',
+        body: JSON.stringify({
+          userId: 'free_1',
+          role: 'player',
+          eventTeamIds: [],
+        }),
+      }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.error).toBe('Team is full. Player invite was not sent.');
+    expect(txMock.invites.create).not.toHaveBeenCalled();
+    expect(txMock.teamRegistrations.upsert).not.toHaveBeenCalled();
+  });
 });

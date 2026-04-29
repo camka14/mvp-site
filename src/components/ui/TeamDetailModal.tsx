@@ -135,7 +135,6 @@ const getPendingInviteRole = (
 };
 
 const ACTIVE_PLAYER_REGISTRATION_STATUSES = new Set(['ACTIVE', 'STARTED']);
-
 const isActivePlayerRegistration = (registration: TeamPlayerRegistration): boolean => (
     ACTIVE_PLAYER_REGISTRATION_STATUSES.has(String(registration.status ?? '').trim().toUpperCase())
 );
@@ -232,6 +231,45 @@ export default function TeamDetailModal({
         });
         return byUserId;
     }, [currentTeam.playerRegistrations]);
+    const playerInviteCapacityUserIds = useMemo(() => {
+        const userIds = new Set<string>();
+        currentTeam.playerIds.forEach((playerId) => {
+            if (playerId.trim().length > 0) {
+                userIds.add(playerId);
+            }
+        });
+        currentTeam.pending.forEach((playerId) => {
+            if (playerId.trim().length > 0) {
+                userIds.add(playerId);
+            }
+        });
+        teamPlayers.forEach((player) => {
+            if (player.$id.trim().length > 0) {
+                userIds.add(player.$id);
+            }
+        });
+        pendingPlayers.forEach((player) => {
+            if (player.$id.trim().length > 0) {
+                userIds.add(player.$id);
+            }
+        });
+        if (Array.isArray(currentTeam.playerRegistrations)) {
+            currentTeam.playerRegistrations.forEach((registration) => {
+                const userId = registration.userId?.trim();
+                const status = String(registration.status ?? '').trim().toUpperCase();
+                if (userId && status === 'STARTED') {
+                    userIds.add(userId);
+                }
+            });
+        }
+        return userIds;
+    }, [currentTeam.pending, currentTeam.playerIds, currentTeam.playerRegistrations, pendingPlayers, teamPlayers]);
+    const playerInviteCapacityCount = playerInviteCapacityUserIds.size;
+    const playerInviteLimit = Math.max(0, Math.trunc(currentTeam.teamSize || 0));
+    const canInviteAnotherPlayer = playerInviteLimit <= 0 || playerInviteCapacityCount < playerInviteLimit;
+    const playerInviteCapacityMessage = playerInviteLimit > 0
+        ? `This team already has ${playerInviteCapacityCount} of ${playerInviteLimit} player slots filled. Remove a player or pending invite, or increase team size before inviting another player.`
+        : '';
     const showSelfServiceRegistrationActions = Boolean(user?.$id) && !canManageTeam;
     const selectedRoleLabel = (() => {
         switch (selectedInviteRole) {
@@ -424,7 +462,10 @@ export default function TeamDetailModal({
 
     const canInviteUserForRole = useCallback((userId: string, roleType: TeamInviteRoleType): boolean => {
         if (roleType === 'player') {
-            return !currentTeam.playerIds.includes(userId) && !currentTeam.pending.includes(userId);
+            return canInviteAnotherPlayer
+                && !playerInviteCapacityUserIds.has(userId)
+                && !currentTeam.playerIds.includes(userId)
+                && !currentTeam.pending.includes(userId);
         }
         if (roleType === 'team_manager') {
             return currentTeam.managerId !== userId && !isRoleInvitePending(userId, roleType);
@@ -436,7 +477,16 @@ export default function TeamDetailModal({
             return !assistantCoachIds.includes(userId) && !isRoleInvitePending(userId, roleType);
         }
         return false;
-    }, [assistantCoachIds, currentTeam.headCoachId, currentTeam.managerId, currentTeam.pending, currentTeam.playerIds, isRoleInvitePending]);
+    }, [
+        assistantCoachIds,
+        canInviteAnotherPlayer,
+        currentTeam.headCoachId,
+        currentTeam.managerId,
+        currentTeam.pending,
+        currentTeam.playerIds,
+        isRoleInvitePending,
+        playerInviteCapacityUserIds,
+    ]);
 
     const resetInviteTarget = useCallback(() => {
         setSelectedInviteUser(null);
@@ -451,9 +501,21 @@ export default function TeamDetailModal({
     }, [inviteFreeAgentContext.freeAgentEventTeamIdsByUserId, selectedInviteRole]);
 
     const selectInviteUser = useCallback((targetUser: UserData) => {
+        if (!canInviteUserForRole(targetUser.$id, selectedInviteRole)) {
+            if (selectedInviteRole === 'player' && !canInviteAnotherPlayer) {
+                notifications.show({ color: 'yellow', message: playerInviteCapacityMessage });
+            }
+            return;
+        }
         setSelectedInviteUser(targetUser);
         setSelectedInviteEventTeamIds(precheckEventTeamIdsForUser(targetUser.$id));
-    }, [precheckEventTeamIdsForUser]);
+    }, [
+        canInviteAnotherPlayer,
+        canInviteUserForRole,
+        playerInviteCapacityMessage,
+        precheckEventTeamIdsForUser,
+        selectedInviteRole,
+    ]);
 
     const fetchTeamDetails = useCallback(async () => {
         try {
@@ -905,6 +967,10 @@ export default function TeamDetailModal({
         if (invitingByEmail) {
             return;
         }
+        if (selectedInviteRole === 'player' && !canInviteAnotherPlayer) {
+            notifications.show({ color: 'yellow', message: playerInviteCapacityMessage });
+            return;
+        }
         setInvitingByEmail(true);
         try {
             const user = await userService.getUserById(userId, { teamId: currentTeam.$id });
@@ -956,6 +1022,10 @@ export default function TeamDetailModal({
         if (invitingByEmail) {
             return;
         }
+        if (selectedInviteRole === 'player' && !canInviteAnotherPlayer) {
+            notifications.show({ color: 'yellow', message: playerInviteCapacityMessage });
+            return;
+        }
 
         setInvitingByEmail(true);
 
@@ -996,7 +1066,7 @@ export default function TeamDetailModal({
 
         return (
             <div className="mt-3 border-t pt-3">
-                <Text fw={500} size="sm" mb={6}>Update future event teams</Text>
+                <Text fw={500} size="sm" mb={6}>Update your team in upcoming events</Text>
                 <Checkbox.Group
                     value={selectedInviteEventTeamIds}
                     onChange={setSelectedInviteEventTeamIds}
@@ -1045,6 +1115,7 @@ export default function TeamDetailModal({
                     <Button
                         onClick={() => { void handleInviteUser(selectedInviteUser.$id); }}
                         loading={invitingByEmail}
+                        disabled={selectedInviteRole === 'player' && !canInviteAnotherPlayer}
                     >
                         Send {selectedRoleLabel} Invite
                     </Button>
@@ -1417,8 +1488,8 @@ export default function TeamDetailModal({
                     {/* Team Stats */}
                     <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mb="md">
                         <Paper withBorder p="md" radius="md" ta="center">
-                            <Title order={3}>{teamPlayers.length}/{currentTeam.teamSize}</Title>
-                            <Text c="dimmed">Players</Text>
+                            <Title order={3}>{playerInviteCapacityCount}/{currentTeam.teamSize}</Title>
+                            <Text c="dimmed">Player Slots</Text>
                         </Paper>
                         <Paper withBorder p="md" radius="md" ta="center">
                             <Title order={3}>{pendingPlayers.length}</Title>
@@ -1751,6 +1822,12 @@ export default function TeamDetailModal({
                                         </Tabs.Panel>
                                     </Tabs>
 
+                                    {selectedInviteRole === 'player' && !canInviteAnotherPlayer && (
+                                        <Alert color="yellow" variant="light" mb="sm">
+                                            {playerInviteCapacityMessage}
+                                        </Alert>
+                                    )}
+
                                     {inviteMode === 'user' && searching && (
                                         <Group justify="center" py="sm">
                                             <Text c="dimmed" size="sm">Searching...</Text>
@@ -1808,7 +1885,13 @@ export default function TeamDetailModal({
                                                                     </Text>
                                                                 </div>
                                                             </Group>
-                                                            <Button size="xs" onClick={() => selectInviteUser(agent)}>Select</Button>
+                                                            <Button
+                                                                size="xs"
+                                                                disabled={!canInviteUserForRole(agent.$id, 'player')}
+                                                                onClick={() => selectInviteUser(agent)}
+                                                            >
+                                                                Select
+                                                            </Button>
                                                         </Group>
                                                     </Paper>
                                                 ))}
@@ -1838,7 +1921,13 @@ export default function TeamDetailModal({
                                                                         {isFreeAgent && <Text size="xs" c="blue">Free Agent from Event</Text>}
                                                                     </div>
                                                                 </Group>
-                                                                <Button size="xs" onClick={() => selectInviteUser(user)}>Select</Button>
+                                                                <Button
+                                                                    size="xs"
+                                                                    disabled={!canInviteUserForRole(user.$id, selectedInviteRole)}
+                                                                    onClick={() => selectInviteUser(user)}
+                                                                >
+                                                                    Select
+                                                                </Button>
                                                             </Group>
                                                         </Paper>
                                                     );
@@ -1855,7 +1944,7 @@ export default function TeamDetailModal({
                                                 <Button
                                                     onClick={handleInviteByEmail}
                                                     loading={invitingByEmail}
-                                                    disabled={!inviteEmailValid}
+                                                    disabled={!inviteEmailValid || (selectedInviteRole === 'player' && !canInviteAnotherPlayer)}
                                                 >
                                                     Send {selectedRoleLabel} Invite
                                                 </Button>

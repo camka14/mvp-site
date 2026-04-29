@@ -40,6 +40,7 @@ const emailSchema = z.string().email();
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
   Array.from(new Set(values.filter((value): value is string => Boolean(value))))
 );
+const PLAYER_CAPACITY_STATUSES = new Set(['ACTIVE', 'INVITED', 'STARTED']);
 
 const roleToStaffType = (role: InviteRole): string | null => {
   switch (role) {
@@ -186,6 +187,40 @@ const findSourceTeamRegistrationId = async (
   return normalizeId(row?.id);
 };
 
+const getPlayerCapacityUserIds = (team: Record<string, any>): Set<string> => {
+  const ids = new Set<string>();
+  const registrations = Array.isArray(team.playerRegistrations) ? team.playerRegistrations : [];
+
+  registrations.forEach((registration: any) => {
+    const userId = normalizeId(registration?.userId);
+    const status = String(registration?.status ?? '').trim().toUpperCase();
+    if (userId && PLAYER_CAPACITY_STATUSES.has(status)) {
+      ids.add(userId);
+    }
+  });
+
+  if (ids.size === 0) {
+    normalizeIdList(team.playerIds).forEach((userId) => ids.add(userId));
+    normalizeIdList(team.pending).forEach((userId) => ids.add(userId));
+  }
+
+  return ids;
+};
+
+const assertPlayerInviteCapacity = (team: Record<string, any>, userId: string) => {
+  const teamSize = typeof team.teamSize === 'number' && Number.isFinite(team.teamSize)
+    ? Math.max(0, Math.trunc(team.teamSize))
+    : 0;
+  if (teamSize <= 0) {
+    return;
+  }
+
+  const capacityUserIds = getPlayerCapacityUserIds(team);
+  if (!capacityUserIds.has(userId) && capacityUserIds.size >= teamSize) {
+    throw new Error('Team is full. Player invite was not sent.');
+  }
+};
+
 const loadSelectedFutureEventTeams = async (
   tx: any,
   canonicalTeamId: string,
@@ -304,6 +339,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       const resolvedUser = await resolveInviteUser(tx, parsed.data, now);
       const userId = resolvedUser.userId;
+      const activePlayerIdsForInvite = parsed.data.role === 'player'
+        ? normalizeIdList((canonicalTeam as any).playerIds)
+        : [];
+      if (parsed.data.role === 'player') {
+        if (activePlayerIdsForInvite.includes(userId)) {
+          throw new Error('User is already on this team');
+        }
+        assertPlayerInviteCapacity(canonicalTeam as Record<string, any>, userId);
+      }
       const existingInvite = await tx.invites.findFirst({
         where: {
           type: 'TEAM',
@@ -345,14 +389,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       await rollbackTeamInviteEventSyncs(tx, invite, 'CANCELLED', now);
 
       if (parsed.data.role === 'player') {
-        const activePlayerIds = normalizeIdList((canonicalTeam as any).playerIds);
-        if (activePlayerIds.includes(userId)) {
-          throw new Error('User is already on this team');
-        }
         await syncCanonicalTeamRoster({
           teamId: canonicalTeamId,
           captainId: (canonicalTeam as any).captainId,
-          playerIds: activePlayerIds,
+          playerIds: activePlayerIdsForInvite,
           pendingPlayerIds: uniqueStrings([...normalizeIdList((canonicalTeam as any).pending), userId]),
           managerId: (canonicalTeam as any).managerId,
           headCoachId: (canonicalTeam as any).headCoachId,
@@ -489,7 +529,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           ? 400
           : message === 'User is already on this team'
             ? 409
-            : 400;
+            : message === 'Team is full. Player invite was not sent.'
+              ? 409
+              : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

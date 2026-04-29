@@ -257,4 +257,57 @@ describe('TeamDetailModal', () => {
       );
     });
   });
+
+  it('blocks player invites when team registration slots are full', async () => {
+    const manager = buildUser({
+      $id: 'manager_1',
+      firstName: 'Morgan',
+      lastName: 'Manager',
+      fullName: 'Morgan Manager',
+    });
+    (useApp as jest.Mock).mockReturnValue({ user: manager });
+    const team = buildTeam({
+      $id: 'team_1',
+      captainId: 'manager_1',
+      managerId: 'manager_1',
+      playerIds: ['manager_1'],
+      pending: ['pending_1'],
+      playerRegistrations: [
+        {
+          id: 'team_1__manager_1',
+          teamId: 'team_1',
+          userId: 'manager_1',
+          status: 'ACTIVE',
+        },
+        {
+          id: 'team_1__pending_1',
+          teamId: 'team_1',
+          userId: 'pending_1',
+          status: 'INVITED',
+        },
+      ],
+      teamSize: 2,
+      name: 'Test team',
+    });
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /invite team members/i }));
+
+    expect(await screen.findByText(/already has 2 of 2 player slots filled/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /invite by email/i }));
+    fireEvent.change(screen.getByPlaceholderText('name@example.com'), {
+      target: { value: 'new.player@example.com' },
+    });
+
+    expect(screen.getByRole('button', { name: /send player invite/i })).toBeDisabled();
+  });
 });

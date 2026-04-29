@@ -244,11 +244,11 @@ export default function TeamRegistrationFlow({
     Math.max(
       registrations.filter((registration) => {
         const status = normalizeText(registration.status).toUpperCase();
-        return status === 'ACTIVE' || status === 'STARTED';
+        return status === 'ACTIVE' || status === 'INVITED' || status === 'STARTED';
       }).length,
-      resolvedTeam.playerIds.length,
+      new Set([...resolvedTeam.playerIds, ...resolvedTeam.pending]).size,
     )
-  ), [registrations, resolvedTeam.playerIds.length]);
+  ), [registrations, resolvedTeam.pending, resolvedTeam.playerIds]);
   const teamHasCapacity = !resolvedTeam.teamSize || reservedOrActiveRegistrationCount < resolvedTeam.teamSize;
   const requiredTemplateIds = Array.isArray(resolvedTeam.requiredTemplateIds)
     ? resolvedTeam.requiredTemplateIds.filter((value) => normalizeText(value).length > 0)
