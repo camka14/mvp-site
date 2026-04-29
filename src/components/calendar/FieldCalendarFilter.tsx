@@ -12,7 +12,12 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 
-import { getEntityColorPair, type EntityColorPair } from '@/lib/entityColors';
+import {
+  getEntityColorPair,
+  getOrderedEntityColorPair,
+  type EntityColorPair,
+  type EntityColorReferenceValue,
+} from '@/lib/entityColors';
 
 export type FieldCalendarFilterItem = {
   id: string;
@@ -20,6 +25,7 @@ export type FieldCalendarFilterItem = {
   detail?: string | null;
   count?: number;
   colorSeed?: string | null;
+  colorMatchKey?: string | null;
   colors?: EntityColorPair;
   disabled?: boolean;
 };
@@ -31,6 +37,7 @@ type FieldCalendarFilterProps = {
   disabled?: boolean;
   emptyText?: string;
   allowEmptySelection?: boolean;
+  colorReferenceList?: EntityColorReferenceValue[];
 };
 
 const normalizeSearchText = (value: string): string => value.trim().toLowerCase();
@@ -61,6 +68,7 @@ export default function FieldCalendarFilter({
   disabled = false,
   emptyText = 'No fields match your search.',
   allowEmptySelection = false,
+  colorReferenceList,
 }: FieldCalendarFilterProps) {
   const [query, setQuery] = useState('');
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -115,7 +123,12 @@ export default function FieldCalendarFilter({
         <ScrollArea.Autosize mah={520} type="auto">
           <Stack gap={6}>
             {filteredItems.length > 0 ? filteredItems.map((item) => {
-              const colors = item.colors ?? getEntityColorPair(item.colorSeed ?? item.label ?? item.id);
+              const colorMatchKey = item.colorMatchKey ?? item.colorSeed ?? item.label ?? item.id;
+              const colors = item.colors ?? (
+                colorReferenceList
+                  ? getOrderedEntityColorPair(colorReferenceList, colorMatchKey)
+                  : getEntityColorPair(colorMatchKey)
+              );
               const isSelected = selectedSet.has(item.id);
               const cannotDeselect = isSelected && !allowEmptySelection && selectedIds.length === 1;
               return (
@@ -132,7 +145,7 @@ export default function FieldCalendarFilter({
                 >
                   <span
                     className="field-calendar-filter__swatch"
-                    style={{ backgroundColor: colors.bg, color: colors.text, borderColor: colors.bg }}
+                    style={{ backgroundColor: colors.bg, color: colors.text, borderColor: colors.text }}
                     aria-hidden="true"
                   />
                   <span className="field-calendar-filter__content">
@@ -146,6 +159,9 @@ export default function FieldCalendarFilter({
                       {item.count}
                     </Badge>
                   ) : null}
+                  <span className="field-calendar-filter__check" aria-hidden="true">
+                    ✓
+                  </span>
                 </UnstyledButton>
               );
             }) : (

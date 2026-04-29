@@ -71,14 +71,3 @@ export const MOBILE_APP_MUI_PALETTE = {
     secondary: MOBILE_APP_THEME_TOKENS.textMuted,
   },
 } as const;
-
-export const MOBILE_APP_AVATAR_PALETTE = [
-  { bg: '#DCEAF7', text: '#19497A' },
-  { bg: '#F2F5F8', text: '#1E2633' },
-  { bg: '#EFE7D1', text: '#5B4B1F' },
-  { bg: '#E2EAF0', text: '#4D5D6E' },
-  { bg: '#294867', text: '#EDF3FA' },
-  { bg: '#223041', text: '#EDF3FA' },
-  { bg: '#564F37', text: '#F3EDD0' },
-  { bg: '#2C394B', text: '#EDF3FA' },
-] as const;

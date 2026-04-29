@@ -8,12 +8,15 @@ import {
   SlotGroupPropGetter,
   View,
 } from 'react-big-calendar';
+import withDragAndDrop from 'react-big-calendar/lib/addons/dragAndDrop';
 import { format, getDay, parse, startOfWeek } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
+import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 
 import type { Field, Match, Team, UserData } from '@/types';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
 
 interface LeagueCalendarViewProps {
@@ -28,6 +31,7 @@ interface LeagueCalendarViewProps {
   onDateChange?: (date: Date) => void;
   onViewChange?: (view: View) => void;
   onMatchClick?: (match: Match) => void;
+  onMatchTimeChange?: (match: Match, range: { start: Date; end: Date; fieldId?: string | null }) => void;
   canManage?: boolean;
   matchCardPaddingY?: string;
   currentUser?: UserData | null;
@@ -264,6 +268,7 @@ export function LeagueCalendarView({
   onDateChange,
   onViewChange,
   onMatchClick,
+  onMatchTimeChange,
   canManage = false,
   matchCardPaddingY = 'my-2',
   currentUser,
@@ -273,6 +278,7 @@ export function LeagueCalendarView({
   conflictMatchIdsById = {},
   showEventOfficialNames = true,
 }: LeagueCalendarViewProps) {
+  const DnDCalendar: any = useMemo(() => withDragAndDrop(BigCalendar), []);
   const userTeamIds = useMemo(() => new Set(currentUser?.teamIds ?? []), [currentUser?.teamIds]);
   const trackedUserIds = useMemo(() => {
     const ids = new Set<string>();
@@ -298,6 +304,11 @@ export function LeagueCalendarView({
     });
     return lookup;
   }, [fields]);
+
+  const fieldColorReferenceList = useMemo(
+    () => buildUniqueColorReferenceList(fields.map((field) => field.$id)),
+    [fields],
+  );
 
   const teamLookup = useMemo(() => {
     const lookup = new Map<string, Team>();
@@ -597,6 +608,42 @@ export function LeagueCalendarView({
     onMatchClick(event.resource);
   };
 
+  const handleEventDrop = useCallback(
+    ({ event, start, end, resourceId }: any) => {
+      if (!canManage || !onMatchTimeChange || !event || event.isAgendaGroup) {
+        return;
+      }
+      if (getWeeklyOccurrenceMeta(event.resource)) {
+        return;
+      }
+
+      const nextStart = start instanceof Date ? start : new Date(start);
+      if (Number.isNaN(nextStart.getTime())) {
+        return;
+      }
+      const rawEnd = end instanceof Date ? end : new Date(end);
+      const nextEnd = !Number.isNaN(rawEnd.getTime()) && rawEnd.getTime() > nextStart.getTime()
+        ? rawEnd
+        : new Date(nextStart.getTime() + 60 * 60 * 1000);
+      const dropResourceId =
+        typeof resourceId === 'string'
+          ? resourceId
+          : typeof event.resourceId === 'string'
+            ? event.resourceId
+            : resolveMatchFieldId(event.resource);
+      const fieldId = dropResourceId && dropResourceId !== UNASSIGNED_FIELD_RESOURCE_ID
+        ? dropResourceId
+        : null;
+
+      onMatchTimeChange(event.resource, {
+        start: nextStart,
+        end: nextEnd,
+        fieldId,
+      });
+    },
+    [canManage, onMatchTimeChange],
+  );
+
   const eventPropGetter = useCallback(
     (event: CalendarEvent) => {
       if (event.isAgendaGroup) {
@@ -618,34 +665,29 @@ export function LeagueCalendarView({
             backgroundColor: 'transparent',
             border: 'none',
             padding: 0,
-            cursor: onMatchClick ? 'pointer' : 'default',
+            cursor: canManage ? 'grab' : onMatchClick ? 'pointer' : 'default',
             color: 'var(--mantine-color-text, var(--mvp-text))',
           },
           className: 'p-0',
         };
       }
-      const isUsersMatch = event.hasTrackedUserMatch;
       const hasConflict = event.hasConflictMatch;
       return {
         style: {
           backgroundColor: hasConflict
             ? 'var(--mantine-color-red-0, var(--mvp-danger-soft))'
-            : isUsersMatch
-              ? 'var(--mantine-color-green-0, var(--mvp-success-soft))'
-              : 'transparent',
+            : 'transparent',
           border: hasConflict
             ? '2px solid var(--mvp-danger)'
-            : isUsersMatch
-              ? '2px solid var(--mvp-success)'
-              : 'none',
+            : 'none',
           padding: 0,
-          cursor: onMatchClick ? 'pointer' : 'default',
+          cursor: canManage ? 'grab' : onMatchClick ? 'pointer' : 'default',
           color: 'var(--mantine-color-text, var(--mvp-text))',
         },
         className: 'p-0',
       };
     },
-    [onMatchClick],
+    [canManage, onMatchClick],
   );
 
   const MonthEventComponent = useCallback(({ event }: EventProps<CalendarEvent>) => {
@@ -655,22 +697,27 @@ export function LeagueCalendarView({
         title={event.title}
         subtitle={weeklyOccurrenceMeta?.divisionLabel ?? event.fieldLabel}
         colorSeed={event.id}
+        colorReferenceList={fieldColorReferenceList}
+        colorMatchKey={event.resourceId}
         compact
         selected={event.hasTrackedUserMatch || Boolean(weeklyOccurrenceMeta?.isSelected)}
         conflict={event.hasConflictMatch}
+        draggable={canManage && !weeklyOccurrenceMeta}
       />
     );
-  }, []);
+  }, [canManage, fieldColorReferenceList]);
 
   const WeeklyOccurrenceEventCard = useCallback(
     ({
       occurrence,
       fieldLabel,
+      fieldColorMatchKey,
       onClick,
       compact = false,
     }: {
       occurrence: WeeklyOccurrenceCalendarMeta;
       fieldLabel: string;
+      fieldColorMatchKey: string;
       onClick?: () => void;
       compact?: boolean;
     }) => (
@@ -679,12 +726,14 @@ export function LeagueCalendarView({
         subtitle={occurrence.divisionLabel ?? fieldLabel}
         meta={occurrence.isSelected ? 'Selected' : fieldLabel}
         colorSeed={`${occurrence.slotId}-${occurrence.label}`}
+        colorReferenceList={fieldColorReferenceList}
+        colorMatchKey={fieldColorMatchKey}
         compact={compact}
         selected={occurrence.isSelected}
         onClick={onClick}
       />
     ),
-    [],
+    [fieldColorReferenceList],
   );
 
   const WeekDayEventComponent = useCallback(
@@ -697,6 +746,7 @@ export function LeagueCalendarView({
           <WeeklyOccurrenceEventCard
             occurrence={weeklyOccurrenceMeta}
             fieldLabel={event.fieldLabel}
+            fieldColorMatchKey={event.resourceId}
             onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
           />
         );
@@ -707,12 +757,15 @@ export function LeagueCalendarView({
           subtitle={event.fieldLabel}
           meta={typeof event.resource.matchId === 'number' ? `Match #${event.resource.matchId}` : undefined}
           colorSeed={event.id}
+          colorReferenceList={fieldColorReferenceList}
+          colorMatchKey={event.resourceId}
           selected={shouldHighlightUser}
           conflict={hasConflict}
+          draggable={canManage}
         />
       );
     },
-    [WeeklyOccurrenceEventCard, onMatchClick],
+    [WeeklyOccurrenceEventCard, canManage, fieldColorReferenceList, onMatchClick],
   );
 
   const AgendaEventComponent = useCallback(
@@ -729,6 +782,7 @@ export function LeagueCalendarView({
                 const shouldHighlightUser = matchId.length > 0 && userInvolvedMatchIds.has(matchId) && !hasConflict;
                 const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(match);
                 const fieldLabel = resolveMatchFieldLabel(match, fieldLookup);
+                const fieldColorMatchKey = resolveMatchFieldId(match) ?? UNASSIGNED_FIELD_RESOURCE_ID;
 
                 return (
                   <div
@@ -740,6 +794,7 @@ export function LeagueCalendarView({
                       <WeeklyOccurrenceEventCard
                         occurrence={weeklyOccurrenceMeta}
                         fieldLabel={fieldLabel}
+                        fieldColorMatchKey={fieldColorMatchKey}
                         onClick={onMatchClick ? () => onMatchClick(match) : undefined}
                         compact
                       />
@@ -749,9 +804,12 @@ export function LeagueCalendarView({
                         subtitle={fieldLabel}
                         meta={typeof match.matchId === 'number' ? `Match #${match.matchId}` : undefined}
                         colorSeed={matchId || `${event.id}-${index}`}
+                        colorReferenceList={fieldColorReferenceList}
+                        colorMatchKey={fieldColorMatchKey}
                         selected={shouldHighlightUser}
                         conflict={hasConflict}
                         onClick={onMatchClick ? () => onMatchClick(match) : undefined}
+                        draggable={canManage}
                       />
                     )}
                   </div>
@@ -762,7 +820,7 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [WeeklyOccurrenceEventCard, conflictMatchIdSet, fieldLookup, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldColorReferenceList, fieldLookup, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
   );
 
   const components = useMemo(
@@ -932,7 +990,7 @@ export function LeagueCalendarView({
           </div>
         )}
         <div ref={calendarRootRef} style={{ width: '100%' }}>
-          <BigCalendar
+          <DnDCalendar
             localizer={localizer}
             events={displayedCalendarEvents}
             resources={layoutMode === 'resource' ? calendarResources : undefined}
@@ -958,6 +1016,12 @@ export function LeagueCalendarView({
             style={{ height: calendarHeight, minHeight: MIN_CALENDAR_HEIGHT }}
             slotGroupPropGetter={slotGroupPropGetter}
             formats={calendarFormats}
+            draggableAccessor={(event: CalendarEvent) => (
+              canManage
+              && !event.isAgendaGroup
+              && !getWeeklyOccurrenceMeta(event.resource)
+            )}
+            onEventDrop={handleEventDrop}
           />
         </div>
       </Paper>

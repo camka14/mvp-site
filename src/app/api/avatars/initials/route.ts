@@ -57,6 +57,7 @@ const resolveFontSize = (size: number, initialsLength: number): number => {
 export async function GET(req: NextRequest) {
   try {
     const nameParam = req.nextUrl.searchParams.get('name')?.trim();
+    const colorSeedParam = req.nextUrl.searchParams.get('colorSeed')?.trim();
     const sizeParam = req.nextUrl.searchParams.get('size');
     const formatParam = req.nextUrl.searchParams.get('format')?.trim().toLowerCase();
     const qualityParam = req.nextUrl.searchParams.get('quality');
@@ -68,8 +69,9 @@ export async function GET(req: NextRequest) {
       ? formatParam
       : 'svg';
     const name = nameParam && nameParam.length > 0 ? nameParam : 'User';
+    const colorSeed = colorSeedParam && colorSeedParam.length > 0 ? colorSeedParam : name;
     const initials = getInitials(name);
-    const colors = getEntityColorPair(name);
+    const colors = getEntityColorPair(colorSeed);
     const fontSize = resolveFontSize(size, initials.length);
     const escapedInitials = escapeXml(initials);
     const escapedAriaLabel = escapeXml(`${initials} avatar`);

@@ -1483,11 +1483,15 @@ const buildPreviewUrl = (fileId: string, width?: number, height?: number): strin
   return `/api/files/${fileId}/preview${query ? `?${query}` : ''}`;
 };
 
-const buildInitialsAvatarUrl = (name: string, size: number): string => {
+const buildInitialsAvatarUrl = (name: string, size: number, colorSeed?: string | null): string => {
   const params = new URLSearchParams({
     name,
     size: String(size),
   });
+  const normalizedColorSeed = colorSeed?.trim();
+  if (normalizedColorSeed) {
+    params.set('colorSeed', normalizedColorSeed);
+  }
   return `/api/avatars/initials?${params.toString()}`;
 };
 
@@ -1507,7 +1511,10 @@ export function getUserAvatarUrl(
 
   const fullName = getUserFullName(user);
   const initials = fullName || user.userName || 'User';
-  return buildInitialsAvatarUrl(initials, size);
+  const colorSeed = user.isIdentityHidden
+    ? initials
+    : [initials, user.userName?.trim()].filter(Boolean).join('|');
+  return buildInitialsAvatarUrl(initials, size, colorSeed);
 }
 
 export function getTeamAvatarUrl(team: Team, size: number = 64): string {

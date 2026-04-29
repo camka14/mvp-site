@@ -124,8 +124,9 @@ jest.mock('../components/EventForm', () => {
 });
 
 jest.mock('../components/LeagueCalendarView', () => {
-  return function MockCalendarView({ matches, onMatchClick, canManage, conflictMatchIdsById, onViewChange, onDateChange, date }: any) {
+  return function MockCalendarView({ matches, onMatchClick, onMatchTimeChange, canManage, conflictMatchIdsById, onViewChange, onDateChange, date }: any) {
     const currentDate = date instanceof Date ? date : new Date();
+    const firstMatch = Array.isArray(matches) ? matches[0] : null;
     return (
       <div data-testid="league-calendar">
         <span>Calendar View</span>
@@ -136,8 +137,20 @@ jest.mock('../components/LeagueCalendarView', () => {
         ))}
         <span data-testid="calendar-conflict-count">{Object.keys(conflictMatchIdsById ?? {}).length}</span>
         {onMatchClick && matches?.length > 0 && (
-          <button type="button" onClick={() => onMatchClick?.(matches[0])}>
+          <button type="button" onClick={() => onMatchClick?.(firstMatch)}>
             {canManage ? 'Edit First Match' : 'Select First Match'}
+          </button>
+        )}
+        {canManage && onMatchTimeChange && firstMatch && (
+          <button
+            type="button"
+            onClick={() => onMatchTimeChange(firstMatch, {
+              start: new Date('2026-03-02T12:00:00.000Z'),
+              end: new Date('2026-03-02T13:00:00.000Z'),
+              fieldId: firstMatch.fieldId ?? 'field_1',
+            })}
+          >
+            Move First Match
           </button>
         )}
         {onViewChange && (
@@ -301,6 +314,27 @@ const buildWeeklyParentEvent = ({
     slotId,
     occurrenceDate,
   };
+};
+
+const openMoreActionsMenu = async () => {
+  const moreButton = await screen.findByRole('button', { name: /^more$/i });
+  await act(async () => {
+    fireEvent.click(moreButton);
+  });
+};
+
+const clickMoreActionElement = async (action: HTMLElement) => {
+  await act(async () => {
+    fireEvent.click(action);
+    await Promise.resolve();
+  });
+};
+
+const clickMoreAction = async (name: RegExp) => {
+  await openMoreActionsMenu();
+  const action = await screen.findByRole('menuitem', { name });
+  await clickMoreActionElement(action);
+  return action;
 };
 
 describe('League schedule page', () => {
@@ -1127,6 +1161,15 @@ describe('League schedule page', () => {
     expect(screen.queryByRole('button', { name: /save league/i })).not.toBeInTheDocument();
   });
 
+  it('hides manage-only actions before entering manage mode', async () => {
+    renderWithMantine(<LeagueSchedulePage />);
+
+    expect(await screen.findByRole('button', { name: /^manage$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^more$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /cancel league/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create template/i })).not.toBeInTheDocument();
+  });
+
   it('creates a template from an unsaved create-mode draft', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
@@ -1155,8 +1198,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    const createTemplateButton = await screen.findByRole('button', { name: /create template/i });
-    fireEvent.click(createTemplateButton);
+    await clickMoreAction(/create template/i);
 
     await waitFor(() => {
       expect(eventService.createEvent).toHaveBeenCalledTimes(1);
@@ -1374,8 +1416,7 @@ describe('League schedule page', () => {
 
     renderWithMantine(<LeagueSchedulePage />);
 
-    const createTemplateButton = await screen.findByRole('button', { name: /create template/i });
-    fireEvent.click(createTemplateButton);
+    await clickMoreAction(/create template/i);
 
     await waitFor(() => {
       expect(eventService.createEvent).toHaveBeenCalledTimes(1);
@@ -1589,6 +1630,28 @@ describe('League schedule page', () => {
     expect(await screen.findByText(/Edit Match/)).toBeInTheDocument();
   });
 
+  it('stages calendar drag edits for matches in manage mode', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const saveButton = await screen.findByRole('button', { name: /^save$/i });
+    expect(saveButton).toBeDisabled();
+
+    fireEvent.click(await screen.findByRole('button', { name: /move first match/i }));
+
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
+    expect(await screen.findByRole('button', { name: /changes \(1\)/i })).toBeInTheDocument();
+  });
+
   it('does not delete events when cancelling preview', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
@@ -1608,8 +1671,7 @@ describe('League schedule page', () => {
       expect(screen.getByText(/Summer League/)).toBeInTheDocument();
     });
 
-    const cancelButton = await screen.findByRole('button', { name: /cancel manage/i });
-    fireEvent.click(cancelButton);
+    await clickMoreAction(/cancel manage/i);
 
     await waitFor(() => {
       expect(mockRouter.back.mock.calls.length + mockRouter.push.mock.calls.length).toBeGreaterThan(0);
@@ -2005,7 +2067,7 @@ describe('League schedule page', () => {
     expect(await screen.findByText(/Summer League/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('tab', { name: /schedule/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /^reschedule$/i }));
+    await clickMoreAction(/^reschedule$/i);
 
     await waitFor(() => {
       expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);
@@ -2097,7 +2159,7 @@ describe('League schedule page', () => {
     });
 
     fireEvent.click(screen.getByRole('tab', { name: /schedule/i }));
-    fireEvent.click(await screen.findByRole('button', { name: /^reschedule$/i }));
+    await clickMoreAction(/^reschedule$/i);
 
     await waitFor(() => {
       expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);
@@ -2194,9 +2256,10 @@ describe('League schedule page', () => {
     expect(saveButton).toBeDisabled();
     expect(eventService.updateEvent).not.toHaveBeenCalled();
 
-    const rescheduleButton = await screen.findByRole('button', { name: /^reschedule$/i });
+    await openMoreActionsMenu();
+    const rescheduleButton = await screen.findByRole('menuitem', { name: /^reschedule$/i });
     expect(rescheduleButton).toBeEnabled();
-    fireEvent.click(rescheduleButton);
+    await clickMoreActionElement(rescheduleButton);
 
     await waitFor(() => {
       expect(eventService.scheduleEvent).toHaveBeenCalledTimes(1);

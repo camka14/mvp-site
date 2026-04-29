@@ -28,6 +28,7 @@ import { useApp } from '@/app/providers';
 import type { Event, Field, Match, Team } from '@/types';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
+import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
 
 type SchedulePayload = {
@@ -245,12 +246,18 @@ function MySchedulePageContent() {
     return scheduleEntries.filter((entry) => entry.end.getTime() >= now);
   }, [scheduleEntries]);
 
+  const eventColorReferenceList = useMemo(() => {
+    return buildUniqueColorReferenceList(scheduleEntries.map((entry) => entry.resource.eventName));
+  }, [scheduleEntries]);
+
   const EventTile = ({ event }: EventProps<ScheduleCalendarEvent>) => (
     <SharedCalendarEvent
       title={event.title}
       subtitle={event.resource.subtitle}
       meta={event.resource.kind === 'match' ? event.resource.eventName : undefined}
       colorSeed={event.resource.eventId || event.title}
+      colorReferenceList={eventColorReferenceList}
+      colorMatchKey={event.resource.eventName}
       compact
     />
   );
