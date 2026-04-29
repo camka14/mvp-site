@@ -9,6 +9,7 @@ const getOrganizationsByOwnerMock = jest.fn();
 const getFieldEventsMatchesMock = jest.fn();
 const updateRentalSlotMock = jest.fn();
 const getNextRentalOccurrenceMock = jest.fn();
+const mockShowNotification = jest.fn();
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -31,20 +32,25 @@ jest.mock('react-big-calendar', () => {
         <div data-testid="calendar-date">{resolvedDate.toISOString()}</div>
         {events.map((event: any) => {
           const canDrag = typeof draggableAccessor === 'function' ? Boolean(draggableAccessor(event)) : false;
+          const resourceId = event.resource?.$id ?? event.id;
           return (
-            <button
-              key={event.id}
-              type="button"
-              disabled={!canDrag}
-              onClick={() => onEventDrop?.({
-                event,
-                start: new Date('2026-03-11T12:00:00.000Z'),
-                end: new Date('2026-03-11T13:00:00.000Z'),
-                resourceId: event.resourceId,
-              })}
-            >
-              Drag {event.title}
-            </button>
+            <div key={event.id}>
+              <button
+                type="button"
+                disabled={!canDrag}
+                onClick={() => onEventDrop?.({
+                  event,
+                  start: new Date('2026-03-11T12:00:00.000Z'),
+                  end: new Date('2026-03-11T13:00:00.000Z'),
+                  resourceId: event.resourceId,
+                })}
+              >
+                Drag {event.title}
+              </button>
+              <div data-testid={`event-range-${resourceId}`}>
+                {event.start.toISOString()}|{event.end.toISOString()}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -80,6 +86,54 @@ jest.mock('@/lib/fieldService', () => ({
 jest.mock('@/app/discover/utils/rentals', () => ({
   getNextRentalOccurrence: (...args: any[]) => getNextRentalOccurrenceMock(...args),
 }));
+
+jest.mock('@mantine/notifications', () => ({
+  notifications: {
+    show: (...args: any[]) => mockShowNotification(...args),
+  },
+}));
+
+const buildOrganizationWithRentalSlot = () => ({
+  $id: 'org_test',
+  name: 'Test',
+  ownerId: 'owner_1',
+  hasStripeAccount: false,
+  fieldIds: ['field_main'],
+  fields: [
+    {
+      $id: 'field_main',
+      name: 'Main',
+      location: '',
+      lat: 0,
+      long: 0,
+      rentalSlotIds: ['slot_1'],
+      rentalSlots: [
+        {
+          $id: 'slot_1',
+          repeating: true,
+          dayOfWeek: 1,
+          daysOfWeek: [1],
+          startDate: '2026-01-01T00:00:00.000Z',
+          endDate: '2026-12-31T23:59:00.000Z',
+          startTimeMinutes: 600,
+          endTimeMinutes: 660,
+          scheduledFieldId: 'field_main',
+          scheduledFieldIds: ['field_main'],
+        },
+      ],
+    },
+  ],
+}) as any;
+
+const originalRentalRangeText = [
+  new Date(2026, 2, 10, 10, 0, 0, 0).toISOString(),
+  new Date(2026, 2, 10, 11, 0, 0, 0).toISOString(),
+].join('|');
+
+const draggedRentalRangeText = [
+  new Date('2026-03-11T12:00:00.000Z').toISOString(),
+  new Date('2026-03-11T13:00:00.000Z').toISOString(),
+].join('|');
 
 describe('FieldsTabContent calendar navigation', () => {
   beforeEach(() => {
@@ -358,5 +412,105 @@ describe('FieldsTabContent calendar navigation', () => {
       startTimeMinutes: expectedStartMinutes,
       endTimeMinutes: expectedEndMinutes,
     }));
+  });
+
+  it('updates dragged rental slots locally while the edit request is pending', async () => {
+    const rentalDate = new Date('2026-03-10T10:00:00.000Z');
+    getNextRentalOccurrenceMock.mockReturnValue(rentalDate);
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+
+    let resolveUpdate: (() => void) | null = null;
+    updateRentalSlotMock.mockImplementation((field, slot) => new Promise((resolve) => {
+      resolveUpdate = () => resolve({
+        field: {
+          ...field,
+          rentalSlots: [{ ...slot }],
+        },
+        slot,
+      });
+    }));
+
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithRentalSlot()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByTestId('event-range-slot_1')).toHaveTextContent(originalRentalRangeText);
+
+    await user.click(screen.getByRole('button', { name: 'Drag Rental Slot' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('event-range-slot_1')).toHaveTextContent(draggedRentalRangeText);
+    });
+    expect(updateRentalSlotMock).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveUpdate?.();
+      await Promise.resolve();
+    });
+  });
+
+  it('rolls back a dragged rental slot when the edit request fails', async () => {
+    const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const rentalDate = new Date('2026-03-10T10:00:00.000Z');
+    getNextRentalOccurrenceMock.mockReturnValue(rentalDate);
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+
+    let rejectUpdate: ((error: Error) => void) | null = null;
+    updateRentalSlotMock.mockImplementation(() => new Promise((_, reject) => {
+      rejectUpdate = reject;
+    }));
+
+    const user = userEvent.setup();
+
+    try {
+      render(
+        <MantineProvider>
+          <FieldsTabContent
+            organization={buildOrganizationWithRentalSlot()}
+            organizationId="org_test"
+            currentUser={{ $id: 'owner_1' } as any}
+          />
+        </MantineProvider>,
+      );
+
+      expect(await screen.findByTestId('event-range-slot_1')).toHaveTextContent(originalRentalRangeText);
+
+      await user.click(screen.getByRole('button', { name: 'Drag Rental Slot' }));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('event-range-slot_1')).toHaveTextContent(draggedRentalRangeText);
+      });
+
+      await act(async () => {
+        rejectUpdate?.(new Error('Network down'));
+        await Promise.resolve();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('event-range-slot_1')).toHaveTextContent(originalRentalRangeText);
+      });
+      expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({
+        color: 'yellow',
+        message: expect.stringContaining('returned to its previous time'),
+      }));
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

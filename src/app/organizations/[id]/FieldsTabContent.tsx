@@ -355,6 +355,79 @@ const buildRentalSlotUpdateFromCalendarRange = (
   };
 };
 
+const applyRentalSlotDragUpdateToFields = (
+  fields: Field[],
+  slot: TimeSlot,
+  targetFieldId: string,
+  update: RentalSlotDragUpdate,
+): Field[] => {
+  const slotId = slot.$id;
+  const nextSlot: TimeSlot = { ...slot, ...update };
+
+  return fields.map((field) => {
+    const rentalSlots = Array.isArray(field.rentalSlots) ? field.rentalSlots : [];
+    const hasSlot = rentalSlots.some((candidate) => candidate?.$id === slotId);
+    const isTargetField = field.$id === targetFieldId;
+    if (!hasSlot && !isTargetField) {
+      return field;
+    }
+
+    const nextRentalSlots = isTargetField
+      ? hasSlot
+        ? rentalSlots.map((candidate) => (candidate?.$id === slotId ? nextSlot : candidate))
+        : [...rentalSlots, nextSlot]
+      : rentalSlots.filter((candidate) => candidate?.$id !== slotId);
+    const rentalSlotIds = Array.isArray(field.rentalSlotIds)
+      ? field.rentalSlotIds
+      : rentalSlots.map((candidate) => candidate?.$id).filter((id): id is string => Boolean(id));
+    const nextRentalSlotIds = isTargetField
+      ? Array.from(new Set([...rentalSlotIds, slotId]))
+      : rentalSlotIds.filter((id) => id !== slotId);
+
+    return {
+      ...field,
+      rentalSlots: nextRentalSlots,
+      rentalSlotIds: nextRentalSlotIds,
+    };
+  });
+};
+
+const restoreRentalSlotDragInFields = (
+  currentFields: Field[],
+  originalFields: Field[],
+  slotId: string,
+): Field[] => {
+  const originalByFieldId = new Map(originalFields.map((field) => [field.$id, field]));
+
+  return currentFields.map((field) => {
+    const originalField = originalByFieldId.get(field.$id);
+    const currentSlots = Array.isArray(field.rentalSlots) ? field.rentalSlots : [];
+    const originalSlots = Array.isArray(originalField?.rentalSlots) ? originalField.rentalSlots : [];
+    const originalSlot = originalSlots.find((candidate) => candidate?.$id === slotId);
+    const currentHasSlot = currentSlots.some((candidate) => candidate?.$id === slotId);
+    const currentSlotIds = Array.isArray(field.rentalSlotIds) ? field.rentalSlotIds : [];
+    const originalSlotIds = Array.isArray(originalField?.rentalSlotIds) ? originalField.rentalSlotIds : [];
+    const originalHasSlotId = originalSlotIds.includes(slotId) || Boolean(originalSlot);
+
+    if (!currentHasSlot && !originalSlot && !currentSlotIds.includes(slotId) && !originalHasSlotId) {
+      return field;
+    }
+
+    const nextRentalSlots = originalSlot
+      ? [...currentSlots.filter((candidate) => candidate?.$id !== slotId), originalSlot]
+      : currentSlots.filter((candidate) => candidate?.$id !== slotId);
+    const nextRentalSlotIds = originalHasSlotId
+      ? Array.from(new Set([...currentSlotIds.filter((id) => id !== slotId), slotId]))
+      : currentSlotIds.filter((id) => id !== slotId);
+
+    return {
+      ...field,
+      rentalSlots: nextRentalSlots,
+      rentalSlotIds: nextRentalSlotIds,
+    };
+  });
+};
+
 const rentalSlotCoversDraftDay = (
   slot: TimeSlot,
   params: {
@@ -1481,6 +1554,18 @@ export default function FieldsTabContent({
         return;
       }
 
+      const originalFields = fields;
+      const originalStart = event.start instanceof Date ? new Date(event.start) : null;
+      setOrg((prev) => {
+        if (!prev) return prev;
+        const prevFields = Array.isArray(prev.fields) ? prev.fields : [];
+        return {
+          ...prev,
+          fields: applyRentalSlotDragUpdateToFields(prevFields, slot, ownerField.$id, updatePayload),
+        };
+      });
+      setCalendarDate(nextStart);
+
       try {
         const result = await fieldService.updateRentalSlot(ownerField, updatePayload);
         setOrg((prev) => {
@@ -1491,12 +1576,25 @@ export default function FieldsTabContent({
           ));
           return { ...prev, fields: nextFields };
         });
-        setCalendarDate(nextStart);
         notifications.show({ color: 'green', message: 'Rental slot moved.' });
         await refreshOrganization();
       } catch (error) {
         console.error('Failed to move rental slot:', error);
-        notifications.show({ color: 'red', message: 'Failed to move rental slot. Please try again.' });
+        setOrg((prev) => {
+          if (!prev) return prev;
+          const prevFields = Array.isArray(prev.fields) ? prev.fields : [];
+          return {
+            ...prev,
+            fields: restoreRentalSlotDragInFields(prevFields, originalFields, slot.$id),
+          };
+        });
+        if (originalStart) {
+          setCalendarDate(originalStart);
+        }
+        notifications.show({
+          color: 'yellow',
+          message: 'Rental slot could not be moved. It has been returned to its previous time.',
+        });
       }
     },
     [canManage, fields, refreshOrganization, selectedField],

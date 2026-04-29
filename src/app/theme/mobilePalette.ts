@@ -27,7 +27,7 @@ export const MOBILE_APP_THEME_TOKENS = {
   surfaceMuted: '#F2F5F8',
   border: '#D3DCE6',
   text: '#1E2633',
-  textMuted: '#5E6B78',
+  textMuted: '#035fbc',
   primary: '#19497A',
   primaryHover: '#163F69',
   primaryForeground: '#FFFFFF',
