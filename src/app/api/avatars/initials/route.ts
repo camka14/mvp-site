@@ -1,19 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import sharp from 'sharp';
-import { MOBILE_APP_AVATAR_PALETTE } from '@/app/theme/mobilePalette';
+import { getEntityColorPair } from '@/lib/entityColors';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const palette = MOBILE_APP_AVATAR_PALETTE;
-
-const hashString = (value: string): number => {
-  let hash = 0;
-  for (let i = 0; i < value.length; i += 1) {
-    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
-  }
-  return hash;
-};
 
 const extractWordInitial = (word: string): string => {
   const chars = Array.from(word.trim());
@@ -79,8 +69,7 @@ export async function GET(req: NextRequest) {
       : 'svg';
     const name = nameParam && nameParam.length > 0 ? nameParam : 'User';
     const initials = getInitials(name);
-    const paletteIndex = hashString(name) % palette.length;
-    const colors = palette[paletteIndex];
+    const colors = getEntityColorPair(name);
     const fontSize = resolveFontSize(size, initials.length);
     const escapedInitials = escapeXml(initials);
     const escapedAriaLabel = escapeXml(`${initials} avatar`);

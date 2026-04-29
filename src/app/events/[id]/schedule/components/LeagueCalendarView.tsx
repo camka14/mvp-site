@@ -14,7 +14,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import type { Field, Match, Team, UserData } from '@/types';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
-import MatchCard from './MatchCard';
+import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
 
 interface LeagueCalendarViewProps {
   matches: Match[];
@@ -651,12 +651,14 @@ export function LeagueCalendarView({
   const MonthEventComponent = useCallback(({ event }: EventProps<CalendarEvent>) => {
     const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(event.resource);
     return (
-      <div className="leading-tight text-xs">
-        <div className="font-medium truncate">{event.title}</div>
-        <div className={`truncate ${weeklyOccurrenceMeta?.isSelected ? 'text-red-600 opacity-100' : 'opacity-70'}`}>
-          {weeklyOccurrenceMeta?.divisionLabel ?? event.fieldLabel}
-        </div>
-      </div>
+      <SharedCalendarEvent
+        title={event.title}
+        subtitle={weeklyOccurrenceMeta?.divisionLabel ?? event.fieldLabel}
+        colorSeed={event.id}
+        compact
+        selected={event.hasTrackedUserMatch || Boolean(weeklyOccurrenceMeta?.isSelected)}
+        conflict={event.hasConflictMatch}
+      />
     );
   }, []);
 
@@ -672,30 +674,15 @@ export function LeagueCalendarView({
       onClick?: () => void;
       compact?: boolean;
     }) => (
-      <div
-        className={[
-          'flex h-full flex-col justify-between rounded-lg border-2 transition-all duration-200',
-          compact ? 'p-2' : 'p-3',
-          onClick ? 'cursor-pointer hover:shadow-sm' : '',
-          occurrence.isSelected
-            ? 'border-red-300 bg-red-50'
-            : 'border-blue-200 bg-white hover:border-blue-300',
-        ].join(' ')}
+      <SharedCalendarEvent
+        title={occurrence.label}
+        subtitle={occurrence.divisionLabel ?? fieldLabel}
+        meta={occurrence.isSelected ? 'Selected' : fieldLabel}
+        colorSeed={`${occurrence.slotId}-${occurrence.label}`}
+        compact={compact}
+        selected={occurrence.isSelected}
         onClick={onClick}
-      >
-        <div className="min-w-0">
-          <div className="truncate text-sm font-semibold">{occurrence.label}</div>
-          {occurrence.divisionLabel && (
-            <div className="mt-1 truncate text-xs text-gray-600">{occurrence.divisionLabel}</div>
-          )}
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-2 text-xs text-gray-500">
-          <span className="truncate">{fieldLabel}</span>
-          <span className={occurrence.isSelected ? 'font-medium text-red-600' : 'font-medium text-blue-600'}>
-            {occurrence.isSelected ? 'Selected' : 'Select'}
-          </span>
-        </div>
-      </div>
+      />
     ),
     [],
   );
@@ -715,22 +702,17 @@ export function LeagueCalendarView({
         );
       }
       return (
-        <MatchCard
-          match={event.resource}
-          canManage={canManage}
-          onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-          className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
-          layout="horizontal"
-          hideTimeBadge
-          showOfficialInHeader
-          fieldLabel={event.fieldLabel}
-          hasConflict={hasConflict}
-          officialUsersById={officialLookupById}
-          showEventOfficialNames={showEventOfficialNames}
+        <SharedCalendarEvent
+          title={event.title}
+          subtitle={event.fieldLabel}
+          meta={typeof event.resource.matchId === 'number' ? `Match #${event.resource.matchId}` : undefined}
+          colorSeed={event.id}
+          selected={shouldHighlightUser}
+          conflict={hasConflict}
         />
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, officialLookupById, onMatchClick, showEventOfficialNames],
+    [WeeklyOccurrenceEventCard, onMatchClick],
   );
 
   const AgendaEventComponent = useCallback(
@@ -762,18 +744,14 @@ export function LeagueCalendarView({
                         compact
                       />
                     ) : (
-                      <MatchCard
-                        match={match}
-                        canManage={canManage}
+                      <SharedCalendarEvent
+                        title={`${resolveTeamLabel(match, 'team1')} vs ${resolveTeamLabel(match, 'team2')}`}
+                        subtitle={fieldLabel}
+                        meta={typeof match.matchId === 'number' ? `Match #${match.matchId}` : undefined}
+                        colorSeed={matchId || `${event.id}-${index}`}
+                        selected={shouldHighlightUser}
+                        conflict={hasConflict}
                         onClick={onMatchClick ? () => onMatchClick(match) : undefined}
-                        className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
-                        layout="horizontal"
-                        hideTimeBadge
-                        showOfficialInHeader
-                        fieldLabel={fieldLabel}
-                        hasConflict={hasConflict}
-                        officialUsersById={officialLookupById}
-                        showEventOfficialNames={showEventOfficialNames}
                       />
                     )}
                   </div>
@@ -784,7 +762,7 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, conflictMatchIdSet, fieldLookup, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
   );
 
   const components = useMemo(
@@ -884,22 +862,11 @@ export function LeagueCalendarView({
 
   return (
     <>
-        <style jsx global>{`
-        .rbc-event-label {
-          display: none;
-        }
-
-        .rbc-event,
-        .rbc-background-event {
-          z-index: 2;
-          padding: 0;
-          border: none;
-        }
-      `}</style>
       <Paper
         withBorder
         radius="md"
         p="lg"
+        className="shared-calendar-shell"
         style={{ width: '100%' }}
         data-testid="league-calendar"
       >
