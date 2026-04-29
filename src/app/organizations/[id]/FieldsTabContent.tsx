@@ -512,6 +512,7 @@ export default function FieldsTabContent({
   const DnDCalendar: any = useMemo(() => withDragAndDrop(BigCalendar), []);
 
   const [selection, setSelection] = useState<SelectionState | null>(null);
+  const [readonlyVisibleFieldIds, setReadonlyVisibleFieldIds] = useState<string[]>([]);
   const [rentalSelections, setRentalSelections] = useState<RentalDraftSelection[]>([]);
   const [calendarView, setCalendarView] = useState<View>('week');
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
@@ -576,6 +577,7 @@ export default function FieldsTabContent({
   }, [organization, organizationId]);
 
   const fields = useMemo<Field[]>(() => sortFieldsByCreatedAt(org?.fields ?? []), [org?.fields]);
+  const fieldIds = useMemo(() => fields.map((field) => field.$id), [fields]);
   const fieldOptions = useMemo(() => fields.map((field) => ({
     value: field.$id,
     label: getFieldDisplayName(field),
@@ -599,17 +601,6 @@ export default function FieldsTabContent({
   const fieldLabelById = useMemo(
     () => new Map(fieldOptions.map((option) => [option.value, option.label])),
     [fieldOptions],
-  );
-  const calendarResources = useMemo(
-    () => (
-      canManage
-        ? []
-        : fields.map((field) => ({
-          id: field.$id,
-          title: getFieldDisplayName(field),
-        }))
-    ),
-    [canManage, fields],
   );
 
   const rentalListings = useMemo(() => {
@@ -697,6 +688,16 @@ export default function FieldsTabContent({
     setCalendarDate(new Date(fallbackStart));
   }, [canManage, fields, rentalListings, rentalSelections.length]);
 
+  useEffect(() => {
+    if (canManage) {
+      return;
+    }
+    setReadonlyVisibleFieldIds((prev) => {
+      const validIds = prev.filter((fieldId) => fieldIds.includes(fieldId));
+      return validIds.length ? validIds : fieldIds;
+    });
+  }, [canManage, fieldIds]);
+
   const selectedFieldIds = useMemo(
     () => normalizeFieldIds(selection?.fieldIds ?? []),
     [selection?.fieldIds],
@@ -706,6 +707,20 @@ export default function FieldsTabContent({
     [fields, selectedFieldIds],
   );
   const selectedField = selectedFields[0] ?? null;
+  const readonlyCalendarFieldIds = useMemo(() => {
+    if (canManage) {
+      return [];
+    }
+    const validIds = readonlyVisibleFieldIds.filter((fieldId) => fieldIds.includes(fieldId));
+    return validIds.length ? validIds : fieldIds;
+  }, [canManage, fieldIds, readonlyVisibleFieldIds]);
+  const readonlyCalendarFields = useMemo(
+    () => fields.filter((field) => readonlyCalendarFieldIds.includes(field.$id)),
+    [fields, readonlyCalendarFieldIds],
+  );
+  const handleReadonlyVisibleFieldIdsChange = useCallback((values: string[]) => {
+    setReadonlyVisibleFieldIds(normalizeFieldIds(values));
+  }, []);
   const handleSelectedFieldIdsChange = useCallback((values: string[]) => {
     const nextValues = normalizeFieldIds(values);
     setSelection((prev) => {
@@ -775,11 +790,11 @@ export default function FieldsTabContent({
   const fieldIdsToHydrate = useMemo(
     () => resolveFieldIdsForCalendarHydration({
       canManage,
-      fields,
+      fields: canManage ? fields : readonlyCalendarFields,
       selectedFieldIds,
       rentalSelections,
     }),
-    [canManage, fields, rentalSelections, selectedFieldIds],
+    [canManage, fields, readonlyCalendarFields, rentalSelections, selectedFieldIds],
   );
   const fieldEventsRequestKey = useMemo(
     () => (
@@ -842,7 +857,11 @@ export default function FieldsTabContent({
         return;
       }
 
+      const visibleFieldIdSet = new Set(readonlyCalendarFieldIds);
       fieldIds.forEach((fieldId) => {
+        if (!visibleFieldIdSet.has(fieldId)) {
+          return;
+        }
         const field = byId.get(fieldId);
         if (!field) {
           return;
@@ -860,32 +879,33 @@ export default function FieldsTabContent({
       });
     });
     return draftEvents;
-  }, [calendarRange.end, calendarRange.start, canManage, fields, rentalSelections, selectedField, selectedFieldIds, selection]);
+  }, [calendarRange.end, calendarRange.start, canManage, fields, readonlyCalendarFieldIds, rentalSelections, selectedField, selectedFieldIds, selection]);
 
   const baseCalendarEvents = useMemo<FieldCalendarEntry[]>(() => {
-    if (canManage) {
-      if (!selectedFields.length) {
-        return [];
-      }
-      const events = buildFieldCalendarEvents(selectedFields, calendarRange) as FieldCalendarEntry[];
-      const seenBookedKeys = new Set<string>();
-      return events.filter((event) => {
-        if (event.metaType !== 'booked') {
-          return true;
-        }
-        const resource = event.resource as { $id?: string } | undefined;
-        const resourceId = typeof resource?.$id === 'string' ? resource.$id : '';
-        const entryType = event.id.includes('field-booked-match-') ? 'match' : 'event';
-        const dedupeKey = `${entryType}:${resourceId || event.start.toISOString()}:${event.end.toISOString()}`;
-        if (seenBookedKeys.has(dedupeKey)) {
-          return false;
-        }
-        seenBookedKeys.add(dedupeKey);
-        return true;
-      });
+    const sourceFields = canManage ? selectedFields : readonlyCalendarFields;
+    if (!sourceFields.length) {
+      return [];
     }
-    return buildFieldCalendarEvents(fields, calendarRange) as FieldCalendarEntry[];
-  }, [calendarRange, canManage, fields, selectedFields]);
+    const events = buildFieldCalendarEvents(sourceFields, calendarRange) as FieldCalendarEntry[];
+    if (!canManage) {
+      return events;
+    }
+    const seenBookedKeys = new Set<string>();
+    return events.filter((event) => {
+      if (event.metaType !== 'booked') {
+        return true;
+      }
+      const resource = event.resource as { $id?: string } | undefined;
+      const resourceId = typeof resource?.$id === 'string' ? resource.$id : '';
+      const entryType = event.id.includes('field-booked-match-') ? 'match' : 'event';
+      const dedupeKey = `${entryType}:${resourceId || event.start.toISOString()}:${event.end.toISOString()}`;
+      if (seenBookedKeys.has(dedupeKey)) {
+        return false;
+      }
+      seenBookedKeys.add(dedupeKey);
+      return true;
+    });
+  }, [calendarRange, canManage, readonlyCalendarFields, selectedFields]);
 
   const calendarEvents = useMemo<CalendarEventData[]>(
     () => [...baseCalendarEvents, ...selectionCalendarEvents],
@@ -1620,24 +1640,29 @@ export default function FieldsTabContent({
       }
 
       const slotEnd = slotEndRaw;
-      const resourceFieldId = typeof slotInfo.resourceId === 'string'
-        ? slotInfo.resourceId
-        : fields[0]?.$id;
-      if (!resourceFieldId) {
+      const resourceFieldIds = typeof slotInfo.resourceId === 'string'
+        ? [slotInfo.resourceId]
+        : readonlyCalendarFieldIds;
+      const selectedResourceFieldIds = normalizeFieldIds(resourceFieldIds);
+      const primaryResourceFieldId = selectedResourceFieldIds[0] ?? fields[0]?.$id;
+      if (!primaryResourceFieldId) {
         return;
       }
-      if (isBlockedRange(slotStart, slotEnd, resourceFieldId)) {
+      if (selectedResourceFieldIds.some((fieldId) => isBlockedRange(slotStart, slotEnd, fieldId))) {
         notifications.show({
           color: 'red',
-          message: 'That time range is already booked for this field.',
+          message: 'That time range is already booked for one of the selected fields.',
         });
         return;
       }
-      const nextSelection = buildSelectionFromCalendarRange(slotStart, slotEnd, resourceFieldId);
+      const nextSelection = {
+        ...buildSelectionFromCalendarRange(slotStart, slotEnd, primaryResourceFieldId),
+        scheduledFieldIds: selectedResourceFieldIds.length ? selectedResourceFieldIds : [primaryResourceFieldId],
+      };
       setRentalSelections((prev) => [nextSelection, ...prev]);
       setCalendarDate(slotStart);
     },
-    [canManage, fields, isBlockedRange],
+    [canManage, fields, isBlockedRange, readonlyCalendarFieldIds],
   );
 
   const handleEventDrop = useCallback(
@@ -1969,7 +1994,9 @@ export default function FieldsTabContent({
       </div>
     );
   }, [fieldEventsLoading]);
-  const canRenderCalendar = canManage ? Boolean(selectedFieldIds.length > 0 && selection) : fields.length > 0;
+  const canRenderCalendar = canManage
+    ? Boolean(selectedFieldIds.length > 0 && selection)
+    : readonlyCalendarFields.length > 0;
   const fieldCalendarNode = canRenderCalendar ? (
     <div
       className="shared-calendar-shell shared-calendar-shell--fields"
@@ -1992,9 +2019,6 @@ export default function FieldsTabContent({
         popup
         selectable
         resizable
-        resources={!canManage ? calendarResources : undefined}
-        resourceIdAccessor={!canManage ? 'id' : undefined}
-        resourceTitleAccessor={!canManage ? 'title' : undefined}
         startAccessor="start"
         endAccessor="end"
         style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
@@ -2281,15 +2305,23 @@ export default function FieldsTabContent({
           )}
 
           {!canManage && (
-            <>
-              <Text size="sm" c="dimmed">
-                Click empty time ranges in the calendar to add selections. Drag or resize a highlighted selection to update its date/time across selected fields.
-              </Text>
-              {fieldCalendarNode}
-              <Text size="sm" c={summaryColor}>
-                {summaryText}
-              </Text>
-            </>
+            <div className="shared-calendar-layout">
+              <FieldCalendarFilter
+                items={fieldFilterItems}
+                selectedIds={readonlyCalendarFieldIds}
+                onSelectedIdsChange={handleReadonlyVisibleFieldIdsChange}
+                colorReferenceList={fieldColorReferenceList}
+              />
+              <Stack gap="sm" className="min-w-0">
+                <Text size="sm" c="dimmed">
+                  Click empty time ranges in the calendar to add selections. Drag or resize a highlighted selection to update its date/time across selected fields.
+                </Text>
+                {fieldCalendarNode}
+                <Text size="sm" c={summaryColor}>
+                  {summaryText}
+                </Text>
+              </Stack>
+            </div>
           )}
 
           {!canManage && (
