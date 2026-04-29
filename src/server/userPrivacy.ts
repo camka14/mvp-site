@@ -152,10 +152,14 @@ export const createVisibilityContext = async (
       findUnique: (args: any) => Promise<{
         hostId: string | null;
         organizationId: string | null;
-        teamIds: string[];
-        freeAgentIds: string[];
-        userIds: string[];
       } | null>;
+    };
+    eventRegistrations: {
+      findMany: (args: any) => Promise<Array<{
+        registrantId: string;
+        registrantType: string;
+        rosterRole: string | null;
+      }>>;
     };
     organizations: {
       findMany: (args: any) => Promise<Array<{ id: string }>>;
@@ -292,24 +296,40 @@ export const createVisibilityContext = async (
       select: {
         hostId: true,
         organizationId: true,
-        teamIds: true,
-        userIds: true,
-        freeAgentIds: true,
       },
     });
 
-    const contextEventTeamIds = new Set(normalizeIdList(contextEvent?.teamIds));
+    const contextRegistrations = contextEvent
+      ? await client.eventRegistrations.findMany({
+        where: {
+          eventId: contextEventId,
+          status: { in: ['STARTED', 'ACTIVE', 'BLOCKED'] },
+          slotId: null,
+          occurrenceDate: null,
+        },
+        select: {
+          registrantId: true,
+          registrantType: true,
+          rosterRole: true,
+        },
+      })
+      : [];
+    const contextEventTeamIds = new Set(
+      normalizeIdList(contextRegistrations
+        .filter((row) => row.registrantType === 'TEAM' && (row.rosterRole ?? 'PARTICIPANT') === 'PARTICIPANT')
+        .map((row) => row.registrantId)),
+    );
     const contextEventTeamIdValues = Array.from(contextEventTeamIds);
     contextEventAllowsParent = contextEventTeamIdValues.some((teamId) => parentTeamIds.has(teamId));
     contextEventAllowsHost = normalizeId(contextEvent?.hostId ?? null) === viewerId;
     contextOrganizationId = normalizeId(contextEvent?.organizationId ?? null) ?? contextOrganizationId;
 
-    if (contextEvent?.freeAgentIds?.length) {
-      contextEventFreeAgentIds = new Set([
-        ...Array.from(contextEventFreeAgentIds),
-        ...normalizeIdList(contextEvent.freeAgentIds),
-      ]);
-    }
+    contextEventFreeAgentIds = new Set([
+      ...Array.from(contextEventFreeAgentIds),
+      ...normalizeIdList(contextRegistrations
+        .filter((row) => (row.rosterRole ?? 'PARTICIPANT') === 'FREE_AGENT')
+        .map((row) => row.registrantId)),
+    ]);
 
     let eventTeamVisibleUserIds: string[] = [];
     if (contextEventTeamIdValues.length) {
@@ -353,8 +373,9 @@ export const createVisibilityContext = async (
     }
 
     contextEventVisibleUserIds = new Set(normalizeIdList([
-      ...(contextEvent?.userIds ?? []),
-      ...(contextEvent?.freeAgentIds ?? []),
+      ...contextRegistrations
+        .filter((row) => row.registrantType !== 'TEAM')
+        .map((row) => row.registrantId),
       ...eventTeamVisibleUserIds,
     ]));
   }

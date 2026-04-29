@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
 import { calculateAgeOnDate } from '@/lib/age';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 import {
   buildRequiredSignatureTasks,
   buildSignatureCompletionKey,
@@ -118,7 +119,6 @@ export async function GET(
       hostId: true,
       assistantHostIds: true,
       organizationId: true,
-      teamIds: true,
       requiredTemplateIds: true,
     },
   });
@@ -143,7 +143,8 @@ export async function GET(
     return NextResponse.json(payload, { status: 200 });
   }
 
-  const teamIds = normalizeIdList(event.teamIds);
+  const participantIds = await getEventParticipantIdsForEvent(event.id);
+  const teamIds = participantIds.teamIds;
   if (!teamIds.length) {
     const payload: EventTeamComplianceResponse = { teams: [] };
     return NextResponse.json(payload, { status: 200 });

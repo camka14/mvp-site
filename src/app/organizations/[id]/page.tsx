@@ -232,11 +232,33 @@ type OrganizationUserDocumentSummary = {
 
 type OrganizationUserSummary = {
   userId: string;
+  firstName?: string;
+  lastName?: string;
   fullName: string;
   userName?: string;
+  profileImageId?: string | null;
   events: OrganizationUserEventSummary[];
   documents: OrganizationUserDocumentSummary[];
 };
+
+const buildOrganizationUserCardData = (summary: OrganizationUserSummary): UserData => ({
+  $id: summary.userId,
+  firstName: summary.firstName ?? '',
+  lastName: summary.lastName ?? '',
+  displayName: summary.fullName,
+  userName: summary.userName ?? '',
+  teamIds: [],
+  friendIds: [],
+  friendRequestIds: [],
+  friendRequestSentIds: [],
+  followingIds: [],
+  blockedUserIds: [],
+  hiddenEventIds: [],
+  uploadedImages: [],
+  profileImageId: summary.profileImageId ?? undefined,
+  fullName: summary.fullName,
+  avatarUrl: '',
+});
 
 const mapOrganizationUserRow = (row: Record<string, any>): OrganizationUserSummary => {
   const eventsRaw = Array.isArray(row?.events) ? row.events : [];
@@ -272,8 +294,11 @@ const mapOrganizationUserRow = (row: Record<string, any>): OrganizationUserSumma
 
   return {
     userId: String(row?.userId ?? ''),
+    firstName: typeof row?.firstName === 'string' ? row.firstName : undefined,
+    lastName: typeof row?.lastName === 'string' ? row.lastName : undefined,
     fullName: typeof row?.fullName === 'string' && row.fullName.trim() ? row.fullName.trim() : 'Unknown User',
     userName: typeof row?.userName === 'string' ? row.userName : undefined,
+    profileImageId: typeof row?.profileImageId === 'string' ? row.profileImageId : null,
     events,
     documents,
   };
@@ -2446,8 +2471,15 @@ function OrganizationDetailContent() {
                 {organizationUsersLoading ? (
                   <Text size="sm" c="dimmed">Loading users...</Text>
                 ) : organizationUsers.length > 0 ? (
-                  <div style={{ overflowX: 'auto' }}>
-                    <Table withTableBorder withColumnBorders highlightOnHover miw={760}>
+                  <div
+                    style={{
+                      border: '1px solid var(--mantine-color-default-border)',
+                      borderRadius: 'var(--mantine-radius-md)',
+                      overflow: 'hidden',
+                    }}
+                  >
+                    <div style={{ overflowX: 'auto' }}>
+                      <Table withColumnBorders highlightOnHover miw={760}>
                       <Table.Thead>
                         <Table.Tr>
                           <Table.Th>User</Table.Th>
@@ -2461,15 +2493,13 @@ function OrganizationDetailContent() {
                           const expanded = expandedOrganizationUserIds.includes(summary.userId);
                           const condensedEvents = summary.events.slice(0, 2);
                           const condensedDocuments = summary.documents.slice(0, 2);
+                          const userCardData = buildOrganizationUserCardData(summary);
 
                           return (
                             <Fragment key={summary.userId}>
                               <Table.Tr>
                                 <Table.Td>
-                                  <Text fw={600}>{summary.fullName}</Text>
-                                  {summary.userName && (
-                                    <Text size="xs" c="dimmed">@{summary.userName}</Text>
-                                  )}
+                                  <UserCard user={userCardData} />
                                 </Table.Td>
                                 <Table.Td>
                                   {condensedEvents.length > 0 ? (
@@ -2600,7 +2630,8 @@ function OrganizationDetailContent() {
                           );
                         })}
                       </Table.Tbody>
-                    </Table>
+                      </Table>
+                    </div>
                   </div>
                 ) : (
                   <Text size="sm" c="dimmed">No signed-up users found yet.</Text>

@@ -355,6 +355,61 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
 };
 
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE', 'BLOCKED'] as const;
+
+const findFutureRegisteredTeamIds = async (
+  client: any,
+  teamIds: string[],
+  now: Date,
+): Promise<string[]> => {
+  const registrationRows = teamIds.length && typeof client.eventRegistrations?.findMany === 'function'
+    ? await client.eventRegistrations.findMany({
+      where: {
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
+        registrantId: { in: teamIds },
+        slotId: null,
+        occurrenceDate: null,
+      },
+      select: {
+        eventId: true,
+        registrantId: true,
+      },
+    })
+    : [];
+  const eventIds = Array.from(new Set(
+    registrationRows
+      .map((row: { eventId?: unknown }) => normalizeText(row.eventId))
+      .filter((eventId: string | undefined): eventId is string => Boolean(eventId)),
+  ));
+  if (!eventIds.length) {
+    return [];
+  }
+
+  const futureEvents = await client.events.findMany({
+    where: {
+      id: { in: eventIds },
+      end: { gte: now },
+    },
+    select: { id: true },
+  });
+  const futureEventIds = new Set(
+    futureEvents
+      .map((event: { id?: unknown }) => normalizeText(event.id))
+      .filter((eventId: string | undefined): eventId is string => Boolean(eventId)),
+  );
+
+  return Array.from(new Set(
+    registrationRows
+      .filter((row: { eventId?: unknown }) => {
+        const eventId = normalizeText(row.eventId);
+        return Boolean(eventId && futureEventIds.has(eventId));
+      })
+      .map((row: { registrantId?: unknown }) => normalizeText(row.registrantId))
+      .filter((teamId: string | undefined): teamId is string => Boolean(teamId)),
+  ));
+};
 const UNKNOWN_ARGUMENT_REGEX = /Unknown argument `([^`]+)`/i;
 
 const extractUnknownArgument = (error: unknown): string | null => {
@@ -571,7 +626,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       if (shouldSyncDerivedTeams) {
         const txTeams = getTeamsDelegate(tx);
-        if (!txTeams?.findMany || !txTeams?.update || !tx.events?.findMany) {
+        if (!txTeams?.findMany || !txTeams?.update || !tx.events?.findMany || !tx.eventRegistrations?.findMany) {
           throw new Error('Team storage is unavailable in transaction.');
         }
 
@@ -589,26 +644,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
         const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
         if (derivedTeamIds.length) {
-          const events = await tx.events.findMany({
-            where: {
-              end: { gte: now },
-              teamIds: { hasSome: derivedTeamIds },
-            },
-            select: { id: true, teamIds: true },
-          });
+          const teamIdsToUpdate = new Set(await findFutureRegisteredTeamIds(tx, derivedTeamIds, now));
 
-          if (events.length) {
-            const derivedSet = new Set(derivedTeamIds);
-            const teamIdsToUpdate = new Set<string>();
-            for (const event of events) {
-              const teamIds = Array.isArray(event.teamIds) ? event.teamIds : [];
-              for (const teamId of teamIds) {
-                if (derivedSet.has(teamId)) {
-                  teamIdsToUpdate.add(teamId);
-                }
-              }
-            }
-
+          if (teamIdsToUpdate.size) {
             const updatePayload = {
               name: nextState.name,
               playerIds: nextState.playerIds,
@@ -737,25 +775,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
     const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
     if (derivedTeamIds.length) {
-      const events = await tx.events.findMany({
-        where: {
-          end: { gte: now },
-          teamIds: { hasSome: derivedTeamIds },
-        },
-        select: { id: true, teamIds: true },
-      });
-
-      if (events.length) {
-        const derivedSet = new Set(derivedTeamIds);
-        const teamIdsToUpdate = new Set<string>();
-        for (const event of events) {
-          const teamIds = Array.isArray(event.teamIds) ? event.teamIds : [];
-          for (const teamId of teamIds) {
-            if (derivedSet.has(teamId)) {
-              teamIdsToUpdate.add(teamId);
-            }
-          }
-        }
+      const teamIdsToUpdate = new Set(await findFutureRegisteredTeamIds(tx, derivedTeamIds, now));
+      if (teamIdsToUpdate.size) {
         const updatePayload = {
           name: nextState.name,
           playerIds: nextState.playerIds,

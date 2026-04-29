@@ -371,29 +371,20 @@ describe('event DELETE route', () => {
       organizationId: null,
       fieldIds: [],
       timeSlotIds: [],
-      teamIds: ['team_copy_1', 'team_placeholder_1', 'team_canonical_keep'],
       state: 'UNPUBLISHED',
       leagueScoringConfigId: null,
-    });
-    eventsMock.findMany.mockImplementation((args: any) => {
-      if (Array.isArray(args?.where?.OR)) {
-        return Promise.resolve([
-          {
-            teamIds: ['team_copy_1', 'team_placeholder_1', 'team_canonical_keep'],
-          },
-        ]);
-      }
-      return Promise.resolve([]);
     });
     billsMock.findMany.mockResolvedValue([]);
     eventRegistrationsMock.findMany.mockImplementation((args: any) => {
       if (args?.where?.eventId === 'event_1') {
-        return Promise.resolve([]);
+        return Promise.resolve([
+          { registrantId: 'team_copy_1', registrantType: 'TEAM' },
+          { registrantId: 'team_placeholder_1', registrantType: 'TEAM' },
+          { registrantId: 'team_canonical_keep', registrantType: 'TEAM' },
+        ]);
       }
       if (args?.where?.eventId?.not === 'event_1') {
         return Promise.resolve([
-          { registrantId: 'team_copy_1' },
-          { registrantId: 'team_placeholder_1' },
           { registrantId: 'team_canonical_keep' },
         ]);
       }

@@ -392,6 +392,7 @@ export const ModelName = {
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
   Invites: 'Invites',
+  TeamInviteEventSyncs: 'TeamInviteEventSyncs',
   StaffMembers: 'StaffMembers',
   EventOfficials: 'EventOfficials',
   Teams: 'Teams',
@@ -439,7 +440,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1032,6 +1033,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.InvitesCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.InvitesCountAggregateOutputType> | number
+        }
+      }
+    }
+    TeamInviteEventSyncs: {
+      payload: Prisma.$TeamInviteEventSyncsPayload<ExtArgs>
+      fields: Prisma.TeamInviteEventSyncsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.TeamInviteEventSyncsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.TeamInviteEventSyncsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>
+        }
+        findFirst: {
+          args: Prisma.TeamInviteEventSyncsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.TeamInviteEventSyncsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>
+        }
+        findMany: {
+          args: Prisma.TeamInviteEventSyncsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>[]
+        }
+        create: {
+          args: Prisma.TeamInviteEventSyncsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>
+        }
+        createMany: {
+          args: Prisma.TeamInviteEventSyncsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.TeamInviteEventSyncsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>[]
+        }
+        delete: {
+          args: Prisma.TeamInviteEventSyncsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>
+        }
+        update: {
+          args: Prisma.TeamInviteEventSyncsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>
+        }
+        deleteMany: {
+          args: Prisma.TeamInviteEventSyncsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.TeamInviteEventSyncsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.TeamInviteEventSyncsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>[]
+        }
+        upsert: {
+          args: Prisma.TeamInviteEventSyncsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamInviteEventSyncsPayload>
+        }
+        aggregate: {
+          args: Prisma.TeamInviteEventSyncsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTeamInviteEventSyncs>
+        }
+        groupBy: {
+          args: Prisma.TeamInviteEventSyncsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamInviteEventSyncsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.TeamInviteEventSyncsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamInviteEventSyncsCountAggregateOutputType> | number
         }
       }
     }
@@ -3650,6 +3725,25 @@ export const InvitesScalarFieldEnum = {
 export type InvitesScalarFieldEnum = (typeof InvitesScalarFieldEnum)[keyof typeof InvitesScalarFieldEnum]
 
 
+export const TeamInviteEventSyncsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  inviteId: 'inviteId',
+  canonicalTeamId: 'canonicalTeamId',
+  eventId: 'eventId',
+  eventTeamId: 'eventTeamId',
+  userId: 'userId',
+  previousRegistrationSnapshot: 'previousRegistrationSnapshot',
+  eventTeamHadUser: 'eventTeamHadUser',
+  eventTeamHadPendingUser: 'eventTeamHadPendingUser',
+  sourceTeamRegistrationId: 'sourceTeamRegistrationId',
+  status: 'status'
+} as const
+
+export type TeamInviteEventSyncsScalarFieldEnum = (typeof TeamInviteEventSyncsScalarFieldEnum)[keyof typeof TeamInviteEventSyncsScalarFieldEnum]
+
+
 export const StaffMembersScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -3980,8 +4074,6 @@ export const EventsScalarFieldEnum = {
   price: 'price',
   singleDivision: 'singleDivision',
   registrationByDivisionType: 'registrationByDivisionType',
-  waitListIds: 'waitListIds',
-  freeAgentIds: 'freeAgentIds',
   cancellationRefundHours: 'cancellationRefundHours',
   teamSignup: 'teamSignup',
   prize: 'prize',
@@ -4005,8 +4097,6 @@ export const EventsScalarFieldEnum = {
   sportId: 'sportId',
   timeSlotIds: 'timeSlotIds',
   fieldIds: 'fieldIds',
-  teamIds: 'teamIds',
-  userIds: 'userIds',
   leagueScoringConfigId: 'leagueScoringConfigId',
   organizationId: 'organizationId',
   parentEvent: 'parentEvent',
@@ -4015,7 +4105,6 @@ export const EventsScalarFieldEnum = {
   officialSchedulingMode: 'officialSchedulingMode',
   doTeamsOfficiate: 'doTeamsOfficiate',
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
-  officialIds: 'officialIds',
   officialPositions: 'officialPositions',
   matchRulesOverride: 'matchRulesOverride',
   autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',
@@ -4521,6 +4610,20 @@ export type ListEnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInput
 
 
 /**
+ * Reference to a field of type 'TeamInviteEventSyncStatusEnum'
+ */
+export type EnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamInviteEventSyncStatusEnum'>
+    
+
+
+/**
+ * Reference to a field of type 'TeamInviteEventSyncStatusEnum[]'
+ */
+export type ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamInviteEventSyncStatusEnum[]'>
+    
+
+
+/**
  * Reference to a field of type 'EventTeamsKindEnum'
  */
 export type EnumEventTeamsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventTeamsKindEnum'>
@@ -5000,6 +5103,7 @@ export type GlobalOmitConfig = {
   userData?: Prisma.UserDataOmit
   sensitiveUserData?: Prisma.SensitiveUserDataOmit
   invites?: Prisma.InvitesOmit
+  teamInviteEventSyncs?: Prisma.TeamInviteEventSyncsOmit
   staffMembers?: Prisma.StaffMembersOmit
   eventOfficials?: Prisma.EventOfficialsOmit
   teams?: Prisma.TeamsOmit

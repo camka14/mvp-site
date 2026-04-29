@@ -15,6 +15,7 @@ import {
   deriveLegacyOfficialIdFromAssignments,
   normalizeMatchOfficialAssignments,
 } from '@/server/officials/config';
+import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 
@@ -693,10 +694,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           where: { id: eventId },
           data: {
             maxParticipants: nextMaxParticipants,
-            teamIds: nextTeamIds,
             updatedAt: new Date(),
           },
         });
+        if (typeof tx.eventRegistrations?.upsert === 'function') {
+          await Promise.all(teamIdsAddedForPlaceholders.map((teamId) => tx.eventRegistrations.upsert({
+            where: {
+              id: buildEventRegistrationId({
+                eventId,
+                registrantType: 'TEAM',
+                registrantId: teamId,
+              }),
+            },
+            create: {
+              id: buildEventRegistrationId({
+                eventId,
+                registrantType: 'TEAM',
+                registrantId: teamId,
+              }),
+              eventId,
+              registrantId: teamId,
+              registrantType: 'TEAM',
+              rosterRole: 'PARTICIPANT',
+              status: 'ACTIVE',
+              eventTeamId: teamId,
+              createdBy: session.userId,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            },
+            update: {
+              rosterRole: 'PARTICIPANT',
+              status: 'ACTIVE',
+              eventTeamId: teamId,
+              updatedAt: new Date(),
+            },
+          })));
+        }
 
         event.maxParticipants = nextMaxParticipants;
         event.registeredTeamIds = nextTeamIds;

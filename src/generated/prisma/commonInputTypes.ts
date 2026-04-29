@@ -361,6 +361,23 @@ export type DateTimeWithAggregatesFilter<$PrismaModel = never> = {
   _max?: Prisma.NestedDateTimeFilter<$PrismaModel>
 }
 
+export type EnumTeamInviteEventSyncStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamInviteEventSyncStatusEnum | Prisma.EnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamInviteEventSyncStatusEnum[] | Prisma.ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamInviteEventSyncStatusEnum[] | Prisma.ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamInviteEventSyncStatusEnumFilter<$PrismaModel> | $Enums.TeamInviteEventSyncStatusEnum
+}
+
+export type EnumTeamInviteEventSyncStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamInviteEventSyncStatusEnum | Prisma.EnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamInviteEventSyncStatusEnum[] | Prisma.ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamInviteEventSyncStatusEnum[] | Prisma.ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamInviteEventSyncStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamInviteEventSyncStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamInviteEventSyncStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamInviteEventSyncStatusEnumFilter<$PrismaModel>
+}
+
 export type EnumEventTeamsKindEnumNullableFilter<$PrismaModel = never> = {
   equals?: $Enums.EventTeamsKindEnum | Prisma.EnumEventTeamsKindEnumFieldRefInput<$PrismaModel> | null
   in?: $Enums.EventTeamsKindEnum[] | Prisma.ListEnumEventTeamsKindEnumFieldRefInput<$PrismaModel> | null
@@ -1113,6 +1130,23 @@ export type NestedDateTimeWithAggregatesFilter<$PrismaModel = never> = {
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedDateTimeFilter<$PrismaModel>
   _max?: Prisma.NestedDateTimeFilter<$PrismaModel>
+}
+
+export type NestedEnumTeamInviteEventSyncStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamInviteEventSyncStatusEnum | Prisma.EnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamInviteEventSyncStatusEnum[] | Prisma.ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamInviteEventSyncStatusEnum[] | Prisma.ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamInviteEventSyncStatusEnumFilter<$PrismaModel> | $Enums.TeamInviteEventSyncStatusEnum
+}
+
+export type NestedEnumTeamInviteEventSyncStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamInviteEventSyncStatusEnum | Prisma.EnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamInviteEventSyncStatusEnum[] | Prisma.ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamInviteEventSyncStatusEnum[] | Prisma.ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamInviteEventSyncStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamInviteEventSyncStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamInviteEventSyncStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamInviteEventSyncStatusEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumEventTeamsKindEnumNullableFilter<$PrismaModel = never> = {

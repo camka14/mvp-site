@@ -199,6 +199,16 @@ export const TeamMembershipStatusEnum = {
 export type TeamMembershipStatusEnum = (typeof TeamMembershipStatusEnum)[keyof typeof TeamMembershipStatusEnum]
 
 
+export const TeamInviteEventSyncStatusEnum = {
+  PENDING: 'PENDING',
+  ACCEPTED: 'ACCEPTED',
+  DECLINED: 'DECLINED',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type TeamInviteEventSyncStatusEnum = (typeof TeamInviteEventSyncStatusEnum)[keyof typeof TeamInviteEventSyncStatusEnum]
+
+
 export const TeamStaffAssignmentsRoleEnum = {
   MANAGER: 'MANAGER',
   HEAD_COACH: 'HEAD_COACH',

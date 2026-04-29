@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyList } from '@/server/legacyFormat';
+import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
+import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
 import { getCanonicalTeamIdsByUserIds } from '@/server/teams/teamMembership';
 
 export const dynamic = 'force-dynamic';
@@ -74,19 +76,25 @@ export async function GET(req: NextRequest) {
   const registeredEventIds = uniqueStrings(
     registrationRows.map((row: { eventId?: unknown }) => String(row.eventId ?? '').trim()),
   );
+  const officialRows = typeof (prisma as any).eventOfficials?.findMany === 'function'
+    ? await (prisma as any).eventOfficials.findMany({
+      where: {
+        userId: user.id,
+        isActive: { not: false },
+      },
+      select: { eventId: true },
+    })
+    : [];
+  const officialEventIds = uniqueStrings(
+    officialRows.map((row: { eventId?: unknown }) => String(row.eventId ?? '').trim()),
+  );
+  const involvedEventIds = uniqueStrings([...registeredEventIds, ...officialEventIds]);
 
   const involvementFilters: Record<string, unknown>[] = [
     { hostId: user.id },
-    { userIds: { has: user.id } },
-    { freeAgentIds: { has: user.id } },
-    { waitListIds: { has: user.id } },
-    { officialIds: { has: user.id } },
   ];
-  if (relevantTeamIds.length) {
-    involvementFilters.push({ teamIds: { hasSome: relevantTeamIds } });
-  }
-  if (registeredEventIds.length) {
-    involvementFilters.push({ id: { in: registeredEventIds } });
+  if (involvedEventIds.length) {
+    involvementFilters.push({ id: { in: involvedEventIds } });
   }
 
   const where: Record<string, unknown> = {
@@ -110,8 +118,14 @@ export async function GET(req: NextRequest) {
     take: limit,
     orderBy: { start: 'asc' },
   });
+  const enrichedEvents = await withDerivedEventParticipantIds(events, prisma);
 
   const eventIds = events.map((event) => event.id);
+  const officialIdsByEventId = await getEventOfficialIdsByEventIds(eventIds, prisma);
+  const eventDtos = enrichedEvents.map((event) => ({
+    ...event,
+    officialIds: officialIdsByEventId.get(event.id) ?? [],
+  }));
   const matchFilters: Record<string, unknown>[] = [{ officialId: user.id }];
   if (relevantTeamIds.length) {
     matchFilters.push(
@@ -137,7 +151,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   const relatedTeamIds = uniqueStrings([
-    ...events.flatMap((event) => (Array.isArray(event.teamIds) ? event.teamIds : [])),
+    ...eventDtos.flatMap((event) => event.teamIds),
     ...matches.flatMap((match) => [match.team1Id, match.team2Id, match.teamOfficialId]),
   ]);
 
@@ -157,7 +171,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   return NextResponse.json({
-    events: withLegacyList(events),
+    events: withLegacyList(eventDtos),
     matches: withLegacyList(matches),
     fields: withLegacyList(fields),
     teams: withLegacyList(teams as Record<string, any>[]),

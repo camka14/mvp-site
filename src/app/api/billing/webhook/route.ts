@@ -60,19 +60,6 @@ const toIntOrNull = (value: unknown): number | null => {
   return null;
 };
 
-const normalizeIdList = (value: unknown): string[] => {
-  if (!Array.isArray(value)) return [];
-  const normalized = value
-    .map((entry) => toStringOrNull(entry))
-    .filter((entry): entry is string => Boolean(entry));
-  return Array.from(new Set(normalized));
-};
-
-const sameOrderedIds = (left: string[], right: string[]): boolean => {
-  if (left.length !== right.length) return false;
-  return left.every((value, index) => value === right[index]);
-};
-
 const SUPPORTED_EVENT_TYPES = new Set([
   'account.updated',
   'payment_intent.succeeded',
@@ -202,19 +189,11 @@ const ensureEventRegistrationFromPurchase = async ({
         id: string;
         eventType: string | null;
         teamSignup: boolean | null;
-        teamIds: unknown;
-        userIds: unknown;
-        waitListIds: unknown;
-        freeAgentIds: unknown;
       }>>`
         SELECT
           "id",
           "eventType",
-          "teamSignup",
-          "teamIds",
-          "userIds",
-          "waitListIds",
-          "freeAgentIds"
+          "teamSignup"
         FROM "Events"
         WHERE "id" = ${eventId}
         FOR UPDATE
@@ -253,25 +232,6 @@ const ensureEventRegistrationFromPurchase = async ({
           return { applied: false, reason: 'reservation_missing' };
         }
 
-        const currentTeamIds = normalizeIdList(event.teamIds);
-        const currentWaitListIds = normalizeIdList(event.waitListIds);
-        const nextTeamIds = currentTeamIds.includes(teamId) ? currentTeamIds : [...currentTeamIds, teamId];
-        const nextWaitListIds = currentWaitListIds.filter((value) => value !== teamId);
-
-        if (
-          !sameOrderedIds(currentTeamIds, nextTeamIds) ||
-          !sameOrderedIds(currentWaitListIds, nextWaitListIds)
-        ) {
-          await tx.events.update({
-            where: { id: eventId },
-            data: {
-              teamIds: nextTeamIds,
-              waitListIds: nextWaitListIds,
-              updatedAt: now,
-            },
-          });
-        }
-
         if (!existingRegistration) {
           await tx.eventRegistrations.create({
             data: {
@@ -301,6 +261,21 @@ const ensureEventRegistrationFromPurchase = async ({
             },
           });
         }
+        await tx.eventRegistrations.updateMany({
+          where: {
+            eventId,
+            registrantId: teamId,
+            registrantType: 'TEAM',
+            rosterRole: 'WAITLIST',
+            status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+            slotId: occurrenceSlotId,
+            occurrenceDate,
+          },
+          data: {
+            status: 'CANCELLED',
+            updatedAt: now,
+          },
+        });
 
         return { applied: true };
       }
@@ -329,31 +304,6 @@ const ensureEventRegistrationFromPurchase = async ({
       if (!existingRegistration && normalizedRegistrationId) {
         return { applied: false, reason: 'reservation_missing' };
       }
-      const currentUserIds = normalizeIdList(event.userIds);
-      const currentWaitListIds = normalizeIdList(event.waitListIds);
-      const currentFreeAgentIds = normalizeIdList(event.freeAgentIds);
-      const nextUserIds = currentUserIds.includes(participantUserId)
-        ? currentUserIds
-        : [...currentUserIds, participantUserId];
-      const nextWaitListIds = currentWaitListIds.filter((value) => value !== participantUserId);
-      const nextFreeAgentIds = currentFreeAgentIds.filter((value) => value !== participantUserId);
-
-      if (
-        !sameOrderedIds(currentUserIds, nextUserIds) ||
-        !sameOrderedIds(currentWaitListIds, nextWaitListIds) ||
-        !sameOrderedIds(currentFreeAgentIds, nextFreeAgentIds)
-      ) {
-        await tx.events.update({
-          where: { id: eventId },
-          data: {
-            userIds: nextUserIds,
-            waitListIds: nextWaitListIds,
-            freeAgentIds: nextFreeAgentIds,
-            updatedAt: now,
-          },
-        });
-      }
-
       if (!existingRegistration) {
         await tx.eventRegistrations.create({
           data: {
@@ -383,6 +333,21 @@ const ensureEventRegistrationFromPurchase = async ({
           },
         });
       }
+      await tx.eventRegistrations.updateMany({
+        where: {
+          eventId,
+          registrantId: participantUserId,
+          registrantType: { in: ['SELF', 'CHILD'] },
+          rosterRole: { in: ['WAITLIST', 'FREE_AGENT'] },
+          status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+          slotId: occurrenceSlotId,
+          occurrenceDate,
+        },
+        data: {
+          status: 'CANCELLED',
+          updatedAt: now,
+        },
+      });
 
       return { applied: true };
     });

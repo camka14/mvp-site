@@ -6,6 +6,7 @@ const canonicalUpdateMock = jest.fn();
 const teamFindManyMock = jest.fn();
 const teamUpdateMock = jest.fn();
 const eventsFindManyMock = jest.fn();
+const eventRegistrationsFindManyMock = jest.fn();
 const organizationFindFirstMock = jest.fn();
 
 const txClientMock = {
@@ -18,6 +19,9 @@ const txClientMock = {
   },
   events: {
     findMany: (...args: any[]) => eventsFindManyMock(...args),
+  },
+  eventRegistrations: {
+    findMany: (...args: any[]) => eventRegistrationsFindManyMock(...args),
   },
 };
 
@@ -85,8 +89,11 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
         playerIds: ['manager_1', 'user_2'],
       },
     ]);
+    eventRegistrationsFindManyMock.mockResolvedValue([
+      { eventId: 'event_1', registrantId: 'event_team_1' },
+    ]);
     eventsFindManyMock.mockResolvedValue([
-      { id: 'event_1', teamIds: ['event_team_1'] },
+      { id: 'event_1' },
     ]);
     canonicalUpdateMock.mockResolvedValue({ id: 'team_1' });
     teamUpdateMock.mockResolvedValue({ id: 'event_team_1' });

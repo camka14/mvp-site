@@ -53,6 +53,10 @@ import {
   serializeMatchIncidentRow,
   serializeMatchSegmentRow,
 } from '@/server/matches/matchOperations';
+import {
+  buildEventRegistrationId,
+  getEventParticipantIdsForEvent,
+} from '@/server/events/eventRegistrations';
 
 type PrismaLike = PrismaClient | any;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -182,6 +186,135 @@ const normalizeEntityId = (value: unknown): string | null => {
   }
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
+};
+
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE', 'BLOCKED'] as const;
+
+export const syncEventParticipantRegistrationsFromCompatibilityIds = async (
+  client: PrismaLike,
+  params: {
+    eventId: string;
+    createdBy: string;
+    teamIds: string[];
+    userIds: string[];
+    waitListIds: string[];
+    freeAgentIds: string[];
+    syncTeams: boolean;
+    syncUsers: boolean;
+    syncWaitList: boolean;
+    syncFreeAgents: boolean;
+  },
+): Promise<void> => {
+  if (typeof (client as any).eventRegistrations?.upsert !== 'function') {
+    return;
+  }
+
+  const now = new Date();
+  const createdBy = normalizeEntityId(params.createdBy) ?? 'system';
+  const teamIds = normalizeTeamIdList(params.teamIds);
+  const userIds = normalizeTeamIdList(params.userIds);
+  const waitListIds = normalizeTeamIdList(params.waitListIds);
+  const freeAgentIds = normalizeTeamIdList(params.freeAgentIds);
+
+  const waitListTeamRows = waitListIds.length && typeof (client as any).teams?.findMany === 'function'
+    ? await (client as any).teams.findMany({
+      where: { id: { in: waitListIds } },
+      select: { id: true },
+    })
+    : [];
+  const waitListTeamIds = new Set(
+    (waitListTeamRows as Array<{ id?: unknown }>)
+      .map((row) => normalizeEntityId(row.id))
+      .filter((id): id is string => Boolean(id)),
+  );
+
+  const upsertRegistration = async (entry: {
+    registrantType: 'TEAM' | 'SELF';
+    registrantId: string;
+    rosterRole: 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGENT';
+  }) => {
+    const id = buildEventRegistrationId({
+      eventId: params.eventId,
+      registrantType: entry.registrantType,
+      registrantId: entry.registrantId,
+    });
+    await (client as any).eventRegistrations.upsert({
+      where: { id },
+      create: {
+        id,
+        eventId: params.eventId,
+        registrantId: entry.registrantId,
+        parentId: null,
+        registrantType: entry.registrantType,
+        rosterRole: entry.rosterRole,
+        status: 'ACTIVE',
+        eventTeamId: entry.registrantType === 'TEAM' ? entry.registrantId : null,
+        sourceTeamRegistrationId: null,
+        createdBy,
+        createdAt: now,
+        updatedAt: now,
+      },
+      update: {
+        rosterRole: entry.rosterRole,
+        status: 'ACTIVE',
+        eventTeamId: entry.registrantType === 'TEAM' ? entry.registrantId : null,
+        sourceTeamRegistrationId: null,
+        updatedAt: now,
+      },
+    });
+  };
+
+  const cancelMissing = async (where: Record<string, unknown>, desiredIds: string[]) => {
+    if (typeof (client as any).eventRegistrations?.updateMany !== 'function') {
+      return;
+    }
+    await (client as any).eventRegistrations.updateMany({
+      where: {
+        eventId: params.eventId,
+        slotId: null,
+        occurrenceDate: null,
+        status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
+        ...where,
+        ...(desiredIds.length ? { registrantId: { notIn: desiredIds } } : {}),
+      },
+      data: {
+        status: 'CANCELLED',
+        updatedAt: now,
+      },
+    });
+  };
+
+  if (params.syncTeams) {
+    await cancelMissing({ registrantType: 'TEAM', rosterRole: 'PARTICIPANT' }, teamIds);
+    for (const registrantId of teamIds) {
+      await upsertRegistration({ registrantType: 'TEAM', registrantId, rosterRole: 'PARTICIPANT' });
+    }
+  }
+
+  if (params.syncUsers) {
+    await cancelMissing({ registrantType: 'SELF', rosterRole: 'PARTICIPANT' }, userIds);
+    for (const registrantId of userIds) {
+      await upsertRegistration({ registrantType: 'SELF', registrantId, rosterRole: 'PARTICIPANT' });
+    }
+  }
+
+  if (params.syncWaitList) {
+    await cancelMissing({ rosterRole: 'WAITLIST' }, waitListIds);
+    for (const registrantId of waitListIds) {
+      await upsertRegistration({
+        registrantType: waitListTeamIds.has(registrantId) ? 'TEAM' : 'SELF',
+        registrantId,
+        rosterRole: 'WAITLIST',
+      });
+    }
+  }
+
+  if (params.syncFreeAgents) {
+    await cancelMissing({ registrantType: 'SELF', rosterRole: 'FREE_AGENT' }, freeAgentIds);
+    for (const registrantId of freeAgentIds) {
+      await upsertRegistration({ registrantType: 'SELF', registrantId, rosterRole: 'FREE_AGENT' });
+    }
+  }
 };
 
 const loadEventOfficialRows = async (client: PrismaLike, eventId: string): Promise<any[]> => {
@@ -1967,8 +2100,15 @@ export const loadEventWithRelations = async (
   ];
   const fallbackDivision = divisions[0] ?? new Division(DEFAULT_DIVISION_KEY, buildDivisionDisplayName(DEFAULT_DIVISION_KEY, event.sportId ?? null));
 
+  const participantIds = includeTeamRegistrations
+    ? await getEventParticipantIdsForEvent(event.id, client)
+    : { teamIds: [], userIds: [], waitListIds: [], freeAgentIds: [] };
   const fieldIds = ensureStringArray(event.fieldIds);
-  const teamIds = ensureStringArray(event.teamIds);
+  // Prisma no longer stores these on Events. The fallback only supports legacy
+  // in-memory fixtures or DTOs passed into scheduler tests.
+  const teamIds = participantIds.teamIds.length
+    ? participantIds.teamIds
+    : ensureStringArray((event as any).teamIds);
   const teamIdsToLoad = Array.from(new Set(teamIds));
   const timeSlotIds = ensureStringArray(event.timeSlotIds);
   const [eventOfficialRows, sportRow] = await Promise.all([
@@ -1992,7 +2132,7 @@ export const loadEventWithRelations = async (
     if (templatePositions.length) {
       return templatePositions;
     }
-    if (ensureStringArray(event.officialIds).length) {
+    if (eventOfficialRows.length) {
       return buildEventOfficialPositionsFromTemplates(event.id, [{ name: 'Official', count: 1 }]);
     }
     return [];
@@ -2009,14 +2149,8 @@ export const loadEventWithRelations = async (
           isActive: row.isActive !== false,
         }))
         .filter((row) => row.positionIds.length > 0)
-    : deriveEventOfficialsFromLegacyOfficialIds({
-        eventId: event.id,
-        officialIds: ensureStringArray(event.officialIds),
-        positionIds: officialPositions.map((position) => position.id),
-      });
-  const officialIds = eventOfficials.length
-    ? eventOfficials.map((official: any) => official.userId)
-    : ensureStringArray(event.officialIds);
+    : [];
+  const officialIds = eventOfficials.map((official: any) => official.userId);
 
   const [fieldRows, teamRows, timeSlotRows, officialRows, matchRows, leagueConfigRow] = await Promise.all([
     fieldIds.length ? client.fields.findMany({ where: { id: { in: fieldIds } } }) : Promise.resolve([]),
@@ -2216,8 +2350,12 @@ export const loadEventWithRelations = async (
     updatedAt: event.updatedAt ?? null,
     name: event.name,
     description: event.description ?? '',
-    waitListIds: ensureStringArray(event.waitListIds),
-    freeAgentIds: ensureStringArray(event.freeAgentIds),
+    waitListIds: participantIds.waitListIds.length
+      ? participantIds.waitListIds
+      : ensureStringArray((event as any).waitListIds),
+    freeAgentIds: participantIds.freeAgentIds.length
+      ? participantIds.freeAgentIds
+      : ensureStringArray((event as any).freeAgentIds),
     maxParticipants: event.maxParticipants ?? 0,
     teamSignup: Boolean(event.teamSignup),
     coordinates,
@@ -2577,9 +2715,21 @@ export const persistScheduledRosterTeams = async (
   await client.events.update({
     where: { id: params.eventId },
     data: {
-      teamIds: rosterTeamIds,
       updatedAt: now,
     },
+  });
+
+  await syncEventParticipantRegistrationsFromCompatibilityIds(client, {
+    eventId: params.eventId,
+    createdBy: params.scheduled.hostId ?? 'system',
+    teamIds: rosterTeamIds,
+    userIds: [],
+    waitListIds: [],
+    freeAgentIds: [],
+    syncTeams: true,
+    syncUsers: false,
+    syncWaitList: false,
+    syncFreeAgents: false,
   });
 
   if (!rosterTeamIds.length) {
@@ -3253,7 +3403,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       hostId: true,
       organizationId: true,
       parentEvent: true,
-      officialIds: true,
       officialPositions: true as any,
       officialSchedulingMode: true as any,
       matchRulesOverride: true as any,
@@ -3411,7 +3560,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   if (!resolvedOfficialPositions.length) {
     resolvedOfficialPositions = sportTemplatePositions;
   }
-  if (!resolvedOfficialPositions.length && normalizedOfficialIds.length) {
+  if (!resolvedOfficialPositions.length && (normalizedOfficialIds.length || existingEventOfficialRows.length)) {
     resolvedOfficialPositions = buildEventOfficialPositionsFromTemplates(id, [{ name: 'Official', count: 1 }]);
   }
   const hasExplicitEventOfficials = Object.prototype.hasOwnProperty.call(payload, 'eventOfficials');
@@ -3439,7 +3588,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
           officialIds: normalizedOfficialIds,
           positionIds: resolvedOfficialPositions.map((position) => position.id),
         });
-  const compatibilityOfficialIds = resolvedEventOfficials.map((official: any) => official.userId);
   const allowedFieldIdSet = new Set(fieldIds);
   const fieldsToPersist = allowedFieldIdSet.size
     ? fields.filter((field: any) => {
@@ -3644,8 +3792,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     price: normalizedEventPrice,
     singleDivision: payload.singleDivision ?? false,
     registrationByDivisionType: payload.registrationByDivisionType ?? false,
-    waitListIds: ensureStringArray(payload.waitListIds),
-    freeAgentIds: ensureStringArray(payload.freeAgentIds),
     cancellationRefundHours: payload.cancellationRefundHours ?? null,
     teamSignup: payload.teamSignup ?? true,
     prize: payload.prize ?? null,
@@ -3672,8 +3818,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     sportId: normalizedSportId,
     timeSlotIds,
     fieldIds,
-    teamIds,
-    userIds: ensureStringArray(payload.userIds),
     leagueScoringConfigId: resolvedLeagueScoringConfigId,
     organizationId: payload.organizationId ?? null,
     parentEvent: normalizedParentEvent,
@@ -3682,7 +3826,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     officialSchedulingMode,
     doTeamsOfficiate: normalizedDoTeamsOfficiate ?? null,
     teamOfficialsMaySwap: normalizedTeamOfficialsMaySwap,
-    officialIds: compatibilityOfficialIds,
     officialPositions: resolvedOfficialPositions,
     ...(normalizedMatchRulesOverride !== undefined ? { matchRulesOverride: normalizedMatchRulesOverride } : {}),
     ...(normalizedAutoCreatePointMatchIncidents !== undefined
@@ -3746,6 +3889,18 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : [];
 
   await upsertEventWithUnknownArgFallback(client, id, eventData as Record<string, unknown>);
+  await syncEventParticipantRegistrationsFromCompatibilityIds(client, {
+    eventId: id,
+    createdBy: normalizedHostId,
+    teamIds,
+    userIds: ensureStringArray(payload.userIds),
+    waitListIds: ensureStringArray(payload.waitListIds),
+    freeAgentIds: ensureStringArray(payload.freeAgentIds),
+    syncTeams: Object.prototype.hasOwnProperty.call(payload, 'teamIds') || teams.length > 0,
+    syncUsers: Object.prototype.hasOwnProperty.call(payload, 'userIds'),
+    syncWaitList: Object.prototype.hasOwnProperty.call(payload, 'waitListIds'),
+    syncFreeAgents: Object.prototype.hasOwnProperty.call(payload, 'freeAgentIds'),
+  });
   if (hasExplicitEventOfficials || !existingEvent || existingEventOfficials.length === 0) {
     await persistEventOfficialRows(client, id, resolvedEventOfficials);
   }

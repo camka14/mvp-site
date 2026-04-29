@@ -293,19 +293,11 @@ export async function DELETE(req: NextRequest) {
 
     const activeEvents = await tx.events.findMany({
       where: {
-        OR: [
-          { assistantHostIds: { has: userId } },
-          { officialIds: { has: userId } },
-          { waitListIds: { has: userId } },
-          { freeAgentIds: { has: userId } },
-        ],
+        assistantHostIds: { has: userId },
       },
       select: {
         id: true,
         assistantHostIds: true,
-        officialIds: true,
-        waitListIds: true,
-        freeAgentIds: true,
       },
     });
 
@@ -314,13 +306,30 @@ export async function DELETE(req: NextRequest) {
         where: { id: event.id },
         data: {
           assistantHostIds: removeIdFromList(event.assistantHostIds, userId),
-          officialIds: removeIdFromList(event.officialIds, userId),
-          waitListIds: removeIdFromList(event.waitListIds, userId),
-          freeAgentIds: removeIdFromList(event.freeAgentIds, userId),
           updatedAt: now,
         },
       });
     }
+
+    await tx.eventOfficials.updateMany({
+      where: { userId },
+      data: {
+        isActive: false,
+        updatedAt: now,
+      },
+    });
+
+    await tx.eventRegistrations.updateMany({
+      where: {
+        registrantId: userId,
+        rosterRole: { in: ['WAITLIST', 'FREE_AGENT'] },
+        status: { not: 'CANCELLED' },
+      },
+      data: {
+        status: 'CANCELLED',
+        updatedAt: now,
+      },
+    });
 
     await Promise.all([
       tx.subscriptions.updateMany({

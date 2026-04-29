@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 
@@ -50,8 +51,6 @@ export async function GET(
       hostId: true,
       assistantHostIds: true,
       organizationId: true,
-      teamIds: true,
-      userIds: true,
       teamSignup: true,
     },
   });
@@ -66,9 +65,10 @@ export async function GET(
   if (!normalizedTeamId) {
     return NextResponse.json({ error: 'Invalid team id' }, { status: 400 });
   }
+  const participantIds = await getEventParticipantIdsForEvent(event.id);
 
   if (!event.teamSignup) {
-    const participantUserIds = normalizeIdList(event.userIds);
+    const participantUserIds = participantIds.userIds;
     if (!participantUserIds.includes(normalizedTeamId)) {
       return NextResponse.json({ error: 'User is not a participant of this event.' }, { status: 404 });
     }
@@ -207,7 +207,7 @@ export async function GET(
     );
   }
 
-  const eventTeamIds = normalizeIdList(event.teamIds);
+  const eventTeamIds = participantIds.teamIds;
   if (!eventTeamIds.includes(normalizedTeamId)) {
     return NextResponse.json({ error: 'Team is not a participant of this event.' }, { status: 404 });
   }

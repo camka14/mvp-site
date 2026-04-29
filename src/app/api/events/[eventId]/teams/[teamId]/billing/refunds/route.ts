@@ -6,6 +6,7 @@ import { requireSession } from '@/lib/permissions';
 import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import { canManageEvent } from '@/server/accessControl';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,8 +81,6 @@ export async function POST(
       hostId: true,
       assistantHostIds: true,
       organizationId: true,
-      teamIds: true,
-      userIds: true,
       teamSignup: true,
     },
   });
@@ -96,6 +95,7 @@ export async function POST(
   if (!normalizedTeamId) {
     return NextResponse.json({ error: 'Invalid team id' }, { status: 400 });
   }
+  const participantIds = await getEventParticipantIdsForEvent(event.id);
 
   const requestedAmountCents = Math.round(parsed.data.amountCents);
   if (!Number.isFinite(requestedAmountCents) || requestedAmountCents <= 0) {
@@ -143,7 +143,7 @@ export async function POST(
   }
 
   if (!event.teamSignup) {
-    const participantUserIds = normalizeIdList(event.userIds);
+    const participantUserIds = participantIds.userIds;
     if (!participantUserIds.includes(normalizedTeamId)) {
       return NextResponse.json({ error: 'User is not a participant of this event.' }, { status: 404 });
     }
@@ -152,7 +152,7 @@ export async function POST(
       return NextResponse.json({ error: 'Bill payment does not belong to this participant user.' }, { status: 400 });
     }
   } else {
-    const eventTeamIds = normalizeIdList(event.teamIds);
+    const eventTeamIds = participantIds.teamIds;
     if (!eventTeamIds.includes(normalizedTeamId)) {
       return NextResponse.json({ error: 'Team is not a participant of this event.' }, { status: 404 });
     }

@@ -19,6 +19,7 @@ const requireSessionMock = jest.fn();
 const dispatchRequiredEventDocumentsMock = jest.fn();
 const upsertEventRegistrationMock = jest.fn();
 const deleteEventRegistrationMock = jest.fn();
+const buildEventParticipantSnapshotMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -26,6 +27,7 @@ jest.mock('@/lib/eventConsentDispatch', () => ({
   dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
 }));
 jest.mock('@/server/events/eventRegistrations', () => ({
+  buildEventParticipantSnapshot: (...args: unknown[]) => buildEventParticipantSnapshotMock(...args),
   upsertEventRegistration: (...args: unknown[]) => upsertEventRegistrationMock(...args),
   deleteEventRegistration: (...args: unknown[]) => deleteEventRegistrationMock(...args),
 }));
@@ -65,16 +67,18 @@ describe('event free-agent route', () => {
     });
     upsertEventRegistrationMock.mockResolvedValue({ id: 'registration_1' });
     deleteEventRegistrationMock.mockResolvedValue(undefined);
+    buildEventParticipantSnapshotMock.mockResolvedValue({
+      participants: {
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: ['user_1'],
+        divisions: [],
+      },
+    });
   });
 
   it('adds the current user as a free agent', async () => {
-    prismaMock.events.update.mockResolvedValue({
-      id: 'event_1',
-      userIds: [],
-      waitListIds: [],
-      freeAgentIds: ['user_1'],
-    });
-
     const response = await POST(
       jsonRequest('POST', 'http://localhost/api/events/event_1/free-agents', { userId: 'user_1' }),
       { params: Promise.resolve({ eventId: 'event_1' }) },
@@ -90,6 +94,7 @@ describe('event free-agent route', () => {
       status: 'ACTIVE',
       createdBy: 'user_1',
     }));
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
   it('moves user from participants and waitlist when adding as free agent', async () => {
@@ -103,13 +108,6 @@ describe('event free-agent route', () => {
       organizationId: null,
       start: new Date('2026-03-01T00:00:00.000Z'),
     });
-    prismaMock.events.update.mockResolvedValueOnce({
-      id: 'event_1',
-      userIds: [],
-      waitListIds: [],
-      freeAgentIds: ['user_1'],
-    });
-
     const response = await POST(
       jsonRequest('POST', 'http://localhost/api/events/event_1/free-agents', { userId: 'user_1' }),
       { params: Promise.resolve({ eventId: 'event_1' }) },
@@ -122,6 +120,7 @@ describe('event free-agent route', () => {
       registrantId: 'user_1',
       rosterRole: 'FREE_AGENT',
     }));
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
   it('idempotently upserts duplicate free-agent joins', async () => {
@@ -175,9 +174,14 @@ describe('event free-agent route', () => {
       id: 'event_1',
       freeAgentIds: ['user_1'],
     });
-    prismaMock.events.update.mockResolvedValue({
-      id: 'event_1',
-      freeAgentIds: [],
+    buildEventParticipantSnapshotMock.mockResolvedValueOnce({
+      participants: {
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
     });
 
     const response = await DELETE(
@@ -191,6 +195,7 @@ describe('event free-agent route', () => {
       registrantType: 'SELF',
       registrantId: 'user_1',
     }));
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
   it('allows a parent to add a linked child as a free agent', async () => {

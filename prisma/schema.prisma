@@ -137,6 +137,13 @@ enum TeamMembershipStatusEnum {
   REMOVED
 }
 
+enum TeamInviteEventSyncStatusEnum {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
 enum TeamStaffAssignmentsRoleEnum {
   MANAGER
   HEAD_COACH
@@ -398,6 +405,29 @@ model Invites {
   createdBy      String?
   firstName      String?
   lastName       String?
+}
+
+model TeamInviteEventSyncs {
+  id                           String                         @id
+  createdAt                    DateTime?
+  updatedAt                    DateTime?
+  inviteId                     String
+  canonicalTeamId              String
+  eventId                      String
+  eventTeamId                  String
+  userId                       String
+  previousRegistrationSnapshot Json?
+  eventTeamHadUser             Boolean                        @default(false)
+  eventTeamHadPendingUser      Boolean                        @default(false)
+  sourceTeamRegistrationId     String?
+  status                       TeamInviteEventSyncStatusEnum  @default(PENDING)
+
+  @@unique([inviteId, eventTeamId, userId])
+  @@index([inviteId])
+  @@index([canonicalTeamId])
+  @@index([eventId])
+  @@index([eventTeamId])
+  @@index([userId])
 }
 
 model StaffMembers {
@@ -730,8 +760,6 @@ model Events {
   price                        Int
   singleDivision               Boolean?
   registrationByDivisionType   Boolean?
-  waitListIds                  String[]
-  freeAgentIds                 String[]
   cancellationRefundHours      Int?
   teamSignup                   Boolean?
   prize                        String?
@@ -755,8 +783,6 @@ model Events {
   sportId                      String?
   timeSlotIds                  String[]
   fieldIds                     String[]
-  teamIds                      String[]
-  userIds                      String[]
   leagueScoringConfigId        String?
   organizationId               String?
   parentEvent                  String?
@@ -765,7 +791,6 @@ model Events {
   officialSchedulingMode       EventsOfficialSchedulingModeEnum @default(SCHEDULE)
   doTeamsOfficiate             Boolean?
   teamOfficialsMaySwap         Boolean?
-  officialIds                  String[]
   officialPositions            Json?
   matchRulesOverride           Json?
   autoCreatePointMatchIncidents Boolean?                        @default(false)

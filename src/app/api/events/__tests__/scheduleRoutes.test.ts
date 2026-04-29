@@ -22,6 +22,7 @@ const prismaMock = {
   eventRegistrations: {
     findMany: jest.fn(),
     deleteMany: jest.fn(),
+    upsert: jest.fn(),
   },
   organizations: {
     findUnique: jest.fn(),
@@ -145,6 +146,7 @@ describe('schedule routes', () => {
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ email: 'host@example.test' });
     prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.deleteMany.mockResolvedValue({ count: 0 });
+    prismaMock.eventRegistrations.upsert.mockResolvedValue({});
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.divisions.update.mockResolvedValue(null);
     isEventFieldConflictErrorMock.mockReturnValue(false);
@@ -1927,7 +1929,25 @@ describe('schedule routes', () => {
         where: { id: 'event_1' },
         data: expect.objectContaining({
           maxParticipants: 9,
-          teamIds: expect.arrayContaining(['team_existing', createdTeamId]),
+        }),
+      }),
+    );
+    expect(prismaMock.events.update.mock.calls[0][0].data.teamIds).toBeUndefined();
+    expect(prismaMock.eventRegistrations.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: `event_1__team__${createdTeamId}` },
+        create: expect.objectContaining({
+          eventId: 'event_1',
+          registrantId: createdTeamId,
+          registrantType: 'TEAM',
+          rosterRole: 'PARTICIPANT',
+          status: 'ACTIVE',
+          eventTeamId: createdTeamId,
+        }),
+        update: expect.objectContaining({
+          rosterRole: 'PARTICIPANT',
+          status: 'ACTIVE',
+          eventTeamId: createdTeamId,
         }),
       }),
     );

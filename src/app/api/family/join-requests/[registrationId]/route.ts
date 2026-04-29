@@ -20,8 +20,6 @@ const normalizeEmail = (value: unknown): string | null => {
   return normalized.length ? normalized : null;
 };
 
-const ensureUnique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
-
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ registrationId: string }> }) {
   const session = await requireSession(req);
   const { registrationId } = await params;
@@ -66,8 +64,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
       select: {
         id: true,
         teamSignup: true,
-        userIds: true,
-        freeAgentIds: true,
         requiredTemplateIds: true,
         organizationId: true,
         start: true,
@@ -125,28 +121,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
     },
   });
 
-  const nextUserIds = ensureUnique([
-    ...(Array.isArray(event.userIds) ? event.userIds : []),
-    registration.registrantId,
-  ]);
-  const nextFreeAgentIds = ensureUnique([
-    ...(Array.isArray(event.freeAgentIds) ? event.freeAgentIds : []),
-    registration.registrantId,
-  ]);
-
-  const eventUpdateData = event.teamSignup
-    ? {
-      freeAgentIds: nextFreeAgentIds,
-      updatedAt: new Date(),
-    }
-    : {
-      userIds: nextUserIds,
-      updatedAt: new Date(),
-    };
-
   await prisma.events.update({
     where: { id: event.id },
-    data: eventUpdateData,
+    data: { updatedAt: new Date() },
   });
 
   const childAgeAtEvent = childProfile?.dateOfBirth

@@ -10,6 +10,12 @@ const prismaMock = {
   teams: {
     findMany: jest.fn(),
   },
+  eventRegistrations: {
+    findMany: jest.fn(),
+  },
+  eventOfficials: {
+    findMany: jest.fn(),
+  },
   parentChildLinks: {
     findMany: jest.fn(),
   },
@@ -71,10 +77,36 @@ describe('POST /api/events/[eventId]/notifications', () => {
       hostId: 'host_1',
       assistantHostIds: ['assistant_host_1'],
       organizationId: null,
-      teamIds: ['team_1'],
-      userIds: ['free_player_1'],
-      officialIds: ['official_1'],
     });
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        id: 'event_1__team__team_1',
+        eventId: 'event_1',
+        registrantId: 'team_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-07-01T12:00:00.000Z'),
+      },
+      {
+        id: 'event_1__self__free_player_1',
+        eventId: 'event_1',
+        registrantId: 'free_player_1',
+        registrantType: 'SELF',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-07-01T12:01:00.000Z'),
+      },
+    ]);
+    prismaMock.eventOfficials.findMany.mockResolvedValue([
+      {
+        id: 'event_official_1',
+        eventId: 'event_1',
+        userId: 'official_1',
+        positionIds: [],
+        fieldIds: [],
+        isActive: true,
+        createdAt: new Date('2026-07-01T12:00:00.000Z'),
+      },
+    ]);
     prismaMock.teams.findMany.mockResolvedValue([
       {
         id: 'team_1',

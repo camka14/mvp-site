@@ -1275,16 +1275,16 @@ describe('upsertEventFromPayload', () => {
       expect.objectContaining({
         officialSchedulingMode: 'SCHEDULE',
         officialPositions: payload.officialPositions,
-        officialIds: ['official_1'],
       }),
     );
+    expect(eventUpsertArgs.create.officialIds).toBeUndefined();
     expect(eventUpsertArgs.update).toEqual(
       expect.objectContaining({
         officialSchedulingMode: 'SCHEDULE',
         officialPositions: payload.officialPositions,
-        officialIds: ['official_1'],
       }),
     );
+    expect(eventUpsertArgs.update.officialIds).toBeUndefined();
     expect(client.eventOfficials.deleteMany).toHaveBeenCalledWith({
       where: { eventId: 'event_1' },
     });
@@ -1508,6 +1508,10 @@ describe('persistScheduledRosterTeams', () => {
         ]),
         update: jest.fn().mockResolvedValue(undefined),
       },
+      eventRegistrations: {
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
     };
 
     const rosterTeamIds = await persistScheduledRosterTeams(
@@ -1519,9 +1523,20 @@ describe('persistScheduledRosterTeams', () => {
     expect(client.events.update).toHaveBeenCalledWith({
       where: { id: 'event_1' },
       data: expect.objectContaining({
-        teamIds: ['slot_1', 'slot_2'],
+        updatedAt: expect.any(Date),
       }),
     });
+    expect(client.eventRegistrations.upsert).toHaveBeenCalledTimes(2);
+    expect(client.eventRegistrations.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'event_1__team__slot_1' },
+      create: expect.objectContaining({
+        eventId: 'event_1',
+        registrantId: 'slot_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        status: 'ACTIVE',
+      }),
+    }));
     expect(client.teams.create).toHaveBeenCalledTimes(2);
     expect(client.teams.create).toHaveBeenNthCalledWith(
       1,

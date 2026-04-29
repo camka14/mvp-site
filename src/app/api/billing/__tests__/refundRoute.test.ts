@@ -40,6 +40,10 @@ const prismaMock = {
   parentChildLinks: {
     findFirst: jest.fn(),
   },
+  eventRegistrations: {
+    findMany: jest.fn(),
+    updateMany: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -89,6 +93,17 @@ describe('POST /api/billing/refund', () => {
     prismaMock.billPayments.findMany.mockResolvedValue([]);
     prismaMock.billPayments.findUnique.mockResolvedValue(null);
     prismaMock.billPayments.update.mockResolvedValue({ id: 'payment_1', refundedAmountCents: 5000 });
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        id: 'event_1__self__user_1',
+        eventId: 'event_1',
+        registrantId: 'user_1',
+        registrantType: 'SELF',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
+    prismaMock.eventRegistrations.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof prismaMock) => unknown) => callback(prismaMock));
     mockStripePaymentIntentRetrieve.mockResolvedValue({ id: 'pi_1', transfer_data: null });
   });
@@ -105,13 +120,16 @@ describe('POST /api/billing/refund', () => {
     expect(response.status).toBe(200);
     expect(payload.success).toBe(true);
     expect(payload.targetUserId).toBe('user_1');
-    expect(prismaMock.events.update).toHaveBeenCalledWith(
+    expect(prismaMock.eventRegistrations.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'event_1' },
+        where: expect.objectContaining({
+          eventId: 'event_1',
+          registrantId: 'user_1',
+          registrantType: { in: ['SELF', 'CHILD'] },
+          rosterRole: { in: ['PARTICIPANT', 'WAITLIST', 'FREE_AGENT'] },
+        }),
         data: expect.objectContaining({
-          userIds: [],
-          waitListIds: [],
-          freeAgentIds: [],
+          status: 'CANCELLED',
         }),
       }),
     );
@@ -226,6 +244,16 @@ describe('POST /api/billing/refund', () => {
   it('allows a parent to request refund for a linked child target', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'parent_1', isAdmin: false });
     prismaMock.parentChildLinks.findFirst.mockResolvedValueOnce({ id: 'link_1' });
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_1__child__child_1',
+        eventId: 'event_1',
+        registrantId: 'child_1',
+        registrantType: 'CHILD',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
     prismaMock.events.findUnique.mockResolvedValueOnce({
       id: 'event_1',
       start: new Date('2026-07-01T12:00:00.000Z'),
@@ -300,6 +328,16 @@ describe('POST /api/billing/refund', () => {
 
   it('allows refund requests for users registered through an event team slot', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'team_player_1', isAdmin: false });
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_1__team__slot_team_1',
+        eventId: 'event_1',
+        registrantId: 'slot_team_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
     prismaMock.events.findUnique.mockResolvedValueOnce({
       id: 'event_1',
       start: new Date('2026-07-01T12:00:00.000Z'),

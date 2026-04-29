@@ -6,6 +6,8 @@ import {
   type PublicWidgetDivisionOption,
 } from '@/server/publicWidgetBracket';
 import { loadEventWithRelations } from '@/server/repositories/events';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
+import { getEventOfficialIdsForEvent } from '@/server/officials/eventOfficials';
 import { TEAM_REGISTRATION_STARTED_TTL_MS } from '@/server/teams/teamOpenRegistration';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import type { Field, Organization, Product, ProductPeriod, TimeSlot } from '@/types';
@@ -1619,7 +1621,9 @@ export const getPublicOrganizationEventForRegistration = async (
     return null;
   }
 
-  const [sport, divisionDetails, playoffDivisionDetails, fields, timeSlots, teams] = await Promise.all([
+  const participantIds = await getEventParticipantIdsForEvent(eventId, prisma);
+  const teamIds = participantIds.teamIds;
+  const [sport, divisionDetails, playoffDivisionDetails, fields, timeSlots, teams, officialIds] = await Promise.all([
     typeof event.sportId === 'string'
       ? (prisma as any).sports.findUnique({ where: { id: event.sportId } })
       : Promise.resolve(null),
@@ -1637,9 +1641,10 @@ export const getPublicOrganizationEventForRegistration = async (
     normalizeIdList(event.timeSlotIds).length
       ? (prisma as any).timeSlots.findMany({ where: { id: { in: normalizeIdList(event.timeSlotIds) } } })
       : Promise.resolve([]),
-    normalizeIdList(event.teamIds).length
-      ? (prisma as any).teams.findMany({ where: { id: { in: normalizeIdList(event.teamIds) } } })
+    teamIds.length
+      ? (prisma as any).teams.findMany({ where: { id: { in: teamIds } } })
       : Promise.resolve([]),
+    getEventOfficialIdsForEvent(eventId, prisma),
   ]);
 
   return {
@@ -1652,10 +1657,11 @@ export const getPublicOrganizationEventForRegistration = async (
       start: toIsoString(event.start) ?? new Date().toISOString(),
       end: toIsoString(event.end),
       state: 'PUBLISHED',
-      userIds: [],
-      waitListIds: [],
-      freeAgentIds: [],
-      officialIds: [],
+      userIds: participantIds.userIds,
+      teamIds,
+      waitListIds: participantIds.waitListIds,
+      freeAgentIds: participantIds.freeAgentIds,
+      officialIds,
       sport: sport ? { ...sport, $id: sport.id } : undefined,
       organization: {
         $id: organization.id,

@@ -82,6 +82,11 @@ export type SensitiveUserData = Prisma.SensitiveUserDataModel
  */
 export type Invites = Prisma.InvitesModel
 /**
+ * Model TeamInviteEventSyncs
+ * 
+ */
+export type TeamInviteEventSyncs = Prisma.TeamInviteEventSyncsModel
+/**
  * Model StaffMembers
  * 
  */

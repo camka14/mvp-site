@@ -91,6 +91,13 @@ export type EventParticipantIdsSnapshot = {
   divisions: EventParticipantDivisionIds[];
 };
 
+export type EventParticipantIds = {
+  teamIds: string[];
+  userIds: string[];
+  waitListIds: string[];
+  freeAgentIds: string[];
+};
+
 export type EventParticipantRegistrationSections = {
   teams: EventParticipantEntry[];
   users: EventParticipantEntry[];
@@ -130,6 +137,20 @@ const normalizeIdList = (value: unknown): string[] => (
     )
     : []
 );
+
+const emptyParticipantIds = (): EventParticipantIds => ({
+  teamIds: [],
+  userIds: [],
+  waitListIds: [],
+  freeAgentIds: [],
+});
+
+const pushUnique = (values: string[], value: string | null): void => {
+  if (!value || values.includes(value)) {
+    return;
+  }
+  values.push(value);
+};
 
 const normalizeRosterRole = (value: unknown): RegistrationRosterRole => {
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
@@ -336,6 +357,7 @@ export const upsertEventRegistration = async (params: {
   eventId: string;
   registrantType: RegistrationRegistrantType;
   registrantId: string;
+  registrationId?: string | null;
   rosterRole: RegistrationRosterRole;
   status: RegistrationLifecycleStatus;
   createdBy: string;
@@ -359,7 +381,7 @@ export const upsertEventRegistration = async (params: {
       occurrenceDate: normalizeId(params.occurrence.occurrenceDate),
     }
     : null;
-  const registrationId = buildEventRegistrationId({
+  const registrationId = normalizeId(params.registrationId) ?? buildEventRegistrationId({
     eventId: params.eventId,
     registrantType: params.registrantType,
     registrantId: params.registrantId,
@@ -738,6 +760,82 @@ export const buildEventParticipantSnapshot = async (params: {
 };
 
 export const reserveCapacityRows = (rows: RegistrationRow[]): number => rows.filter(isCapacityHoldingParticipant).length;
+
+export const getEventParticipantIds = async (
+  eventIds: string[],
+  client: PrismaLike = prisma,
+): Promise<Map<string, EventParticipantIds>> => {
+  const normalizedEventIds = normalizeIdList(eventIds);
+  const response = new Map<string, EventParticipantIds>();
+  normalizedEventIds.forEach((eventId) => response.set(eventId, emptyParticipantIds()));
+  if (!normalizedEventIds.length || typeof (client as any).eventRegistrations?.findMany !== 'function') {
+    return response;
+  }
+
+  const rows = await client.eventRegistrations.findMany({
+    where: {
+      eventId: { in: normalizedEventIds },
+      status: { in: Array.from(REGISTERED_MEMBER_STATUSES) },
+      slotId: null,
+      occurrenceDate: null,
+    },
+    select: {
+      eventId: true,
+      registrantId: true,
+      registrantType: true,
+      rosterRole: true,
+      createdAt: true,
+      id: true,
+    },
+    orderBy: [
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ],
+  });
+
+  rows.forEach((row) => {
+    const eventId = normalizeId(row.eventId);
+    const registrantId = normalizeId(row.registrantId);
+    if (!eventId || !registrantId) {
+      return;
+    }
+    const ids = response.get(eventId) ?? emptyParticipantIds();
+    const role = normalizeRosterRole(row.rosterRole);
+    if (role === 'PARTICIPANT') {
+      if (row.registrantType === 'TEAM') {
+        pushUnique(ids.teamIds, registrantId);
+      } else if (row.registrantType === 'SELF' || row.registrantType === 'CHILD') {
+        pushUnique(ids.userIds, registrantId);
+      }
+    } else if (role === 'WAITLIST') {
+      pushUnique(ids.waitListIds, registrantId);
+    } else if (role === 'FREE_AGENT') {
+      pushUnique(ids.freeAgentIds, registrantId);
+    }
+    response.set(eventId, ids);
+  });
+
+  return response;
+};
+
+export const getEventParticipantIdsForEvent = async (
+  eventId: string,
+  client: PrismaLike = prisma,
+): Promise<EventParticipantIds> => {
+  const ids = await getEventParticipantIds([eventId], client);
+  return ids.get(eventId) ?? emptyParticipantIds();
+};
+
+export const withDerivedEventParticipantIds = async <T extends { id: string }>(
+  events: T[],
+  client: PrismaLike = prisma,
+): Promise<Array<T & EventParticipantIds>> => {
+  const idsByEventId = await getEventParticipantIds(events.map((event) => event.id), client);
+  return events.map((event) => ({
+    ...event,
+    ...(idsByEventId.get(event.id) ?? emptyParticipantIds()),
+  }));
+};
 
 export const getEventParticipantAggregates = async (
   events: EventLike[],

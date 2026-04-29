@@ -213,8 +213,6 @@ export type EventsCountAggregateOutputType = {
   price: number
   singleDivision: number
   registrationByDivisionType: number
-  waitListIds: number
-  freeAgentIds: number
   cancellationRefundHours: number
   teamSignup: number
   prize: number
@@ -238,8 +236,6 @@ export type EventsCountAggregateOutputType = {
   sportId: number
   timeSlotIds: number
   fieldIds: number
-  teamIds: number
-  userIds: number
   leagueScoringConfigId: number
   organizationId: number
   parentEvent: number
@@ -248,7 +244,6 @@ export type EventsCountAggregateOutputType = {
   officialSchedulingMode: number
   doTeamsOfficiate: number
   teamOfficialsMaySwap: number
-  officialIds: number
   officialPositions: number
   matchRulesOverride: number
   autoCreatePointMatchIncidents: number
@@ -450,8 +445,6 @@ export type EventsCountAggregateInputType = {
   price?: true
   singleDivision?: true
   registrationByDivisionType?: true
-  waitListIds?: true
-  freeAgentIds?: true
   cancellationRefundHours?: true
   teamSignup?: true
   prize?: true
@@ -475,8 +468,6 @@ export type EventsCountAggregateInputType = {
   sportId?: true
   timeSlotIds?: true
   fieldIds?: true
-  teamIds?: true
-  userIds?: true
   leagueScoringConfigId?: true
   organizationId?: true
   parentEvent?: true
@@ -485,7 +476,6 @@ export type EventsCountAggregateInputType = {
   officialSchedulingMode?: true
   doTeamsOfficiate?: true
   teamOfficialsMaySwap?: true
-  officialIds?: true
   officialPositions?: true
   matchRulesOverride?: true
   autoCreatePointMatchIncidents?: true
@@ -610,8 +600,6 @@ export type EventsGroupByOutputType = {
   price: number
   singleDivision: boolean | null
   registrationByDivisionType: boolean | null
-  waitListIds: string[]
-  freeAgentIds: string[]
   cancellationRefundHours: number | null
   teamSignup: boolean | null
   prize: string | null
@@ -635,8 +623,6 @@ export type EventsGroupByOutputType = {
   sportId: string | null
   timeSlotIds: string[]
   fieldIds: string[]
-  teamIds: string[]
-  userIds: string[]
   leagueScoringConfigId: string | null
   organizationId: string | null
   parentEvent: string | null
@@ -645,7 +631,6 @@ export type EventsGroupByOutputType = {
   officialSchedulingMode: $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate: boolean | null
   teamOfficialsMaySwap: boolean | null
-  officialIds: string[]
   officialPositions: runtime.JsonValue | null
   matchRulesOverride: runtime.JsonValue | null
   autoCreatePointMatchIncidents: boolean | null
@@ -706,8 +691,6 @@ export type EventsWhereInput = {
   price?: Prisma.IntFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableFilter<"Events"> | boolean | null
-  waitListIds?: Prisma.StringNullableListFilter<"Events">
-  freeAgentIds?: Prisma.StringNullableListFilter<"Events">
   cancellationRefundHours?: Prisma.IntNullableFilter<"Events"> | number | null
   teamSignup?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   prize?: Prisma.StringNullableFilter<"Events"> | string | null
@@ -731,8 +714,6 @@ export type EventsWhereInput = {
   sportId?: Prisma.StringNullableFilter<"Events"> | string | null
   timeSlotIds?: Prisma.StringNullableListFilter<"Events">
   fieldIds?: Prisma.StringNullableListFilter<"Events">
-  teamIds?: Prisma.StringNullableListFilter<"Events">
-  userIds?: Prisma.StringNullableListFilter<"Events">
   leagueScoringConfigId?: Prisma.StringNullableFilter<"Events"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Events"> | string | null
   parentEvent?: Prisma.StringNullableFilter<"Events"> | string | null
@@ -741,7 +722,6 @@ export type EventsWhereInput = {
   officialSchedulingMode?: Prisma.EnumEventsOfficialSchedulingModeEnumFilter<"Events"> | $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   teamOfficialsMaySwap?: Prisma.BoolNullableFilter<"Events"> | boolean | null
-  officialIds?: Prisma.StringNullableListFilter<"Events">
   officialPositions?: Prisma.JsonNullableFilter<"Events">
   matchRulesOverride?: Prisma.JsonNullableFilter<"Events">
   autoCreatePointMatchIncidents?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -779,8 +759,6 @@ export type EventsOrderByWithRelationInput = {
   price?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrderInput | Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrderInput | Prisma.SortOrder
-  waitListIds?: Prisma.SortOrder
-  freeAgentIds?: Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrderInput | Prisma.SortOrder
   teamSignup?: Prisma.SortOrderInput | Prisma.SortOrder
   prize?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -804,8 +782,6 @@ export type EventsOrderByWithRelationInput = {
   sportId?: Prisma.SortOrderInput | Prisma.SortOrder
   timeSlotIds?: Prisma.SortOrder
   fieldIds?: Prisma.SortOrder
-  teamIds?: Prisma.SortOrder
-  userIds?: Prisma.SortOrder
   leagueScoringConfigId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   parentEvent?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -814,7 +790,6 @@ export type EventsOrderByWithRelationInput = {
   officialSchedulingMode?: Prisma.SortOrder
   doTeamsOfficiate?: Prisma.SortOrderInput | Prisma.SortOrder
   teamOfficialsMaySwap?: Prisma.SortOrderInput | Prisma.SortOrder
-  officialIds?: Prisma.SortOrder
   officialPositions?: Prisma.SortOrderInput | Prisma.SortOrder
   matchRulesOverride?: Prisma.SortOrderInput | Prisma.SortOrder
   autoCreatePointMatchIncidents?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -855,8 +830,6 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   price?: Prisma.IntFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableFilter<"Events"> | boolean | null
-  waitListIds?: Prisma.StringNullableListFilter<"Events">
-  freeAgentIds?: Prisma.StringNullableListFilter<"Events">
   cancellationRefundHours?: Prisma.IntNullableFilter<"Events"> | number | null
   teamSignup?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   prize?: Prisma.StringNullableFilter<"Events"> | string | null
@@ -880,8 +853,6 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   sportId?: Prisma.StringNullableFilter<"Events"> | string | null
   timeSlotIds?: Prisma.StringNullableListFilter<"Events">
   fieldIds?: Prisma.StringNullableListFilter<"Events">
-  teamIds?: Prisma.StringNullableListFilter<"Events">
-  userIds?: Prisma.StringNullableListFilter<"Events">
   leagueScoringConfigId?: Prisma.StringNullableFilter<"Events"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Events"> | string | null
   parentEvent?: Prisma.StringNullableFilter<"Events"> | string | null
@@ -890,7 +861,6 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   officialSchedulingMode?: Prisma.EnumEventsOfficialSchedulingModeEnumFilter<"Events"> | $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   teamOfficialsMaySwap?: Prisma.BoolNullableFilter<"Events"> | boolean | null
-  officialIds?: Prisma.StringNullableListFilter<"Events">
   officialPositions?: Prisma.JsonNullableFilter<"Events">
   matchRulesOverride?: Prisma.JsonNullableFilter<"Events">
   autoCreatePointMatchIncidents?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -928,8 +898,6 @@ export type EventsOrderByWithAggregationInput = {
   price?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrderInput | Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrderInput | Prisma.SortOrder
-  waitListIds?: Prisma.SortOrder
-  freeAgentIds?: Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrderInput | Prisma.SortOrder
   teamSignup?: Prisma.SortOrderInput | Prisma.SortOrder
   prize?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -953,8 +921,6 @@ export type EventsOrderByWithAggregationInput = {
   sportId?: Prisma.SortOrderInput | Prisma.SortOrder
   timeSlotIds?: Prisma.SortOrder
   fieldIds?: Prisma.SortOrder
-  teamIds?: Prisma.SortOrder
-  userIds?: Prisma.SortOrder
   leagueScoringConfigId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   parentEvent?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -963,7 +929,6 @@ export type EventsOrderByWithAggregationInput = {
   officialSchedulingMode?: Prisma.SortOrder
   doTeamsOfficiate?: Prisma.SortOrderInput | Prisma.SortOrder
   teamOfficialsMaySwap?: Prisma.SortOrderInput | Prisma.SortOrder
-  officialIds?: Prisma.SortOrder
   officialPositions?: Prisma.SortOrderInput | Prisma.SortOrder
   matchRulesOverride?: Prisma.SortOrderInput | Prisma.SortOrder
   autoCreatePointMatchIncidents?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -1009,8 +974,6 @@ export type EventsScalarWhereWithAggregatesInput = {
   price?: Prisma.IntWithAggregatesFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
-  waitListIds?: Prisma.StringNullableListFilter<"Events">
-  freeAgentIds?: Prisma.StringNullableListFilter<"Events">
   cancellationRefundHours?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
   teamSignup?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   prize?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
@@ -1034,8 +997,6 @@ export type EventsScalarWhereWithAggregatesInput = {
   sportId?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   timeSlotIds?: Prisma.StringNullableListFilter<"Events">
   fieldIds?: Prisma.StringNullableListFilter<"Events">
-  teamIds?: Prisma.StringNullableListFilter<"Events">
-  userIds?: Prisma.StringNullableListFilter<"Events">
   leagueScoringConfigId?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
   parentEvent?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
@@ -1044,7 +1005,6 @@ export type EventsScalarWhereWithAggregatesInput = {
   officialSchedulingMode?: Prisma.EnumEventsOfficialSchedulingModeEnumWithAggregatesFilter<"Events"> | $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   teamOfficialsMaySwap?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
-  officialIds?: Prisma.StringNullableListFilter<"Events">
   officialPositions?: Prisma.JsonNullableWithAggregatesFilter<"Events">
   matchRulesOverride?: Prisma.JsonNullableWithAggregatesFilter<"Events">
   autoCreatePointMatchIncidents?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
@@ -1082,8 +1042,6 @@ export type EventsCreateInput = {
   price: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
-  waitListIds?: Prisma.EventsCreatewaitListIdsInput | string[]
-  freeAgentIds?: Prisma.EventsCreatefreeAgentIdsInput | string[]
   cancellationRefundHours?: number | null
   teamSignup?: boolean | null
   prize?: string | null
@@ -1107,8 +1065,6 @@ export type EventsCreateInput = {
   sportId?: string | null
   timeSlotIds?: Prisma.EventsCreatetimeSlotIdsInput | string[]
   fieldIds?: Prisma.EventsCreatefieldIdsInput | string[]
-  teamIds?: Prisma.EventsCreateteamIdsInput | string[]
-  userIds?: Prisma.EventsCreateuserIdsInput | string[]
   leagueScoringConfigId?: string | null
   organizationId?: string | null
   parentEvent?: string | null
@@ -1117,7 +1073,6 @@ export type EventsCreateInput = {
   officialSchedulingMode?: $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: boolean | null
   teamOfficialsMaySwap?: boolean | null
-  officialIds?: Prisma.EventsCreateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   autoCreatePointMatchIncidents?: boolean | null
@@ -1155,8 +1110,6 @@ export type EventsUncheckedCreateInput = {
   price: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
-  waitListIds?: Prisma.EventsCreatewaitListIdsInput | string[]
-  freeAgentIds?: Prisma.EventsCreatefreeAgentIdsInput | string[]
   cancellationRefundHours?: number | null
   teamSignup?: boolean | null
   prize?: string | null
@@ -1180,8 +1133,6 @@ export type EventsUncheckedCreateInput = {
   sportId?: string | null
   timeSlotIds?: Prisma.EventsCreatetimeSlotIdsInput | string[]
   fieldIds?: Prisma.EventsCreatefieldIdsInput | string[]
-  teamIds?: Prisma.EventsCreateteamIdsInput | string[]
-  userIds?: Prisma.EventsCreateuserIdsInput | string[]
   leagueScoringConfigId?: string | null
   organizationId?: string | null
   parentEvent?: string | null
@@ -1190,7 +1141,6 @@ export type EventsUncheckedCreateInput = {
   officialSchedulingMode?: $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: boolean | null
   teamOfficialsMaySwap?: boolean | null
-  officialIds?: Prisma.EventsCreateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   autoCreatePointMatchIncidents?: boolean | null
@@ -1228,8 +1178,6 @@ export type EventsUpdateInput = {
   price?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  waitListIds?: Prisma.EventsUpdatewaitListIdsInput | string[]
-  freeAgentIds?: Prisma.EventsUpdatefreeAgentIdsInput | string[]
   cancellationRefundHours?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   teamSignup?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   prize?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1253,8 +1201,6 @@ export type EventsUpdateInput = {
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   timeSlotIds?: Prisma.EventsUpdatetimeSlotIdsInput | string[]
   fieldIds?: Prisma.EventsUpdatefieldIdsInput | string[]
-  teamIds?: Prisma.EventsUpdateteamIdsInput | string[]
-  userIds?: Prisma.EventsUpdateuserIdsInput | string[]
   leagueScoringConfigId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   parentEvent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1263,7 +1209,6 @@ export type EventsUpdateInput = {
   officialSchedulingMode?: Prisma.EnumEventsOfficialSchedulingModeEnumFieldUpdateOperationsInput | $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   teamOfficialsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  officialIds?: Prisma.EventsUpdateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   autoCreatePointMatchIncidents?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1301,8 +1246,6 @@ export type EventsUncheckedUpdateInput = {
   price?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  waitListIds?: Prisma.EventsUpdatewaitListIdsInput | string[]
-  freeAgentIds?: Prisma.EventsUpdatefreeAgentIdsInput | string[]
   cancellationRefundHours?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   teamSignup?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   prize?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1326,8 +1269,6 @@ export type EventsUncheckedUpdateInput = {
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   timeSlotIds?: Prisma.EventsUpdatetimeSlotIdsInput | string[]
   fieldIds?: Prisma.EventsUpdatefieldIdsInput | string[]
-  teamIds?: Prisma.EventsUpdateteamIdsInput | string[]
-  userIds?: Prisma.EventsUpdateuserIdsInput | string[]
   leagueScoringConfigId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   parentEvent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1336,7 +1277,6 @@ export type EventsUncheckedUpdateInput = {
   officialSchedulingMode?: Prisma.EnumEventsOfficialSchedulingModeEnumFieldUpdateOperationsInput | $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   teamOfficialsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  officialIds?: Prisma.EventsUpdateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   autoCreatePointMatchIncidents?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1374,8 +1314,6 @@ export type EventsCreateManyInput = {
   price: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
-  waitListIds?: Prisma.EventsCreatewaitListIdsInput | string[]
-  freeAgentIds?: Prisma.EventsCreatefreeAgentIdsInput | string[]
   cancellationRefundHours?: number | null
   teamSignup?: boolean | null
   prize?: string | null
@@ -1399,8 +1337,6 @@ export type EventsCreateManyInput = {
   sportId?: string | null
   timeSlotIds?: Prisma.EventsCreatetimeSlotIdsInput | string[]
   fieldIds?: Prisma.EventsCreatefieldIdsInput | string[]
-  teamIds?: Prisma.EventsCreateteamIdsInput | string[]
-  userIds?: Prisma.EventsCreateuserIdsInput | string[]
   leagueScoringConfigId?: string | null
   organizationId?: string | null
   parentEvent?: string | null
@@ -1409,7 +1345,6 @@ export type EventsCreateManyInput = {
   officialSchedulingMode?: $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: boolean | null
   teamOfficialsMaySwap?: boolean | null
-  officialIds?: Prisma.EventsCreateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   autoCreatePointMatchIncidents?: boolean | null
@@ -1447,8 +1382,6 @@ export type EventsUpdateManyMutationInput = {
   price?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  waitListIds?: Prisma.EventsUpdatewaitListIdsInput | string[]
-  freeAgentIds?: Prisma.EventsUpdatefreeAgentIdsInput | string[]
   cancellationRefundHours?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   teamSignup?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   prize?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1472,8 +1405,6 @@ export type EventsUpdateManyMutationInput = {
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   timeSlotIds?: Prisma.EventsUpdatetimeSlotIdsInput | string[]
   fieldIds?: Prisma.EventsUpdatefieldIdsInput | string[]
-  teamIds?: Prisma.EventsUpdateteamIdsInput | string[]
-  userIds?: Prisma.EventsUpdateuserIdsInput | string[]
   leagueScoringConfigId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   parentEvent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1482,7 +1413,6 @@ export type EventsUpdateManyMutationInput = {
   officialSchedulingMode?: Prisma.EnumEventsOfficialSchedulingModeEnumFieldUpdateOperationsInput | $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   teamOfficialsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  officialIds?: Prisma.EventsUpdateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   autoCreatePointMatchIncidents?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1520,8 +1450,6 @@ export type EventsUncheckedUpdateManyInput = {
   price?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  waitListIds?: Prisma.EventsUpdatewaitListIdsInput | string[]
-  freeAgentIds?: Prisma.EventsUpdatefreeAgentIdsInput | string[]
   cancellationRefundHours?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   teamSignup?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   prize?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1545,8 +1473,6 @@ export type EventsUncheckedUpdateManyInput = {
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   timeSlotIds?: Prisma.EventsUpdatetimeSlotIdsInput | string[]
   fieldIds?: Prisma.EventsUpdatefieldIdsInput | string[]
-  teamIds?: Prisma.EventsUpdateteamIdsInput | string[]
-  userIds?: Prisma.EventsUpdateuserIdsInput | string[]
   leagueScoringConfigId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   parentEvent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1555,7 +1481,6 @@ export type EventsUncheckedUpdateManyInput = {
   officialSchedulingMode?: Prisma.EnumEventsOfficialSchedulingModeEnumFieldUpdateOperationsInput | $Enums.EventsOfficialSchedulingModeEnum
   doTeamsOfficiate?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   teamOfficialsMaySwap?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
-  officialIds?: Prisma.EventsUpdateofficialIdsInput | string[]
   officialPositions?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesOverride?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   autoCreatePointMatchIncidents?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1593,8 +1518,6 @@ export type EventsCountOrderByAggregateInput = {
   price?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrder
-  waitListIds?: Prisma.SortOrder
-  freeAgentIds?: Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrder
   teamSignup?: Prisma.SortOrder
   prize?: Prisma.SortOrder
@@ -1618,8 +1541,6 @@ export type EventsCountOrderByAggregateInput = {
   sportId?: Prisma.SortOrder
   timeSlotIds?: Prisma.SortOrder
   fieldIds?: Prisma.SortOrder
-  teamIds?: Prisma.SortOrder
-  userIds?: Prisma.SortOrder
   leagueScoringConfigId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   parentEvent?: Prisma.SortOrder
@@ -1628,7 +1549,6 @@ export type EventsCountOrderByAggregateInput = {
   officialSchedulingMode?: Prisma.SortOrder
   doTeamsOfficiate?: Prisma.SortOrder
   teamOfficialsMaySwap?: Prisma.SortOrder
-  officialIds?: Prisma.SortOrder
   officialPositions?: Prisma.SortOrder
   matchRulesOverride?: Prisma.SortOrder
   autoCreatePointMatchIncidents?: Prisma.SortOrder
@@ -1811,14 +1731,6 @@ export type EventsCreateassistantHostIdsInput = {
   set: string[]
 }
 
-export type EventsCreatewaitListIdsInput = {
-  set: string[]
-}
-
-export type EventsCreatefreeAgentIdsInput = {
-  set: string[]
-}
-
 export type EventsCreatewinnerBracketPointsToVictoryInput = {
   set: number[]
 }
@@ -1836,18 +1748,6 @@ export type EventsCreatetimeSlotIdsInput = {
 }
 
 export type EventsCreatefieldIdsInput = {
-  set: string[]
-}
-
-export type EventsCreateteamIdsInput = {
-  set: string[]
-}
-
-export type EventsCreateuserIdsInput = {
-  set: string[]
-}
-
-export type EventsCreateofficialIdsInput = {
   set: string[]
 }
 
@@ -1869,16 +1769,6 @@ export type EventsUpdatedivisionsInput = {
 }
 
 export type EventsUpdateassistantHostIdsInput = {
-  set?: string[]
-  push?: string | string[]
-}
-
-export type EventsUpdatewaitListIdsInput = {
-  set?: string[]
-  push?: string | string[]
-}
-
-export type EventsUpdatefreeAgentIdsInput = {
   set?: string[]
   push?: string | string[]
 }
@@ -1912,27 +1802,12 @@ export type EventsUpdatefieldIdsInput = {
   push?: string | string[]
 }
 
-export type EventsUpdateteamIdsInput = {
-  set?: string[]
-  push?: string | string[]
-}
-
-export type EventsUpdateuserIdsInput = {
-  set?: string[]
-  push?: string | string[]
-}
-
 export type NullableEnumEventsEventTypeEnumFieldUpdateOperationsInput = {
   set?: $Enums.EventsEventTypeEnum | null
 }
 
 export type EnumEventsOfficialSchedulingModeEnumFieldUpdateOperationsInput = {
   set?: $Enums.EventsOfficialSchedulingModeEnum
-}
-
-export type EventsUpdateofficialIdsInput = {
-  set?: string[]
-  push?: string | string[]
 }
 
 export type EventsUpdateinstallmentDueDatesInput = {
@@ -1977,8 +1852,6 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   price?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
-  waitListIds?: boolean
-  freeAgentIds?: boolean
   cancellationRefundHours?: boolean
   teamSignup?: boolean
   prize?: boolean
@@ -2002,8 +1875,6 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   sportId?: boolean
   timeSlotIds?: boolean
   fieldIds?: boolean
-  teamIds?: boolean
-  userIds?: boolean
   leagueScoringConfigId?: boolean
   organizationId?: boolean
   parentEvent?: boolean
@@ -2012,7 +1883,6 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   officialSchedulingMode?: boolean
   doTeamsOfficiate?: boolean
   teamOfficialsMaySwap?: boolean
-  officialIds?: boolean
   officialPositions?: boolean
   matchRulesOverride?: boolean
   autoCreatePointMatchIncidents?: boolean
@@ -2050,8 +1920,6 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   price?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
-  waitListIds?: boolean
-  freeAgentIds?: boolean
   cancellationRefundHours?: boolean
   teamSignup?: boolean
   prize?: boolean
@@ -2075,8 +1943,6 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   sportId?: boolean
   timeSlotIds?: boolean
   fieldIds?: boolean
-  teamIds?: boolean
-  userIds?: boolean
   leagueScoringConfigId?: boolean
   organizationId?: boolean
   parentEvent?: boolean
@@ -2085,7 +1951,6 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   officialSchedulingMode?: boolean
   doTeamsOfficiate?: boolean
   teamOfficialsMaySwap?: boolean
-  officialIds?: boolean
   officialPositions?: boolean
   matchRulesOverride?: boolean
   autoCreatePointMatchIncidents?: boolean
@@ -2123,8 +1988,6 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   price?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
-  waitListIds?: boolean
-  freeAgentIds?: boolean
   cancellationRefundHours?: boolean
   teamSignup?: boolean
   prize?: boolean
@@ -2148,8 +2011,6 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   sportId?: boolean
   timeSlotIds?: boolean
   fieldIds?: boolean
-  teamIds?: boolean
-  userIds?: boolean
   leagueScoringConfigId?: boolean
   organizationId?: boolean
   parentEvent?: boolean
@@ -2158,7 +2019,6 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   officialSchedulingMode?: boolean
   doTeamsOfficiate?: boolean
   teamOfficialsMaySwap?: boolean
-  officialIds?: boolean
   officialPositions?: boolean
   matchRulesOverride?: boolean
   autoCreatePointMatchIncidents?: boolean
@@ -2196,8 +2056,6 @@ export type EventsSelectScalar = {
   price?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
-  waitListIds?: boolean
-  freeAgentIds?: boolean
   cancellationRefundHours?: boolean
   teamSignup?: boolean
   prize?: boolean
@@ -2221,8 +2079,6 @@ export type EventsSelectScalar = {
   sportId?: boolean
   timeSlotIds?: boolean
   fieldIds?: boolean
-  teamIds?: boolean
-  userIds?: boolean
   leagueScoringConfigId?: boolean
   organizationId?: boolean
   parentEvent?: boolean
@@ -2231,7 +2087,6 @@ export type EventsSelectScalar = {
   officialSchedulingMode?: boolean
   doTeamsOfficiate?: boolean
   teamOfficialsMaySwap?: boolean
-  officialIds?: boolean
   officialPositions?: boolean
   matchRulesOverride?: boolean
   autoCreatePointMatchIncidents?: boolean
@@ -2244,7 +2099,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "waitListIds" | "freeAgentIds" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "teamIds" | "userIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialIds" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2274,8 +2129,6 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     price: number
     singleDivision: boolean | null
     registrationByDivisionType: boolean | null
-    waitListIds: string[]
-    freeAgentIds: string[]
     cancellationRefundHours: number | null
     teamSignup: boolean | null
     prize: string | null
@@ -2299,8 +2152,6 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     sportId: string | null
     timeSlotIds: string[]
     fieldIds: string[]
-    teamIds: string[]
-    userIds: string[]
     leagueScoringConfigId: string | null
     organizationId: string | null
     parentEvent: string | null
@@ -2309,7 +2160,6 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     officialSchedulingMode: $Enums.EventsOfficialSchedulingModeEnum
     doTeamsOfficiate: boolean | null
     teamOfficialsMaySwap: boolean | null
-    officialIds: string[]
     officialPositions: runtime.JsonValue | null
     matchRulesOverride: runtime.JsonValue | null
     autoCreatePointMatchIncidents: boolean | null
@@ -2767,8 +2617,6 @@ export interface EventsFieldRefs {
   readonly price: Prisma.FieldRef<"Events", 'Int'>
   readonly singleDivision: Prisma.FieldRef<"Events", 'Boolean'>
   readonly registrationByDivisionType: Prisma.FieldRef<"Events", 'Boolean'>
-  readonly waitListIds: Prisma.FieldRef<"Events", 'String[]'>
-  readonly freeAgentIds: Prisma.FieldRef<"Events", 'String[]'>
   readonly cancellationRefundHours: Prisma.FieldRef<"Events", 'Int'>
   readonly teamSignup: Prisma.FieldRef<"Events", 'Boolean'>
   readonly prize: Prisma.FieldRef<"Events", 'String'>
@@ -2792,8 +2640,6 @@ export interface EventsFieldRefs {
   readonly sportId: Prisma.FieldRef<"Events", 'String'>
   readonly timeSlotIds: Prisma.FieldRef<"Events", 'String[]'>
   readonly fieldIds: Prisma.FieldRef<"Events", 'String[]'>
-  readonly teamIds: Prisma.FieldRef<"Events", 'String[]'>
-  readonly userIds: Prisma.FieldRef<"Events", 'String[]'>
   readonly leagueScoringConfigId: Prisma.FieldRef<"Events", 'String'>
   readonly organizationId: Prisma.FieldRef<"Events", 'String'>
   readonly parentEvent: Prisma.FieldRef<"Events", 'String'>
@@ -2802,7 +2648,6 @@ export interface EventsFieldRefs {
   readonly officialSchedulingMode: Prisma.FieldRef<"Events", 'EventsOfficialSchedulingModeEnum'>
   readonly doTeamsOfficiate: Prisma.FieldRef<"Events", 'Boolean'>
   readonly teamOfficialsMaySwap: Prisma.FieldRef<"Events", 'Boolean'>
-  readonly officialIds: Prisma.FieldRef<"Events", 'String[]'>
   readonly officialPositions: Prisma.FieldRef<"Events", 'Json'>
   readonly matchRulesOverride: Prisma.FieldRef<"Events", 'Json'>
   readonly autoCreatePointMatchIncidents: Prisma.FieldRef<"Events", 'Boolean'>

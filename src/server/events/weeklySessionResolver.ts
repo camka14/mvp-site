@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { parseDateInput } from '@/server/legacyFormat';
 import { upsertEventFromPayload } from '@/server/repositories/events';
+import { getEventOfficialIdsForEvent } from '@/server/officials/eventOfficials';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
@@ -232,8 +233,15 @@ export const resolveOrCreateWeeklySessionChild = async (
     return { event: existing, created: false };
   }
 
+  const parentOfficialIds = await getEventOfficialIdsForEvent(parent.id, client as any);
   const childId = crypto.randomUUID();
-  const childPayload = buildChildPayload(parent, selectedSlot, childId, params.sessionStart, params.sessionEnd);
+  const childPayload = buildChildPayload(
+    { ...parent, officialIds: parentOfficialIds },
+    selectedSlot,
+    childId,
+    params.sessionStart,
+    params.sessionEnd,
+  );
 
   await upsertEventFromPayload(childPayload, client);
   const createdRow = await client.events.findUnique({ where: { id: childId } });

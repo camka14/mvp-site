@@ -11,6 +11,7 @@ import {
   type RefundRequestRow,
   type StripeRefundAttempt,
 } from '@/server/refunds/refundExecution';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,19 +28,6 @@ const normalizeId = (value: unknown): string | null => {
   }
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
-};
-
-const normalizeIdList = (value: unknown): string[] => {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return Array.from(
-    new Set(
-      value
-        .map((entry) => normalizeId(entry))
-        .filter((entry): entry is string => Boolean(entry)),
-    ),
-  );
 };
 
 const canManageLinkedChildRefund = async (params: {
@@ -93,24 +81,17 @@ export async function POST(req: NextRequest) {
       cancellationRefundHours: true,
       hostId: true,
       organizationId: true,
-      teamIds: true,
-      userIds: true,
-      waitListIds: true,
-      freeAgentIds: true,
     },
   });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
-  const currentUserIds = normalizeIdList(event.userIds);
-  const currentWaitlistIds = normalizeIdList(event.waitListIds);
-  const currentFreeAgentIds = normalizeIdList(event.freeAgentIds);
-  const currentTeamIds = normalizeIdList(event.teamIds);
-  const registeredTeam = currentTeamIds.length > 0
+  const participantIds = await getEventParticipantIdsForEvent(eventId);
+  const registeredTeam = participantIds.teamIds.length > 0
     ? await prisma.teams.findFirst({
       where: {
-        id: { in: currentTeamIds },
+        id: { in: participantIds.teamIds },
         OR: [
           { playerIds: { has: targetUserId } },
           { captainId: targetUserId },
@@ -122,9 +103,9 @@ export async function POST(req: NextRequest) {
       select: { id: true },
     })
     : null;
-  const isTargetInEvent = currentUserIds.includes(targetUserId)
-    || currentWaitlistIds.includes(targetUserId)
-    || currentFreeAgentIds.includes(targetUserId)
+  const isTargetInEvent = participantIds.userIds.includes(targetUserId)
+    || participantIds.waitListIds.includes(targetUserId)
+    || participantIds.freeAgentIds.includes(targetUserId)
     || Boolean(registeredTeam);
 
   if (!isTargetInEvent) {
@@ -203,12 +184,18 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      await tx.events.update({
-        where: { id: eventId },
+      await tx.eventRegistrations.updateMany({
+        where: {
+          eventId,
+          registrantId: targetUserId,
+          registrantType: { in: ['SELF', 'CHILD'] },
+          rosterRole: { in: ['PARTICIPANT', 'WAITLIST', 'FREE_AGENT'] },
+          status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+          slotId: null,
+          occurrenceDate: null,
+        },
         data: {
-          userIds: currentUserIds.filter((id) => id !== targetUserId),
-          waitListIds: currentWaitlistIds.filter((id) => id !== targetUserId),
-          freeAgentIds: currentFreeAgentIds.filter((id) => id !== targetUserId),
+          status: 'CANCELLED',
           updatedAt: now,
         },
       });
@@ -275,12 +262,18 @@ export async function POST(req: NextRequest) {
       select: { id: true },
     });
 
-    await tx.events.update({
-      where: { id: eventId },
+    await tx.eventRegistrations.updateMany({
+      where: {
+        eventId,
+        registrantId: targetUserId,
+        registrantType: { in: ['SELF', 'CHILD'] },
+        rosterRole: { in: ['PARTICIPANT', 'WAITLIST', 'FREE_AGENT'] },
+        status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+        slotId: null,
+        occurrenceDate: null,
+      },
       data: {
-        userIds: currentUserIds.filter((id) => id !== targetUserId),
-        waitListIds: currentWaitlistIds.filter((id) => id !== targetUserId),
-        freeAgentIds: currentFreeAgentIds.filter((id) => id !== targetUserId),
+        status: 'CANCELLED',
         updatedAt: now,
       },
     });

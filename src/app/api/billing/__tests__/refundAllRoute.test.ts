@@ -16,6 +16,9 @@ const prismaMock = {
     create: jest.fn(),
     createMany: jest.fn(),
   },
+  eventRegistrations: {
+    findMany: jest.fn(),
+  },
 };
 
 const requireSessionMock = jest.fn();
@@ -61,6 +64,16 @@ describe('POST /api/billing/refund-all', () => {
     prismaMock.refundRequests.findMany.mockResolvedValue([]);
     prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
     prismaMock.refundRequests.createMany.mockResolvedValue({ count: 0 });
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        id: 'event_1__team__team_1',
+        eventId: 'event_1',
+        registrantId: 'team_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
   });
 
   it('rejects team-level refunds from event managers who are not team managers', async () => {

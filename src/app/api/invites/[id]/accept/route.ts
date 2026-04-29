@@ -4,6 +4,7 @@ import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
 import { getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 import { loadCanonicalTeamById, syncCanonicalTeamRoster } from '@/server/teams/teamMembership';
+import { acceptTeamInviteEventSyncs } from '@/server/teams/teamInviteEventSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -67,6 +68,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await syncTeamChatInTx(tx, invite.teamId as string, {
       previousMemberIds: getTeamChatBaseMemberIds(team),
     });
+    await acceptTeamInviteEventSyncs(tx, invite, now);
 
     await tx.invites.delete({ where: { id: invite.id } });
     return true;

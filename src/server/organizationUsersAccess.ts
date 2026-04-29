@@ -54,11 +54,8 @@ type OrganizationUsersAccessClient = {
         start: true;
         end: true;
         organizationId: true;
-        userIds: true;
-        teamIds: true;
         hostId: true;
         assistantHostIds: true;
-        officialIds: true;
       };
       orderBy: { start: 'desc' };
     }) => Promise<Array<{
@@ -67,14 +64,18 @@ type OrganizationUsersAccessClient = {
       start: Date;
       end: Date | null;
       organizationId: string | null;
-      userIds: unknown;
-      teamIds: unknown;
       hostId: string | null;
       assistantHostIds: unknown;
-      officialIds: unknown;
     }>>;
   };
   eventRegistrations: {
+    findMany?: (args: any) => Promise<Array<{
+      eventId: string;
+      registrantId: string;
+      registrantType: string;
+      rosterRole: string | null;
+      status: string | null;
+    }>>;
     findFirst: (args: {
       where: {
         eventId: { in: string[] };
@@ -85,6 +86,12 @@ type OrganizationUsersAccessClient = {
       };
       select: { id: true };
     }) => Promise<{ id: string } | null>;
+  };
+  eventOfficials?: {
+    findMany?: (args: any) => Promise<Array<{
+      eventId: string;
+      userId: string;
+    }>>;
   };
   staffMembers?: {
     findUnique: (args: {
@@ -183,13 +190,82 @@ export const listOrganizationUsersScopeEvents = async (
       start: true,
       end: true,
       organizationId: true,
-      userIds: true,
-      teamIds: true,
       hostId: true,
       assistantHostIds: true,
-      officialIds: true,
     },
     orderBy: { start: 'desc' },
+  });
+  const eventIds = events.map((event) => event.id);
+  const [registrationRows, officialRows] = await Promise.all([
+    eventIds.length && typeof client.eventRegistrations.findMany === 'function'
+      ? client.eventRegistrations.findMany({
+        where: {
+          eventId: { in: eventIds },
+          status: { in: ['STARTED', 'ACTIVE', 'BLOCKED'] },
+          slotId: null,
+          occurrenceDate: null,
+        },
+        select: {
+          eventId: true,
+          registrantId: true,
+          registrantType: true,
+          rosterRole: true,
+          status: true,
+        },
+      })
+      : Promise.resolve([]),
+    eventIds.length && typeof client.eventOfficials?.findMany === 'function'
+      ? client.eventOfficials.findMany({
+        where: {
+          eventId: { in: eventIds },
+          isActive: { not: false },
+        },
+        select: {
+          eventId: true,
+          userId: true,
+        },
+      })
+      : Promise.resolve([]),
+  ]);
+  const participantIdsByEventId = new Map<string, { userIds: string[]; teamIds: string[] }>();
+  const officialIdsByEventId = new Map<string, string[]>();
+  const getParticipantIds = (eventId: string) => {
+    let ids = participantIdsByEventId.get(eventId);
+    if (!ids) {
+      ids = { userIds: [], teamIds: [] };
+      participantIdsByEventId.set(eventId, ids);
+    }
+    return ids;
+  };
+  registrationRows.forEach((row) => {
+    const eventId = normalizeId(row.eventId);
+    const registrantId = normalizeId(row.registrantId);
+    if (!eventId || !registrantId) {
+      return;
+    }
+    const ids = getParticipantIds(eventId);
+    const role = normalizeId(row.rosterRole)?.toUpperCase() ?? 'PARTICIPANT';
+    const registrantType = normalizeId(row.registrantType)?.toUpperCase();
+    if (role !== 'PARTICIPANT') {
+      return;
+    }
+    if (registrantType === 'TEAM') {
+      ids.teamIds.push(registrantId);
+    } else if (registrantType === 'SELF' || registrantType === 'CHILD') {
+      ids.userIds.push(registrantId);
+    }
+  });
+  officialRows.forEach((row) => {
+    const eventId = normalizeId(row.eventId);
+    const userId = normalizeId(row.userId);
+    if (!eventId || !userId) {
+      return;
+    }
+    const officialIds = officialIdsByEventId.get(eventId) ?? [];
+    if (!officialIds.includes(userId)) {
+      officialIds.push(userId);
+    }
+    officialIdsByEventId.set(eventId, officialIds);
   });
 
   return events.map((event) => ({
@@ -198,11 +274,11 @@ export const listOrganizationUsersScopeEvents = async (
     start: event.start,
     end: event.end ?? event.start,
     organizationId: normalizeId(event.organizationId),
-    userIds: normalizeIdList(event.userIds),
-    teamIds: normalizeIdList(event.teamIds),
+    userIds: Array.from(new Set(participantIdsByEventId.get(event.id)?.userIds ?? [])),
+    teamIds: Array.from(new Set(participantIdsByEventId.get(event.id)?.teamIds ?? [])),
     hostId: normalizeId(event.hostId),
     assistantHostIds: normalizeIdList(event.assistantHostIds),
-    officialIds: normalizeIdList(event.officialIds),
+    officialIds: officialIdsByEventId.get(event.id) ?? [],
   }));
 };
 

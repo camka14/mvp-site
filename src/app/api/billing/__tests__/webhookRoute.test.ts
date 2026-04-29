@@ -48,6 +48,7 @@ const prismaMock = {
     findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
+    updateMany: jest.fn(),
   },
   $queryRaw: jest.fn(),
   $transaction: jest.fn(),
@@ -169,6 +170,7 @@ describe('POST /api/billing/webhook', () => {
     prismaMock.eventRegistrations.findUnique.mockResolvedValue({ status: 'ACTIVE' });
     prismaMock.eventRegistrations.create.mockResolvedValue({});
     prismaMock.eventRegistrations.update.mockResolvedValue({});
+    prismaMock.eventRegistrations.updateMany.mockResolvedValue({ count: 0 });
     syncManagedOrganizationStripeAccountMock.mockResolvedValue({ verificationStatus: 'PENDING' });
     prismaMock.$queryRaw.mockResolvedValue([
       {
@@ -198,6 +200,7 @@ describe('POST /api/billing/webhook', () => {
           findUnique: prismaMock.eventRegistrations.findUnique,
           create: prismaMock.eventRegistrations.create,
           update: prismaMock.eventRegistrations.update,
+          updateMany: prismaMock.eventRegistrations.updateMany,
         },
         $queryRaw: prismaMock.$queryRaw,
       };
@@ -274,12 +277,17 @@ describe('POST /api/billing/webhook', () => {
         }),
       }),
     );
-    expect(prismaMock.events.update).toHaveBeenCalledWith(
+    expect(prismaMock.events.update).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'event_1' },
+        where: expect.objectContaining({
+          eventId: 'event_1',
+          registrantId: 'team_1',
+          registrantType: 'TEAM',
+          rosterRole: 'WAITLIST',
+        }),
         data: expect.objectContaining({
-          teamIds: ['team_1'],
-          waitListIds: [],
+          status: 'CANCELLED',
         }),
       }),
     );

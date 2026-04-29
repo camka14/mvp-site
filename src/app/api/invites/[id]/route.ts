@@ -3,6 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { normalizeInviteType } from '@/lib/staff';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
+import {
+  removeCanonicalPendingInvitee,
+  rollbackTeamInviteEventSyncs,
+} from '@/server/teams/teamInviteEventSync';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,6 +53,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
   }
 
+  const now = new Date();
   await prisma.$transaction(async (tx) => {
     if (normalizeInviteType(invite.type) === 'TEAM' && invite.teamId && invite.userId) {
       const teamsDelegate = getTeamsDelegate(tx);
@@ -57,13 +62,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         const pending = Array.isArray(team.pending) ? team.pending : [];
         const nextPending = pending.filter((userId: string) => userId !== invite.userId);
         await teamsDelegate.update({
-          where: { id: invite.teamId },
-          data: {
-            pending: nextPending,
-            updatedAt: new Date(),
-          },
-        });
+            where: { id: invite.teamId },
+            data: {
+              pending: nextPending,
+              updatedAt: now,
+            },
+          });
       }
+      await rollbackTeamInviteEventSyncs(tx, invite, 'CANCELLED', now);
+      await removeCanonicalPendingInvitee(tx, invite, session.userId, now);
     }
 
     await tx.invites.delete({ where: { id: invite.id } });

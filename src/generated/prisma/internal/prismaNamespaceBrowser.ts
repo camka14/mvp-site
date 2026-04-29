@@ -59,6 +59,7 @@ export const ModelName = {
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
   Invites: 'Invites',
+  TeamInviteEventSyncs: 'TeamInviteEventSyncs',
   StaffMembers: 'StaffMembers',
   EventOfficials: 'EventOfficials',
   Teams: 'Teams',
@@ -315,6 +316,25 @@ export const InvitesScalarFieldEnum = {
 } as const
 
 export type InvitesScalarFieldEnum = (typeof InvitesScalarFieldEnum)[keyof typeof InvitesScalarFieldEnum]
+
+
+export const TeamInviteEventSyncsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  inviteId: 'inviteId',
+  canonicalTeamId: 'canonicalTeamId',
+  eventId: 'eventId',
+  eventTeamId: 'eventTeamId',
+  userId: 'userId',
+  previousRegistrationSnapshot: 'previousRegistrationSnapshot',
+  eventTeamHadUser: 'eventTeamHadUser',
+  eventTeamHadPendingUser: 'eventTeamHadPendingUser',
+  sourceTeamRegistrationId: 'sourceTeamRegistrationId',
+  status: 'status'
+} as const
+
+export type TeamInviteEventSyncsScalarFieldEnum = (typeof TeamInviteEventSyncsScalarFieldEnum)[keyof typeof TeamInviteEventSyncsScalarFieldEnum]
 
 
 export const StaffMembersScalarFieldEnum = {
@@ -647,8 +667,6 @@ export const EventsScalarFieldEnum = {
   price: 'price',
   singleDivision: 'singleDivision',
   registrationByDivisionType: 'registrationByDivisionType',
-  waitListIds: 'waitListIds',
-  freeAgentIds: 'freeAgentIds',
   cancellationRefundHours: 'cancellationRefundHours',
   teamSignup: 'teamSignup',
   prize: 'prize',
@@ -672,8 +690,6 @@ export const EventsScalarFieldEnum = {
   sportId: 'sportId',
   timeSlotIds: 'timeSlotIds',
   fieldIds: 'fieldIds',
-  teamIds: 'teamIds',
-  userIds: 'userIds',
   leagueScoringConfigId: 'leagueScoringConfigId',
   organizationId: 'organizationId',
   parentEvent: 'parentEvent',
@@ -682,7 +698,6 @@ export const EventsScalarFieldEnum = {
   officialSchedulingMode: 'officialSchedulingMode',
   doTeamsOfficiate: 'doTeamsOfficiate',
   teamOfficialsMaySwap: 'teamOfficialsMaySwap',
-  officialIds: 'officialIds',
   officialPositions: 'officialPositions',
   matchRulesOverride: 'matchRulesOverride',
   autoCreatePointMatchIncidents: 'autoCreatePointMatchIncidents',

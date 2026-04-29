@@ -2,12 +2,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect } from '@mantine/core';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Tabs } from '@mantine/core';
 import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
 import { useApp } from '@/app/providers';
 import { apiRequest } from '@/lib/apiClient';
-import { teamService } from '@/lib/teamService';
+import { teamService, type TeamInviteEventTeamOption, type TeamInviteFreeAgentContext } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 import {
     buildDivisionName,
@@ -42,6 +42,14 @@ const DIVISION_GENDER_OPTIONS = [
 const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
 const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
 const EMPTY_FREE_AGENTS: UserData[] = [];
+const EMPTY_INVITE_FREE_AGENT_CONTEXT: TeamInviteFreeAgentContext = {
+    users: EMPTY_FREE_AGENTS,
+    eventIds: [],
+    freeAgentIds: [],
+    eventTeams: [],
+    freeAgentEventsByUserId: {},
+    freeAgentEventTeamIdsByUserId: {},
+};
 
 const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
     .trim()
@@ -154,6 +162,7 @@ export default function TeamDetailModal({
     const [teamPlayers, setTeamPlayers] = useState<UserData[]>([]);
     const [pendingPlayers, setPendingPlayers] = useState<UserData[]>([]);
     const [localFreeAgents, setLocalFreeAgents] = useState<UserData[]>(EMPTY_FREE_AGENTS);
+    const [inviteFreeAgentContext, setInviteFreeAgentContext] = useState<TeamInviteFreeAgentContext>(EMPTY_INVITE_FREE_AGENT_CONTEXT);
     const [editingName, setEditingName] = useState(false);
     const [newName, setNewName] = useState(currentTeam.name || '');
     const [editingDetails, setEditingDetails] = useState(false);
@@ -177,9 +186,11 @@ export default function TeamDetailModal({
     const [jerseyNumbersByUserId, setJerseyNumbersByUserId] = useState<Record<string, string>>({});
     const [leavingTeam, setLeavingTeam] = useState(false);
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
-    const [inviteMode, setInviteMode] = useState<'search' | 'email'>('search');
+    const [inviteMode, setInviteMode] = useState<'free_agents' | 'user' | 'email'>('free_agents');
     const [emailInviteInput, setEmailInviteInput] = useState('');
     const [invitingByEmail, setInvitingByEmail] = useState(false);
+    const [selectedInviteUser, setSelectedInviteUser] = useState<UserData | null>(null);
+    const [selectedInviteEventTeamIds, setSelectedInviteEventTeamIds] = useState<string[]>([]);
     const [selectedInviteRole, setSelectedInviteRole] = useState<TeamInviteRoleType>('player');
     const [cancellingInviteIds, setCancellingInviteIds] = useState<Set<string>>(new Set());
     const [pendingRoleInvites, setPendingRoleInvites] = useState<Array<{ invite: Invite; invitedUser?: UserData }>>([]);
@@ -246,6 +257,19 @@ export default function TeamDetailModal({
             ?? selectedFreeAgentUser
             ?? null;
     })();
+    const inviteEventTeamOptions = useMemo(() => inviteFreeAgentContext.eventTeams, [inviteFreeAgentContext.eventTeams]);
+    const inviteEventNameById = useMemo(() => {
+        const entries = new Map<string, string>();
+        inviteEventTeamOptions.forEach((option) => {
+            entries.set(option.eventId, option.eventName);
+        });
+        return entries;
+    }, [inviteEventTeamOptions]);
+    const getFreeAgentEventNames = useCallback((userId: string): string[] => (
+        (inviteFreeAgentContext.freeAgentEventsByUserId[userId] ?? [])
+            .map((eventId) => inviteEventNameById.get(eventId))
+            .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    ), [inviteEventNameById, inviteFreeAgentContext.freeAgentEventsByUserId]);
     const divisionTypeOptions = useMemo(
         () => getDivisionTypeOptionsForSport(draftSport || currentTeam.sport || ''),
         [currentTeam.sport, draftSport],
@@ -414,6 +438,23 @@ export default function TeamDetailModal({
         return false;
     }, [assistantCoachIds, currentTeam.headCoachId, currentTeam.managerId, currentTeam.pending, currentTeam.playerIds, isRoleInvitePending]);
 
+    const resetInviteTarget = useCallback(() => {
+        setSelectedInviteUser(null);
+        setSelectedInviteEventTeamIds([]);
+    }, []);
+
+    const precheckEventTeamIdsForUser = useCallback((userId: string): string[] => {
+        if (selectedInviteRole !== 'player') {
+            return [];
+        }
+        return inviteFreeAgentContext.freeAgentEventTeamIdsByUserId[userId] ?? [];
+    }, [inviteFreeAgentContext.freeAgentEventTeamIdsByUserId, selectedInviteRole]);
+
+    const selectInviteUser = useCallback((targetUser: UserData) => {
+        setSelectedInviteUser(targetUser);
+        setSelectedInviteEventTeamIds(precheckEventTeamIdsForUser(targetUser.$id));
+    }, [precheckEventTeamIdsForUser]);
+
     const fetchTeamDetails = useCallback(async () => {
         try {
             setLoading(true);
@@ -474,6 +515,7 @@ export default function TeamDetailModal({
 
         if (!isOpen || !canManageTeam) {
             setLocalFreeAgents(EMPTY_FREE_AGENTS);
+            setInviteFreeAgentContext(EMPTY_INVITE_FREE_AGENT_CONTEXT);
             return () => {
                 cancelled = true;
             };
@@ -481,13 +523,15 @@ export default function TeamDetailModal({
 
         void (async () => {
             try {
-                const freeAgents = await teamService.getInviteFreeAgents(currentTeam.$id);
+                const freeAgentContext = await teamService.getInviteFreeAgentContext(currentTeam.$id);
                 if (!cancelled) {
-                    setLocalFreeAgents(freeAgents);
+                    setInviteFreeAgentContext(freeAgentContext);
+                    setLocalFreeAgents(freeAgentContext.users);
                 }
             } catch (fetchError) {
                 console.error('Failed to load invite free agents:', fetchError);
                 if (!cancelled) {
+                    setInviteFreeAgentContext(EMPTY_INVITE_FREE_AGENT_CONTEXT);
                     setLocalFreeAgents(EMPTY_FREE_AGENTS);
                 }
             }
@@ -532,7 +576,7 @@ export default function TeamDetailModal({
         }
         setShowAddPlayers(true);
         setSelectedInviteRole('player');
-        setInviteMode('search');
+        setInviteMode('free_agents');
         setSearchQuery('');
         setSearchResults([]);
     }, [isOpen, normalizedSelectedFreeAgentId]);
@@ -688,7 +732,7 @@ export default function TeamDetailModal({
     ]);
 
     useEffect(() => {
-        if (inviteMode !== 'search') {
+        if (inviteMode !== 'user') {
             setSearchResults([]);
             return;
         }
@@ -817,17 +861,30 @@ export default function TeamDetailModal({
         if (selectedInviteRole !== 'player') {
             return [];
         }
-        const filtered = localFreeAgents.filter(agent =>
-            canInviteUserForRole(agent.$id, 'player')
-        );
+        const normalizedQuery = searchQuery.trim().toLowerCase();
+        const filtered = localFreeAgents.filter((agent) => {
+            if (!canInviteUserForRole(agent.$id, 'player')) {
+                return false;
+            }
+            if (!normalizedQuery) {
+                return true;
+            }
+            const searchable = [
+                getUserFullName(agent),
+                getUserHandle(agent),
+                agent.userName,
+            ].filter(Boolean).join(' ').toLowerCase();
+            return searchable.includes(normalizedQuery);
+        });
+        const limited = normalizedQuery ? filtered : filtered.slice(0, 10);
         if (!normalizedSelectedFreeAgentId) {
-            return filtered;
+            return limited;
         }
         const prioritized = filtered.find((agent) => agent.$id === normalizedSelectedFreeAgentId);
         if (!prioritized) {
-            return filtered;
+            return limited;
         }
-        return [prioritized, ...filtered.filter((agent) => agent.$id !== normalizedSelectedFreeAgentId)];
+        return [prioritized, ...limited.filter((agent) => agent.$id !== normalizedSelectedFreeAgentId)];
     };
 
     const getAvailableUsers = () => {
@@ -845,6 +902,10 @@ export default function TeamDetailModal({
     };
 
     const handleInviteUser = async (userId: string) => {
+        if (invitingByEmail) {
+            return;
+        }
+        setInvitingByEmail(true);
         try {
             const user = await userService.getUserById(userId, { teamId: currentTeam.$id });
             if (!user) throw new Error('User not found');
@@ -852,7 +913,9 @@ export default function TeamDetailModal({
                 notifications.show({ color: 'yellow', message: `${selectedRoleLabel} already assigned or invited.` });
                 return;
             }
-            const success = await teamService.inviteUserToTeamRole(currentTeam, user, selectedInviteRole);
+            const success = await teamService.inviteUserToTeamRole(currentTeam, user, selectedInviteRole, {
+                eventTeamIds: selectedInviteRole === 'player' ? selectedInviteEventTeamIds : [],
+            });
 
             if (success) {
                 if (selectedInviteRole === 'player') {
@@ -871,23 +934,14 @@ export default function TeamDetailModal({
                     await fetchRoleInvites();
                 }
                 setSearchResults(prev => prev.filter(searchUser => searchUser.$id !== userId));
+                resetInviteTarget();
             }
         } catch (error) {
             console.error('Failed to invite user:', error);
             setError('Failed to send invitation');
+        } finally {
+            setInvitingByEmail(false);
         }
-    };
-
-    const handleToggleInviteMode = () => {
-        if (inviteMode === 'search') {
-            setInviteMode('email');
-            setSearchQuery('');
-            setSearchResults([]);
-            return;
-        }
-
-        setInviteMode('search');
-        setEmailInviteInput('');
     };
 
     const handleInviteByEmail = async () => {
@@ -906,41 +960,97 @@ export default function TeamDetailModal({
         setInvitingByEmail(true);
 
         try {
-            const ensuredUser = await userService.ensureUserByEmail(normalizedInviteEmail);
-            if (!canInviteUserForRole(ensuredUser.$id, selectedInviteRole)) {
-                notifications.show({ color: 'yellow', message: `${selectedRoleLabel} already assigned or invited.` });
-                return;
-            }
-
-            const success = await teamService.inviteUserToTeamRole(currentTeam, ensuredUser, selectedInviteRole);
+            const success = await teamService.inviteEmailToTeamRole(currentTeam, normalizedInviteEmail, selectedInviteRole, {
+                eventTeamIds: selectedInviteRole === 'player' ? selectedInviteEventTeamIds : [],
+            });
             if (!success) {
                 notifications.show({ color: 'red', message: 'Failed to send invite.' });
                 return;
             }
 
             if (selectedInviteRole === 'player') {
-                const invitedUser = await userService.getUserById(ensuredUser.$id, { teamId: currentTeam.$id });
-                if (invitedUser) {
-                    setPendingPlayers(prev => (
-                        prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
-                    ));
+                const updatedTeam = await teamService.getTeamById(currentTeam.$id, true, { teamId: currentTeam.$id });
+                if (updatedTeam) {
+                    onTeamUpdated?.(updatedTeam);
                 }
-                onTeamUpdated?.({
-                    ...currentTeam,
-                    pending: Array.from(new Set([...currentTeam.pending, ensuredUser.$id])),
-                });
+                await fetchTeamDetails();
             } else {
                 await fetchRoleInvites();
             }
 
             notifications.show({ color: 'green', message: `${selectedRoleLabel} invite sent to ${normalizedInviteEmail}.` });
             setEmailInviteInput('');
+            setSelectedInviteEventTeamIds([]);
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Failed to send invite';
             notifications.show({ color: 'red', message });
         } finally {
             setInvitingByEmail(false);
         }
+    };
+
+    const renderEventTeamCheckboxes = () => {
+        if (selectedInviteRole !== 'player' || inviteEventTeamOptions.length === 0) {
+            return null;
+        }
+
+        return (
+            <div className="mt-3 border-t pt-3">
+                <Text fw={500} size="sm" mb={6}>Update future event teams</Text>
+                <Checkbox.Group
+                    value={selectedInviteEventTeamIds}
+                    onChange={setSelectedInviteEventTeamIds}
+                >
+                    <div className="space-y-2">
+                        {inviteEventTeamOptions.map((option: TeamInviteEventTeamOption) => (
+                            <Checkbox
+                                key={option.eventTeamId}
+                                value={option.eventTeamId}
+                                label={`${option.eventName} - ${option.teamName}`}
+                            />
+                        ))}
+                    </div>
+                </Checkbox.Group>
+            </div>
+        );
+    };
+
+    const renderSelectedInviteUserPrompt = () => {
+        if (!selectedInviteUser) {
+            return null;
+        }
+
+        return (
+            <div className="mt-3 rounded-md border border-gray-200 p-3">
+                <Group justify="space-between" align="flex-start">
+                    <Group>
+                        <Avatar
+                            src={getUserAvatarUrl(selectedInviteUser, 40)}
+                            alt={getUserFullName(selectedInviteUser)}
+                            size={40}
+                            radius="xl"
+                        />
+                        <div>
+                            <Text fw={500}>{getUserFullName(selectedInviteUser)}</Text>
+                            {getUserHandle(selectedInviteUser) && (
+                                <Text size="xs" c="dimmed">{getUserHandle(selectedInviteUser)}</Text>
+                            )}
+                            <Text size="xs" c="dimmed">{selectedRoleLabel} invite</Text>
+                        </div>
+                    </Group>
+                    <Button size="xs" variant="subtle" onClick={resetInviteTarget}>Change</Button>
+                </Group>
+                {renderEventTeamCheckboxes()}
+                <Group justify="flex-end" mt="sm">
+                    <Button
+                        onClick={() => { void handleInviteUser(selectedInviteUser.$id); }}
+                        loading={invitingByEmail}
+                    >
+                        Send {selectedRoleLabel} Invite
+                    </Button>
+                </Group>
+            </div>
+        );
     };
 
     const handleCancelRoleInvite = async (inviteId: string) => {
@@ -1573,9 +1683,14 @@ export default function TeamDetailModal({
                                         mb="sm"
                                         value={selectedInviteRole}
                                         onChange={(value) => {
-                                            setSelectedInviteRole(value as TeamInviteRoleType);
+                                            const nextRole = value as TeamInviteRoleType;
+                                            setSelectedInviteRole(nextRole);
+                                            if (nextRole !== 'player' && inviteMode === 'free_agents') {
+                                                setInviteMode('user');
+                                            }
                                             setSearchQuery('');
                                             setSearchResults([]);
+                                            resetInviteTarget();
                                         }}
                                         data={[
                                             { label: 'Player', value: 'player' },
@@ -1585,44 +1700,68 @@ export default function TeamDetailModal({
                                         ]}
                                         fullWidth
                                     />
-                                    <Group align="flex-end" wrap="nowrap" mb="sm">
-                                        <TextInput
-                                            style={{ flex: 1 }}
-                                            placeholder={
-                                                inviteMode === 'search'
-                                                    ? `Search ${selectedRoleLabel.toLowerCase()} (min 2 characters)`
-                                                    : 'name@example.com'
-                                            }
-                                            value={inviteMode === 'search' ? searchQuery : emailInviteInput}
-                                            onChange={(e) => {
-                                                if (inviteMode === 'search') {
-                                                    setSearchQuery(e.currentTarget.value);
-                                                } else {
-                                                    setEmailInviteInput(e.currentTarget.value);
-                                                }
-                                            }}
-                                            error={
-                                                inviteMode === 'email' && emailInviteInput.trim().length > 0 && !inviteEmailValid
-                                                    ? 'Enter a valid email address'
-                                                    : undefined
-                                            }
-                                        />
-                                        <Button onClick={handleToggleInviteMode}>
-                                            {inviteMode === 'search' ? 'Invite by Email' : 'Search Players'}
-                                        </Button>
-                                    </Group>
+                                    <Tabs
+                                        value={inviteMode}
+                                        onChange={(value) => {
+                                            const nextMode = (value ?? 'user') as typeof inviteMode;
+                                            setInviteMode(nextMode);
+                                            setSearchQuery('');
+                                            setSearchResults([]);
+                                            setEmailInviteInput('');
+                                            resetInviteTarget();
+                                        }}
+                                        keepMounted={false}
+                                    >
+                                        <Tabs.List grow mb="sm">
+                                            <Tabs.Tab value="free_agents" disabled={selectedInviteRole !== 'player'}>Free Agents</Tabs.Tab>
+                                            <Tabs.Tab value="user">Invite User</Tabs.Tab>
+                                            <Tabs.Tab value="email">Invite by Email</Tabs.Tab>
+                                        </Tabs.List>
 
-                                    {inviteMode === 'search' && searching && (
+                                        <Tabs.Panel value="free_agents">
+                                            <TextInput
+                                                placeholder="Search free agents"
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                                                mb="sm"
+                                            />
+                                        </Tabs.Panel>
+
+                                        <Tabs.Panel value="user">
+                                            <TextInput
+                                                placeholder={`Search ${selectedRoleLabel.toLowerCase()} (min 2 characters)`}
+                                                value={searchQuery}
+                                                onChange={(e) => setSearchQuery(e.currentTarget.value)}
+                                                mb="sm"
+                                            />
+                                        </Tabs.Panel>
+
+                                        <Tabs.Panel value="email">
+                                            <TextInput
+                                                placeholder="name@example.com"
+                                                value={emailInviteInput}
+                                                onChange={(e) => setEmailInviteInput(e.currentTarget.value)}
+                                                error={
+                                                    emailInviteInput.trim().length > 0 && !inviteEmailValid
+                                                        ? 'Enter a valid email address'
+                                                        : undefined
+                                                }
+                                                mb="sm"
+                                            />
+                                        </Tabs.Panel>
+                                    </Tabs>
+
+                                    {inviteMode === 'user' && searching && (
                                         <Group justify="center" py="sm">
                                             <Text c="dimmed" size="sm">Searching...</Text>
                                         </Group>
                                     )}
-                                    {inviteMode === 'search' && !searching && searchQuery.length >= 2 && getAvailableUsers().length === 0 && (
+                                    {inviteMode === 'user' && !searching && searchQuery.length >= 2 && getAvailableUsers().length === 0 && (
                                         <Text c="dimmed" ta="center" py={8}>
                                             {`No ${selectedRoleLabel.toLowerCase()} found matching "${searchQuery}"`}
                                         </Text>
                                     )}
-                                    {selectedInviteRole === 'player' && inviteMode === 'search' && suggestedFreeAgent && (
+                                    {selectedInviteRole === 'player' && inviteMode === 'free_agents' && suggestedFreeAgent && !selectedInviteUser && (
                                         <Paper withBorder radius="md" p="sm" mb="sm" bg={'green.0'}>
                                             <Group justify="space-between">
                                                 <Group>
@@ -1643,16 +1782,16 @@ export default function TeamDetailModal({
                                                 <Button
                                                     size="xs"
                                                     disabled={!canInviteUserForRole(suggestedFreeAgent.$id, 'player')}
-                                                    onClick={() => handleInviteUser(suggestedFreeAgent.$id)}
+                                                    onClick={() => selectInviteUser(suggestedFreeAgent)}
                                                 >
-                                                    Invite
+                                                    Select
                                                 </Button>
                                             </Group>
                                         </Paper>
                                     )}
-                                    {selectedInviteRole === 'player' && inviteMode === 'search' && !searching && (searchQuery.length < 2 && getFilteredFreeAgents().length > 0) && (
+                                    {selectedInviteRole === 'player' && inviteMode === 'free_agents' && !selectedInviteUser && !searching && getFilteredFreeAgents().length > 0 && (
                                         <div className="mb-4">
-                                            <Text fw={500} size="sm" c="blue" mb={4}>Available Free Agents from Event:</Text>
+                                            <Text fw={500} size="sm" c="blue" mb={4}>Available Free Agents from Events:</Text>
                                             <div className="space-y-2">
                                                 {getFilteredFreeAgents().map(agent => (
                                                     <Paper key={agent.$id} withBorder radius="md" p="sm" bg={'blue.0'}>
@@ -1664,17 +1803,24 @@ export default function TeamDetailModal({
                                                                     {getUserHandle(agent) && (
                                                                         <Text size="xs" c="dimmed">{getUserHandle(agent)}</Text>
                                                                     )}
-                                                                    <Text size="xs" c="blue">Free Agent from Event</Text>
+                                                                    <Text size="xs" c="blue">
+                                                                        {getFreeAgentEventNames(agent.$id).join(', ') || 'Free Agent from Event'}
+                                                                    </Text>
                                                                 </div>
                                                             </Group>
-                                                            <Button size="xs" onClick={() => handleInviteUser(agent.$id)}>Invite</Button>
+                                                            <Button size="xs" onClick={() => selectInviteUser(agent)}>Select</Button>
                                                         </Group>
                                                     </Paper>
                                                 ))}
                                             </div>
                                         </div>
                                     )}
-                                    {inviteMode === 'search' && !searching && getAvailableUsers().length > 0 && searchQuery.length >= 2 && (
+                                    {inviteMode === 'free_agents' && !selectedInviteUser && !searching && getFilteredFreeAgents().length === 0 && (
+                                        <Text c="dimmed" ta="center" py={8}>
+                                            {searchQuery.trim().length > 0 ? 'No free agents found matching your search.' : 'No future event free agents found.'}
+                                        </Text>
+                                    )}
+                                    {inviteMode === 'user' && !selectedInviteUser && !searching && getAvailableUsers().length > 0 && searchQuery.length >= 2 && (
                                         <ScrollArea.Autosize mah={300}>
                                             <div className="space-y-2">
                                                 {getAvailableUsers().map(user => {
@@ -1692,7 +1838,7 @@ export default function TeamDetailModal({
                                                                         {isFreeAgent && <Text size="xs" c="blue">Free Agent from Event</Text>}
                                                                     </div>
                                                                 </Group>
-                                                                <Button size="xs" onClick={() => handleInviteUser(user.$id)}>Invite</Button>
+                                                                <Button size="xs" onClick={() => selectInviteUser(user)}>Select</Button>
                                                             </Group>
                                                         </Paper>
                                                     );
@@ -1700,12 +1846,11 @@ export default function TeamDetailModal({
                                             </div>
                                         </ScrollArea.Autosize>
                                     )}
+                                    {renderSelectedInviteUserPrompt()}
 
                                     {inviteMode === 'email' && (
-                                        <Paper withBorder radius="md" p="md" mt="sm">
-                                            <Text size="sm" c="dimmed" mb="sm">
-                                                Invite by email will ensure the account exists and send a {selectedRoleLabel.toLowerCase()} invite.
-                                            </Text>
+                                        <div className="mt-3">
+                                            {renderEventTeamCheckboxes()}
                                             <Group justify="flex-end">
                                                 <Button
                                                     onClick={handleInviteByEmail}
@@ -1715,7 +1860,7 @@ export default function TeamDetailModal({
                                                     Send {selectedRoleLabel} Invite
                                                 </Button>
                                             </Group>
-                                        </Paper>
+                                        </div>
                                     )}
                                 </Paper>
                             )}

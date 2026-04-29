@@ -33,8 +33,11 @@ type DocumentSummary = {
 
 type UserSummaryInternal = {
   userId: string;
+  firstName: string;
+  lastName: string;
   fullName: string;
   userName?: string;
+  profileImageId?: string | null;
   eventsById: Map<string, EventSummary>;
   documents: DocumentSummary[];
 };
@@ -148,7 +151,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     : [];
   const eventOfficials = rentalEventIds.length
     ? await prisma.eventOfficials.findMany({
-      where: { eventId: { in: rentalEventIds } },
+      where: {
+        eventId: { in: rentalEventIds },
+        isActive: { not: false },
+      },
       select: {
         eventId: true,
         userId: true,
@@ -266,6 +272,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         firstName: true,
         lastName: true,
         userName: true,
+        profileImageId: true,
       },
     }),
     prisma.templateDocuments.findMany({
@@ -312,8 +319,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   users.forEach((user) => {
     summariesByUserId.set(user.id, {
       userId: user.id,
+      firstName: user.firstName ?? '',
+      lastName: user.lastName ?? '',
       fullName: toDisplayName(user),
       userName: user.userName ?? undefined,
+      profileImageId: user.profileImageId ?? null,
       eventsById: new Map<string, EventSummary>(),
       documents: [],
     });
@@ -462,8 +472,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
       return {
         userId: summary.userId,
+        firstName: summary.firstName,
+        lastName: summary.lastName,
         fullName: summary.fullName,
         userName: summary.userName,
+        profileImageId: summary.profileImageId,
         events: eventsList,
         documents: documentsList,
       };

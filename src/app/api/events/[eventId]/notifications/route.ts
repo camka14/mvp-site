@@ -6,6 +6,8 @@ import { canManageEvent } from '@/server/accessControl';
 import { sendPushToUsers } from '@/server/pushNotifications';
 import { isEmailEnabled, sendEmail } from '@/server/email';
 import { getRequestOrigin } from '@/lib/requestOrigin';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
+import { getEventOfficialIdsForEvent } from '@/server/officials/eventOfficials';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,9 +118,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           hostId: true,
           assistantHostIds: true,
           organizationId: true,
-          teamIds: true,
-          userIds: true,
-          officialIds: true,
         },
       });
 
@@ -131,9 +130,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         throw new Response('Forbidden', { status: 403 });
       }
 
-      const teamIds = normalizeIds(eventAccess.teamIds);
-      const directPlayerIds = normalizeIds(eventAccess.userIds);
-      const officialIds = normalizeIds(eventAccess.officialIds);
+      const [participantIds, officialIds] = await Promise.all([
+        getEventParticipantIdsForEvent(eventId, tx),
+        getEventOfficialIdsForEvent(eventId, tx),
+      ]);
+      const teamIds = participantIds.teamIds;
+      const directPlayerIds = participantIds.userIds;
       const hostIds = normalizeIds([eventAccess.hostId, ...normalizeIds(eventAccess.assistantHostIds)]);
 
       const teams = teamIds.length

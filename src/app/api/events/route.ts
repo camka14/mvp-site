@@ -6,6 +6,8 @@ import { requireSession } from '@/lib/permissions';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
 import { isSessionTokenCurrent } from '@/server/authSessions';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
+import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
+import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
 import {
   deleteMatchesByEvent,
   isEventFieldConflictError,
@@ -25,7 +27,6 @@ import { notifySocialAudienceOfEventCreation } from '@/server/eventCreationNotif
 import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
   buildEventOfficialPositionsFromTemplates,
-  deriveEventOfficialsFromLegacyOfficialIds,
   normalizeEventOfficialPositions,
   normalizeOfficialSchedulingMode,
   normalizeSportOfficialPositionTemplates,
@@ -503,13 +504,16 @@ const buildEventResponsePayload = async (event: any) => {
     event.id,
     normalizeSportOfficialPositionTemplates((sportRow as any)?.officialPositionTemplates),
   );
-  const officialPositions = (() => {
+  let officialPositions = (() => {
     const explicit = normalizeEventOfficialPositions((event as any).officialPositions, event.id);
     if (explicit.length) {
       return explicit;
     }
     return sportPositions;
   })();
+  if (!officialPositions.length && eventOfficialRows.length) {
+    officialPositions = buildEventOfficialPositionsFromTemplates(event.id, [{ name: 'Official', count: 1 }]);
+  }
   const eventOfficials = eventOfficialRows.length
     ? (eventOfficialRows as any[])
         .map((row) => ({
@@ -524,11 +528,7 @@ const buildEventResponsePayload = async (event: any) => {
           isActive: row.isActive !== false,
         }))
         .filter((row) => row.positionIds.length > 0)
-    : deriveEventOfficialsFromLegacyOfficialIds({
-        eventId: event.id,
-        officialIds: Array.isArray(event.officialIds) ? event.officialIds : [],
-        positionIds: officialPositions.map((position) => position.id),
-      });
+    : [];
   const divisionKeys = normalizeDivisionKeys(event.divisions);
   const [divisionFieldIds, divisionDetails] = await Promise.all([
     getDivisionFieldMapForEvent(event.id, divisionKeys),
@@ -792,12 +792,27 @@ export async function GET(req: NextRequest) {
     return new Map<string, Array<Record<string, unknown>>>();
   });
 
-  const normalized = eventsWithAttendees.map((row) => {
-    if (!Array.isArray(row.userIds)) {
-      row.userIds = coerceArray(row.userIds) ?? [];
-    }
+  const eventsWithParticipantIds = await withDerivedEventParticipantIds(eventsWithAttendees).catch((error) => {
+    console.error('Failed to enrich participant ids for events list', error);
+    return eventsWithAttendees.map((event) => ({
+      ...event,
+      teamIds: [],
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    }));
+  });
+  const officialIdsByEventId = await getEventOfficialIdsByEventIds(
+    eventsWithParticipantIds.map((event) => event.id),
+  ).catch((error) => {
+    console.error('Failed to enrich official ids for events list', error);
+    return new Map<string, string[]>();
+  });
+
+  const normalized = eventsWithParticipantIds.map((row) => {
     return withLegacyEvent({
       ...row,
+      officialIds: officialIdsByEventId.get(row.id) ?? [],
       divisionDetails: divisionDetailsByEventId.get(row.id) ?? [],
     });
   });

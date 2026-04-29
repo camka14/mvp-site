@@ -7,6 +7,25 @@ import { inferDivisionDetails } from '@/lib/divisionTypes';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 export type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
+export type TeamInviteEventTeamOption = {
+    eventId: string;
+    eventTeamId: string;
+    eventName: string;
+    eventStart: string | null;
+    eventEnd: string | null;
+    teamName: string;
+};
+export type TeamInviteFreeAgentContext = {
+    users: UserData[];
+    eventIds: string[];
+    freeAgentIds: string[];
+    eventTeams: TeamInviteEventTeamOption[];
+    freeAgentEventsByUserId: Record<string, string[]>;
+    freeAgentEventTeamIdsByUserId: Record<string, string[]>;
+};
+export type TeamInviteOptions = {
+    eventTeamIds?: string[];
+};
 export type TeamRegistrationConsent = {
     documentId?: string | null;
     status?: string | null;
@@ -202,7 +221,12 @@ class TeamService {
         return this.inviteUserToTeamRole(team, user, 'player');
     }
 
-    async inviteUserToTeamRole(team: Team, user: UserData, inviteType: TeamInviteRoleType): Promise<boolean> {
+    async inviteUserToTeamRole(
+        team: Team,
+        user: UserData,
+        inviteType: TeamInviteRoleType,
+        options: TeamInviteOptions = {},
+    ): Promise<boolean> {
         try {
             if (inviteType === 'player') {
                 if (team.playerIds.includes(user.$id)) {
@@ -214,14 +238,6 @@ class TeamService {
                     return false;
                 }
 
-                const pendingSet = new Set(team.pending ?? []);
-                pendingSet.add(user.$id);
-                const updatedPending = Array.from(pendingSet);
-
-                await apiRequest(`/api/teams/${team.$id}`, {
-                    method: 'PATCH',
-                    body: { team: { pending: updatedPending } },
-                });
             } else if (inviteType === 'team_manager') {
                 if (team.managerId === user.$id) {
                     return false;
@@ -237,14 +253,39 @@ class TeamService {
                 }
             }
 
-            if (inviteType === 'player') {
-                await userService.addTeamInvitation(user.$id, team.$id);
-            } else {
-                await userService.addTeamInvitation(user.$id, team.$id, inviteType);
-            }
+            await apiRequest(`/api/teams/${encodeURIComponent(team.$id)}/member-invites`, {
+                method: 'POST',
+                body: {
+                    userId: user.$id,
+                    role: inviteType,
+                    eventTeamIds: options.eventTeamIds ?? [],
+                },
+            });
             return true;
         } catch (error) {
             console.error('Failed to invite user to team:', error);
+            return false;
+        }
+    }
+
+    async inviteEmailToTeamRole(
+        team: Team,
+        email: string,
+        inviteType: TeamInviteRoleType,
+        options: TeamInviteOptions = {},
+    ): Promise<boolean> {
+        try {
+            await apiRequest(`/api/teams/${encodeURIComponent(team.$id)}/member-invites`, {
+                method: 'POST',
+                body: {
+                    email: email.trim().toLowerCase(),
+                    role: inviteType,
+                    eventTeamIds: options.eventTeamIds ?? [],
+                },
+            });
+            return true;
+        } catch (error) {
+            console.error('Failed to invite email to team:', error);
             return false;
         }
     }
@@ -436,16 +477,35 @@ class TeamService {
         }
     }
 
-    async getInviteFreeAgents(teamId: string): Promise<UserData[]> {
+    async getInviteFreeAgentContext(teamId: string): Promise<TeamInviteFreeAgentContext> {
         try {
-            const response = await apiRequest<{ users?: UserData[] }>(
+            const response = await apiRequest<Partial<TeamInviteFreeAgentContext>>(
                 `/api/teams/${encodeURIComponent(teamId)}/invite-free-agents`
             );
-            return response.users ?? [];
+            return {
+                users: response.users ?? [],
+                eventIds: response.eventIds ?? [],
+                freeAgentIds: response.freeAgentIds ?? [],
+                eventTeams: response.eventTeams ?? [],
+                freeAgentEventsByUserId: response.freeAgentEventsByUserId ?? {},
+                freeAgentEventTeamIdsByUserId: response.freeAgentEventTeamIdsByUserId ?? {},
+            };
         } catch (error) {
             console.error('Failed to fetch invite free agents:', error);
-            return [];
+            return {
+                users: [],
+                eventIds: [],
+                freeAgentIds: [],
+                eventTeams: [],
+                freeAgentEventsByUserId: {},
+                freeAgentEventTeamIdsByUserId: {},
+            };
         }
+    }
+
+    async getInviteFreeAgents(teamId: string): Promise<UserData[]> {
+        const context = await this.getInviteFreeAgentContext(teamId);
+        return context.users;
     }
 
     async updateTeamProfileImage(teamId: string, fileId: string): Promise<Team | undefined> {

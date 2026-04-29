@@ -35,13 +35,21 @@ const hasOrganizationDocumentAccess = async (params: {
   if (!organizationId && eventId) {
     const event = await prisma.events.findUnique({
       where: { id: eventId },
-      select: { organizationId: true, userIds: true },
+      select: { organizationId: true },
     });
     if (!event) {
       return false;
     }
     organizationId = event.organizationId;
-    if (Array.isArray(event.userIds) && event.userIds.includes(params.sessionUserId)) {
+    const registration = await prisma.eventRegistrations.findFirst({
+      where: {
+        eventId,
+        registrantId: params.sessionUserId,
+        status: { in: ['STARTED', 'ACTIVE', 'BLOCKED'] },
+      },
+      select: { id: true },
+    });
+    if (registration) {
       return true;
     }
   }

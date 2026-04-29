@@ -661,8 +661,6 @@ model Events {
   price                        Int
   singleDivision               Boolean?
   registrationByDivisionType   Boolean?
-  waitListIds                  String[]
-  freeAgentIds                 String[]
   cancellationRefundHours      Int?
   teamSignup                   Boolean?
   prize                        String?
@@ -686,8 +684,6 @@ model Events {
   sportId                      String?
   timeSlotIds                  String[]
   fieldIds                     String[]
-  teamIds                      String[]
-  userIds                      String[]
   leagueScoringConfigId        String?
   organizationId               String?
   parentEvent                  String?
@@ -696,7 +692,6 @@ model Events {
   officialSchedulingMode       EventsOfficialSchedulingModeEnum @default(SCHEDULE)
   doTeamsOfficiate             Boolean?
   teamOfficialsMaySwap         Boolean?
-  officialIds                  String[]
   officialPositions            Json?
   allowPaymentPlans            Boolean?
   installmentCount             Int?

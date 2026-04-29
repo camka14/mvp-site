@@ -48,7 +48,6 @@ describe('GET /api/events/[eventId]/teams/compliance', () => {
       hostId: 'host_1',
       assistantHostIds: [],
       organizationId: null,
-      teamIds: ['slot_1'],
       requiredTemplateIds: [],
     });
     prismaMock.teams.findMany.mockResolvedValue([
@@ -61,7 +60,16 @@ describe('GET /api/events/[eventId]/teams/compliance', () => {
     ]);
     prismaMock.templateDocuments.findMany.mockResolvedValue([]);
     prismaMock.userData.findMany.mockResolvedValue([]);
-    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        id: 'event_1__team__slot_1',
+        eventId: 'event_1',
+        registrantId: 'slot_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-07-01T12:00:00.000Z'),
+      },
+    ]);
     prismaMock.signedDocuments.findMany.mockResolvedValue([]);
   });
 

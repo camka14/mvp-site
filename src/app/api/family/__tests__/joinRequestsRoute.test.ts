@@ -193,10 +193,16 @@ describe('family join requests routes', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'reg_team_1' },
+      data: expect.objectContaining({
+        status: 'ACTIVE',
+      }),
+    }));
     expect(prismaMock.events.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'event_team_1' },
       data: expect.objectContaining({
-        freeAgentIds: expect.arrayContaining(['adult_2', 'child_2']),
+        updatedAt: expect.any(Date),
       }),
     }));
   });

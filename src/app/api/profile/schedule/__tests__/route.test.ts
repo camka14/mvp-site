@@ -63,9 +63,18 @@ describe('GET /api/profile/schedule', () => {
         start: new Date('2026-03-01T10:00:00Z'),
         end: new Date('2026-03-01T12:00:00Z'),
         fieldIds: ['field_1'],
-        teamIds: ['team_1'],
       },
     ]);
+    prismaMock.eventRegistrations.findMany
+      .mockResolvedValueOnce([{ eventId: 'event_1' }])
+      .mockResolvedValueOnce([{
+        id: 'registration_1',
+        eventId: 'event_1',
+        registrantId: 'team_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-02-01T00:00:00Z'),
+      }]);
     prismaMock.matches.findMany.mockResolvedValue([
       {
         id: 'match_1',
@@ -110,11 +119,7 @@ describe('GET /api/profile/schedule', () => {
           NOT: { state: 'TEMPLATE' },
           OR: expect.arrayContaining([
             { hostId: 'user_1' },
-            { userIds: { has: 'user_1' } },
-            { freeAgentIds: { has: 'user_1' } },
-            { waitListIds: { has: 'user_1' } },
-            { officialIds: { has: 'user_1' } },
-            { teamIds: { hasSome: ['team_1', 'team_2'] } },
+            { id: { in: ['event_1'] } },
           ]),
           AND: expect.any(Array),
         }),
@@ -288,9 +293,18 @@ describe('GET /api/profile/schedule', () => {
         start: new Date('2026-03-01T10:00:00Z'),
         end: new Date('2026-03-01T12:00:00Z'),
         fieldIds: [],
-        teamIds: ['team_1'],
       },
     ]);
+    prismaMock.eventRegistrations.findMany
+      .mockResolvedValueOnce([{ eventId: 'event_1' }])
+      .mockResolvedValueOnce([{
+        id: 'registration_1',
+        eventId: 'event_1',
+        registrantId: 'team_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-02-01T00:00:00Z'),
+      }]);
     prismaMock.matches.findMany.mockResolvedValue([]);
     prismaMock.volleyBallTeams.findMany.mockResolvedValue([{ id: 'team_1', name: 'Legacy Team' }]);
 

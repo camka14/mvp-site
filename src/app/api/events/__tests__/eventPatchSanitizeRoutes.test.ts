@@ -42,6 +42,11 @@ const eventOfficialsMock = {
   create: jest.fn(),
 };
 
+const eventRegistrationsMock = {
+  updateMany: jest.fn(),
+  upsert: jest.fn(),
+};
+
 const organizationsMock = {
   findUnique: jest.fn(),
 };
@@ -62,6 +67,7 @@ const prismaMock = {
   divisions: divisionsMock,
   sports: sportsMock,
   eventOfficials: eventOfficialsMock,
+  eventRegistrations: eventRegistrationsMock,
   organizations: organizationsMock,
   staffMembers: staffMembersMock,
   invites: invitesMock,
@@ -73,6 +79,7 @@ const prismaMock = {
     divisions: divisionsMock,
     sports: sportsMock,
     eventOfficials: eventOfficialsMock,
+    eventRegistrations: eventRegistrationsMock,
     leagueScoringConfigs: leagueScoringConfigsMock,
     organizations: organizationsMock,
     staffMembers: staffMembersMock,
@@ -111,6 +118,7 @@ describe('event PATCH route', () => {
       divisions: divisionsMock,
       sports: sportsMock,
       eventOfficials: eventOfficialsMock,
+      eventRegistrations: eventRegistrationsMock,
       leagueScoringConfigs: leagueScoringConfigsMock,
       organizations: organizationsMock,
       staffMembers: staffMembersMock,
@@ -133,6 +141,8 @@ describe('event PATCH route', () => {
     eventOfficialsMock.findMany.mockResolvedValue([]);
     eventOfficialsMock.deleteMany.mockResolvedValue({ count: 0 });
     eventOfficialsMock.create.mockResolvedValue({});
+    eventRegistrationsMock.updateMany.mockResolvedValue({ count: 0 });
+    eventRegistrationsMock.upsert.mockResolvedValue({});
   });
 
   it('rejects unknown patch keys instead of silently ignoring them', async () => {
@@ -168,7 +178,7 @@ describe('event PATCH route', () => {
     expect(prismaMock.events.update).not.toHaveBeenCalled();
   });
 
-  it('updates userIds when provided (preferred field name)', async () => {
+  it('syncs userIds into event registrations when provided for compatibility', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique
       .mockResolvedValueOnce({ id: 'event_1', hostId: 'host_1' })
@@ -190,7 +200,34 @@ describe('event PATCH route', () => {
 
     const updateArg = prismaMock.events.update.mock.calls[0][0];
     expect(updateArg.where).toEqual({ id: 'event_1' });
-    expect(updateArg.data.userIds).toEqual(['user_1']);
+    expect(updateArg.data.userIds).toBeUndefined();
+    expect(eventRegistrationsMock.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          eventId: 'event_1',
+          registrantType: 'SELF',
+          rosterRole: 'PARTICIPANT',
+          registrantId: { notIn: ['user_1'] },
+        }),
+        data: expect.objectContaining({ status: 'CANCELLED' }),
+      }),
+    );
+    expect(eventRegistrationsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1__self__user_1' },
+        create: expect.objectContaining({
+          eventId: 'event_1',
+          registrantId: 'user_1',
+          registrantType: 'SELF',
+          rosterRole: 'PARTICIPANT',
+          status: 'ACTIVE',
+        }),
+        update: expect.objectContaining({
+          rosterRole: 'PARTICIPANT',
+          status: 'ACTIVE',
+        }),
+      }),
+    );
   });
 
   it('restricts org event host and official assignments to organization hosts/officials', async () => {
@@ -239,7 +276,16 @@ describe('event PATCH route', () => {
     const updateArg = prismaMock.events.update.mock.calls[0][0];
     expect(updateArg.data.hostId).toBe('owner_1');
     expect(updateArg.data.assistantHostIds).toEqual(['host_2']);
-    expect(updateArg.data.officialIds).toEqual(['official_org_1']);
+    expect(updateArg.data.officialIds).toBeUndefined();
+    expect(eventOfficialsMock.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventId: 'event_1',
+          userId: 'official_org_1',
+          isActive: true,
+        }),
+      }),
+    );
   });
 
   it('syncs division field mappings when divisionFieldIds are provided', async () => {
@@ -1118,15 +1164,25 @@ describe('event PATCH route', () => {
         { name: 'Line Judge', count: 2 },
       ],
     });
-    eventOfficialsMock.findMany.mockResolvedValueOnce([
-      {
-        id: 'event_official_1',
-        userId: 'official_1',
-        positionIds: ['event_pos_r1'],
-        fieldIds: ['field_1'],
-        isActive: true,
-      },
-    ]);
+    eventOfficialsMock.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'event_official_1',
+          userId: 'official_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'event_official_1',
+          userId: 'official_1',
+          positionIds: ['event_pos_r1'],
+          fieldIds: ['field_1'],
+          isActive: true,
+        },
+      ]);
 
     const res = await eventPatch(
       patchRequest('http://localhost/api/events/event_1', {
@@ -1187,8 +1243,8 @@ describe('event PATCH route', () => {
       expect.objectContaining({
         id: expect.any(String),
         userId: 'official_1',
-        positionIds: ['event_pos_r1', 'event_pos_line'],
-        fieldIds: [],
+        positionIds: ['event_pos_r1'],
+        fieldIds: ['field_1'],
         isActive: true,
       }),
     );

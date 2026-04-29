@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateMvpAndStripeFees } from '@/lib/billingFees';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 
@@ -57,8 +58,6 @@ export async function POST(
       hostId: true,
       assistantHostIds: true,
       organizationId: true,
-      teamIds: true,
-      userIds: true,
       teamSignup: true,
       eventType: true,
     },
@@ -94,11 +93,12 @@ export async function POST(
 
   const ownerType = parsed.data.ownerType;
   const requestedOwnerId = normalizeId(parsed.data.ownerId);
+  const participantIds = await getEventParticipantIdsForEvent(event.id);
   let ownerId: string | null = null;
   let allowSplit = false;
 
   if (!event.teamSignup) {
-    const participantUserIds = normalizeIdList(event.userIds);
+    const participantUserIds = participantIds.userIds;
     if (!participantUserIds.includes(normalizedTeamId)) {
       return NextResponse.json({ error: 'User is not a participant of this event.' }, { status: 404 });
     }
@@ -110,7 +110,7 @@ export async function POST(
       return NextResponse.json({ error: 'User bill owner must match the participant user.' }, { status: 400 });
     }
   } else {
-    const eventTeamIds = normalizeIdList(event.teamIds);
+    const eventTeamIds = participantIds.teamIds;
     if (!eventTeamIds.includes(normalizedTeamId)) {
       return NextResponse.json({ error: 'Team is not a participant of this event.' }, { status: 404 });
     }

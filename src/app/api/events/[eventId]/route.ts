@@ -11,6 +11,7 @@ import {
   persistScheduledRosterTeams,
   saveEventSchedule,
   saveMatches,
+  syncEventParticipantRegistrationsFromCompatibilityIds,
   syncEventDivisions,
 } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
@@ -28,13 +29,13 @@ import {
 import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeSlotCanonical';
 import {
   buildEventOfficialPositionsFromTemplates,
-  deriveEventOfficialsFromLegacyOfficialIds,
   normalizeEventOfficials,
   normalizeEventOfficialPositions,
   normalizeOfficialSchedulingMode,
   normalizeSportOfficialPositionTemplates,
 } from '@/server/officials/config';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -63,8 +64,6 @@ const EVENT_UPDATE_FIELDS = new Set([
   'price',
   'singleDivision',
   'registrationByDivisionType',
-  'waitListIds',
-  'freeAgentIds',
   'cancellationRefundHours',
   'teamSignup',
   'prize',
@@ -87,8 +86,6 @@ const EVENT_UPDATE_FIELDS = new Set([
   'sportId',
   'timeSlotIds',
   'fieldIds',
-  'teamIds',
-  'userIds',
   'leagueScoringConfigId',
   'organizationId',
   'parentEvent',
@@ -99,7 +96,6 @@ const EVENT_UPDATE_FIELDS = new Set([
   'teamOfficialsMaySwap',
   'matchRulesOverride',
   'autoCreatePointMatchIncidents',
-  'officialIds',
   'officialPositions',
   'allowPaymentPlans',
   'installmentCount',
@@ -122,6 +118,11 @@ const LEAGUE_SCORING_NUMBER_FIELDS = [
 
 const EVENT_PATCH_ALLOWED_FIELDS = new Set<string>([
   ...EVENT_UPDATE_FIELDS,
+  'teamIds',
+  'userIds',
+  'waitListIds',
+  'freeAgentIds',
+  'officialIds',
   'fields',
   'timeSlots',
   'divisionFieldIds',
@@ -244,13 +245,16 @@ const buildEventOfficialResponse = async (event: any) => {
     event.id,
     normalizeSportOfficialPositionTemplates((sportRow as any)?.officialPositionTemplates),
   );
-  const officialPositions = (() => {
+  let officialPositions = (() => {
     const explicit = normalizeEventOfficialPositions((event as any).officialPositions, event.id);
     if (explicit.length) {
       return explicit;
     }
     return templatePositions;
   })();
+  if (!officialPositions.length && eventOfficialRows.length) {
+    officialPositions = buildEventOfficialPositionsFromTemplates(event.id, [{ name: 'Official', count: 1 }]);
+  }
   const eventOfficials = eventOfficialRows.length
     ? (eventOfficialRows as any[])
         .map((row) => ({
@@ -265,11 +269,7 @@ const buildEventOfficialResponse = async (event: any) => {
           isActive: row.isActive !== false,
         }))
         .filter((row) => row.positionIds.length > 0)
-    : deriveEventOfficialsFromLegacyOfficialIds({
-        eventId: event.id,
-        officialIds: Array.isArray(event.officialIds) ? event.officialIds : [],
-        positionIds: officialPositions.map((position) => position.id),
-      });
+    : [];
   return {
     officialSchedulingMode: normalizeOfficialSchedulingMode((event as any).officialSchedulingMode),
     officialPositions,
@@ -1390,7 +1390,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
   }
   const divisionKeys = normalizeDivisionKeys(event.divisions);
   const playoffDivisionKeys = await getDivisionKeysForEventKind(eventId, 'PLAYOFF');
-  const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites] = await Promise.all([
+  const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites, participantIds] = await Promise.all([
     getDivisionFieldMapForEvent(eventId, divisionKeys),
     getDivisionDetailsForEvent(eventId, divisionKeys, event.start, {
       price: event.price,
@@ -1414,11 +1414,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       where: { eventId, type: 'STAFF' },
       orderBy: { createdAt: 'desc' },
     }),
+    getEventParticipantIdsForEvent(eventId),
   ]);
   const officialResponse = await buildEventOfficialResponse(event);
   return NextResponse.json(
     withLegacyEvent({
       ...event,
+      ...participantIds,
       ...officialResponse,
       divisionFieldIds,
       divisionDetails,
@@ -1590,6 +1592,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         if (!EVENT_UPDATE_FIELDS.has(key)) continue;
         data[key] = value;
       }
+      const hasLegacyTeamIdsInput = Object.prototype.hasOwnProperty.call(payload, 'teamIds');
+      const hasLegacyUserIdsInput = Object.prototype.hasOwnProperty.call(payload, 'userIds');
+      const hasLegacyWaitListIdsInput = Object.prototype.hasOwnProperty.call(payload, 'waitListIds');
+      const hasLegacyFreeAgentIdsInput = Object.prototype.hasOwnProperty.call(payload, 'freeAgentIds');
+      const hasCompatibilityOfficialIdsInput = Object.prototype.hasOwnProperty.call(payload, 'officialIds');
+      if (hasCompatibilityOfficialIdsInput) {
+        data.officialIds = normalizeEntityIdList(payload.officialIds);
+      }
 
       assertEventContentAllowed({
         name: Object.prototype.hasOwnProperty.call(data, 'name') ? data.name : existing.name,
@@ -1661,7 +1671,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             officialIds: (
               Object.prototype.hasOwnProperty.call(data, 'officialIds')
                 ? data.officialIds
-                : existing.officialIds
+                : []
             ) as string[] | null | undefined,
           },
           { ...organizationAccess, staffMembers, staffInvites },
@@ -1763,9 +1773,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (!nextOfficialPositions.length) {
         nextOfficialPositions = templateOfficialPositions;
       }
+      const existingEventOfficialIds = Array.from(new Set(
+        (existingEventOfficialRows as any[])
+          .map((row) => normalizeEntityId(row.userId))
+          .filter((userId: string | null): userId is string => Boolean(userId)),
+      ));
       const nextCompatibilityOfficialIds = Object.prototype.hasOwnProperty.call(data, 'officialIds')
         ? normalizeEntityIdList(data.officialIds)
-        : normalizeEntityIdList(existing.officialIds);
+        : existingEventOfficialIds;
       if (!nextOfficialPositions.length && nextCompatibilityOfficialIds.length) {
         nextOfficialPositions = buildEventOfficialPositionsFromTemplates(eventId, [{ name: 'Official', count: 1 }]);
       }
@@ -1793,12 +1808,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           })
         : sanitizedExistingEventOfficials.length
           ? sanitizedExistingEventOfficials
-          : deriveEventOfficialsFromLegacyOfficialIds({
-              eventId,
-              officialIds: nextCompatibilityOfficialIds,
+          : nextCompatibilityOfficialIds.map((userId) => ({
+              id: `event_official_${eventId}_${userId.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'user'}`,
+              userId,
               positionIds: nextOfficialPositions.map((position) => position.id),
-            });
-      data.officialIds = nextEventOfficials.map((official) => official.userId);
+              fieldIds: [],
+              isActive: true,
+            }));
+      delete data.officialIds;
       const nextDivisionKeys = (() => {
         if (Array.isArray(data.divisions)) {
           const normalized = hasDivisionDetailsInput
@@ -1905,7 +1922,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       // Keep plain PATCH saves metadata-only; clients must explicitly opt-in to a rebuild.
-      const scheduleChanged = hasScheduleImpact(existing, data) || divisionFieldMapChanged || hasTimeSlotPayload;
+      const scheduleChanged = hasScheduleImpact(existing, { ...payload, ...data }) || divisionFieldMapChanged || hasTimeSlotPayload;
       const shouldSchedule = rescheduleRequested && scheduleChanged;
 
       if (canonicalTimeSlots !== null) {
@@ -2092,6 +2109,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           hasEventOfficialsInput
           || hasOfficialPositionsInput
           || Object.prototype.hasOwnProperty.call(payload, 'sportId')
+          || hasCompatibilityOfficialIdsInput
           || existingEventOfficialRows.length === 0
         )
       ) {
@@ -2111,6 +2129,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           });
         }
       }
+
+      await syncEventParticipantRegistrationsFromCompatibilityIds(tx, {
+        eventId,
+        createdBy: session.userId,
+        teamIds: normalizeEntityIdList(payload.teamIds),
+        userIds: normalizeEntityIdList(payload.userIds),
+        waitListIds: normalizeEntityIdList(payload.waitListIds),
+        freeAgentIds: normalizeEntityIdList(payload.freeAgentIds),
+        syncTeams: hasLegacyTeamIdsInput,
+        syncUsers: hasLegacyUserIdsInput,
+        syncWaitList: hasLegacyWaitListIdsInput,
+        syncFreeAgents: hasLegacyFreeAgentIdsInput,
+      });
 
       const defaultDivisionPrice = (() => {
         const parsed = normalizeNullableNumber(data.price ?? existing.price);
@@ -2207,7 +2238,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     });
     const divisionKeys = normalizeDivisionKeys(updated.divisions);
     const playoffDivisionKeys = await getDivisionKeysForEventKind(eventId, 'PLAYOFF');
-    const [divisionFieldIds, divisionDetails, playoffDivisionDetails] = await Promise.all([
+    const [divisionFieldIds, divisionDetails, playoffDivisionDetails, participantIds] = await Promise.all([
       getDivisionFieldMapForEvent(eventId, divisionKeys),
       getDivisionDetailsForEvent(eventId, divisionKeys, updated.start, {
         price: updated.price,
@@ -2227,11 +2258,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         installmentDueDates: updated.installmentDueDates,
         installmentAmounts: updated.installmentAmounts,
       }),
+      getEventParticipantIdsForEvent(eventId),
     ]);
     const officialResponse = await buildEventOfficialResponse(updated);
     return NextResponse.json(
       withLegacyEvent({
         ...updated,
+        ...participantIds,
         ...officialResponse,
         divisionFieldIds,
         divisionDetails,
@@ -2278,7 +2311,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
       organizationId: true,
       fieldIds: true,
       timeSlotIds: true,
-      teamIds: true,
       state: true,
       leagueScoringConfigId: true,
     },
@@ -2303,7 +2335,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
 
   const eventFieldIds = normalizeEntityIdList(event.fieldIds);
   const eventTimeSlotIds = normalizeEntityIdList(event.timeSlotIds);
-  const eventTeamIds = normalizeEntityIdList(event.teamIds);
   const eventState = typeof event.state === 'string' ? event.state.toUpperCase() : '';
   const leagueScoringConfigId = normalizeEntityId(event.leagueScoringConfigId);
 
@@ -2367,7 +2398,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     const registrationTeamIds = registrations
       .filter((row: { registrantType: string }) => row.registrantType === 'TEAM')
       .map((row: { registrantId: string }) => row.registrantId);
-    const seedTeamIds = Array.from(new Set([...eventTeamIds, ...normalizeEntityIdList(registrationTeamIds)]));
+    const seedTeamIds = Array.from(new Set(normalizeEntityIdList(registrationTeamIds)));
 
     const linkedTeams = seedTeamIds.length > 0
       ? await tx.teams.findMany({
@@ -2403,20 +2434,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
       normalizeEntityIdList(registrationsUsingTeams.map((row: { registrantId: string }) => row.registrantId))
         .forEach((id) => referencedTeamIds.add(id));
 
-      const eventsUsingTeams = await tx.events.findMany({
-        where: {
-          id: { not: eventId },
-          OR: candidateTeamIds.map((teamId) => ({ teamIds: { has: teamId } })),
-        },
-        select: { teamIds: true },
-      });
-      eventsUsingTeams.forEach((row: { teamIds: string[] }) => {
-        normalizeEntityIdList(row.teamIds).forEach((teamId) => {
-          if (candidateTeamIds.includes(teamId)) {
-            referencedTeamIds.add(teamId);
-          }
-        });
-      });
     }
     const forcedTeamIdsToDelete = new Set(
       linkedTeams

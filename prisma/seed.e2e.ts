@@ -2,7 +2,7 @@ import "dotenv/config";
 import path from "node:path";
 import fs from "node:fs/promises";
 import { execSync } from "node:child_process";
-import { PrismaClient } from "../src/generated/prisma/client";
+import { Prisma, PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hashPassword } from "../src/lib/authServer";
 import { ensureDefaultSports } from "../src/server/defaultSports";
@@ -641,8 +641,6 @@ const seed = async (): Promise<void> => {
       maxParticipants: 12,
       hostId: SEED_USERS.host.id,
       singleDivision: true,
-      waitListIds: [],
-      freeAgentIds: [],
       cancellationRefundHours: 24,
       teamSignup: false,
       registrationCutoffHours: 2,
@@ -651,14 +649,11 @@ const seed = async (): Promise<void> => {
       coordinates: SEED_ORG.coordinates,
       fieldIds: [SEED_FIELD.id],
       timeSlotIds: [SEED_RENTAL_SLOT.id],
-      teamIds: [],
-      userIds: [],
       leagueScoringConfigId: null,
       sportId: SEED_SPORT.id,
       organizationId: SEED_ORG.id,
       autoCancellation: false,
       eventType: "EVENT" as const,
-      officialIds: [],
       allowPaymentPlans: false,
       installmentCount: 0,
       installmentDueDates: [],
@@ -716,14 +711,12 @@ const seed = async (): Promise<void> => {
       })),
     });
 
-    await prisma.events.createMany({
-      data: [
+      const schedulerEvents: Prisma.EventsCreateManyInput[] = [
         {
           ...baseEventData,
           id: SEED_EVENTS.scheduler.tournament8.id,
           name: SEED_EVENTS.scheduler.tournament8.name,
           eventType: "TOURNAMENT",
-          teamIds: SEED_TEAM_IDS.slice(0, 8),
           price: 0,
           state: "PUBLISHED",
           winnerSetCount: 2,
@@ -738,7 +731,6 @@ const seed = async (): Promise<void> => {
           id: SEED_EVENTS.scheduler.tournament6.id,
           name: SEED_EVENTS.scheduler.tournament6.name,
           eventType: "TOURNAMENT",
-          teamIds: SEED_TEAM_IDS.slice(0, 6),
           price: 0,
           state: "PUBLISHED",
           winnerSetCount: 2,
@@ -753,7 +745,6 @@ const seed = async (): Promise<void> => {
           id: SEED_EVENTS.scheduler.tournamentDoubleElim.id,
           name: SEED_EVENTS.scheduler.tournamentDoubleElim.name,
           eventType: "TOURNAMENT",
-          teamIds: SEED_TEAM_IDS.slice(0, 8),
           price: 0,
           state: "PUBLISHED",
           winnerSetCount: 2,
@@ -768,7 +759,6 @@ const seed = async (): Promise<void> => {
           id: SEED_EVENTS.scheduler.leagueNoSlots.id,
           name: SEED_EVENTS.scheduler.leagueNoSlots.name,
           eventType: "LEAGUE",
-          teamIds: SEED_TEAM_IDS.slice(0, 4),
           timeSlotIds: [],
           gamesPerOpponent: 1,
           includePlayoffs: false,
@@ -780,7 +770,6 @@ const seed = async (): Promise<void> => {
           id: SEED_EVENTS.scheduler.leagueSameDay.id,
           name: SEED_EVENTS.scheduler.leagueSameDay.name,
           eventType: "LEAGUE",
-          teamIds: SEED_TEAM_IDS.slice(0, 4),
           start: new Date("2026-04-01T10:00:00Z"),
           end: new Date("2026-04-01T10:00:00Z"),
           timeSlotIds: [SEED_RENTAL_SLOT.id],
@@ -789,7 +778,33 @@ const seed = async (): Promise<void> => {
           price: 0,
           state: "PUBLISHED",
         },
-      ],
+      ];
+
+    await prisma.events.createMany({
+      data: schedulerEvents,
+    });
+    const schedulerEventTeams: Array<{ eventId: string; teamIds: string[] }> = [
+      { eventId: SEED_EVENTS.scheduler.tournament8.id, teamIds: SEED_TEAM_IDS.slice(0, 8) },
+      { eventId: SEED_EVENTS.scheduler.tournament6.id, teamIds: SEED_TEAM_IDS.slice(0, 6) },
+      { eventId: SEED_EVENTS.scheduler.tournamentDoubleElim.id, teamIds: SEED_TEAM_IDS.slice(0, 8) },
+      { eventId: SEED_EVENTS.scheduler.leagueNoSlots.id, teamIds: SEED_TEAM_IDS.slice(0, 4) },
+      { eventId: SEED_EVENTS.scheduler.leagueSameDay.id, teamIds: SEED_TEAM_IDS.slice(0, 4) },
+    ];
+    await prisma.eventRegistrations.createMany({
+      data: schedulerEventTeams.flatMap(({ eventId, teamIds }) => teamIds.map((teamId) => ({
+        id: `${eventId}__team__${teamId}`,
+        eventId,
+        registrantId: teamId,
+        parentId: null,
+        registrantType: "TEAM",
+        rosterRole: "PARTICIPANT",
+        status: "ACTIVE",
+        eventTeamId: teamId,
+        createdBy: SEED_USERS.host.id,
+        createdAt: now,
+        updatedAt: now,
+      }))),
+      skipDuplicates: true,
     });
   } finally {
     await prisma.$disconnect();

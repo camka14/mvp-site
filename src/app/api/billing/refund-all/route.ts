@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
+import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,18 +21,6 @@ const normalizeId = (value: unknown): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
-const normalizeIdList = (value: unknown): string[] => (
-  Array.isArray(value)
-    ? Array.from(
-        new Set(
-          value
-            .map((entry) => normalizeId(entry))
-            .filter((entry): entry is string => Boolean(entry)),
-        ),
-      )
-    : []
-);
-
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -47,23 +36,19 @@ export async function POST(req: NextRequest) {
       hostId: true,
       assistantHostIds: true,
       organizationId: true,
-      userIds: true,
-      waitListIds: true,
-      freeAgentIds: true,
-      teamIds: true,
     },
   });
   if (!event) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
+  const participantIds = await getEventParticipantIdsForEvent(event.id);
   const normalizedTeamId = normalizeId(parsed.data.teamId);
   const canManageCurrentEvent = await canManageEvent(session, event);
   const now = new Date();
 
   if (normalizedTeamId) {
-    const eventTeamIds = normalizeIdList(event.teamIds);
-    if (!eventTeamIds.includes(normalizedTeamId)) {
+    if (!participantIds.teamIds.includes(normalizedTeamId)) {
       return NextResponse.json({ error: 'Team is not registered for this event.' }, { status: 400 });
     }
 
@@ -134,10 +119,10 @@ export async function POST(req: NextRequest) {
   }
 
   const refundUserIds = new Set<string>();
-  for (const id of normalizeIdList(event.userIds)) refundUserIds.add(id);
-  for (const id of normalizeIdList(event.freeAgentIds)) refundUserIds.add(id);
+  for (const id of participantIds.userIds) refundUserIds.add(id);
+  for (const id of participantIds.freeAgentIds) refundUserIds.add(id);
 
-  const eventTeamIds = normalizeIdList(event.teamIds);
+  const eventTeamIds = participantIds.teamIds;
   if (eventTeamIds.length) {
     const teams = await prisma.teams.findMany({
       where: { id: { in: eventTeamIds } },

@@ -6,6 +6,7 @@ import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 import {
+  buildEventParticipantSnapshot,
   deleteEventRegistration,
   upsertEventRegistration,
 } from '@/server/events/eventRegistrations';
@@ -87,6 +88,8 @@ async function updateFreeAgents(
         parentEvent: true,
         timeSlotIds: true,
         divisions: true,
+        maxParticipants: true,
+        singleDivision: true,
       },
     }),
     prisma.userData.findUnique({
@@ -187,8 +190,19 @@ async function updateFreeAgents(
     });
 
     const refreshedEvent = await prisma.events.findUnique({ where: { id: eventId } });
+    const snapshot = await buildEventParticipantSnapshot({
+      event: refreshedEvent ?? event,
+      occurrence: resolvedOccurrence,
+    });
     return NextResponse.json({
-      event: refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event),
+      event: {
+        ...(refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event)),
+        teamIds: snapshot.participants.teamIds,
+        userIds: snapshot.participants.userIds,
+        waitListIds: snapshot.participants.waitListIds,
+        freeAgentIds: snapshot.participants.freeAgentIds,
+      },
+      participants: snapshot.participants,
       registration: withLegacyFields(registration),
       warnings: warnings.length ? warnings : undefined,
     }, { status: 200 });
@@ -202,8 +216,19 @@ async function updateFreeAgents(
   });
 
   const refreshedEvent = await prisma.events.findUnique({ where: { id: eventId } });
+  const snapshot = await buildEventParticipantSnapshot({
+    event: refreshedEvent ?? event,
+    occurrence: resolvedOccurrence,
+  });
   return NextResponse.json({
-    event: refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event),
+    event: {
+      ...(refreshedEvent ? withLegacyFields(refreshedEvent) : withLegacyFields(event)),
+      teamIds: snapshot.participants.teamIds,
+      userIds: snapshot.participants.userIds,
+      waitListIds: snapshot.participants.waitListIds,
+      freeAgentIds: snapshot.participants.freeAgentIds,
+    },
+    participants: snapshot.participants,
   }, { status: 200 });
 }
 

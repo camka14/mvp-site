@@ -4,6 +4,8 @@ import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
+import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
 import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
@@ -464,9 +466,14 @@ export async function POST(req: NextRequest) {
       attendees: fallbackAttendeeCount(event),
     }));
   });
+  const eventsWithParticipants = await withDerivedEventParticipantIds(eventsWithAttendees, prisma);
+  const officialIdsByEventId = await getEventOfficialIdsByEventIds(
+    eventsWithParticipants.map((event) => event.id),
+    prisma,
+  );
 
   const divisionDetailsByEventId = await getDivisionDetailsForEvents(
-    eventsWithAttendees.map((event) => ({
+    eventsWithParticipants.map((event) => ({
       id: event.id,
       divisions: event.divisions,
       sportId: event.sportId,
@@ -476,8 +483,9 @@ export async function POST(req: NextRequest) {
     return new Map<string, Array<Record<string, unknown>>>();
   });
 
-  const normalized = eventsWithAttendees.map((event) => withLegacyEvent({
+  const normalized = eventsWithParticipants.map((event) => withLegacyEvent({
     ...event,
+    officialIds: officialIdsByEventId.get(event.id) ?? [],
     divisionDetails: divisionDetailsByEventId.get(event.id) ?? [],
   }));
   return NextResponse.json({ events: normalized }, { status: 200 });

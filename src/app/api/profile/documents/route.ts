@@ -71,6 +71,8 @@ const isRevokedStatus = (value: unknown): boolean => {
   return status === 'revoked';
 };
 
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE', 'BLOCKED'] as const;
+
 const toTimestamp = (value?: string | Date | null): number => {
   if (!value) return 0;
   const parsed = value instanceof Date ? value : new Date(value);
@@ -193,6 +195,7 @@ export async function GET(_req: NextRequest) {
         parentId: true,
         registrantId: true,
         registrantType: true,
+        rosterRole: true,
         status: true,
         consentStatus: true,
       },
@@ -345,41 +348,60 @@ export async function GET(_req: NextRequest) {
     })
     : [];
 
-  const registrationEventIds = Array.from(new Set(
-    registrations
-      .map((registration) => normalizeText(registration.eventId))
-      .filter((value): value is string => Boolean(value)),
-  ));
-
   const signedEventIds = Array.from(new Set(
     signedDocuments
       .map((document) => normalizeText(document.eventId))
       .filter((value): value is string => Boolean(value)),
   ));
 
-  const discoverableEvents = await prisma.events.findMany({
+  const relevantEventTeamIds = Array.from(new Set([...relevantTeamIds, ...relevantLinkedChildTeamIds]));
+  const discoverableRegistrationRows = await prisma.eventRegistrations.findMany({
     where: {
+      status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
       OR: [
-        { userIds: { has: userId } },
-        ...(relevantTeamIds.length ? [{ teamIds: { hasSome: relevantTeamIds } }] : []),
-        { freeAgentIds: { has: userId } },
-        ...(registrationEventIds.length ? [{ id: { in: registrationEventIds } }] : []),
-        ...(signedEventIds.length ? [{ id: { in: signedEventIds } }] : []),
-        ...(relevantLinkedChildTeamIds.length ? [{ teamIds: { hasSome: relevantLinkedChildTeamIds } }] : []),
-        ...(linkedChildIds.length ? [{ freeAgentIds: { hasSome: linkedChildIds } }] : []),
+        { registrantId: { in: relevantProfileUserIds } },
+        { parentId: userId },
+        ...(relevantEventTeamIds.length
+          ? [{ registrantType: 'TEAM' as const, registrantId: { in: relevantEventTeamIds } }]
+          : []),
       ],
     },
     select: {
       id: true,
-      name: true,
-      start: true,
-      organizationId: true,
-      requiredTemplateIds: true,
-      userIds: true,
-      teamIds: true,
-      freeAgentIds: true,
+      eventId: true,
+      parentId: true,
+      registrantId: true,
+      registrantType: true,
+      rosterRole: true,
+      status: true,
+      consentStatus: true,
     },
   });
+  const profileEventRegistrations = Array.from(
+    new Map(
+      [...registrations, ...discoverableRegistrationRows]
+        .map((registration) => [registration.id, registration]),
+    ).values(),
+  );
+  const registrationEventIds = Array.from(new Set(
+    profileEventRegistrations
+      .map((registration) => normalizeText(registration.eventId))
+      .filter((value): value is string => Boolean(value)),
+  ));
+
+  const discoverableEventIds = Array.from(new Set([...registrationEventIds, ...signedEventIds]));
+  const discoverableEvents = discoverableEventIds.length
+    ? await prisma.events.findMany({
+      where: { id: { in: discoverableEventIds } },
+      select: {
+        id: true,
+        name: true,
+        start: true,
+        organizationId: true,
+        requiredTemplateIds: true,
+      },
+    })
+    : [];
 
   const relevantProfileTeamIds = Array.from(new Set([
     ...teamIds,
@@ -403,6 +425,46 @@ export async function GET(_req: NextRequest) {
 
   const eventById = new Map(discoverableEvents.map((event) => [event.id, event]));
   const teamById = new Map(discoverableTeams.map((team) => [team.id, team]));
+  const participantIdsByEventId = new Map<string, {
+    teamIds: string[];
+    userIds: string[];
+    freeAgentIds: string[];
+  }>();
+  const getParticipantIdsForEvent = (eventId: string) => {
+    let ids = participantIdsByEventId.get(eventId);
+    if (!ids) {
+      ids = { teamIds: [], userIds: [], freeAgentIds: [] };
+      participantIdsByEventId.set(eventId, ids);
+    }
+    return ids;
+  };
+  profileEventRegistrations.forEach((registration) => {
+    const eventId = normalizeText(registration.eventId);
+    const registrantId = normalizeText(registration.registrantId);
+    if (!eventId || !registrantId) {
+      return;
+    }
+    const status = normalizeText(registration.status)?.toUpperCase();
+    if (!status || !ACTIVE_EVENT_REGISTRATION_STATUSES.includes(status as typeof ACTIVE_EVENT_REGISTRATION_STATUSES[number])) {
+      return;
+    }
+    const ids = getParticipantIdsForEvent(eventId);
+    const rosterRole = normalizeText(registration.rosterRole)?.toUpperCase() ?? 'PARTICIPANT';
+    const registrantType = normalizeText(registration.registrantType)?.toUpperCase();
+    if (rosterRole === 'FREE_AGENT') {
+      if (!ids.freeAgentIds.includes(registrantId)) {
+        ids.freeAgentIds.push(registrantId);
+      }
+    } else if (rosterRole === 'PARTICIPANT' && registrantType === 'TEAM') {
+      if (!ids.teamIds.includes(registrantId)) {
+        ids.teamIds.push(registrantId);
+      }
+    } else if (rosterRole === 'PARTICIPANT' && (registrantType === 'SELF' || registrantType === 'CHILD')) {
+      if (!ids.userIds.includes(registrantId)) {
+        ids.userIds.push(registrantId);
+      }
+    }
+  });
 
   const requiredTemplateIds = Array.from(new Set(
     [
@@ -557,15 +619,10 @@ export async function GET(_req: NextRequest) {
   });
 
   discoverableEvents.forEach((event) => {
-    const eventTeamIds = Array.isArray(event.teamIds)
-      ? event.teamIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-      : [];
-    const eventFreeAgentIds = Array.isArray(event.freeAgentIds)
-      ? event.freeAgentIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-      : [];
-    const eventUserIds = Array.isArray(event.userIds)
-      ? event.userIds.filter((value): value is string => typeof value === 'string' && Boolean(value.trim()))
-      : [];
+    const eventParticipantIds = participantIdsByEventId.get(event.id);
+    const eventTeamIds = eventParticipantIds?.teamIds ?? [];
+    const eventFreeAgentIds = eventParticipantIds?.freeAgentIds ?? [];
+    const eventUserIds = eventParticipantIds?.userIds ?? [];
 
     linkedChildIds.forEach((childUserId) => {
       const childTeamIds = childTeamIdsByIdWithSlots.get(childUserId)
