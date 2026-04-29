@@ -69,6 +69,7 @@ describe('avatar placeholder urls', () => {
 
     expect(url).toContain('/api/avatars/initials?');
     expect(url).toContain('name=Ana+Maria+Lopez');
+    expect(url).toContain('colorSeed=Ana+Maria+Lopez%7Camlopez');
     expect(url).toContain('size=80');
   });
 

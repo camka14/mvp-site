@@ -7,6 +7,7 @@ const pushMock = jest.fn();
 const getOrganizationByIdMock = jest.fn();
 const getOrganizationsByOwnerMock = jest.fn();
 const getFieldEventsMatchesMock = jest.fn();
+const updateRentalSlotMock = jest.fn();
 const getNextRentalOccurrenceMock = jest.fn();
 
 jest.mock('next/navigation', () => ({
@@ -17,7 +18,7 @@ jest.mock('react-big-calendar', () => {
   const React = require('react');
   const MS_IN_WEEK = 7 * 24 * 60 * 60 * 1000;
 
-  const Calendar = ({ date, onNavigate }: any) => {
+  const Calendar = ({ date, events = [], onNavigate, onEventDrop, draggableAccessor }: any) => {
     const resolvedDate = date instanceof Date ? date : new Date(date);
     return (
       <div>
@@ -28,6 +29,24 @@ jest.mock('react-big-calendar', () => {
           Next Week
         </button>
         <div data-testid="calendar-date">{resolvedDate.toISOString()}</div>
+        {events.map((event: any) => {
+          const canDrag = typeof draggableAccessor === 'function' ? Boolean(draggableAccessor(event)) : false;
+          return (
+            <button
+              key={event.id}
+              type="button"
+              disabled={!canDrag}
+              onClick={() => onEventDrop?.({
+                event,
+                start: new Date('2026-03-11T12:00:00.000Z'),
+                end: new Date('2026-03-11T13:00:00.000Z'),
+                resourceId: event.resourceId,
+              })}
+            >
+              Drag {event.title}
+            </button>
+          );
+        })}
       </div>
     );
   };
@@ -54,6 +73,7 @@ jest.mock('@/lib/organizationService', () => ({
 jest.mock('@/lib/fieldService', () => ({
   fieldService: {
     getFieldEventsMatches: (...args: any[]) => getFieldEventsMatchesMock(...args),
+    updateRentalSlot: (...args: any[]) => updateRentalSlotMock(...args),
   },
 }));
 
@@ -66,6 +86,13 @@ describe('FieldsTabContent calendar navigation', () => {
     jest.clearAllMocks();
     getOrganizationByIdMock.mockResolvedValue(null);
     getOrganizationsByOwnerMock.mockResolvedValue([]);
+    updateRentalSlotMock.mockImplementation(async (field, slot) => ({
+      field: {
+        ...field,
+        rentalSlots: [{ ...slot }],
+      },
+      slot,
+    }));
   });
 
   it('keeps the selected week after field hydration updates', async () => {
@@ -169,7 +196,9 @@ describe('FieldsTabContent calendar navigation', () => {
       range: { start: string; end?: string | null },
       options?: { rentalOverlapOnly?: boolean },
     ) => {
-      expect(options).toEqual({ rentalOverlapOnly: true, includeMatches: false });
+      if (options !== undefined) {
+        expect(options).toEqual({ rentalOverlapOnly: true, includeMatches: false });
+      }
       const start = new Date(range.start);
       const end = range.end ? new Date(range.end) : new Date(start.getTime() + 60 * 60 * 1000);
       return {
@@ -252,5 +281,82 @@ describe('FieldsTabContent calendar navigation', () => {
 
     const selectionScopedCallsAfterNavigation = getSelectionScopedCalls().length;
     expect(selectionScopedCallsAfterNavigation).toBe(selectionScopedCallsBeforeNavigation);
+  });
+
+  it('allows managers to drag existing rental slots to a new time', async () => {
+    const rentalDate = new Date('2026-03-10T10:00:00.000Z');
+    getNextRentalOccurrenceMock.mockReturnValue(rentalDate);
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+
+    const organization = {
+      $id: 'org_test',
+      name: 'Test',
+      ownerId: 'owner_1',
+      hasStripeAccount: false,
+      fieldIds: ['field_main'],
+      fields: [
+        {
+          $id: 'field_main',
+          name: 'Main',
+          location: '',
+          lat: 0,
+          long: 0,
+          rentalSlotIds: ['slot_1'],
+          rentalSlots: [
+            {
+              $id: 'slot_1',
+              repeating: true,
+              dayOfWeek: 1,
+              daysOfWeek: [1],
+              startDate: '2026-01-01T00:00:00.000Z',
+              endDate: '2026-12-31T23:59:00.000Z',
+              startTimeMinutes: 600,
+              endTimeMinutes: 660,
+              scheduledFieldId: 'field_main',
+              scheduledFieldIds: ['field_main'],
+            },
+          ],
+        },
+      ],
+    } as any;
+
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={organization}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+        />
+      </MantineProvider>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Drag Rental Slot' }));
+
+    await waitFor(() => {
+      expect(updateRentalSlotMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(updateRentalSlotMock.mock.calls[0]?.[0]?.$id).toBe('field_main');
+    const expectedStart = new Date('2026-03-11T12:00:00.000Z');
+    const expectedEnd = new Date('2026-03-11T13:00:00.000Z');
+    const expectedStartMinutes = expectedStart.getHours() * 60 + expectedStart.getMinutes();
+    const expectedEndMinutes = expectedEnd.getHours() * 60 + expectedEnd.getMinutes();
+    expect(updateRentalSlotMock.mock.calls[0]?.[1]).toEqual(expect.objectContaining({
+      $id: 'slot_1',
+      dayOfWeek: 2,
+      daysOfWeek: [2],
+      scheduledFieldId: 'field_main',
+      scheduledFieldIds: ['field_main'],
+      startDate: '2026-01-01T00:00:00.000Z',
+      endDate: '2026-12-31T23:59:00.000Z',
+      startTimeMinutes: expectedStartMinutes,
+      endTimeMinutes: expectedEndMinutes,
+    }));
   });
 });

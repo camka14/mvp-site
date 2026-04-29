@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MantineProvider } from '@mantine/core';
 import CreateRentalSlotModal from '../CreateRentalSlotModal';
+import { getIndexedEntityColorPair } from '@/lib/entityColors';
 
 const createRentalSlotMock = jest.fn();
 const updateRentalSlotMock = jest.fn();
@@ -95,5 +96,48 @@ describe('CreateRentalSlotModal multi-field creation', () => {
       ]),
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('renders selected fields with colors from the provided field reference list', async () => {
+    const selectedFields = [
+      {
+        $id: 'field_main',
+        name: 'Main',
+        location: '',
+        lat: 0,
+        long: 0,
+        rentalSlotIds: [],
+        rentalSlots: [],
+      },
+      {
+        $id: 'field_aux',
+        name: 'Aux',
+        location: '',
+        lat: 0,
+        long: 0,
+        rentalSlotIds: [],
+        rentalSlots: [],
+      },
+    ] as any[];
+
+    render(
+      <MantineProvider>
+        <CreateRentalSlotModal
+          opened
+          onClose={() => undefined}
+          field={selectedFields[0]}
+          selectedFields={selectedFields}
+          slot={null}
+          initialRange={null}
+          organizationId={null}
+          organizationHasStripeAccount={false}
+          fieldColorReferenceList={['field_main', 'field_aux']}
+        />
+      </MantineProvider>,
+    );
+
+    expect(await screen.findByText('Main')).toBeInTheDocument();
+    expect(screen.getByTestId('rental-slot-field-chip-field_main')).toHaveStyle(`background-color: ${getIndexedEntityColorPair(0).bg}`);
+    expect(screen.getByTestId('rental-slot-field-chip-field_aux')).toHaveStyle(`background-color: ${getIndexedEntityColorPair(1).bg}`);
   });
 });

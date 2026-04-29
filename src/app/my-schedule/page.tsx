@@ -28,6 +28,8 @@ import { useApp } from '@/app/providers';
 import type { Event, Field, Match, Team } from '@/types';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
+import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
+import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
 
 type SchedulePayload = {
   events?: Event[];
@@ -244,13 +246,20 @@ function MySchedulePageContent() {
     return scheduleEntries.filter((entry) => entry.end.getTime() >= now);
   }, [scheduleEntries]);
 
+  const eventColorReferenceList = useMemo(() => {
+    return buildUniqueColorReferenceList(scheduleEntries.map((entry) => entry.resource.eventName));
+  }, [scheduleEntries]);
+
   const EventTile = ({ event }: EventProps<ScheduleCalendarEvent>) => (
-    <div className="leading-tight text-xs">
-      <div className="font-medium truncate">{event.title}</div>
-      {event.resource.subtitle ? (
-        <div className="opacity-70 truncate">{event.resource.subtitle}</div>
-      ) : null}
-    </div>
+    <SharedCalendarEvent
+      title={event.title}
+      subtitle={event.resource.subtitle}
+      meta={event.resource.kind === 'match' ? event.resource.eventName : undefined}
+      colorSeed={event.resource.eventId || event.title}
+      colorReferenceList={eventColorReferenceList}
+      colorMatchKey={event.resource.eventName}
+      compact
+    />
   );
 
   if (authLoading || loading) {
@@ -292,7 +301,7 @@ function MySchedulePageContent() {
             </Paper>
           ) : null}
 
-          <Paper withBorder radius="md" p="lg">
+          <Paper withBorder radius="md" p="lg" className="shared-calendar-shell">
             <Group justify="space-between" mb="md">
               <SegmentedControl
                 value={calendarView}
@@ -339,6 +348,14 @@ function MySchedulePageContent() {
                 week: { event: EventTile },
                 day: { event: EventTile },
               }}
+              eventPropGetter={() => ({
+                style: {
+                  backgroundColor: 'transparent',
+                  border: 'none',
+                  padding: 0,
+                  color: 'var(--mvp-text)',
+                },
+              })}
               style={{ minHeight: 700 }}
               formats={calendarFormats}
             />

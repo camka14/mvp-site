@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover, SegmentedControl } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover, SegmentedControl, Menu } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 import { ListChecks, Megaphone } from 'lucide-react';
@@ -7301,6 +7301,48 @@ function EventScheduleContent() {
     setInfoMessage(`${lockLabel} ${matchIdSet.size} match${matchIdSet.size === 1 ? '' : 'es'}.`);
   }, [canEditMatches, matches]);
 
+  const handleMatchCalendarMove = useCallback((
+    target: Match,
+    range: { start: Date; end: Date; fieldId?: string | null },
+  ) => {
+    if (!canEditMatches) return;
+    const targetId = normalizeIdToken(target.$id);
+    if (!targetId || !(range.start instanceof Date) || Number.isNaN(range.start.getTime())) {
+      return;
+    }
+
+    const nextStart = new Date(range.start.getTime());
+    const nextEnd = range.end instanceof Date && !Number.isNaN(range.end.getTime()) && range.end.getTime() > nextStart.getTime()
+      ? new Date(range.end.getTime())
+      : new Date(nextStart.getTime() + 60 * 60 * 1000);
+    const nextFieldId = normalizeIdToken(range.fieldId ?? target.fieldId ?? null);
+    const nextField = nextFieldId && Array.isArray(activeEvent?.fields)
+      ? activeEvent.fields.find((field) => field.$id === nextFieldId)
+      : undefined;
+
+    setChangesMatches((prev) => {
+      const base = (prev.length ? prev : (cloneValue(matches) as Match[])).map((item) => cloneValue(item) as Match);
+      let changed = false;
+      const nextMatches = base.map((match) => {
+        if (match.$id !== targetId) {
+          return match;
+        }
+        changed = true;
+        return {
+          ...match,
+          start: formatLocalDateTime(nextStart),
+          end: formatLocalDateTime(nextEnd),
+          fieldId: nextFieldId ?? null,
+          ...(nextField ? { field: nextField } : { field: undefined }),
+        } as Match;
+      });
+      return changed ? normalizeDraftBracketGraph(nextMatches) : base;
+    });
+    setDismissedMatchConflictSignature(null);
+    setMatchConflictOverrideMessage(null);
+    setHasUnsavedChanges(true);
+  }, [activeEvent?.fields, canEditMatches, matches, normalizeDraftBracketGraph]);
+
   const applyMatchUpdate = useCallback((updated: Match) => {
     const cloned = cloneValue(updated) as Match;
     const replaceInList = (list?: Match[]) => {
@@ -8047,8 +8089,15 @@ function EventScheduleContent() {
     isTournament || (isLeague && Boolean(activeEvent.includePlayoffs))
   );
   const showDeleteTemplateActionButton = isTemplateEvent;
-  const showCancelActionButton = !isTemplateEvent;
-  const showCreateTemplateButton = !isTemplateEvent;
+  const showCancelActionButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
+  const showCreateTemplateButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
+  const showMoreActionsMenu = showRescheduleActionButton
+    || showBuildBracketsActionButton
+    || showCancelActionButton
+    || showDeleteTemplateActionButton
+    || showCreateTemplateButton;
+  const isRescheduleActionInFlight = reschedulingMatches && pendingScheduleAction === 'reschedule';
+  const isRebuildActionInFlight = reschedulingMatches && pendingScheduleAction === 'rebuild';
   const showLifecycleStatusSelect = isEditingEvent && !isTemplateEvent;
   const showDiscardChangesButton = (isEditingEvent || isCreateMode) && hasPendingUnsavedChanges;
   const eventFormRenderKey = isCreateMode
@@ -8150,66 +8199,65 @@ function EventScheduleContent() {
                         {isCreateMode ? createButtonLabel : 'Save'}
                       </Button>
                     )}
-                    {showRescheduleActionButton && (
-                      <Button
-                        variant="light"
-                        onClick={handleRescheduleMatches}
-                        loading={reschedulingMatches && pendingScheduleAction === 'reschedule'}
-                        disabled={
-                          (hasNetworkActionInFlight && !(reschedulingMatches && pendingScheduleAction === 'reschedule'))
-                          || hasSplitDivisionUnassignedTeams
-                        }
-                      >
-                        Reschedule
-                      </Button>
-                    )}
-                    {showBuildBracketsActionButton && (
-                      <Button
-                        variant="light"
-                        color="orange"
-                        onClick={handleBuildBrackets}
-                        loading={reschedulingMatches && pendingScheduleAction === 'rebuild'}
-                        disabled={
-                          (hasNetworkActionInFlight && !(reschedulingMatches && pendingScheduleAction === 'rebuild'))
-                          || hasSplitDivisionUnassignedTeams
-                        }
-                      >
-                        Rebuild
-                      </Button>
-                    )}
                   </>
                 )}
-                {showCancelActionButton && (
-                  <Button
-                    color="red"
-                    variant="light"
-                    onClick={handleCancel}
-                    loading={cancelling}
-                    disabled={hasNetworkActionInFlight && !cancelling}
-                  >
-                    {cancelButtonLabel}
-                  </Button>
-                )}
-                {showDeleteTemplateActionButton && (
-                  <Button
-                    color="red"
-                    variant="light"
-                    onClick={handleDeleteTemplate}
-                    loading={cancelling}
-                    disabled={hasNetworkActionInFlight && !cancelling}
-                  >
-                    Delete
-                  </Button>
-                )}
-                {showCreateTemplateButton && (
-                  <Button
-                    variant="light"
-                    onClick={handleCreateTemplateFromEvent}
-                    loading={creatingTemplate}
-                    disabled={hasNetworkActionInFlight && !creatingTemplate}
-                  >
-                    Create Template
-                  </Button>
+                {showMoreActionsMenu && (
+                  <Menu shadow="md" width={220} position="bottom-end">
+                    <Menu.Target>
+                      <Button variant="default">More</Button>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {showRescheduleActionButton && (
+                        <Menu.Item
+                          onClick={handleRescheduleMatches}
+                          disabled={
+                            (hasNetworkActionInFlight && !isRescheduleActionInFlight)
+                            || hasSplitDivisionUnassignedTeams
+                          }
+                        >
+                          {isRescheduleActionInFlight ? 'Rescheduling...' : 'Reschedule'}
+                        </Menu.Item>
+                      )}
+                      {showBuildBracketsActionButton && (
+                        <Menu.Item
+                          color="orange"
+                          onClick={handleBuildBrackets}
+                          disabled={
+                            (hasNetworkActionInFlight && !isRebuildActionInFlight)
+                            || hasSplitDivisionUnassignedTeams
+                          }
+                        >
+                          {isRebuildActionInFlight ? 'Rebuilding...' : 'Rebuild'}
+                        </Menu.Item>
+                      )}
+                      {showCancelActionButton && (
+                        <Menu.Item
+                          color="red"
+                          onClick={handleCancel}
+                          disabled={hasNetworkActionInFlight && !cancelling}
+                        >
+                          {cancelling ? 'Cancelling...' : cancelButtonLabel}
+                        </Menu.Item>
+                      )}
+                      {showDeleteTemplateActionButton && (
+                        <Menu.Item
+                          color="red"
+                          onClick={handleDeleteTemplate}
+                          disabled={hasNetworkActionInFlight && !cancelling}
+                        >
+                          {cancelling ? 'Deleting...' : 'Delete'}
+                        </Menu.Item>
+                      )}
+                      {showCreateTemplateButton && (
+                        <Menu.Item
+                          onClick={handleCreateTemplateFromEvent}
+                          disabled={hasNetworkActionInFlight && !creatingTemplate}
+                        >
+                          {creatingTemplate ? 'Creating Template...' : 'Create Template'}
+                        </Menu.Item>
+                      )}
+                    </Menu.Dropdown>
+                  </Menu>
                 )}
               </Group>
             )}
@@ -8698,6 +8746,7 @@ function EventScheduleContent() {
                         }
                         void handleMatchClick(match);
                       }}
+                      onMatchTimeChange={handleMatchCalendarMove}
                       canManage={canEditMatches}
                       showEventOfficialNames={showEventOfficialNames}
                       currentUser={user}

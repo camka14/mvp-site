@@ -8,6 +8,7 @@ import { fieldService, type ManageRentalSlotResult } from '@/lib/fieldService';
 import { apiRequest } from '@/lib/apiClient';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { getOrderedEntityColorPair, type EntityColorReferenceValue } from '@/lib/entityColors';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 
@@ -25,6 +26,7 @@ interface CreateRentalSlotModalProps {
   onSaved?: (fields: Field[]) => void;
   organizationHasStripeAccount?: boolean;
   organizationId?: string | null;
+  fieldColorReferenceList?: EntityColorReferenceValue[];
 }
 
 const toTimeValue = (date: Date): string => {
@@ -115,6 +117,7 @@ export default function CreateRentalSlotModal({
   onSaved,
   organizationHasStripeAccount = false,
   organizationId = null,
+  fieldColorReferenceList,
 }: CreateRentalSlotModalProps) {
   const now = useMemo(() => {
     const current = new Date();
@@ -151,6 +154,14 @@ export default function CreateRentalSlotModal({
     return field ? [field] : [];
   }, [field, selectedFields, slot]);
   const hasTargetFields = targetFields.length > 0;
+  const effectiveFieldColorReferenceList = useMemo(
+    () => (
+      fieldColorReferenceList?.length
+        ? fieldColorReferenceList
+        : targetFields.map((targetField) => targetField.$id)
+    ),
+    [fieldColorReferenceList, targetFields],
+  );
 
   useEffect(() => {
     if (!opened) {
@@ -468,11 +479,51 @@ export default function CreateRentalSlotModal({
         <Stack gap="md">
           <div>
             <Text fw={500}>{slot ? 'Field' : 'Fields'}</Text>
-            <Text size="sm" c="dimmed">
-              {targetFields.length > 0
-                ? targetFields.map((targetField) => getFieldDisplayName(targetField)).join(', ')
-                : 'Select a field to continue'}
-            </Text>
+            {targetFields.length > 0 ? (
+              <Group gap={6} mt={6}>
+                {targetFields.map((targetField) => {
+                  const colors = getOrderedEntityColorPair(effectiveFieldColorReferenceList, targetField.$id);
+                  return (
+                    <span
+                      key={targetField.$id}
+                      data-testid={`rental-slot-field-chip-${targetField.$id}`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        maxWidth: '100%',
+                        border: `1px solid ${colors.text}`,
+                        borderRadius: '999px',
+                        backgroundColor: colors.bg,
+                        color: colors.text,
+                        padding: '0.18rem 0.55rem 0.18rem 0.28rem',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        style={{
+                          width: '0.65rem',
+                          height: '0.65rem',
+                          borderRadius: '999px',
+                          backgroundColor: colors.text,
+                          flex: '0 0 auto',
+                        }}
+                      />
+                      <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {getFieldDisplayName(targetField)}
+                      </span>
+                    </span>
+                  );
+                })}
+              </Group>
+            ) : (
+              <Text size="sm" c="dimmed">
+                Select a field to continue
+              </Text>
+            )}
           </div>
 
           <DatePickerInput

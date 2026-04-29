@@ -40,8 +40,12 @@ import { createId } from '@/lib/id';
 import { getNextRentalOccurrence } from '@/app/discover/utils/rentals';
 import { fieldService } from '@/lib/fieldService';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
+import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
+import FieldCalendarFilter, { type FieldCalendarFilterItem } from '@/components/calendar/FieldCalendarFilter';
+import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
 import CreateFieldModal from '@/components/ui/CreateFieldModal';
 import CreateRentalSlotModal from '@/components/ui/CreateRentalSlotModal';
+import { getOrderedEntityColorPair } from '@/lib/entityColors';
 
 type SelectionState = {
   fieldIds: string[];
@@ -128,8 +132,6 @@ const SLOT_STEP_MINUTES = 30;
 const SELECTION_COLOR = 'var(--mvp-primary-100)';
 const SELECTION_BORDER_COLOR = 'var(--mvp-primary-300)';
 const SELECTION_TEXT_COLOR = 'var(--mvp-primary-900)';
-const RENTAL_COLOR = 'var(--mvp-success)';
-const RENTAL_TEXT_COLOR = 'var(--mvp-success-soft)';
 const FIELD_CALENDAR_FORMATS = {
   dayFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
   dayHeaderFormat: (value: Date) => formatDisplayDate(value, { year: '2-digit' }),
@@ -299,6 +301,60 @@ const updateSelectionWithCalendarRange = (
   };
 };
 
+type RentalSlotDragUpdate = Partial<TimeSlot> & {
+  $id: string;
+  dayOfWeek: NonNullable<TimeSlot['dayOfWeek']>;
+};
+
+const buildRentalSlotUpdateFromCalendarRange = (
+  slot: TimeSlot,
+  start: Date,
+  end: Date,
+  fieldId: string,
+): RentalSlotDragUpdate | null => {
+  if (!slot?.$id || !fieldId) {
+    return null;
+  }
+
+  const nextStart = new Date(start.getTime());
+  const nextEnd = end.getTime() > nextStart.getTime()
+    ? new Date(end.getTime())
+    : new Date(nextStart.getTime() + MIN_SELECTION_MS);
+  const dayOfWeek = mondayDayOf(nextStart) as NonNullable<TimeSlot['dayOfWeek']>;
+  const durationMinutes = Math.max(1, Math.round((nextEnd.getTime() - nextStart.getTime()) / (60 * 1000)));
+  const startTimeMinutes = nextStart.getHours() * 60 + nextStart.getMinutes();
+  const endTimeMinutes = Math.min(24 * 60, startTimeMinutes + durationMinutes);
+  const baseUpdate: RentalSlotDragUpdate = {
+    $id: slot.$id,
+    dayOfWeek,
+    daysOfWeek: [dayOfWeek],
+    repeating: Boolean(slot.repeating),
+    scheduledFieldId: fieldId,
+    scheduledFieldIds: [fieldId],
+    requiredTemplateIds: Array.isArray(slot.requiredTemplateIds) ? slot.requiredTemplateIds : [],
+    hostRequiredTemplateIds: Array.isArray(slot.hostRequiredTemplateIds) ? slot.hostRequiredTemplateIds : [],
+    price: slot.price,
+  };
+
+  if (slot.repeating) {
+    return {
+      ...baseUpdate,
+      startDate: slot.startDate ?? formatLocalDateTime(nextStart),
+      endDate: slot.endDate ?? null,
+      startTimeMinutes,
+      endTimeMinutes: Math.max(startTimeMinutes + 1, endTimeMinutes),
+    };
+  }
+
+  return {
+    ...baseUpdate,
+    startDate: formatLocalDateTime(nextStart),
+    endDate: formatLocalDateTime(nextEnd),
+    startTimeMinutes: undefined,
+    endTimeMinutes: undefined,
+  };
+};
+
 const rentalSlotCoversDraftDay = (
   slot: TimeSlot,
   params: {
@@ -451,6 +507,22 @@ export default function FieldsTabContent({
     value: field.$id,
     label: getFieldDisplayName(field),
   })), [fields]);
+  const fieldFilterItems = useMemo<FieldCalendarFilterItem[]>(() => fields.map((field) => {
+    const label = getFieldDisplayName(field);
+    const count = (field.events?.length ?? 0) + (field.matches?.length ?? 0) + (field.rentalSlots?.length ?? 0);
+    return {
+      id: field.$id,
+      label,
+      detail: field.location || null,
+      count,
+      colorSeed: label || field.$id,
+      colorMatchKey: field.$id,
+    };
+  }), [fields]);
+  const fieldColorReferenceList = useMemo(
+    () => buildUniqueColorReferenceList(fields.map((field) => field.$id)),
+    [fields],
+  );
   const fieldLabelById = useMemo(
     () => new Map(fieldOptions.map((option) => [option.value, option.label])),
     [fieldOptions],
@@ -561,6 +633,20 @@ export default function FieldsTabContent({
     [fields, selectedFieldIds],
   );
   const selectedField = selectedFields[0] ?? null;
+  const handleSelectedFieldIdsChange = useCallback((values: string[]) => {
+    const nextValues = normalizeFieldIds(values);
+    setSelection((prev) => {
+      if (!nextValues.length) {
+        return prev;
+      }
+      if (!prev) {
+        const start = new Date();
+        const end = new Date(start.getTime() + MIN_SELECTION_MS);
+        return { fieldIds: nextValues, start, end };
+      }
+      return { ...prev, fieldIds: nextValues };
+    });
+  }, []);
   const selectionConflictInputs = useMemo(
     () => (
       canManage
@@ -790,30 +876,23 @@ export default function FieldsTabContent({
             backgroundColor: SELECTION_COLOR,
             border: `1px solid ${SELECTION_BORDER_COLOR}`,
             color: SELECTION_TEXT_COLOR,
+            padding: 0,
+            cursor: 'grab',
           },
         };
       }
-      if (event.metaType === 'rental') {
-        return {
-          style: {
-            backgroundColor: RENTAL_COLOR,
-            border: `1px solid ${RENTAL_COLOR}`,
-            color: RENTAL_TEXT_COLOR,
-          },
-        };
-      }
-      if (!canManage && event.metaType === 'booked') {
-        return {
-          style: {
-            backgroundColor: 'rgba(100, 116, 139, 0.72)',
-            border: '1px solid rgba(71, 85, 105, 0.9)',
-            color: '#ffffff',
-          },
-        };
-      }
-      return {};
+      const colors = getOrderedEntityColorPair(fieldColorReferenceList, event.resourceId);
+      return {
+        style: {
+          backgroundColor: colors.bg,
+          border: `1px solid ${colors.bg}`,
+          color: colors.text,
+          padding: 0,
+          cursor: canManage && event.metaType === 'rental' ? 'grab' : 'default',
+        },
+      };
     },
-    [canManage],
+    [canManage, fieldColorReferenceList],
   );
   const slotPropGetter = useCallback(
     (date: Date, resourceId?: string | number) => {
@@ -1372,6 +1451,57 @@ export default function FieldsTabContent({
     [canManage, isBlockedRange],
   );
 
+  const handleRentalSlotCalendarDrop = useCallback(
+    async ({ event, start, end, resourceId }: any) => {
+      if (!canManage || !event || event.metaType !== 'rental' || !start || !end) {
+        return;
+      }
+      const slot = event.resource as TimeSlot | undefined;
+      const nextStart = start instanceof Date ? start : new Date(start);
+      const nextEnd = end instanceof Date ? end : new Date(end);
+      if (!slot?.$id || Number.isNaN(nextStart.getTime()) || Number.isNaN(nextEnd.getTime())) {
+        return;
+      }
+
+      const fieldId =
+        typeof resourceId === 'string' && resourceId.trim().length > 0
+          ? resourceId.trim()
+          : typeof event.resourceId === 'string'
+            ? event.resourceId.trim()
+            : '';
+      const ownerField = fields.find((field) => field.$id === fieldId) ?? selectedField;
+      if (!ownerField) {
+        notifications.show({ color: 'red', message: 'Unable to resolve the rental slot field.' });
+        return;
+      }
+
+      const updatePayload = buildRentalSlotUpdateFromCalendarRange(slot, nextStart, nextEnd, ownerField.$id);
+      if (!updatePayload) {
+        notifications.show({ color: 'red', message: 'Unable to move this rental slot.' });
+        return;
+      }
+
+      try {
+        const result = await fieldService.updateRentalSlot(ownerField, updatePayload);
+        setOrg((prev) => {
+          if (!prev) return prev;
+          const prevFields = Array.isArray(prev.fields) ? prev.fields : [];
+          const nextFields = prevFields.map((field) => (
+            field.$id === result.field.$id ? result.field : field
+          ));
+          return { ...prev, fields: nextFields };
+        });
+        setCalendarDate(nextStart);
+        notifications.show({ color: 'green', message: 'Rental slot moved.' });
+        await refreshOrganization();
+      } catch (error) {
+        console.error('Failed to move rental slot:', error);
+        notifications.show({ color: 'red', message: 'Failed to move rental slot. Please try again.' });
+      }
+    },
+    [canManage, fields, refreshOrganization, selectedField],
+  );
+
   const handleSlotSelect = useCallback(
     (slotInfo: any) => {
       if (!slotInfo?.start) return;
@@ -1413,14 +1543,18 @@ export default function FieldsTabContent({
   );
 
   const handleEventDrop = useCallback(
-    ({ event, start, end }: any) => {
+    ({ event, start, end, resourceId }: any) => {
+      if (event?.metaType === 'rental') {
+        void handleRentalSlotCalendarDrop({ event, start, end, resourceId });
+        return;
+      }
       if (!event || event.metaType !== 'selection' || !start || !end) return;
       const slotKey = event.resource?.slotKey;
       applySelectionWindow(new Date(start), new Date(end), {
         slotKey: typeof slotKey === 'string' ? slotKey : undefined,
       });
     },
-    [applySelectionWindow],
+    [applySelectionWindow, handleRentalSlotCalendarDrop],
   );
 
   const handleEventResize = useCallback(
@@ -1667,19 +1801,39 @@ export default function FieldsTabContent({
 
   const CalendarEvent: any = ({ event }: any) => {
     const normalizedFieldName = typeof event?.fieldName === 'string' ? event.fieldName.trim() : '';
-    const titlePrefix = normalizedFieldName ? `${normalizedFieldName}: ` : '';
+    const resource = event?.resource as any;
+    const resourceName = typeof resource?.name === 'string' ? resource.name.trim() : '';
+    const matchLabel = typeof resource?.matchId === 'number' ? `Match #${resource.matchId}` : '';
+    const timeLabel = event?.start && event?.end
+      ? `${formatDisplayTime(event.start)} - ${formatDisplayTime(event.end)}`
+      : null;
 
-    let title = event.resource?.name || event.title;
+    let title = event.title;
+    let meta = timeLabel;
     if (event?.metaType === 'booked') {
-      title = `${titlePrefix}Booked Slot`;
+      title = resourceName || matchLabel || 'Booked slot';
+      meta = 'Booked';
     } else if (event?.metaType === 'rental') {
-      title = `${titlePrefix}Rental Slot`;
+      title = 'Rental slot';
+      meta = timeLabel;
     }
 
+    const colors = event?.metaType === 'selection'
+      ? { bg: SELECTION_COLOR, text: SELECTION_TEXT_COLOR }
+      : undefined;
+
     return (
-      <div className="leading-tight">
-        <div className="truncate">{title}</div>
-      </div>
+      <SharedCalendarEvent
+        title={title}
+        subtitle={normalizedFieldName || undefined}
+        meta={meta}
+        colors={colors}
+        colorReferenceList={fieldColorReferenceList}
+        colorMatchKey={event?.resourceId}
+        compact
+        muted={event?.metaType === 'booked' && !canManage}
+        draggable={event?.metaType === 'selection' || (canManage && event?.metaType === 'rental')}
+      />
     );
   };
 
@@ -1718,6 +1872,68 @@ export default function FieldsTabContent({
     );
   }, [fieldEventsLoading]);
   const canRenderCalendar = canManage ? Boolean(selectedFieldIds.length > 0 && selection) : fields.length > 0;
+  const fieldCalendarNode = canRenderCalendar ? (
+    <div
+      className="shared-calendar-shell shared-calendar-shell--fields"
+      style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}
+    >
+      <DnDCalendar
+        localizer={localizer}
+        events={calendarEvents}
+        view={calendarView}
+        date={calendarDate}
+        onView={(view: any) => setCalendarView(view)}
+        onNavigate={(date: any) => {
+          const nextDate = toValidDate(date);
+          if (nextDate) {
+            setCalendarDate(nextDate);
+          }
+        }}
+        onRangeChange={handleCalendarRangeChange}
+        views={['week', 'day']}
+        popup
+        selectable
+        resizable
+        resources={!canManage ? calendarResources : undefined}
+        resourceIdAccessor={!canManage ? 'id' : undefined}
+        resourceTitleAccessor={!canManage ? 'title' : undefined}
+        startAccessor="start"
+        endAccessor="end"
+        style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
+        slotGroupPropGetter={slotGroupPropGetter}
+        min={minTime}
+        max={maxTime}
+        scrollToTime={scrollToTime}
+        formats={FIELD_CALENDAR_FORMATS}
+        eventPropGetter={eventPropGetter}
+        slotPropGetter={slotPropGetter}
+        draggableAccessor={(event: CalendarEventData) => (
+          event.metaType === 'selection'
+          || (canManage && event.metaType === 'rental')
+        )}
+        resizableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}
+        onEventDrop={handleEventDrop}
+        onEventResize={handleEventResize}
+        onSelecting={handleSelecting}
+        onSelectSlot={handleSlotSelect}
+        onSelectEvent={handleSelectCalendarEvent}
+        components={{ event: CalendarEvent, toolbar: CalendarToolbar }}
+      />
+    </div>
+  ) : (
+    <Paper
+      withBorder
+      radius="md"
+      style={{
+        minHeight: MIN_FIELD_CALENDAR_HEIGHT,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Text c="dimmed">{canManage ? 'Select at least one field to view availability.' : 'No fields are available for rentals.'}</Text>
+    </Paper>
+  );
 
   if (orgLoading) {
     return <Loading fullScreen={false} text="Loading fields..." />;
@@ -1808,32 +2024,24 @@ export default function FieldsTabContent({
       ) : (
         <Stack gap="md">
           {canManage ? (
-            <MultiSelect
-              label="Fields"
-              data={fieldOptions}
-              value={selectedFieldIds}
-              onChange={(values) => {
-                const nextValues = normalizeFieldIds(values);
-                setSelection((prev) => {
-                  const fallback = fields[0]?.$id;
-                  const normalizedNext = nextValues.length
-                    ? nextValues
-                    : (fallback ? [fallback] : []);
-                  if (!normalizedNext.length) {
-                    return prev;
-                  }
-                  if (!prev) {
-                    const start = new Date();
-                    const end = new Date(start.getTime() + MIN_SELECTION_MS);
-                    return { fieldIds: normalizedNext, start, end };
-                  }
-                  return { ...prev, fieldIds: normalizedNext };
-                });
-              }}
-              placeholder="Select one or more fields"
-              searchable
-              clearable={false}
-            />
+            <div className="shared-calendar-layout">
+              <FieldCalendarFilter
+                items={fieldFilterItems}
+                selectedIds={selectedFieldIds}
+                onSelectedIdsChange={handleSelectedFieldIdsChange}
+                colorReferenceList={fieldColorReferenceList}
+              />
+              <Stack gap="sm" className="min-w-0">
+                <Text size="sm" c="dimmed">
+                  Click a time slot to move the draft block, drag it to adjust, then add a rental slot.
+                  Slots are colored by field so each selected field stays visible across the week.
+                </Text>
+                {fieldCalendarNode}
+                <Text size="sm" c={summaryColor}>
+                  {summaryText}
+                </Text>
+              </Stack>
+            </div>
           ) : (
             <Paper withBorder radius="md" p="sm">
               <Stack gap="sm">
@@ -1974,71 +2182,17 @@ export default function FieldsTabContent({
             />
           )}
 
-          <Text size="sm" c="dimmed">
-            {canManage
-              ? 'Click a time slot to move the draft block, drag it to adjust, then add a rental slot. New slots are created for each selected field. Rental slots are shown in green.'
-              : 'Click empty time ranges in the calendar to add selections. Drag or resize a highlighted selection to update its date/time across selected fields.'}
-          </Text>
-
-          {canRenderCalendar ? (
-            <div style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT, overflow: 'hidden' }}>
-              <DnDCalendar
-                localizer={localizer}
-                events={calendarEvents}
-                view={calendarView}
-                date={calendarDate}
-                onView={(view: any) => setCalendarView(view)}
-                onNavigate={(date: any) => {
-                  const nextDate = toValidDate(date);
-                  if (nextDate) {
-                    setCalendarDate(nextDate);
-                  }
-                }}
-                onRangeChange={handleCalendarRangeChange}
-                views={['week', 'day']}
-                popup
-                selectable
-                resizable
-                resources={!canManage ? calendarResources : undefined}
-                resourceIdAccessor={!canManage ? 'id' : undefined}
-                resourceTitleAccessor={!canManage ? 'title' : undefined}
-                startAccessor="start"
-                endAccessor="end"
-                style={{ minHeight: MIN_FIELD_CALENDAR_HEIGHT }}
-                slotGroupPropGetter={slotGroupPropGetter}
-                min={minTime}
-                max={maxTime}
-                scrollToTime={scrollToTime}
-                formats={FIELD_CALENDAR_FORMATS}
-                eventPropGetter={eventPropGetter}
-                slotPropGetter={slotPropGetter}
-                draggableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}
-                resizableAccessor={(event: CalendarEventData) => event.metaType === 'selection'}
-                onEventDrop={handleEventDrop}
-                onEventResize={handleEventResize}
-                onSelecting={handleSelecting}
-                onSelectSlot={handleSlotSelect}
-                onSelectEvent={handleSelectCalendarEvent}
-                components={{ event: CalendarEvent, toolbar: CalendarToolbar }}
-              />
-            </div>
-          ) : (
-            <Paper
-              withBorder
-              radius="md"
-              style={{
-                minHeight: MIN_FIELD_CALENDAR_HEIGHT,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text c="dimmed">{canManage ? 'Select at least one field to view availability.' : 'No fields are available for rentals.'}</Text>
-            </Paper>
+          {!canManage && (
+            <>
+              <Text size="sm" c="dimmed">
+                Click empty time ranges in the calendar to add selections. Drag or resize a highlighted selection to update its date/time across selected fields.
+              </Text>
+              {fieldCalendarNode}
+              <Text size="sm" c={summaryColor}>
+                {summaryText}
+              </Text>
+            </>
           )}
-          <Text size="sm" c={summaryColor}>
-            {summaryText}
-          </Text>
 
           {!canManage && (
             <Paper withBorder radius="md" p="sm">
@@ -2136,6 +2290,7 @@ export default function FieldsTabContent({
         }}
         organizationHasStripeAccount={organizationHasStripeAccount}
         organizationId={organizationId}
+        fieldColorReferenceList={fieldColorReferenceList}
       />
     </Paper>
   );
