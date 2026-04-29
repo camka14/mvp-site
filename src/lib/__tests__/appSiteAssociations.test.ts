@@ -32,8 +32,8 @@ describe('appSiteAssociations', () => {
             appIDs: ['427LTWF4US.com.razumly.mvp'],
             components: [
               {
-                '/': '/*',
-                comment: 'Match all routes on BracketIQ domains',
+                '/': '/?*',
+                comment: 'Match non-root routes on BracketIQ domains',
               },
             ],
           },

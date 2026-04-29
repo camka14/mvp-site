@@ -7,8 +7,8 @@ export const APPLE_APP_SITE_ASSOCIATION_BODY = {
         ],
         components: [
           {
-            '/': '/*',
-            comment: 'Match all routes on BracketIQ domains',
+            '/': '/?*',
+            comment: 'Match non-root routes on BracketIQ domains',
           },
         ],
       },
