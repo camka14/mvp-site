@@ -163,6 +163,8 @@ describe('LandingPage', () => {
     expect(screen.getByRole('heading', { name: /built for every run of play/i })).toBeInTheDocument();
     expect(screen.getByAltText('Facility operations dashboard for mixed programs')).toBeInTheDocument();
     expect(screen.getByText('Facility Programs').closest('article')).toHaveClass('landing-use-case');
+    expect(screen.queryByText(/^Formats$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^System$/i)).not.toBeInTheDocument();
   });
 
   it('renders the compact workflow steps', () => {
@@ -174,11 +176,32 @@ describe('LandingPage', () => {
     expect(screen.getByRole('heading', { name: /manage game day from the same system/i })).toBeInTheDocument();
   });
 
-  it('renders feature screenshots in the pinned operations section', () => {
+  it('renders feature screenshots in the pinned operations section', async () => {
     render(<LandingPage />);
 
     expect(screen.getAllByRole('heading', { name: /schedule courts fast/i }).length).toBeGreaterThan(0);
     expect(screen.getAllByRole('img', { name: /feature progress toward the final/i }).length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByText('Courts + fields')
+        .some((element) => element.closest('ul')?.classList.contains('landing-operation-point-list')),
+    ).toBe(true);
+    expect(
+      screen
+        .getAllByRole('heading', { name: /schedule courts fast/i })
+        .some((heading) => heading.closest('article')?.getAttribute('style')?.includes('--landing-feature-theme')),
+    ).toBe(true);
+    const staticFeatureCard = screen
+      .getAllByRole('heading', { name: /schedule courts fast/i })
+      .map((heading) => heading.closest('article'))
+      .find((article) => article?.hasAttribute('data-mobile-feature-card'));
+    expect(staticFeatureCard).toHaveAttribute('data-mobile-feature-card', 'true');
+    expect(
+      screen
+        .getAllByAltText('Web field and scheduling view')
+        .some((image) => image.closest('.landing-operation-preview-crop')),
+    ).toBe(true);
+    await waitFor(() => expect(staticFeatureCard).toHaveClass('is-visible'));
     expect(screen.getAllByAltText('Web field and scheduling view')[0].closest('.landing-surface-soft')).toBeNull();
     expect(screen.getAllByAltText('Mobile schedule view')[0].closest('.landing-surface-soft')).toBeNull();
     expect(screen.getAllByAltText('Web field and scheduling view').length).toBeGreaterThan(0);
