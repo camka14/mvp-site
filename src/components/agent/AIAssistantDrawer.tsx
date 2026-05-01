@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
+import type { KeyboardEvent } from 'react';
 import { usePathname } from 'next/navigation';
 import {
   Alert,
@@ -19,6 +19,7 @@ import {
 import { Bot, Check, Loader2, MessageSquare, Plus, Send, X } from 'lucide-react';
 import { useApp } from '@/app/providers';
 import { useAgentContext } from '@/context/AgentContext';
+import { MarkdownMessageContent } from '@/components/agent/MarkdownMessageContent';
 import type {
   AgentChatLoadResponse,
   AgentChatMessage,
@@ -33,51 +34,6 @@ const INTRO_MESSAGE: AgentChatMessage = {
   role: 'assistant',
   content: 'Ask me how to navigate BracketIQ or manage a saved event schedule. I will ask for confirmation before changing anything.',
 };
-
-const markdownLinkPattern = /\[([^\]\n]+)\]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/g;
-
-const isSafeLinkHref = (href: string): boolean => {
-  if (href.startsWith('/')) return true;
-  try {
-    const url = new URL(href);
-    return url.protocol === 'http:' || url.protocol === 'https:';
-  } catch {
-    return false;
-  }
-};
-
-function MessageContent({ content, inverted = false }: { content: string; inverted?: boolean }) {
-  const nodes: ReactNode[] = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  markdownLinkPattern.lastIndex = 0;
-  while ((match = markdownLinkPattern.exec(content)) !== null) {
-    const [raw, label, href] = match;
-    if (match.index > lastIndex) {
-      nodes.push(content.slice(lastIndex, match.index));
-    }
-    nodes.push(
-      isSafeLinkHref(href) ? (
-        <a
-          key={`${href}-${match.index}`}
-          href={href}
-          className={`font-semibold underline underline-offset-2 ${inverted ? 'text-white' : 'text-blue-700'}`}
-          rel={href.startsWith('/') ? undefined : 'noreferrer'}
-        >
-          {label}
-        </a>
-      ) : raw,
-    );
-    lastIndex = match.index + raw.length;
-  }
-
-  if (lastIndex < content.length) {
-    nodes.push(content.slice(lastIndex));
-  }
-
-  return <>{nodes}</>;
-}
 
 const readJsonResponse = async <T,>(response: Response): Promise<T> => {
   const text = await response.text();
@@ -339,9 +295,7 @@ export function AIAssistantDrawer({ enabled = true }: AIAssistantDrawerProps) {
                       {message.role === 'assistant' ? 'Assistant' : 'You'}
                     </Text>
                   </Group>
-                  <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                    <MessageContent content={message.content} inverted={message.role === 'user'} />
-                  </Text>
+                  <MarkdownMessageContent content={message.content} inverted={message.role === 'user'} />
                 </Paper>
               ))}
 
