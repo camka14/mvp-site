@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import type { AgentPageContext, AgentPendingConfirmation, AgentToolChange } from '@/lib/agent/types';
 import { canManageEvent } from '@/server/accessControl';
 import type { AgentConversationOwner } from './conversations';
+import pageLayoutDescriptions from './pageLayoutDescriptions.json';
 
 const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
 const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'PRIVATE', 'DRAFT']);
@@ -26,6 +27,32 @@ type ExecuteToolParams = {
   origin: string;
   mode: ToolExecutionMode;
 };
+
+type PageLayoutClickable = {
+  name: string;
+  role: string;
+  x: number;
+  y: number;
+  area: string;
+};
+
+type PageLayoutDescription = {
+  key: string;
+  name: string;
+  pathPatterns: string[];
+  summary: string;
+  clickables: PageLayoutClickable[];
+};
+
+type PageLayoutData = {
+  version: number;
+  observedAt: string;
+  source: string;
+  coordinateSystem: string;
+  pages: PageLayoutDescription[];
+};
+
+const pageLayouts = pageLayoutDescriptions as PageLayoutData;
 
 const emptyObjectSchema = {
   type: 'object',
@@ -62,6 +89,21 @@ const readTools: Tool[] = [
         path: { type: 'string', description: 'A same-site path such as /discover. Do not pass full external URLs.' },
       },
       required: ['text', 'path'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'get_page_layout_description',
+    description: 'Fetch a Playwright-observed page layout description and clickable-control grid for a BracketIQ page. Use coordinates only to infer relative positions; never mention coordinate values to the user.',
+    strict: false,
+    parameters: {
+      type: 'object',
+      properties: {
+        pageKey: { type: ['string', 'null'], description: 'Optional known page key, such as discover or event_schedule.' },
+        pathname: { type: ['string', 'null'], description: 'Optional current pathname. If omitted, the current page context pathname is used.' },
+      },
+      required: [],
       additionalProperties: false,
     },
   },
@@ -188,8 +230,10 @@ const navigationHelp = {
     { label: 'Discover', path: '/discover', use: 'Find public events, leagues, tournaments, and pickup opportunities.' },
     { label: 'My Schedule', path: '/my-schedule', use: 'See events and matches tied to your schedule.' },
     { label: 'My Organizations', path: '/organizations', use: 'Manage facilities, clubs, organization pages, fields, staff, and hosted events.' },
-    { label: 'Teams', path: '/teams', use: 'View and manage teams you belong to.' },
     { label: 'Profile', path: '/profile', use: 'Update profile details and participant information.' },
+  ],
+  secondaryRoutes: [
+    { label: 'Teams', path: '/teams', use: 'View and manage teams you belong to. This is available from team-related profile and organization workflows, not the top navigation bar.' },
   ],
   schedulePageTips: [
     'Open an event, then use Manage/Edit mode to change event details, participants, schedule, standings, and match results.',
@@ -232,6 +276,75 @@ const parseToolArgs = (args: unknown): Record<string, unknown> => {
     }
   }
   return args && typeof args === 'object' && !Array.isArray(args) ? args as Record<string, unknown> : {};
+};
+
+const normalizePathname = (value: unknown): string | null => {
+  const raw = normalizeString(value);
+  if (!raw) return null;
+  try {
+    const pathname = new URL(raw, 'https://bracket-iq.local').pathname;
+    return pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+  } catch {
+    return raw.startsWith('/') ? raw.replace(/\/+$/, '') || '/' : `/${raw.replace(/\/+$/, '')}`;
+  }
+};
+
+const pathPatternMatches = (pattern: string, pathname: string): boolean => {
+  const patternSegments = pattern.split('/').filter(Boolean);
+  const pathSegments = pathname.split('/').filter(Boolean);
+  if (patternSegments.length !== pathSegments.length) return false;
+  return patternSegments.every((segment, index) => (
+    /^\[[^\]]+\]$/.test(segment) || segment === pathSegments[index]
+  ));
+};
+
+const findPageLayout = (params: { pageKey?: string | null; pathname?: string | null }): PageLayoutDescription | null => {
+  const pageKey = normalizeString(params.pageKey)?.toLowerCase();
+  if (pageKey) {
+    const byKey = pageLayouts.pages.find((page) => page.key.toLowerCase() === pageKey);
+    if (byKey) return byKey;
+  }
+
+  const pathname = normalizePathname(params.pathname);
+  if (!pathname) return null;
+  return pageLayouts.pages.find((page) => page.pathPatterns.some((pattern) => pathPatternMatches(pattern, pathname))) ?? null;
+};
+
+const getPageLayoutDescription = (args: Record<string, unknown>, pageContext: AgentPageContext | null): Record<string, unknown> => {
+  const layout = findPageLayout({
+    pageKey: normalizeString(args.pageKey),
+    pathname: normalizePathname(args.pathname) ?? pageContext?.pathname ?? null,
+  });
+  if (!layout) {
+    return {
+      status: 'not_found',
+      error: 'No page layout description is available for this page yet.',
+      availablePages: pageLayouts.pages.map((page) => ({ key: page.key, name: page.name })),
+    };
+  }
+
+  const clickableGrid = layout.clickables.map((clickable) => ({
+    name: clickable.name,
+    role: clickable.role,
+    x: clickable.x,
+    y: clickable.y,
+    area: clickable.area,
+  }));
+  return {
+    status: 'ok',
+    version: pageLayouts.version,
+    observedAt: pageLayouts.observedAt,
+    source: pageLayouts.source,
+    coordinateUse: 'Use x/y only to infer relative screen position. Do not mention coordinates to the user.',
+    page: {
+      key: layout.key,
+      name: layout.name,
+      summary: layout.summary,
+      pathPatterns: layout.pathPatterns,
+    },
+    clickableGrid,
+    clickableGridJson: JSON.stringify(clickableGrid),
+  };
 };
 
 export const buildSameOriginLink = (origin: string, path: string): string => {
@@ -856,6 +969,10 @@ export const executeAgentTool = async (params: ExecuteToolParams): Promise<Agent
           markdown: `[${text}](${url})`,
         },
       };
+    }
+
+    if (params.name === 'get_page_layout_description') {
+      return { result: getPageLayoutDescription(args, params.pageContext) };
     }
 
     if (params.name === 'get_event_schedule_context') {

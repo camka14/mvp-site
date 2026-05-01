@@ -115,6 +115,37 @@ describe('agent tools dispatcher', () => {
     expect(String(result.result.error)).toContain('same-site paths');
   });
 
+  it('returns a page layout description for the current route', async () => {
+    const result = await executeAgentTool({
+      name: 'get_page_layout_description',
+      args: {},
+      owner: userOwner,
+      conversationId: 'conv-1',
+      pageContext: cleanScheduleContext,
+      origin: 'http://localhost:3000',
+      mode: 'prepare',
+    });
+
+    expect(result.result.status).toBe('ok');
+    expect((result.result.page as any).key).toBe('event_schedule');
+    expect(result.result.clickableGridJson).toEqual(expect.stringContaining('"Manage"'));
+  });
+
+  it('matches dynamic page layout patterns from an explicit pathname', async () => {
+    const result = await executeAgentTool({
+      name: 'get_page_layout_description',
+      args: { pathname: '/organizations/org-1' },
+      owner: userOwner,
+      conversationId: 'conv-1',
+      pageContext: null,
+      origin: 'http://localhost:3000',
+      mode: 'prepare',
+    });
+
+    expect(result.result.status).toBe('ok');
+    expect((result.result.page as any).key).toBe('organization_detail');
+  });
+
   it('requires authentication for write tools', async () => {
     const result = await executeAgentTool({
       name: 'update_event_match',
