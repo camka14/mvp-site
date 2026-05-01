@@ -4,7 +4,9 @@ import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { Bot } from 'lucide-react';
 import { useApp } from '@/app/providers';
+import { useAgentContext } from '@/context/AgentContext';
 import { authService } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
 import { getUserFullName, NavItem } from '@/types';
@@ -18,6 +20,7 @@ const baseNav: NavItem[] = [
 
 export default function Navigation() {
   const { user, authUser, setUser, setAuthUser, isGuest } = useApp();
+  const { openAssistant } = useAgentContext();
   const pathname = usePathname();
   const router = useRouter();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -151,6 +154,16 @@ export default function Navigation() {
                     {userDisplayName}
                   </span>
                 </Link>
+
+                <button
+                  type="button"
+                  onClick={openAssistant}
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  aria-label="Open AI assistant"
+                  title="AI assistant"
+                >
+                  <Bot size={18} aria-hidden="true" />
+                </button>
 
                 <button
                   onClick={handleLogout}

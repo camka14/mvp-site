@@ -8,7 +8,9 @@ import { Providers } from './providers';
 import { createTheme, MantineColorsTuple, MantineProvider } from '@mantine/core';
 import { ChatProvider } from '@/context/ChatContext';
 import { ChatUIProvider } from '@/context/ChatUIContext';
+import { AgentProvider } from '@/context/AgentContext';
 import { ChatComponents } from '@/components/chat/ChatComponents';
+import { AIAssistantDrawer } from '@/components/agent/AIAssistantDrawer';
 import ProfileCompletionGate from '@/components/auth/ProfileCompletionGate';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
 import SiteFooter from '@/components/layout/SiteFooter';
@@ -90,6 +92,9 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   const disableChat = process.env.NEXT_PUBLIC_DISABLE_CHAT === '1';
+  const disableAgent = ['0', 'false', 'off', 'disabled'].includes(
+    (process.env.OPENAI_AGENT_ENABLED ?? '').trim().toLowerCase(),
+  );
   const iosSmartAppBannerContent = getIosSmartAppBannerMetaContent();
 
   return (
@@ -106,16 +111,19 @@ export default function RootLayout({ children }: RootLayoutProps) {
             </Suspense>
             <div className="flex min-h-screen flex-col">
               <div className="flex-1">
-                {disableChat ? (
-                  children
-                ) : (
-                  <ChatProvider>
-                    <ChatUIProvider>
-                      {children}
-                      <ChatComponents />
-                    </ChatUIProvider>
-                  </ChatProvider>
-                )}
+                <AgentProvider>
+                  {disableChat ? (
+                    children
+                  ) : (
+                    <ChatProvider>
+                      <ChatUIProvider>
+                        {children}
+                        <ChatComponents />
+                      </ChatUIProvider>
+                    </ChatProvider>
+                  )}
+                  <AIAssistantDrawer enabled={!disableAgent} />
+                </AgentProvider>
               </div>
               <SiteFooter />
             </div>

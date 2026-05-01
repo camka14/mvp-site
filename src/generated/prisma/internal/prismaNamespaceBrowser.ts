@@ -70,6 +70,8 @@ export const ModelName = {
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
   ModerationReport: 'ModerationReport',
+  AiConversationPointer: 'AiConversationPointer',
+  AiPendingConfirmation: 'AiPendingConfirmation',
   PushDeviceTarget: 'PushDeviceTarget',
   LockFiles: 'LockFiles',
   PaymentIntents: 'PaymentIntents',
@@ -517,6 +519,34 @@ export const ModerationReportScalarFieldEnum = {
 } as const
 
 export type ModerationReportScalarFieldEnum = (typeof ModerationReportScalarFieldEnum)[keyof typeof ModerationReportScalarFieldEnum]
+
+
+export const AiConversationPointerScalarFieldEnum = {
+  userId: 'userId',
+  openaiConversationId: 'openaiConversationId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  lastOpenedAt: 'lastOpenedAt'
+} as const
+
+export type AiConversationPointerScalarFieldEnum = (typeof AiConversationPointerScalarFieldEnum)[keyof typeof AiConversationPointerScalarFieldEnum]
+
+
+export const AiPendingConfirmationScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  sessionId: 'sessionId',
+  openaiConversationId: 'openaiConversationId',
+  toolName: 'toolName',
+  args: 'args',
+  summary: 'summary',
+  status: 'status',
+  expiresAt: 'expiresAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type AiPendingConfirmationScalarFieldEnum = (typeof AiPendingConfirmationScalarFieldEnum)[keyof typeof AiPendingConfirmationScalarFieldEnum]
 
 
 export const PushDeviceTargetScalarFieldEnum = {

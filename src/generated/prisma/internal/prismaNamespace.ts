@@ -403,6 +403,8 @@ export const ModelName = {
   Messages: 'Messages',
   ChatGroup: 'ChatGroup',
   ModerationReport: 'ModerationReport',
+  AiConversationPointer: 'AiConversationPointer',
+  AiPendingConfirmation: 'AiPendingConfirmation',
   PushDeviceTarget: 'PushDeviceTarget',
   LockFiles: 'LockFiles',
   PaymentIntents: 'PaymentIntents',
@@ -440,7 +442,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1847,6 +1849,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.ModerationReportCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.ModerationReportCountAggregateOutputType> | number
+        }
+      }
+    }
+    AiConversationPointer: {
+      payload: Prisma.$AiConversationPointerPayload<ExtArgs>
+      fields: Prisma.AiConversationPointerFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AiConversationPointerFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AiConversationPointerFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>
+        }
+        findFirst: {
+          args: Prisma.AiConversationPointerFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AiConversationPointerFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>
+        }
+        findMany: {
+          args: Prisma.AiConversationPointerFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>[]
+        }
+        create: {
+          args: Prisma.AiConversationPointerCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>
+        }
+        createMany: {
+          args: Prisma.AiConversationPointerCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AiConversationPointerCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>[]
+        }
+        delete: {
+          args: Prisma.AiConversationPointerDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>
+        }
+        update: {
+          args: Prisma.AiConversationPointerUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>
+        }
+        deleteMany: {
+          args: Prisma.AiConversationPointerDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AiConversationPointerUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AiConversationPointerUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>[]
+        }
+        upsert: {
+          args: Prisma.AiConversationPointerUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiConversationPointerPayload>
+        }
+        aggregate: {
+          args: Prisma.AiConversationPointerAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAiConversationPointer>
+        }
+        groupBy: {
+          args: Prisma.AiConversationPointerGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AiConversationPointerGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AiConversationPointerCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AiConversationPointerCountAggregateOutputType> | number
+        }
+      }
+    }
+    AiPendingConfirmation: {
+      payload: Prisma.$AiPendingConfirmationPayload<ExtArgs>
+      fields: Prisma.AiPendingConfirmationFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AiPendingConfirmationFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AiPendingConfirmationFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>
+        }
+        findFirst: {
+          args: Prisma.AiPendingConfirmationFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AiPendingConfirmationFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>
+        }
+        findMany: {
+          args: Prisma.AiPendingConfirmationFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>[]
+        }
+        create: {
+          args: Prisma.AiPendingConfirmationCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>
+        }
+        createMany: {
+          args: Prisma.AiPendingConfirmationCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AiPendingConfirmationCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>[]
+        }
+        delete: {
+          args: Prisma.AiPendingConfirmationDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>
+        }
+        update: {
+          args: Prisma.AiPendingConfirmationUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>
+        }
+        deleteMany: {
+          args: Prisma.AiPendingConfirmationDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AiPendingConfirmationUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AiPendingConfirmationUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>[]
+        }
+        upsert: {
+          args: Prisma.AiPendingConfirmationUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AiPendingConfirmationPayload>
+        }
+        aggregate: {
+          args: Prisma.AiPendingConfirmationAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAiPendingConfirmation>
+        }
+        groupBy: {
+          args: Prisma.AiPendingConfirmationGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AiPendingConfirmationGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AiPendingConfirmationCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AiPendingConfirmationCountAggregateOutputType> | number
         }
       }
     }
@@ -3926,6 +4076,34 @@ export const ModerationReportScalarFieldEnum = {
 export type ModerationReportScalarFieldEnum = (typeof ModerationReportScalarFieldEnum)[keyof typeof ModerationReportScalarFieldEnum]
 
 
+export const AiConversationPointerScalarFieldEnum = {
+  userId: 'userId',
+  openaiConversationId: 'openaiConversationId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  lastOpenedAt: 'lastOpenedAt'
+} as const
+
+export type AiConversationPointerScalarFieldEnum = (typeof AiConversationPointerScalarFieldEnum)[keyof typeof AiConversationPointerScalarFieldEnum]
+
+
+export const AiPendingConfirmationScalarFieldEnum = {
+  id: 'id',
+  userId: 'userId',
+  sessionId: 'sessionId',
+  openaiConversationId: 'openaiConversationId',
+  toolName: 'toolName',
+  args: 'args',
+  summary: 'summary',
+  status: 'status',
+  expiresAt: 'expiresAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type AiPendingConfirmationScalarFieldEnum = (typeof AiPendingConfirmationScalarFieldEnum)[keyof typeof AiPendingConfirmationScalarFieldEnum]
+
+
 export const PushDeviceTargetScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -5114,6 +5292,8 @@ export type GlobalOmitConfig = {
   messages?: Prisma.MessagesOmit
   chatGroup?: Prisma.ChatGroupOmit
   moderationReport?: Prisma.ModerationReportOmit
+  aiConversationPointer?: Prisma.AiConversationPointerOmit
+  aiPendingConfirmation?: Prisma.AiPendingConfirmationOmit
   pushDeviceTarget?: Prisma.PushDeviceTargetOmit
   lockFiles?: Prisma.LockFilesOmit
   paymentIntents?: Prisma.PaymentIntentsOmit

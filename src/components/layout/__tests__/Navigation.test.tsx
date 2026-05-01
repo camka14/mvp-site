@@ -25,6 +25,13 @@ jest.mock('@/app/providers', () => ({
   useApp: () => useAppMock(),
 }));
 
+const mockOpenAssistant = jest.fn();
+jest.mock('@/context/AgentContext', () => ({
+  useAgentContext: () => ({
+    openAssistant: mockOpenAssistant,
+  }),
+}));
+
 const logoutMock = jest.fn();
 jest.mock('@/lib/auth', () => ({
   authService: {
@@ -67,5 +74,11 @@ describe('Navigation', () => {
 
     expect(screen.getByRole('link', { name: /profile name/i })).toHaveAttribute('href', '/profile');
     expect(screen.queryByText('Taylor')).not.toBeInTheDocument();
+  });
+
+  it('shows the AI assistant trigger for signed-in users', () => {
+    render(<Navigation />);
+
+    expect(screen.getByRole('button', { name: /open ai assistant/i })).toBeInTheDocument();
   });
 });

@@ -12,6 +12,7 @@ import Navigation from '@/components/layout/Navigation';
 import { TermsConsentModal } from '@/components/moderation/TermsConsentModal';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
+import { useAgentContext } from '@/context/AgentContext';
 import { useLocation } from '@/app/hooks/useLocation';
 import { chatService, type ChatTermsConsentState } from '@/lib/chatService';
 import { eventService } from '@/lib/eventService';
@@ -871,6 +872,7 @@ const DEFAULT_SPORT: Sport = {
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
   const { user, authUser, loading: authLoading, isAuthenticated, isGuest, setUser } = useApp();
+  const { setActivePageContext, registerRefreshHandler } = useAgentContext();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -5005,6 +5007,71 @@ function EventScheduleContent() {
       }
     }
   }, [eventId, hydrateEvent, hydrateEventFormDependencies, isCreateMode]);
+
+  useEffect(() => {
+    const contextEventId = activeEventId ?? eventId ?? null;
+    if (!contextEventId) {
+      setActivePageContext(null);
+      return;
+    }
+
+    setActivePageContext({
+      kind: 'event_schedule',
+      title: 'Event schedule',
+      eventId: contextEventId,
+      eventName: activeEvent?.name ?? null,
+      eventType: activeEvent?.eventType ?? null,
+      activeTab,
+      selectedOccurrence,
+      canManageEvent,
+      canEditMatches,
+      hasUnsavedChanges: hasPendingUnsavedChanges,
+      matchCount: activeMatches.length,
+      participantCount: participantUsers.length,
+      teamCount: participantTeams.length,
+    });
+
+    return () => {
+      setActivePageContext(null);
+    };
+  }, [
+    activeEvent?.eventType,
+    activeEvent?.name,
+    activeEventId,
+    activeMatches.length,
+    activeTab,
+    canEditMatches,
+    canManageEvent,
+    eventId,
+    hasPendingUnsavedChanges,
+    participantTeams.length,
+    participantUsers.length,
+    selectedOccurrence,
+    setActivePageContext,
+  ]);
+
+  useEffect(() => {
+    registerRefreshHandler(async () => {
+      await loadSchedule({ showPageLoader: false, clearMessages: false });
+      const contextEventId = activeEventId ?? eventId;
+      if (contextEventId) {
+        await refreshParticipantTeamsFromServer(contextEventId, selectedOccurrence ?? undefined).catch((refreshError) => {
+          console.warn('Failed to refresh participants after AI action:', refreshError);
+        });
+      }
+    });
+
+    return () => {
+      registerRefreshHandler(null);
+    };
+  }, [
+    activeEventId,
+    eventId,
+    loadSchedule,
+    refreshParticipantTeamsFromServer,
+    registerRefreshHandler,
+    selectedOccurrence,
+  ]);
 
   useEffect(() => {
     if (!eventId || authLoading) {

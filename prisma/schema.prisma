@@ -624,6 +624,34 @@ model ModerationReport {
   @@index([status, dueAt])
 }
 
+model AiConversationPointer {
+  userId               String   @id
+  openaiConversationId String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  lastOpenedAt         DateTime @default(now())
+
+  @@index([openaiConversationId])
+}
+
+model AiPendingConfirmation {
+  id                   String   @id
+  userId               String?
+  sessionId            String?
+  openaiConversationId String
+  toolName             String
+  args                 Json
+  summary              String
+  status               String   @default("PENDING")
+  expiresAt            DateTime
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([userId, openaiConversationId, status])
+  @@index([sessionId, openaiConversationId, status])
+  @@index([expiresAt])
+}
+
 model PushDeviceTarget {
   id           String    @id
   createdAt    DateTime?

@@ -137,6 +137,16 @@ export type ChatGroup = Prisma.ChatGroupModel
  */
 export type ModerationReport = Prisma.ModerationReportModel
 /**
+ * Model AiConversationPointer
+ * 
+ */
+export type AiConversationPointer = Prisma.AiConversationPointerModel
+/**
+ * Model AiPendingConfirmation
+ * 
+ */
+export type AiPendingConfirmation = Prisma.AiPendingConfirmationModel
+/**
  * Model PushDeviceTarget
  * 
  */
