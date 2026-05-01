@@ -5,7 +5,6 @@ import type { AgentChatLoadResponse, AgentChatSendResponse, AgentPageContext } f
 import { assertAgentAvailable, getOpenAiClient } from '@/server/agent/openai';
 import { resolveAgentConversation } from '@/server/agent/conversations';
 import { conversationItemsToMessages, runAgentTurn } from '@/server/agent/runner';
-import { listPendingConfirmations } from '@/server/agent/tools';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +32,7 @@ const pageContextSchema = z.object({
     matchCount: z.number().optional(),
     participantCount: z.number().optional(),
     teamCount: z.number().optional(),
-  }).nullable().optional(),
+  }).passthrough().nullable().optional(),
 });
 
 const sendSchema = z.object({
@@ -55,15 +54,12 @@ export async function GET(req: NextRequest) {
     assertAgentAvailable();
     const session = await getOptionalSession(req);
     const resolved = await resolveAgentConversation(req, session);
-    const [messages, pendingConfirmations] = await Promise.all([
-      loadConversationMessages(resolved.conversationId),
-      listPendingConfirmations(resolved.conversationId, resolved.owner),
-    ]);
+    const messages = await loadConversationMessages(resolved.conversationId);
 
     const response = NextResponse.json({
       conversationId: resolved.conversationId,
       messages,
-      pendingConfirmations,
+      pendingConfirmations: [],
       isGuest: resolved.owner.type === 'guest',
       canUseActions: resolved.owner.type === 'user',
     } satisfies AgentChatLoadResponse);
@@ -95,13 +91,13 @@ export async function POST(req: NextRequest) {
       pageContext,
       origin: getRequestOrigin(req),
     });
-    const pendingConfirmations = await listPendingConfirmations(resolved.conversationId, resolved.owner);
 
     const response = NextResponse.json({
       conversationId: resolved.conversationId,
       reply: result.reply,
-      pendingConfirmations,
+      pendingConfirmations: [],
       changes: result.changes,
+      clientActions: result.clientActions,
     } satisfies AgentChatSendResponse);
     resolved.setCookie?.(response);
     return response;

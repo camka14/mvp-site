@@ -2,19 +2,22 @@ import { randomUUID } from 'crypto';
 import type { Tool } from 'openai/resources/responses/responses';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import type { AgentPageContext, AgentPendingConfirmation, AgentToolChange } from '@/lib/agent/types';
+import type { AgentClientAction, AgentPageContext, AgentPendingConfirmation, AgentToolChange } from '@/lib/agent/types';
 import { canManageEvent } from '@/server/accessControl';
 import type { AgentConversationOwner } from './conversations';
 import pageLayoutDescriptions from './pageLayoutDescriptions.json';
 
 const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
 const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'PRIVATE', 'DRAFT']);
+const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+const PREFIXED_OBJECT_ID_PATTERN = /\b(?:user|event|match|field|team|org|organization|division|slot|registration|participant|official|confirmation|conv|local_team|dev_user|camka_upload)[_-][a-z0-9][a-z0-9_-]{5,}\b/gi;
 
 type ToolExecutionMode = 'prepare' | 'confirm';
 
 export type AgentToolResult = {
   result: Record<string, unknown>;
   changes?: AgentToolChange[];
+  clientActions?: AgentClientAction[];
   pendingConfirmation?: AgentPendingConfirmation;
 };
 
@@ -123,11 +126,27 @@ const readTools: Tool[] = [
   },
 ];
 
-const writeTools: Tool[] = [
+const matchUpdateToolProperties = {
+  start: { type: ['string', 'null'], description: 'ISO date-time start, or null.' },
+  end: { type: ['string', 'null'], description: 'ISO date-time end, or null.' },
+  fieldId: { type: ['string', 'null'] },
+  team1Id: { type: ['string', 'null'] },
+  team2Id: { type: ['string', 'null'] },
+  officialId: { type: ['string', 'null'] },
+  officialIds: { type: ['array', 'null'], items: { type: 'object' } },
+  teamOfficialId: { type: ['string', 'null'] },
+  locked: { type: ['boolean', 'null'] },
+  officialCheckedIn: { type: ['boolean', 'null'] },
+  matchId: { type: ['number', 'null'] },
+  division: { type: ['string', 'null'] },
+  losersBracket: { type: ['boolean', 'null'] },
+};
+
+const draftActionTools: Tool[] = [
   {
     type: 'function',
-    name: 'update_event_match',
-    description: 'Request a confirmed update to a saved event match assignment or schedule fields: start, end, field, teams, officials, team official, lock state, division, or displayed match number.',
+    name: 'stage_event_match_draft_update',
+    description: 'Stage a client-side draft update to one event match. This does not update the database; the user reviews the draft on the page and saves or discards it.',
     strict: false,
     parameters: {
       type: 'object',
@@ -136,21 +155,7 @@ const writeTools: Tool[] = [
         matchId: { type: 'string' },
         updates: {
           type: 'object',
-          properties: {
-            start: { type: ['string', 'null'], description: 'ISO date-time start, or null.' },
-            end: { type: ['string', 'null'], description: 'ISO date-time end, or null.' },
-            fieldId: { type: ['string', 'null'] },
-            team1Id: { type: ['string', 'null'] },
-            team2Id: { type: ['string', 'null'] },
-            officialId: { type: ['string', 'null'] },
-            officialIds: { type: ['array', 'null'], items: { type: 'object' } },
-            teamOfficialId: { type: ['string', 'null'] },
-            locked: { type: ['boolean', 'null'] },
-            officialCheckedIn: { type: ['boolean', 'null'] },
-            matchId: { type: ['number', 'null'] },
-            division: { type: ['string', 'null'] },
-            losersBracket: { type: ['boolean', 'null'] },
-          },
+          properties: matchUpdateToolProperties,
           additionalProperties: false,
         },
       },
@@ -158,67 +163,10 @@ const writeTools: Tool[] = [
       additionalProperties: false,
     },
   },
-  {
-    type: 'function',
-    name: 'update_match_score',
-    description: 'Request a confirmed update to saved match score arrays or segment results.',
-    strict: false,
-    parameters: {
-      type: 'object',
-      properties: {
-        eventId: { type: 'string' },
-        matchId: { type: 'string' },
-        team1Points: { type: ['array', 'null'], items: { type: 'number' } },
-        team2Points: { type: ['array', 'null'], items: { type: 'number' } },
-        setResults: { type: ['array', 'null'], items: { type: 'number' } },
-        segmentOperations: { type: ['array', 'null'], items: { type: 'object' } },
-      },
-      required: ['eventId', 'matchId'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'update_event_participant',
-    description: 'Request a confirmed add or remove of a saved event participant by user ID or team ID using existing event registration rules.',
-    strict: false,
-    parameters: {
-      type: 'object',
-      properties: {
-        eventId: { type: 'string' },
-        mode: { type: 'string', enum: ['add', 'remove'] },
-        targetType: { type: 'string', enum: ['user', 'team'] },
-        userId: { type: ['string', 'null'] },
-        teamId: { type: ['string', 'null'] },
-        divisionId: { type: ['string', 'null'] },
-        divisionTypeId: { type: ['string', 'null'] },
-        divisionTypeKey: { type: ['string', 'null'] },
-        slotId: { type: ['string', 'null'] },
-        occurrenceDate: { type: ['string', 'null'] },
-      },
-      required: ['eventId', 'mode', 'targetType'],
-      additionalProperties: false,
-    },
-  },
-  {
-    type: 'function',
-    name: 'regenerate_event_schedule',
-    description: 'Request confirmed regeneration or refresh of a saved league/tournament schedule while preserving locks where the existing API does so.',
-    strict: false,
-    parameters: {
-      type: 'object',
-      properties: {
-        eventId: { type: 'string' },
-        participantCount: { type: ['number', 'null'] },
-      },
-      required: ['eventId'],
-      additionalProperties: false,
-    },
-  },
 ];
 
 export const buildAgentTools = (owner: AgentConversationOwner): Tool[] => (
-  owner.type === 'user' ? [...readTools, ...writeTools] : readTools
+  owner.type === 'user' ? [...readTools, ...draftActionTools] : readTools
 );
 
 const navigationHelp = {
@@ -237,8 +185,8 @@ const navigationHelp = {
   ],
   schedulePageTips: [
     'Open an event, then use Manage/Edit mode to change event details, participants, schedule, standings, and match results.',
-    'On the Schedule tab, saved match changes can be made manually or by the assistant after confirmation.',
-    'If the page has unsaved local edits, save those changes before asking the assistant to mutate the schedule.',
+    'On the Schedule tab, match changes can be made manually or staged by the assistant as draft edits.',
+    'Assistant schedule edits are added to the page as unsaved changes. Use Save Changes to persist them or Discard Changes to revert them.',
   ],
 };
 
@@ -262,7 +210,7 @@ const hasUnsavedScheduleChanges = (pageContext: AgentPageContext | null): boolea
 
 const formatUserName = (user: { firstName?: string | null; lastName?: string | null; userName?: string | null; id?: string }): string => {
   const fullName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
-  return fullName || user.userName?.trim() || user.id || 'Unknown user';
+  return fullName || user.userName?.trim() || 'Unknown user';
 };
 
 const parseToolArgs = (args: unknown): Record<string, unknown> => {
@@ -352,6 +300,9 @@ export const buildSameOriginLink = (origin: string, path: string): string => {
   if (!trimmed || /^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith('//')) {
     throw new Error('Only same-site paths are supported.');
   }
+  if (containsObjectId(trimmed)) {
+    throw new Error('Object-specific paths cannot be shown in chat.');
+  }
   const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
   const url = new URL(normalizedPath, origin);
   const expectedOrigin = new URL(origin).origin;
@@ -359,6 +310,30 @@ export const buildSameOriginLink = (origin: string, path: string): string => {
     throw new Error('Only same-origin BracketIQ links are supported.');
   }
   return url.toString();
+};
+
+export const containsObjectId = (value: string): boolean => {
+  UUID_PATTERN.lastIndex = 0;
+  PREFIXED_OBJECT_ID_PATTERN.lastIndex = 0;
+  return UUID_PATTERN.test(value) || PREFIXED_OBJECT_ID_PATTERN.test(value);
+};
+
+export const redactUserFacingObjectIds = (value: string): string => {
+  UUID_PATTERN.lastIndex = 0;
+  PREFIXED_OBJECT_ID_PATTERN.lastIndex = 0;
+  return value
+    .replace(new RegExp(`\\bmatch\\s+${UUID_PATTERN.source}`, 'gi'), 'the selected match')
+    .replace(new RegExp(`\\bmatch\\s+${PREFIXED_OBJECT_ID_PATTERN.source}`, 'gi'), 'the selected match')
+    .replace(new RegExp(`\\bevent\\s+${UUID_PATTERN.source}`, 'gi'), 'the selected event')
+    .replace(new RegExp(`\\bevent\\s+${PREFIXED_OBJECT_ID_PATTERN.source}`, 'gi'), 'the selected event')
+    .replace(new RegExp(`\\bteam\\s+${UUID_PATTERN.source}`, 'gi'), 'the selected team')
+    .replace(new RegExp(`\\bteam\\s+${PREFIXED_OBJECT_ID_PATTERN.source}`, 'gi'), 'the selected team')
+    .replace(new RegExp(`\\buser\\s+${UUID_PATTERN.source}`, 'gi'), 'the selected user')
+    .replace(new RegExp(`\\buser\\s+${PREFIXED_OBJECT_ID_PATTERN.source}`, 'gi'), 'the selected user')
+    .replace(UUID_PATTERN, 'the selected item')
+    .replace(PREFIXED_OBJECT_ID_PATTERN, 'the selected item')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 };
 
 const getPendingDelegate = () => (prisma as any).aiPendingConfirmation;
@@ -383,7 +358,7 @@ export const listPendingConfirmations = async (
   return rows.map((row: any) => ({
     id: row.id,
     toolName: row.toolName,
-    summary: row.summary,
+    summary: redactUserFacingObjectIds(row.summary),
     expiresAt: row.expiresAt instanceof Date ? row.expiresAt.toISOString() : new Date(row.expiresAt).toISOString(),
   }));
 };
@@ -407,7 +382,7 @@ const createPendingConfirmation = async (
       openaiConversationId: params.conversationId,
       toolName: params.toolName,
       args: params.args,
-      summary: params.summary,
+      summary: redactUserFacingObjectIds(params.summary),
       status: 'PENDING',
       expiresAt,
       createdAt: now,
@@ -566,8 +541,12 @@ const getEventScheduleContext = async (
     viewer: {
       authenticated: owner.type === 'user',
       canManageEvent: access.canManage,
-      canUseMutatingTools: owner.type === 'user' && access.canManage,
+      canStageDraftActions: owner.type === 'user' && access.canManage && Boolean(pageContext?.page?.canEditMatches),
       hasUnsavedChanges: hasUnsavedScheduleChanges(pageContext),
+    },
+    pageDraft: {
+      pendingChanges: pageContext?.page?.pendingChanges ?? null,
+      draftSchedule: pageContext?.page?.draftSchedule ?? null,
     },
     fields: fields.map((field) => ({
       id: field.id,
@@ -600,8 +579,8 @@ const getEventScheduleContext = async (
       type: registration.registrantType,
       registrantId: registration.registrantId,
       displayName: registration.registrantType === 'TEAM'
-        ? teamNameById.get(registration.eventTeamId ?? registration.registrantId) ?? registration.registrantId
-        : userNameById.get(registration.registrantId) ?? registration.registrantId,
+        ? teamNameById.get(registration.eventTeamId ?? registration.registrantId) ?? 'Unknown team'
+        : userNameById.get(registration.registrantId) ?? 'Unknown participant',
       eventTeamId: registration.eventTeamId,
       rosterRole: registration.rosterRole,
       status: registration.status,
@@ -618,16 +597,16 @@ const getEventScheduleContext = async (
       status: match.status,
       resultStatus: match.resultStatus,
       fieldId: match.fieldId,
-      fieldName: match.fieldId ? fieldNameById.get(match.fieldId) ?? match.fieldId : null,
+      fieldName: match.fieldId ? fieldNameById.get(match.fieldId) ?? 'Unknown field' : null,
       team1Id: match.team1Id,
-      team1Name: match.team1Id ? teamNameById.get(match.team1Id) ?? match.team1Id : null,
+      team1Name: match.team1Id ? teamNameById.get(match.team1Id) ?? 'Unknown team' : null,
       team2Id: match.team2Id,
-      team2Name: match.team2Id ? teamNameById.get(match.team2Id) ?? match.team2Id : null,
+      team2Name: match.team2Id ? teamNameById.get(match.team2Id) ?? 'Unknown team' : null,
       officialId: match.officialId,
-      officialName: match.officialId ? userNameById.get(match.officialId) ?? match.officialId : null,
+      officialName: match.officialId ? userNameById.get(match.officialId) ?? 'Unknown official' : null,
       officialIds: match.officialIds,
       teamOfficialId: match.teamOfficialId,
-      teamOfficialName: match.teamOfficialId ? teamNameById.get(match.teamOfficialId) ?? match.teamOfficialId : null,
+      teamOfficialName: match.teamOfficialId ? teamNameById.get(match.teamOfficialId) ?? 'Unknown team' : null,
       team1Points: match.team1Points,
       team2Points: match.team2Points,
       setResults: match.setResults,
@@ -637,24 +616,26 @@ const getEventScheduleContext = async (
   };
 };
 
+const matchUpdateFieldsSchema = z.object({
+  start: z.string().nullable().optional(),
+  end: z.string().nullable().optional(),
+  fieldId: z.string().nullable().optional(),
+  team1Id: z.string().nullable().optional(),
+  team2Id: z.string().nullable().optional(),
+  officialId: z.string().nullable().optional(),
+  officialIds: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
+  teamOfficialId: z.string().nullable().optional(),
+  locked: z.boolean().nullable().optional(),
+  officialCheckedIn: z.boolean().nullable().optional(),
+  matchId: z.number().int().nullable().optional(),
+  division: z.string().nullable().optional(),
+  losersBracket: z.boolean().nullable().optional(),
+}).strict();
+
 const updateMatchSchema = z.object({
   eventId: z.string().min(1),
   matchId: z.string().min(1),
-  updates: z.object({
-    start: z.string().nullable().optional(),
-    end: z.string().nullable().optional(),
-    fieldId: z.string().nullable().optional(),
-    team1Id: z.string().nullable().optional(),
-    team2Id: z.string().nullable().optional(),
-    officialId: z.string().nullable().optional(),
-    officialIds: z.array(z.record(z.string(), z.unknown())).nullable().optional(),
-    teamOfficialId: z.string().nullable().optional(),
-    locked: z.boolean().nullable().optional(),
-    officialCheckedIn: z.boolean().nullable().optional(),
-    matchId: z.number().int().nullable().optional(),
-    division: z.string().nullable().optional(),
-    losersBracket: z.boolean().nullable().optional(),
-  }).strict(),
+  updates: matchUpdateFieldsSchema,
 }).strict();
 
 const updateScoreSchema = z.object({
@@ -696,13 +677,18 @@ const regenerateScheduleSchema = z.object({
   participantCount: z.number().int().positive().nullable().optional(),
 }).strict();
 
+const sanitizeMatchUpdates = (updates: z.infer<typeof matchUpdateFieldsSchema>): Record<string, unknown> => (
+  Object.fromEntries(
+    Object.entries(updates).filter(([, value]) => value !== undefined && value !== null),
+  )
+);
+
 const sanitizeArgsForTool = (name: string, args: Record<string, unknown>): Record<string, unknown> => {
   switch (name) {
+    case 'stage_event_match_draft_update':
     case 'update_event_match': {
       const parsed = updateMatchSchema.parse(args);
-      const updates = Object.fromEntries(
-        Object.entries(parsed.updates).filter(([, value]) => value !== undefined && value !== null),
-      );
+      const updates = sanitizeMatchUpdates(parsed.updates);
       return { eventId: parsed.eventId, matchId: parsed.matchId, updates };
     }
     case 'update_match_score': {
@@ -722,6 +708,91 @@ const sanitizeArgsForTool = (name: string, args: Record<string, unknown>): Recor
   }
 };
 
+const updateFieldLabels: Record<string, string> = {
+  start: 'start time',
+  end: 'end time',
+  fieldId: 'field',
+  team1Id: 'team 1',
+  team2Id: 'team 2',
+  officialId: 'official',
+  officialIds: 'officials',
+  teamOfficialId: 'team official',
+  locked: 'lock state',
+  officialCheckedIn: 'official check-in',
+  matchId: 'displayed match number',
+  division: 'division',
+  losersBracket: 'bracket side',
+};
+
+const buildBulkMatchUpdatePayload = (matchId: string, updates: Record<string, unknown>): Record<string, unknown> => ({
+  id: matchId,
+  ...updates,
+});
+
+const formatUpdateFieldNames = (updates: unknown): string => {
+  if (!updates || typeof updates !== 'object' || Array.isArray(updates)) {
+    return 'none';
+  }
+  const labels = Object.keys(updates as Record<string, unknown>)
+    .map((key) => updateFieldLabels[key] ?? key.replace(/Id$/, '').replace(/([A-Z])/g, ' $1').toLowerCase())
+    .filter(Boolean);
+  return labels.length > 0 ? labels.join(', ') : 'none';
+};
+
+const describeMatchForUser = async (eventId: string | null, matchId: string | null): Promise<string> => {
+  if (!eventId || !matchId) return 'the selected match';
+  const match = await prisma.matches.findUnique({
+    where: { id: matchId },
+    select: { matchId: true, team1Id: true, team2Id: true },
+  }).catch(() => null);
+  if (!match) return 'the selected match';
+
+  const labelParts: string[] = [];
+  if (typeof match.matchId === 'number') {
+    labelParts.push(`match #${match.matchId}`);
+  }
+
+  const teamIds = [match.team1Id, match.team2Id].filter((value): value is string => Boolean(value));
+  if (teamIds.length > 0) {
+    const teams = await prisma.teams.findMany({
+      where: { id: { in: teamIds } },
+      select: { id: true, name: true },
+    }).catch(() => []);
+    const teamNameById = new Map(teams.map((team) => [team.id, team.name]));
+    const teamNames = teamIds.map((id) => teamNameById.get(id)).filter((value): value is string => Boolean(value));
+    if (teamNames.length === 2) {
+      labelParts.push(`${teamNames[0]} vs ${teamNames[1]}`);
+    } else if (teamNames.length === 1) {
+      labelParts.push(teamNames[0]);
+    }
+  }
+
+  return labelParts.length > 0 ? labelParts.join(' - ') : 'the selected match';
+};
+
+const describeParticipantForUser = async (args: Record<string, unknown>): Promise<string> => {
+  const teamId = normalizeString(args.teamId);
+  const userId = normalizeString(args.userId);
+
+  if (teamId) {
+    const team = await prisma.teams.findUnique({
+      where: { id: teamId },
+      select: { name: true },
+    }).catch(() => null);
+    return team?.name ? `team "${team.name}"` : 'the selected team';
+  }
+
+  if (userId) {
+    const user = await prisma.userData.findUnique({
+      where: { id: userId },
+      select: { firstName: true, lastName: true, userName: true },
+    }).catch(() => null);
+    return user ? `participant "${formatUserName(user)}"` : 'the selected participant';
+  }
+
+  return 'the selected participant';
+};
+
 const summarizeWriteTool = async (toolName: string, args: Record<string, unknown>): Promise<string> => {
   const eventId = normalizeString(args.eventId);
   const event = eventId
@@ -730,19 +801,93 @@ const summarizeWriteTool = async (toolName: string, args: Record<string, unknown
   const eventLabel = event?.name ? `"${event.name}"` : 'this event';
 
   switch (toolName) {
-    case 'update_event_match':
-      return `Update match ${normalizeString(args.matchId) ?? ''} for ${eventLabel}. Fields: ${Object.keys((args.updates ?? {}) as object).join(', ') || 'none'}.`;
-    case 'update_match_score':
-      return `Update score/results for match ${normalizeString(args.matchId) ?? ''} in ${eventLabel}.`;
+    case 'stage_event_match_draft_update':
+    case 'update_event_match': {
+      const matchLabel = await describeMatchForUser(eventId, normalizeString(args.matchId));
+      return redactUserFacingObjectIds(`Update ${matchLabel} for ${eventLabel}. Fields: ${formatUpdateFieldNames(args.updates)}.`);
+    }
+    case 'update_match_score': {
+      const matchLabel = await describeMatchForUser(eventId, normalizeString(args.matchId));
+      return redactUserFacingObjectIds(`Update score/results for ${matchLabel} in ${eventLabel}.`);
+    }
     case 'update_event_participant': {
-      const targetId = normalizeString(args.userId) ?? normalizeString(args.teamId) ?? 'selected participant';
-      return `${args.mode === 'remove' ? 'Remove' : 'Add'} ${String(args.targetType)} ${targetId} ${args.mode === 'remove' ? 'from' : 'to'} ${eventLabel}.`;
+      const target = await describeParticipantForUser(args);
+      return redactUserFacingObjectIds(`${args.mode === 'remove' ? 'Remove' : 'Add'} ${target} ${args.mode === 'remove' ? 'from' : 'to'} ${eventLabel}.`);
     }
     case 'regenerate_event_schedule':
       return `Regenerate or refresh the saved schedule for ${eventLabel}.`;
     default:
       return `Run ${toolName} for ${eventLabel}.`;
   }
+};
+
+const createClientDraftActionResult = async (
+  params: ExecuteToolParams,
+  args: Record<string, unknown>,
+): Promise<AgentToolResult> => {
+  if (params.owner.type !== 'user') {
+    return { result: { status: 'unauthorized', error: 'Sign in is required for this action.' } };
+  }
+
+  const pageEventId = currentEventIdFromContext(params.pageContext);
+  const eventId = normalizeString(args.eventId);
+  if (!eventId || !pageEventId || eventId !== pageEventId || params.pageContext?.page?.kind !== 'event_schedule') {
+    return {
+      result: {
+        status: 'failed',
+        error: 'Open the event schedule page before asking the assistant to stage schedule edits.',
+      },
+    };
+  }
+
+  if (!params.pageContext?.page?.canEditMatches) {
+    return {
+      result: {
+        status: 'failed',
+        error: 'Open Manage/Edit mode before asking the assistant to stage match edits.',
+      },
+    };
+  }
+
+  const event = await prisma.events.findUnique({
+    where: { id: eventId },
+    select: {
+      id: true,
+      name: true,
+      state: true,
+      hostId: true,
+      assistantHostIds: true,
+      organizationId: true,
+    },
+  });
+  const access = await canReadEvent(params.owner, event);
+  if (!event || !access.canManage) {
+    return {
+      result: {
+        status: 'unauthorized',
+        error: 'You do not have permission to edit this event schedule.',
+      },
+    };
+  }
+
+  const summary = await summarizeWriteTool(params.name, args);
+  const action: AgentClientAction = {
+    type: 'schedule.match.update',
+    eventId,
+    matchId: String(args.matchId),
+    updates: args.updates as AgentClientAction['updates'],
+    summary,
+  };
+
+  return {
+    result: {
+      status: 'client_action',
+      summary,
+      actionType: action.type,
+      instructions: 'The draft update will be applied in the browser. The user must save changes to persist it.',
+    },
+    clientActions: [action],
+  };
 };
 
 const createConfirmationRequiredResult = async (
@@ -805,6 +950,55 @@ const authHeaders = (owner: AgentConversationOwner): HeadersInit => {
   return { Authorization: `Bearer ${owner.session.rawToken}` };
 };
 
+const summarizeExecutedMatchUpdates = async (
+  eventId: string,
+  matches: Array<{ matchId: string; updates: Record<string, unknown> }>,
+): Promise<string> => {
+  if (matches.length === 1) {
+    const matchLabel = await describeMatchForUser(eventId, matches[0].matchId);
+    return redactUserFacingObjectIds(`Updated ${matchLabel}.`);
+  }
+
+  const labels = await Promise.all(matches.slice(0, 5).map((entry) => describeMatchForUser(eventId, entry.matchId)));
+  const moreCount = matches.length - labels.length;
+  const suffix = moreCount > 0 ? `, plus ${moreCount} more` : '';
+  return redactUserFacingObjectIds(`Updated ${matches.length} matches: ${labels.join(', ')}${suffix}.`);
+};
+
+const executeBulkMatchUpdateTool = async (
+  params: ExecuteToolParams,
+  eventId: string,
+  matches: Array<{ matchId: string; updates: Record<string, unknown> }>,
+): Promise<AgentToolResult> => {
+  const response = await fetchJsonOrToolError(
+    `${params.origin}/api/events/${encodeURIComponent(eventId)}/matches`,
+    {
+      method: 'PATCH',
+      headers: authHeaders(params.owner),
+      body: JSON.stringify({
+        matches: matches.map((entry) => buildBulkMatchUpdatePayload(entry.matchId, entry.updates)),
+      }),
+    },
+  );
+  if (!response.ok) {
+    return { result: { status: 'failed', httpStatus: response.status, error: redactUserFacingObjectIds(String(response.body?.error ?? 'Match update failed.')) } };
+  }
+
+  return {
+    result: {
+      status: 'executed',
+      summary: await summarizeExecutedMatchUpdates(eventId, matches),
+    },
+    changes: matches.map((entry) => ({
+      type: 'match',
+      id: entry.matchId,
+      eventId,
+      operation: 'update',
+      label: 'Match updated',
+    })),
+  };
+};
+
 const executeWriteTool = async (
   params: ExecuteToolParams,
   args: Record<string, unknown>,
@@ -823,29 +1017,16 @@ const executeWriteTool = async (
 
   if (params.name === 'update_event_match') {
     const parsed = updateMatchSchema.parse(args);
-    const response = await fetchJsonOrToolError(
-      `${params.origin}/api/events/${encodeURIComponent(parsed.eventId)}/matches/${encodeURIComponent(parsed.matchId)}`,
-      {
-        method: 'PATCH',
-        headers: authHeaders(params.owner),
-        body: JSON.stringify(parsed.updates),
-      },
+    return executeBulkMatchUpdateTool(
+      params,
+      parsed.eventId,
+      [{ matchId: parsed.matchId, updates: parsed.updates }],
     );
-    if (!response.ok) {
-      return { result: { status: 'failed', httpStatus: response.status, error: response.body?.error ?? 'Match update failed.' } };
-    }
-    return {
-      result: {
-        status: 'executed',
-        summary: `Updated match ${parsed.matchId}.`,
-        match: response.body?.match ?? null,
-      },
-      changes: [{ type: 'match', id: parsed.matchId, eventId: parsed.eventId, operation: 'update', label: 'Match updated' }],
-    };
   }
 
   if (params.name === 'update_match_score') {
     const parsed = updateScoreSchema.parse(args);
+    const matchLabel = await describeMatchForUser(parsed.eventId, parsed.matchId);
     const body = {
       ...(Array.isArray(parsed.team1Points) ? { team1Points: parsed.team1Points } : {}),
       ...(Array.isArray(parsed.team2Points) ? { team2Points: parsed.team2Points } : {}),
@@ -861,13 +1042,12 @@ const executeWriteTool = async (
       },
     );
     if (!response.ok) {
-      return { result: { status: 'failed', httpStatus: response.status, error: response.body?.error ?? 'Score update failed.' } };
+      return { result: { status: 'failed', httpStatus: response.status, error: redactUserFacingObjectIds(String(response.body?.error ?? 'Score update failed.')) } };
     }
     return {
       result: {
         status: 'executed',
-        summary: `Updated score for match ${parsed.matchId}.`,
-        match: response.body?.match ?? null,
+        summary: redactUserFacingObjectIds(`Updated score for ${matchLabel}.`),
       },
       changes: [{ type: 'match', id: parsed.matchId, eventId: parsed.eventId, operation: 'update', label: 'Score updated' }],
     };
@@ -892,7 +1072,7 @@ const executeWriteTool = async (
       },
     );
     if (!response.ok) {
-      return { result: { status: 'failed', httpStatus: response.status, error: response.body?.error ?? 'Participant update failed.' } };
+      return { result: { status: 'failed', httpStatus: response.status, error: redactUserFacingObjectIds(String(response.body?.error ?? 'Participant update failed.')) } };
     }
     return {
       result: {
@@ -923,7 +1103,7 @@ const executeWriteTool = async (
       },
     );
     if (!response.ok) {
-      return { result: { status: 'failed', httpStatus: response.status, error: response.body?.error ?? 'Schedule regeneration failed.' } };
+      return { result: { status: 'failed', httpStatus: response.status, error: redactUserFacingObjectIds(String(response.body?.error ?? 'Schedule regeneration failed.')) } };
     }
     return {
       result: {
@@ -979,6 +1159,25 @@ export const executeAgentTool = async (params: ExecuteToolParams): Promise<Agent
       return { result: await getEventScheduleContext(params.owner, args, params.pageContext) };
     }
 
+    if (params.name === 'stage_event_match_draft_update') {
+      const sanitizedArgs = sanitizeArgsForTool(params.name, args);
+      return createClientDraftActionResult(params, sanitizedArgs);
+    }
+
+    if (
+      params.name === 'update_event_match'
+      || params.name === 'update_match_score'
+      || params.name === 'update_event_participant'
+      || params.name === 'regenerate_event_schedule'
+    ) {
+      return {
+        result: {
+          status: 'failed',
+          error: 'Direct assistant database writes are disabled. Use client-side draft actions instead.',
+        },
+      };
+    }
+
     const sanitizedArgs = sanitizeArgsForTool(params.name, args);
     if (params.mode === 'prepare') {
       return createConfirmationRequiredResult(params, sanitizedArgs);
@@ -1030,46 +1229,10 @@ export const executePendingConfirmation = async (params: {
     await delegate.update({ where: { id: pending.id }, data: { status: 'CANCELLED', updatedAt: new Date() } });
     return { status: 'cancelled', reply: 'Cancelled. No changes were made.', changes: [] };
   }
-  if (hasUnsavedScheduleChanges(params.pageContext)) {
-    return {
-      status: 'save_required',
-      reply: 'The schedule page has unsaved changes. Save them first, then confirm or ask me to prepare the action again.',
-      changes: [],
-    };
-  }
-
-  const execution = await executeAgentTool({
-    name: pending.toolName,
-    args: pending.args,
-    owner: params.owner,
-    conversationId: params.conversationId,
-    pageContext: params.pageContext,
-    origin: params.origin,
-    mode: 'confirm',
-  });
-
-  if (execution.result.status === 'save_required') {
-    return {
-      status: 'save_required',
-      reply: String(execution.result.error ?? 'Save changes first.'),
-      changes: [],
-    };
-  }
-
-  const status = execution.result.status === 'executed' ? 'EXECUTED' : 'FAILED';
-  await delegate.update({ where: { id: pending.id }, data: { status, updatedAt: new Date() } });
-
-  if (execution.result.status !== 'executed') {
-    return {
-      status: 'failed',
-      reply: String(execution.result.error ?? 'The action could not be completed.'),
-      changes: [],
-    };
-  }
-
+  await delegate.update({ where: { id: pending.id }, data: { status: 'FAILED', updatedAt: new Date() } });
   return {
-    status: 'executed',
-    reply: String(execution.result.summary ?? 'Action completed.'),
-    changes: execution.changes ?? [],
+    status: 'failed',
+    reply: 'Direct assistant database writes are disabled. Ask me to stage draft changes on the page instead.',
+    changes: [],
   };
 };

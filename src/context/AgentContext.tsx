@@ -1,9 +1,10 @@
 'use client';
 
 import React, { createContext, ReactNode, useCallback, useContext, useMemo, useRef, useState } from 'react';
-import type { AgentActivePageContext } from '@/lib/agent/types';
+import type { AgentActivePageContext, AgentClientAction, AgentClientActionResult } from '@/lib/agent/types';
 
 type RefreshHandler = () => Promise<void> | void;
+type ClientActionHandler = (actions: AgentClientAction[]) => Promise<AgentClientActionResult> | AgentClientActionResult;
 
 type AgentContextValue = {
   activePageContext: AgentActivePageContext | null;
@@ -13,6 +14,8 @@ type AgentContextValue = {
   closeAssistant: () => void;
   registerRefreshHandler: (handler: RefreshHandler | null) => void;
   refreshActivePage: () => Promise<void>;
+  registerClientActionHandler: (handler: ClientActionHandler | null) => void;
+  dispatchClientActions: (actions: AgentClientAction[]) => Promise<AgentClientActionResult>;
 };
 
 const AgentContext = createContext<AgentContextValue | null>(null);
@@ -21,6 +24,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [activePageContext, setActivePageContext] = useState<AgentActivePageContext | null>(null);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const refreshHandlerRef = useRef<RefreshHandler | null>(null);
+  const clientActionHandlerRef = useRef<ClientActionHandler | null>(null);
 
   const openAssistant = useCallback(() => {
     setIsAssistantOpen(true);
@@ -38,6 +42,24 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     await refreshHandlerRef.current?.();
   }, []);
 
+  const registerClientActionHandler = useCallback((handler: ClientActionHandler | null) => {
+    clientActionHandlerRef.current = handler;
+  }, []);
+
+  const dispatchClientActions = useCallback(async (actions: AgentClientAction[]) => {
+    if (actions.length === 0) {
+      return { applied: 0, errors: [] };
+    }
+    const handler = clientActionHandlerRef.current;
+    if (!handler) {
+      return {
+        applied: 0,
+        errors: ['No active page can apply the assistant draft changes.'],
+      };
+    }
+    return handler(actions);
+  }, []);
+
   const value = useMemo(
     () => ({
       activePageContext,
@@ -47,8 +69,19 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       closeAssistant,
       registerRefreshHandler,
       refreshActivePage,
+      registerClientActionHandler,
+      dispatchClientActions,
     }),
-    [activePageContext, closeAssistant, isAssistantOpen, openAssistant, refreshActivePage, registerRefreshHandler],
+    [
+      activePageContext,
+      closeAssistant,
+      dispatchClientActions,
+      isAssistantOpen,
+      openAssistant,
+      refreshActivePage,
+      registerClientActionHandler,
+      registerRefreshHandler,
+    ],
   );
 
   return <AgentContext.Provider value={value}>{children}</AgentContext.Provider>;

@@ -13,6 +13,7 @@ import { TermsConsentModal } from '@/components/moderation/TermsConsentModal';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { useAgentContext } from '@/context/AgentContext';
+import type { AgentClientAction, AgentClientActionResult } from '@/lib/agent/types';
 import { useLocation } from '@/app/hooks/useLocation';
 import { chatService, type ChatTermsConsentState } from '@/lib/chatService';
 import { eventService } from '@/lib/eventService';
@@ -872,7 +873,7 @@ const DEFAULT_SPORT: Sport = {
 // Main schedule page component that protects access and renders league schedule/bracket content.
 function EventScheduleContent() {
   const { user, authUser, loading: authLoading, isAuthenticated, isGuest, setUser } = useApp();
-  const { setActivePageContext, registerRefreshHandler } = useAgentContext();
+  const { setActivePageContext, registerRefreshHandler, registerClientActionHandler } = useAgentContext();
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -5008,6 +5009,78 @@ function EventScheduleContent() {
     }
   }, [eventId, hydrateEvent, hydrateEventFormDependencies, isCreateMode]);
 
+  const agentDraftScheduleContext = useMemo(() => {
+    const fieldsById = new Map<string, Field>();
+    if (Array.isArray(activeEvent?.fields)) {
+      activeEvent.fields.forEach((field) => {
+        const fieldId = normalizeIdToken(field?.$id);
+        if (fieldId) {
+          fieldsById.set(fieldId, field);
+        }
+      });
+    }
+
+    const resolveFieldName = (fieldId: string | null | undefined, relation: Field | undefined): string | null => {
+      const normalizedFieldId = normalizeIdToken(relation?.$id) ?? normalizeIdToken(fieldId);
+      const field = relation ?? (normalizedFieldId ? fieldsById.get(normalizedFieldId) : undefined);
+      return field ? getFieldDisplayName(field, '') || field.name || null : null;
+    };
+    const resolveTeamName = (teamId: string | null | undefined, relation: Team | undefined): string | null => {
+      if (relation?.name) {
+        return relation.name;
+      }
+      const normalizedTeamId = normalizeIdToken(teamId);
+      if (!normalizedTeamId) {
+        return null;
+      }
+      return participantTeamsById.get(normalizedTeamId)?.name ?? teamsById.get(normalizedTeamId)?.name ?? null;
+    };
+    const pendingSummary = pendingSaveChanges
+      .slice(0, 12)
+      .map((item) => `${item.label}${item.detail ? `: ${item.detail}` : ''}`);
+
+    return {
+      pendingChanges: {
+        hasChanges: hasPendingUnsavedChanges,
+        count: pendingSaveChanges.length,
+        summary: pendingSummary,
+      },
+      draftSchedule: {
+        source: usingChangeCopies ? 'draft' as const : 'saved' as const,
+        totalMatches: activeMatches.length,
+        truncated: activeMatches.length > 120,
+        matches: activeMatches.slice(0, 120).map((match) => {
+          const fieldId = normalizeIdToken(match.field?.$id) ?? normalizeIdToken(match.fieldId);
+          const team1Id = normalizeIdToken(match.team1?.$id) ?? normalizeIdToken(match.team1Id);
+          const team2Id = normalizeIdToken(match.team2?.$id) ?? normalizeIdToken(match.team2Id);
+          return {
+            id: match.$id,
+            displayNumber: typeof match.matchId === 'number' ? match.matchId : null,
+            start: match.start ?? null,
+            end: match.end ?? null,
+            fieldId,
+            fieldName: resolveFieldName(fieldId, match.field),
+            team1Id,
+            team1Name: resolveTeamName(team1Id, match.team1),
+            team2Id,
+            team2Name: resolveTeamName(team2Id, match.team2),
+            officialId: normalizeIdToken(match.official?.$id) ?? normalizeIdToken(match.officialId),
+            locked: Boolean(match.locked),
+            division: normalizeIdToken(getDivisionId(match.division)) ?? (typeof match.division === 'string' ? match.division : null),
+          };
+        }),
+      },
+    };
+  }, [
+    activeEvent?.fields,
+    activeMatches,
+    hasPendingUnsavedChanges,
+    participantTeamsById,
+    pendingSaveChanges,
+    teamsById,
+    usingChangeCopies,
+  ]);
+
   useEffect(() => {
     const contextEventId = activeEventId ?? eventId ?? null;
     if (!contextEventId) {
@@ -5029,6 +5102,8 @@ function EventScheduleContent() {
       matchCount: activeMatches.length,
       participantCount: participantUsers.length,
       teamCount: participantTeams.length,
+      pendingChanges: agentDraftScheduleContext.pendingChanges,
+      draftSchedule: agentDraftScheduleContext.draftSchedule,
     });
 
     return () => {
@@ -5040,6 +5115,7 @@ function EventScheduleContent() {
     activeEventId,
     activeMatches.length,
     activeTab,
+    agentDraftScheduleContext,
     canEditMatches,
     canManageEvent,
     eventId,
@@ -7409,6 +7485,181 @@ function EventScheduleContent() {
     setMatchConflictOverrideMessage(null);
     setHasUnsavedChanges(true);
   }, [activeEvent?.fields, canEditMatches, matches, normalizeDraftBracketGraph]);
+
+  const applyAgentClientActions = useCallback((actions: AgentClientAction[]): AgentClientActionResult => {
+    const errors: string[] = [];
+    if (!canEditMatches) {
+      return {
+        applied: 0,
+        errors: ['Open Manage/Edit mode before asking the assistant to stage match edits.'],
+      };
+    }
+
+    const targetEventId = activeEventId ?? eventId ?? activeEvent?.$id ?? null;
+    if (!targetEventId) {
+      return { applied: 0, errors: ['No active event schedule is available for assistant draft edits.'] };
+    }
+
+    const fieldsById = new Map<string, Field>();
+    if (Array.isArray(activeEvent?.fields)) {
+      activeEvent.fields.forEach((field) => {
+        const fieldId = normalizeIdToken(field?.$id);
+        if (fieldId) {
+          fieldsById.set(fieldId, field);
+        }
+      });
+    }
+
+    const updateHas = (updates: Record<string, unknown>, key: string): boolean => (
+      Object.prototype.hasOwnProperty.call(updates, key)
+    );
+    const normalizeDraftDateTime = (value: unknown, label: string): string | null | undefined => {
+      if (value === null) {
+        return null;
+      }
+      if (typeof value !== 'string') {
+        return undefined;
+      }
+      const parsed = parseLocalDateTime(value);
+      if (!parsed) {
+        errors.push(`${label} is not a valid date/time.`);
+        return undefined;
+      }
+      return formatLocalDateTime(parsed);
+    };
+    const normalizeOptionalId = (value: unknown): string | null => (
+      value === null ? null : normalizeIdToken(value)
+    );
+
+    let applied = 0;
+    const base = (changesMatches.length ? changesMatches : (cloneValue(matches) as Match[]))
+      .map((item) => cloneValue(item) as Match);
+    const nextMatches = base.map((item) => cloneValue(item) as Match);
+
+    actions.forEach((action) => {
+      if (action.type !== 'schedule.match.update') {
+        errors.push('Unsupported assistant draft action.');
+        return;
+      }
+      if (action.eventId !== targetEventId) {
+        errors.push('The assistant proposed a change for a different event.');
+        return;
+      }
+
+      const targetMatchId = normalizeIdToken(action.matchId);
+      if (!targetMatchId) {
+        errors.push('The assistant proposed a match change without a valid match.');
+        return;
+      }
+      const matchIndex = nextMatches.findIndex((match) => normalizeIdToken(match.$id) === targetMatchId);
+      if (matchIndex < 0) {
+        errors.push('The assistant proposed a change for a match that is not visible in this draft.');
+        return;
+      }
+
+      const updates = action.updates as Record<string, unknown>;
+      const current = nextMatches[matchIndex];
+      const updated = { ...current } as Match;
+
+      if (updateHas(updates, 'start')) {
+        const start = normalizeDraftDateTime(updates.start, 'Start time');
+        if (start !== undefined) {
+          updated.start = start;
+        }
+      }
+      if (updateHas(updates, 'end')) {
+        const end = normalizeDraftDateTime(updates.end, 'End time');
+        if (end !== undefined) {
+          updated.end = end;
+        }
+      }
+      if (updateHas(updates, 'fieldId')) {
+        const fieldId = normalizeOptionalId(updates.fieldId);
+        updated.fieldId = fieldId;
+        updated.field = fieldId ? fieldsById.get(fieldId) : undefined;
+      }
+      if (updateHas(updates, 'team1Id')) {
+        const team1Id = normalizeOptionalId(updates.team1Id);
+        updated.team1Id = team1Id;
+        updated.team1 = team1Id ? resolveTeam(team1Id) ?? undefined : undefined;
+      }
+      if (updateHas(updates, 'team2Id')) {
+        const team2Id = normalizeOptionalId(updates.team2Id);
+        updated.team2Id = team2Id;
+        updated.team2 = team2Id ? resolveTeam(team2Id) ?? undefined : undefined;
+      }
+      if (updateHas(updates, 'officialId')) {
+        updated.officialId = normalizeOptionalId(updates.officialId);
+        updated.official = undefined;
+      }
+      if (updateHas(updates, 'officialIds')) {
+        updated.officialIds = Array.isArray(updates.officialIds) ? updates.officialIds as Match['officialIds'] : [];
+      }
+      if (updateHas(updates, 'teamOfficialId')) {
+        const teamOfficialId = normalizeOptionalId(updates.teamOfficialId);
+        updated.teamOfficialId = teamOfficialId;
+        updated.teamOfficial = teamOfficialId ? resolveTeam(teamOfficialId) ?? undefined : undefined;
+      }
+      if (updateHas(updates, 'locked')) {
+        updated.locked = Boolean(updates.locked);
+      }
+      if (updateHas(updates, 'officialCheckedIn')) {
+        updated.officialCheckedIn = Boolean(updates.officialCheckedIn);
+      }
+      if (updateHas(updates, 'matchId')) {
+        updated.matchId = typeof updates.matchId === 'number' && Number.isFinite(updates.matchId)
+          ? Math.trunc(updates.matchId)
+          : undefined;
+      }
+      if (updateHas(updates, 'division')) {
+        updated.division = typeof updates.division === 'string' && updates.division.trim().length > 0
+          ? updates.division.trim()
+          : null;
+      }
+      if (updateHas(updates, 'losersBracket')) {
+        updated.losersBracket = Boolean(updates.losersBracket);
+      }
+
+      nextMatches[matchIndex] = updated;
+      applied += 1;
+    });
+
+    if (applied > 0) {
+      setChangesMatches(normalizeDraftBracketGraph(nextMatches));
+    }
+
+    if (applied > 0) {
+      setDismissedMatchConflictSignature(null);
+      setMatchConflictOverrideMessage(null);
+      setHasUnsavedChanges(true);
+      setInfoMessage(`Applied ${applied} assistant draft change${applied === 1 ? '' : 's'}. Review, then save or discard changes.`);
+    }
+
+    return {
+      applied,
+      errors,
+      message: applied > 0
+        ? `Applied ${applied} assistant draft change${applied === 1 ? '' : 's'} on the schedule page. Review, then use Save Changes to persist them or Discard Changes to revert them.`
+        : undefined,
+    };
+  }, [
+    activeEvent?.$id,
+    activeEvent?.fields,
+    activeEventId,
+    canEditMatches,
+    changesMatches,
+    eventId,
+    matches,
+    normalizeDraftBracketGraph,
+    resolveTeam,
+  ]);
+
+  useEffect(() => {
+    registerClientActionHandler(applyAgentClientActions);
+    return () => {
+      registerClientActionHandler(null);
+    };
+  }, [applyAgentClientActions, registerClientActionHandler]);
 
   const applyMatchUpdate = useCallback((updated: Match) => {
     const cloned = cloneValue(updated) as Match;

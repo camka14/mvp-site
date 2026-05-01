@@ -1,7 +1,7 @@
-import type { AgentChatMessage, AgentPageContext, AgentPendingConfirmation, AgentToolChange } from '@/lib/agent/types';
+import type { AgentChatMessage, AgentClientAction, AgentPageContext, AgentPendingConfirmation, AgentToolChange } from '@/lib/agent/types';
 import type { AgentConversationOwner } from './conversations';
 import { getAgentModel, getOpenAiClient } from './openai';
-import { buildAgentTools, buildSameOriginLink, executeAgentTool } from './tools';
+import { buildAgentTools, buildSameOriginLink, executeAgentTool, redactUserFacingObjectIds } from './tools';
 
 type RunAgentTurnParams = {
   conversationId: string;
@@ -31,10 +31,7 @@ const knownNavigationLinks = [
 const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const sanitizeAssistantReply = (reply: string, origin: string): string => {
-  let sanitized = reply
-    .replace(/\bleft sidebar\s+or\s+top navigation(?:\s+bar)?/gi, 'top navigation bar')
-    .replace(/\bside navigation\s+or\s+top navigation(?:\s+bar)?/gi, 'top navigation bar')
-    .replace(/\bsidebar\s+or\s+top navigation(?:\s+bar)?/gi, 'top navigation bar');
+  let sanitized = reply;
 
   for (const { text, path } of knownNavigationLinks) {
     const link = `[${text}](${buildSameOriginLink(origin, path)})`;
@@ -46,7 +43,7 @@ export const sanitizeAssistantReply = (reply: string, origin: string): string =>
       .replace(new RegExp(`(?<![\\w:/)\\]\\(])${escapedPath}(?![\\w/-])`, 'g'), link);
   }
 
-  return sanitized;
+  return redactUserFacingObjectIds(sanitized);
 };
 
 const getTextFromContent = (content: unknown): string => {
@@ -105,17 +102,21 @@ Core behavior:
 - When explaining where a control is on a BracketIQ page, call get_page_layout_description for the current page or destination page. Use its grid only to infer relative positions such as "top navigation", "upper right", "tab row", or "below the heading". Never mention x/y coordinates or the word "grid" to the user.
 - Use read tools when you need actual event schedule, participant, field, official, or match data.
 - Never invent IDs, match details, fields, teams, officials, or permissions.
-- Mutating schedule actions must use the available write tools. Those tools return confirmation_required before any mutation. When that happens, tell the user to review the confirmation card and click Confirm.
-- If a tool returns save_required, tell the user to save the page first and then retry. Do not create workarounds.
+- Never mention object IDs in user-facing chat, including event IDs, match IDs, team IDs, user IDs, field IDs, UUIDs, or internal database identifiers. Use names, displayed match numbers, or phrases like "the selected match" instead.
+- Schedule changes must be proposed as client-side draft actions. Do not claim that the database was updated. Tell the user the draft is staged on the page and they can use Save Changes or Discard Changes.
+- Direct database mutation tools are not available. Never tell the user to confirm an assistant card before a schedule change can run.
+- For any request that requires multiple draft changes, call every required draft tool before giving the final reply.
+- For multiple match changes, call stage_event_match_draft_update once per match change in the same response so all draft updates are staged together.
+- If pending draft changes exist, treat the current draft schedule from page context as the source of truth. Do not ask the user to save before proposing additional draft changes.
 - Do not expose secrets, tokens, payment details, dates of birth, auth/session internals, or unnecessary profile fields.
 - Keep answers concise and task-focused.
 
 Action scope:
-- In scope: navigation/help, event schedule reading, confirmed saved match assignment updates, score/result updates, officials, lock state, participant add/remove, and saved schedule regeneration.
+- In scope: navigation/help, event schedule reading, and client-side draft match schedule/assignment edits for saved event schedules.
 - Out of scope: billing, refunds, purchases, rentals, team roster/profile management, admin moderation, document signing, and organization settings.
 
 Current capability:
-- Signed-in write tools available: ${canUseActions ? 'yes' : 'no'}.
+- Signed-in draft action tools available: ${canUseActions ? 'yes' : 'no'}.
 - Guest users can only receive navigation/help and read allowed public schedule context.
 
 Current page context:
@@ -142,11 +143,13 @@ export const runAgentTurn = async ({
   reply: string;
   pendingConfirmations: AgentPendingConfirmation[];
   changes: AgentToolChange[];
+  clientActions: AgentClientAction[];
 }> => {
   const client = getOpenAiClient();
   const tools = buildAgentTools(owner);
   const pendingConfirmations: AgentPendingConfirmation[] = [];
   const changes: AgentToolChange[] = [];
+  const clientActions: AgentClientAction[] = [];
   let input: any[] = [{ role: 'user', content: message }];
   let finalReply = '';
 
@@ -158,7 +161,7 @@ export const runAgentTurn = async ({
       input,
       tools,
       tool_choice: 'auto',
-      parallel_tool_calls: false,
+      parallel_tool_calls: true,
     } as any);
 
     if ((response as any)?.error) {
@@ -194,6 +197,9 @@ export const runAgentTurn = async ({
       if (execution.changes?.length) {
         changes.push(...execution.changes);
       }
+      if (execution.clientActions?.length) {
+        clientActions.push(...execution.clientActions);
+      }
       input.push({
         type: 'function_call_output',
         call_id: call.call_id,
@@ -204,11 +210,16 @@ export const runAgentTurn = async ({
 
   return {
     reply: finalReply ? sanitizeAssistantReply(finalReply, origin) : (
-      pendingConfirmations.length
-        ? 'I prepared an action for confirmation. Review the confirmation card before I make changes.'
+      pendingConfirmations.length > 1
+        ? 'I prepared the requested actions for confirmation. Review the confirmation cards in this AI chat and click Confirm for each action you want to apply.'
+        : pendingConfirmations.length === 1
+          ? 'I prepared an action for confirmation. Review the confirmation card in this AI chat and click Confirm to apply it.'
+        : clientActions.length > 0
+          ? 'I staged the requested draft changes on the page. Review them there, then use Save Changes to persist them or Discard Changes to revert them.'
         : 'I could not complete that request.'
     ),
     pendingConfirmations,
     changes,
+    clientActions,
   };
 };

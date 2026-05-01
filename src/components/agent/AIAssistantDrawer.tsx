@@ -32,7 +32,7 @@ import type {
 const INTRO_MESSAGE: AgentChatMessage = {
   id: 'intro',
   role: 'assistant',
-  content: 'Ask me how to navigate BracketIQ or manage a saved event schedule. I will ask for confirmation before changing anything.',
+  content: 'Ask me how to navigate BracketIQ or draft event schedule changes. Draft changes appear on the page for you to save or discard.',
 };
 
 const readJsonResponse = async <T,>(response: Response): Promise<T> => {
@@ -54,6 +54,7 @@ export function AIAssistantDrawer({ enabled = true }: AIAssistantDrawerProps) {
   const {
     activePageContext,
     closeAssistant,
+    dispatchClientActions,
     isAssistantOpen,
     refreshActivePage,
   } = useAgentContext();
@@ -178,6 +179,13 @@ export function AIAssistantDrawer({ enabled = true }: AIAssistantDrawerProps) {
       const data = await readJsonResponse<AgentChatSendResponse>(response);
       appendAssistantMessage(data.reply || 'Done.');
       setPendingConfirmations(data.pendingConfirmations);
+      const clientActions = data.clientActions ?? [];
+      if (clientActions.length > 0) {
+        const dispatchResult = await dispatchClientActions(clientActions);
+        if (dispatchResult.errors.length > 0) {
+          appendAssistantMessage(`I could not apply the draft changes: ${dispatchResult.errors.join(' ')}`);
+        }
+      }
       if (data.changes.length > 0) {
         await refreshActivePage();
       }
@@ -188,7 +196,7 @@ export function AIAssistantDrawer({ enabled = true }: AIAssistantDrawerProps) {
     } finally {
       setSending(false);
     }
-  }, [appendAssistantMessage, enabled, input, pageContext, refreshActivePage, sending]);
+  }, [appendAssistantMessage, dispatchClientActions, enabled, input, pageContext, refreshActivePage, sending]);
 
   const handleConfirm = useCallback(async (confirmationId: string, confirmed: boolean) => {
     if (!enabled) {
@@ -254,8 +262,8 @@ export function AIAssistantDrawer({ enabled = true }: AIAssistantDrawerProps) {
               {!enabled
                 ? 'AI assistant is disabled.'
                 : activePageContext?.hasUnsavedChanges
-                  ? 'Unsaved schedule changes will block actions.'
-                  : 'Actions require confirmation.'}
+                  ? 'AI drafts will be added to your unsaved changes.'
+                  : 'Schedule changes are drafted on the page.'}
             </Text>
             <Button
               size="xs"
