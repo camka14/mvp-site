@@ -125,4 +125,15 @@ describe('MatchCard conflict rendering', () => {
     expect(screen.queryByText(/^Officials:/i)).not.toBeInTheDocument();
     expect(screen.getByText('Ref Team')).toBeInTheDocument();
   });
+
+  it('can hide the division badge for single-division schedule displays', () => {
+    renderWithMantine(
+      createElement(MatchCard, {
+        match: buildMatch({ division: { name: 'CoEd Open' } as Match['division'] }),
+        showDivisionBadge: false,
+      }),
+    );
+
+    expect(screen.queryByText(/Division:/i)).not.toBeInTheDocument();
+  });
 });

@@ -23,6 +23,7 @@ interface MatchCardProps {
     hasConflict?: boolean;
     officialUsersById?: Record<string, UserData>;
     showEventOfficialNames?: boolean;
+    showDivisionBadge?: boolean;
 }
 
 type MatchDivisionInput = Match['division'] | string | null | undefined;
@@ -69,6 +70,7 @@ function MatchCard({
     hasConflict = false,
     officialUsersById,
     showEventOfficialNames = true,
+    showDivisionBadge = true,
 }: MatchCardProps) {
     const isCompactHorizontal = layout === 'horizontal' && hideTimeBadge;
 
@@ -242,6 +244,7 @@ function MatchCard({
             : match.losersBracket
                 ? 'border-orange-200 hover:border-orange-300'
                 : 'border-blue-200 hover:border-blue-300';
+    const showFooter = showDivisionBadge || canManage;
 
     const renderTeamRow = ({
         team,
@@ -260,66 +263,44 @@ function MatchCard({
         reverseScore?: boolean;
         slot: 'team1' | 'team2';
     }) => (
-        <div className={`flex items-center justify-between ${isCompactHorizontal ? 'p-1.5' : 'p-2'} rounded ${winner ? 'bg-green-50 border border-green-200' : 'bg-gray-100'}`}>
-            {reverseScore ? (
-                <>
-                    <div className="flex items-center gap-1 text-sm font-mono mr-2">
-                        {points.length > 0 ? (
-                            points.map((value, idx) => (
-                                <span key={idx} className={`px-1 ${match.setResults[idx] === (winner ? 2 : 1) ? 'font-bold text-green-600' : ''}`}>
-                                    {value}
-                                </span>
-                            ))
-                        ) : (
-                            <span className="text-gray-400">-</span>
-                        )}
-                    </div>
-                    <div className="flex items-center gap-2 flex-1 min-w-0 justify-end">
-                        {team && (
-                            <Image
-                                src={getTeamAvatarUrl(team, 24)}
-                                alt={getTeamLabel(team, previousMatch, placeholder, slot)}
-                                width={24}
-                                height={24}
-                                unoptimized
-                                className="w-6 h-6 rounded-full"
-                            />
-                        )}
-                        <span className="text-sm font-medium truncate text-right">
-                            {getTeamLabel(team, previousMatch, placeholder, slot)}
+        <div
+            className={[
+                'match-card__team-row',
+                reverseScore ? 'match-card__team-row--reverse' : '',
+                isCompactHorizontal ? 'p-1.5' : 'p-2',
+                'rounded',
+                winner ? 'bg-green-50 border border-green-200' : 'bg-gray-100',
+            ].filter(Boolean).join(' ')}
+        >
+            <div className="match-card__team-identity">
+                {team && (
+                    <Image
+                        src={getTeamAvatarUrl(team, 24)}
+                        alt={getTeamLabel(team, previousMatch, placeholder, slot)}
+                        width={24}
+                        height={24}
+                        unoptimized
+                        className="match-card__team-avatar w-6 h-6 rounded-full"
+                    />
+                )}
+                <span className="match-card__team-name text-sm font-medium truncate">
+                    {getTeamLabel(team, previousMatch, placeholder, slot)}
+                </span>
+            </div>
+            <div className="match-card__team-score">
+                {points.length > 0 ? (
+                    points.map((value, idx) => (
+                        <span
+                            key={idx}
+                            className={`px-1 ${match.setResults[idx] === (winner ? (reverseScore ? 2 : 1) : (reverseScore ? 1 : 2)) ? 'font-bold text-green-600' : ''}`}
+                        >
+                            {value}
                         </span>
-                    </div>
-                </>
-            ) : (
-                <>
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                        {team && (
-                            <Image
-                                src={getTeamAvatarUrl(team, 24)}
-                                alt={getTeamLabel(team, previousMatch, placeholder, slot)}
-                                width={24}
-                                height={24}
-                                unoptimized
-                                className="w-6 h-6 rounded-full"
-                            />
-                        )}
-                        <span className="text-sm font-medium truncate">
-                            {getTeamLabel(team, previousMatch, placeholder, slot)}
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-1 text-sm font-mono ml-2">
-                        {points.length > 0 ? (
-                            points.map((value, idx) => (
-                                <span key={idx} className={`px-1 ${match.setResults[idx] === (winner ? 1 : 2) ? 'font-bold text-green-600' : ''}`}>
-                                    {value}
-                                </span>
-                            ))
-                        ) : (
-                            <span className="text-gray-400">-</span>
-                        )}
-                    </div>
-                </>
-            )}
+                    ))
+                ) : (
+                    <span className="text-gray-400">-</span>
+                )}
+            </div>
         </div>
     );
 
@@ -343,20 +324,24 @@ function MatchCard({
                     slot: 'team2',
                 })}
             </div>
-            <div className="mt-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
-                        Division: {divisionLabel}
-                    </span>
+            {showFooter && (
+                <div className="match-card__footer mt-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        {showDivisionBadge && (
+                            <span className="match-card__division text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                                Division: {divisionLabel}
+                            </span>
+                        )}
+                    </div>
+                    {canManage && <div className="match-card__manage text-xs text-blue-600 font-medium">Click to manage</div>}
                 </div>
-                {canManage && <div className="text-xs text-blue-600 font-medium">Click to manage</div>}
-            </div>
+            )}
         </>
     );
 
     const renderHorizontalLayout = () => (
         <div className={isCompactHorizontal ? 'space-y-2' : 'space-y-3'}>
-            <div className={`grid grid-cols-2 items-stretch ${isCompactHorizontal ? 'gap-2' : 'gap-3'}`}>
+            <div className={`match-card__teams match-card__teams--horizontal grid grid-cols-2 items-stretch ${isCompactHorizontal ? 'gap-2' : 'gap-3'}`}>
                 <div className="h-full">
                     {renderTeamRow({
                         team: match.team1,
@@ -379,18 +364,22 @@ function MatchCard({
                     })}
                 </div>
             </div>
-            <div className="flex items-center justify-between gap-3">
-                <div className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full shrink-0">
-                    Division: {divisionLabel}
+            {showFooter && (
+                <div className="match-card__footer flex items-center justify-between gap-3">
+                    {showDivisionBadge && (
+                        <div className="match-card__division text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full shrink-0">
+                            Division: {divisionLabel}
+                        </div>
+                    )}
+                    {canManage && <div className="match-card__manage text-xs text-blue-600 font-medium">Click to manage</div>}
                 </div>
-                {canManage && <div className="text-xs text-blue-600 font-medium">Click to manage</div>}
-            </div>
+            )}
         </div>
     );
 
     return (
         <div
-            className={`relative bg-white rounded-lg shadow-sm border-2 transition-all duration-200 ${clickable ? 'cursor-pointer hover:shadow-md' : ''} ${isCompleted ? 'opacity-75' : ''} ${className} ${borderClass}`}
+            className={`match-card ${isCompactHorizontal ? 'match-card--adaptive' : ''} relative bg-white rounded-lg shadow-sm border-2 transition-all duration-200 ${clickable ? 'cursor-pointer hover:shadow-md' : ''} ${isCompleted ? 'opacity-75' : ''} ${className} ${borderClass}`}
             onClick={clickable ? onClick : undefined}
         >
             {!hideTimeBadge && (
@@ -401,12 +390,15 @@ function MatchCard({
                 </div>
             )}
 
-            <div className={`${isCompactHorizontal ? 'p-3 space-y-2' : 'p-4 pv-6 space-y-3'}`}>
-                <div className={`flex items-start justify-between gap-3 ${isCompactHorizontal ? 'mb-1' : 'mb-2'}`}>
+            <div className={`match-card__inner ${isCompactHorizontal ? 'p-3 space-y-2' : 'p-4 pv-6 space-y-3'}`}>
+                <div className={`match-card__header flex items-start justify-between gap-3 ${isCompactHorizontal ? 'mb-1' : 'mb-2'}`}>
                     <div className="flex flex-col gap-1 min-w-0">
-                        <div className="text-sm text-gray-600">Match #{match.matchId}</div>
+                        <div className="match-card__label text-sm text-gray-600">
+                            <span className="match-card__label-full">Match #{match.matchId}</span>
+                            <span className="match-card__label-compact">#{match.matchId}</span>
+                        </div>
                         {showOfficialInHeader && showAnyOfficialDetails && (
-                            <div className="flex items-center gap-2 text-xs text-gray-700 flex-wrap">
+                            <div className="match-card__officials flex items-center gap-2 text-xs text-gray-700 flex-wrap">
                                 {showEventOfficialDetails && assignmentSummary.length > 0 ? (
                                     <span className="truncate max-w-[220px]">Officials: {assignmentSummary.join(', ')}</span>
                                 ) : showEventOfficialDetails && match.official && (
@@ -432,7 +424,7 @@ function MatchCard({
                             </div>
                         )}
                     </div>
-                    <div className="text-sm text-gray-600 shrink-0">{resolvedFieldLabel}</div>
+                    <div className="match-card__field text-sm text-gray-600 shrink-0">{resolvedFieldLabel}</div>
                 </div>
                 {layout === 'horizontal' ? renderHorizontalLayout() : renderVerticalLayout()}
             </div>

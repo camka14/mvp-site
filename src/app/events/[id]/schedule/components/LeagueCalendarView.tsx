@@ -18,6 +18,8 @@ import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
+import MatchCard from './MatchCard';
+import { shouldDisplayMatchDivisionBadges } from './matchDivisionDisplay';
 
 interface LeagueCalendarViewProps {
   matches: Match[];
@@ -54,6 +56,7 @@ const MIN_VISIBLE_HOUR_SLOTS = 6;
 const MIN_HOUR_SLOT_HEIGHT = 112;
 const CALENDAR_BOTTOM_GUTTER = 24;
 const AGENDA_MATCH_CARD_WIDTH = 420;
+const AGENDA_MATCH_CARD_HEIGHT = 124;
 
 const clampHour = (value: number): number => Math.max(0, Math.min(24, value));
 
@@ -400,6 +403,10 @@ export function LeagueCalendarView({
         : matches,
     [currentUser, matchInvolvesCurrentUser, matches, showMyMatchesOnly],
   );
+  const showMatchDivisionBadges = useMemo(
+    () => shouldDisplayMatchDivisionBadges(matchesToDisplay),
+    [matchesToDisplay],
+  );
 
   const userInvolvedMatchIds = useMemo(
     () =>
@@ -690,23 +697,6 @@ export function LeagueCalendarView({
     [canManage, onMatchClick],
   );
 
-  const MonthEventComponent = useCallback(({ event }: EventProps<CalendarEvent>) => {
-    const weeklyOccurrenceMeta = getWeeklyOccurrenceMeta(event.resource);
-    return (
-      <SharedCalendarEvent
-        title={event.title}
-        subtitle={weeklyOccurrenceMeta?.divisionLabel ?? event.fieldLabel}
-        colorSeed={event.id}
-        colorReferenceList={fieldColorReferenceList}
-        colorMatchKey={event.resourceId}
-        compact
-        selected={event.hasTrackedUserMatch || Boolean(weeklyOccurrenceMeta?.isSelected)}
-        conflict={event.hasConflictMatch}
-        draggable={canManage && !weeklyOccurrenceMeta}
-      />
-    );
-  }, [canManage, fieldColorReferenceList]);
-
   const WeeklyOccurrenceEventCard = useCallback(
     ({
       occurrence,
@@ -752,20 +742,23 @@ export function LeagueCalendarView({
         );
       }
       return (
-        <SharedCalendarEvent
-          title={event.title}
-          subtitle={event.fieldLabel}
-          meta={typeof event.resource.matchId === 'number' ? `Match #${event.resource.matchId}` : undefined}
-          colorSeed={event.id}
-          colorReferenceList={fieldColorReferenceList}
-          colorMatchKey={event.resourceId}
-          selected={shouldHighlightUser}
-          conflict={hasConflict}
-          draggable={canManage}
+        <MatchCard
+          match={event.resource}
+          canManage={canManage}
+          onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
+          className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
+          layout="horizontal"
+          hideTimeBadge
+          showOfficialInHeader
+          fieldLabel={event.fieldLabel}
+          hasConflict={hasConflict}
+          officialUsersById={officialLookupById}
+          showEventOfficialNames={showEventOfficialNames}
+          showDivisionBadge={showMatchDivisionBadges}
         />
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, fieldColorReferenceList, onMatchClick],
+    [WeeklyOccurrenceEventCard, canManage, officialLookupById, onMatchClick, showEventOfficialNames, showMatchDivisionBadges],
   );
 
   const AgendaEventComponent = useCallback(
@@ -774,8 +767,8 @@ export function LeagueCalendarView({
 
       return (
         <div className={`w-full ${matchCardPaddingY}`}>
-          <div className="overflow-x-auto pb-2">
-            <div className="flex min-w-max gap-3 pr-1">
+          <div className="pb-2">
+            <div className="flex flex-wrap gap-3 pr-1">
               {agendaMatches.map((match, index) => {
                 const matchId = typeof match.$id === 'string' ? match.$id.trim() : '';
                 const hasConflict = matchId.length > 0 && conflictMatchIdSet.has(matchId);
@@ -787,8 +780,13 @@ export function LeagueCalendarView({
                 return (
                   <div
                     key={matchId || `${event.id}-${index}`}
-                    className="shrink-0"
-                    style={{ width: `${AGENDA_MATCH_CARD_WIDTH}px`, minWidth: `${AGENDA_MATCH_CARD_WIDTH}px` }}
+                    className="min-w-0"
+                    style={{
+                      flex: `0 1 ${AGENDA_MATCH_CARD_WIDTH}px`,
+                      width: `min(100%, ${AGENDA_MATCH_CARD_WIDTH}px)`,
+                      maxWidth: '100%',
+                      height: `${AGENDA_MATCH_CARD_HEIGHT}px`,
+                    }}
                   >
                     {weeklyOccurrenceMeta ? (
                       <WeeklyOccurrenceEventCard
@@ -799,17 +797,19 @@ export function LeagueCalendarView({
                         compact
                       />
                     ) : (
-                      <SharedCalendarEvent
-                        title={`${resolveTeamLabel(match, 'team1')} vs ${resolveTeamLabel(match, 'team2')}`}
-                        subtitle={fieldLabel}
-                        meta={typeof match.matchId === 'number' ? `Match #${match.matchId}` : undefined}
-                        colorSeed={matchId || `${event.id}-${index}`}
-                        colorReferenceList={fieldColorReferenceList}
-                        colorMatchKey={fieldColorMatchKey}
-                        selected={shouldHighlightUser}
-                        conflict={hasConflict}
+                      <MatchCard
+                        match={match}
+                        canManage={canManage}
                         onClick={onMatchClick ? () => onMatchClick(match) : undefined}
-                        draggable={canManage}
+                        className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
+                        layout="horizontal"
+                        hideTimeBadge
+                        showOfficialInHeader
+                        fieldLabel={fieldLabel}
+                        hasConflict={hasConflict}
+                        officialUsersById={officialLookupById}
+                        showEventOfficialNames={showEventOfficialNames}
+                        showDivisionBadge={showMatchDivisionBadges}
                       />
                     )}
                   </div>
@@ -820,18 +820,18 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldColorReferenceList, fieldLookup, onMatchClick, matchCardPaddingY, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
   );
 
   const components = useMemo(
     () => ({
       event: WeekDayEventComponent,
-      month: { event: MonthEventComponent },
+      month: { event: WeekDayEventComponent },
       week: { event: WeekDayEventComponent },
       day: { event: WeekDayEventComponent },
       agenda: { event: AgendaEventComponent },
     }),
-    [AgendaEventComponent, MonthEventComponent, WeekDayEventComponent],
+    [AgendaEventComponent, WeekDayEventComponent],
   );
 
   const calendarViews = useMemo<View[]>(
@@ -850,6 +850,16 @@ export function LeagueCalendarView({
   const showRange = effectiveCalendarView === 'week' || effectiveCalendarView === 'day';
   const calendarRootRef = useRef<HTMLDivElement | null>(null);
   const [calendarHeight, setCalendarHeight] = useState<number>(MIN_CALENDAR_HEIGHT);
+
+  useEffect(() => {
+    const root = calendarRootRef.current;
+    const agendaView = root?.querySelector<HTMLElement>('.rbc-agenda-view');
+    if (!agendaView) return;
+
+    agendaView.style.overflowX = 'hidden';
+    agendaView.style.overflowY = 'auto';
+    agendaView.style.overscrollBehavior = 'contain';
+  }, [displayedCalendarEvents, effectiveCalendarView]);
 
   useEffect(() => {
     if (!view && calendarView !== effectiveCalendarView) {

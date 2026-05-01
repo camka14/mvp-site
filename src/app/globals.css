@@ -520,6 +520,12 @@ svg {
   background: var(--mvp-surface);
 }
 
+.shared-calendar-shell .rbc-agenda-view {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .shared-calendar-shell .rbc-time-header,
 .shared-calendar-shell .rbc-header,
 .shared-calendar-shell .rbc-agenda-table thead {
@@ -590,6 +596,30 @@ svg {
   color: var(--mvp-primary);
   font-size: 0.75rem;
   font-weight: 800;
+}
+
+.shared-calendar-shell .rbc-month-view .rbc-row-segment .rbc-event,
+.rbc-overlay .rbc-event {
+  min-height: 2rem;
+}
+
+.shared-calendar-shell .rbc-month-view .rbc-row-segment .rbc-event-content,
+.rbc-overlay .rbc-event-content {
+  min-width: 0;
+  height: 100%;
+  overflow: visible;
+  white-space: normal;
+}
+
+.shared-calendar-shell .rbc-month-view .rbc-row-segment .match-card--adaptive,
+.rbc-overlay .match-card--adaptive {
+  height: 2rem;
+  min-height: 2rem;
+}
+
+.rbc-overlay {
+  max-height: min(72vh, 42rem);
+  overflow-y: auto;
 }
 
 .shared-calendar-shell .rbc-off-range-bg {
@@ -699,6 +729,376 @@ svg {
   font-size: 0.68rem;
   font-weight: 650;
   opacity: 0.86;
+}
+
+.match-card {
+  min-width: 0;
+  overflow: visible;
+}
+
+.match-card--adaptive {
+  container: match-card / size;
+  overflow: hidden;
+}
+
+.match-card__inner {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.match-card__header,
+.match-card__footer,
+.match-card__team-row,
+.match-card__team-identity,
+.match-card__team-score {
+  min-width: 0;
+}
+
+.match-card__label,
+.match-card__field,
+.match-card__officials,
+.match-card__division,
+.match-card__manage,
+.match-card__team-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.match-card__label {
+  font-weight: 650;
+}
+
+.match-card__label-compact {
+  display: none;
+}
+
+.match-card__field {
+  max-width: 45%;
+  text-align: right;
+}
+
+.match-card__team-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 2.45rem;
+}
+
+.match-card__team-row--reverse .match-card__team-identity {
+  order: 2;
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.match-card__team-row--reverse .match-card__team-score {
+  order: 1;
+}
+
+.match-card__team-identity {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.match-card__team-avatar {
+  flex: 0 0 auto;
+}
+
+.match-card__team-score {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.125rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
+@container match-card (max-width: 14rem) {
+  .match-card__footer {
+    justify-content: flex-start;
+  }
+
+  .match-card__team-row,
+  .match-card__team-row--reverse {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: 0.35rem;
+    padding-block: 0;
+    padding-inline: 0;
+    border-color: transparent;
+    background-color: transparent;
+    text-align: left;
+  }
+
+  .match-card__team-row--reverse .match-card__team-identity,
+  .match-card__team-row--reverse .match-card__team-score {
+    order: initial;
+  }
+
+  .match-card__team-identity {
+    justify-content: flex-start;
+    min-height: 2.45rem;
+    border-radius: 0.25rem;
+    background-color: rgb(243, 244, 246);
+    padding-block: 0.375rem;
+    padding-inline: 0.375rem;
+  }
+
+  .match-card__team-row.bg-green-50 .match-card__team-identity {
+    border: 1px solid rgb(187 247 208);
+    background-color: rgb(240, 253, 244);
+  }
+
+  .match-card__team-row--reverse .match-card__team-identity {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .match-card__team-score {
+    align-self: flex-start;
+    justify-content: flex-start;
+    padding-inline-start: 0.125rem;
+  }
+}
+
+@container match-card (max-width: 11rem) {
+  .match-card__inner {
+    padding: 0.55rem;
+  }
+
+  .match-card__label-full {
+    display: none;
+  }
+
+  .match-card__label-compact {
+    display: inline;
+  }
+
+  .match-card__header {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .match-card__field {
+    margin-left: auto;
+  }
+
+  .match-card__team-row {
+    min-height: 3rem;
+  }
+}
+
+@container match-card (max-width: 8.5rem) {
+  .match-card__field,
+  .match-card__officials,
+  .match-card__division,
+  .match-card__manage,
+  .match-card__team-score {
+    display: none;
+  }
+
+  .match-card__header {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .match-card__teams--horizontal {
+    gap: 0.35rem;
+  }
+
+  .match-card__team-row {
+    min-height: 2.4rem;
+    padding: 0.35rem;
+  }
+}
+
+@container match-card (max-width: 6.5rem) {
+  .match-card__inner {
+    padding: 0.45rem;
+  }
+
+  .match-card__teams--horizontal {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+  }
+
+  .match-card__teams--horizontal > div {
+    width: auto;
+  }
+
+  .match-card__team-row {
+    min-height: 1.55rem;
+    padding-block: 0;
+    padding-inline: 0;
+    border-color: transparent;
+    background-color: transparent;
+  }
+
+  .match-card__team-name {
+    display: none;
+  }
+
+  .match-card__team-identity {
+    flex: 0 0 auto;
+    justify-content: flex-start;
+    min-height: 0;
+    border: 0;
+    background-color: transparent;
+    padding-block: 0;
+    padding-inline: 0;
+  }
+
+  .match-card__team-avatar {
+    width: 1.25rem;
+    height: 1.25rem;
+  }
+}
+
+@container match-card (max-width: 4.75rem) {
+  .match-card__footer {
+    display: none;
+  }
+
+  .match-card__inner {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 0.25rem;
+  }
+
+  .match-card__header {
+    margin: 0;
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .match-card__label {
+    font-size: 0.8rem;
+    line-height: 1;
+  }
+
+  .match-card__teams--horizontal {
+    margin-top: 0.35rem;
+  }
+}
+
+@container match-card (max-height: 7rem) {
+  .match-card__footer,
+  .match-card__officials,
+  .match-card__division,
+  .match-card__manage {
+    display: none;
+  }
+
+  .match-card__inner {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
+  }
+}
+
+@container match-card (max-height: 5.7rem) {
+  .match-card__team-score {
+    display: none;
+  }
+
+  .match-card__team-row {
+    min-height: 2rem;
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+}
+
+@container match-card (max-height: 4.5rem) {
+  .match-card__team-name,
+  .match-card__field {
+    display: none;
+  }
+
+  .match-card__header {
+    justify-content: flex-start;
+    margin-bottom: 0.15rem;
+    text-align: left;
+  }
+
+  .match-card__label-full {
+    display: none;
+  }
+
+  .match-card__label-compact {
+    display: inline;
+  }
+
+  .match-card__teams--horizontal {
+    display: flex;
+    justify-content: flex-start;
+    gap: 0.25rem;
+  }
+
+  .match-card__team-row {
+    min-height: 1.7rem;
+    padding: 0.25rem;
+  }
+
+  .match-card__team-identity {
+    justify-content: flex-start;
+  }
+
+  .match-card__team-avatar {
+    width: 1.15rem;
+    height: 1.15rem;
+  }
+}
+
+@container match-card (max-height: 3.3rem) {
+  .match-card__footer {
+    display: none;
+  }
+
+  .match-card__inner {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0.25rem;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0.2rem;
+  }
+
+  .match-card__header {
+    margin: 0;
+  }
+
+  .match-card__teams--horizontal {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.18rem;
+    min-width: 0;
+  }
+
+  .match-card__team-row {
+    min-height: auto;
+    padding-block: 0;
+    padding-inline: 0;
+    border-color: transparent;
+    background-color: transparent;
+  }
+
+  .match-card__team-avatar {
+    width: 1rem;
+    height: 1rem;
+  }
 }
 
 @container shared-calendar-event (max-height: 2.65rem) {
