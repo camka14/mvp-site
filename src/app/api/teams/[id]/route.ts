@@ -30,10 +30,17 @@ const playerRegistrationPatchSchema = z.object({
   id: z.string().optional(),
   teamId: z.string().nullable().optional(),
   userId: z.string(),
+  registrantId: z.string().nullable().optional(),
+  parentId: z.string().nullable().optional(),
+  registrantType: z.string().nullable().optional(),
+  rosterRole: z.string().nullable().optional(),
   status: z.string().optional(),
   jerseyNumber: jerseyNumberSchema.nullable().optional(),
   position: z.string().nullable().optional(),
   isCaptain: z.boolean().optional(),
+  consentDocumentId: z.string().nullable().optional(),
+  consentStatus: z.string().nullable().optional(),
+  createdBy: z.string().nullable().optional(),
 }).strict();
 
 const teamPatchSchema = z.object({

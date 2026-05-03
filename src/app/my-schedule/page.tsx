@@ -77,6 +77,8 @@ const calendarFormats = {
     `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
 };
 
+const MY_SCHEDULE_MONTH_CARD_MIN_HEIGHT = '2.7rem';
+
 const parseDate = (value?: string | null): Date | null => {
   if (!value) return null;
   const parsed = new Date(value);
@@ -258,6 +260,8 @@ function MySchedulePageContent() {
       colorSeed={event.resource.eventId || event.title}
       colorReferenceList={eventColorReferenceList}
       colorMatchKey={event.resource.eventName}
+      className="my-schedule-calendar-event"
+      style={calendarView === 'month' ? { minHeight: MY_SCHEDULE_MONTH_CARD_MIN_HEIGHT, height: 'auto' } : undefined}
       compact
     />
   );
@@ -301,7 +305,7 @@ function MySchedulePageContent() {
             </Paper>
           ) : null}
 
-          <Paper withBorder radius="md" p="lg" className="shared-calendar-shell">
+          <Paper withBorder radius="md" p="lg" className="shared-calendar-shell my-schedule-calendar-shell">
             <Group justify="space-between" mb="md">
               <SegmentedControl
                 value={calendarView}
@@ -349,11 +353,13 @@ function MySchedulePageContent() {
                 day: { event: EventTile },
               }}
               eventPropGetter={() => ({
+                className: calendarView === 'month' ? 'my-schedule-calendar-event-wrapper' : undefined,
                 style: {
                   backgroundColor: 'transparent',
                   border: 'none',
                   padding: 0,
                   color: 'var(--mvp-text)',
+                  ...(calendarView === 'month' ? { minHeight: MY_SCHEDULE_MONTH_CARD_MIN_HEIGHT } : {}),
                 },
               })}
               style={{ minHeight: 700 }}

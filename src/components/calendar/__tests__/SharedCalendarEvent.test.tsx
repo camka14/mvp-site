@@ -41,4 +41,17 @@ describe('SharedCalendarEvent', () => {
     expect(card).toHaveClass('shared-calendar-event--draggable');
     expect(card?.querySelector('.shared-calendar-event__drag-handle')).toBeInTheDocument();
   });
+
+  it('keeps the full text label on the card root', () => {
+    render(
+      <SharedCalendarEvent
+        title="Suns vs Golden Digs"
+        subtitle="Spring League • Field 1"
+        meta="Spring League"
+      />,
+    );
+
+    const card = screen.getByText('Suns vs Golden Digs').closest('.shared-calendar-event');
+    expect(card).toHaveAttribute('title', 'Suns vs Golden Digs • Spring League • Field 1 • Spring League');
+  });
 });

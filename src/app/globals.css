@@ -731,6 +731,43 @@ svg {
   opacity: 0.86;
 }
 
+.my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .my-schedule-calendar-event-wrapper,
+.my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .rbc-event {
+  min-height: 2.7rem;
+}
+
+.my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .my-schedule-calendar-event-wrapper .rbc-event-content,
+.my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .rbc-event-content {
+  min-height: 2.7rem;
+  overflow: visible;
+}
+
+.my-schedule-calendar-shell .rbc-month-view .shared-calendar-event,
+.rbc-overlay .my-schedule-calendar-event {
+  height: auto;
+  min-height: 2.7rem;
+}
+
+.my-schedule-calendar-event {
+  font-family: var(--mantine-font-family, inherit);
+}
+
+.my-schedule-calendar-event .shared-calendar-event__content {
+  justify-content: center;
+}
+
+.my-schedule-calendar-event .shared-calendar-event__title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.my-schedule-calendar-event .shared-calendar-event__subtitle,
+.my-schedule-calendar-event .shared-calendar-event__meta {
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
 .match-card {
   min-width: 0;
   overflow: visible;

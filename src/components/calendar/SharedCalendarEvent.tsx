@@ -28,6 +28,10 @@ type SharedCalendarEventProps = {
   onClick?: () => void;
 };
 
+const getTextLabel = (value: ReactNode): string => {
+  return typeof value === 'string' ? value.trim() : '';
+};
+
 export default function SharedCalendarEvent({
   title,
   subtitle,
@@ -68,11 +72,16 @@ export default function SharedCalendarEvent({
     draggable ? 'shared-calendar-event--draggable' : '',
     className,
   ].filter(Boolean).join(' ');
+  const tooltipLabel = [title, subtitle, meta]
+    .map(getTextLabel)
+    .filter(Boolean)
+    .join(' • ') || undefined;
 
   return (
     <div
       className={classNames}
       style={{ ...customProperties, ...style }}
+      title={tooltipLabel}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}

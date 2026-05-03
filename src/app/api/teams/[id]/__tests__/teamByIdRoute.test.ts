@@ -6,6 +6,7 @@ const findUniqueMock = jest.fn();
 const updateMock = jest.fn();
 const findManyMock = jest.fn();
 const eventsFindManyMock = jest.fn();
+const teamRegistrationsUpdateManyMock = jest.fn();
 const organizationFindFirstMock = jest.fn();
 const staffMemberFindUniqueMock = jest.fn();
 const inviteFindFirstMock = jest.fn();
@@ -17,6 +18,9 @@ const txClientMock = {
   },
   events: {
     findMany: (...args: any[]) => eventsFindManyMock(...args),
+  },
+  teamRegistrations: {
+    updateMany: (...args: any[]) => teamRegistrationsUpdateManyMock(...args),
   },
 };
 
@@ -129,6 +133,59 @@ describe('/api/teams/[id] PATCH', () => {
       data: expect.objectContaining({ headCoachId: null }),
     }));
     expect(payload.headCoachId).toBeNull();
+  });
+
+  it('accepts mobile roster registration metadata while removing a player', async () => {
+    const response = await PATCH(
+      patchJson({
+        team: {
+          playerIds: ['captain_1'],
+          captainId: 'captain_1',
+          playerRegistrations: [
+            {
+              id: 'team_1__captain_1',
+              teamId: 'team_1',
+              userId: 'captain_1',
+              registrantId: 'captain_1',
+              parentId: null,
+              registrantType: 'SELF',
+              rosterRole: 'PARTICIPANT',
+              status: 'ACTIVE',
+              jerseyNumber: '12',
+              position: null,
+              isCaptain: true,
+              consentDocumentId: null,
+              consentStatus: null,
+              createdBy: 'manager_1',
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'team_1' },
+      data: expect.objectContaining({
+        playerIds: ['captain_1'],
+        captainId: 'captain_1',
+      }),
+    }));
+    expect(teamRegistrationsUpdateManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        teamId: 'team_1',
+        userId: 'captain_1',
+      },
+      data: expect.objectContaining({
+        registrantType: 'SELF',
+        rosterRole: 'PARTICIPANT',
+        jerseyNumber: '12',
+        createdBy: 'manager_1',
+      }),
+    }));
+    expect(payload.playerIds).toEqual(['captain_1']);
   });
 
   it('rejects blank team names in patch payloads', async () => {
