@@ -3,7 +3,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   motion,
   useMotionValueEvent,
@@ -44,6 +44,7 @@ type FeatureSection = {
   id: string;
   title: string;
   eyebrow: string;
+  visualLabel: string;
   points: string[];
   details: string[];
   webImage: {
@@ -71,6 +72,7 @@ const featureSections = [
   {
     id: 'scheduling',
     eyebrow: 'Scheduling',
+    visualLabel: 'Live resource board',
     title: 'Schedule courts fast.',
     points: ['Courts + fields', 'Conflict checks'],
     details: ['Place resources quickly', 'See conflicts before publishing', 'Keep the full day visible'],
@@ -91,6 +93,7 @@ const featureSections = [
   {
     id: 'registrations',
     eyebrow: 'Registration',
+    visualLabel: 'Roster status view',
     title: 'Rosters stay ready.',
     points: ['Teams', 'Attendance'],
     details: ['Track team status', 'Manage waitlists', 'Confirm attendance'],
@@ -111,6 +114,7 @@ const featureSections = [
   {
     id: 'payments',
     eyebrow: 'Payments',
+    visualLabel: 'Checkout summary',
     title: 'Payments, reconciled.',
     points: ['Checkout', 'Refunds'],
     details: ['Collect from mobile', 'Match Stripe records', 'Handle refunds cleanly'],
@@ -131,6 +135,7 @@ const featureSections = [
   {
     id: 'documents',
     eyebrow: 'Documents',
+    visualLabel: 'Document builder',
     title: 'Documents signed.',
     points: ['Waivers', 'Clearance'],
     details: ['Attach required forms', 'Reuse templates', 'Clearance status'],
@@ -146,6 +151,7 @@ const featureSections = [
   {
     id: 'communication',
     eyebrow: 'Communication',
+    visualLabel: 'Event message stream',
     title: 'Updates in context.',
     points: ['Chat', 'Announcements'],
     details: ['Message the right group', 'Send event updates', 'Keep context attached'],
@@ -161,6 +167,7 @@ const featureSections = [
   {
     id: 'personal-schedules',
     eyebrow: 'Personal Schedules',
+    visualLabel: 'Participant itinerary',
     title: 'Everyone knows where to be.',
     points: ['Game times', 'Locations'],
     details: ['Show each assignment', 'Surface locations', 'Reflect schedule changes'],
@@ -585,10 +592,8 @@ function FeatureStoryPage({
 
         <div className="relative flex min-h-[34rem] flex-col justify-end pb-2">
           <div className="relative h-[min(48vh,500px)] min-h-[26rem]">
-            <div className="absolute left-8 top-7 z-20 flex items-center gap-2 rounded-full border border-white/18 bg-white/12 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-sm backdrop-blur">
-              BracketIQ
-              <span className="h-1 w-1 rounded-full bg-white/50" />
-              {feature.eyebrow}
+            <div className="landing-feature-visual-label absolute left-[2%] top-0 z-20 flex items-center gap-2 rounded-full border border-white/18 bg-white/12 px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white shadow-sm backdrop-blur">
+              {feature.visualLabel}
             </div>
 
             <FeatureScene feature={feature} landingImageProps={landingImageProps} />
@@ -709,47 +714,114 @@ function FeatureScene({
 }
 
 function StaticOperationsContent({ landingImageProps }: { landingImageProps: LandingImageProps }) {
+  const operationsRef = useRef<HTMLDivElement | null>(null);
+  const [isRevealReady, setIsRevealReady] = useState(false);
+
+  useEffect(() => {
+    const operationsElement = operationsRef.current;
+    if (!operationsElement) return;
+
+    const cards = Array.from(operationsElement.querySelectorAll<HTMLElement>('[data-mobile-feature-card="true"]'));
+    if (!cards.length) return;
+
+    setIsRevealReady(true);
+
+    const showCard = (card: HTMLElement) => {
+      card.classList.add('is-visible');
+    };
+
+    const showCardsThrough = (visibleCard: Element) => {
+      const visibleIndex = cards.indexOf(visibleCard as HTMLElement);
+      if (visibleIndex < 0) return;
+
+      cards.slice(0, visibleIndex + 1).forEach((card) => {
+        showCard(card);
+        observer.unobserve(card);
+      });
+    };
+
+    const prefersReducedMotion =
+      typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (prefersReducedMotion || typeof window.IntersectionObserver === 'undefined') {
+      cards.forEach(showCard);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          showCardsThrough(entry.target);
+        });
+      },
+      { rootMargin: '0px 0px -14% 0px', threshold: 0.2 },
+    );
+
+    cards.forEach((card) => observer.observe(card));
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="mx-auto w-full max-w-7xl px-5 py-20 lg:px-8">
+    <div
+      ref={operationsRef}
+      className={`landing-static-operations mx-auto w-full max-w-7xl px-5 py-20 lg:px-8 ${isRevealReady ? 'is-reveal-ready' : ''}`}
+    >
       <div className="max-w-3xl">
-        <p className="inline-flex w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800">
+        <p className="landing-static-operations-kicker inline-flex w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-wide text-blue-800">
           Features
         </p>
 
-        <h2 className="mt-4 text-5xl font-black leading-[0.95] text-slate-950 sm:text-6xl">
+        <h2 className="landing-static-operations-title mt-4 text-5xl font-black leading-[0.95] text-slate-950 sm:text-6xl">
           From setup to final.
         </h2>
 
-        <p className="mt-5 max-w-xl text-base font-semibold leading-7 text-slate-600">
+        <p className="landing-static-operations-copy mt-5 max-w-xl text-base font-semibold leading-7 text-slate-600">
           BracketIQ connects scheduling, teams, payments, documents, communication, and live operations in one
           tournament management engine.
         </p>
       </div>
 
-      <div className="mt-10 grid gap-5">
+      <div className="landing-static-operations-grid mt-10 grid gap-5">
         {featureSections.map((feature, index) => {
           const Icon = feature.icon;
+          const featureCardStyle = {
+            '--landing-feature-theme': FEATURE_STORY_THEMES[index] ?? FEATURE_STORY_THEMES[0],
+          } as CSSProperties;
 
           return (
             <article
               key={feature.id}
-              className="landing-operation-scroll-panel overflow-hidden rounded-[2rem] border border-white/80 bg-white/80 p-5 shadow-[0_34px_86px_-68px_rgba(15,23,42,0.78)] ring-1 ring-slate-200/70 backdrop-blur-xl"
+              style={featureCardStyle}
+              data-mobile-feature-card="true"
+              className="landing-operation-scroll-panel landing-operation-static-panel overflow-hidden rounded-[2rem] border border-white/80 bg-white/80 p-5 shadow-[0_34px_86px_-68px_rgba(15,23,42,0.78)] ring-1 ring-slate-200/70 backdrop-blur-xl"
             >
+              <span className="landing-operation-mobile-index" aria-hidden="true">
+                {String(index + 1).padStart(2, '0')}
+              </span>
+
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-800 ring-1 ring-blue-100">
+                  <div className="landing-operation-static-icon grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-800 ring-1 ring-blue-100">
                     <Icon className="h-5 w-5" aria-hidden="true" />
                   </div>
 
-                  <p className="mt-5 text-xs font-black uppercase tracking-wide text-blue-800">
+                  <p className="landing-operation-static-label mt-5 text-xs font-black uppercase tracking-wide text-blue-800">
                     Round {String(index + 1).padStart(2, '0')} / {feature.eyebrow}
                   </p>
 
-                  <h3 className="mt-2 text-3xl font-black text-slate-950">{feature.title}</h3>
+                  <h3 className="landing-operation-static-title mt-2 text-3xl font-black text-slate-950">{feature.title}</h3>
                 </div>
               </div>
 
-              <ul className="mt-5 grid gap-3">
+              <ul className="landing-operation-point-list" aria-label={`${feature.eyebrow} focus`}>
+                {feature.points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
+
+              <ul className="landing-operation-detail-list mt-5 grid gap-3">
                 {feature.details.map((detail) => (
                   <li key={detail} className="flex items-center gap-2 text-sm font-black text-slate-700">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-blue-700" aria-hidden="true" />
@@ -758,16 +830,16 @@ function StaticOperationsContent({ landingImageProps }: { landingImageProps: Lan
                 ))}
               </ul>
 
-              <div className="mt-6 grid min-w-0 items-center gap-3 sm:grid-cols-[1fr_auto]">
-                <div className="overflow-hidden rounded-2xl bg-white shadow-[0_24px_64px_-54px_rgba(15,23,42,0.72)] ring-1 ring-slate-200">
+              <div className="landing-operation-scroll-media landing-operation-static-media mt-6 grid min-w-0 items-center gap-3 sm:grid-cols-[1fr_auto]">
+                <div className="landing-operation-preview-crop overflow-hidden rounded-2xl bg-white shadow-[0_24px_64px_-54px_rgba(15,23,42,0.72)] ring-1 ring-slate-200">
                   <Image
                     {...landingImageProps}
                     src={feature.webImage.src}
                     alt={feature.webImage.alt}
                     width={feature.webImage.width}
                     height={feature.webImage.height}
-                    sizes="100vw"
-                    className="h-full w-full object-contain"
+                    sizes="(min-width: 800px) 160px, 120px"
+                    className="h-full w-full object-cover"
                   />
                 </div>
 
@@ -1145,14 +1217,6 @@ export default function LandingPage({
                   sizes="(min-width: 1280px) 760px, (min-width: 768px) 58vw, 100vw"
                   className="landing-use-case-image-content"
                 />
-              </div>
-              <div className="landing-use-case-visual-card landing-use-case-visual-card-primary">
-                <span>Formats</span>
-                <strong>6</strong>
-              </div>
-              <div className="landing-use-case-visual-card landing-use-case-visual-card-secondary">
-                <span>System</span>
-                <strong>One</strong>
               </div>
             </div>
           </div>
