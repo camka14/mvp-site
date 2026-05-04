@@ -7,6 +7,7 @@ export interface EventQrCodeModalProps {
   eventId: string;
   eventName: string;
   eventUrl: string;
+  organizationLogoId?: string | null;
   opened: boolean;
   onClose: () => void;
 }
@@ -32,13 +33,19 @@ export function EventQrCodeModal({
   eventId,
   eventName,
   eventUrl,
+  organizationLogoId,
   opened,
   onClose,
 }: EventQrCodeModalProps) {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [isSharing, setIsSharing] = useState(false);
+  const logoCacheKey = useMemo(() => {
+    const normalizedLogoId = typeof organizationLogoId === 'string' ? organizationLogoId.trim() : '';
+    return normalizedLogoId || 'biq';
+  }, [organizationLogoId]);
   const qrImageUrl = useMemo(
-    () => `/api/events/${encodeURIComponent(eventId)}/qr`,
-    [eventId],
+    () => `/api/events/${encodeURIComponent(eventId)}/qr?brand=event&logo=${encodeURIComponent(logoCacheKey)}`,
+    [eventId, logoCacheKey],
   );
   const downloadFilename = useMemo(
     () => `${sanitizeFilenamePart(eventName)}-qr-code.png`,
@@ -48,8 +55,17 @@ export function EventQrCodeModal({
   useEffect(() => {
     if (!opened) {
       setActionMessage(null);
+      setIsSharing(false);
     }
   }, [opened]);
+
+  const fetchQrImageBlob = useCallback(async (): Promise<Blob> => {
+    const response = await fetch(qrImageUrl, { credentials: 'include' });
+    if (!response.ok) {
+      throw new Error(`QR request failed with ${response.status}`);
+    }
+    return response.blob();
+  }, [qrImageUrl]);
 
   const copyLink = useCallback(async () => {
     if (!eventUrl) {
@@ -66,11 +82,7 @@ export function EventQrCodeModal({
 
   const downloadQrCode = useCallback(async () => {
     try {
-      const response = await fetch(qrImageUrl, { credentials: 'include' });
-      if (!response.ok) {
-        throw new Error(`QR request failed with ${response.status}`);
-      }
-      const blob = await response.blob();
+      const blob = await fetchQrImageBlob();
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = objectUrl;
@@ -84,7 +96,34 @@ export function EventQrCodeModal({
       console.error('Failed to download event QR code:', error);
       setActionMessage('Could not download the QR code.');
     }
-  }, [downloadFilename, qrImageUrl]);
+  }, [downloadFilename, fetchQrImageBlob]);
+
+  const shareQrCode = useCallback(async () => {
+    setIsSharing(true);
+    try {
+      const blob = await fetchQrImageBlob();
+      const file = new File([blob], downloadFilename, { type: blob.type || 'image/png' });
+      const shareData: ShareData = {
+        files: [file],
+        title: `${eventName} QR code`,
+      };
+      const canShareFile = navigator.canShare?.(shareData) ?? Boolean(navigator.share);
+      if (!navigator.share || !canShareFile) {
+        setActionMessage('Image sharing is unavailable in this browser.');
+        return;
+      }
+      await navigator.share(shareData);
+      setActionMessage('QR code shared.');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+      console.error('Failed to share event QR code:', error);
+      setActionMessage('Could not share the QR code.');
+    } finally {
+      setIsSharing(false);
+    }
+  }, [downloadFilename, eventName, fetchQrImageBlob]);
 
   return (
     <Modal
@@ -96,6 +135,7 @@ export function EventQrCodeModal({
     >
       <Stack gap="md">
         <Paper withBorder p="md" radius="md" ta="center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={qrImageUrl}
             alt={`QR code for ${eventName}`}
@@ -108,7 +148,7 @@ export function EventQrCodeModal({
             }}
           />
         </Paper>
-        <Stack gap={4}>
+        <Stack gap={4} visibleFrom="sm">
           <Text fw={600}>{eventName}</Text>
           <Text size="sm" c="dimmed" style={{ wordBreak: 'break-all' }}>
             {eventUrl}
@@ -119,7 +159,7 @@ export function EventQrCodeModal({
             {actionMessage}
           </Text>
         )}
-        <Group justify="flex-end">
+        <Group justify="flex-end" visibleFrom="sm">
           <Button variant="default" onClick={copyLink}>
             Copy link
           </Button>
@@ -127,8 +167,10 @@ export function EventQrCodeModal({
             Download PNG
           </Button>
         </Group>
+        <Button hiddenFrom="sm" fullWidth onClick={shareQrCode} loading={isSharing}>
+          Share
+        </Button>
       </Stack>
     </Modal>
   );
 }
-

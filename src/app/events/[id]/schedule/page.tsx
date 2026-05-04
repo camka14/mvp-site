@@ -8599,6 +8599,7 @@ function EventScheduleContent() {
               eventId={activeEvent.$id}
               eventName={activeEvent.name || 'Event'}
               eventUrl={activeEventPublicUrl}
+              organizationLogoId={activeOrganization?.logoId ?? null}
               opened={isQrCodeModalOpen}
               onClose={() => setIsQrCodeModalOpen(false)}
             />

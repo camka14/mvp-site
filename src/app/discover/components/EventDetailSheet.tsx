@@ -948,6 +948,13 @@ export default function EventDetailSheet({
         () => (currentEvent?.$id ? buildEventPublicUrl(currentEvent.$id) : ''),
         [currentEvent?.$id],
     );
+    const currentOrganizationLogoId = React.useMemo(() => {
+        const organization = currentEvent.organization;
+        if (organization && typeof organization === 'object' && typeof organization.logoId === 'string') {
+            return organization.logoId;
+        }
+        return null;
+    }, [currentEvent.organization]);
     const isWeeklyParentEvent = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
     const weeklySessionOptions = React.useMemo(
         () => (isWeeklyParentEvent ? buildWeeklySessionOptions(currentEvent, 3) : []),
@@ -4805,6 +4812,7 @@ export default function EventDetailSheet({
                 eventId={currentEvent.$id}
                 eventName={currentEvent.name || 'Event'}
                 eventUrl={currentEventPublicUrl}
+                organizationLogoId={currentOrganizationLogoId}
                 opened={showQrCodeModal}
                 onClose={() => setShowQrCodeModal(false)}
             />
