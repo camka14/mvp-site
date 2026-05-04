@@ -23,6 +23,7 @@ const prismaMock = {
   },
   divisions: {
     findMany: jest.fn(),
+    findFirst: jest.fn(),
     update: jest.fn(),
   },
   signedDocuments: {
@@ -62,10 +63,14 @@ const prismaMock = {
   },
   bills: {
     findMany: jest.fn(),
+    findFirst: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
   },
   billPayments: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
+    create: jest.fn(),
     update: jest.fn(),
   },
   invites: {
@@ -230,6 +235,7 @@ describe('POST /api/events/[eventId]/participants', () => {
       },
     ]);
     prismaMock.divisions.update.mockResolvedValue({});
+    prismaMock.divisions.findFirst.mockResolvedValue(null);
     canManageEventMock.mockResolvedValue(false);
     prismaMock.userData.findMany.mockResolvedValue([]);
     prismaMock.userData.findUnique.mockResolvedValue({
@@ -255,8 +261,39 @@ describe('POST /api/events/[eventId]/participants', () => {
     prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
     prismaMock.refundRequests.update.mockResolvedValue({ id: 'refund_1', status: 'APPROVED' });
     prismaMock.bills.findMany.mockResolvedValue([]);
+    prismaMock.bills.findFirst.mockResolvedValue(null);
+    prismaMock.bills.create.mockResolvedValue({
+      id: 'bill_1',
+      ownerType: 'USER',
+      ownerId: 'user_1',
+      eventId: 'event_1',
+      totalAmountCents: 5000,
+      paidAmountCents: 0,
+      status: 'OPEN',
+      paymentPlanEnabled: true,
+    });
+    prismaMock.bills.update.mockResolvedValue({
+      id: 'bill_1',
+      ownerType: 'USER',
+      ownerId: 'user_1',
+      eventId: 'event_1',
+      totalAmountCents: 5000,
+      paidAmountCents: 0,
+      status: 'OPEN',
+      paymentPlanEnabled: true,
+      nextPaymentDue: new Date('2026-07-07T18:00:00.000Z'),
+      nextPaymentAmountCents: 2500,
+    });
     prismaMock.billPayments.findMany.mockResolvedValue([]);
     prismaMock.billPayments.findUnique.mockResolvedValue(null);
+    prismaMock.billPayments.create.mockImplementation(async ({ data }: any) => ({
+      id: data.id,
+      billId: data.billId,
+      sequence: data.sequence,
+      dueDate: data.dueDate,
+      amountCents: data.amountCents,
+      status: data.status,
+    }));
     prismaMock.billPayments.update.mockResolvedValue({ id: 'payment_1', refundedAmountCents: 5000 });
     prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
     mockStripePaymentIntentRetrieve.mockResolvedValue({ id: 'pi_default', transfer_data: null });
@@ -448,16 +485,110 @@ describe('POST /api/events/[eventId]/participants', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: 'weekly_parent',
+        registrantType: 'SELF',
+        registrantId: 'user_1',
+        occurrence: expect.objectContaining({
+          slotId: 'slot_1',
+          occurrenceDate: '2026-07-08',
+        }),
+      }),
+      expect.anything(),
+    );
+    expect(payload.event.$id).toBe('weekly_parent');
+  });
+
+  it('creates the weekly payment-plan bill in the registration transaction', async () => {
+    const parentEvent = {
+      id: 'weekly_parent',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      state: 'PUBLISHED',
+      timeSlotIds: ['slot_1'],
+      teamSignup: false,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      price: 5000,
+      allowPaymentPlans: true,
+      installmentAmounts: [2500, 2500],
+      installmentDueRelativeDays: [],
+      allowTeamSplitDefault: false,
+    };
+    prismaMock.events.findUnique.mockResolvedValueOnce(parentEvent);
+    prismaMock.divisions.findFirst.mockResolvedValueOnce({
+      id: 'div_a',
+      price: 5000,
+      allowPaymentPlans: true,
+      installmentAmounts: [2500, 2500],
+      installmentDueRelativeDays: [-1, 0],
+    });
+    prismaMock.bills.update.mockResolvedValueOnce({
+      id: 'bill_weekly_1',
+      ownerType: 'USER',
+      ownerId: 'user_1',
       eventId: 'weekly_parent',
-      registrantType: 'SELF',
-      registrantId: 'user_1',
-      occurrence: expect.objectContaining({
+      slotId: 'slot_1',
+      occurrenceDate: '2026-07-08',
+      totalAmountCents: 5000,
+      paidAmountCents: 0,
+      status: 'OPEN',
+      paymentPlanEnabled: true,
+      nextPaymentDue: new Date('2026-07-07T18:00:00.000Z'),
+      nextPaymentAmountCents: 2500,
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/events/weekly_parent/participants', {
+        userId: 'user_1',
+        divisionId: 'div_a',
         slotId: 'slot_1',
         occurrenceDate: '2026-07-08',
       }),
+      { params: Promise.resolve({ eventId: 'weekly_parent' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.bills.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        ownerType: 'USER',
+        ownerId: 'user_1',
+        eventId: 'weekly_parent',
+        slotId: 'slot_1',
+        occurrenceDate: '2026-07-08',
+        organizationId: 'org_1',
+        totalAmountCents: 5000,
+        paymentPlanEnabled: true,
+      }),
     }));
-    expect(payload.event.$id).toBe('weekly_parent');
+    expect(prismaMock.billPayments.create).toHaveBeenCalledTimes(2);
+    expect(prismaMock.billPayments.create).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      data: expect.objectContaining({
+        sequence: 1,
+        amountCents: 2500,
+        status: 'PENDING',
+      }),
+    }));
+    expect(prismaMock.billPayments.create).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      data: expect.objectContaining({
+        sequence: 2,
+        amountCents: 2500,
+        status: 'PENDING',
+      }),
+    }));
+    expect(payload.bill.$id).toBe('bill_weekly_1');
   });
 
   it('registers the canonical team without mutating legacy teamIds arrays', async () => {
@@ -999,13 +1130,16 @@ describe('POST /api/events/[eventId]/participants', () => {
 
     expect(response.status).toBe(200);
     expect(prismaMock.parentChildLinks.findFirst).not.toHaveBeenCalled();
-    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
-      eventId: 'event_1',
-      registrantType: 'SELF',
-      registrantId: 'participant_1',
-      rosterRole: 'PARTICIPANT',
-      createdBy: 'host_1',
-    }));
+    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: 'event_1',
+        registrantType: 'SELF',
+        registrantId: 'participant_1',
+        rosterRole: 'PARTICIPANT',
+        createdBy: 'host_1',
+      }),
+      expect.anything(),
+    );
   });
 });
 

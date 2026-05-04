@@ -49,6 +49,7 @@ export type EventsAvgAggregateOutputType = {
   restTimeMinutes: number | null
   pointsToVictory: number | null
   installmentCount: number | null
+  installmentDueRelativeDays: number | null
   installmentAmounts: number | null
 }
 
@@ -75,6 +76,7 @@ export type EventsSumAggregateOutputType = {
   restTimeMinutes: number | null
   pointsToVictory: number[]
   installmentCount: number | null
+  installmentDueRelativeDays: number[]
   installmentAmounts: number[]
 }
 
@@ -250,6 +252,7 @@ export type EventsCountAggregateOutputType = {
   allowPaymentPlans: number
   installmentCount: number
   installmentDueDates: number
+  installmentDueRelativeDays: number
   installmentAmounts: number
   allowTeamSplitDefault: number
   splitLeaguePlayoffDivisions: number
@@ -281,6 +284,7 @@ export type EventsAvgAggregateInputType = {
   restTimeMinutes?: true
   pointsToVictory?: true
   installmentCount?: true
+  installmentDueRelativeDays?: true
   installmentAmounts?: true
 }
 
@@ -307,6 +311,7 @@ export type EventsSumAggregateInputType = {
   restTimeMinutes?: true
   pointsToVictory?: true
   installmentCount?: true
+  installmentDueRelativeDays?: true
   installmentAmounts?: true
 }
 
@@ -482,6 +487,7 @@ export type EventsCountAggregateInputType = {
   allowPaymentPlans?: true
   installmentCount?: true
   installmentDueDates?: true
+  installmentDueRelativeDays?: true
   installmentAmounts?: true
   allowTeamSplitDefault?: true
   splitLeaguePlayoffDivisions?: true
@@ -637,6 +643,7 @@ export type EventsGroupByOutputType = {
   allowPaymentPlans: boolean | null
   installmentCount: number | null
   installmentDueDates: Date[]
+  installmentDueRelativeDays: number[]
   installmentAmounts: number[]
   allowTeamSplitDefault: boolean | null
   splitLeaguePlayoffDivisions: boolean | null
@@ -728,6 +735,7 @@ export type EventsWhereInput = {
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableFilter<"Events"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Events">
+  installmentDueRelativeDays?: Prisma.IntNullableListFilter<"Events">
   installmentAmounts?: Prisma.IntNullableListFilter<"Events">
   allowTeamSplitDefault?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   splitLeaguePlayoffDivisions?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -796,6 +804,7 @@ export type EventsOrderByWithRelationInput = {
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
   allowTeamSplitDefault?: Prisma.SortOrderInput | Prisma.SortOrder
   splitLeaguePlayoffDivisions?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -867,6 +876,7 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableFilter<"Events"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Events">
+  installmentDueRelativeDays?: Prisma.IntNullableListFilter<"Events">
   installmentAmounts?: Prisma.IntNullableListFilter<"Events">
   allowTeamSplitDefault?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   splitLeaguePlayoffDivisions?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -935,6 +945,7 @@ export type EventsOrderByWithAggregationInput = {
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
   allowTeamSplitDefault?: Prisma.SortOrderInput | Prisma.SortOrder
   splitLeaguePlayoffDivisions?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -1011,6 +1022,7 @@ export type EventsScalarWhereWithAggregatesInput = {
   allowPaymentPlans?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   installmentCount?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Events">
+  installmentDueRelativeDays?: Prisma.IntNullableListFilter<"Events">
   installmentAmounts?: Prisma.IntNullableListFilter<"Events">
   allowTeamSplitDefault?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   splitLeaguePlayoffDivisions?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
@@ -1079,6 +1091,7 @@ export type EventsCreateInput = {
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.EventsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.EventsCreateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.EventsCreateinstallmentAmountsInput | number[]
   allowTeamSplitDefault?: boolean | null
   splitLeaguePlayoffDivisions?: boolean | null
@@ -1147,6 +1160,7 @@ export type EventsUncheckedCreateInput = {
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.EventsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.EventsCreateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.EventsCreateinstallmentAmountsInput | number[]
   allowTeamSplitDefault?: boolean | null
   splitLeaguePlayoffDivisions?: boolean | null
@@ -1215,6 +1229,7 @@ export type EventsUpdateInput = {
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.EventsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.EventsUpdateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.EventsUpdateinstallmentAmountsInput | number[]
   allowTeamSplitDefault?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   splitLeaguePlayoffDivisions?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1283,6 +1298,7 @@ export type EventsUncheckedUpdateInput = {
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.EventsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.EventsUpdateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.EventsUpdateinstallmentAmountsInput | number[]
   allowTeamSplitDefault?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   splitLeaguePlayoffDivisions?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1351,6 +1367,7 @@ export type EventsCreateManyInput = {
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.EventsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.EventsCreateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.EventsCreateinstallmentAmountsInput | number[]
   allowTeamSplitDefault?: boolean | null
   splitLeaguePlayoffDivisions?: boolean | null
@@ -1419,6 +1436,7 @@ export type EventsUpdateManyMutationInput = {
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.EventsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.EventsUpdateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.EventsUpdateinstallmentAmountsInput | number[]
   allowTeamSplitDefault?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   splitLeaguePlayoffDivisions?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1487,6 +1505,7 @@ export type EventsUncheckedUpdateManyInput = {
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.EventsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.EventsUpdateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.EventsUpdateinstallmentAmountsInput | number[]
   allowTeamSplitDefault?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   splitLeaguePlayoffDivisions?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1555,6 +1574,7 @@ export type EventsCountOrderByAggregateInput = {
   allowPaymentPlans?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
   allowTeamSplitDefault?: Prisma.SortOrder
   splitLeaguePlayoffDivisions?: Prisma.SortOrder
@@ -1584,6 +1604,7 @@ export type EventsAvgOrderByAggregateInput = {
   restTimeMinutes?: Prisma.SortOrder
   pointsToVictory?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
 }
 
@@ -1720,6 +1741,7 @@ export type EventsSumOrderByAggregateInput = {
   restTimeMinutes?: Prisma.SortOrder
   pointsToVictory?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
 }
 
@@ -1753,6 +1775,10 @@ export type EventsCreatefieldIdsInput = {
 
 export type EventsCreateinstallmentDueDatesInput = {
   set: Date[] | string[]
+}
+
+export type EventsCreateinstallmentDueRelativeDaysInput = {
+  set: number[]
 }
 
 export type EventsCreateinstallmentAmountsInput = {
@@ -1813,6 +1839,11 @@ export type EnumEventsOfficialSchedulingModeEnumFieldUpdateOperationsInput = {
 export type EventsUpdateinstallmentDueDatesInput = {
   set?: Date[] | string[]
   push?: Date | string | Date[] | string[]
+}
+
+export type EventsUpdateinstallmentDueRelativeDaysInput = {
+  set?: number[]
+  push?: number | number[]
 }
 
 export type EventsUpdateinstallmentAmountsInput = {
@@ -1889,6 +1920,7 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
+  installmentDueRelativeDays?: boolean
   installmentAmounts?: boolean
   allowTeamSplitDefault?: boolean
   splitLeaguePlayoffDivisions?: boolean
@@ -1957,6 +1989,7 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
+  installmentDueRelativeDays?: boolean
   installmentAmounts?: boolean
   allowTeamSplitDefault?: boolean
   splitLeaguePlayoffDivisions?: boolean
@@ -2025,6 +2058,7 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
+  installmentDueRelativeDays?: boolean
   installmentAmounts?: boolean
   allowTeamSplitDefault?: boolean
   splitLeaguePlayoffDivisions?: boolean
@@ -2093,13 +2127,14 @@ export type EventsSelectScalar = {
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
+  installmentDueRelativeDays?: boolean
   installmentAmounts?: boolean
   allowTeamSplitDefault?: boolean
   splitLeaguePlayoffDivisions?: boolean
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2166,6 +2201,7 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     allowPaymentPlans: boolean | null
     installmentCount: number | null
     installmentDueDates: Date[]
+    installmentDueRelativeDays: number[]
     installmentAmounts: number[]
     allowTeamSplitDefault: boolean | null
     splitLeaguePlayoffDivisions: boolean | null
@@ -2654,6 +2690,7 @@ export interface EventsFieldRefs {
   readonly allowPaymentPlans: Prisma.FieldRef<"Events", 'Boolean'>
   readonly installmentCount: Prisma.FieldRef<"Events", 'Int'>
   readonly installmentDueDates: Prisma.FieldRef<"Events", 'DateTime[]'>
+  readonly installmentDueRelativeDays: Prisma.FieldRef<"Events", 'Int[]'>
   readonly installmentAmounts: Prisma.FieldRef<"Events", 'Int[]'>
   readonly allowTeamSplitDefault: Prisma.FieldRef<"Events", 'Boolean'>
   readonly splitLeaguePlayoffDivisions: Prisma.FieldRef<"Events", 'Boolean'>

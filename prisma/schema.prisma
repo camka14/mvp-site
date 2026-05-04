@@ -329,6 +329,7 @@ model Divisions {
   allowPaymentPlans           Boolean?
   installmentCount            Int?
   installmentDueDates         DateTime[]         @default([])
+  installmentDueRelativeDays  Int[]              @default([])
   installmentAmounts          Int[]              @default([])
   minRating                   Float?
   maxRating                   Float?
@@ -690,6 +691,8 @@ model Bills {
   ownerId                String
   organizationId         String?
   eventId                String?
+  slotId                 String?
+  occurrenceDate         String?
   totalAmountCents       Int
   paidAmountCents        Int?
   nextPaymentDue         DateTime?
@@ -700,6 +703,8 @@ model Bills {
   paymentPlanEnabled     Boolean?
   createdBy              String?
   lineItems              Json?
+
+  @@index([eventId, slotId, occurrenceDate])
 }
 
 model BillPayments {
@@ -825,6 +830,7 @@ model Events {
   allowPaymentPlans            Boolean?
   installmentCount             Int?
   installmentDueDates          DateTime[]
+  installmentDueRelativeDays   Int[]                            @default([])
   installmentAmounts           Int[]
   allowTeamSplitDefault        Boolean?
   splitLeaguePlayoffDivisions  Boolean?                         @default(false)

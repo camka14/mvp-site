@@ -162,6 +162,16 @@ const normalizeInstallmentDateList = (value: unknown): string[] => {
     .map((entry) => entry.toISOString());
 };
 
+const normalizeInstallmentRelativeDayList = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+    .filter((entry) => Number.isFinite(entry))
+    .map((entry) => Math.trunc(entry));
+};
+
 const getDivisionFieldMapForEvent = async (
   eventId: string,
   divisionKeys: string[],
@@ -222,6 +232,7 @@ const getDivisionDetailsForEvent = async (
     allowPaymentPlans?: boolean | null;
     installmentCount?: number | null;
     installmentDueDates?: unknown;
+    installmentDueRelativeDays?: unknown;
     installmentAmounts?: unknown;
   },
 ): Promise<Array<Record<string, unknown>>> => {
@@ -248,6 +259,7 @@ const getDivisionDetailsForEvent = async (
       allowPaymentPlans: true,
       installmentCount: true,
       installmentDueDates: true,
+      installmentDueRelativeDays: true,
       installmentAmounts: true,
       divisionTypeId: true,
       divisionTypeName: true,
@@ -334,6 +346,9 @@ const getDivisionDetailsForEvent = async (
             .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
             .map((entry) => entry.toISOString())
         : normalizeInstallmentDateList(eventDefaults?.installmentDueDates),
+      installmentDueRelativeDays: Array.isArray((row as any)?.installmentDueRelativeDays)
+        ? normalizeInstallmentRelativeDayList((row as any).installmentDueRelativeDays)
+        : normalizeInstallmentRelativeDayList(eventDefaults?.installmentDueRelativeDays),
       installmentAmounts: Array.isArray(row?.installmentAmounts)
         ? normalizeInstallmentAmountList(row.installmentAmounts)
         : normalizeInstallmentAmountList(eventDefaults?.installmentAmounts),
@@ -539,6 +554,7 @@ const buildEventResponsePayload = async (event: any) => {
       allowPaymentPlans: event.allowPaymentPlans,
       installmentCount: event.installmentCount,
       installmentDueDates: event.installmentDueDates,
+      installmentDueRelativeDays: (event as any).installmentDueRelativeDays,
       installmentAmounts: event.installmentAmounts,
     }),
   ]);

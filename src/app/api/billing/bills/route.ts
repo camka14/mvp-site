@@ -3,6 +3,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import {
+  isWeeklyParentEvent,
+  resolveWeeklyOccurrence,
+  resolveWeeklyOccurrenceStartAt,
+} from '@/server/events/weeklyOccurrences';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,9 +16,12 @@ const createSchema = z.object({
   ownerId: z.string(),
   totalAmountCents: z.number(),
   eventId: z.string().nullable().optional(),
+  slotId: z.string().nullable().optional(),
+  occurrenceDate: z.string().nullable().optional(),
   organizationId: z.string().nullable().optional(),
   installmentAmounts: z.array(z.number()).optional(),
   installmentDueDates: z.array(z.string()).optional(),
+  installmentDueRelativeDays: z.array(z.number()).optional(),
   allowSplit: z.boolean().optional(),
   paymentPlanEnabled: z.boolean().optional(),
   lineItems: z.array(
@@ -103,6 +111,8 @@ export async function POST(req: NextRequest) {
   const effectiveTotalAmountCents = lineItemsTotalAmountCents > 0 ? lineItemsTotalAmountCents : totalAmountCents;
 
   const eventId = parsed.data.eventId?.trim() || null;
+  const slotId = parsed.data.slotId?.trim() || null;
+  const occurrenceDate = parsed.data.occurrenceDate?.trim() || null;
   const organizationId = parsed.data.organizationId?.trim() || null;
   const paymentPlanEnabled = parsed.data.paymentPlanEnabled ?? false;
   const now = new Date();
@@ -114,9 +124,92 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'installmentAmounts must contain positive numbers' }, { status: 400 });
   }
 
-  const dueDates = Array.isArray(parsed.data.installmentDueDates) && parsed.data.installmentDueDates.length
-    ? parsed.data.installmentDueDates
-    : [now.toISOString()];
+  const relativeDueDays = Array.isArray(parsed.data.installmentDueRelativeDays) && parsed.data.installmentDueRelativeDays.length
+    ? parsed.data.installmentDueRelativeDays
+      .map((value) => Math.trunc(value))
+      .filter((value) => Number.isFinite(value))
+    : [];
+  if (parsed.data.installmentDueRelativeDays?.length && relativeDueDays.length !== parsed.data.installmentDueRelativeDays.length) {
+    return NextResponse.json({ error: 'installmentDueRelativeDays must contain finite numbers' }, { status: 400 });
+  }
+  if (relativeDueDays.length > 0 && relativeDueDays.length !== amounts.length) {
+    return NextResponse.json(
+      { error: 'installmentDueRelativeDays must match installmentAmounts length' },
+      { status: 400 },
+    );
+  }
+
+  let resolvedBillSlotId: string | null = null;
+  let resolvedBillOccurrenceDate: string | null = null;
+  let dueDates: Date[] = [];
+  if (paymentPlanEnabled && eventId) {
+    const event = await prisma.events.findUnique({
+      where: { id: eventId },
+      select: {
+        id: true,
+        eventType: true,
+        parentEvent: true,
+        divisions: true,
+        timeSlotIds: true,
+      },
+    });
+    if (!event) {
+      return NextResponse.json({ error: 'Event not found.' }, { status: 404 });
+    }
+    if (isWeeklyParentEvent(event)) {
+      if (!slotId || !occurrenceDate) {
+        return NextResponse.json(
+          { error: 'Weekly payment plans require slotId and occurrenceDate.' },
+          { status: 400 },
+        );
+      }
+      const resolvedOccurrence = await resolveWeeklyOccurrence({
+        event,
+        occurrence: { slotId, occurrenceDate },
+      });
+      if (!resolvedOccurrence.ok) {
+        return NextResponse.json({ error: resolvedOccurrence.error }, { status: 400 });
+      }
+      resolvedBillSlotId = resolvedOccurrence.value.slotId;
+      resolvedBillOccurrenceDate = resolvedOccurrence.value.occurrenceDate;
+      if (relativeDueDays.length === 0) {
+        return NextResponse.json(
+          { error: 'Weekly payment plans require installmentDueRelativeDays.' },
+          { status: 400 },
+        );
+      }
+      if (relativeDueDays.length > 0) {
+        const occurrenceStart = resolveWeeklyOccurrenceStartAt(
+          resolvedOccurrence.value.slot,
+          resolvedOccurrence.value.occurrenceDate,
+        );
+        if (!occurrenceStart) {
+          return NextResponse.json({ error: 'Unable to resolve weekly occurrence start date.' }, { status: 400 });
+        }
+        dueDates = relativeDueDays.map((offsetDays) => {
+          const dueDate = new Date(occurrenceStart.getTime());
+          dueDate.setDate(dueDate.getDate() + offsetDays);
+          return dueDate;
+        });
+      }
+    } else if (slotId || occurrenceDate || relativeDueDays.length > 0) {
+      return NextResponse.json(
+        { error: 'Occurrence-relative payment plans are only valid for weekly events.' },
+        { status: 400 },
+      );
+    }
+  } else if (slotId || occurrenceDate || relativeDueDays.length > 0) {
+    return NextResponse.json(
+      { error: 'Occurrence-relative payment plans require an event payment plan.' },
+      { status: 400 },
+    );
+  }
+
+  if (!dueDates.length) {
+    dueDates = Array.isArray(parsed.data.installmentDueDates) && parsed.data.installmentDueDates.length
+      ? parsed.data.installmentDueDates.map((value) => parseDateInput(value) ?? now)
+      : [now];
+  }
 
   const shouldEnforceUniquePaymentPlan = Boolean(eventId && paymentPlanEnabled);
   const creationResult = await prisma.$transaction(async (tx) => {
@@ -128,7 +221,13 @@ export async function POST(req: NextRequest) {
           eventId,
           parentBillId: null,
           paymentPlanEnabled: true,
-        },
+          ...(resolvedBillSlotId && resolvedBillOccurrenceDate
+            ? {
+                slotId: resolvedBillSlotId,
+                occurrenceDate: resolvedBillOccurrenceDate,
+              }
+            : {}),
+        } as any,
         select: { id: true },
       });
       if (existing) {
@@ -144,6 +243,8 @@ export async function POST(req: NextRequest) {
         totalAmountCents: effectiveTotalAmountCents,
         paidAmountCents: 0,
         eventId,
+        slotId: resolvedBillSlotId,
+        occurrenceDate: resolvedBillOccurrenceDate,
         organizationId,
         allowSplit: parsed.data.allowSplit ?? false,
         status: 'OPEN',
@@ -161,11 +262,11 @@ export async function POST(req: NextRequest) {
             ],
         createdAt: now,
         updatedAt: now,
-      },
+      } as any,
     });
 
     const payments = await Promise.all(amounts.map((amount, index) => {
-      const dueDate = parseDateInput(dueDates[index] ?? dueDates[dueDates.length - 1]) ?? now;
+      const dueDate = dueDates[index] ?? dueDates[dueDates.length - 1] ?? now;
       return tx.billPayments.create({
         data: {
           id: crypto.randomUUID(),

@@ -27,6 +27,7 @@ import {
   isWeeklyParentEvent,
   isWeeklyOccurrenceJoinClosed,
   resolveWeeklyOccurrence,
+  resolveWeeklyOccurrenceStartAt,
   WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
 } from '@/server/events/weeklyOccurrences';
 import { getRefundPolicy } from '@/lib/refundPolicy';
@@ -40,6 +41,7 @@ import {
 
 export const dynamic = 'force-dynamic';
 const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'PRIVATE', 'DRAFT']);
+type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
 const payloadSchema = z.object({
   user: z.record(z.string(), z.any()).optional(),
@@ -70,6 +72,14 @@ const extractId = (value: any): string | undefined => {
   return undefined;
 };
 
+const normalizeId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length ? normalized : null;
+};
+
 const ensureUnique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
 const normalizeUserIdList = (values: unknown): string[] => {
   if (!Array.isArray(values)) {
@@ -91,18 +101,228 @@ const normalizeRequiredTemplateIds = (values: unknown): string[] => {
       .filter(Boolean),
   );
 };
+
+const normalizePositiveAmountList = (value: unknown): number[] => (
+  Array.isArray(value)
+    ? value
+      .map((entry) => Math.round(typeof entry === 'number' ? entry : Number(entry)))
+      .filter((entry) => Number.isFinite(entry) && entry > 0)
+    : []
+);
+
+const normalizeRelativeDayList = (value: unknown): number[] => (
+  Array.isArray(value)
+    ? value
+      .map((entry) => Math.trunc(typeof entry === 'number' ? entry : Number(entry)))
+      .filter((entry) => Number.isFinite(entry))
+    : []
+);
+
+const firstNonEmptyNumberList = (...values: unknown[]): number[] => {
+  for (const value of values) {
+    const normalized = normalizePositiveAmountList(value);
+    if (normalized.length) {
+      return normalized;
+    }
+  }
+  return [];
+};
+
+const firstNonEmptyRelativeDayList = (...values: unknown[]): number[] => {
+  for (const value of values) {
+    const normalized = normalizeRelativeDayList(value);
+    if (normalized.length) {
+      return normalized;
+    }
+  }
+  return [];
+};
+
+const resolveBillingDivision = async (
+  client: PrismaLike,
+  eventId: string,
+  divisionSelection: {
+    divisionId?: string | null;
+    divisionTypeId?: string | null;
+    divisionTypeKey?: string | null;
+  },
+) => {
+  const candidates = ensureUnique([
+    normalizeId(divisionSelection.divisionId) ?? '',
+    normalizeId(divisionSelection.divisionTypeId) ?? '',
+    normalizeId(divisionSelection.divisionTypeKey) ?? '',
+    extractDivisionTokenFromId(normalizeId(divisionSelection.divisionId) ?? '') ?? '',
+  ]);
+  if (!candidates.length) {
+    return null;
+  }
+
+  return client.divisions.findFirst({
+    where: {
+      eventId,
+      OR: [
+        { id: { in: candidates } },
+        { key: { in: candidates } },
+        { divisionTypeId: { in: candidates } },
+      ],
+    },
+    select: {
+      id: true,
+      price: true,
+      allowPaymentPlans: true,
+      installmentAmounts: true,
+      installmentDueRelativeDays: true,
+    },
+  } as any);
+};
+
+const createWeeklyPaymentPlanBillForRegistration = async (
+  params: {
+    tx: PrismaLike;
+    event: any;
+    ownerType: 'USER' | 'TEAM';
+    ownerId: string;
+    divisionSelection: {
+      divisionId?: string | null;
+      divisionTypeId?: string | null;
+      divisionTypeKey?: string | null;
+    };
+    occurrence: { slotId: string; occurrenceDate: string; slot: any } | null;
+    createdBy: string;
+  },
+) => {
+  if (!isWeeklyParentEvent(params.event) || !params.occurrence) {
+    return null;
+  }
+
+  const ownerId = normalizeId(params.ownerId);
+  if (!ownerId) {
+    return null;
+  }
+
+  const division = await resolveBillingDivision(
+    params.tx,
+    params.event.id,
+    params.divisionSelection,
+  );
+  const allowPaymentPlans = typeof division?.allowPaymentPlans === 'boolean'
+    ? division.allowPaymentPlans
+    : Boolean(params.event.allowPaymentPlans);
+  if (!allowPaymentPlans) {
+    return null;
+  }
+
+  const totalAmountCents = Math.round(
+    typeof division?.price === 'number'
+      ? division.price
+      : Number(params.event.price ?? 0),
+  );
+  if (!Number.isFinite(totalAmountCents) || totalAmountCents <= 0) {
+    return null;
+  }
+
+  const installmentAmounts = firstNonEmptyNumberList(
+    division?.installmentAmounts,
+    params.event.installmentAmounts,
+  );
+  const amounts = installmentAmounts.length ? installmentAmounts : [totalAmountCents];
+  const relativeDueDays = firstNonEmptyRelativeDayList(
+    division?.installmentDueRelativeDays,
+    params.event.installmentDueRelativeDays,
+  );
+
+  if (!relativeDueDays.length) {
+    throw new Error('Weekly payment plans require installment due date offsets.');
+  }
+  if (relativeDueDays.length !== amounts.length) {
+    throw new Error('Weekly payment plan due date offsets must match installment amounts.');
+  }
+
+  const occurrenceStart = resolveWeeklyOccurrenceStartAt(
+    params.occurrence.slot,
+    params.occurrence.occurrenceDate,
+  );
+  if (!occurrenceStart) {
+    throw new Error('Unable to resolve weekly session start date.');
+  }
+
+  const existing = await params.tx.bills.findFirst({
+    where: {
+      ownerType: params.ownerType,
+      ownerId,
+      eventId: params.event.id,
+      slotId: params.occurrence.slotId,
+      occurrenceDate: params.occurrence.occurrenceDate,
+      parentBillId: null,
+      paymentPlanEnabled: true,
+    },
+    select: { id: true },
+  } as any);
+  if (existing) {
+    return existing;
+  }
+
+  const now = new Date();
+  const bill = await params.tx.bills.create({
+    data: {
+      id: crypto.randomUUID(),
+      ownerType: params.ownerType,
+      ownerId,
+      totalAmountCents,
+      paidAmountCents: 0,
+      eventId: params.event.id,
+      slotId: params.occurrence.slotId,
+      occurrenceDate: params.occurrence.occurrenceDate,
+      organizationId: normalizeId(params.event.organizationId),
+      allowSplit: params.ownerType === 'TEAM' ? Boolean(params.event.allowTeamSplitDefault) : false,
+      status: 'OPEN',
+      paymentPlanEnabled: true,
+      createdBy: params.createdBy,
+      lineItems: [
+        {
+          id: 'line_1',
+          type: 'EVENT',
+          label: 'Event registration',
+          amountCents: totalAmountCents,
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+    },
+  } as any);
+
+  const payments = await Promise.all(amounts.map((amount, index) => {
+    const dueDate = new Date(occurrenceStart.getTime());
+    dueDate.setDate(dueDate.getDate() + relativeDueDays[index]);
+    return params.tx.billPayments.create({
+      data: {
+        id: crypto.randomUUID(),
+        billId: bill.id,
+        sequence: index + 1,
+        dueDate,
+        amountCents: amount,
+        status: 'PENDING',
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+  }));
+
+  const nextPayment = payments.sort((left, right) => left.sequence - right.sequence)[0];
+  return params.tx.bills.update({
+    where: { id: bill.id },
+    data: {
+      nextPaymentDue: nextPayment?.dueDate ?? null,
+      nextPaymentAmountCents: nextPayment?.amountCents ?? null,
+      updatedAt: new Date(),
+    },
+  });
+};
 const normalizeEmail = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
   }
   const normalized = value.trim().toLowerCase();
-  return normalized.length ? normalized : null;
-};
-const normalizeId = (value: unknown): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const normalized = value.trim();
   return normalized.length ? normalized : null;
 };
 const isSlotProvisionedTeam = (team: { kind?: unknown; captainId?: unknown; parentTeamId?: unknown }): boolean => (
@@ -159,8 +379,6 @@ const divisionMatchesTarget = (
   }
   return aliases.has(normalizedTarget);
 };
-
-type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
 const refundRequestSelect = {
   id: true,
@@ -809,7 +1027,7 @@ async function updateParticipants(
     }
 
     if (mode === 'add') {
-      await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx) => {
         await claimOrCreateEventTeamSnapshot({
           tx,
           eventId: event.id,
@@ -822,10 +1040,23 @@ async function updateParticipants(
           occurrence: resolvedOccurrence,
         });
         await syncDivisionTeamMembershipFromRegistrations(event, tx);
+        const bill = !canManageCurrentEvent
+          ? await createWeeklyPaymentPlanBillForRegistration({
+            tx,
+            event,
+            ownerType: 'TEAM',
+            ownerId: teamId,
+            divisionSelection,
+            occurrence: resolvedOccurrence,
+            createdBy: session.userId,
+          })
+          : null;
+        return { bill };
       });
       const refreshedEvent = await prisma.events.findUnique({ where: { id: event.id } });
       return NextResponse.json({
         event: withLegacyEvent(refreshedEvent ?? event),
+        bill: result.bill ? withLegacyFields(result.bill) : undefined,
         warnings: warnings.length ? warnings : undefined,
       }, { status: 200 });
     }
@@ -1049,34 +1280,51 @@ async function updateParticipants(
       }
     }
 
-    const registration = await upsertEventRegistration({
-      eventId: event.id,
-      registrantType,
-      registrantId: userId!,
-      parentId,
-      rosterRole: 'PARTICIPANT',
-      status: requiredTemplateIds.length > 0 ? 'STARTED' : 'ACTIVE',
-      ageAtEvent,
-      divisionId: divisionSelection.divisionId,
-      divisionTypeId: divisionSelection.divisionTypeId,
-      divisionTypeKey: divisionSelection.divisionTypeKey,
-      consentDocumentId,
-      consentStatus,
-      createdBy: session.userId,
-      occurrence: resolvedOccurrence,
-    });
-
-    await prisma.invites?.deleteMany?.({
-      where: {
-        type: 'EVENT',
+    const result = await prisma.$transaction(async (tx) => {
+      const registration = await upsertEventRegistration({
         eventId: event.id,
-        userId: session.userId,
-      },
+        registrantType,
+        registrantId: userId!,
+        parentId,
+        rosterRole: 'PARTICIPANT',
+        status: requiredTemplateIds.length > 0 ? 'STARTED' : 'ACTIVE',
+        ageAtEvent,
+        divisionId: divisionSelection.divisionId,
+        divisionTypeId: divisionSelection.divisionTypeId,
+        divisionTypeKey: divisionSelection.divisionTypeKey,
+        consentDocumentId,
+        consentStatus,
+        createdBy: session.userId,
+        occurrence: resolvedOccurrence,
+      }, tx);
+
+      await tx.invites?.deleteMany?.({
+        where: {
+          type: 'EVENT',
+          eventId: event.id,
+          userId: session.userId,
+        },
+      });
+
+      const bill = !canManageCurrentEvent && registrantType === 'SELF' && requiredTemplateIds.length === 0
+        ? await createWeeklyPaymentPlanBillForRegistration({
+          tx,
+          event,
+          ownerType: 'USER',
+          ownerId: userId!,
+          divisionSelection,
+          occurrence: resolvedOccurrence,
+          createdBy: session.userId,
+        })
+        : null;
+
+      return { registration, bill };
     });
 
     return NextResponse.json({
       event: withLegacyEvent(event),
-      registration: withLegacyFields(registration),
+      registration: withLegacyFields(result.registration),
+      bill: result.bill ? withLegacyFields(result.bill) : undefined,
       warnings: warnings.length ? warnings : undefined,
     }, { status: 200 });
   }

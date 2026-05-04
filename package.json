@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "node scripts/dev-with-ngrok.mjs",
-    "dev:plain": "next dev",
+    "dev:plain": "next dev --webpack",
     "build": "next build",
     "migrate:deploy": "prisma migrate deploy",
     "start": "next start",

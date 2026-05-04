@@ -1554,7 +1554,59 @@ function EventScheduleContent() {
   const hasPendingUnsavedChanges = hasUnsavedChanges || formHasUnsavedChanges;
   const isTemplateEvent = (activeEvent?.state ?? '').toUpperCase() === 'TEMPLATE';
   const isHiddenEvent = HIDDEN_EVENT_STATES.has(String(activeEvent?.state ?? 'PUBLISHED').toUpperCase());
-  const isEditingEvent = isTemplateEvent || isPreview || isEditParam;
+  const activeOrganization = useMemo(() => {
+    if (activeEvent && typeof activeEvent.organization === 'object') {
+      return activeEvent.organization as Organization;
+    }
+    return organizationForCreate;
+  }, [activeEvent, organizationForCreate]);
+  const assistantHostIds = useMemo(
+    () =>
+      Array.isArray(activeEvent?.assistantHostIds)
+        ? activeEvent.assistantHostIds.map((id) => String(id)).filter((id) => id.length > 0)
+        : [],
+    [activeEvent?.assistantHostIds],
+  );
+  const eventOfficialIds = useMemo(() => {
+    const activeEventOfficialIds = Array.isArray(activeEvent?.eventOfficials)
+      ? activeEvent.eventOfficials
+          .filter((officialEntry) => officialEntry?.isActive !== false)
+          .map((officialEntry) => normalizeIdToken(officialEntry?.userId))
+          .filter((officialId): officialId is string => Boolean(officialId))
+      : [];
+
+    if (activeEventOfficialIds.length > 0) {
+      return activeEventOfficialIds;
+    }
+
+    return Array.isArray(activeEvent?.officialIds)
+      ? activeEvent.officialIds
+          .map((officialId) => normalizeIdToken(officialId))
+          .filter((officialId): officialId is string => Boolean(officialId))
+      : [];
+  }, [activeEvent?.eventOfficials, activeEvent?.officialIds]);
+  const isPrimaryHost = activeEvent?.hostId === user?.$id;
+  const isAssistantHost = Boolean(user?.$id && assistantHostIds.includes(user.$id));
+  const isEventOfficial = Boolean(
+    user?.$id && eventOfficialIds.includes(user.$id),
+  );
+  const isOrganizationManager = Boolean(
+    activeOrganization?.viewerCanManageOrganization
+      || (
+        user?.$id
+          && activeOrganization
+          && (
+            activeOrganization.ownerId === user.$id
+            || (activeOrganization.staffMembers ?? []).some((staffMember) => (
+              staffMember.userId === user.$id
+                && !staffMember.invite
+                && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
+            ))
+          )
+      ),
+  );
+  const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
+  const isEditingEvent = isTemplateEvent || ((isPreview || isEditParam) && canManageEvent);
   const activeMatches = usingChangeCopies ? changesMatches : matches;
   const matchConflictsById = useMemo<Record<string, string[]>>(
     () => detectMatchConflictsById(activeMatches),
@@ -1890,58 +1942,6 @@ function EventScheduleContent() {
     };
   }, [activeEventId, activeEventType, isCreateMode, selectedStandingsDivision]);
 
-  const activeOrganization = useMemo(() => {
-    if (activeEvent && typeof activeEvent.organization === 'object') {
-      return activeEvent.organization as Organization;
-    }
-    return organizationForCreate;
-  }, [activeEvent, organizationForCreate]);
-  const assistantHostIds = useMemo(
-    () =>
-      Array.isArray(activeEvent?.assistantHostIds)
-        ? activeEvent.assistantHostIds.map((id) => String(id)).filter((id) => id.length > 0)
-        : [],
-    [activeEvent?.assistantHostIds],
-  );
-  const eventOfficialIds = useMemo(() => {
-    const activeEventOfficialIds = Array.isArray(activeEvent?.eventOfficials)
-      ? activeEvent.eventOfficials
-          .filter((officialEntry) => officialEntry?.isActive !== false)
-          .map((officialEntry) => normalizeIdToken(officialEntry?.userId))
-          .filter((officialId): officialId is string => Boolean(officialId))
-      : [];
-
-    if (activeEventOfficialIds.length > 0) {
-      return activeEventOfficialIds;
-    }
-
-    return Array.isArray(activeEvent?.officialIds)
-      ? activeEvent.officialIds
-          .map((officialId) => normalizeIdToken(officialId))
-          .filter((officialId): officialId is string => Boolean(officialId))
-      : [];
-  }, [activeEvent?.eventOfficials, activeEvent?.officialIds]);
-  const isPrimaryHost = activeEvent?.hostId === user?.$id;
-  const isAssistantHost = Boolean(user?.$id && assistantHostIds.includes(user.$id));
-  const isEventOfficial = Boolean(
-    user?.$id && eventOfficialIds.includes(user.$id),
-  );
-  const isOrganizationManager = Boolean(
-    activeOrganization?.viewerCanManageOrganization
-      || (
-        user?.$id
-          && activeOrganization
-          && (
-            activeOrganization.ownerId === user.$id
-            || (activeOrganization.staffMembers ?? []).some((staffMember) => (
-              staffMember.userId === user.$id
-                && !staffMember.invite
-                && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
-            ))
-          )
-      ),
-  );
-  const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
   const canUseTeamCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup);
   const canUseUserCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup === false);
   const canManageStandings = Boolean(canManageEvent && !isPreview && !isCreateMode);
@@ -4579,13 +4579,17 @@ function EventScheduleContent() {
 
   const handleEnterEditMode = useCallback(() => {
     if (!pathname) return;
+    if (!canManageEvent) {
+      setWarningMessage('You do not have permission to manage this event.');
+      return;
+    }
     setSelectedLifecycleStatus(null);
     setFormHasUnsavedChanges(false);
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.set('mode', 'edit');
     const query = params.toString();
     router.replace(`${pathname}${query ? `?${query}` : ''}`, { scroll: false });
-  }, [pathname, router, searchParams]);
+  }, [canManageEvent, pathname, router, searchParams]);
 
   const handleLifecycleStatusChange = useCallback((value: string | null) => {
     if (!value) return;
@@ -8400,7 +8404,7 @@ function EventScheduleContent() {
 
   const leagueConfig = activeEvent.leagueConfig;
   const hasNetworkActionInFlight = publishing || reschedulingMatches || cancelling || creatingTemplate;
-  const showEditActionButton = !isCreateMode && !isTemplateEvent && !isEditingEvent;
+  const showEditActionButton = canManageEvent && !isCreateMode && !isTemplateEvent && !isEditingEvent;
   const showSaveActionButton = isCreateMode || isEditingEvent;
   const showRescheduleActionButton = isEditingEvent && (isLeague || isTournament);
   const showBuildBracketsActionButton = isEditingEvent && (
@@ -8440,7 +8444,7 @@ function EventScheduleContent() {
                       variant="transparent"
                       color="red"
                       size="xs"
-                      aria-label="Clear selected occurrence"
+                      aria-label="Clear selected session"
                       onClick={() => updateWeeklyOccurrenceSelection(null)}
                     >
                       ×
@@ -8676,7 +8680,7 @@ function EventScheduleContent() {
                   <Group justify="space-between" align="center">
                     <Text size="sm" c="dimmed">
                       {weeklyParticipantSelectionRequired
-                        ? 'Select an occurrence from the Schedule tab to manage weekly participants.'
+                        ? 'Select a session from the Schedule tab to manage weekly participants.'
                         : activeEvent?.teamSignup === false
                         ? (
                           participantUsers.length === 1
@@ -8737,7 +8741,7 @@ function EventScheduleContent() {
 
                   {weeklyParticipantSelectionRequired ? (
                     <Paper withBorder radius="md" p="xl" ta="center">
-                      <Text>Select an occurrence in the Schedule tab before viewing or managing participants.</Text>
+                      <Text>Select a session in the Schedule tab before viewing or managing participants.</Text>
                     </Paper>
                   ) : participantsLoading ? (
                     <Paper withBorder radius="md" p="xl">
@@ -8969,7 +8973,7 @@ function EventScheduleContent() {
                   <Stack gap="sm">
                     <Group justify="space-between" align="center" wrap="wrap">
                       <Text size="sm" c="dimmed">
-                        Select a weekly occurrence to scope participants, billing, and compliance.
+                        Select a weekly session to scope participants, billing, and compliance.
                       </Text>
                       {selectedWeeklyOccurrenceOption && (
                         <Button variant="subtle" color="red" onClick={() => updateWeeklyOccurrenceSelection(null)}>
@@ -8979,7 +8983,7 @@ function EventScheduleContent() {
                     </Group>
                     {weeklyScheduleOccurrenceOptions.length === 0 && (
                       <Paper withBorder radius="md" p="xl" ta="center">
-                        <Text>No weekly occurrences are available for this calendar range.</Text>
+                        <Text>No weekly sessions are available for this calendar range.</Text>
                       </Paper>
                     )}
                     <LeagueCalendarView

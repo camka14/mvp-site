@@ -100,6 +100,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'allowPaymentPlans',
   'installmentCount',
   'installmentDueDates',
+  'installmentDueRelativeDays',
   'installmentAmounts',
   'allowTeamSplitDefault',
   'splitLeaguePlayoffDivisions',
@@ -541,6 +542,16 @@ const normalizeInstallmentDateList = (value: unknown): string[] => {
     .map((entry) => entry.toISOString());
 };
 
+const normalizeInstallmentRelativeDayList = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+    .filter((entry) => Number.isFinite(entry))
+    .map((entry) => Math.trunc(entry));
+};
+
 const normalizeInputNullableNumber = (value: unknown): number | null | undefined => {
   if (value === undefined) {
     return undefined;
@@ -676,6 +687,9 @@ const normalizeDivisionDetailsInput = (
     const parsedInstallmentDueDates = Object.prototype.hasOwnProperty.call(row, 'installmentDueDates')
       ? normalizeInstallmentDateList(row.installmentDueDates)
       : undefined;
+    const parsedInstallmentDueRelativeDays = Object.prototype.hasOwnProperty.call(row, 'installmentDueRelativeDays')
+      ? normalizeInstallmentRelativeDayList(row.installmentDueRelativeDays)
+      : undefined;
     const parsedInstallmentAmounts = Object.prototype.hasOwnProperty.call(row, 'installmentAmounts')
       ? normalizeInstallmentAmountList(row.installmentAmounts)
       : undefined;
@@ -727,6 +741,7 @@ const normalizeDivisionDetailsInput = (
         return parsedInstallmentCount;
       })(),
       installmentDueDates: parsedInstallmentDueDates,
+      installmentDueRelativeDays: parsedInstallmentDueRelativeDays,
       installmentAmounts: parsedInstallmentAmounts,
       ageCutoffDate: ageEligibility.applies ? ageEligibility.cutoffDate.toISOString() : null,
       ageCutoffLabel: ageEligibility.message ?? null,
@@ -916,6 +931,7 @@ const getDivisionDetailsForEvent = async (
     allowPaymentPlans?: boolean | null;
     installmentCount?: number | null;
     installmentDueDates?: unknown;
+    installmentDueRelativeDays?: unknown;
     installmentAmounts?: unknown;
   },
 ): Promise<Array<Record<string, unknown>>> => {
@@ -947,6 +963,7 @@ const getDivisionDetailsForEvent = async (
       allowPaymentPlans: true,
       installmentCount: true,
       installmentDueDates: true,
+      installmentDueRelativeDays: true,
       installmentAmounts: true,
       divisionTypeId: true,
       divisionTypeName: true,
@@ -1049,6 +1066,9 @@ const getDivisionDetailsForEvent = async (
           .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
           .map((entry) => entry.toISOString())
         : normalizeInstallmentDateList(eventDefaults?.installmentDueDates),
+      installmentDueRelativeDays: Array.isArray((row as any)?.installmentDueRelativeDays)
+        ? normalizeInstallmentRelativeDayList((row as any).installmentDueRelativeDays)
+        : normalizeInstallmentRelativeDayList(eventDefaults?.installmentDueRelativeDays),
       installmentAmounts: Array.isArray(row?.installmentAmounts)
         ? normalizeInstallmentAmountList(row.installmentAmounts)
         : normalizeInstallmentAmountList(eventDefaults?.installmentAmounts),
@@ -1399,6 +1419,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       allowPaymentPlans: event.allowPaymentPlans,
       installmentCount: event.installmentCount,
       installmentDueDates: event.installmentDueDates,
+      installmentDueRelativeDays: (event as any).installmentDueRelativeDays,
       installmentAmounts: event.installmentAmounts,
     }),
     getDivisionDetailsForEvent(eventId, playoffDivisionKeys, event.start, {
@@ -1408,6 +1429,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       allowPaymentPlans: event.allowPaymentPlans,
       installmentCount: event.installmentCount,
       installmentDueDates: event.installmentDueDates,
+      installmentDueRelativeDays: (event as any).installmentDueRelativeDays,
       installmentAmounts: event.installmentAmounts,
     }),
     prisma.invites.findMany({
@@ -1610,6 +1632,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       const targetEventType = typeof targetEventTypeRaw === 'string'
         ? targetEventTypeRaw.toUpperCase()
         : targetEventTypeRaw;
+      const targetParentEvent = normalizeEntityId(data.parentEvent ?? existing.parentEvent ?? null);
+      const targetIsWeeklyParent = targetEventType === 'WEEKLY_EVENT' && !targetParentEvent;
+      if (Object.prototype.hasOwnProperty.call(payload, 'installmentDueRelativeDays')) {
+        data.installmentDueRelativeDays = targetIsWeeklyParent
+          ? normalizeInstallmentRelativeDayList(payload.installmentDueRelativeDays)
+          : [];
+      } else if (!targetIsWeeklyParent && existing.eventType === 'WEEKLY_EVENT') {
+        data.installmentDueRelativeDays = [];
+      }
+      if (targetIsWeeklyParent && Object.prototype.hasOwnProperty.call(data, 'installmentDueDates')) {
+        data.installmentDueDates = [];
+      }
       if (targetEventType !== 'LEAGUE') {
         data.splitLeaguePlayoffDivisions = false;
       } else if (Object.prototype.hasOwnProperty.call(payload, 'splitLeaguePlayoffDivisions')) {
@@ -2181,10 +2215,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         return parsed;
       })();
       const defaultDivisionInstallmentDueDates = normalizeInstallmentDateList(
-        Object.prototype.hasOwnProperty.call(data, 'installmentDueDates')
-          ? data.installmentDueDates
-          : existing.installmentDueDates,
+        targetIsWeeklyParent
+          ? []
+          : Object.prototype.hasOwnProperty.call(data, 'installmentDueDates')
+            ? data.installmentDueDates
+            : existing.installmentDueDates,
       );
+      const defaultDivisionInstallmentDueRelativeDays = targetIsWeeklyParent
+        ? normalizeInstallmentRelativeDayList(
+          Object.prototype.hasOwnProperty.call(data, 'installmentDueRelativeDays')
+            ? data.installmentDueRelativeDays
+            : (existing as any).installmentDueRelativeDays,
+        )
+        : [];
       const defaultDivisionInstallmentAmounts = normalizeInstallmentAmountList(
         Object.prototype.hasOwnProperty.call(data, 'installmentAmounts')
           ? data.installmentAmounts
@@ -2210,7 +2253,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           defaultAllowPaymentPlans: defaultDivisionAllowPaymentPlans,
           defaultInstallmentCount: defaultDivisionInstallmentCount,
           defaultInstallmentDueDates: defaultDivisionInstallmentDueDates,
+          defaultInstallmentDueRelativeDays: defaultDivisionInstallmentDueRelativeDays,
           defaultInstallmentAmounts: defaultDivisionInstallmentAmounts,
+          eventType: nextEventTypeRaw,
         }, tx as any);
       }
 
@@ -2247,6 +2292,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         allowPaymentPlans: updated.allowPaymentPlans,
         installmentCount: updated.installmentCount,
         installmentDueDates: updated.installmentDueDates,
+        installmentDueRelativeDays: (updated as any).installmentDueRelativeDays,
         installmentAmounts: updated.installmentAmounts,
       }),
       getDivisionDetailsForEvent(eventId, playoffDivisionKeys, updated.start, {
@@ -2256,6 +2302,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         allowPaymentPlans: updated.allowPaymentPlans,
         installmentCount: updated.installmentCount,
         installmentDueDates: updated.installmentDueDates,
+        installmentDueRelativeDays: (updated as any).installmentDueRelativeDays,
         installmentAmounts: updated.installmentAmounts,
       }),
       getEventParticipantIdsForEvent(eventId),

@@ -707,6 +707,7 @@ type DivisionDetailPayload = {
   allowPaymentPlans?: boolean | null;
   installmentCount?: number | null;
   installmentDueDates?: string[];
+  installmentDueRelativeDays?: number[];
   installmentAmounts?: number[];
   ageCutoffDate: string | null;
   ageCutoffLabel: string | null;
@@ -783,6 +784,12 @@ const normalizeDivisionDetailsPayload = (
           .map((value) => normalizeIsoDateString(value))
           .filter((value): value is string => Boolean(value))
         : undefined;
+      const rawInstallmentDueRelativeDays = Array.isArray(row.installmentDueRelativeDays)
+        ? row.installmentDueRelativeDays
+          .map((value) => (typeof value === 'number' ? value : Number(value)))
+          .filter((value) => Number.isFinite(value))
+          .map((value) => Math.trunc(value))
+        : undefined;
       const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
         ? row.installmentAmounts
           .map((value) => (typeof value === 'number' ? value : Number(value)))
@@ -826,6 +833,7 @@ const normalizeDivisionDetailsPayload = (
             ? null
             : Math.max(0, Math.trunc(rawInstallmentCount)),
         installmentDueDates: rawInstallmentDueDates,
+        installmentDueRelativeDays: rawInstallmentDueRelativeDays,
         installmentAmounts: rawInstallmentAmounts,
         ageCutoffDate: normalizeIsoDateString(row.ageCutoffDate),
         ageCutoffLabel: typeof row.ageCutoffLabel === 'string' ? row.ageCutoffLabel : null,
@@ -1030,6 +1038,16 @@ const normalizeInstallmentDateList = (value: unknown): string[] => {
   return value
     .map((entry) => normalizeIsoDateString(entry))
     .filter((entry): entry is string => Boolean(entry));
+};
+
+const normalizeInstallmentRelativeDayList = (value: unknown): number[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+    .filter((entry) => Number.isFinite(entry))
+    .map((entry) => Math.trunc(entry));
 };
 
 const resolveDivisionValue = <T>(
@@ -2367,6 +2385,7 @@ export const loadEventWithRelations = async (
     allowPaymentPlans: Boolean(event.allowPaymentPlans),
     installmentCount: event.installmentCount ?? 0,
     installmentDueDates: ensureArray(event.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[],
+    installmentDueRelativeDays: normalizeInstallmentRelativeDayList((event as any).installmentDueRelativeDays),
     installmentAmounts: ensureNumberArray(event.installmentAmounts),
     allowTeamSplitDefault: Boolean(event.allowTeamSplitDefault),
     sportId: event.sportId ?? '',
@@ -2892,10 +2911,13 @@ export const syncEventDivisions = async (
     defaultAllowPaymentPlans?: boolean | null;
     defaultInstallmentCount?: number | null;
     defaultInstallmentDueDates?: string[];
+    defaultInstallmentDueRelativeDays?: number[];
     defaultInstallmentAmounts?: number[];
+    eventType?: string | null;
   },
   client: PrismaLike = prisma,
 ) => {
+  const usesRelativeInstallmentDueDates = String(params.eventType ?? '').toUpperCase() === 'WEEKLY_EVENT';
   const normalizedDivisionIds = normalizeDivisionIdentifierList(params.divisionIds, params.eventId);
   const divisionIds = normalizedDivisionIds.length
     ? normalizedDivisionIds
@@ -2948,6 +2970,7 @@ export const syncEventDivisions = async (
       allowPaymentPlans: true,
       installmentCount: true,
       installmentDueDates: true,
+      installmentDueRelativeDays: true,
       installmentAmounts: true,
       divisionTypeId: true,
       divisionTypeName: true,
@@ -3216,7 +3239,12 @@ export const syncEventDivisions = async (
       );
 
     const fallbackInstallmentAmounts = normalizeInstallmentAmountList(params.defaultInstallmentAmounts ?? []);
-    const fallbackInstallmentDueDates = normalizeInstallmentDateList(params.defaultInstallmentDueDates ?? []);
+    const fallbackInstallmentDueDates = usesRelativeInstallmentDueDates
+      ? []
+      : normalizeInstallmentDateList(params.defaultInstallmentDueDates ?? []);
+    const fallbackInstallmentDueRelativeDays = usesRelativeInstallmentDueDates
+      ? normalizeInstallmentRelativeDayList(params.defaultInstallmentDueRelativeDays ?? [])
+      : [];
     const installmentAmounts = allowPaymentPlans
       ? resolveDivisionValue(
         detail?.installmentAmounts,
@@ -3226,13 +3254,22 @@ export const syncEventDivisions = async (
         fallbackInstallmentAmounts,
       ) ?? []
       : [];
-    const installmentDueDates = allowPaymentPlans
+    const installmentDueDates = allowPaymentPlans && !usesRelativeInstallmentDueDates
       ? resolveDivisionValue(
         detail?.installmentDueDates,
         Array.isArray(existing?.installmentDueDates)
           ? normalizeInstallmentDateList(existing.installmentDueDates)
           : undefined,
         fallbackInstallmentDueDates,
+      ) ?? []
+      : [];
+    const installmentDueRelativeDays = allowPaymentPlans && usesRelativeInstallmentDueDates
+      ? resolveDivisionValue(
+        detail?.installmentDueRelativeDays,
+        Array.isArray((existing as any)?.installmentDueRelativeDays)
+          ? normalizeInstallmentRelativeDayList((existing as any).installmentDueRelativeDays)
+          : undefined,
+        fallbackInstallmentDueRelativeDays,
       ) ?? []
       : [];
     const resolvedInstallmentCount = allowPaymentPlans
@@ -3270,6 +3307,7 @@ export const syncEventDivisions = async (
       allowPaymentPlans,
       installmentCount,
       installmentDueDates,
+      installmentDueRelativeDays,
       installmentAmounts,
       minRating: ratings.minRating,
       maxRating: ratings.maxRating,
@@ -3334,6 +3372,7 @@ export const syncEventDivisions = async (
         installmentDueDates: entry.installmentDueDates
           .map((value) => new Date(value))
           .filter((value) => !Number.isNaN(value.getTime())),
+        installmentDueRelativeDays: entry.installmentDueRelativeDays,
         installmentAmounts: entry.installmentAmounts,
         divisionTypeId: entry.divisionTypeId,
         divisionTypeName: entry.divisionTypeName,
@@ -3368,6 +3407,7 @@ export const syncEventDivisions = async (
         installmentDueDates: entry.installmentDueDates
           .map((value) => new Date(value))
           .filter((value) => !Number.isNaN(value.getTime())),
+        installmentDueRelativeDays: entry.installmentDueRelativeDays,
         installmentAmounts: entry.installmentAmounts,
         divisionTypeId: entry.divisionTypeId,
         divisionTypeName: entry.divisionTypeName,
@@ -3732,7 +3772,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     ? (payload.installmentCount ?? null)
     : 0;
   const normalizedEventInstallmentDueDates = billingOwnerHasStripeAccount
-    ? (ensureArray(payload.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[])
+    ? (isWeeklyParent ? [] : (ensureArray(payload.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[]))
+    : [];
+  const normalizedEventInstallmentDueRelativeDays = billingOwnerHasStripeAccount && isWeeklyParent
+    ? normalizeInstallmentRelativeDayList(payload.installmentDueRelativeDays)
     : [];
   const normalizedEventInstallmentAmounts = billingOwnerHasStripeAccount
     ? ensureNumberArray(payload.installmentAmounts)
@@ -3834,6 +3877,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     allowPaymentPlans: normalizedEventAllowPaymentPlans,
     installmentCount: normalizedEventInstallmentCount,
     installmentDueDates: normalizedEventInstallmentDueDates,
+    installmentDueRelativeDays: normalizedEventInstallmentDueRelativeDays,
     installmentAmounts: normalizedEventInstallmentAmounts,
     allowTeamSplitDefault: payload.allowTeamSplitDefault ?? null,
     splitLeaguePlayoffDivisions,
@@ -3882,7 +3926,10 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     return parsed ?? null;
   })();
   const defaultDivisionInstallmentDueDates = billingOwnerHasStripeAccount
-    ? normalizeInstallmentDateList(payload.installmentDueDates)
+    ? (isWeeklyParent ? [] : normalizeInstallmentDateList(payload.installmentDueDates))
+    : [];
+  const defaultDivisionInstallmentDueRelativeDays = billingOwnerHasStripeAccount && isWeeklyParent
+    ? normalizeInstallmentRelativeDayList(payload.installmentDueRelativeDays)
     : [];
   const defaultDivisionInstallmentAmounts = billingOwnerHasStripeAccount
     ? normalizeInstallmentAmountList(payload.installmentAmounts)
@@ -3923,7 +3970,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     defaultAllowPaymentPlans: defaultDivisionAllowPaymentPlans,
     defaultInstallmentCount: defaultDivisionInstallmentCount,
     defaultInstallmentDueDates: defaultDivisionInstallmentDueDates,
+    defaultInstallmentDueRelativeDays: defaultDivisionInstallmentDueRelativeDays,
     defaultInstallmentAmounts: defaultDivisionInstallmentAmounts,
+    eventType: nextEventType,
   }, client);
 
   const removedFieldIds = existingFieldIds.filter((fieldId) => !allowedFieldIdSet.has(fieldId));

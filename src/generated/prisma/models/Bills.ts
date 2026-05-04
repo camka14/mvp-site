@@ -46,6 +46,8 @@ export type BillsMinAggregateOutputType = {
   ownerId: string | null
   organizationId: string | null
   eventId: string | null
+  slotId: string | null
+  occurrenceDate: string | null
   totalAmountCents: number | null
   paidAmountCents: number | null
   nextPaymentDue: Date | null
@@ -65,6 +67,8 @@ export type BillsMaxAggregateOutputType = {
   ownerId: string | null
   organizationId: string | null
   eventId: string | null
+  slotId: string | null
+  occurrenceDate: string | null
   totalAmountCents: number | null
   paidAmountCents: number | null
   nextPaymentDue: Date | null
@@ -84,6 +88,8 @@ export type BillsCountAggregateOutputType = {
   ownerId: number
   organizationId: number
   eventId: number
+  slotId: number
+  occurrenceDate: number
   totalAmountCents: number
   paidAmountCents: number
   nextPaymentDue: number
@@ -118,6 +124,8 @@ export type BillsMinAggregateInputType = {
   ownerId?: true
   organizationId?: true
   eventId?: true
+  slotId?: true
+  occurrenceDate?: true
   totalAmountCents?: true
   paidAmountCents?: true
   nextPaymentDue?: true
@@ -137,6 +145,8 @@ export type BillsMaxAggregateInputType = {
   ownerId?: true
   organizationId?: true
   eventId?: true
+  slotId?: true
+  occurrenceDate?: true
   totalAmountCents?: true
   paidAmountCents?: true
   nextPaymentDue?: true
@@ -156,6 +166,8 @@ export type BillsCountAggregateInputType = {
   ownerId?: true
   organizationId?: true
   eventId?: true
+  slotId?: true
+  occurrenceDate?: true
   totalAmountCents?: true
   paidAmountCents?: true
   nextPaymentDue?: true
@@ -263,6 +275,8 @@ export type BillsGroupByOutputType = {
   ownerId: string
   organizationId: string | null
   eventId: string | null
+  slotId: string | null
+  occurrenceDate: string | null
   totalAmountCents: number
   paidAmountCents: number | null
   nextPaymentDue: Date | null
@@ -306,6 +320,8 @@ export type BillsWhereInput = {
   ownerId?: Prisma.StringFilter<"Bills"> | string
   organizationId?: Prisma.StringNullableFilter<"Bills"> | string | null
   eventId?: Prisma.StringNullableFilter<"Bills"> | string | null
+  slotId?: Prisma.StringNullableFilter<"Bills"> | string | null
+  occurrenceDate?: Prisma.StringNullableFilter<"Bills"> | string | null
   totalAmountCents?: Prisma.IntFilter<"Bills"> | number
   paidAmountCents?: Prisma.IntNullableFilter<"Bills"> | number | null
   nextPaymentDue?: Prisma.DateTimeNullableFilter<"Bills"> | Date | string | null
@@ -326,6 +342,8 @@ export type BillsOrderByWithRelationInput = {
   ownerId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
+  slotId?: Prisma.SortOrderInput | Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrderInput | Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
   paidAmountCents?: Prisma.SortOrderInput | Prisma.SortOrder
   nextPaymentDue?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -349,6 +367,8 @@ export type BillsWhereUniqueInput = Prisma.AtLeast<{
   ownerId?: Prisma.StringFilter<"Bills"> | string
   organizationId?: Prisma.StringNullableFilter<"Bills"> | string | null
   eventId?: Prisma.StringNullableFilter<"Bills"> | string | null
+  slotId?: Prisma.StringNullableFilter<"Bills"> | string | null
+  occurrenceDate?: Prisma.StringNullableFilter<"Bills"> | string | null
   totalAmountCents?: Prisma.IntFilter<"Bills"> | number
   paidAmountCents?: Prisma.IntNullableFilter<"Bills"> | number | null
   nextPaymentDue?: Prisma.DateTimeNullableFilter<"Bills"> | Date | string | null
@@ -369,6 +389,8 @@ export type BillsOrderByWithAggregationInput = {
   ownerId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
+  slotId?: Prisma.SortOrderInput | Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrderInput | Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
   paidAmountCents?: Prisma.SortOrderInput | Prisma.SortOrder
   nextPaymentDue?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -397,6 +419,8 @@ export type BillsScalarWhereWithAggregatesInput = {
   ownerId?: Prisma.StringWithAggregatesFilter<"Bills"> | string
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"Bills"> | string | null
   eventId?: Prisma.StringNullableWithAggregatesFilter<"Bills"> | string | null
+  slotId?: Prisma.StringNullableWithAggregatesFilter<"Bills"> | string | null
+  occurrenceDate?: Prisma.StringNullableWithAggregatesFilter<"Bills"> | string | null
   totalAmountCents?: Prisma.IntWithAggregatesFilter<"Bills"> | number
   paidAmountCents?: Prisma.IntNullableWithAggregatesFilter<"Bills"> | number | null
   nextPaymentDue?: Prisma.DateTimeNullableWithAggregatesFilter<"Bills"> | Date | string | null
@@ -417,6 +441,8 @@ export type BillsCreateInput = {
   ownerId: string
   organizationId?: string | null
   eventId?: string | null
+  slotId?: string | null
+  occurrenceDate?: string | null
   totalAmountCents: number
   paidAmountCents?: number | null
   nextPaymentDue?: Date | string | null
@@ -437,6 +463,8 @@ export type BillsUncheckedCreateInput = {
   ownerId: string
   organizationId?: string | null
   eventId?: string | null
+  slotId?: string | null
+  occurrenceDate?: string | null
   totalAmountCents: number
   paidAmountCents?: number | null
   nextPaymentDue?: Date | string | null
@@ -457,6 +485,8 @@ export type BillsUpdateInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
   paidAmountCents?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   nextPaymentDue?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -477,6 +507,8 @@ export type BillsUncheckedUpdateInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
   paidAmountCents?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   nextPaymentDue?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -497,6 +529,8 @@ export type BillsCreateManyInput = {
   ownerId: string
   organizationId?: string | null
   eventId?: string | null
+  slotId?: string | null
+  occurrenceDate?: string | null
   totalAmountCents: number
   paidAmountCents?: number | null
   nextPaymentDue?: Date | string | null
@@ -517,6 +551,8 @@ export type BillsUpdateManyMutationInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
   paidAmountCents?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   nextPaymentDue?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -537,6 +573,8 @@ export type BillsUncheckedUpdateManyInput = {
   ownerId?: Prisma.StringFieldUpdateOperationsInput | string
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  slotId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  occurrenceDate?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   totalAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
   paidAmountCents?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   nextPaymentDue?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -557,6 +595,8 @@ export type BillsCountOrderByAggregateInput = {
   ownerId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  slotId?: Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
   paidAmountCents?: Prisma.SortOrder
   nextPaymentDue?: Prisma.SortOrder
@@ -583,6 +623,8 @@ export type BillsMaxOrderByAggregateInput = {
   ownerId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  slotId?: Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
   paidAmountCents?: Prisma.SortOrder
   nextPaymentDue?: Prisma.SortOrder
@@ -602,6 +644,8 @@ export type BillsMinOrderByAggregateInput = {
   ownerId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
+  slotId?: Prisma.SortOrder
+  occurrenceDate?: Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
   paidAmountCents?: Prisma.SortOrder
   nextPaymentDue?: Prisma.SortOrder
@@ -637,6 +681,8 @@ export type BillsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs = 
   ownerId?: boolean
   organizationId?: boolean
   eventId?: boolean
+  slotId?: boolean
+  occurrenceDate?: boolean
   totalAmountCents?: boolean
   paidAmountCents?: boolean
   nextPaymentDue?: boolean
@@ -657,6 +703,8 @@ export type BillsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensi
   ownerId?: boolean
   organizationId?: boolean
   eventId?: boolean
+  slotId?: boolean
+  occurrenceDate?: boolean
   totalAmountCents?: boolean
   paidAmountCents?: boolean
   nextPaymentDue?: boolean
@@ -677,6 +725,8 @@ export type BillsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensi
   ownerId?: boolean
   organizationId?: boolean
   eventId?: boolean
+  slotId?: boolean
+  occurrenceDate?: boolean
   totalAmountCents?: boolean
   paidAmountCents?: boolean
   nextPaymentDue?: boolean
@@ -697,6 +747,8 @@ export type BillsSelectScalar = {
   ownerId?: boolean
   organizationId?: boolean
   eventId?: boolean
+  slotId?: boolean
+  occurrenceDate?: boolean
   totalAmountCents?: boolean
   paidAmountCents?: boolean
   nextPaymentDue?: boolean
@@ -709,7 +761,7 @@ export type BillsSelectScalar = {
   lineItems?: boolean
 }
 
-export type BillsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "ownerType" | "ownerId" | "organizationId" | "eventId" | "totalAmountCents" | "paidAmountCents" | "nextPaymentDue" | "nextPaymentAmountCents" | "parentBillId" | "allowSplit" | "status" | "paymentPlanEnabled" | "createdBy" | "lineItems", ExtArgs["result"]["bills"]>
+export type BillsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "ownerType" | "ownerId" | "organizationId" | "eventId" | "slotId" | "occurrenceDate" | "totalAmountCents" | "paidAmountCents" | "nextPaymentDue" | "nextPaymentAmountCents" | "parentBillId" | "allowSplit" | "status" | "paymentPlanEnabled" | "createdBy" | "lineItems", ExtArgs["result"]["bills"]>
 
 export type $BillsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Bills"
@@ -722,6 +774,8 @@ export type $BillsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs 
     ownerId: string
     organizationId: string | null
     eventId: string | null
+    slotId: string | null
+    occurrenceDate: string | null
     totalAmountCents: number
     paidAmountCents: number | null
     nextPaymentDue: Date | null
@@ -1162,6 +1216,8 @@ export interface BillsFieldRefs {
   readonly ownerId: Prisma.FieldRef<"Bills", 'String'>
   readonly organizationId: Prisma.FieldRef<"Bills", 'String'>
   readonly eventId: Prisma.FieldRef<"Bills", 'String'>
+  readonly slotId: Prisma.FieldRef<"Bills", 'String'>
+  readonly occurrenceDate: Prisma.FieldRef<"Bills", 'String'>
   readonly totalAmountCents: Prisma.FieldRef<"Bills", 'Int'>
   readonly paidAmountCents: Prisma.FieldRef<"Bills", 'Int'>
   readonly nextPaymentDue: Prisma.FieldRef<"Bills", 'DateTime'>
