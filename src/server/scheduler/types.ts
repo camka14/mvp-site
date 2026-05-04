@@ -686,6 +686,7 @@ export class Tournament {
   allowPaymentPlans: boolean;
   installmentCount: number;
   installmentDueDates: Date[];
+  installmentDueRelativeDays: number[];
   installmentAmounts: number[];
   allowTeamSplitDefault: boolean;
   sportId: string;
@@ -759,6 +760,7 @@ export class Tournament {
     allowPaymentPlans?: boolean;
     installmentCount?: number;
     installmentDueDates?: Date[];
+    installmentDueRelativeDays?: number[];
     installmentAmounts?: number[];
     allowTeamSplitDefault?: boolean;
     sportId?: string;
@@ -831,6 +833,7 @@ export class Tournament {
     this.allowPaymentPlans = params.allowPaymentPlans ?? false;
     this.installmentCount = params.installmentCount ?? 0;
     this.installmentDueDates = params.installmentDueDates ?? [];
+    this.installmentDueRelativeDays = params.installmentDueRelativeDays ?? [];
     this.installmentAmounts = params.installmentAmounts ?? [];
     this.allowTeamSplitDefault = params.allowTeamSplitDefault ?? false;
     this.sportId = params.sportId ?? '';

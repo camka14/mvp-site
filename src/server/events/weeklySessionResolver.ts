@@ -170,6 +170,9 @@ const buildChildPayload = (
     allowPaymentPlans: parent.allowPaymentPlans,
     installmentCount: parent.installmentCount,
     installmentDueDates: Array.isArray(parent.installmentDueDates) ? parent.installmentDueDates : [],
+    installmentDueRelativeDays: Array.isArray((parent as any).installmentDueRelativeDays)
+      ? (parent as any).installmentDueRelativeDays
+      : [],
     installmentAmounts: Array.isArray(parent.installmentAmounts) ? parent.installmentAmounts : [],
     allowTeamSplitDefault: parent.allowTeamSplitDefault,
     registrationByDivisionType: parent.registrationByDivisionType,

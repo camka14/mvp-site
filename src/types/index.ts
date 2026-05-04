@@ -47,6 +47,7 @@ export interface Division {
   allowPaymentPlans?: boolean;
   installmentCount?: number;
   installmentDueDates?: string[];
+  installmentDueRelativeDays?: number[];
   installmentAmounts?: number[];
   fieldIds?: string[];
   teamIds?: string[];
@@ -639,6 +640,7 @@ export interface Event {
   allowPaymentPlans?: boolean;
   installmentCount?: number;
   installmentDueDates?: string[];
+  installmentDueRelativeDays?: number[];
   installmentAmounts?: number[];
   allowTeamSplitDefault?: boolean;
   registrationByDivisionType?: boolean;
@@ -1306,6 +1308,12 @@ export function toEventPayload(event: Event): EventPayload {
             ? division.installmentDueDates
                 .map((entry) => (typeof entry === 'string' ? entry : String(entry)))
                 .filter((entry) => entry.trim().length > 0)
+            : undefined,
+          installmentDueRelativeDays: Array.isArray(division.installmentDueRelativeDays)
+            ? division.installmentDueRelativeDays
+                .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+                .filter((entry) => Number.isFinite(entry))
+                .map((entry) => Math.trunc(entry))
             : undefined,
           installmentAmounts: Array.isArray(division.installmentAmounts)
             ? division.installmentAmounts

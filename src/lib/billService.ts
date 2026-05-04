@@ -25,9 +25,12 @@ class BillService {
         ownerId: string;
         totalAmountCents: number;
         eventId?: string | null;
+        slotId?: string | null;
+        occurrenceDate?: string | null;
         organizationId?: string | null;
         installmentAmounts?: number[];
         installmentDueDates?: string[];
+        installmentDueRelativeDays?: number[];
         allowSplit?: boolean;
         paymentPlanEnabled?: boolean;
         lineItems?: BillLineItem[];
@@ -43,9 +46,12 @@ class BillService {
                 ownerId: params.ownerId,
                 totalAmountCents: params.totalAmountCents,
                 eventId: params.eventId,
+                slotId: params.slotId,
+                occurrenceDate: params.occurrenceDate,
                 organizationId: params.organizationId,
                 installmentAmounts: params.installmentAmounts,
                 installmentDueDates: params.installmentDueDates,
+                installmentDueRelativeDays: params.installmentDueRelativeDays,
                 allowSplit: params.allowSplit,
                 paymentPlanEnabled: params.paymentPlanEnabled,
                 lineItems: params.lineItems,

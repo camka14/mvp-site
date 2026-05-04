@@ -27,6 +27,17 @@ jest.mock('next/navigation', () => ({
 const useAppMock = jest.fn();
 jest.mock('@/app/providers', () => ({ useApp: () => useAppMock() }));
 
+const mockSetActivePageContext = jest.fn();
+const mockRegisterRefreshHandler = jest.fn();
+const mockRegisterClientActionHandler = jest.fn();
+jest.mock('@/context/AgentContext', () => ({
+  useAgentContext: () => ({
+    setActivePageContext: mockSetActivePageContext,
+    registerRefreshHandler: mockRegisterRefreshHandler,
+    registerClientActionHandler: mockRegisterClientActionHandler,
+  }),
+}));
+
 jest.mock('@/lib/apiClient', () => ({
   apiRequest: jest.fn(),
 }));
@@ -548,6 +559,64 @@ describe('League schedule page', () => {
     expect(screen.queryByText(/Edit Match/)).not.toBeInTheDocument();
     expect(capturedEventFormProps?.event?.$id).toBe('event_1');
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
+  });
+
+  it('hides event management actions from signed-in users who cannot manage the event', async () => {
+    useAppMock.mockReturnValue({
+      user: { $id: 'viewer_1' },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      setUser: jest.fn(),
+    });
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Summer League/)).toBeInTheDocument();
+    });
+
+    expect(screen.getByRole('button', { name: /report event/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^manage$/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/send notification/i)).not.toBeInTheDocument();
+  });
+
+  it('does not enter manage state from the edit query parameter without event management access', async () => {
+    useAppMock.mockReturnValue({
+      user: { $id: 'viewer_1' },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      setUser: jest.fn(),
+    });
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit',
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Summer League/)).toBeInTheDocument();
+    });
+
+    expect(capturedEventFormProps).toBeNull();
+    expect(screen.queryByTestId('event-form')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^more$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /cancel manage/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^manage$/i })).not.toBeInTheDocument();
   });
 
   it('renders match incidents loaded with schedule matches', async () => {
@@ -3406,7 +3475,7 @@ describe('League schedule page', () => {
     expect(screen.getByRole('tab', { name: 'Participants' })).toBeInTheDocument();
   });
 
-  it('reflects selected weekly occurrences from the URL on the schedule tab', async () => {
+  it('reflects selected weekly sessions from the URL on the schedule tab', async () => {
     const { event, slotId, occurrenceDate } = buildWeeklyParentEvent({
       occurrenceDate: new Date(2026, 5, 16),
       slotEndOffsetDays: 21,
@@ -3447,7 +3516,7 @@ describe('League schedule page', () => {
     expect(screen.getByTestId(`calendar-match-weekly-occurrence:${slotId}:${occurrenceDate}`)).toBeInTheDocument();
   });
 
-  it('uses the weekly schedule calendar to select an occurrence', async () => {
+  it('uses the weekly schedule calendar to select a session', async () => {
     const { event, slotId, occurrenceDate } = buildWeeklyParentEvent();
 
     useSearchParamsMock.mockReturnValue({
@@ -3578,7 +3647,7 @@ describe('League schedule page', () => {
 
     await screen.findByText('Weekly Parent Event');
 
-    expect(screen.getByText('No weekly occurrences are available for this calendar range.')).toBeInTheDocument();
+    expect(screen.getByText('No weekly sessions are available for this calendar range.')).toBeInTheDocument();
     expect(screen.getByTestId('league-calendar')).toBeInTheDocument();
     expect(screen.queryAllByTestId(/calendar-match-weekly-occurrence:/)).toHaveLength(0);
 

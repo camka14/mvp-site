@@ -17,6 +17,12 @@ const prismaMock = {
   bills: {
     findMany: jest.fn(),
   },
+  events: {
+    findUnique: jest.fn(),
+  },
+  timeSlots: {
+    findUnique: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -49,21 +55,7 @@ describe('POST /api/billing/bills', () => {
       paymentPlanEnabled: true,
       status: 'OPEN',
     });
-    txMock.billPayments.create
-      .mockResolvedValueOnce({
-        id: 'payment_1',
-        billId: 'bill_1',
-        sequence: 1,
-        dueDate: new Date('2026-03-01T00:00:00.000Z'),
-        amountCents: 6000,
-      })
-      .mockResolvedValueOnce({
-        id: 'payment_2',
-        billId: 'bill_1',
-        sequence: 2,
-        dueDate: new Date('2026-04-01T00:00:00.000Z'),
-        amountCents: 6000,
-      });
+    txMock.billPayments.create.mockImplementation(async ({ data }) => data);
     txMock.bills.update.mockResolvedValue({
       id: 'bill_1',
       ownerType: 'TEAM',
@@ -75,6 +67,14 @@ describe('POST /api/billing/bills', () => {
       status: 'OPEN',
       nextPaymentAmountCents: 6000,
     });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'EVENT',
+      parentEvent: null,
+      divisions: [],
+      timeSlotIds: [],
+    });
+    prismaMock.timeSlots.findUnique.mockResolvedValue(null);
     prismaMock.$transaction.mockImplementation(async (callback: (tx: typeof txMock) => unknown) => callback(txMock));
   });
 
@@ -109,6 +109,69 @@ describe('POST /api/billing/bills', () => {
     expect(txMock.billPayments.create).toHaveBeenCalledTimes(2);
   });
 
+  it('creates weekly payment-plan installments from occurrence-relative due days', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      divisions: ['open'],
+      timeSlotIds: ['slot_1'],
+    });
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_1',
+      daysOfWeek: [0],
+      startDate: new Date('2026-07-01T00:00:00.000Z'),
+      endDate: null,
+      startTimeMinutes: 600,
+      divisions: ['open'],
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills', {
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        totalAmountCents: 12000,
+        eventId: 'event_1',
+        slotId: 'slot_1',
+        occurrenceDate: '2026-08-03',
+        paymentPlanEnabled: true,
+        installmentAmounts: [6000, 6000],
+        installmentDueRelativeDays: [-1, 0],
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(txMock.bills.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ownerType: 'TEAM',
+          ownerId: 'team_1',
+          eventId: 'event_1',
+          parentBillId: null,
+          paymentPlanEnabled: true,
+          slotId: 'slot_1',
+          occurrenceDate: '2026-08-03',
+        }),
+      }),
+    );
+    expect(txMock.bills.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          slotId: 'slot_1',
+          occurrenceDate: '2026-08-03',
+        }),
+      }),
+    );
+    const firstDueDate = txMock.billPayments.create.mock.calls[0]?.[0]?.data?.dueDate as Date;
+    const secondDueDate = txMock.billPayments.create.mock.calls[1]?.[0]?.data?.dueDate as Date;
+    expect(firstDueDate.getFullYear()).toBe(2026);
+    expect(firstDueDate.getMonth()).toBe(7);
+    expect(firstDueDate.getDate()).toBe(2);
+    expect(secondDueDate.getFullYear()).toBe(2026);
+    expect(secondDueDate.getMonth()).toBe(7);
+    expect(secondDueDate.getDate()).toBe(3);
+  });
+
   it('rejects duplicate payment plans for the same event and owner', async () => {
     txMock.bills.findFirst.mockResolvedValueOnce({ id: 'bill_existing' });
 
@@ -126,6 +189,91 @@ describe('POST /api/billing/bills', () => {
     expect(response.status).toBe(409);
     expect(payload.error).toBe('A payment plan already exists for this owner and event.');
     expect(payload.billId).toBe('bill_existing');
+    expect(txMock.bills.create).not.toHaveBeenCalled();
+    expect(txMock.billPayments.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects duplicate weekly payment plans for the same selected occurrence', async () => {
+    txMock.bills.findFirst.mockResolvedValueOnce({ id: 'bill_existing' });
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      divisions: ['open'],
+      timeSlotIds: ['slot_1'],
+    });
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_1',
+      daysOfWeek: [0],
+      startDate: new Date('2026-07-01T00:00:00.000Z'),
+      endDate: null,
+      startTimeMinutes: 600,
+      divisions: ['open'],
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills', {
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        totalAmountCents: 12000,
+        eventId: 'event_1',
+        slotId: 'slot_1',
+        occurrenceDate: '2026-08-03',
+        paymentPlanEnabled: true,
+        installmentAmounts: [6000, 6000],
+        installmentDueRelativeDays: [-1, 0],
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.billId).toBe('bill_existing');
+    expect(txMock.bills.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          slotId: 'slot_1',
+          occurrenceDate: '2026-08-03',
+        }),
+      }),
+    );
+    expect(txMock.bills.create).not.toHaveBeenCalled();
+    expect(txMock.billPayments.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects weekly payment plans without occurrence-relative due days', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      divisions: ['open'],
+      timeSlotIds: ['slot_1'],
+    });
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_1',
+      daysOfWeek: [0],
+      startDate: new Date('2026-07-01T00:00:00.000Z'),
+      endDate: null,
+      startTimeMinutes: 600,
+      divisions: ['open'],
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/bills', {
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        totalAmountCents: 12000,
+        eventId: 'event_1',
+        slotId: 'slot_1',
+        occurrenceDate: '2026-08-03',
+        paymentPlanEnabled: true,
+        installmentAmounts: [6000, 6000],
+        installmentDueDates: ['2026-08-03', '2026-09-03'],
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Weekly payment plans require installmentDueRelativeDays.');
     expect(txMock.bills.create).not.toHaveBeenCalled();
     expect(txMock.billPayments.create).not.toHaveBeenCalled();
   });

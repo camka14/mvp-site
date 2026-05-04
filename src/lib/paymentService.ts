@@ -208,7 +208,7 @@ class PaymentService {
     selection?: DivisionRegistrationSelection,
     timeoutMs?: number,
     occurrence?: WeeklyOccurrenceSelection,
-  ): Promise<void> {
+  ): Promise<{ bill?: Bill | null } | undefined> {
     try {
       if (!event?.$id) {
         throw new Error('Event is required to join.');
@@ -226,7 +226,7 @@ class PaymentService {
         ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
       };
 
-      const result = await apiRequest<{ error?: string }>(`/api/events/${event.$id}/participants`, {
+      const result = await apiRequest<{ error?: string; bill?: Bill | null }>(`/api/events/${event.$id}/participants`, {
         method: 'POST',
         timeoutMs,
         body: payload,
@@ -235,6 +235,7 @@ class PaymentService {
       if (result && result.error) {
         throw new Error(result.error);
       }
+      return result;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to join event';
       if (!message.toLowerCase().includes('already registered')) {

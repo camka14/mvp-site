@@ -232,7 +232,7 @@ describe('EventDetailSheet details layout', () => {
     expect(screen.getByRole('button', { name: /continue with google/i })).toBeInTheDocument();
   });
 
-  it('notifies the parent when an inline weekly occurrence is selected', async () => {
+  it('notifies the parent when an inline weekly session is selected', async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const occurrence = new Date(today.getTime() + 24 * 60 * 60 * 1000);
@@ -283,7 +283,7 @@ describe('EventDetailSheet details layout', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Select a weekly occurrence')).toBeInTheDocument();
+      expect(screen.getByText('Select a weekly session')).toBeInTheDocument();
     });
 
     const selectButtons = screen.getAllByRole('button').filter((button) => button.textContent?.includes('Tap to select'));
@@ -296,7 +296,7 @@ describe('EventDetailSheet details layout', () => {
     });
   });
 
-  it('builds weekly occurrence options when timeslot dates are Date objects', async () => {
+  it('builds weekly session options when timeslot dates are Date objects', async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const occurrence = new Date(today.getTime() + 24 * 60 * 60 * 1000);
@@ -338,12 +338,12 @@ describe('EventDetailSheet details layout', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Select a weekly occurrence')).toBeInTheDocument();
+      expect(screen.getByText('Select a weekly session')).toBeInTheDocument();
     });
     expect(screen.queryByText('No upcoming weekly sessions are available.')).not.toBeInTheDocument();
   });
 
-  it('shows join controls once an inline weekly occurrence is selected', async () => {
+  it('shows join controls once an inline weekly session is selected', async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const occurrence = new Date(today.getTime() + 24 * 60 * 60 * 1000);
@@ -439,13 +439,13 @@ describe('EventDetailSheet details layout', () => {
       });
     });
 
-    expect(screen.getByText('Selected weekly occurrence')).toBeInTheDocument();
+    expect(screen.getByText('Selected weekly session')).toBeInTheDocument();
     expect(screen.getByText('Selected')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /join event/i })).toBeInTheDocument();
     expect(screen.queryByText('No upcoming weekly sessions are available.')).not.toBeInTheDocument();
   });
 
-  it('keeps a selected past weekly occurrence visible while disabling join actions', async () => {
+  it('keeps a selected past weekly session visible while disabling join actions', async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const occurrence = new Date(today.getTime() - 24 * 60 * 60 * 1000);
@@ -529,7 +529,7 @@ describe('EventDetailSheet details layout', () => {
       });
     });
 
-    expect(screen.getByText('Selected weekly occurrence')).toBeInTheDocument();
+    expect(screen.getByText('Selected weekly session')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /unavailable/i })).toBeDisabled();
   });
 });

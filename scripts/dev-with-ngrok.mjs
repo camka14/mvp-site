@@ -51,6 +51,9 @@ const parsePort = (args) => {
   return 3000;
 };
 
+const hasBundlerFlag = (args) =>
+  args.some((arg) => arg === '--webpack' || arg === '--turbo' || arg === '--turbopack');
+
 const isFlagEnabled = (value, defaultValue = true) => {
   if (typeof value !== 'string') {
     return defaultValue;
@@ -570,6 +573,7 @@ const startNgrok = async (port) => {
 const run = async () => {
   const args = process.argv.slice(2);
   const port = parsePort(args);
+  const nextDevArgs = hasBundlerFlag(args) ? args : ['--webpack', ...args];
   const enableNgrok = isFlagEnabled(process.env.MVP_DEV_ENABLE_NGROK, true);
   const enableStripeListen = isFlagEnabled(process.env.MVP_DEV_ENABLE_STRIPE_LISTEN, true);
   const requireNgrok = isFlagEnabled(process.env.MVP_DEV_REQUIRE_NGROK, false);
@@ -645,7 +649,7 @@ const run = async () => {
     }
   }
 
-  const nextProc = spawn(process.execPath, [nextCli, 'dev', ...args], {
+  const nextProc = spawn(process.execPath, [nextCli, 'dev', ...nextDevArgs], {
     stdio: 'inherit',
     env: nextEnv,
   });

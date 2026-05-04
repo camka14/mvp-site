@@ -1243,6 +1243,16 @@ class EventService {
                     .map((dueDate: unknown) => String(dueDate))
                     .filter((dueDate: string) => dueDate.length > 0)
                 : undefined,
+              installmentDueRelativeDays: Array.isArray(
+                entry?.installmentDueRelativeDays,
+              )
+                ? entry.installmentDueRelativeDays
+                    .map((dueDay: unknown) =>
+                      typeof dueDay === "number" ? dueDay : Number(dueDay),
+                    )
+                    .filter((dueDay: number) => Number.isFinite(dueDay))
+                    .map((dueDay: number) => Math.trunc(dueDay))
+                : undefined,
               installmentAmounts: Array.isArray(entry?.installmentAmounts)
                 ? entry.installmentAmounts
                     .map((amount: unknown) =>
@@ -1392,6 +1402,7 @@ class EventService {
       allowPaymentPlans: !!row.allowPaymentPlans,
       installmentCount: row.installmentCount,
       installmentDueDates: row.installmentDueDates,
+      installmentDueRelativeDays: row.installmentDueRelativeDays,
       installmentAmounts: row.installmentAmounts,
       allowTeamSplitDefault: row.allowTeamSplitDefault,
       participantCount:

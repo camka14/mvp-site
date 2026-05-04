@@ -690,6 +690,7 @@ type DivisionDetailForm = {
     allowPaymentPlans: boolean;
     installmentCount?: number;
     installmentDueDates: string[];
+    installmentDueRelativeDays: number[];
     // Stored as integer cents throughout the form state.
     installmentAmounts: number[];
     sportId?: string;
@@ -890,6 +891,7 @@ const buildDefaultDivisionDetailsForSport = (
         allowPaymentPlans: false,
         installmentCount: 0,
         installmentDueDates: [],
+        installmentDueRelativeDays: [],
         installmentAmounts: [],
         sportId: sport || undefined,
         fieldIds: [],
@@ -2000,6 +2002,14 @@ const normalizeInstallmentDates = (dates: unknown): string[] => {
         .map((value) => value.toISOString());
 };
 
+const normalizeInstallmentRelativeDays = (value: unknown): number[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+        .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+        .filter((entry) => Number.isFinite(entry))
+        .map((entry) => Math.trunc(entry));
+};
+
 const formatLatLngLabel = (lat?: number, lng?: number): string => {
     if (typeof lat !== 'number' || typeof lng !== 'number') {
         return '';
@@ -2093,6 +2103,7 @@ type EventFormState = {
     allowPaymentPlans: boolean;
     installmentCount?: number;
     installmentDueDates: string[];
+    installmentDueRelativeDays: number[];
     installmentAmounts: number[];
     allowTeamSplitDefault: boolean;
     maxParticipants: number | null;
@@ -2230,6 +2241,7 @@ const normalizeDivisionDetailEntry = (
         })
         : [];
     const rawInstallmentDueDates = normalizeInstallmentDates(row.installmentDueDates);
+    const rawInstallmentDueRelativeDays = normalizeInstallmentRelativeDays(row.installmentDueRelativeDays);
     const rawInstallmentCount = Number.isFinite(Number(row.installmentCount))
         ? Math.max(0, Math.trunc(Number(row.installmentCount)))
         : rawInstallmentAmounts.length;
@@ -2260,6 +2272,7 @@ const normalizeDivisionDetailEntry = (
             ? (rawInstallmentCount || rawInstallmentAmounts.length || 0)
             : 0,
         installmentDueDates: rawAllowPaymentPlans ? rawInstallmentDueDates : [],
+        installmentDueRelativeDays: rawAllowPaymentPlans ? rawInstallmentDueRelativeDays : [],
         installmentAmounts: rawAllowPaymentPlans ? rawInstallmentAmounts : [],
         sportId: typeof row.sportId === 'string' ? row.sportId : sportInput ?? undefined,
         fieldIds: Array.isArray(row.fieldIds)
@@ -2465,6 +2478,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     const defaultEventInstallmentDueDates = Array.isArray(event.installmentDueDates)
         ? event.installmentDueDates.map((value) => String(value))
         : [];
+    const defaultEventInstallmentDueRelativeDays = normalizeInstallmentRelativeDays((event as any).installmentDueRelativeDays);
     const defaultEventInstallmentCount = Number.isFinite(event.installmentCount)
         ? Math.max(0, Math.trunc(event.installmentCount as number))
         : defaultEventInstallmentAmounts.length;
@@ -2546,6 +2560,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
                     ? (defaultEventInstallmentCount || defaultEventInstallmentAmounts.length || 0)
                     : 0,
                 installmentDueDates: defaultEventAllowPaymentPlans ? [...defaultEventInstallmentDueDates] : [],
+                installmentDueRelativeDays: defaultEventAllowPaymentPlans ? [...defaultEventInstallmentDueRelativeDays] : [],
                 installmentAmounts: defaultEventAllowPaymentPlans ? [...defaultEventInstallmentAmounts] : [],
                 sportId: resolvedSportInput || undefined,
                 fieldIds: [],
@@ -2617,6 +2632,16 @@ const mapEventToFormState = (event: Event): EventFormState => {
             }
             return [];
         })(),
+        installmentDueRelativeDays: (() => {
+            const divisionRelativeDays = normalizeInstallmentRelativeDays(detail.installmentDueRelativeDays);
+            if (detail.allowPaymentPlans) {
+                return divisionRelativeDays;
+            }
+            if (defaultEventAllowPaymentPlans) {
+                return [...defaultEventInstallmentDueRelativeDays];
+            }
+            return [];
+        })(),
         installmentCount: (() => {
             if (detail.allowPaymentPlans) {
                 if (typeof detail.installmentCount === 'number' && Number.isFinite(detail.installmentCount)) {
@@ -2672,6 +2697,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         return Number.isFinite(event.installmentCount) ? (event.installmentCount as number) : (amounts.length || 0);
     })(),
     installmentDueDates: Array.isArray(event.installmentDueDates) ? event.installmentDueDates as string[] : [],
+    installmentDueRelativeDays: normalizeInstallmentRelativeDays((event as any).installmentDueRelativeDays),
     allowTeamSplitDefault: Boolean(event.allowTeamSplitDefault),
     maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : null,
     teamSizeLimit: Number.isFinite(event.teamSizeLimit) ? event.teamSizeLimit : null,
@@ -2843,6 +2869,7 @@ const eventFormSchema = z
         allowPaymentPlans: z.boolean().default(false),
         installmentCount: z.number().int().min(0).default(0),
         installmentDueDates: z.array(z.string()).default([]),
+        installmentDueRelativeDays: z.array(z.number().int()).default([]),
         installmentAmounts: z.array(z.number().int().min(0)).default([]),
         allowTeamSplitDefault: z.boolean().default(false),
         maxParticipants: z.number().min(2, 'Enter at least 2').nullable(),
@@ -2873,6 +2900,7 @@ const eventFormSchema = z
                 allowPaymentPlans: z.boolean().default(false),
                 installmentCount: z.number().int().min(0).default(0),
                 installmentDueDates: z.array(z.string()).default([]),
+                installmentDueRelativeDays: z.array(z.number().int()).default([]),
                 installmentAmounts: z.array(z.number().int().min(0)).default([]),
                 sportId: z.string().optional(),
                 fieldIds: z.array(z.string()).optional(),
@@ -3023,9 +3051,11 @@ const eventFormSchema = z
             });
         }
 
+        const usesRelativePaymentPlanDueDates = values.eventType === 'WEEKLY_EVENT' && !values.parentEvent;
         if (values.allowPaymentPlans) {
             const amounts = values.installmentAmounts || [];
             const dueDates = values.installmentDueDates || [];
+            const relativeDueDays = values.installmentDueRelativeDays || [];
             if (values.installmentCount && amounts.length !== values.installmentCount) {
                 ctx.addIssue({
                     code: "custom",
@@ -3040,7 +3070,15 @@ const eventFormSchema = z
                     path: ['installmentAmounts'],
                 });
             }
-            if (dueDates.length && dueDates.length !== amounts.length) {
+            if (usesRelativePaymentPlanDueDates) {
+                if (relativeDueDays.length !== amounts.length) {
+                    ctx.addIssue({
+                        code: "custom",
+                        message: 'Each installment needs a due date offset',
+                        path: ['installmentDueRelativeDays'],
+                    });
+                }
+            } else if (dueDates.length && dueDates.length !== amounts.length) {
                 ctx.addIssue({
                     code: "custom",
                     message: 'Each installment needs a due date',
@@ -3064,6 +3102,9 @@ const eventFormSchema = z
                 }
                 const amounts = Array.isArray(detail.installmentAmounts) ? detail.installmentAmounts : [];
                 const dueDates = Array.isArray(detail.installmentDueDates) ? detail.installmentDueDates : [];
+                const relativeDueDays = Array.isArray(detail.installmentDueRelativeDays)
+                    ? detail.installmentDueRelativeDays
+                    : [];
                 const expectedCount = Number.isFinite(detail.installmentCount) ? detail.installmentCount : amounts.length;
                 if (expectedCount > 0 && amounts.length !== expectedCount) {
                     ctx.addIssue({
@@ -3079,7 +3120,15 @@ const eventFormSchema = z
                         path: ['divisionDetails', index, 'installmentAmounts'],
                     });
                 }
-                if (dueDates.length && dueDates.length !== amounts.length) {
+                if (usesRelativePaymentPlanDueDates) {
+                    if (relativeDueDays.length !== amounts.length) {
+                        ctx.addIssue({
+                            code: 'custom',
+                            message: 'Each division installment needs a due date offset',
+                            path: ['divisionDetails', index, 'installmentDueRelativeDays'],
+                        });
+                    }
+                } else if (dueDates.length && dueDates.length !== amounts.length) {
                     ctx.addIssue({
                         code: 'custom',
                         message: 'Each division installment needs a due date',
@@ -3594,6 +3643,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     installmentDueDates: Array.isArray((defaults as any).installmentDueDates)
                         ? (defaults as any).installmentDueDates.map((value: unknown) => String(value))
                         : [],
+                    installmentDueRelativeDays: normalizeInstallmentRelativeDays((defaults as any).installmentDueRelativeDays),
                     installmentAmounts: normalizeInstallmentAmounts((defaults as any).installmentAmounts),
                     sportId: resolveSportInput(next.sportConfig ?? next.sportId) || undefined,
                     fieldIds: [],
@@ -3665,6 +3715,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         base.allowPaymentPlans = Boolean(base.allowPaymentPlans);
         base.installmentAmounts = Array.isArray(base.installmentAmounts) ? base.installmentAmounts : [];
         base.installmentDueDates = Array.isArray(base.installmentDueDates) ? base.installmentDueDates : [];
+        base.installmentDueRelativeDays = normalizeInstallmentRelativeDays(base.installmentDueRelativeDays);
         base.requiredTemplateIds = Array.isArray(base.requiredTemplateIds)
             ? base.requiredTemplateIds
             : [];
@@ -4054,6 +4105,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             setValue('installmentDueDates', [], { shouldDirty: false, shouldValidate: true });
         }
 
+        const hasInstallmentDueRelativeDays = Array.isArray(eventData.installmentDueRelativeDays)
+            && eventData.installmentDueRelativeDays.length > 0;
+        if (hasInstallmentDueRelativeDays) {
+            setValue('installmentDueRelativeDays', [], { shouldDirty: false, shouldValidate: true });
+        }
+
         const currentDivisionDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
         const nextDivisionDetails = currentDivisionDetails.map((detail) => {
             const detailPrice = Number.isFinite(Number(detail.price))
@@ -4066,11 +4123,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 && detail.installmentAmounts.length > 0;
             const hasDetailInstallmentDueDates = Array.isArray(detail.installmentDueDates)
                 && detail.installmentDueDates.length > 0;
+            const hasDetailInstallmentDueRelativeDays = Array.isArray(detail.installmentDueRelativeDays)
+                && detail.installmentDueRelativeDays.length > 0;
             const hasPaidSettings = detailPrice !== 0
                 || Boolean(detail.allowPaymentPlans)
                 || detailInstallmentCount !== 0
                 || hasDetailInstallmentAmounts
-                || hasDetailInstallmentDueDates;
+                || hasDetailInstallmentDueDates
+                || hasDetailInstallmentDueRelativeDays;
             if (!hasPaidSettings) {
                 return detail;
             }
@@ -4081,6 +4141,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 installmentCount: 0,
                 installmentAmounts: [],
                 installmentDueDates: [],
+                installmentDueRelativeDays: [],
             };
         });
         const divisionPricingChanged = nextDivisionDetails.some(
@@ -4096,6 +4157,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.installmentAmounts,
         eventData.installmentCount,
         eventData.installmentDueDates,
+        eventData.installmentDueRelativeDays,
         eventData.price,
         hasStripeAccount,
         isCreateMode,
@@ -4320,19 +4382,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const safeCount = Math.max(1, Math.floor(Number(count) || 0));
             const amounts = [...(getValues('installmentAmounts') || [])];
             const dueDates = [...(getValues('installmentDueDates') || [])];
+            const relativeDueDays = [...(getValues('installmentDueRelativeDays') || [])];
             const price = getValues('price') || 0;
             const startDate = getValues('start');
+            const useRelativeDueDates = getValues('eventType') === 'WEEKLY_EVENT' && !getValues('parentEvent');
             while (amounts.length < safeCount) {
                 amounts.push(price);
                 dueDates.push(startDate);
+                relativeDueDays.push(0);
             }
             while (amounts.length > safeCount) {
                 amounts.pop();
                 dueDates.pop();
+                relativeDueDays.pop();
             }
             setValue('installmentCount', safeCount, { shouldDirty: true, shouldValidate: true });
             setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
-            setValue('installmentDueDates', dueDates, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueDates', useRelativeDueDates ? [] : dueDates, { shouldDirty: true, shouldValidate: true });
+            setValue(
+                'installmentDueRelativeDays',
+                useRelativeDueDates ? relativeDueDays : [],
+                { shouldDirty: true, shouldValidate: true },
+            );
         },
         [getValues, setValue],
     );
@@ -4363,15 +4434,34 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [getValues, setValue],
     );
 
+    const setInstallmentDueRelativeDay = useCallback(
+        (index: number, value: number | string) => {
+            const relativeDueDays = [...(getValues('installmentDueRelativeDays') || [])];
+            const amounts = getValues('installmentAmounts') || [];
+            if (index < 0 || index >= amounts.length) return;
+            while (relativeDueDays.length < amounts.length) {
+                relativeDueDays.push(0);
+            }
+            const parsed = typeof value === 'number' ? value : Number(value);
+            relativeDueDays[index] = Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
+            setValue('installmentDueRelativeDays', relativeDueDays, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueDates', [], { shouldDirty: true, shouldValidate: true });
+        },
+        [getValues, setValue],
+    );
+
     const removeInstallment = useCallback(
         (index: number) => {
             const amounts = [...(getValues('installmentAmounts') || [])];
             const dueDates = [...(getValues('installmentDueDates') || [])];
+            const relativeDueDays = [...(getValues('installmentDueRelativeDays') || [])];
             if (amounts.length <= 1) return;
             amounts.splice(index, 1);
             dueDates.splice(index, 1);
+            relativeDueDays.splice(index, 1);
             setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
             setValue('installmentDueDates', dueDates, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueRelativeDays', relativeDueDays, { shouldDirty: true, shouldValidate: true });
             setValue('installmentCount', amounts.length, { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
@@ -4382,27 +4472,32 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const safeCount = Math.max(1, Math.floor(Number(count) || 0));
             const amounts = [...(prev.installmentAmounts || [])];
             const dueDates = [...(prev.installmentDueDates || [])];
+            const relativeDueDays = [...(prev.installmentDueRelativeDays || [])];
             const price = Math.max(0, Number(prev.price) || 0);
             const fallbackDueDate = eventData.start;
+            const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
 
             while (amounts.length < safeCount) {
                 amounts.push(price);
                 dueDates.push(fallbackDueDate);
+                relativeDueDays.push(0);
             }
             while (amounts.length > safeCount) {
                 amounts.pop();
                 dueDates.pop();
+                relativeDueDays.pop();
             }
 
             return {
                 ...prev,
                 installmentCount: safeCount,
                 installmentAmounts: amounts,
-                installmentDueDates: dueDates,
+                installmentDueDates: useRelativeDueDates ? [] : dueDates,
+                installmentDueRelativeDays: useRelativeDueDates ? relativeDueDays : [],
                 error: null,
             };
         });
-    }, [eventData.start]);
+    }, [eventData.eventType, eventData.parentEvent, eventData.start]);
 
     const setDivisionInstallmentAmount = useCallback((index: number, value: number) => {
         setDivisionEditor((prev) => {
@@ -4440,19 +4535,43 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
     }, []);
 
+    const setDivisionInstallmentDueRelativeDay = useCallback((index: number, value: number | string) => {
+        setDivisionEditor((prev) => {
+            const amounts = prev.installmentAmounts || [];
+            if (index < 0 || index >= amounts.length) {
+                return prev;
+            }
+            const relativeDueDays = [...(prev.installmentDueRelativeDays || [])];
+            while (relativeDueDays.length < amounts.length) {
+                relativeDueDays.push(0);
+            }
+            const parsed = typeof value === 'number' ? value : Number(value);
+            relativeDueDays[index] = Number.isFinite(parsed) ? Math.trunc(parsed) : 0;
+            return {
+                ...prev,
+                installmentDueRelativeDays: relativeDueDays,
+                installmentDueDates: [],
+                error: null,
+            };
+        });
+    }, []);
+
     const removeDivisionInstallment = useCallback((index: number) => {
         setDivisionEditor((prev) => {
             const amounts = [...(prev.installmentAmounts || [])];
             const dueDates = [...(prev.installmentDueDates || [])];
+            const relativeDueDays = [...(prev.installmentDueRelativeDays || [])];
             if (amounts.length <= 1 || index < 0 || index >= amounts.length) {
                 return prev;
             }
             amounts.splice(index, 1);
             dueDates.splice(index, 1);
+            relativeDueDays.splice(index, 1);
             return {
                 ...prev,
                 installmentAmounts: amounts,
                 installmentDueDates: dueDates,
+                installmentDueRelativeDays: relativeDueDays,
                 installmentCount: amounts.length,
                 error: null,
             };
@@ -5099,6 +5218,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         allowPaymentPlans: boolean;
         installmentCount: number;
         installmentDueDates: string[];
+        installmentDueRelativeDays: number[];
         installmentAmounts: number[];
         nameTouched: boolean;
         error: string | null;
@@ -5114,6 +5234,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         allowPaymentPlans: false,
         installmentCount: 0,
         installmentDueDates: [],
+        installmentDueRelativeDays: [],
         installmentAmounts: [],
         nameTouched: false,
         error: null,
@@ -5129,7 +5250,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 || prev.allowPaymentPlans
                 || (prev.installmentCount || 0) !== 0
                 || (prev.installmentAmounts?.length || 0) > 0
-                || (prev.installmentDueDates?.length || 0) > 0;
+                || (prev.installmentDueDates?.length || 0) > 0
+                || (prev.installmentDueRelativeDays?.length || 0) > 0;
             if (!hasEditorPaidSettings) {
                 return prev;
             }
@@ -5140,6 +5262,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 installmentCount: 0,
                 installmentAmounts: [],
                 installmentDueDates: [],
+                installmentDueRelativeDays: [],
                 error: null,
             };
         });
@@ -6011,6 +6134,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultInstallmentDueDates = eventData.allowPaymentPlans
             ? [...(eventData.installmentDueDates || [])]
             : [];
+        const defaultInstallmentDueRelativeDays = eventData.allowPaymentPlans
+            ? normalizeInstallmentRelativeDays(eventData.installmentDueRelativeDays)
+            : [];
         setDivisionEditor({
             editingId: null,
             gender: '',
@@ -6032,6 +6158,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? (eventData.installmentCount || defaultInstallmentAmounts.length || 0)
                 : 0,
             installmentDueDates: defaultInstallmentDueDates,
+            installmentDueRelativeDays: defaultInstallmentDueRelativeDays,
             installmentAmounts: defaultInstallmentAmounts,
             nameTouched: false,
             error: null,
@@ -6043,6 +6170,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.installmentAmounts,
         eventData.installmentCount,
         eventData.installmentDueDates,
+        eventData.installmentDueRelativeDays,
         eventData.maxParticipants,
         eventData.price,
         leagueData.playoffTeamCount,
@@ -6159,6 +6287,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultInstallmentDueDates = eventData.allowPaymentPlans
             ? [...(eventData.installmentDueDates || [])]
             : [];
+        const defaultInstallmentDueRelativeDays = eventData.allowPaymentPlans
+            ? normalizeInstallmentRelativeDays(eventData.installmentDueRelativeDays)
+            : [];
         const detailAllowPaymentPlans = typeof detail.allowPaymentPlans === 'boolean'
             ? detail.allowPaymentPlans
             : Boolean(eventData.allowPaymentPlans);
@@ -6171,6 +6302,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ? (detail.installmentDueDates?.length
                 ? [...detail.installmentDueDates]
                 : defaultInstallmentDueDates)
+            : [];
+        const detailInstallmentDueRelativeDays = detailAllowPaymentPlans
+            ? (detail.installmentDueRelativeDays?.length
+                ? normalizeInstallmentRelativeDays(detail.installmentDueRelativeDays)
+                : defaultInstallmentDueRelativeDays)
             : [];
         setDivisionEditor({
             editingId: detail.id,
@@ -6198,6 +6334,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? (detail.installmentCount || detailInstallmentAmounts.length || 0)
                 : 0,
             installmentDueDates: detailInstallmentDueDates,
+            installmentDueRelativeDays: detailInstallmentDueRelativeDays,
             installmentAmounts: detailInstallmentAmounts,
             nameTouched: true,
             error: null,
@@ -6207,6 +6344,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.divisionDetails,
         eventData.installmentAmounts,
         eventData.installmentDueDates,
+        eventData.installmentDueRelativeDays,
         eventData.maxParticipants,
         eventData.sportConfig,
         eventData.sportId,
@@ -6284,6 +6422,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? [...(eventData.installmentDueDates || [])]
                 : [...(divisionEditor.installmentDueDates || [])])
             : [];
+        const normalizedDivisionInstallmentDueRelativeDays = normalizedDivisionAllowPaymentPlans
+            ? (eventData.singleDivision
+                ? normalizeInstallmentRelativeDays(eventData.installmentDueRelativeDays)
+                : normalizeInstallmentRelativeDays(divisionEditor.installmentDueRelativeDays))
+            : [];
         const normalizedDivisionInstallmentCount = normalizedDivisionAllowPaymentPlans
             ? (eventData.singleDivision
                 ? (eventData.installmentCount || normalizedDivisionInstallmentAmounts.length || 0)
@@ -6356,7 +6499,19 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return;
             }
             if (
-                normalizedDivisionInstallmentDueDates.length
+                eventData.eventType === 'WEEKLY_EVENT'
+                && !eventData.parentEvent
+                && normalizedDivisionInstallmentDueRelativeDays.length !== normalizedDivisionInstallmentAmounts.length
+            ) {
+                setDivisionEditor((prev) => ({
+                    ...prev,
+                    error: 'Each division installment amount needs a due date offset.',
+                }));
+                return;
+            }
+            if (
+                !(eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent)
+                && normalizedDivisionInstallmentDueDates.length
                 && normalizedDivisionInstallmentDueDates.length !== normalizedDivisionInstallmentAmounts.length
             ) {
                 setDivisionEditor((prev) => ({
@@ -6428,7 +6583,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 : [],
             allowPaymentPlans: normalizedDivisionAllowPaymentPlans,
             installmentCount: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentCount : 0,
-            installmentDueDates: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueDates : [],
+            installmentDueDates: normalizedDivisionAllowPaymentPlans && !(eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent)
+                ? normalizedDivisionInstallmentDueDates
+                : [],
+            installmentDueRelativeDays: normalizedDivisionAllowPaymentPlans && eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent
+                ? normalizedDivisionInstallmentDueRelativeDays
+                : [],
             installmentAmounts: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentAmounts : [],
             sportId: sportInput,
             fieldIds: [],
@@ -6474,6 +6634,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.installmentAmounts,
         eventData.installmentCount,
         eventData.installmentDueDates,
+        eventData.installmentDueRelativeDays,
+        eventData.parentEvent,
         eventData.price,
         eventData.maxParticipants,
         leagueData.includePlayoffs,
@@ -7847,7 +8009,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     installmentCount: eventAllowPaymentPlans
                         ? (source.installmentCount || source.installmentAmounts.length || 0)
                         : 0,
-                    installmentDueDates: eventAllowPaymentPlans ? [...(source.installmentDueDates || [])] : [],
+                    installmentDueDates: eventAllowPaymentPlans && !(source.eventType === 'WEEKLY_EVENT' && !source.parentEvent)
+                        ? [...(source.installmentDueDates || [])]
+                        : [],
+                    installmentDueRelativeDays: eventAllowPaymentPlans && source.eventType === 'WEEKLY_EVENT' && !source.parentEvent
+                        ? normalizeInstallmentRelativeDays(source.installmentDueRelativeDays)
+                        : [],
                     installmentAmounts: eventAllowPaymentPlans
                         ? normalizeInstallmentAmounts(source.installmentAmounts)
                         : [],
@@ -8617,17 +8784,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
     const showScheduleConfig = isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent;
     const showOrganizationFieldsInEventDetails = isOrganizationManagedEvent && eventData.eventType === 'EVENT';
+    const showMatchRulesSection = eventData.eventType !== 'EVENT' && eventData.eventType !== 'WEEKLY_EVENT';
     const sectionNavItems = useMemo(
         () => [
             { id: 'section-basic-information', label: 'Basic Information', visible: true },
             { id: 'section-event-details', label: 'Event Details', visible: true },
-            { id: 'section-match-rules', label: 'Match Rules', visible: true },
+            { id: 'section-match-rules', label: 'Match Rules', visible: showMatchRulesSection },
             { id: 'section-officials', label: 'Officials', visible: true },
             { id: 'section-division-settings', label: 'Division Settings', visible: true },
             { id: 'section-league-scoring-config', label: 'League Scoring Config', visible: eventData.eventType === 'LEAGUE' },
             { id: 'section-schedule-config', label: 'Schedule Config', visible: showScheduleConfig },
         ],
-        [eventData.eventType, showScheduleConfig],
+        [eventData.eventType, showMatchRulesSection, showScheduleConfig],
     );
     const visibleSectionNavItems = useMemo(
         () => sectionNavItems.filter((item) => item.visible),
@@ -9479,22 +9647,36 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
                                                     <Stack gap="sm">
                                                         {(eventData.installmentAmounts || []).map((amount, idx) => {
+                                                            const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
                                                             const dueDateValue = parseLocalDateTime(
                                                                 eventData.installmentDueDates?.[idx] || eventData.start,
                                                             );
                                                             return (
                                                                 <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
-                                                                    <DateTimePicker
-                                                                        label={`Installment ${idx + 1} due`}
-                                                                        value={dueDateValue}
-                                                                        onChange={(val) => setInstallmentDueDate(idx, val)}
-                                                                        valueFormat="MM/DD/YYYY hh:mm A"
-                                                                        timePickerProps={{
-                                                                            withDropdown: true,
-                                                                            format: '12h',
-                                                                        }}
-                                                                        style={{ flex: '1 1 260px', maxWidth: 280 }}
-                                                                    />
+                                                                    {useRelativeDueDates ? (
+                                                                        <NumberInput
+                                                                            label={`Installment ${idx + 1} due date offset`}
+                                                                            description="0 = session day; negative = days before session; positive = days after session"
+                                                                            value={eventData.installmentDueRelativeDays?.[idx] ?? 0}
+                                                                            onChange={(val) => setInstallmentDueRelativeDay(idx, Number(val) || 0)}
+                                                                            min={-MAX_STANDARD_NUMBER}
+                                                                            max={MAX_STANDARD_NUMBER}
+                                                                            clampBehavior="strict"
+                                                                            style={{ flex: '1 1 300px', maxWidth: 360 }}
+                                                                        />
+                                                                    ) : (
+                                                                        <DateTimePicker
+                                                                            label={`Installment ${idx + 1} due`}
+                                                                            value={dueDateValue}
+                                                                            onChange={(val) => setInstallmentDueDate(idx, val)}
+                                                                            valueFormat="MM/DD/YYYY hh:mm A"
+                                                                            timePickerProps={{
+                                                                                withDropdown: true,
+                                                                                format: '12h',
+                                                                            }}
+                                                                            style={{ flex: '1 1 260px', maxWidth: 280 }}
+                                                                        />
+                                                                    )}
                                                                     <CentsInput
                                                                         label="Amount"
                                                                         maxCents={MAX_PRICE_CENTS}
@@ -9610,50 +9792,52 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </Collapse>
                         </Paper>
 
-                        <Paper
-                            id="section-match-rules"
-                            shadow="xs"
-                            radius="md"
-                            withBorder
-                            p="lg"
-                            className="scroll-mt-28 bg-gray-50"
-                        >
-                            <div className="flex items-center justify-between gap-3">
-                                <h3 className="text-lg font-semibold">Match Rules</h3>
-                                <Button
-                                    type="button"
-                                    variant="subtle"
-                                    size="xs"
-                                    aria-expanded={!collapsedSections['section-match-rules']}
-                                    aria-controls="section-match-rules-content"
-                                    onClick={() => toggleSectionCollapse('section-match-rules')}
-                                >
-                                    {collapsedSections['section-match-rules'] ? 'Expand' : 'Collapse'}
-                                </Button>
-                            </div>
-                            <Collapse in={!collapsedSections['section-match-rules']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                <div id="section-match-rules-content" className="mt-4">
-                                    <MatchRulesSection
-                                        sport={selectedSportForOfficials ?? undefined}
-                                        usesSets={eventData.eventType === 'LEAGUE'
-                                            ? Boolean(leagueData.usesSets)
-                                            : eventData.eventType === 'TOURNAMENT'
-                                                ? Boolean(tournamentData.usesSets)
-                                                : Boolean(selectedSportForOfficials?.usePointsPerSetWin)}
-                                        setsPerMatch={eventData.eventType === 'LEAGUE' ? leagueData.setsPerMatch : undefined}
-                                        winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
-                                        officialPositions={eventData.officialPositions}
-                                        value={eventData.matchRulesOverride}
-                                        onChange={(nextValue) => setValue('matchRulesOverride', nextValue, { shouldDirty: true, shouldValidate: false })}
-                                        autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
-                                        onAutoCreatePointMatchIncidentsChange={(checked) => setValue('autoCreatePointMatchIncidents', checked, { shouldDirty: true, shouldValidate: false })}
-                                        disabled={isImmutableField('matchRulesOverride')}
-                                        incidentToggleDisabled={isImmutableField('matchRulesOverride') || isImmutableField('autoCreatePointMatchIncidents')}
-                                        comboboxProps={sharedComboboxProps}
-                                    />
+                        {showMatchRulesSection && (
+                            <Paper
+                                id="section-match-rules"
+                                shadow="xs"
+                                radius="md"
+                                withBorder
+                                p="lg"
+                                className="scroll-mt-28 bg-gray-50"
+                            >
+                                <div className="flex items-center justify-between gap-3">
+                                    <h3 className="text-lg font-semibold">Match Rules</h3>
+                                    <Button
+                                        type="button"
+                                        variant="subtle"
+                                        size="xs"
+                                        aria-expanded={!collapsedSections['section-match-rules']}
+                                        aria-controls="section-match-rules-content"
+                                        onClick={() => toggleSectionCollapse('section-match-rules')}
+                                    >
+                                        {collapsedSections['section-match-rules'] ? 'Expand' : 'Collapse'}
+                                    </Button>
                                 </div>
-                            </Collapse>
-                        </Paper>
+                                <Collapse in={!collapsedSections['section-match-rules']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                    <div id="section-match-rules-content" className="mt-4">
+                                        <MatchRulesSection
+                                            sport={selectedSportForOfficials ?? undefined}
+                                            usesSets={eventData.eventType === 'LEAGUE'
+                                                ? Boolean(leagueData.usesSets)
+                                                : eventData.eventType === 'TOURNAMENT'
+                                                    ? Boolean(tournamentData.usesSets)
+                                                    : Boolean(selectedSportForOfficials?.usePointsPerSetWin)}
+                                            setsPerMatch={eventData.eventType === 'LEAGUE' ? leagueData.setsPerMatch : undefined}
+                                            winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
+                                            officialPositions={eventData.officialPositions}
+                                            value={eventData.matchRulesOverride}
+                                            onChange={(nextValue) => setValue('matchRulesOverride', nextValue, { shouldDirty: true, shouldValidate: false })}
+                                            autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
+                                            onAutoCreatePointMatchIncidentsChange={(checked) => setValue('autoCreatePointMatchIncidents', checked, { shouldDirty: true, shouldValidate: false })}
+                                            disabled={isImmutableField('matchRulesOverride')}
+                                            incidentToggleDisabled={isImmutableField('matchRulesOverride') || isImmutableField('autoCreatePointMatchIncidents')}
+                                            comboboxProps={sharedComboboxProps}
+                                        />
+                                    </div>
+                                </Collapse>
+                            </Paper>
+                        )}
 
                         <Paper
                             id="section-officials"
@@ -10436,6 +10620,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                             ? (prev.installmentCount || prev.installmentAmounts.length || 1)
                                                             : 0,
                                                         installmentDueDates: checked ? prev.installmentDueDates : [],
+                                                        installmentDueRelativeDays: checked ? prev.installmentDueRelativeDays : [],
                                                         installmentAmounts: checked ? prev.installmentAmounts : [],
                                                         error: null,
                                                     }));
@@ -10459,22 +10644,36 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 />
                                                 <Stack gap="sm">
                                                     {(divisionEditor.installmentAmounts || []).map((amount, idx) => {
+                                                        const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
                                                         const dueDateValue = parseLocalDateTime(
                                                             divisionEditor.installmentDueDates?.[idx] || eventData.start,
                                                         );
                                                         return (
                                                             <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
-                                                                <DateTimePicker
-                                                                    label={`Installment ${idx + 1} due`}
-                                                                    value={dueDateValue}
-                                                                    onChange={(value) => setDivisionInstallmentDueDate(idx, value)}
-                                                                    valueFormat="MM/DD/YYYY hh:mm A"
-                                                                    timePickerProps={{
-                                                                        withDropdown: true,
-                                                                        format: '12h',
-                                                                    }}
-                                                                    style={{ flex: '1 1 260px', maxWidth: 280 }}
-                                                                />
+                                                                {useRelativeDueDates ? (
+                                                                    <NumberInput
+                                                                        label={`Installment ${idx + 1} due date offset`}
+                                                                        description="0 = session day; negative = days before session; positive = days after session"
+                                                                        value={divisionEditor.installmentDueRelativeDays?.[idx] ?? 0}
+                                                                        onChange={(value) => setDivisionInstallmentDueRelativeDay(idx, Number(value) || 0)}
+                                                                        min={-MAX_STANDARD_NUMBER}
+                                                                        max={MAX_STANDARD_NUMBER}
+                                                                        clampBehavior="strict"
+                                                                        style={{ flex: '1 1 300px', maxWidth: 360 }}
+                                                                    />
+                                                                ) : (
+                                                                    <DateTimePicker
+                                                                        label={`Installment ${idx + 1} due`}
+                                                                        value={dueDateValue}
+                                                                        onChange={(value) => setDivisionInstallmentDueDate(idx, value)}
+                                                                        valueFormat="MM/DD/YYYY hh:mm A"
+                                                                        timePickerProps={{
+                                                                            withDropdown: true,
+                                                                            format: '12h',
+                                                                        }}
+                                                                        style={{ flex: '1 1 260px', maxWidth: 280 }}
+                                                                    />
+                                                                )}
                                                                 <CentsInput
                                                                     label="Amount"
                                                                     maxCents={MAX_PRICE_CENTS}

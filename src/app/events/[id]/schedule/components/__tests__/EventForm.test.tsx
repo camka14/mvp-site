@@ -1339,6 +1339,71 @@ describe('EventForm dirty state', () => {
     expect(divisionSettingsSection?.textContent).not.toContain('Team Event (teams compete rather than individuals)');
   });
 
+  it('hides match rules for event and weekly event forms', async () => {
+    const eventDirtyStateChange = jest.fn();
+    const eventRender = renderForm(eventDirtyStateChange);
+
+    await waitFor(() => {
+      expect(eventDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(document.getElementById('section-match-rules')).toBeNull();
+    expect(screen.queryByText('Match Rules')).not.toBeInTheDocument();
+
+    eventRender.unmount();
+
+    const weeklyDirtyStateChange = jest.fn();
+    renderForm(weeklyDirtyStateChange, undefined, {
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+    });
+
+    await waitFor(() => {
+      expect(weeklyDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(document.getElementById('section-match-rules')).toBeNull();
+    expect(screen.queryByText('Match Rules')).not.toBeInTheDocument();
+  });
+
+  it('shows match rules for league and tournament forms', async () => {
+    const leagueDirtyStateChange = jest.fn();
+    const leagueRender = renderForm(leagueDirtyStateChange, undefined, {
+      eventType: 'LEAGUE',
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: false,
+        usesSets: true,
+        setsPerMatch: 3,
+      },
+    });
+
+    await waitFor(() => {
+      expect(leagueDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(document.getElementById('section-match-rules')).not.toBeNull();
+    expect(screen.getAllByText('Match Rules').length).toBeGreaterThan(0);
+
+    leagueRender.unmount();
+
+    const tournamentDirtyStateChange = jest.fn();
+    renderForm(tournamentDirtyStateChange, undefined, {
+      eventType: 'TOURNAMENT',
+      tournamentData: {
+        usesSets: true,
+        winnerSetCount: 3,
+      },
+    });
+
+    await waitFor(() => {
+      expect(tournamentDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(document.getElementById('section-match-rules')).not.toBeNull();
+    expect(screen.getAllByText('Match Rules').length).toBeGreaterThan(0);
+  });
+
   it('renders organization fields next to required documents in Event Details for managed events', async () => {
     const onDirtyStateChange = jest.fn();
 

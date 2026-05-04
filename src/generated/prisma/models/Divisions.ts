@@ -31,6 +31,7 @@ export type DivisionsAvgAggregateOutputType = {
   maxParticipants: number | null
   playoffTeamCount: number | null
   installmentCount: number | null
+  installmentDueRelativeDays: number | null
   installmentAmounts: number | null
   minRating: number | null
   maxRating: number | null
@@ -41,6 +42,7 @@ export type DivisionsSumAggregateOutputType = {
   maxParticipants: number | null
   playoffTeamCount: number | null
   installmentCount: number | null
+  installmentDueRelativeDays: number[]
   installmentAmounts: number[]
   minRating: number | null
   maxRating: number | null
@@ -122,6 +124,7 @@ export type DivisionsCountAggregateOutputType = {
   allowPaymentPlans: number
   installmentCount: number
   installmentDueDates: number
+  installmentDueRelativeDays: number
   installmentAmounts: number
   minRating: number
   maxRating: number
@@ -143,6 +146,7 @@ export type DivisionsAvgAggregateInputType = {
   maxParticipants?: true
   playoffTeamCount?: true
   installmentCount?: true
+  installmentDueRelativeDays?: true
   installmentAmounts?: true
   minRating?: true
   maxRating?: true
@@ -153,6 +157,7 @@ export type DivisionsSumAggregateInputType = {
   maxParticipants?: true
   playoffTeamCount?: true
   installmentCount?: true
+  installmentDueRelativeDays?: true
   installmentAmounts?: true
   minRating?: true
   maxRating?: true
@@ -234,6 +239,7 @@ export type DivisionsCountAggregateInputType = {
   allowPaymentPlans?: true
   installmentCount?: true
   installmentDueDates?: true
+  installmentDueRelativeDays?: true
   installmentAmounts?: true
   minRating?: true
   maxRating?: true
@@ -355,6 +361,7 @@ export type DivisionsGroupByOutputType = {
   allowPaymentPlans: boolean | null
   installmentCount: number | null
   installmentDueDates: Date[]
+  installmentDueRelativeDays: number[]
   installmentAmounts: number[]
   minRating: number | null
   maxRating: number | null
@@ -412,6 +419,7 @@ export type DivisionsWhereInput = {
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
   installmentCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Divisions">
+  installmentDueRelativeDays?: Prisma.IntNullableListFilter<"Divisions">
   installmentAmounts?: Prisma.IntNullableListFilter<"Divisions">
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
@@ -446,6 +454,7 @@ export type DivisionsOrderByWithRelationInput = {
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -483,6 +492,7 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
   installmentCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Divisions">
+  installmentDueRelativeDays?: Prisma.IntNullableListFilter<"Divisions">
   installmentAmounts?: Prisma.IntNullableListFilter<"Divisions">
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
@@ -517,6 +527,7 @@ export type DivisionsOrderByWithAggregationInput = {
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentCount?: Prisma.SortOrderInput | Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -559,6 +570,7 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   allowPaymentPlans?: Prisma.BoolNullableWithAggregatesFilter<"Divisions"> | boolean | null
   installmentCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   installmentDueDates?: Prisma.DateTimeNullableListFilter<"Divisions">
+  installmentDueRelativeDays?: Prisma.IntNullableListFilter<"Divisions">
   installmentAmounts?: Prisma.IntNullableListFilter<"Divisions">
   minRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
@@ -593,6 +605,7 @@ export type DivisionsCreateInput = {
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.DivisionsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.DivisionsCreateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.DivisionsCreateinstallmentAmountsInput | number[]
   minRating?: number | null
   maxRating?: number | null
@@ -627,6 +640,7 @@ export type DivisionsUncheckedCreateInput = {
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.DivisionsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.DivisionsCreateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.DivisionsCreateinstallmentAmountsInput | number[]
   minRating?: number | null
   maxRating?: number | null
@@ -661,6 +675,7 @@ export type DivisionsUpdateInput = {
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.DivisionsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.DivisionsUpdateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.DivisionsUpdateinstallmentAmountsInput | number[]
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -695,6 +710,7 @@ export type DivisionsUncheckedUpdateInput = {
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.DivisionsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.DivisionsUpdateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.DivisionsUpdateinstallmentAmountsInput | number[]
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -729,6 +745,7 @@ export type DivisionsCreateManyInput = {
   allowPaymentPlans?: boolean | null
   installmentCount?: number | null
   installmentDueDates?: Prisma.DivisionsCreateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.DivisionsCreateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.DivisionsCreateinstallmentAmountsInput | number[]
   minRating?: number | null
   maxRating?: number | null
@@ -763,6 +780,7 @@ export type DivisionsUpdateManyMutationInput = {
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.DivisionsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.DivisionsUpdateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.DivisionsUpdateinstallmentAmountsInput | number[]
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -797,6 +815,7 @@ export type DivisionsUncheckedUpdateManyInput = {
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   installmentCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   installmentDueDates?: Prisma.DivisionsUpdateinstallmentDueDatesInput | Date[] | string[]
+  installmentDueRelativeDays?: Prisma.DivisionsUpdateinstallmentDueRelativeDaysInput | number[]
   installmentAmounts?: Prisma.DivisionsUpdateinstallmentAmountsInput | number[]
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
@@ -839,6 +858,7 @@ export type DivisionsCountOrderByAggregateInput = {
   allowPaymentPlans?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   installmentDueDates?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
@@ -858,6 +878,7 @@ export type DivisionsAvgOrderByAggregateInput = {
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
@@ -924,6 +945,7 @@ export type DivisionsSumOrderByAggregateInput = {
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
+  installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
@@ -935,6 +957,10 @@ export type DivisionsCreateplayoffPlacementDivisionIdsInput = {
 
 export type DivisionsCreateinstallmentDueDatesInput = {
   set: Date[] | string[]
+}
+
+export type DivisionsCreateinstallmentDueRelativeDaysInput = {
+  set: number[]
 }
 
 export type DivisionsCreateinstallmentAmountsInput = {
@@ -961,6 +987,11 @@ export type DivisionsUpdateplayoffPlacementDivisionIdsInput = {
 export type DivisionsUpdateinstallmentDueDatesInput = {
   set?: Date[] | string[]
   push?: Date | string | Date[] | string[]
+}
+
+export type DivisionsUpdateinstallmentDueRelativeDaysInput = {
+  set?: number[]
+  push?: number | number[]
 }
 
 export type DivisionsUpdateinstallmentAmountsInput = {
@@ -1000,6 +1031,7 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
+  installmentDueRelativeDays?: boolean
   installmentAmounts?: boolean
   minRating?: boolean
   maxRating?: boolean
@@ -1034,6 +1066,7 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
+  installmentDueRelativeDays?: boolean
   installmentAmounts?: boolean
   minRating?: boolean
   maxRating?: boolean
@@ -1068,6 +1101,7 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
+  installmentDueRelativeDays?: boolean
   installmentAmounts?: boolean
   minRating?: boolean
   maxRating?: boolean
@@ -1102,6 +1136,7 @@ export type DivisionsSelectScalar = {
   allowPaymentPlans?: boolean
   installmentCount?: boolean
   installmentDueDates?: boolean
+  installmentDueRelativeDays?: boolean
   installmentAmounts?: boolean
   minRating?: boolean
   maxRating?: boolean
@@ -1116,7 +1151,7 @@ export type DivisionsSelectScalar = {
   teamIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -1141,6 +1176,7 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     allowPaymentPlans: boolean | null
     installmentCount: number | null
     installmentDueDates: Date[]
+    installmentDueRelativeDays: number[]
     installmentAmounts: number[]
     minRating: number | null
     maxRating: number | null
@@ -1595,6 +1631,7 @@ export interface DivisionsFieldRefs {
   readonly allowPaymentPlans: Prisma.FieldRef<"Divisions", 'Boolean'>
   readonly installmentCount: Prisma.FieldRef<"Divisions", 'Int'>
   readonly installmentDueDates: Prisma.FieldRef<"Divisions", 'DateTime[]'>
+  readonly installmentDueRelativeDays: Prisma.FieldRef<"Divisions", 'Int[]'>
   readonly installmentAmounts: Prisma.FieldRef<"Divisions", 'Int[]'>
   readonly minRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly maxRating: Prisma.FieldRef<"Divisions", 'Float'>

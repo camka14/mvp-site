@@ -178,6 +178,7 @@ const serializeEventBase = (event: Tournament | League) => ({
   allowPaymentPlans: event.allowPaymentPlans ?? false,
   installmentCount: event.installmentCount ?? 0,
   installmentDueDates: event.installmentDueDates.map((date) => date.toISOString()),
+  installmentDueRelativeDays: event.installmentDueRelativeDays ?? [],
   installmentAmounts: event.installmentAmounts ?? [],
   allowTeamSplitDefault: event.allowTeamSplitDefault ?? false,
   splitLeaguePlayoffDivisions: event.splitLeaguePlayoffDivisions ?? false,

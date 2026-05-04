@@ -482,6 +482,7 @@ type EventDivisionOption = {
     allowPaymentPlans?: boolean;
     installmentCount?: number;
     installmentDueDates?: string[];
+    installmentDueRelativeDays?: number[];
     installmentAmounts?: number[];
     sportId?: string;
     ageCutoffDate?: string;
@@ -522,12 +523,35 @@ const normalizeInstallmentDueDateValues = (value: unknown): string[] => {
         .map((entry) => entry.toISOString());
 };
 
+const normalizeInstallmentDueRelativeDayValues = (value: unknown): number[] => {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return value
+        .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+        .filter((entry) => Number.isFinite(entry))
+        .map((entry) => Math.trunc(entry));
+};
+
 const formatInstallmentDueDateLabel = (value: string): string => {
     const parsed = parseDateValue(value);
     if (!parsed) {
         return 'TBD';
     }
     return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+const formatPaymentPlanPreviewPrice = (amountCents: number): string => `${formatPrice(amountCents)} + fees`;
+
+const formatInstallmentRelativeDueDayLabel = (offsetDays: number): string => {
+    if (!Number.isFinite(offsetDays) || offsetDays === 0) {
+        return 'Session day';
+    }
+    const absDays = Math.abs(Math.trunc(offsetDays));
+    const unit = absDays === 1 ? 'day' : 'days';
+    return offsetDays > 0
+        ? `${absDays} ${unit} after session`
+        : `${absDays} ${unit} before session`;
 };
 
 const getDivisionIdFromEventEntry = (entry: unknown): string | null => {
@@ -557,6 +581,7 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
     const defaultAllowPaymentPlans = Boolean(event.allowPaymentPlans);
     const defaultInstallmentAmounts = normalizeInstallmentAmountsCents(event.installmentAmounts);
     const defaultInstallmentDueDates = normalizeInstallmentDueDateValues(event.installmentDueDates);
+    const defaultInstallmentDueRelativeDays = normalizeInstallmentDueRelativeDayValues((event as any).installmentDueRelativeDays);
     const defaultInstallmentCount = Number.isFinite(Number(event.installmentCount))
         ? Math.max(0, Math.trunc(Number(event.installmentCount)))
         : defaultInstallmentAmounts.length;
@@ -656,6 +681,13 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
                     return normalized;
                 }
                 return [...defaultInstallmentDueDates];
+            })(),
+            installmentDueRelativeDays: (() => {
+                const normalized = normalizeInstallmentDueRelativeDayValues(row?.installmentDueRelativeDays);
+                if (normalized.length) {
+                    return normalized;
+                }
+                return [...defaultInstallmentDueRelativeDays];
             })(),
             installmentAmounts: (() => {
                 const normalized = normalizeInstallmentAmountsCents(row?.installmentAmounts);
@@ -1165,6 +1197,7 @@ export default function EventDetailSheet({
                 installmentCount: 0,
                 installmentAmounts: [] as number[],
                 installmentDueDates: [] as string[],
+                installmentDueRelativeDays: [] as number[],
             };
         }
 
@@ -1172,6 +1205,7 @@ export default function EventDetailSheet({
         const eventAllowPaymentPlans = Boolean(currentEvent.allowPaymentPlans);
         const eventInstallmentAmounts = normalizeInstallmentAmountsCents(currentEvent.installmentAmounts);
         const eventInstallmentDueDates = normalizeInstallmentDueDateValues(currentEvent.installmentDueDates);
+        const eventInstallmentDueRelativeDays = normalizeInstallmentDueRelativeDayValues((currentEvent as any).installmentDueRelativeDays);
         const eventInstallmentCount = Number.isFinite(Number(currentEvent.installmentCount))
             ? Math.max(0, Math.trunc(Number(currentEvent.installmentCount)))
             : eventInstallmentAmounts.length;
@@ -1183,6 +1217,7 @@ export default function EventDetailSheet({
                 installmentCount: eventAllowPaymentPlans ? (eventInstallmentCount || eventInstallmentAmounts.length || 0) : 0,
                 installmentAmounts: eventAllowPaymentPlans ? eventInstallmentAmounts : [],
                 installmentDueDates: eventAllowPaymentPlans ? eventInstallmentDueDates : [],
+                installmentDueRelativeDays: eventAllowPaymentPlans ? eventInstallmentDueRelativeDays : [],
             };
         }
 
@@ -1206,6 +1241,13 @@ export default function EventDetailSheet({
                     : eventInstallmentDueDates
             )
             : [];
+        const divisionInstallmentDueRelativeDays = divisionAllowPaymentPlans
+            ? (
+                selectedDivisionOption.installmentDueRelativeDays?.length
+                    ? selectedDivisionOption.installmentDueRelativeDays
+                    : eventInstallmentDueRelativeDays
+            )
+            : [];
         const divisionInstallmentCount = divisionAllowPaymentPlans
             ? (
                 typeof selectedDivisionOption.installmentCount === 'number'
@@ -1220,6 +1262,7 @@ export default function EventDetailSheet({
             installmentCount: divisionInstallmentCount,
             installmentAmounts: divisionInstallmentAmounts,
             installmentDueDates: divisionInstallmentDueDates,
+            installmentDueRelativeDays: divisionInstallmentDueRelativeDays,
         };
     }, [currentEvent, selectedDivisionOption]);
     const checkoutEvent = React.useMemo(() => {
@@ -1233,27 +1276,35 @@ export default function EventDetailSheet({
             installmentCount: selectedDivisionBilling.installmentCount,
             installmentAmounts: selectedDivisionBilling.installmentAmounts,
             installmentDueDates: selectedDivisionBilling.installmentDueDates,
+            installmentDueRelativeDays: selectedDivisionBilling.installmentDueRelativeDays,
         };
     }, [currentEvent, selectedDivisionBilling]);
     const paymentPlanPreviewRows = React.useMemo(() => {
         const normalizedAmounts = normalizeInstallmentAmountsCents(selectedDivisionBilling.installmentAmounts);
         const normalizedDueDates = normalizeInstallmentDueDateValues(selectedDivisionBilling.installmentDueDates);
+        const normalizedRelativeDueDays = normalizeInstallmentDueRelativeDayValues(selectedDivisionBilling.installmentDueRelativeDays);
+        const useRelativeDueDates = currentEvent?.eventType === 'WEEKLY_EVENT' && !currentEvent?.parentEvent;
         const rowCount = Math.max(
             selectedDivisionBilling.installmentCount || 0,
             normalizedAmounts.length,
-            normalizedDueDates.length,
+            useRelativeDueDates ? normalizedRelativeDueDays.length : normalizedDueDates.length,
         );
 
         return Array.from({ length: rowCount }, (_, index) => ({
-            id: `${index}-${normalizedAmounts[index] ?? 0}-${normalizedDueDates[index] ?? ''}`,
+            id: `${index}-${normalizedAmounts[index] ?? 0}-${useRelativeDueDates ? normalizedRelativeDueDays[index] ?? '' : normalizedDueDates[index] ?? ''}`,
             installmentNumber: index + 1,
             amountCents: normalizedAmounts[index] ?? 0,
-            dueDateLabel: formatInstallmentDueDateLabel(normalizedDueDates[index] ?? ''),
+            dueDateLabel: useRelativeDueDates
+                ? formatInstallmentRelativeDueDayLabel(normalizedRelativeDueDays[index] ?? 0)
+                : formatInstallmentDueDateLabel(normalizedDueDates[index] ?? ''),
         }));
     }, [
+        currentEvent?.eventType,
+        currentEvent?.parentEvent,
         selectedDivisionBilling.installmentAmounts,
         selectedDivisionBilling.installmentCount,
         selectedDivisionBilling.installmentDueDates,
+        selectedDivisionBilling.installmentDueRelativeDays,
     ]);
     const eventMinAge = typeof currentEvent?.minAge === 'number' ? currentEvent.minAge : undefined;
     const eventMaxAge = typeof currentEvent?.maxAge === 'number' ? currentEvent.maxAge : undefined;
@@ -1261,7 +1312,7 @@ export default function EventDetailSheet({
     const eventStartDate = effectiveEventStartDate;
     const eventHasStarted = Boolean(eventStartDate && new Date() >= eventStartDate);
     const joinClosedMessage = isWeeklyParentEvent && selectedWeeklyOccurrenceOption
-        ? 'This weekly occurrence has already started. Joining is closed.'
+        ? 'This weekly session has already started. Joining is closed.'
         : 'This event has already started. Joining is closed.';
     const userDob = parseDateValue(user?.dateOfBirth ?? null);
     const userAge = userDob ? calculateAgeOnDate(userDob, eventStartDate ?? new Date()) : undefined;
@@ -1644,7 +1695,7 @@ export default function EventDetailSheet({
                         eventTeams = orderedTeams;
                         eventFreeAgents = orderedFreeAgents;
                     } catch (error) {
-                        console.error('Failed to load weekly occurrence participants:', error);
+                        console.error('Failed to load weekly session participants:', error);
                         resolvedEvent = {
                             ...baseEvent,
                             teamIds: [],
@@ -1796,7 +1847,7 @@ export default function EventDetailSheet({
             return;
         }
 
-        setJoinNotice('Occurrence selected. Finish registration on the event page.');
+        setJoinNotice('Session selected. Finish registration on the event page.');
         const params = new URLSearchParams({
             tab: 'schedule',
             slotId: session.slotId,
@@ -1834,15 +1885,30 @@ export default function EventDetailSheet({
         const installmentDueDates = selectedDivisionBilling.allowPaymentPlans
             ? normalizeInstallmentDueDateValues(selectedDivisionBilling.installmentDueDates)
             : [];
+        const installmentDueRelativeDays = selectedDivisionBilling.allowPaymentPlans
+            ? normalizeInstallmentDueRelativeDayValues(selectedDivisionBilling.installmentDueRelativeDays)
+            : [];
+        const useRelativeDueDates = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
+        if (useRelativeDueDates) {
+            if (!selectedWeeklyOccurrence?.slotId || !selectedWeeklyOccurrence?.occurrenceDate) {
+                throw new Error('Select a weekly session before starting a payment plan.');
+            }
+            if (installmentDueRelativeDays.length !== installmentAmounts.length) {
+                throw new Error('Weekly payment plans need a due date offset for each installment.');
+            }
+        }
 
         return billService.createBill({
             ownerType,
             ownerId,
             totalAmountCents: priceCents,
             eventId: currentEvent.$id,
+            slotId: useRelativeDueDates ? selectedWeeklyOccurrence?.slotId ?? null : null,
+            occurrenceDate: useRelativeDueDates ? selectedWeeklyOccurrence?.occurrenceDate ?? null : null,
             organizationId: currentEvent.organizationId ?? null,
             installmentAmounts,
-            installmentDueDates,
+            installmentDueDates: useRelativeDueDates ? [] : installmentDueDates,
+            installmentDueRelativeDays: useRelativeDueDates ? installmentDueRelativeDays : [],
             allowSplit: ownerType === 'TEAM' ? Boolean(currentEvent.allowTeamSplitDefault) : false,
             paymentPlanEnabled: true,
             timeoutMs: JOIN_API_TIMEOUT_MS,
@@ -1851,11 +1917,12 @@ export default function EventDetailSheet({
                 start: currentEvent.start,
                 price: priceCents,
                 installmentAmounts,
-                installmentDueDates,
+                installmentDueDates: useRelativeDueDates ? [] : installmentDueDates,
+                installmentDueRelativeDays: useRelativeDueDates ? installmentDueRelativeDays : [],
             },
             user,
         });
-    }, [currentEvent, selectedDivisionBilling, user]);
+    }, [currentEvent, selectedDivisionBilling, selectedWeeklyOccurrence, user]);
 
     const registerChildForEvent = useCallback(async (childId: string, selection: DivisionSelectionPayload = {}) => {
         if (!currentEvent) {
@@ -2035,7 +2102,7 @@ export default function EventDetailSheet({
         }
     }, [selectedWeeklyOccurrence, user]);
 
-    const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly occurrence before continuing.') => {
+    const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly session before continuing.') => {
         if (!weeklySelectionRequired) {
             return true;
         }
@@ -2155,8 +2222,9 @@ export default function EventDetailSheet({
                 throw new Error('Team is required to start a payment plan.');
             }
 
+            let billCreatedDuringJoin = false;
             try {
-                await paymentService.joinEvent(
+                const joinResult = await paymentService.joinEvent(
                     user,
                     eventForJoin,
                     joinTeam,
@@ -2164,6 +2232,7 @@ export default function EventDetailSheet({
                     JOIN_API_TIMEOUT_MS,
                     selectedWeeklyOccurrence,
                 );
+                billCreatedDuringJoin = Boolean(joinResult?.bill);
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'Failed to join event.';
                 if (!message.toLowerCase().includes('already registered')) {
@@ -2172,22 +2241,28 @@ export default function EventDetailSheet({
             }
 
             try {
-                if (intent.mode === 'team' && joinTeam?.$id) {
+                if (billCreatedDuringJoin) {
+                    setJoinNotice(
+                        intent.mode === 'team'
+                            ? 'Team joined. Payment plan started. A bill was created - you can manage payments from your Profile.'
+                            : 'Joined. Payment plan started. A bill was created - pay installments from your Profile.',
+                    );
+                } else if (intent.mode === 'team' && joinTeam?.$id) {
                     await createBillForOwner('TEAM', joinTeam.$id);
                     setJoinNotice(
-                        'Team joined. Payment plan started. A bill was created—you can manage payments from your Profile.',
+                        'Team joined. Payment plan started. A bill was created - you can manage payments from your Profile.',
                     );
                 } else {
                     await createBillForOwner('USER', user.$id);
-                    setJoinNotice('Joined. Payment plan started. A bill was created—pay installments from your Profile.');
+                    setJoinNotice('Joined. Payment plan started. A bill was created - pay installments from your Profile.');
                 }
             } catch (error) {
                 const message = error instanceof Error ? error.message : 'Failed to start payment plan.';
                 if (message.toLowerCase().includes('payment plan already exists')) {
                     setJoinNotice(
                         intent.mode === 'team'
-                            ? 'Team joined. Payment plan already exists—you can manage payments from your Profile.'
-                            : 'Joined. Payment plan already exists—you can manage payments from your Profile.',
+                            ? 'Team joined. Payment plan already exists - you can manage payments from your Profile.'
+                            : 'Joined. Payment plan already exists - you can manage payments from your Profile.',
                     );
                 } else {
                     try {
@@ -2655,7 +2730,7 @@ export default function EventDetailSheet({
             setJoinError(joinClosedMessage);
             return;
         }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before registering a child.')) {
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before registering a child.')) {
             return;
         }
         if (!selectedChildId) {
@@ -2787,7 +2862,7 @@ export default function EventDetailSheet({
             setJoinError(joinClosedMessage);
             return;
         }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before joining.')) {
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining.')) {
             return;
         }
         if (!selection && canRegisterChild && hasActiveChildren) {
@@ -2861,7 +2936,7 @@ export default function EventDetailSheet({
             setJoinError(joinClosedMessage);
             return;
         }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before joining the waitlist.')) {
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining the waitlist.')) {
             return;
         }
         if (selfRegistrationBlockedReason) {
@@ -2913,7 +2988,7 @@ export default function EventDetailSheet({
             setJoinError(joinClosedMessage);
             return;
         }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before joining the waitlist.')) {
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining the waitlist.')) {
             return;
         }
         if (!selectedTeamIsWaitlisted && isDivisionSelectionMissing) {
@@ -2959,7 +3034,7 @@ export default function EventDetailSheet({
             setJoinError(joinClosedMessage);
             return;
         }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before joining.')) {
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before joining.')) {
             return;
         }
         if (isDivisionSelectionMissing) {
@@ -3029,7 +3104,7 @@ export default function EventDetailSheet({
             setJoinError(joinClosedMessage);
             return;
         }
-        if (!ensureWeeklyOccurrenceSelected('Select a weekly occurrence before withdrawing.')) {
+        if (!ensureWeeklyOccurrenceSelected('Select a weekly session before withdrawing.')) {
             return;
         }
 
@@ -3452,7 +3527,7 @@ export default function EventDetailSheet({
     const selfWaitlistJoinDisabled = weeklySelectionRequired || Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
     const selfWaitlistLeaveDisabled = joining || eventHasStarted;
     const freeAgentJoinBlockedReason = weeklySelectionRequired
-        ? 'Select a weekly occurrence before joining as a free agent.'
+                                ? 'Select a weekly session before joining as a free agent.'
         : selfRegistrationBlockedReason;
     const childPrimaryActionLabel = isTeamSignup
         ? (joiningChildFreeAgent
@@ -4248,7 +4323,7 @@ export default function EventDetailSheet({
                                         <Group justify="space-between" align="center" gap="xs">
                                             <div>
                                                 <Text size="sm" fw={600}>
-                                                    {selectedWeeklyOccurrenceOption ? 'Selected weekly occurrence' : 'Select a weekly occurrence'}
+                                            {selectedWeeklyOccurrenceOption ? 'Selected weekly session' : 'Select a weekly session'}
                                                 </Text>
                                                 <Text size="xs" c="dimmed">
                                                     Choose the day and slot you want to register for.
@@ -4501,7 +4576,7 @@ export default function EventDetailSheet({
                                                 {eventHasStarted && (
                                                     <Alert color="yellow" variant="light">
                                                         {isWeeklyParentEvent && selectedWeeklyOccurrenceOption
-                                                            ? 'This weekly occurrence has already started. Joining and leaving are no longer available.'
+                                            ? 'This weekly session has already started. Joining and leaving are no longer available.'
                                                             : 'This event has already started. Joining and leaving are no longer available.'}
                                                     </Alert>
                                                 )}
@@ -4729,7 +4804,7 @@ export default function EventDetailSheet({
                                     </>
                                 ) : (
                                     <Alert color="blue" variant="light">
-                                        Select a weekly occurrence to see registration options.
+                                                            Select a weekly session to see registration options.
                                     </Alert>
                                 )}
                             </Paper>
@@ -5112,7 +5187,7 @@ export default function EventDetailSheet({
                     <Paper withBorder p="sm" radius="md">
                         <Group justify="space-between" align="center">
                             <Text fw={600}>Plan total</Text>
-                            <Text fw={700}>{formatPrice(selectedDivisionBilling.priceCents)}</Text>
+                            <Text fw={700}>{formatPaymentPlanPreviewPrice(selectedDivisionBilling.priceCents)}</Text>
                         </Group>
                     </Paper>
                     {paymentPlanPreviewRows.length > 0 ? (
@@ -5128,7 +5203,7 @@ export default function EventDetailSheet({
                                         </Text>
                                     </div>
                                     <Text size="sm" fw={600}>
-                                        {formatPrice(row.amountCents)}
+                                        {formatPaymentPlanPreviewPrice(row.amountCents)}
                                     </Text>
                                 </Group>
                             ))}
