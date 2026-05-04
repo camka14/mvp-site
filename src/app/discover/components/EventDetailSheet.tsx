@@ -539,6 +539,8 @@ const formatInstallmentDueDateLabel = (value: string): string => {
     return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+const formatPaymentPlanPreviewPrice = (amountCents: number): string => `${formatPrice(amountCents)} + fees`;
+
 const formatInstallmentRelativeDueDayLabel = (offsetDays: number): string => {
     if (!Number.isFinite(offsetDays) || offsetDays === 0) {
         return 'Session day';
@@ -5161,7 +5163,7 @@ export default function EventDetailSheet({
                     <Paper withBorder p="sm" radius="md">
                         <Group justify="space-between" align="center">
                             <Text fw={600}>Plan total</Text>
-                            <Text fw={700}>{formatPrice(selectedDivisionBilling.priceCents)}</Text>
+                            <Text fw={700}>{formatPaymentPlanPreviewPrice(selectedDivisionBilling.priceCents)}</Text>
                         </Group>
                     </Paper>
                     {paymentPlanPreviewRows.length > 0 ? (
@@ -5177,7 +5179,7 @@ export default function EventDetailSheet({
                                         </Text>
                                     </div>
                                     <Text size="sm" fw={600}>
-                                        {formatPrice(row.amountCents)}
+                                        {formatPaymentPlanPreviewPrice(row.amountCents)}
                                     </Text>
                                 </Group>
                             ))}
