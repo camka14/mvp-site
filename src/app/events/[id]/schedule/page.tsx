@@ -5,10 +5,11 @@ import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigat
 import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover, SegmentedControl, Menu } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
-import { ListChecks, Megaphone } from 'lucide-react';
+import { ListChecks, Megaphone, QrCode } from 'lucide-react';
 import type { View } from 'react-big-calendar';
 
 import Navigation from '@/components/layout/Navigation';
+import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import { TermsConsentModal } from '@/components/moderation/TermsConsentModal';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
@@ -1217,6 +1218,7 @@ function EventScheduleContent() {
   const [notificationAudience, setNotificationAudience] = useState<NotificationAudienceState>({ ...DEFAULT_NOTIFICATION_AUDIENCE });
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [sendingNotification, setSendingNotification] = useState(false);
+  const [isQrCodeModalOpen, setIsQrCodeModalOpen] = useState(false);
   const templatePromptResolvedRef = useRef(false);
   const templateIdSeedResolvedRef = useRef<string | null>(null);
   const [failedTemplateSeedId, setFailedTemplateSeedId] = useState<string | null>(null);
@@ -8409,6 +8411,8 @@ function EventScheduleContent() {
   const showDeleteTemplateActionButton = isTemplateEvent;
   const showCancelActionButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
   const showCreateTemplateButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
+  const showQrCodeActionButton = Boolean(canManageEvent && !isCreateMode && !isTemplateEvent && !isEditingEvent && activeEvent?.$id);
+  const activeEventPublicUrl = activeEvent?.$id ? buildEventPublicUrl(activeEvent.$id) : '';
   const showMoreActionsMenu = showRescheduleActionButton
     || showBuildBracketsActionButton
     || showCancelActionButton
@@ -8478,6 +8482,15 @@ function EventScheduleContent() {
                 {showEditActionButton && (
                   <Button onClick={handleEnterEditMode} disabled={hasNetworkActionInFlight}>
                     Manage
+                  </Button>
+                )}
+                {showQrCodeActionButton && activeEvent && (
+                  <Button
+                    variant="default"
+                    leftSection={<QrCode size={16} />}
+                    onClick={() => setIsQrCodeModalOpen(true)}
+                  >
+                    QR Code
                   </Button>
                 )}
                 {(isEditingEvent || isCreateMode) && (
@@ -8580,6 +8593,16 @@ function EventScheduleContent() {
               </Group>
             )}
           </Group>
+
+          {activeEvent && showQrCodeActionButton && (
+            <EventQrCodeModal
+              eventId={activeEvent.$id}
+              eventName={activeEvent.name || 'Event'}
+              eventUrl={activeEventPublicUrl}
+              opened={isQrCodeModalOpen}
+              onClose={() => setIsQrCodeModalOpen(false)}
+            />
+          )}
 
           {infoMessage && (
             <Alert color="green" radius="md" onClose={() => setInfoMessage(null)} withCloseButton>

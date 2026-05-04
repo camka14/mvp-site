@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Image from 'next/image';
 import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
+import { QrCode } from 'lucide-react';
 import {
     BillingAddress,
     Event,
@@ -53,6 +54,7 @@ import { collectOrganizationHostIds } from '@/lib/organizationEventAccess';
 import { useApp } from '@/app/providers';
 import ParticipantsPreview from '@/components/ui/ParticipantsPreview';
 import ParticipantsDropdown from '@/components/ui/ParticipantsDropdown';
+import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import PaymentModal from '@/components/ui/PaymentModal';
 import RefundSection from '@/components/ui/RefundSection';
@@ -930,6 +932,7 @@ export default function EventDetailSheet({
     const [authVerificationMessage, setAuthVerificationMessage] = useState('');
     const [authVerificationMessageType, setAuthVerificationMessageType] = useState<'info' | 'success'>('info');
     const [authResendingVerification, setAuthResendingVerification] = useState(false);
+    const [showQrCodeModal, setShowQrCodeModal] = useState(false);
     const [hostUser, setHostUser] = useState<UserData | null>(null);
     const eventRef = React.useRef<Event | null>(event);
 
@@ -941,6 +944,10 @@ export default function EventDetailSheet({
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
 
     const currentEvent = detailedEvent || event;
+    const currentEventPublicUrl = React.useMemo(
+        () => (currentEvent?.$id ? buildEventPublicUrl(currentEvent.$id) : ''),
+        [currentEvent?.$id],
+    );
     const isWeeklyParentEvent = currentEvent.eventType === 'WEEKLY_EVENT' && !currentEvent.parentEvent;
     const weeklySessionOptions = React.useMemo(
         () => (isWeeklyParentEvent ? buildWeeklySessionOptions(currentEvent, 3) : []),
@@ -3402,6 +3409,23 @@ export default function EventDetailSheet({
     const canShowScheduleButton = isEventHost && !renderInline && !isWeeklyParentEvent;
     const showParticipantsSection = !isWeeklyParentEvent;
     const scheduleButtonLabel = isEventHost ? 'Manage Event' : 'View Schedule';
+    const renderHostManageQrActions = () => (
+        <Group grow gap="sm" wrap="wrap">
+            <Button
+                variant="light"
+                onClick={() => handleViewSchedule()}
+            >
+                {scheduleButtonLabel}
+            </Button>
+            <Button
+                variant="default"
+                leftSection={<QrCode size={16} />}
+                onClick={() => setShowQrCodeModal(true)}
+            >
+                QR Code
+            </Button>
+        </Group>
+    );
     const selectedTeamRegistration = selectedTeamId
         ? teams.find((team) => team.$id === selectedTeamId || team.parentTeamId === selectedTeamId) ?? null
         : null;
@@ -4365,13 +4389,7 @@ export default function EventDetailSheet({
                                         </div>
                                         {canShowScheduleButton && (
                                             <div className="mt-4 space-y-2">
-                                                <Button
-                                                    fullWidth
-                                                    variant="light"
-                                                    onClick={() => handleViewSchedule()}
-                                                >
-                                                    {scheduleButtonLabel}
-                                                </Button>
+                                                {renderHostManageQrActions()}
                                                 {currentEvent.eventType === 'TOURNAMENT' && (
                                                     <Button
                                                         fullWidth
@@ -4464,14 +4482,9 @@ export default function EventDetailSheet({
                                                 )}
 
                                                 {canShowScheduleButton && (
-                                                    <Button
-                                                        fullWidth
-                                                        variant="light"
-                                                        mt="sm"
-                                                        onClick={() => handleViewSchedule()}
-                                                    >
-                                                        {scheduleButtonLabel}
-                                                    </Button>
+                                                    <div className="mt-2">
+                                                        {renderHostManageQrActions()}
+                                                    </div>
                                                 )}
 
                                                 {childRegistrationPanel}
@@ -4689,14 +4702,9 @@ export default function EventDetailSheet({
 
                                                 {/* View Schedule / Bracket Buttons */}
                                                 {canShowScheduleButton && (
-                                                    <Button
-                                                        fullWidth
-                                                        variant="light"
-                                                        mt="sm"
-                                                        onClick={() => handleViewSchedule()}
-                                                    >
-                                                        {scheduleButtonLabel}
-                                                    </Button>
+                                                    <div className="mt-2">
+                                                        {renderHostManageQrActions()}
+                                                    </div>
                                                 )}
 
                                                 {!renderInline && currentEvent.eventType === 'TOURNAMENT' &&
@@ -4792,6 +4800,14 @@ export default function EventDetailSheet({
                     {nonInlineContent}
                 </Drawer>
             )}
+
+            <EventQrCodeModal
+                eventId={currentEvent.$id}
+                eventName={currentEvent.name || 'Event'}
+                eventUrl={currentEventPublicUrl}
+                opened={showQrCodeModal}
+                onClose={() => setShowQrCodeModal(false)}
+            />
 
             {/* Players Dropdown */}
             {showParticipantsSection && !isTeamSignup && (
