@@ -34,6 +34,7 @@ const scheduleSchema = z.object({
   event: z.string().optional(),
   eventDocument: z.record(z.string(), z.any()).optional(),
   participantCount: z.number().int().positive().optional(),
+  includePlaceholderTeams: z.boolean().optional(),
 });
 
 const buildContext = (): SchedulerContext => {
@@ -70,6 +71,7 @@ export async function POST(req: NextRequest) {
     }
 
     const { eventDocument, participantCount } = parsed.data;
+    const includePlaceholderTeams = parsed.data.includePlaceholderTeams !== false;
     let eventId = parsed.data.eventId ?? parsed.data.event;
     const context = buildContext();
     let rentalLockWindowToRelease: RentalCheckoutWindow | null = null;
@@ -127,8 +129,12 @@ export async function POST(req: NextRequest) {
         return { preview: false, event, matches: Object.values(event.matches) };
       }
 
-      const scheduled = scheduleEvent({ event, participantCount }, context);
-      await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
+      const scheduled = scheduleEvent({ event, participantCount, includePlaceholderTeams }, context);
+      await persistScheduledRosterTeams({
+        eventId,
+        scheduled: scheduled.event,
+        removeOmittedPlaceholderTeams: !includePlaceholderTeams,
+      }, tx);
       await deleteMatchesByEvent(eventId, tx);
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);

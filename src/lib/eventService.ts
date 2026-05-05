@@ -671,13 +671,20 @@ class EventService {
 
   async scheduleEvent(
     eventDocument: Record<string, any>,
-    options: { participantCount?: number; eventId?: string } = {},
+    options: {
+      participantCount?: number;
+      eventId?: string;
+      includePlaceholderTeams?: boolean;
+    } = {},
   ): Promise<LeagueScheduleResponse> {
     const normalizedDocument = normalizeOutgoingEventDocument(eventDocument);
     const payload: Record<string, any> = { eventDocument: normalizedDocument };
 
     if (typeof options.participantCount === "number") {
       payload.participantCount = options.participantCount;
+    }
+    if (typeof options.includePlaceholderTeams === "boolean") {
+      payload.includePlaceholderTeams = options.includePlaceholderTeams;
     }
 
     const path = options.eventId

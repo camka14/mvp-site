@@ -1118,7 +1118,7 @@ function EventScheduleContent() {
   const [publishing, setPublishing] = useState(false);
   const [reportingEvent, setReportingEvent] = useState(false);
   const [reschedulingMatches, setReschedulingMatches] = useState(false);
-  const [pendingScheduleAction, setPendingScheduleAction] = useState<'reschedule' | 'rebuild' | null>(null);
+  const [pendingScheduleAction, setPendingScheduleAction] = useState<'reschedule' | 'rebuild' | 'rebuildNoPlaceholders' | null>(null);
   const [selectedLifecycleStatus, setSelectedLifecycleStatus] = useState<EventLifecycleStatus | null>(null);
   const [isPendingChangesPopoverOpen, setIsPendingChangesPopoverOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -6676,7 +6676,7 @@ function EventScheduleContent() {
     async ({
       postSaveAction = 'none',
     }: {
-      postSaveAction?: 'none' | 'reschedule' | 'buildBrackets';
+      postSaveAction?: 'none' | 'reschedule' | 'buildBrackets' | 'rebuildWithoutPlaceholders';
     } = {}) => {
       if (!activeEvent) return;
       if (!event) {
@@ -6686,7 +6686,8 @@ function EventScheduleContent() {
 
       const isRescheduleAction = postSaveAction === 'reschedule';
       const isBuildBracketAction = postSaveAction === 'buildBrackets';
-      const hasSchedulingAction = isRescheduleAction || isBuildBracketAction;
+      const isRebuildWithoutPlaceholdersAction = postSaveAction === 'rebuildWithoutPlaceholders';
+      const hasSchedulingAction = isRescheduleAction || isBuildBracketAction || isRebuildWithoutPlaceholdersAction;
 
       const draft = await getDraftFromForm({
         allowCurrentEventFallback: hasSchedulingAction,
@@ -6759,7 +6760,7 @@ function EventScheduleContent() {
           });
         }
 
-        const shouldPersistDraftMatches = !isBuildBracketAction;
+        const shouldPersistDraftMatches = !isBuildBracketAction && !isRebuildWithoutPlaceholdersAction;
         if (updatedEvent.$id && shouldPersistDraftMatches && nextMatches.length > 0) {
           const validation = validateDraftMatchGraph(nextMatches);
           if (!validation.ok) {
@@ -6858,12 +6859,16 @@ function EventScheduleContent() {
         let scheduleWarningText: string | null = null;
         if (hasSchedulingAction && updatedEvent.$id) {
           const scheduleEventId = updatedEvent.$id;
-          if (isBuildBracketAction) {
+          if (isBuildBracketAction || isRebuildWithoutPlaceholdersAction) {
             await leagueService.deleteMatchesByEvent(scheduleEventId);
           }
 
           const schedulePayload = toEventPayload(updatedEvent) as unknown as Record<string, unknown>;
-          const scheduleOptions: { eventId: string; participantCount?: number } = { eventId: scheduleEventId };
+          const scheduleOptions: {
+            eventId: string;
+            participantCount?: number;
+            includePlaceholderTeams?: boolean;
+          } = { eventId: scheduleEventId };
           if (isBuildBracketAction) {
             const participantCount = typeof updatedEvent.maxParticipants === 'number'
               ? Math.max(2, Math.trunc(updatedEvent.maxParticipants))
@@ -6872,10 +6877,17 @@ function EventScheduleContent() {
               scheduleOptions.participantCount = participantCount;
             }
           }
+          if (isRebuildWithoutPlaceholdersAction) {
+            scheduleOptions.includePlaceholderTeams = false;
+          }
           const scheduled = await eventService.scheduleEvent(schedulePayload, scheduleOptions);
           if (!scheduled?.event) {
             throw new Error(
-              isBuildBracketAction ? 'Failed to rebuild bracket(s).' : 'Failed to reschedule matches.',
+              isRebuildWithoutPlaceholdersAction
+                ? 'Failed to rebuild without placeholder teams.'
+                : isBuildBracketAction
+                  ? 'Failed to rebuild bracket(s).'
+                  : 'Failed to reschedule matches.',
             );
           }
           if (Array.isArray(scheduled.warnings) && scheduled.warnings.length) {
@@ -6931,13 +6943,20 @@ function EventScheduleContent() {
           if (scheduleWarningText) {
             setWarningMessage(scheduleWarningText);
           }
+        } else if (isRebuildWithoutPlaceholdersAction) {
+          setInfoMessage('Schedule rebuilt without placeholder teams.');
+          if (scheduleWarningText) {
+            setWarningMessage(scheduleWarningText);
+          }
         } else {
           setInfoMessage(`${entityLabel} changes saved.`);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : null;
         console.error(`Failed to save ${entityLabel.toLowerCase()} changes:`, err);
-        const baseMessage = isBuildBracketAction
+        const baseMessage = isRebuildWithoutPlaceholdersAction
+          ? 'Failed to rebuild without placeholder teams.'
+          : isBuildBracketAction
           ? 'Failed to rebuild bracket(s).'
           : (
             isRescheduleAction
@@ -7004,6 +7023,23 @@ function EventScheduleContent() {
       setPendingScheduleAction((current) => (current === 'rebuild' ? null : current));
     }
   }, [activeEvent, publishing, reschedulingMatches, saveExistingEvent]);
+
+  const handleRebuildWithoutPlaceholders = useCallback(async () => {
+    if (publishing || reschedulingMatches) return;
+    const confirmed = window.confirm(
+      'Rebuild without placeholder teams? This removes empty placeholder teams and rebuilds matches from registered teams only.',
+    );
+    if (!confirmed) {
+      return;
+    }
+    setSubmitError(null);
+    setPendingScheduleAction('rebuildNoPlaceholders');
+    try {
+      await saveExistingEvent({ postSaveAction: 'rebuildWithoutPlaceholders' });
+    } finally {
+      setPendingScheduleAction((current) => (current === 'rebuildNoPlaceholders' ? null : current));
+    }
+  }, [publishing, reschedulingMatches, saveExistingEvent]);
 
   const handlePublish = async () => {
     if (publishing || reschedulingMatches) return;
@@ -8417,6 +8453,7 @@ function EventScheduleContent() {
   const showBuildBracketsActionButton = isEditingEvent && (
     isTournament || (isLeague && Boolean(activeEvent.includePlayoffs))
   );
+  const showRebuildWithoutPlaceholdersActionButton = isEditingEvent && (isLeague || isTournament);
   const showDeleteTemplateActionButton = isTemplateEvent;
   const showCancelActionButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
   const showCreateTemplateButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
@@ -8424,11 +8461,13 @@ function EventScheduleContent() {
   const activeEventPublicUrl = activeEvent?.$id ? buildEventPublicUrl(activeEvent.$id) : '';
   const showMoreActionsMenu = showRescheduleActionButton
     || showBuildBracketsActionButton
+    || showRebuildWithoutPlaceholdersActionButton
     || showCancelActionButton
     || showDeleteTemplateActionButton
     || showCreateTemplateButton;
   const isRescheduleActionInFlight = reschedulingMatches && pendingScheduleAction === 'reschedule';
   const isRebuildActionInFlight = reschedulingMatches && pendingScheduleAction === 'rebuild';
+  const isRebuildWithoutPlaceholdersActionInFlight = reschedulingMatches && pendingScheduleAction === 'rebuildNoPlaceholders';
   const showLifecycleStatusSelect = isEditingEvent && !isTemplateEvent;
   const showDiscardChangesButton = (isEditingEvent || isCreateMode) && hasPendingUnsavedChanges;
   const eventFormRenderKey = isCreateMode
@@ -8542,7 +8581,7 @@ function EventScheduleContent() {
                   </>
                 )}
                 {showMoreActionsMenu && (
-                  <Menu shadow="md" width={220} position="bottom-end">
+                  <Menu shadow="md" width={280} position="bottom-end">
                     <Menu.Target>
                       <Button variant="default">More</Button>
                     </Menu.Target>
@@ -8568,6 +8607,20 @@ function EventScheduleContent() {
                           }
                         >
                           {isRebuildActionInFlight ? 'Rebuilding...' : 'Rebuild'}
+                        </Menu.Item>
+                      )}
+                      {showRebuildWithoutPlaceholdersActionButton && (
+                        <Menu.Item
+                          color="orange"
+                          onClick={handleRebuildWithoutPlaceholders}
+                          disabled={
+                            (hasNetworkActionInFlight && !isRebuildWithoutPlaceholdersActionInFlight)
+                            || hasSplitDivisionUnassignedTeams
+                          }
+                        >
+                          {isRebuildWithoutPlaceholdersActionInFlight
+                            ? 'Rebuilding without placeholders...'
+                            : 'Rebuild Without Placeholders'}
                         </Menu.Item>
                       )}
                       {showCancelActionButton && (

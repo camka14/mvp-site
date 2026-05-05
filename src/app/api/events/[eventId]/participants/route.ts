@@ -330,6 +330,89 @@ const isSlotProvisionedTeam = (team: { kind?: unknown; captainId?: unknown; pare
   || String(team.captainId ?? '').trim().length === 0
   || normalizeId(team.parentTeamId) !== null
 );
+const isSchedulableTeamSignupEvent = (event: { eventType?: unknown; teamSignup?: unknown }): boolean => (
+  Boolean(event.teamSignup)
+  && ['LEAGUE', 'TOURNAMENT'].includes(String(event.eventType ?? '').trim().toUpperCase())
+);
+const placeholderNameForEventTeam = (event: { teamIds?: unknown }, eventTeamId: string): string => {
+  const eventTeamIds = normalizeUserIdList(event.teamIds);
+  const index = eventTeamIds.findIndex((teamId) => teamId === eventTeamId);
+  return `Place Holder ${index >= 0 ? index + 1 : eventTeamIds.length + 1}`;
+};
+const normalizeNonNegativeInt = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+  return Math.max(0, Math.trunc(numeric));
+};
+const resetEventTeamSlotToPlaceholder = async (params: {
+  tx: PrismaLike;
+  event: any;
+  eventTeamId: string;
+  eventTeam?: any;
+  team: any;
+  existingRegistration: any;
+  createdBy: string;
+  occurrence: { slotId: string; occurrenceDate: string } | null;
+  now: Date;
+}) => {
+  const divisionId = normalizeId(params.existingRegistration?.divisionId)
+    ?? normalizeId(params.eventTeam?.division)
+    ?? normalizeId(params.team?.division);
+  const divisionTypeId = normalizeId(params.existingRegistration?.divisionTypeId)
+    ?? normalizeId(params.eventTeam?.divisionTypeId)
+    ?? normalizeId(params.team?.divisionTypeId);
+  const divisionTypeKey = normalizeId(params.existingRegistration?.divisionTypeKey);
+  const divisionTypeName = normalizeId(params.eventTeam?.divisionTypeName)
+    ?? normalizeId(params.team?.divisionTypeName);
+  const teamSize = normalizeNonNegativeInt(params.event?.teamSizeLimit)
+    ?? normalizeNonNegativeInt(params.eventTeam?.teamSize)
+    ?? normalizeNonNegativeInt(params.team?.teamSize)
+    ?? 0;
+
+  await params.tx.teams.update({
+    where: { id: params.eventTeamId },
+    data: {
+      eventId: params.event.id,
+      kind: 'PLACEHOLDER',
+      playerIds: [],
+      playerRegistrationIds: [],
+      division: divisionId,
+      divisionTypeId,
+      divisionTypeName,
+      wins: 0,
+      losses: 0,
+      name: placeholderNameForEventTeam(params.event, params.eventTeamId),
+      captainId: '',
+      managerId: '',
+      headCoachId: null,
+      coachIds: [],
+      staffAssignmentIds: [],
+      parentTeamId: null,
+      pending: [],
+      teamSize,
+      profileImageId: null,
+      sport: null,
+      updatedAt: params.now,
+    },
+  });
+
+  await upsertEventRegistration({
+    eventId: params.event.id,
+    registrantType: 'TEAM',
+    registrantId: params.eventTeamId,
+    parentId: null,
+    rosterRole: 'PARTICIPANT',
+    status: 'ACTIVE',
+    eventTeamId: params.eventTeamId,
+    divisionId,
+    divisionTypeId,
+    divisionTypeKey,
+    createdBy: params.createdBy,
+    occurrence: params.occurrence,
+  }, params.tx);
+};
 const normalizeSportKey = (value: unknown): string => {
   if (typeof value !== 'string') {
     return '';
@@ -894,6 +977,7 @@ async function updateParticipants(
   let teamRefundOwnerIds: string[] = [];
   let teamRefundParticipantUserIds: string[] = [];
   let canonicalTeamRow: Record<string, any> | null = null;
+  let teamForRemoval: Record<string, any> | null = null;
 
   if (teamId) {
     const team = await loadCanonicalTeamById(teamId, prisma);
@@ -901,6 +985,7 @@ async function updateParticipants(
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
+    teamForRemoval = team as Record<string, any>;
     const registeredEventTeam = await findRegisteredEventTeamForCanonical({
       eventId: event.id,
       canonicalTeamId: teamId,
@@ -1124,7 +1209,8 @@ async function updateParticipants(
         occurrence: resolvedOccurrence,
       }, tx);
 
-      const existingEventTeamId = normalizeId(existingRegistration.eventTeamId);
+      const existingEventTeamId = normalizeId(existingRegistration.eventTeamId)
+        ?? normalizeId(registeredEventTeam?.id);
       if (existingEventTeamId) {
         await tx.eventRegistrations.updateMany({
           where: {
@@ -1146,6 +1232,24 @@ async function updateParticipants(
             status: 'CANCELLED',
             updatedAt: now,
           },
+        });
+      }
+
+      if (
+        existingEventTeamId
+        && isSchedulableTeamSignupEvent(event)
+        && (!registeredEventTeam || isSlotProvisionedTeam(registeredEventTeam))
+      ) {
+        await resetEventTeamSlotToPlaceholder({
+          tx,
+          event,
+          eventTeamId: existingEventTeamId,
+          eventTeam: registeredEventTeam,
+          team: teamForRemoval,
+          existingRegistration,
+          createdBy: session.userId,
+          occurrence: resolvedOccurrence,
+          now,
         });
       }
 

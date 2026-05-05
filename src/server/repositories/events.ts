@@ -2678,6 +2678,7 @@ export const persistScheduledRosterTeams = async (
   params: {
     eventId: string;
     scheduled: League | Tournament;
+    removeOmittedPlaceholderTeams?: boolean;
   },
   client: PrismaLike = prisma,
 ): Promise<string[]> => {
@@ -2750,6 +2751,20 @@ export const persistScheduledRosterTeams = async (
     syncWaitList: false,
     syncFreeAgents: false,
   });
+
+  if (params.removeOmittedPlaceholderTeams && typeof (client as any).teams?.deleteMany === 'function') {
+    await (client as any).teams.deleteMany({
+      where: {
+        eventId: params.eventId,
+        ...(rosterTeamIds.length ? { id: { notIn: rosterTeamIds } } : {}),
+        OR: [
+          { kind: 'PLACEHOLDER' },
+          { captainId: '' },
+          { name: { startsWith: 'Place Holder', mode: 'insensitive' } },
+        ],
+      } as any,
+    });
+  }
 
   if (!rosterTeamIds.length) {
     return rosterTeamIds;

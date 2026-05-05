@@ -1,10 +1,11 @@
 import { EventBuilder } from './EventBuilder';
-import { Division, League, Match, Tournament, TIMES, MINUTE_MS, SchedulerContext } from './types';
+import { Division, League, Match, Tournament, TIMES, MINUTE_MS, SchedulerContext, Team } from './types';
 import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
 
 export type ScheduleRequest = {
   event: League | Tournament;
   participantCount?: number;
+  includePlaceholderTeams?: boolean;
 };
 
 export type ScheduleResult = {
@@ -27,7 +28,38 @@ const normalizeTeamId = (value: unknown): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
-const normalizeLeagueRosterTeamIds = (league: League): string[] => {
+const isPlaceholderSchedulerTeam = (team: Team | undefined): boolean => {
+  if (!team) {
+    return false;
+  }
+  const captainId = String(team.captainId ?? '').trim();
+  const name = String(team.name ?? '').trim();
+  return captainId.length === 0 || /^place\s*holder\b/i.test(name);
+};
+
+const stripPlaceholderTeamsFromEvent = (event: League | Tournament): void => {
+  const retainedTeams: Record<string, Team> = {};
+  for (const [teamId, team] of Object.entries(event.teams)) {
+    if (!isPlaceholderSchedulerTeam(team)) {
+      retainedTeams[teamId] = team;
+    }
+  }
+  event.teams = retainedTeams;
+  event.registeredTeamIds = event.registeredTeamIds.filter((teamId) => Boolean(retainedTeams[teamId]));
+  for (const division of event.divisions) {
+    division.teamIds = division.teamIds.filter((teamId) => Boolean(retainedTeams[teamId]));
+  }
+  if (event instanceof League) {
+    for (const division of event.playoffDivisions) {
+      division.teamIds = division.teamIds.filter((teamId) => Boolean(retainedTeams[teamId]));
+    }
+  }
+};
+
+const normalizeLeagueRosterTeamIds = (
+  league: League,
+  includePlaceholderTeams: boolean,
+): string[] => {
   const source = Array.isArray(league.registeredTeamIds) && league.registeredTeamIds.length
     ? league.registeredTeamIds
     : Object.keys(league.teams);
@@ -38,7 +70,7 @@ const normalizeLeagueRosterTeamIds = (league: League): string[] => {
         .filter((teamId): teamId is string => Boolean(teamId))
         .filter((teamId) => Boolean(league.teams[teamId])),
     ),
-  );
+  ).filter((teamId) => includePlaceholderTeams || !isPlaceholderSchedulerTeam(league.teams[teamId]));
 };
 
 const applyRosterToLeagueTeams = (
@@ -255,7 +287,11 @@ const isScheduleOverrunError = (message: string): boolean => {
 
 export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContext): ScheduleResult => {
   const { event } = request;
-  if (typeof request.participantCount === 'number' && request.participantCount > 0) {
+  const includePlaceholderTeams = request.includePlaceholderTeams !== false;
+  if (!includePlaceholderTeams) {
+    stripPlaceholderTeamsFromEvent(event);
+  }
+  if (includePlaceholderTeams && typeof request.participantCount === 'number' && request.participantCount > 0) {
     event.maxParticipants = request.participantCount;
   }
 
@@ -269,21 +305,22 @@ export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContex
     extendOpenEndedWindow(event);
   }
 
-  prepareScheduleWindow(event, openEndedSchedule);
+  prepareScheduleWindow(event, openEndedSchedule, includePlaceholderTeams);
 
   if (isLeague(event)) {
-    return buildLeagueSchedule(event, context, openEndedSchedule);
+    return buildLeagueSchedule(event, context, openEndedSchedule, includePlaceholderTeams);
   }
 
-  return buildTournamentSchedule(event, context, openEndedSchedule);
+  return buildTournamentSchedule(event, context, openEndedSchedule, includePlaceholderTeams);
 };
 
 const buildLeagueSchedule = (
   league: League,
   context: SchedulerContext,
   openEndedSchedule: boolean,
+  includePlaceholderTeams: boolean,
 ): ScheduleResult => {
-  const rosterTeamIds = normalizeLeagueRosterTeamIds(league);
+  const rosterTeamIds = normalizeLeagueRosterTeamIds(league, includePlaceholderTeams);
   const splitDivisionMode = !league.singleDivision && league.divisions.length > 0;
 
   if (splitDivisionMode) {
@@ -331,7 +368,7 @@ const buildLeagueSchedule = (
   ensureSplitPlayoffTimeSlotCoverage(league);
 
   if (!league.timeSlots.length) {
-    throw new ScheduleError(describeScheduleFailure(league, league.maxParticipants));
+    throw new ScheduleError(describeScheduleFailure(league, includePlaceholderTeams ? league.maxParticipants : undefined));
   }
   let updated: League | null = null;
   let extensionAttempt = 0;
@@ -347,7 +384,7 @@ const buildLeagueSchedule = (
       team.matches = [];
     }
 
-    const builder = new EventBuilder(league, context);
+    const builder = new EventBuilder(league, context, { includePlaceholderTeams });
     try {
       const scheduled = builder.buildSchedule();
       if (!(scheduled instanceof League)) {
@@ -470,8 +507,9 @@ const buildTournamentSchedule = (
   tournament: Tournament,
   context: SchedulerContext,
   openEndedSchedule: boolean,
+  includePlaceholderTeams: boolean,
 ): ScheduleResult => {
-  const builder = new EventBuilder(tournament, context);
+  const builder = new EventBuilder(tournament, context, { includePlaceholderTeams });
   let scheduled: Tournament;
   try {
     const result = builder.buildSchedule();
@@ -706,11 +744,15 @@ const calculateSlotMinutes = (event: League): number => {
   return totalMinutes;
 };
 
-const prepareScheduleWindow = (event: Tournament | League, allowExtension: boolean): void => {
+const prepareScheduleWindow = (
+  event: Tournament | League,
+  allowExtension: boolean,
+  includePlaceholderTeams: boolean,
+): void => {
   if (!allowExtension) return;
   if (!event.timeSlots.length) return;
   if (!hasExtendableRecurringSlots(event)) return;
-  const expectedTeams = projectedTeamCount(event);
+  const expectedTeams = projectedTeamCount(event, includePlaceholderTeams);
   const weeklyMinutes = weeklySlotMinutes(event.timeSlots.filter((slot) => isExtendableRecurringSlot(slot)));
   if (weeklyMinutes <= 0) return;
   const matchMinutes = estimatedMatchMinutes(event, expectedTeams);
@@ -722,7 +764,10 @@ const prepareScheduleWindow = (event: Tournament | League, allowExtension: boole
   }
 };
 
-const projectedTeamCount = (event: Tournament | League): number => {
+const projectedTeamCount = (event: Tournament | League, includePlaceholderTeams: boolean): number => {
+  if (!includePlaceholderTeams) {
+    return Object.keys(event.teams).length;
+  }
   if (isLeague(event) && !event.singleDivision && event.divisions.length > 0) {
     const projectedByDivision = projectedDivisionTeamCounts(event, event.maxParticipants || 0);
     const total = Array.from(projectedByDivision.values()).reduce((sum, count) => sum + Math.max(0, count), 0);

@@ -1644,4 +1644,74 @@ describe('persistScheduledRosterTeams', () => {
       data: expect.objectContaining({ teamIds: ['slot_2'] }),
     });
   });
+
+  it('removes omitted placeholder team rows when requested', async () => {
+    const divisionA = buildEventDivisionId('event_1', 'a');
+    const scheduled = {
+      eventType: 'LEAGUE',
+      singleDivision: true,
+      divisions: [
+        { id: divisionA, kind: 'LEAGUE' },
+      ],
+      teams: {
+        team_real: {
+          id: 'team_real',
+          captainId: 'captain_1',
+          division: { id: divisionA },
+          name: 'Registered Team',
+          playerIds: ['captain_1'],
+        },
+      },
+    } as any;
+
+    const client = {
+      events: {
+        update: jest.fn().mockResolvedValue(undefined),
+        findUnique: jest.fn().mockResolvedValue({
+          teamSizeLimit: 2,
+          singleDivision: true,
+        }),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'team_real', division: divisionA }]),
+        create: jest.fn().mockResolvedValue(undefined),
+        update: jest.fn().mockResolvedValue(undefined),
+        deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+      divisions: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn().mockResolvedValue(undefined),
+      },
+      eventRegistrations: {
+        updateMany: jest.fn().mockResolvedValue({ count: 2 }),
+        upsert: jest.fn().mockResolvedValue({}),
+      },
+    };
+
+    await persistScheduledRosterTeams(
+      { eventId: 'event_1', scheduled, removeOmittedPlaceholderTeams: true },
+      client as any,
+    );
+
+    expect(client.eventRegistrations.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventId: 'event_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        registrantId: { notIn: ['team_real'] },
+      }),
+      data: expect.objectContaining({ status: 'CANCELLED' }),
+    }));
+    expect(client.teams.deleteMany).toHaveBeenCalledWith({
+      where: {
+        eventId: 'event_1',
+        id: { notIn: ['team_real'] },
+        OR: [
+          { kind: 'PLACEHOLDER' },
+          { captainId: '' },
+          { name: { startsWith: 'Place Holder', mode: 'insensitive' } },
+        ],
+      },
+    });
+  });
 });

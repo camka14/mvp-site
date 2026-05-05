@@ -52,9 +52,11 @@ const prismaMock = {
   },
   eventRegistrations: {
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     create: jest.fn(),
     upsert: jest.fn(),
     deleteMany: jest.fn(),
+    updateMany: jest.fn(),
   },
   refundRequests: {
     findFirst: jest.fn(),
@@ -253,6 +255,8 @@ describe('POST /api/events/[eventId]/participants', () => {
       divisions: ['div_a'],
     });
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.updateMany.mockResolvedValue({ count: 0 });
     prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.teams.findFirst.mockResolvedValue(null);
     prismaMock.teams.updateMany.mockResolvedValue({ count: 0 });
@@ -1193,6 +1197,8 @@ describe('DELETE /api/events/[eventId]/participants', () => {
     prismaMock.billPayments.findUnique.mockResolvedValue(null);
     prismaMock.billPayments.update.mockResolvedValue({ id: 'payment_1', refundedAmountCents: 5000 });
     mockStripePaymentIntentRetrieve.mockResolvedValue({ id: 'pi_default', transfer_data: null });
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.updateMany.mockResolvedValue({ count: 0 });
     findEventRegistrationMock.mockResolvedValue(null);
     upsertEventRegistrationMock.mockImplementation(async (params: Record<string, unknown>) => ({
       id: 'registration_1',
@@ -1228,19 +1234,38 @@ describe('DELETE /api/events/[eventId]/participants', () => {
       id: 'team_1',
       division: 'Open',
       divisionTypeId: 'open',
+      divisionTypeName: 'Open',
       sport: 'volleyball',
       playerIds: ['user_1', 'user_2'],
       captainId: 'user_1',
       managerId: 'user_1',
       headCoachId: null,
       parentTeamId: null,
+      teamSize: 2,
     };
     prismaMock.events.findUnique
       .mockResolvedValueOnce(schedulableEvent)
       .mockResolvedValueOnce(schedulableEvent);
     prismaMock.teams.findUnique.mockResolvedValue(canonicalTeam);
+    prismaMock.teams.findMany.mockResolvedValueOnce([
+      {
+        id: 'slot_1',
+        eventId: 'event_1',
+        kind: 'REGISTERED',
+        parentTeamId: 'team_1',
+        captainId: 'user_1',
+        division: 'div_a',
+        divisionTypeId: 'open',
+        divisionTypeName: 'Open',
+        teamSize: 2,
+      },
+    ]);
     findEventRegistrationMock.mockResolvedValueOnce({
       id: 'registration_team_1',
+      registrantId: 'slot_1',
+      eventTeamId: 'slot_1',
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
       status: 'ACTIVE',
     });
     prismaMock.events.update.mockResolvedValueOnce({
@@ -1261,9 +1286,118 @@ describe('DELETE /api/events/[eventId]/participants', () => {
     expect(deleteEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
       eventId: 'event_1',
       registrantType: 'TEAM',
-      registrantId: 'team_1',
+      registrantId: 'slot_1',
+    }), expect.anything());
+    expect(prismaMock.teams.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'slot_1' },
+      data: expect.objectContaining({
+        kind: 'PLACEHOLDER',
+        parentTeamId: null,
+        playerIds: [],
+        captainId: '',
+        managerId: '',
+        name: 'Place Holder 2',
+      }),
+    }));
+    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      registrantType: 'TEAM',
+      registrantId: 'slot_1',
+      eventTeamId: 'slot_1',
+      parentId: null,
+      rosterRole: 'PARTICIPANT',
+      status: 'ACTIVE',
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
     }), expect.anything());
     expect(syncDivisionTeamMembershipFromRegistrationsMock).toHaveBeenCalled();
+  });
+
+  it('resets an event-team id removal back to a placeholder for schedulable events', async () => {
+    const schedulableEvent = {
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      teamSignup: true,
+      requiredTemplateIds: [],
+      userIds: [],
+      teamIds: ['slot_1', 'slot_2'],
+      waitListIds: [],
+      freeAgentIds: [],
+      registrationByDivisionType: true,
+      divisions: ['div_a'],
+      singleDivision: true,
+      sportId: 'volleyball',
+      start: new Date('2026-07-01T12:00:00.000Z'),
+      minAge: null,
+      maxAge: null,
+      teamSizeLimit: 2,
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    };
+    prismaMock.events.findUnique.mockResolvedValueOnce(schedulableEvent);
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'slot_1',
+      eventId: 'event_1',
+      kind: 'REGISTERED',
+      parentTeamId: 'team_1',
+      name: 'Team One',
+      division: 'div_a',
+      divisionTypeId: 'open',
+      divisionTypeName: 'Open',
+      sport: 'volleyball',
+      playerIds: ['user_1', 'user_2'],
+      captainId: 'user_1',
+      managerId: 'user_1',
+      headCoachId: null,
+      coachIds: [],
+      pending: [],
+      teamSize: 2,
+      profileImageId: null,
+    });
+    prismaMock.teams.findMany.mockResolvedValueOnce([]);
+    findEventRegistrationMock.mockResolvedValueOnce({
+      id: 'registration_slot_1',
+      registrantId: 'slot_1',
+      eventTeamId: 'slot_1',
+      divisionId: 'div_a',
+      divisionTypeId: 'open',
+      status: 'ACTIVE',
+    });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      teamIds: ['slot_1', 'slot_2'],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
+
+    const response = await DELETE(
+      jsonDelete('http://localhost/api/events/event_1/participants', { teamId: 'slot_1' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.error).toBeUndefined();
+    expect(prismaMock.teams.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'slot_1' },
+      data: expect.objectContaining({
+        kind: 'PLACEHOLDER',
+        parentTeamId: null,
+        playerIds: [],
+        name: 'Place Holder 1',
+        captainId: '',
+        managerId: '',
+      }),
+    }));
+    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      registrantType: 'TEAM',
+      registrantId: 'slot_1',
+      eventTeamId: 'slot_1',
+      parentId: null,
+      status: 'ACTIVE',
+    }), expect.anything());
   });
 
   it('auto refunds the removed slot team when refund mode is auto and the event is inside the refund window', async () => {

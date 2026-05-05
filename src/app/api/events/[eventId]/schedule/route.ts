@@ -31,6 +31,7 @@ const SCHEDULE_TRANSACTION_OPTIONS = {
 const scheduleSchema = z.object({
   participantCount: z.number().int().positive().optional(),
   eventDocument: z.record(z.string(), z.any()).optional(),
+  includePlaceholderTeams: z.boolean().optional(),
 });
 
 const buildContext = (): SchedulerContext => {
@@ -151,10 +152,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         }
       }
 
+      const includePlaceholderTeams = parsed.data.includePlaceholderTeams !== false;
       const existingMatches = Object.values(event.matches);
       const hasExistingMatches = existingMatches.length > 0;
       const scheduled = (() => {
-        if (hasExistingMatches) {
+        if (hasExistingMatches && includePlaceholderTeams) {
           try {
             return rescheduleEventMatchesPreservingLocks(event);
           } catch (error) {
@@ -164,7 +166,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
             throw new ScheduleError(message);
           }
         }
-        return scheduleEvent({ event, participantCount: parsed.data.participantCount }, context);
+        return scheduleEvent({
+          event,
+          participantCount: parsed.data.participantCount,
+          includePlaceholderTeams,
+        }, context);
       })();
 
       if (isLeagueEvent(scheduled.event) && scheduled.event.singleDivision) {
@@ -193,8 +199,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         }
       }
 
-      await persistScheduledRosterTeams({ eventId, scheduled: scheduled.event }, tx);
-      if (!hasExistingMatches) {
+      await persistScheduledRosterTeams({
+        eventId,
+        scheduled: scheduled.event,
+        removeOmittedPlaceholderTeams: !includePlaceholderTeams,
+      }, tx);
+      if (!hasExistingMatches || !includePlaceholderTeams) {
         await deleteMatchesByEvent(eventId, tx);
       }
       await saveMatches(eventId, scheduled.matches, tx);

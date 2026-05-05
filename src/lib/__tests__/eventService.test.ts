@@ -87,6 +87,35 @@ describe('eventService', () => {
     );
   });
 
+  it('sends the no-placeholder scheduling option when requested', async () => {
+    apiRequestMock.mockResolvedValue({
+      preview: false,
+      event: { ...baseEventRow, id: 'evt_1' },
+      matches: [],
+    });
+
+    await eventService.scheduleEvent(
+      {
+        $id: 'evt_1',
+        name: 'Test Event',
+        eventType: 'LEAGUE',
+        divisions: [],
+        fields: [],
+        timeSlots: [],
+      },
+      { eventId: 'evt_1', includePlaceholderTeams: false },
+    );
+
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      '/api/events/evt_1/schedule',
+      expect.objectContaining({
+        body: expect.objectContaining({
+          includePlaceholderTeams: false,
+        }),
+      }),
+    );
+  });
+
   it('creates event via apiRequest', async () => {
     apiRequestMock.mockResolvedValue({ event: { ...baseEventRow } });
 

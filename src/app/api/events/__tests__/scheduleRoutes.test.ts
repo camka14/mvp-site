@@ -10,6 +10,7 @@ const prismaMock = {
   },
   teams: {
     create: jest.fn(),
+    deleteMany: jest.fn(),
   },
   divisions: {
     findMany: jest.fn(),
@@ -147,6 +148,7 @@ describe('schedule routes', () => {
     prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.eventRegistrations.upsert.mockResolvedValue({});
+    prismaMock.teams.deleteMany.mockResolvedValue({ count: 0 });
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.divisions.update.mockResolvedValue(null);
     isEventFieldConflictErrorMock.mockReturnValue(false);
@@ -614,6 +616,58 @@ describe('schedule routes', () => {
       prismaMock,
     );
     expect(json.warnings).toEqual([]);
+  });
+
+  it('rebuilds without placeholders instead of preserving existing matches when requested', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      matches: {
+        match_placeholder: { id: 'match_placeholder', team1Id: 'placeholder_1' },
+      },
+    });
+    scheduleEventMock.mockReturnValue({
+      event: { id: 'event_1' },
+      matches: [{ id: 'match_real_only' }],
+    });
+    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_real_only' }]);
+
+    const res = await scheduleByIdPost(
+      jsonRequest('http://localhost/api/events/event_1/schedule', {
+        includePlaceholderTeams: false,
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(rescheduleEventMatchesPreservingLocksMock).not.toHaveBeenCalled();
+    expect(scheduleEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        includePlaceholderTeams: false,
+      }),
+      expect.any(Object),
+    );
+    expect(persistScheduledRosterTeamsMock).toHaveBeenCalledWith(
+      {
+        eventId: 'event_1',
+        scheduled: { id: 'event_1' },
+        removeOmittedPlaceholderTeams: true,
+      },
+      prismaMock,
+    );
+    expect(deleteMatchesByEventMock).toHaveBeenCalledWith('event_1', prismaMock);
+    expect(saveMatchesMock).toHaveBeenCalledWith('event_1', [{ id: 'match_real_only' }], prismaMock);
+    expect(json.matches).toEqual([{ $id: 'match_real_only' }]);
   });
 
   it('rejects match updates when user is not host', async () => {

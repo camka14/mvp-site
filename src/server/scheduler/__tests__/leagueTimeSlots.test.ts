@@ -1599,4 +1599,133 @@ describe('league scheduling (time slots)', () => {
     expect(regularSeasonMatches.every((match) => match.team1 && match.team2)).toBe(true);
     expect(playoffMatches.every((match) => !match.team1 && !match.team2)).toBe(true);
   });
+
+  it('rebuilds with registered teams only when placeholders are disabled', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = {
+      ...buildTeams(2, division),
+      placeholder_1: new Team({
+        id: 'placeholder_1',
+        captainId: '',
+        division,
+        name: 'Place Holder 3',
+        matches: [],
+      }),
+      placeholder_2: new Team({
+        id: 'placeholder_2',
+        captainId: '',
+        division,
+        name: 'Place Holder 4',
+        matches: [],
+      }),
+    };
+
+    const league = new League({
+      id: 'league_without_placeholders',
+      name: 'No Placeholder League',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 0, 5, 12, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      registeredTeamIds: Object.keys(teams),
+      divisions: [division],
+      officials: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_registered_only',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: false,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 12 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league, includePlaceholderTeams: false }, context);
+    const scheduledLeague = scheduled.event as League;
+
+    expect(Object.keys(scheduledLeague.teams).sort()).toEqual(['team_1', 'team_2']);
+    expect(scheduledLeague.registeredTeamIds.sort()).toEqual(['team_1', 'team_2']);
+    expect(scheduled.matches).toHaveLength(1);
+    expect(scheduled.matches[0].team1?.id).toMatch(/^team_/);
+    expect(scheduled.matches[0].team2?.id).toMatch(/^team_/);
+  });
+
+  it('allows a no-placeholder rebuild to clear the schedule when fewer than two real teams remain', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = {
+      team_1: new Team({
+        id: 'team_1',
+        captainId: 'captain_1',
+        division,
+        name: 'Team 1',
+        matches: [],
+      }),
+      placeholder_1: new Team({
+        id: 'placeholder_1',
+        captainId: '',
+        division,
+        name: 'Place Holder 2',
+        matches: [],
+      }),
+    };
+
+    const league = new League({
+      id: 'league_without_enough_registered_teams',
+      name: 'Not Enough Registered Teams',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 0, 5, 12, 0, 0),
+      maxParticipants: 2,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      registeredTeamIds: Object.keys(teams),
+      divisions: [division],
+      officials: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_clear_placeholders',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: false,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 12 * 60,
+          field: field.id,
+          divisions: [division],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league, includePlaceholderTeams: false }, context);
+    const scheduledLeague = scheduled.event as League;
+
+    expect(Object.keys(scheduledLeague.teams)).toEqual(['team_1']);
+    expect(scheduledLeague.registeredTeamIds).toEqual(['team_1']);
+    expect(scheduled.matches).toEqual([]);
+  });
 });

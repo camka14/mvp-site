@@ -17,19 +17,25 @@ import {
 
 const createId = () => crypto.randomUUID();
 
+type EventBuilderOptions = {
+  includePlaceholderTeams?: boolean;
+};
+
 export class EventBuilder {
   event: League | Tournament;
   context: SchedulerContext;
   schedule: Schedule<Match, any, any, Division>;
+  private includePlaceholderTeams: boolean;
   private regularPlaceholderIds: Set<string> = new Set();
   private playoffPlaceholderIds: Set<string> = new Set();
   private nextPlaceholderOrdinal: number = 1;
   private participants: Record<string, Team | UserData> = {};
   private officialStaffingPlanner: OfficialStaffingPlanner | null = null;
 
-  constructor(event: League | Tournament, context: SchedulerContext) {
+  constructor(event: League | Tournament, context: SchedulerContext, options: EventBuilderOptions = {}) {
     this.context = context;
     this.event = event;
+    this.includePlaceholderTeams = options.includePlaceholderTeams !== false;
     this.participants = this.participantsForSchedule(this.event.teams);
     this.schedule = new Schedule(
       this.event.start,
@@ -74,9 +80,18 @@ export class EventBuilder {
     this.resetState();
     this.ensureFieldsAvailable();
 
-    const participantTargets = this.desiredParticipantCapacity();
+    const participantTargets = this.includePlaceholderTeams
+      ? this.desiredParticipantCapacity()
+      : undefined;
     const participants = this.prepareParticipants(participantTargets);
     if (Object.keys(participants).length < 2) {
+      if (!this.includePlaceholderTeams) {
+        for (const field of Object.values(this.event.fields)) {
+          field.matches = [];
+        }
+        this.event.matches = {};
+        return this.event;
+      }
       throw new Error('Event requires at least two participants to schedule');
     }
 
