@@ -36,6 +36,10 @@ import {
 } from '@/server/officials/config';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
+import {
+  generatedPoolsForBracket,
+  isTournamentPoolValidationError,
+} from '@/server/events/tournamentPools';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -134,6 +138,7 @@ const EVENT_PATCH_ALLOWED_FIELDS = new Set<string>([
   'fieldCount',
   'status',
   'leagueConfig',
+  'includePlayoffsOrPools',
   'refType',
 ]);
 const EVENT_PATCH_HARD_IMMUTABLE_FIELDS = new Set<string>([
@@ -977,6 +982,22 @@ const getDivisionDetailsForEvent = async (
     },
   });
   const rows = Array.isArray(rawRows) ? rawRows : [];
+  const allPoolRows = await prisma.divisions.findMany({
+    where: {
+      eventId,
+      kind: 'LEAGUE',
+    },
+    select: {
+      id: true,
+      key: true,
+      name: true,
+      kind: true,
+      maxParticipants: true,
+      playoffTeamCount: true,
+      playoffPlacementDivisionIds: true,
+      teamIds: true,
+    },
+  });
   const rowsById = new Map<string, (typeof rows)[number]>();
   const rowsByKey = new Map<string, (typeof rows)[number]>();
   rows.forEach((row) => {
@@ -1030,6 +1051,18 @@ const getDivisionDetailsForEvent = async (
           ?? normalizePlayoffDivisionConfig(row)
         )
       : null;
+    const generatedPools = kind === 'PLAYOFF'
+      ? generatedPoolsForBracket(allPoolRows, row?.id ?? divisionId)
+      : [];
+    const poolCount = generatedPools.length || null;
+    const poolTeamCounts = Array.from(
+      new Set(
+        generatedPools
+          .map((pool) => typeof pool.maxParticipants === 'number' ? pool.maxParticipants : null)
+          .filter((value): value is number => typeof value === 'number'),
+      ),
+    );
+    const poolTeamCount = poolTeamCounts.length === 1 ? poolTeamCounts[0] : null;
     return {
       id: row?.id ?? divisionId,
       key: row?.key ?? inferred.token,
@@ -1049,6 +1082,8 @@ const getDivisionDetailsForEvent = async (
       playoffTeamCount: typeof row?.playoffTeamCount === 'number'
         ? row.playoffTeamCount
         : null,
+      poolCount,
+      poolTeamCount,
       playoffPlacementDivisionIds: kind === 'PLAYOFF' ? [] : normalizePlacementDivisionIds((row as any)?.playoffPlacementDivisionIds, eventId),
       standingsOverrides: kind === 'PLAYOFF' ? null : standingsOverrides,
       standingsConfirmedAt: kind === 'PLAYOFF' ? null : standingsConfirmedAt,
@@ -1442,6 +1477,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
   return NextResponse.json(
     withLegacyEvent({
       ...event,
+      includePlayoffsOrPools: Boolean(event.includePlayoffs),
       ...participantIds,
       ...officialResponse,
       divisionFieldIds,
@@ -1608,6 +1644,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           delete payload.teamOfficialsMaySwap;
         }
       }
+      if (Object.prototype.hasOwnProperty.call(payload, 'includePlayoffsOrPools')) {
+        payload.includePlayoffs = Boolean(payload.includePlayoffsOrPools);
+        delete payload.includePlayoffsOrPools;
+      }
 
       const data: Record<string, any> = {};
       for (const [key, value] of Object.entries(payload)) {
@@ -1644,8 +1684,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       if (targetIsWeeklyParent && Object.prototype.hasOwnProperty.call(data, 'installmentDueDates')) {
         data.installmentDueDates = [];
       }
+      const targetIncludePlayoffsOrPools = Boolean(data.includePlayoffs ?? existing.includePlayoffs);
       if (targetEventType !== 'LEAGUE') {
-        data.splitLeaguePlayoffDivisions = false;
+        data.splitLeaguePlayoffDivisions = targetEventType === 'TOURNAMENT' && targetIncludePlayoffsOrPools;
       } else if (Object.prototype.hasOwnProperty.call(payload, 'splitLeaguePlayoffDivisions')) {
         data.splitLeaguePlayoffDivisions = Boolean(payload.splitLeaguePlayoffDivisions);
       } else if (!Object.prototype.hasOwnProperty.call(data, 'splitLeaguePlayoffDivisions')) {
@@ -2235,7 +2276,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       );
 
       if (shouldSyncDivisions) {
-        await syncEventDivisions({
+        const syncedDivisionIds = await syncEventDivisions({
           eventId,
           divisionIds: nextDivisionKeys,
           fieldIds: nextFieldIds,
@@ -2257,6 +2298,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           defaultInstallmentAmounts: defaultDivisionInstallmentAmounts,
           eventType: nextEventTypeRaw,
         }, tx as any);
+        if (targetEventType === 'TOURNAMENT' && Boolean(data.includePlayoffs ?? existing.includePlayoffs) && syncedDivisionIds.length) {
+          data.divisions = syncedDivisionIds;
+          await tx.events.update({
+            where: { id: eventId },
+            data: {
+              divisions: syncedDivisionIds,
+              updatedAt: new Date(),
+            },
+          });
+        }
       }
 
       const nextEventTypeForSchedule = (data.eventType ?? existing.eventType ?? updatedEvent.eventType) as string | null;
@@ -2311,6 +2362,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     return NextResponse.json(
       withLegacyEvent({
         ...updated,
+        includePlayoffsOrPools: Boolean(updated.includePlayoffs),
         ...participantIds,
         ...officialResponse,
         divisionFieldIds,
@@ -2339,6 +2391,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
     }
     if (isLeaguePlayoffTeamCountValidationError(error)) {
       const message = error instanceof Error ? error.message : 'Invalid playoff team count';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    if (isTournamentPoolValidationError(error)) {
+      const message = error instanceof Error ? error.message : 'Invalid tournament pool configuration';
       return NextResponse.json({ error: message }, { status: 400 });
     }
     console.error('Update event failed', error);

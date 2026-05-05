@@ -39,6 +39,8 @@ export interface Division {
   price?: number;
   maxParticipants?: number;
   playoffTeamCount?: number;
+  poolCount?: number;
+  poolTeamCount?: number;
   playoffPlacementDivisionIds?: string[];
   standingsOverrides?: Record<string, number>;
   standingsConfirmedAt?: string;
@@ -671,6 +673,7 @@ export interface Event {
   // League-specific fields (flattened for DB compatibility)
   gamesPerOpponent?: number;
   includePlayoffs?: boolean;
+  includePlayoffsOrPools?: boolean;
   playoffTeamCount?: number;
   usesSets?: boolean;
   matchDurationMinutes?: number;
@@ -1199,6 +1202,16 @@ export function toEventPayload(event: Event): EventPayload {
   const payload: EventPayload = {
     ...rest,
   };
+  const includePlayoffsOrPools =
+    typeof rest.includePlayoffsOrPools === 'boolean'
+      ? rest.includePlayoffsOrPools
+      : typeof rest.includePlayoffs === 'boolean'
+        ? rest.includePlayoffs
+        : undefined;
+  if (typeof includePlayoffsOrPools === 'boolean') {
+    payload.includePlayoffs = includePlayoffsOrPools;
+    payload.includePlayoffsOrPools = includePlayoffsOrPools;
+  }
 
   const divisionIds = Array.isArray(rest.divisions)
     ? uniqueIds(
@@ -1277,6 +1290,18 @@ export function toEventPayload(event: Event): EventPayload {
               ? division.playoffTeamCount
               : Number.isFinite(Number(division.playoffTeamCount))
                 ? Number(division.playoffTeamCount)
+                : undefined,
+          poolCount:
+            typeof division.poolCount === 'number'
+              ? division.poolCount
+              : Number.isFinite(Number(division.poolCount))
+                ? Number(division.poolCount)
+                : undefined,
+          poolTeamCount:
+            typeof division.poolTeamCount === 'number'
+              ? division.poolTeamCount
+              : Number.isFinite(Number(division.poolTeamCount))
+                ? Number(division.poolTeamCount)
                 : undefined,
           playoffPlacementDivisionIds: Array.isArray(division.playoffPlacementDivisionIds)
             ? division.playoffPlacementDivisionIds.map((divisionId) => String(divisionId ?? '').trim())
@@ -1359,6 +1384,18 @@ export function toEventPayload(event: Event): EventPayload {
               ? division.playoffTeamCount
               : Number.isFinite(Number(division.playoffTeamCount))
                 ? Number(division.playoffTeamCount)
+                : undefined,
+          poolCount:
+            typeof division.poolCount === 'number'
+              ? division.poolCount
+              : Number.isFinite(Number(division.poolCount))
+                ? Number(division.poolCount)
+                : undefined,
+          poolTeamCount:
+            typeof division.poolTeamCount === 'number'
+              ? division.poolTeamCount
+              : Number.isFinite(Number(division.poolTeamCount))
+                ? Number(division.poolTeamCount)
                 : undefined,
           ...(hasTeamIds
             ? {

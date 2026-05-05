@@ -53,6 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       requiredTemplateIds: true,
       organizationId: true,
       eventType: true,
+      includePlayoffs: true,
       parentEvent: true,
       timeSlotIds: true,
     },

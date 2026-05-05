@@ -38,6 +38,12 @@ import {
   type RefundRequestRow,
   type StripeRefundAttempt,
 } from '@/server/refunds/refundExecution';
+import {
+  assignRegisteredTeamToTournamentPool,
+  isTournamentPoolPlayEnabled,
+  isTournamentPoolValidationError,
+  removeRegisteredTeamFromTournamentPools,
+} from '@/server/events/tournamentPools';
 
 export const dynamic = 'force-dynamic';
 const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'PRIVATE', 'DRAFT']);
@@ -1112,32 +1118,53 @@ async function updateParticipants(
     }
 
     if (mode === 'add') {
-      const result = await prisma.$transaction(async (tx) => {
-        await claimOrCreateEventTeamSnapshot({
-          tx,
-          eventId: event.id,
-          canonicalTeamId: teamId,
-          createdBy: session.userId,
-          canonicalTeam: canonicalTeamRow,
-          divisionId: divisionSelection.divisionId,
-          divisionTypeId: divisionSelection.divisionTypeId,
-          divisionTypeKey: divisionSelection.divisionTypeKey,
-          occurrence: resolvedOccurrence,
-        });
-        await syncDivisionTeamMembershipFromRegistrations(event, tx);
-        const bill = !canManageCurrentEvent
-          ? await createWeeklyPaymentPlanBillForRegistration({
-            tx,
-            event,
-            ownerType: 'TEAM',
-            ownerId: teamId,
-            divisionSelection,
-            occurrence: resolvedOccurrence,
-            createdBy: session.userId,
-          })
-          : null;
-        return { bill };
-      });
+      const result = await (async () => {
+        try {
+          return await prisma.$transaction(async (tx) => {
+            const eventTeam = await claimOrCreateEventTeamSnapshot({
+              tx,
+              eventId: event.id,
+              canonicalTeamId: teamId,
+              createdBy: session.userId,
+              canonicalTeam: canonicalTeamRow,
+              divisionId: divisionSelection.divisionId,
+              divisionTypeId: divisionSelection.divisionTypeId,
+              divisionTypeKey: divisionSelection.divisionTypeKey,
+              occurrence: resolvedOccurrence,
+            });
+            if (isTournamentPoolPlayEnabled(event)) {
+              await assignRegisteredTeamToTournamentPool({
+                eventId: event.id,
+                bracketDivisionId: divisionSelection.divisionId,
+                eventTeamId: String((eventTeam as any)?.id ?? ''),
+                client: tx,
+              });
+            } else {
+              await syncDivisionTeamMembershipFromRegistrations(event, tx);
+            }
+            const bill = !canManageCurrentEvent
+              ? await createWeeklyPaymentPlanBillForRegistration({
+                tx,
+                event,
+                ownerType: 'TEAM',
+                ownerId: teamId,
+                divisionSelection,
+                occurrence: resolvedOccurrence,
+                createdBy: session.userId,
+              })
+              : null;
+            return { bill };
+          });
+        } catch (error) {
+          if (isTournamentPoolValidationError(error)) {
+            return { error: error.message };
+          }
+          throw error;
+        }
+      })();
+      if ('error' in result) {
+        return NextResponse.json({ error: result.error }, { status: 409 });
+      }
       const refreshedEvent = await prisma.events.findUnique({ where: { id: event.id } });
       return NextResponse.json({
         event: withLegacyEvent(refreshedEvent ?? event),
@@ -1202,12 +1229,20 @@ async function updateParticipants(
     }
 
     const updatedEvent = await prisma.$transaction(async (tx) => {
+      const eventTeamIdToRemove = normalizeId(existingRegistration.eventTeamId) ?? normalizeId(existingRegistration.registrantId) ?? teamId;
       await deleteEventRegistration({
         eventId: event.id,
         registrantType: 'TEAM',
-        registrantId: normalizeId(existingRegistration.eventTeamId) ?? normalizeId(existingRegistration.registrantId) ?? teamId,
+        registrantId: eventTeamIdToRemove,
         occurrence: resolvedOccurrence,
       }, tx);
+      if (isTournamentPoolPlayEnabled(event)) {
+        await removeRegisteredTeamFromTournamentPools({
+          eventId: event.id,
+          eventTeamId: eventTeamIdToRemove,
+          client: tx,
+        });
+      }
 
       const existingEventTeamId = normalizeId(existingRegistration.eventTeamId)
         ?? normalizeId(registeredEventTeam?.id);

@@ -9,6 +9,7 @@ import {
   parseDivisionToken,
 } from '@/lib/divisionTypes';
 import { prisma } from '@/lib/prisma';
+import { isTournamentPoolPlayEnabled } from '@/server/events/tournamentPools';
 
 type RegistrationEventContext = {
   id: string;
@@ -18,6 +19,9 @@ type RegistrationEventContext = {
   sportId: string | null;
   registrationByDivisionType: boolean | null;
   divisions: string[] | null;
+  eventType?: string | null;
+  includePlayoffs?: boolean | null;
+  includePlayoffsOrPools?: boolean | null;
 };
 
 type DivisionSelectionInput = {
@@ -182,6 +186,7 @@ const toResolvedSelection = (option: EventDivisionOption | null): ResolvedDivisi
 const buildDivisionOptions = async (
   event: RegistrationEventContext,
 ): Promise<EventDivisionOption[]> => {
+  const useTournamentBracketDivisions = isTournamentPoolPlayEnabled(event);
   const eventDivisionIds = Array.isArray(event.divisions)
     ? Array.from(
       new Set(
@@ -193,17 +198,24 @@ const buildDivisionOptions = async (
     : [];
 
   if (!eventDivisionIds.length) {
-    return [];
+    if (!useTournamentBracketDivisions) {
+      return [];
+    }
   }
 
   const rows = await prisma.divisions.findMany({
-    where: {
-      eventId: event.id,
-      OR: [
-        { id: { in: eventDivisionIds } },
-        { key: { in: eventDivisionIds } },
-      ],
-    },
+    where: useTournamentBracketDivisions
+      ? {
+          eventId: event.id,
+          kind: 'PLAYOFF',
+        }
+      : {
+          eventId: event.id,
+          OR: [
+            { id: { in: eventDivisionIds } },
+            { key: { in: eventDivisionIds } },
+          ],
+        },
     select: {
       id: true,
       key: true,
@@ -240,7 +252,13 @@ const buildDivisionOptions = async (
   const options: EventDivisionOption[] = [];
   const seen = new Set<string>();
 
-  eventDivisionIds.forEach((divisionId) => {
+  const optionDivisionIds = useTournamentBracketDivisions
+    ? rows
+        .map((row) => normalizeKey(row.id) ?? normalizeKey(row.key))
+        .filter((entry): entry is string => Boolean(entry))
+    : eventDivisionIds;
+
+  optionDivisionIds.forEach((divisionId) => {
     const row = rowsById.get(divisionId)
       ?? rowsByKey.get(divisionId)
       ?? rowsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')

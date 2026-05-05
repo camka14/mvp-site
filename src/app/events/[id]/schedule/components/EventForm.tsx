@@ -669,6 +669,26 @@ const supportsScheduleSlotsForEvent = (eventType: EventType, parentEvent?: strin
     && !(eventType === 'WEEKLY_EVENT' && hasParentEventRef(parentEvent))
 );
 
+const isTournamentPoolPlayFormEnabled = (eventType: EventType, includePlayoffs: boolean): boolean => (
+    eventType === 'TOURNAMENT' && includePlayoffs
+);
+
+const derivePoolTeamCount = (
+    maxTeams: unknown,
+    poolCount: unknown,
+): number | undefined => {
+    const normalizedMaxTeams = Number.isFinite(Number(maxTeams))
+        ? Math.max(2, Math.trunc(Number(maxTeams)))
+        : null;
+    const normalizedPoolCount = Number.isFinite(Number(poolCount))
+        ? Math.max(1, Math.trunc(Number(poolCount)))
+        : null;
+    if (!normalizedMaxTeams || !normalizedPoolCount || normalizedMaxTeams % normalizedPoolCount !== 0) {
+        return undefined;
+    }
+    return normalizedMaxTeams / normalizedPoolCount;
+};
+
 type DivisionDetailForm = {
     id: string;
     key: string;
@@ -686,6 +706,8 @@ type DivisionDetailForm = {
     price: number;
     maxParticipants: number;
     playoffTeamCount?: number;
+    poolCount?: number;
+    poolTeamCount?: number;
     playoffPlacementDivisionIds?: string[];
     allowPaymentPlans: boolean;
     installmentCount?: number;
@@ -2230,6 +2252,16 @@ const normalizeDivisionDetailEntry = (
         : Number.isFinite(Number(row.playoffTeamCount))
             ? Number(row.playoffTeamCount)
             : undefined;
+    const rawPoolCount = typeof row.poolCount === 'number'
+        ? row.poolCount
+        : Number.isFinite(Number(row.poolCount))
+            ? Number(row.poolCount)
+            : undefined;
+    const rawPoolTeamCount = typeof row.poolTeamCount === 'number'
+        ? row.poolTeamCount
+        : Number.isFinite(Number(row.poolTeamCount))
+            ? Number(row.poolTeamCount)
+            : undefined;
     const rawPlayoffPlacementDivisionIds = normalizePlacementDivisionIds(row.playoffPlacementDivisionIds);
     const rawAllowPaymentPlans = normalizeBoolean(row.allowPaymentPlans) ?? false;
     const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
@@ -2265,6 +2297,12 @@ const normalizeDivisionDetailEntry = (
         maxParticipants: Math.max(2, Math.trunc(rawDivisionMaxParticipants)),
         playoffTeamCount: Number.isFinite(rawDivisionPlayoffTeamCount)
             ? Math.max(2, Math.trunc(rawDivisionPlayoffTeamCount as number))
+            : undefined,
+        poolCount: Number.isFinite(rawPoolCount)
+            ? Math.max(1, Math.trunc(rawPoolCount as number))
+            : undefined,
+        poolTeamCount: Number.isFinite(rawPoolTeamCount)
+            ? Math.max(1, Math.trunc(rawPoolTeamCount as number))
             : undefined,
         playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds,
         allowPaymentPlans: rawAllowPaymentPlans,
@@ -2604,6 +2642,12 @@ const mapEventToFormState = (event: Event): EventFormState => {
             : Number.isFinite(event.playoffTeamCount)
                 ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
                 : undefined,
+        poolCount: Number.isFinite(detail.poolCount)
+            ? Math.max(1, Math.trunc(detail.poolCount as number))
+            : undefined,
+        poolTeamCount: Number.isFinite(detail.poolTeamCount)
+            ? Math.max(1, Math.trunc(detail.poolTeamCount as number))
+            : undefined,
         playoffPlacementDivisionIds: normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds),
         allowPaymentPlans: typeof detail.allowPaymentPlans === 'boolean'
             ? detail.allowPaymentPlans
@@ -2896,6 +2940,8 @@ const eventFormSchema = z
                 price: z.number().int().min(0),
                 maxParticipants: z.number().int().min(2),
                 playoffTeamCount: z.number().optional(),
+                poolCount: z.number().int().min(1).optional(),
+                poolTeamCount: z.number().int().min(1).optional(),
                 playoffPlacementDivisionIds: z.array(z.string()).optional(),
                 allowPaymentPlans: z.boolean().default(false),
                 installmentCount: z.number().int().min(0).default(0),
@@ -3251,6 +3297,47 @@ const eventFormSchema = z
                         }
                     });
                 }
+            }
+
+            if (isTournamentPoolPlayFormEnabled(values.eventType, values.leagueData.includePlayoffs)) {
+                values.divisionDetails.forEach((detail, index) => {
+                    const maxTeams = Math.max(2, Math.trunc(detail.maxParticipants || 0));
+                    const poolCount = Number.isFinite(detail.poolCount)
+                        ? Math.max(1, Math.trunc(detail.poolCount as number))
+                        : null;
+                    const bracketTeams = Number.isFinite(detail.playoffTeamCount)
+                        ? Math.max(2, Math.trunc(detail.playoffTeamCount as number))
+                        : null;
+                    if (!poolCount) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Pool count is required when pool play is enabled.',
+                            path: ['divisionDetails', index, 'poolCount'],
+                        });
+                        return;
+                    }
+                    if (!bracketTeams) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Bracket team count is required when pool play is enabled.',
+                            path: ['divisionDetails', index, 'playoffTeamCount'],
+                        });
+                    }
+                    if (maxTeams % poolCount !== 0) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Division max teams must divide evenly by pool count.',
+                            path: ['divisionDetails', index, 'poolCount'],
+                        });
+                    }
+                    if (bracketTeams && bracketTeams % poolCount !== 0) {
+                        ctx.addIssue({
+                            code: "custom",
+                            message: 'Bracket team count must divide evenly by pool count.',
+                            path: ['divisionDetails', index, 'playoffTeamCount'],
+                        });
+                    }
+                });
             }
 
             if (!values.leagueSlots.length) {
@@ -5215,6 +5302,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         price: number;
         maxParticipants: number | null;
         playoffTeamCount: number | null;
+        poolCount: number | null;
         allowPaymentPlans: boolean;
         installmentCount: number;
         installmentDueDates: string[];
@@ -5231,6 +5319,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         price: 0,
         maxParticipants: 10,
         playoffTeamCount: 10,
+        poolCount: null,
         allowPaymentPlans: false,
         installmentCount: 0,
         installmentDueDates: [],
@@ -6153,6 +6242,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         : eventData.maxParticipants || 2,
                 ),
             ),
+            poolCount: null,
             allowPaymentPlans: Boolean(eventData.allowPaymentPlans),
             installmentCount: eventData.allowPaymentPlans
                 ? (eventData.installmentCount || defaultInstallmentAmounts.length || 0)
@@ -6329,6 +6419,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         || 2,
                 ),
             ),
+            poolCount: typeof detail.poolCount === 'number'
+                ? Math.max(1, Math.trunc(detail.poolCount))
+                : null,
             allowPaymentPlans: detailAllowPaymentPlans,
             installmentCount: detailAllowPaymentPlans
                 ? (detail.installmentCount || detailInstallmentAmounts.length || 0)
@@ -6396,10 +6489,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ? Math.max(2, Math.trunc(rawDivisionMaxParticipants))
             : Math.max(2, Math.trunc(eventData.maxParticipants || 2));
         const rawDivisionPlayoffTeamCount = (() => {
-            if (eventData.eventType !== 'LEAGUE' || !leagueData.includePlayoffs) {
+            if (
+                (eventData.eventType !== 'LEAGUE' && eventData.eventType !== 'TOURNAMENT')
+                || !leagueData.includePlayoffs
+            ) {
                 return undefined;
             }
-            if (eventData.singleDivision) {
+            if (eventData.eventType === 'LEAGUE' && eventData.singleDivision) {
                 return typeof leagueData.playoffTeamCount === 'number'
                     ? leagueData.playoffTeamCount
                     : eventData.maxParticipants;
@@ -6408,6 +6504,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         })();
         const normalizedDivisionPlayoffTeamCount = typeof rawDivisionPlayoffTeamCount === 'number'
             ? Math.max(2, Math.trunc(rawDivisionPlayoffTeamCount))
+            : undefined;
+        const normalizedDivisionPoolCount = (
+            eventData.eventType === 'TOURNAMENT'
+            && leagueData.includePlayoffs
+            && typeof divisionEditor.poolCount === 'number'
+        )
+            ? Math.max(1, Math.trunc(divisionEditor.poolCount))
+            : undefined;
+        const normalizedDivisionPoolTeamCount = eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs
+            ? derivePoolTeamCount(normalizedDivisionMaxParticipants, normalizedDivisionPoolCount)
             : undefined;
         const normalizedDivisionAllowPaymentPlans = eventData.singleDivision
             ? Boolean(eventData.allowPaymentPlans)
@@ -6479,6 +6585,24 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ) {
             setDivisionEditor((prev) => ({ ...prev, error: 'Division playoff team count must be at least 2.' }));
             return;
+        }
+        if (eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs) {
+            if (!(typeof normalizedDivisionPoolCount === 'number' && normalizedDivisionPoolCount >= 1)) {
+                setDivisionEditor((prev) => ({ ...prev, error: 'Pool count is required.' }));
+                return;
+            }
+            if (!(typeof normalizedDivisionPlayoffTeamCount === 'number' && normalizedDivisionPlayoffTeamCount >= 2)) {
+                setDivisionEditor((prev) => ({ ...prev, error: 'Bracket team count is required.' }));
+                return;
+            }
+            if (normalizedDivisionMaxParticipants % normalizedDivisionPoolCount !== 0) {
+                setDivisionEditor((prev) => ({ ...prev, error: 'Division max teams must divide evenly by pool count.' }));
+                return;
+            }
+            if (normalizedDivisionPlayoffTeamCount % normalizedDivisionPoolCount !== 0) {
+                setDivisionEditor((prev) => ({ ...prev, error: 'Bracket team count must divide evenly by pool count.' }));
+                return;
+            }
         }
         if (!eventData.singleDivision && normalizedDivisionAllowPaymentPlans) {
             if (!normalizedDivisionInstallmentAmounts.length) {
@@ -6578,6 +6702,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             price: normalizedDivisionPrice,
             maxParticipants: normalizedDivisionMaxParticipants,
             playoffTeamCount: normalizedDivisionPlayoffTeamCount,
+            poolCount: normalizedDivisionPoolCount,
+            poolTeamCount: normalizedDivisionPoolTeamCount,
             playoffPlacementDivisionIds: Array.isArray(existingDetail?.playoffPlacementDivisionIds)
                 ? [...existingDetail.playoffPlacementDivisionIds]
                 : [],
@@ -8426,6 +8552,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             draft.gamesPerOpponent = source.leagueData.gamesPerOpponent;
             draft.includePlayoffs = source.leagueData.includePlayoffs;
+            (draft as any).includePlayoffsOrPools = source.leagueData.includePlayoffs;
             draft.playoffTeamCount = source.leagueData.includePlayoffs
                 ? (Number.isFinite(source.leagueData.playoffTeamCount)
                     ? Math.max(2, Math.trunc(source.leagueData.playoffTeamCount as number))
@@ -8467,6 +8594,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 source.tournamentData,
                 tournamentRequiresSets,
             );
+            draft.includePlayoffs = Boolean(source.leagueData.includePlayoffs);
+            (draft as any).includePlayoffsOrPools = Boolean(source.leagueData.includePlayoffs);
+            draft.playoffTeamCount = undefined;
             draft.doubleElimination = normalizedTournamentConfig.doubleElimination;
             draft.winnerSetCount = normalizedTournamentConfig.winnerSetCount;
             draft.loserSetCount = normalizedTournamentConfig.loserSetCount;
@@ -9168,6 +9298,38 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         onChange={(event) => {
                                                             if (isImmutableField('includePlayoffs')) return;
                                                             handleIncludePlayoffsToggle(event.currentTarget.checked);
+                                                        }}
+                                                    />
+                                                </AnimatedSection>
+                                                <AnimatedSection in={eventData.eventType === 'TOURNAMENT'}>
+                                                    <Checkbox
+                                                        size="xs"
+                                                        label="Include pool play"
+                                                        checked={Boolean(leagueData.includePlayoffs)}
+                                                        disabled={isImmutableField('includePlayoffs')}
+                                                        onChange={(event) => {
+                                                            if (isImmutableField('includePlayoffs')) return;
+                                                            const checked = event.currentTarget.checked;
+                                                            setLeagueData((prev) => ({
+                                                                ...prev,
+                                                                includePlayoffs: checked,
+                                                                playoffTeamCount: checked ? prev.playoffTeamCount : undefined,
+                                                            }));
+                                                            if (!checked) {
+                                                                const currentDetails = Array.isArray(eventData.divisionDetails)
+                                                                    ? eventData.divisionDetails
+                                                                    : [];
+                                                                setValue(
+                                                                    'divisionDetails',
+                                                                    currentDetails.map((detail) => ({
+                                                                        ...detail,
+                                                                        playoffTeamCount: undefined,
+                                                                        poolCount: undefined,
+                                                                        poolTeamCount: undefined,
+                                                                    })),
+                                                                    { shouldDirty: true, shouldValidate: true },
+                                                                );
+                                                            }
                                                         }}
                                                     />
                                                 </AnimatedSection>
@@ -10594,6 +10756,81 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 }}
                                             />
                                         </AnimatedSection>
+                                        <AnimatedSection in={eventData.eventType === 'TOURNAMENT'}>
+                                            <Stack gap="xs">
+                                                <NumberInput
+                                                    label="Bracket Teams"
+                                                    min={2}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    maw={220}
+                                                    value={divisionEditor.playoffTeamCount ?? ''}
+                                                    clampBehavior="strict"
+                                                    disabled={
+                                                        isImmutableField('divisions')
+                                                        || !divisionEditorReady
+                                                        || !leagueData.includePlayoffs
+                                                    }
+                                                    onChange={(val) => {
+                                                        if (
+                                                            isImmutableField('divisions')
+                                                            || !divisionEditorReady
+                                                            || !leagueData.includePlayoffs
+                                                        ) {
+                                                            return;
+                                                        }
+                                                        const numeric = typeof val === 'number' ? val : Number(val);
+                                                        setDivisionEditor((prev) => ({
+                                                            ...prev,
+                                                            playoffTeamCount: Number.isFinite(numeric)
+                                                                ? Math.max(2, Math.trunc(numeric))
+                                                                : null,
+                                                            error: null,
+                                                        }));
+                                                    }}
+                                                />
+                                                <NumberInput
+                                                    label="Pool Count"
+                                                    min={1}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    maw={220}
+                                                    value={divisionEditor.poolCount ?? ''}
+                                                    clampBehavior="strict"
+                                                    disabled={
+                                                        isImmutableField('divisions')
+                                                        || !divisionEditorReady
+                                                        || !leagueData.includePlayoffs
+                                                    }
+                                                    onChange={(val) => {
+                                                        if (
+                                                            isImmutableField('divisions')
+                                                            || !divisionEditorReady
+                                                            || !leagueData.includePlayoffs
+                                                        ) {
+                                                            return;
+                                                        }
+                                                        const numeric = typeof val === 'number' ? val : Number(val);
+                                                        setDivisionEditor((prev) => ({
+                                                            ...prev,
+                                                            poolCount: Number.isFinite(numeric)
+                                                                ? Math.max(1, Math.trunc(numeric))
+                                                                : null,
+                                                            error: null,
+                                                        }));
+                                                    }}
+                                                />
+                                                <NumberInput
+                                                    label="Pool Team Count"
+                                                    value={derivePoolTeamCount(
+                                                        eventData.singleDivision
+                                                            ? eventData.maxParticipants
+                                                            : divisionEditor.maxParticipants,
+                                                        divisionEditor.poolCount,
+                                                    ) ?? ''}
+                                                    disabled
+                                                    maw={220}
+                                                />
+                                            </Stack>
+                                        </AnimatedSection>
                                     </div>
                                 </div>
                                 <AnimatedSection in={!eventData.singleDivision}>
@@ -10719,7 +10956,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     <Text size="xs" c="dimmed">
                                         {eventData.eventType === 'LEAGUE'
                                             ? 'Division price, capacity, payment plan, and playoff team count mirror event-level values while single division is enabled.'
-                                            : 'Division price, capacity, and payment plan mirror event-level values while single division is enabled.'}
+                                            : eventData.eventType === 'TOURNAMENT'
+                                                ? 'Division price, capacity, and payment plan mirror event-level values while bracket and pool settings stay on the division.'
+                                                : 'Division price, capacity, and payment plan mirror event-level values while single division is enabled.'}
                                     </Text>
                                 </AnimatedSection>
                                 <Group justify="space-between" align="center">
@@ -10759,13 +10998,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         const effectiveDivisionCapacity = eventData.singleDivision
                                             ? Math.max(2, Math.trunc(eventData.maxParticipants || 2))
                                             : Math.max(2, Math.trunc(detail.maxParticipants || eventData.maxParticipants || 2));
-                                        const effectiveDivisionPlayoffTeamCount = eventData.singleDivision
-                                            ? (typeof leagueData.playoffTeamCount === 'number'
-                                                ? Math.max(2, Math.trunc(leagueData.playoffTeamCount))
-                                                : undefined)
-                                            : (typeof detail.playoffTeamCount === 'number'
+                                        const effectiveDivisionPlayoffTeamCount = eventData.eventType === 'TOURNAMENT'
+                                            ? (typeof detail.playoffTeamCount === 'number'
                                                 ? Math.max(2, Math.trunc(detail.playoffTeamCount))
-                                                : undefined);
+                                                : undefined)
+                                            : eventData.singleDivision
+                                                ? (typeof leagueData.playoffTeamCount === 'number'
+                                                    ? Math.max(2, Math.trunc(leagueData.playoffTeamCount))
+                                                    : undefined)
+                                                : (typeof detail.playoffTeamCount === 'number'
+                                                    ? Math.max(2, Math.trunc(detail.playoffTeamCount))
+                                                    : undefined);
+                                        const effectivePoolCount = typeof detail.poolCount === 'number'
+                                            ? Math.max(1, Math.trunc(detail.poolCount))
+                                            : undefined;
+                                        const effectivePoolTeamCount = detail.poolTeamCount
+                                            ?? derivePoolTeamCount(effectiveDivisionCapacity, effectivePoolCount);
                                         const effectiveDivisionAllowPaymentPlans = eventData.singleDivision
                                             ? Boolean(eventData.allowPaymentPlans)
                                             : Boolean(detail.allowPaymentPlans);
@@ -10802,6 +11050,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && (
                                                             <Text size="xs" c="dimmed">
                                                                 {`Playoff teams: ${effectiveDivisionPlayoffTeamCount ?? 'Not set'}`}
+                                                            </Text>
+                                                        )}
+                                                        {eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && (
+                                                            <Text size="xs" c="dimmed">
+                                                                {`Bracket teams: ${effectiveDivisionPlayoffTeamCount ?? 'Not set'} - Pools: ${effectivePoolCount ?? 'Not set'} - Pool teams: ${effectivePoolTeamCount ?? 'Not set'}`}
                                                             </Text>
                                                         )}
                                                         {eventData.eventType === 'LEAGUE'

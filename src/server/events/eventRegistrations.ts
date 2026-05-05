@@ -6,6 +6,7 @@ import {
   resolveWeeklyOccurrence,
   type WeeklyOccurrenceInput,
 } from '@/server/events/weeklyOccurrences';
+import { isTournamentPoolPlayEnabled } from '@/server/events/tournamentPools';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
@@ -21,6 +22,8 @@ export type RegistrationLifecycleStatus =
 type EventLike = {
   id: string;
   eventType?: unknown;
+  includePlayoffs?: unknown;
+  includePlayoffsOrPools?: unknown;
   parentEvent?: unknown;
   teamSignup?: unknown;
   singleDivision?: unknown;
@@ -467,6 +470,9 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
   client: PrismaLike = prisma,
 ): Promise<string[]> => {
   if (!Boolean(event.teamSignup) || isWeeklyParentEvent(event)) {
+    return [];
+  }
+  if (isTournamentPoolPlayEnabled(event)) {
     return [];
   }
 

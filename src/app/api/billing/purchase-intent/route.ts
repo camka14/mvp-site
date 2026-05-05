@@ -219,6 +219,7 @@ const reserveEventRegistrationSlot = async ({
       maxParticipants: number | null;
       teamSignup: boolean | null;
       eventType: string | null;
+      includePlayoffs: boolean | null;
       parentEvent: string | null;
       timeSlotIds: string[] | null;
     }>>`
@@ -233,6 +234,7 @@ const reserveEventRegistrationSlot = async ({
         "maxParticipants",
         "teamSignup",
         "eventType",
+        "includePlayoffs",
         "parentEvent",
         "timeSlotIds"
       FROM "Events"
@@ -343,6 +345,8 @@ const reserveEventRegistrationSlot = async ({
         sportId: event.sportId ?? null,
         registrationByDivisionType: event.registrationByDivisionType ?? null,
         divisions: normalizeStringList(event.divisions),
+        eventType: event.eventType ?? null,
+        includePlayoffs: event.includePlayoffs ?? null,
       },
       input: selectionInput,
     });

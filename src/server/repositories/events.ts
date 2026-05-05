@@ -57,6 +57,12 @@ import {
   buildEventRegistrationId,
   getEventParticipantIdsForEvent,
 } from '@/server/events/eventRegistrations';
+import {
+  buildGeneratedTournamentPools,
+  generatedPoolsForBracket,
+  isTournamentPoolPlayEnabled,
+  type GeneratedTournamentPool,
+} from '@/server/events/tournamentPools';
 
 type PrismaLike = PrismaClient | any;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -699,6 +705,8 @@ type DivisionDetailPayload = {
   price?: number | null;
   maxParticipants?: number | null;
   playoffTeamCount?: number | null;
+  poolCount?: number | null;
+  poolTeamCount?: number | null;
   playoffPlacementDivisionIds?: string[];
   standingsOverrides?: Record<string, number> | null;
   playoffConfig?: PlayoffDivisionConfigPayload | null;
@@ -761,6 +769,7 @@ const normalizeDivisionDetailsPayload = (
       const rawPrice = coerceNullableNumber(row.price);
       const rawMaxParticipants = coerceNullableNumber(row.maxParticipants);
       const rawPlayoffTeamCount = coerceNullableNumber(row.playoffTeamCount);
+      const rawPoolCount = coerceNullableNumber((row as any).poolCount);
       const rawKind = normalizeDivisionKind(row.kind, defaultKind);
       const hasPlayoffPlacementDivisionIdsInput = Object.prototype.hasOwnProperty.call(row, 'playoffPlacementDivisionIds');
       const rawPlayoffPlacementDivisionIds = hasPlayoffPlacementDivisionIdsInput
@@ -819,6 +828,11 @@ const normalizeDivisionDetailsPayload = (
           : rawPlayoffTeamCount === null
             ? null
             : Math.max(0, Math.trunc(rawPlayoffTeamCount)),
+        poolCount: rawPoolCount === undefined
+          ? undefined
+          : rawPoolCount === null
+            ? null
+            : Math.max(0, Math.trunc(rawPoolCount)),
         ...(rawPlayoffPlacementDivisionIds !== undefined
           ? { playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds }
           : {}),
@@ -2433,6 +2447,11 @@ export const loadEventWithRelations = async (
     matchDurationMinutes: event.matchDurationMinutes ?? 0,
     usesSets: Boolean(event.usesSets),
     setDurationMinutes: event.setDurationMinutes ?? 0,
+    gamesPerOpponent: event.gamesPerOpponent ?? 1,
+    includePlayoffs: Boolean(event.includePlayoffs),
+    playoffTeamCount: event.playoffTeamCount ?? 0,
+    setsPerMatch: event.setsPerMatch ?? 0,
+    pointsToVictory: ensureNumberArray(event.pointsToVictory),
     timeSlots,
     splitLeaguePlayoffDivisions: Boolean((event as any).splitLeaguePlayoffDivisions),
     playoffDivisions,
@@ -2789,6 +2808,7 @@ export const persistScheduledRosterTeams = async (
     },
   });
   const existingTeamById = new Map(existingTeams.map((team: any) => [team.id, team]));
+  const isTournamentPoolPlaySchedule = isTournamentPoolPlayEnabled(params.scheduled);
 
   for (const teamId of rosterTeamIds) {
     const scheduledTeam = params.scheduled.teams[teamId];
@@ -2832,7 +2852,7 @@ export const persistScheduledRosterTeams = async (
 
     const existingDivision = normalizeDivisionKey((existingTeam as any).division);
     const nextDivision = normalizeDivisionKey(divisionId);
-    if (existingDivision !== nextDivision) {
+    if (!isTournamentPoolPlaySchedule && existingDivision !== nextDivision) {
       await client.teams.update({
         where: { id: teamId },
         data: {
@@ -3021,7 +3041,79 @@ export const syncEventDivisions = async (
     }
   }
 
-  if (params.includePlayoffs) {
+  const normalizedEventType = typeof params.eventType === 'string' ? params.eventType.toUpperCase() : '';
+  const tournamentPoolPlayEnabled = isTournamentPoolPlayEnabled({
+    eventType: normalizedEventType,
+    includePlayoffs: params.includePlayoffs,
+  });
+  let effectiveDivisionIds = divisionIds;
+  if (tournamentPoolPlayEnabled && normalizedPlayoffDetails.length > 0) {
+    const existingPoolRows = existingRows
+      .filter((row: any) => normalizeDivisionKind(row.kind, 'LEAGUE') !== 'PLAYOFF')
+      .map((row: any) => ({
+        id: row.id,
+        key: row.key,
+        name: row.name,
+        kind: row.kind,
+        maxParticipants: row.maxParticipants,
+        playoffTeamCount: row.playoffTeamCount,
+        playoffPlacementDivisionIds: normalizePlacementDivisionIdentifierList(row.playoffPlacementDivisionIds),
+        teamIds: normalizeTeamIdList(row.teamIds),
+      }));
+    const generatedPoolDetails: DivisionDetailPayload[] = [];
+    for (const bracketDetail of normalizedPlayoffDetails) {
+      const existingPools = generatedPoolsForBracket(existingPoolRows, bracketDetail.id);
+      const generatedPools = buildGeneratedTournamentPools({
+        eventId: params.eventId,
+        bracket: bracketDetail,
+        existingPools,
+      });
+      const poolTeamCount = generatedPools[0]?.maxParticipants ?? null;
+      bracketDetail.poolCount = generatedPools.length;
+      bracketDetail.poolTeamCount = poolTeamCount;
+      generatedPoolDetails.push(
+        ...generatedPools.map((pool: GeneratedTournamentPool): DivisionDetailPayload => ({
+          ...bracketDetail,
+          id: pool.id,
+          key: pool.key,
+          name: pool.name,
+          kind: 'LEAGUE',
+          price: null,
+          maxParticipants: pool.maxParticipants,
+          playoffTeamCount: pool.playoffTeamCount,
+          poolCount: undefined,
+          poolTeamCount: undefined,
+          playoffPlacementDivisionIds: pool.playoffPlacementDivisionIds,
+          standingsOverrides: null,
+          standingsConfirmedAt: null,
+          standingsConfirmedBy: null,
+          playoffConfig: null,
+          allowPaymentPlans: false,
+          installmentCount: 0,
+          installmentDueDates: [],
+          installmentDueRelativeDays: [],
+          installmentAmounts: [],
+          fieldIds: [],
+          teamIds: pool.teamIds,
+        })),
+      );
+    }
+    effectiveDivisionIds = generatedPoolDetails.map((detail) => detail.id);
+    for (const detail of generatedPoolDetails) {
+      const aliases = new Set<string>([
+        detail.id,
+        detail.key,
+        extractDivisionTokenFromId(detail.id) ?? '',
+      ]);
+      aliases.forEach((alias) => {
+        const normalized = normalizeDivisionKey(alias);
+        if (!normalized) return;
+        detailLookup.set(normalized, detail);
+      });
+    }
+  }
+
+  if (params.includePlayoffs && !tournamentPoolPlayEnabled) {
     requireExplicitLeaguePlayoffTeamCount(
       params.defaultPlayoffTeamCount,
       'Playoff team count must be at least 2 when playoffs are enabled.',
@@ -3053,7 +3145,7 @@ export const syncEventDivisions = async (
   }
 
   const targetDivisionDescriptors = [
-    ...divisionIds.map((rawDivisionId) => ({ rawDivisionId, kind: 'LEAGUE' as const })),
+    ...effectiveDivisionIds.map((rawDivisionId) => ({ rawDivisionId, kind: 'LEAGUE' as const })),
     ...normalizedPlayoffDetails.map((detail) => ({ rawDivisionId: detail.id, kind: 'PLAYOFF' as const })),
   ];
   const seenDivisionIds = new Set<string>();
@@ -3105,6 +3197,7 @@ export const syncEventDivisions = async (
       return buildDivisionId(params.eventId, inferred.token);
     })();
     const kind = normalizeDivisionKind(detail?.kind ?? existing?.kind ?? targetKind, targetKind);
+    const isTournamentBracketDivision = tournamentPoolPlayEnabled && kind === 'PLAYOFF';
 
     const gender = detail?.gender ?? inferred.gender;
     const ratingType = detail?.ratingType ?? inferred.ratingType;
@@ -3151,28 +3244,28 @@ export const syncEventDivisions = async (
         ) ?? [],
       );
 
-    const ratings = kind === 'PLAYOFF'
+    const ratings = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? { minRating: null, maxRating: null }
       : divisionRatingWindow(key, params.sportId ?? null);
     const name = detail?.name
       ?? existing?.name
       ?? inferred.defaultName
       ?? buildDivisionDisplayName(key, params.sportId ?? null);
-    const ageEligibility = kind === 'PLAYOFF'
+    const ageEligibility = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? null
       : evaluateDivisionAgeEligibility({
           divisionTypeId,
           sportInput: params.sportId ?? null,
           referenceDate: params.referenceDate ?? null,
         });
-    const ageCutoffDate = kind === 'PLAYOFF'
+    const ageCutoffDate = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? null
       : (
         detail?.ageCutoffDate
           ?? normalizeIsoDateString(existing?.ageCutoffDate)
           ?? (ageEligibility?.applies ? ageEligibility.cutoffDate.toISOString() : null)
       );
-    const ageCutoffLabel = kind === 'PLAYOFF'
+    const ageCutoffLabel = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? null
       : (
         detail?.ageCutoffLabel
@@ -3180,14 +3273,14 @@ export const syncEventDivisions = async (
           ?? ageEligibility?.message
           ?? null
       );
-    const ageCutoffSource = kind === 'PLAYOFF'
+    const ageCutoffSource = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? null
       : (
         detail?.ageCutoffSource
           ?? existing?.ageCutoffSource
           ?? (ageEligibility?.applies ? ageEligibility.cutoffRule.source : null)
       );
-    const price = kind === 'PLAYOFF'
+    const price = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? null
       : resolveDivisionValue(
         detail?.price,
@@ -3199,14 +3292,14 @@ export const syncEventDivisions = async (
       existing?.maxParticipants,
       params.defaultMaxParticipants ?? undefined,
     ) ?? null;
-    const playoffTeamCount = kind === 'PLAYOFF'
+    const playoffTeamCount = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? null
       : resolveDivisionValue(
         detail?.playoffTeamCount,
         existing?.playoffTeamCount,
         params.singleDivision ? (params.defaultPlayoffTeamCount ?? undefined) : undefined,
       ) ?? null;
-    const allowPaymentPlans = kind === 'PLAYOFF'
+    const allowPaymentPlans = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? false
       : resolveDivisionValue(
         detail?.allowPaymentPlans,
@@ -3357,6 +3450,22 @@ export const syncEventDivisions = async (
     })
     .map((row: any) => row.id);
 
+  if (tournamentPoolPlayEnabled) {
+    const staleAssignedPool = existingRows.find((row: any) => {
+      const normalizedId = normalizeDivisionKey(row.id) ?? row.id;
+      if (finalIdSet.has(normalizedId)) {
+        return false;
+      }
+      if (normalizeDivisionKind(row.kind, 'LEAGUE') === 'PLAYOFF') {
+        return false;
+      }
+      return normalizeTeamIdList(row.teamIds).length > 0;
+    });
+    if (staleAssignedPool) {
+      throw new Error(`Cannot remove pool "${staleAssignedPool.name ?? staleAssignedPool.id}" while it has assigned teams.`);
+    }
+  }
+
   if (staleDivisionIds.length) {
     await client.divisions.deleteMany({
       where: { id: { in: staleDivisionIds } },
@@ -3439,6 +3548,10 @@ export const syncEventDivisions = async (
       } as any,
     });
   }
+
+  return finalEntries
+    .filter((entry) => entry.kind !== 'PLAYOFF')
+    .map((entry) => entry.id);
 };
 
 export const upsertEventFromPayload = async (payload: any, client: PrismaLike = prisma): Promise<string> => {
@@ -3692,6 +3805,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     ? existingEvent.eventType.toUpperCase()
     : null;
   const nextEventType = payloadEventType ?? existingEventType;
+  const includePlayoffsOrPools = coerceBoolean(
+    Object.prototype.hasOwnProperty.call(payload, 'includePlayoffsOrPools')
+      ? payload.includePlayoffsOrPools
+      : payload.includePlayoffs,
+    false,
+  );
   const normalizedParentEvent = normalizeEntityId(payload.parentEvent)
     ?? normalizeEntityId((existingEvent as any)?.parentEvent);
   const isWeeklyParent = nextEventType === 'WEEKLY_EVENT' && !normalizedParentEvent;
@@ -3705,7 +3824,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     : parsedExistingEnd;
   const splitLeaguePlayoffDivisions = payloadEventType === 'LEAGUE'
     ? coerceBoolean(payload.splitLeaguePlayoffDivisions, false)
-    : false;
+    : (nextEventType === 'TOURNAMENT' && includePlayoffsOrPools);
   const fallbackNoFixedEndDateTime = supportsNoFixedEndDateTime
     ? (
       !payloadIncludesNoFixedEndDateTime && typeof (existingEvent as any)?.noFixedEndDateTime === 'boolean'
@@ -3864,7 +3983,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? payload.coordinates.filter((value: unknown): value is number => typeof value === 'number')
       : null,
     gamesPerOpponent: payload.gamesPerOpponent ?? null,
-    includePlayoffs: payload.includePlayoffs ?? false,
+    includePlayoffs: includePlayoffsOrPools,
     playoffTeamCount: payload.playoffTeamCount ?? null,
     usesSets: payload.usesSets ?? false,
     matchDurationMinutes: payload.matchDurationMinutes ?? null,
@@ -3967,11 +4086,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     await persistEventOfficialRows(client, id, resolvedEventOfficials);
   }
 
-  await syncEventDivisions({
+  const syncedDivisionIds = await syncEventDivisions({
     eventId: id,
     divisionIds: normalizedEventDivisionIds,
     fieldIds,
-    includePlayoffs: payload.includePlayoffs ?? false,
+    includePlayoffs: includePlayoffsOrPools,
     singleDivision: singleDivisionEnabled,
     sportId: normalizedSportId,
     referenceDate: start,
@@ -3989,6 +4108,15 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     defaultInstallmentAmounts: defaultDivisionInstallmentAmounts,
     eventType: nextEventType,
   }, client);
+  if (nextEventType === 'TOURNAMENT' && includePlayoffsOrPools && syncedDivisionIds.length) {
+    await client.events.update({
+      where: { id },
+      data: {
+        divisions: syncedDivisionIds,
+        updatedAt: new Date(),
+      },
+    });
+  }
 
   const removedFieldIds = existingFieldIds.filter((fieldId) => !allowedFieldIdSet.has(fieldId));
   if (removedFieldIds.length) {
