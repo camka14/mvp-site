@@ -47,13 +47,30 @@ export async function POST(req: NextRequest) {
     data: { passwordHash, updatedAt: new Date() },
   });
   const nextSessionVersion = await revokeAuthUserSessions(targetUserId);
-  const res = NextResponse.json({ ok: true }, { status: 200 });
+  const responseBody: {
+    ok: true;
+    session?: {
+      userId: string;
+      isAdmin: boolean;
+      sessionVersion: number;
+    };
+    token?: string;
+  } = { ok: true };
+
   if (targetUserId === session.userId) {
-    const refreshed = signSessionToken({
+    const refreshedSession = {
       userId: targetUserId,
       isAdmin: session.isAdmin,
       sessionVersion: nextSessionVersion ?? authUser.sessionVersion + 1,
-    });
+    };
+    const refreshed = signSessionToken(refreshedSession);
+    responseBody.session = refreshedSession;
+    responseBody.token = refreshed;
+  }
+
+  const res = NextResponse.json(responseBody, { status: 200 });
+  if (targetUserId === session.userId && responseBody.token) {
+    const refreshed = responseBody.token;
     setAuthCookie(res, refreshed);
   }
   return res;

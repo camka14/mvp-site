@@ -590,12 +590,23 @@ describe('auth routes', () => {
 
       expect(res.status).toBe(200);
       expect(json.ok).toBe(true);
+      expect(json.token).toBe('refreshed-token');
+      expect(json.session).toEqual({
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 1,
+      });
       expect(prismaMock.authUser.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ passwordHash: 'new-hash' }),
         }),
       );
       expect(authSessionsMock.revokeAuthUserSessions).toHaveBeenCalledWith('user_1');
+      expect(authServerMock.signSessionToken).toHaveBeenCalledWith({
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 1,
+      });
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'refreshed-token');
     });
   });
