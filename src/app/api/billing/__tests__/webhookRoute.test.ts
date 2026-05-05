@@ -315,6 +315,69 @@ describe('POST /api/billing/webhook', () => {
     );
   });
 
+  it('creates a paid bill for event_payment metadata without activating registration', async () => {
+    prismaMock.billPayments.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    prismaMock.bills.create.mockResolvedValueOnce({ id: 'bill_event_payment_1' });
+    prismaMock.billPayments.create.mockResolvedValueOnce({ id: 'bill_payment_event_payment_1' });
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentSucceededEvent({
+        intentId: 'pi_event_payment_1',
+        metadata: {
+          purchase_type: 'event_payment',
+          user_id: 'manager_1',
+          team_id: 'team_1',
+          event_id: 'event_1',
+          organization_id: 'org_1',
+          event_name: 'Spring Volleyball',
+          amount_cents: '4500',
+          mvp_fee_cents: '45',
+          stripe_fee_cents: '170',
+          total_charge_cents: '4715',
+        },
+        amount: 4715,
+        amountReceived: 4715,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.$transaction).toHaveBeenCalledTimes(1);
+    expect(prismaMock.bills.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ownerType: 'TEAM',
+          ownerId: 'team_1',
+          eventId: 'event_1',
+          organizationId: 'org_1',
+          totalAmountCents: 4715,
+          paidAmountCents: 4715,
+          status: 'PAID',
+          lineItems: [
+            { id: 'line_1', type: 'EVENT', label: 'Spring Volleyball', amountCents: 4500 },
+            { id: 'line_2', type: 'FEE', label: 'BracketIQ fee', amountCents: 45 },
+            { id: 'line_3', type: 'FEE', label: 'Stripe fee', amountCents: 170 },
+          ],
+        }),
+      }),
+    );
+    expect(prismaMock.billPayments.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          billId: 'bill_event_payment_1',
+          amountCents: 4715,
+          status: 'PAID',
+          paymentIntentId: 'pi_event_payment_1',
+          payerUserId: 'manager_1',
+        }),
+      }),
+    );
+    expect(prismaMock.eventRegistrations.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.updateMany).not.toHaveBeenCalled();
+  });
+
   it('syncs managed organization verification when Stripe sends account.updated', async () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_123';
     prismaMock.stripeAccounts.findFirst.mockResolvedValueOnce({ organizationId: 'org_1' });

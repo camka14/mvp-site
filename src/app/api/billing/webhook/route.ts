@@ -604,7 +604,7 @@ const resolveInstantLineItemLabel = (purchaseType: string | null): string => {
   const normalized = (purchaseType ?? '').trim().toLowerCase();
   if (normalized === 'product') return 'Product purchase';
   if (normalized === 'rental') return 'Field rental';
-  if (normalized === 'event') return 'Event registration';
+  if (normalized === 'event' || normalized === 'event_payment') return 'Event registration';
   if (normalized === 'team_registration') return 'Team registration';
   return 'Purchase';
 };
@@ -647,7 +647,9 @@ const buildInstantLineItems = ({
       ? 'PRODUCT'
       : normalizedPurchaseType === 'rental'
         ? 'RENTAL'
-        : (normalizedPurchaseType === 'event' || normalizedPurchaseType === 'team_registration')
+        : (normalizedPurchaseType === 'event' ||
+            normalizedPurchaseType === 'event_payment' ||
+            normalizedPurchaseType === 'team_registration')
           ? 'EVENT'
           : 'OTHER';
   const baseLabel = productName ?? eventName ?? teamName ?? resolveInstantLineItemLabel(purchaseType);
