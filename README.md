@@ -83,6 +83,7 @@ npm run dev
 `npm run dev` now starts ngrok (when available) and injects a public redirect URL for BoldSign (`BOLDSIGN_DEV_REDIRECT_BASE_URL`) to avoid browser Private Network Access blocks after signing. To disable this behavior: `MVP_DEV_ENABLE_NGROK=0 npm run dev`.
 It also injects `PUBLIC_WEB_BASE_URL` (for canonical web links) and `STRIPE_CONNECT_REDIRECT_URI` (for Stripe OAuth callback), so localhost is not sent as `redirect_uri`.
 The default reserved dev tunnel is `https://untarnished-berserkly-everette.ngrok-free.dev`; override it with `NGROK_DOMAIN` or `MVP_DEV_NGROK_DOMAIN` if needed. VS Code launch configs require ngrok and Stripe listener startup so broken webhook forwarding fails immediately.
+The ngrok host is also included in `next.config.mjs` `allowedDevOrigins` so Next.js dev HMR and internal `/_next/*` resources can load from the tunnel after Stripe Connect redirects back to the local app. Stripe CLI still handles webhook forwarding; this Next setting is separate because it protects browser-origin requests.
 
 For automatic tunneling, install and authenticate ngrok on your machine first (`ngrok config add-authtoken <token>`). If ngrok is not available, dev server still starts but BoldSign localhost redirect issues will remain.
 When running in WSL, the dev wrapper also attempts to resolve Windows-installed ngrok (`where ngrok` / `Get-Command ngrok`). You can force a specific binary path with `NGROK_BIN=/mnt/c/.../ngrok.exe npm run dev`.
@@ -100,12 +101,12 @@ When running in WSL, the dev wrapper also attempts to resolve Windows-installed 
 
 ## Local Stripe Webhooks
 - Preferred local run: `npm run dev`
-  - This wrapper starts `stripe listen` automatically and forwards `payment_intent.succeeded` to `http://localhost:3000/api/billing/webhook`.
+  - This wrapper starts `stripe listen` automatically and forwards billing and Connect events to `http://localhost:3000/api/billing/webhook`, including `account.updated` for local Stripe Connect onboarding sync.
   - It also injects the session webhook secret into `STRIPE_WEBHOOK_SECRET` for that dev process.
 - Manual listener (if using `npm run dev:plain`):
 ```bash
 stripe listen \
-  --events payment_intent.succeeded \
+  --events account.updated,payment_intent.succeeded,invoice.created,invoice.paid,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted \
   --forward-to http://localhost:3000/api/billing/webhook
 ```
 - Manual trigger test:

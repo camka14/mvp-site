@@ -7,6 +7,15 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const nextCli = require.resolve('next/dist/bin/next');
 const DEFAULT_NGROK_DOMAIN = 'untarnished-berserkly-everette.ngrok-free.dev';
+const STRIPE_LISTEN_EVENTS = [
+  'account.updated',
+  'payment_intent.succeeded',
+  'invoice.created',
+  'invoice.paid',
+  'customer.subscription.created',
+  'customer.subscription.updated',
+  'customer.subscription.deleted',
+];
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -381,7 +390,7 @@ const startStripeListener = async (port) => {
     '--forward-to',
     `http://localhost:${port}/api/billing/webhook`,
     '--events',
-    'payment_intent.succeeded',
+    STRIPE_LISTEN_EVENTS.join(','),
   ];
   if (secretKey) {
     stripeArgs.push('--api-key', secretKey);
@@ -627,7 +636,7 @@ const run = async () => {
       }
       console.warn(`[dev] stripe listen unavailable; continuing without local webhook forward (${stripeResult.error.message})`);
       console.warn(
-        `[dev] run manually: stripe listen --events payment_intent.succeeded --forward-to http://localhost:${port}/api/billing/webhook`,
+        `[dev] run manually: stripe listen --events ${STRIPE_LISTEN_EVENTS.join(',')} --forward-to http://localhost:${port}/api/billing/webhook`,
       );
     } else {
       stripeProc = stripeResult.stripeProc;
