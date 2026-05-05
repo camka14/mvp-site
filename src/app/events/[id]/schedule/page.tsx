@@ -657,6 +657,11 @@ const buildMatchConflictAlertMessage = ({
   return `${getConflictMatchLabel(firstMatch)} overlaps ${getConflictMatchLabel(secondMatch)} on ${getConflictFieldLabel(firstMatch)} - ${MATCH_CONFLICT_RESOLUTION_MESSAGE}`;
 };
 
+const getTeamWarningLabel = (team: Team): string => {
+  const name = typeof team.name === 'string' ? team.name.trim() : '';
+  return name.length > 0 ? name : 'Unnamed Team';
+};
+
 
 type StandingsSortField = 'team' | 'wins' | 'losses' | 'draws' | 'points';
 
@@ -8650,7 +8655,7 @@ function EventScheduleContent() {
           {hasSplitDivisionUnassignedTeams && (
             <Alert color="yellow" radius="md">
               Split-division leagues require every registered team to be assigned to a division before saving or rescheduling.
-              Unassigned teams: {unassignedFilledParticipantTeams.map((team) => team.$id).join(', ')}.
+              Unassigned teams: {unassignedFilledParticipantTeams.map(getTeamWarningLabel).join(', ')}.
             </Alert>
           )}
 
@@ -8836,7 +8841,7 @@ function EventScheduleContent() {
                                 ) : (
                                   <Stack gap="sm">
                                     {columnTeams.map((team) => {
-                                      const canMoveTeamBetweenDivisions = canManageEvent && !isEditingEvent;
+                                      const canMoveTeamBetweenDivisions = canManageEvent;
                                       const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
                                       const teamActions = canManageEvent && !isPlaceholderTeam
                                         ? (
@@ -8844,10 +8849,10 @@ function EventScheduleContent() {
                                             ? <Text size="xs" c="dimmed">Updating...</Text>
                                             : (
                                               <Stack gap={6}>
-                                                {renderEditBillingActions(team)}
                                                 {canMoveTeamBetweenDivisions ? (
                                                   <Select
                                                     size="xs"
+                                                    aria-label={`Move ${team.name || 'team'} to division`}
                                                     data={participantDivisionSelectData}
                                                     value={column.id}
                                                     onChange={(value) => {
@@ -8857,6 +8862,7 @@ function EventScheduleContent() {
                                                     w={200}
                                                   />
                                                 ) : null}
+                                                {renderEditBillingActions(team)}
                                                 <Button
                                                   size="xs"
                                                   variant="light"
@@ -8900,7 +8906,7 @@ function EventScheduleContent() {
                             ) : (
                               <Stack gap="sm">
                                 {unassignedParticipantTeams.map((team) => {
-                                  const canMoveTeamBetweenDivisions = canManageEvent && !isEditingEvent;
+                                  const canMoveTeamBetweenDivisions = canManageEvent;
                                   const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
                                   const teamActions = canManageEvent && !isPlaceholderTeam
                                     ? (
@@ -8908,10 +8914,10 @@ function EventScheduleContent() {
                                         ? <Text size="xs" c="dimmed">Updating...</Text>
                                         : (
                                           <Stack gap={6}>
-                                            {renderEditBillingActions(team)}
                                             {canMoveTeamBetweenDivisions ? (
                                               <Select
                                                 size="xs"
+                                                aria-label={`Move ${team.name || 'team'} to division`}
                                                 data={participantDivisionSelectData}
                                                 value={null}
                                                 placeholder="Move to division"
@@ -8922,6 +8928,7 @@ function EventScheduleContent() {
                                                 w={200}
                                               />
                                             ) : null}
+                                            {renderEditBillingActions(team)}
                                             <Button
                                               size="xs"
                                               variant="light"

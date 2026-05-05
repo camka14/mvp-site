@@ -429,7 +429,10 @@ describe('event schedule route - split divisions regression', () => {
     const json = await res.json();
 
     expect(res.status).toBe(400);
-    expect(String(json.error ?? '')).toContain('Unassigned teams');
+    const errorMessage = String(json.error ?? '');
+    expect(errorMessage).toContain('Unassigned teams');
+    expect(errorMessage).toContain('Beginner Team 2');
+    expect(errorMessage).not.toContain('team_beginner_2');
     expect(prismaMock.matches.upsert).not.toHaveBeenCalled();
   });
 

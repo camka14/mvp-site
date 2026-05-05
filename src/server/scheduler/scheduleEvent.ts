@@ -67,7 +67,7 @@ const applyRosterToLeagueTeams = (
 const formatTeamLabel = (league: League, teamId: string): string => {
   const team = league.teams[teamId];
   const name = team?.name?.trim() ?? '';
-  return name.length > 0 ? `${name} (${teamId})` : teamId;
+  return name.length > 0 ? name : 'Unnamed Team';
 };
 
 const buildSplitDivisionAssignmentState = (

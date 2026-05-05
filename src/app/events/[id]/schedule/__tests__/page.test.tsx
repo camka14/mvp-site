@@ -2666,6 +2666,247 @@ describe('League schedule page', () => {
     });
   });
 
+  it('names unassigned split-division teams in the warning', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    const teams = [
+      {
+        $id: 'team_assigned',
+        id: 'team_assigned',
+        name: 'Court Kings',
+        division: 'Open',
+        sport: 'Volleyball',
+        playerIds: [],
+        captainId: '',
+        pending: [],
+        teamSize: 2,
+        currentSize: 0,
+        isFull: false,
+        avatarUrl: '',
+        parentTeamId: 'parent_assigned',
+      },
+      {
+        $id: 'team_unassigned_one',
+        id: 'team_unassigned_one',
+        name: 'Midnight Owls',
+        division: 'Open',
+        sport: 'Volleyball',
+        playerIds: [],
+        captainId: '',
+        pending: [],
+        teamSize: 2,
+        currentSize: 0,
+        isFull: false,
+        avatarUrl: '',
+        parentTeamId: 'parent_one',
+      },
+      {
+        $id: 'team_unassigned_two',
+        id: 'team_unassigned_two',
+        name: 'Court Legends',
+        division: 'Open',
+        sport: 'Volleyball',
+        playerIds: [],
+        captainId: '',
+        pending: [],
+        teamSize: 2,
+        currentSize: 0,
+        isFull: false,
+        avatarUrl: '',
+        parentTeamId: 'parent_two',
+      },
+    ];
+    const event = buildApiEvent({
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teamSignup: true,
+      teamIds: teams.map((team) => team.$id),
+      teams,
+      divisions: ['division_open', 'division_advanced'],
+      divisionDetails: [
+        {
+          id: 'division_open',
+          key: 'open',
+          name: 'Open',
+          kind: 'LEAGUE',
+          teamIds: ['team_assigned'],
+        },
+        {
+          id: 'division_advanced',
+          key: 'advanced',
+          name: 'Advanced',
+          kind: 'LEAGUE',
+          teamIds: [],
+        },
+      ],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path.startsWith('/api/events/event_1/standings?')) {
+        return Promise.resolve({
+          division: {
+            divisionId: 'division_open',
+            divisionName: 'Open',
+            standingsConfirmedAt: null,
+            standingsConfirmedBy: null,
+            playoffTeamCount: null,
+            playoffPlacementDivisionIds: [],
+            standingsOverrides: null,
+            standings: [],
+            validation: {
+              mappingErrors: [],
+              capacityErrors: [],
+            },
+            playoffDivisions: [],
+          },
+        });
+      }
+      if (path.startsWith('/api/teams?ids=')) {
+        return Promise.resolve({ teams });
+      }
+      if (path === '/api/events/event_1/teams/compliance') {
+        return Promise.resolve({ teams: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teamIds: teams.map((team) => team.$id),
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams,
+      users: [],
+      participantCount: 3,
+      participantCapacity: null,
+      occurrence: null,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      const pageText = document.body.textContent?.replace(/\s+/g, ' ') ?? '';
+      expect(pageText).toContain('Unassigned teams: Midnight Owls, Court Legends.');
+      expect(pageText).not.toContain('team_unassigned_one');
+      expect(pageText).not.toContain('team_unassigned_two');
+    });
+  });
+
+  it('shows the division selector above manage buttons for unassigned split-division teams in manage mode', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit',
+    });
+
+    const team = {
+      $id: 'team_unassigned',
+      id: 'team_unassigned',
+      name: 'Sand Strikers',
+      division: 'Open',
+      sport: 'Volleyball',
+      playerIds: [],
+      captainId: '',
+      pending: [],
+      teamSize: 2,
+      currentSize: 0,
+      isFull: false,
+      avatarUrl: '',
+      parentTeamId: 'canonical_team_1',
+    };
+    const event = buildApiEvent({
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teamSignup: true,
+      teamIds: [team.$id],
+      teams: [team],
+      divisions: ['division_open', 'division_advanced'],
+      divisionDetails: [
+        {
+          id: 'division_open',
+          key: 'open',
+          name: 'Open',
+          kind: 'LEAGUE',
+          teamIds: [],
+        },
+        {
+          id: 'division_advanced',
+          key: 'advanced',
+          name: 'Advanced',
+          kind: 'LEAGUE',
+          teamIds: [],
+        },
+      ],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path.startsWith('/api/teams?ids=')) {
+        return Promise.resolve({ teams: [team] });
+      }
+      if (path === '/api/events/event_1/teams/compliance') {
+        return Promise.resolve({ teams: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teamIds: [team.$id],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams: [team],
+      users: [],
+      participantCount: 1,
+      participantCapacity: null,
+      occurrence: null,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const divisionsTab = await screen.findByRole('tab', { name: /divisions/i });
+    fireEvent.click(divisionsTab);
+
+    const divisionSelector = (await screen.findAllByLabelText(/move sand strikers to division/i))
+      .find((element) => element.tagName === 'INPUT');
+    const refundButton = screen.getByRole('button', { name: /^refund$/i });
+    const sendBillButton = screen.getByRole('button', { name: /^send bill$/i });
+    const removeButton = screen.getByRole('button', { name: /^remove$/i });
+
+    expect(divisionSelector).toBeDefined();
+    expect(divisionSelector!.compareDocumentPosition(refundButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divisionSelector!.compareDocumentPosition(sendBillButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(divisionSelector!.compareDocumentPosition(removeButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('renders non-team participant user cards with billing and document status in manage mode', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
