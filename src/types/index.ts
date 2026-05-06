@@ -1373,6 +1373,25 @@ export function toEventPayload(event: Event): EventPayload {
           name: typeof division.name === 'string' ? division.name : id,
           key: typeof division.key === 'string' ? division.key : undefined,
           kind: 'PLAYOFF' as const,
+          divisionTypeId:
+            typeof division.divisionTypeId === 'string' ? division.divisionTypeId : undefined,
+          divisionTypeName:
+            typeof division.divisionTypeName === 'string' ? division.divisionTypeName : undefined,
+          ratingType:
+            division.ratingType === 'AGE' || division.ratingType === 'SKILL'
+              ? division.ratingType
+              : undefined,
+          gender:
+            division.gender === 'M' || division.gender === 'F' || division.gender === 'C'
+              ? division.gender
+              : undefined,
+          sportId: typeof division.sportId === 'string' ? division.sportId : undefined,
+          price:
+            typeof division.price === 'number'
+              ? division.price
+              : Number.isFinite(Number(division.price))
+                ? Number(division.price)
+                : undefined,
           maxParticipants:
             typeof division.maxParticipants === 'number'
               ? division.maxParticipants
@@ -1397,6 +1416,32 @@ export function toEventPayload(event: Event): EventPayload {
               : Number.isFinite(Number(division.poolTeamCount))
                 ? Number(division.poolTeamCount)
                 : undefined,
+          allowPaymentPlans:
+            typeof division.allowPaymentPlans === 'boolean'
+              ? division.allowPaymentPlans
+              : undefined,
+          installmentCount:
+            typeof division.installmentCount === 'number'
+              ? division.installmentCount
+              : Number.isFinite(Number(division.installmentCount))
+                ? Number(division.installmentCount)
+                : undefined,
+          installmentDueDates: Array.isArray(division.installmentDueDates)
+            ? division.installmentDueDates
+                .map((entry) => (typeof entry === 'string' ? entry : String(entry)))
+                .filter((entry) => entry.trim().length > 0)
+            : undefined,
+          installmentDueRelativeDays: Array.isArray(division.installmentDueRelativeDays)
+            ? division.installmentDueRelativeDays
+                .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+                .filter((entry) => Number.isFinite(entry))
+                .map((entry) => Math.trunc(entry))
+            : undefined,
+          installmentAmounts: Array.isArray(division.installmentAmounts)
+            ? division.installmentAmounts
+                .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+                .filter((entry) => Number.isFinite(entry))
+            : undefined,
           ...(hasTeamIds
             ? {
                 teamIds: Array.isArray(division.teamIds)
@@ -1814,10 +1859,10 @@ const collectEventDivisionPriceCents = (
     }
   });
 
-  const resolvePrice = (detail?: Partial<Division> | null): number => (
+  const resolvePrice = (detail?: Partial<Division> | null): number | null => (
     detail && Number.isFinite(Number(detail.price))
       ? normalizePriceCentsValue(detail.price)
-      : defaultPriceCents
+      : null
   );
 
   const prices: number[] = [];
@@ -1833,21 +1878,34 @@ const collectEventDivisionPriceCents = (
         const divisionKey = normalizeDivisionLookupKey(division.key);
         const detail = (divisionId ? detailsByLookup.get(divisionId) : null)
           ?? (divisionKey ? detailsByLookup.get(divisionKey) : null);
-        prices.push(explicitPrice ?? resolvePrice(detail));
+        const resolvedPrice = explicitPrice ?? resolvePrice(detail);
+        if (resolvedPrice !== null) {
+          prices.push(resolvedPrice);
+        }
         return;
       }
 
       const lookupKey = normalizeDivisionLookupKey(entry);
       const detail = lookupKey ? detailsByLookup.get(lookupKey) : null;
-      prices.push(resolvePrice(detail));
+      const resolvedPrice = resolvePrice(detail);
+      if (resolvedPrice !== null) {
+        prices.push(resolvedPrice);
+      }
     });
   } else if (detailEntries.length > 0) {
     detailEntries.forEach((detail) => {
-      prices.push(resolvePrice(detail));
+      const resolvedPrice = resolvePrice(detail);
+      if (resolvedPrice !== null) {
+        prices.push(resolvedPrice);
+      }
     });
   }
 
-  return prices.length > 0 ? prices : [defaultPriceCents];
+  if (divisionEntries.length > 0 || detailEntries.length > 0) {
+    return prices;
+  }
+
+  return [defaultPriceCents];
 };
 
 export function formatPrice(price?: number) {
@@ -1874,6 +1932,10 @@ export function getEventDivisionPriceRange(
 export function formatEventDivisionPriceRange(
   event?: Pick<Event, 'price' | 'divisions' | 'divisionDetails'> | null,
 ) {
+  const prices = collectEventDivisionPriceCents(event);
+  if (!prices.length) {
+    return 'Price not set';
+  }
   const { minPriceCents, maxPriceCents } = getEventDivisionPriceRange(event);
   if (minPriceCents === maxPriceCents) {
     return formatPrice(minPriceCents);

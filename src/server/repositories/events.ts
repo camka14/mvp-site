@@ -2703,6 +2703,7 @@ export const persistScheduledRosterTeams = async (
 ): Promise<string[]> => {
   const rosterTeamIds = Object.keys(params.scheduled.teams ?? {});
   const now = new Date();
+  const shouldRemoveOmittedPlaceholderTeams = params.removeOmittedPlaceholderTeams !== false;
 
   const scheduledLeagueDivisionIds = (() => {
     const ids: string[] = [];
@@ -2771,15 +2772,19 @@ export const persistScheduledRosterTeams = async (
     syncFreeAgents: false,
   });
 
-  if (params.removeOmittedPlaceholderTeams && typeof (client as any).teams?.deleteMany === 'function') {
+  if (shouldRemoveOmittedPlaceholderTeams && typeof (client as any).teams?.deleteMany === 'function') {
     await (client as any).teams.deleteMany({
       where: {
         eventId: params.eventId,
         ...(rosterTeamIds.length ? { id: { notIn: rosterTeamIds } } : {}),
         OR: [
           { kind: 'PLACEHOLDER' },
-          { captainId: '' },
-          { name: { startsWith: 'Place Holder', mode: 'insensitive' } },
+          {
+            AND: [
+              { captainId: '' },
+              { name: { startsWith: 'Place Holder', mode: 'insensitive' } },
+            ],
+          },
         ],
       } as any,
     });

@@ -22,10 +22,14 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
+const getEventParticipantIdsForEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/accessControl', () => ({ canManageEvent: (...args: unknown[]) => canManageEventMock(...args) }));
+jest.mock('@/server/events/eventRegistrations', () => ({
+  getEventParticipantIdsForEvent: (...args: unknown[]) => getEventParticipantIdsForEventMock(...args),
+}));
 
 import { GET } from '@/app/api/events/[eventId]/teams/[teamId]/billing/route';
 
@@ -36,6 +40,12 @@ describe('GET /api/events/[eventId]/teams/[teamId]/billing', () => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     canManageEventMock.mockResolvedValue(true);
+    getEventParticipantIdsForEventMock.mockResolvedValue({
+      teamIds: ['team_1'],
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       hostId: 'host_1',
@@ -157,6 +167,59 @@ describe('GET /api/events/[eventId]/teams/[teamId]/billing', () => {
         refundedAmountCents: 2500,
         refundableAmountCents: 7500,
         isRefundable: true,
+      }),
+    );
+  });
+
+  it('loads bills owned by the parent team for an event team slot', async () => {
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Beach Aces',
+      playerIds: ['user_2'],
+      captainId: 'user_2',
+      managerId: null,
+      headCoachId: null,
+      parentTeamId: 'team_parent',
+    });
+    prismaMock.bills.findMany
+      .mockReset()
+      .mockResolvedValueOnce([
+        {
+          id: 'bill_parent_team_1',
+          ownerType: 'TEAM',
+          ownerId: 'team_parent',
+          totalAmountCents: 10000,
+          paidAmountCents: 0,
+          status: 'OPEN',
+          allowSplit: true,
+          lineItems: null,
+          createdAt: new Date('2026-03-01T10:00:00.000Z'),
+          updatedAt: new Date('2026-03-01T10:00:00.000Z'),
+        },
+      ])
+      .mockResolvedValueOnce([]);
+    prismaMock.billPayments.findMany.mockResolvedValueOnce([]);
+
+    const response = await GET(requestFor(), {
+      params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.bills.findMany).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        where: expect.objectContaining({
+          ownerType: 'TEAM',
+          ownerId: { in: expect.arrayContaining(['team_1', 'team_parent']) },
+        }),
+      }),
+    );
+    expect(payload.bills[0]).toEqual(
+      expect.objectContaining({
+        id: 'bill_parent_team_1',
+        ownerId: 'team_parent',
+        ownerName: 'Beach Aces',
       }),
     );
   });

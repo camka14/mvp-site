@@ -358,7 +358,8 @@ const reserveEventRegistrationSlot = async ({
       };
     }
     const divisionSelection = divisionSelectionResult.selection;
-    let divisionMaxParticipants = 0;
+    const eventDivisionIds = normalizeStringList(event.divisions);
+    let divisionMaxParticipants: number | null = null;
     let divisionIdForCapacity: string | null = null;
     if (divisionSelection.divisionId) {
       const selectedDivision = await tx.divisions.findFirst({
@@ -378,7 +379,10 @@ const reserveEventRegistrationSlot = async ({
         return { ok: false, status: 400, error: 'Selected division is not available for this event.' };
       }
       divisionIdForCapacity = selectedDivision.id;
-      divisionMaxParticipants = selectedDivision.maxParticipants ?? 0;
+      divisionMaxParticipants = selectedDivision.maxParticipants ?? null;
+      if (!divisionMaxParticipants || divisionMaxParticipants <= 0) {
+        return { ok: false, status: 400, error: 'Set max participants for this division before checkout.' };
+      }
     }
 
     if (!existing) {
@@ -436,7 +440,7 @@ const reserveEventRegistrationSlot = async ({
       });
     };
 
-    if (divisionMaxParticipants > 0 && divisionIdForCapacity) {
+    if (divisionMaxParticipants && divisionMaxParticipants > 0 && divisionIdForCapacity) {
       const divisionRegistrations = await tx.eventRegistrations.findMany({
         where: {
           eventId,
@@ -466,7 +470,7 @@ const reserveEventRegistrationSlot = async ({
       }
     }
 
-    const maxParticipants = event.maxParticipants ?? 0;
+    const maxParticipants = eventDivisionIds.length ? 0 : (event.maxParticipants ?? 0);
     if (maxParticipants > 0) {
       const cappedRegistrations = await tx.eventRegistrations.findMany({
         where: {

@@ -236,6 +236,7 @@ const getDivisionDetailsForEvent = async (
     installmentAmounts?: unknown;
   },
 ): Promise<Array<Record<string, unknown>>> => {
+  void eventDefaults;
   if (!divisionKeys.length) {
     return [];
   }
@@ -323,35 +324,31 @@ const getDivisionDetailsForEvent = async (
       sportId: row?.sportId ?? null,
       price: typeof row?.price === 'number'
         ? row.price
-        : (typeof eventDefaults?.price === 'number' ? eventDefaults.price : null),
+        : null,
       maxParticipants: typeof row?.maxParticipants === 'number'
         ? row.maxParticipants
-        : (typeof eventDefaults?.maxParticipants === 'number' ? eventDefaults.maxParticipants : null),
+        : null,
       playoffTeamCount: typeof row?.playoffTeamCount === 'number'
         ? row.playoffTeamCount
         : null,
       allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
         ? row.allowPaymentPlans
-        : normalizeOptionalBoolean(eventDefaults?.allowPaymentPlans),
+        : null,
       installmentCount: typeof row?.installmentCount === 'number'
         ? row.installmentCount
-        : (
-          typeof eventDefaults?.installmentCount === 'number'
-            ? Math.max(0, Math.trunc(eventDefaults.installmentCount))
-            : null
-        ),
+        : null,
       installmentDueDates: Array.isArray(row?.installmentDueDates)
         ? row.installmentDueDates
             .map((entry) => parseDateInput(entry))
             .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
             .map((entry) => entry.toISOString())
-        : normalizeInstallmentDateList(eventDefaults?.installmentDueDates),
+        : [],
       installmentDueRelativeDays: Array.isArray((row as any)?.installmentDueRelativeDays)
         ? normalizeInstallmentRelativeDayList((row as any).installmentDueRelativeDays)
-        : normalizeInstallmentRelativeDayList(eventDefaults?.installmentDueRelativeDays),
+        : [],
       installmentAmounts: Array.isArray(row?.installmentAmounts)
         ? normalizeInstallmentAmountList(row.installmentAmounts)
-        : normalizeInstallmentAmountList(eventDefaults?.installmentAmounts),
+        : [],
       ageCutoffDate,
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),

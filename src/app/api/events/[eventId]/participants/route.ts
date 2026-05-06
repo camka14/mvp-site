@@ -211,9 +211,7 @@ const createWeeklyPaymentPlanBillForRegistration = async (
     params.event.id,
     params.divisionSelection,
   );
-  const allowPaymentPlans = typeof division?.allowPaymentPlans === 'boolean'
-    ? division.allowPaymentPlans
-    : Boolean(params.event.allowPaymentPlans);
+  const allowPaymentPlans = division?.allowPaymentPlans === true;
   if (!allowPaymentPlans) {
     return null;
   }
@@ -221,21 +219,15 @@ const createWeeklyPaymentPlanBillForRegistration = async (
   const totalAmountCents = Math.round(
     typeof division?.price === 'number'
       ? division.price
-      : Number(params.event.price ?? 0),
+      : 0,
   );
   if (!Number.isFinite(totalAmountCents) || totalAmountCents <= 0) {
     return null;
   }
 
-  const installmentAmounts = firstNonEmptyNumberList(
-    division?.installmentAmounts,
-    params.event.installmentAmounts,
-  );
+  const installmentAmounts = firstNonEmptyNumberList(division?.installmentAmounts);
   const amounts = installmentAmounts.length ? installmentAmounts : [totalAmountCents];
-  const relativeDueDays = firstNonEmptyRelativeDayList(
-    division?.installmentDueRelativeDays,
-    params.event.installmentDueRelativeDays,
-  );
+  const relativeDueDays = firstNonEmptyRelativeDayList(division?.installmentDueRelativeDays);
 
   if (!relativeDueDays.length) {
     throw new Error('Weekly payment plans require installment due date offsets.');

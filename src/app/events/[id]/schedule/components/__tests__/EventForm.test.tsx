@@ -831,7 +831,7 @@ describe('EventForm dirty state', () => {
     expect(endDateButton).toBeDisabled();
     expect(endDateButton).toHaveAttribute('data-value', '2026-05-03T01:20');
     expect(screen.getByRole('checkbox', { name: 'No fixed end datetime scheduling' })).toBeChecked();
-    expect(screen.getByText('Scheduling can extend past the displayed end date/time. Turn this off to enforce the end date/time.')).toBeInTheDocument();
+    expect(screen.queryByText('Scheduling can extend past the displayed end date/time. Turn this off to enforce the end date/time.')).not.toBeInTheDocument();
 
     await waitFor(() => {
       const draft = formRef.current?.getDraft();
@@ -1278,7 +1278,7 @@ describe('EventForm dirty state', () => {
     });
 
     const maxTeamsInput = screen.getByLabelText('Max Teams');
-    const teamSizeLimitInput = screen.getByLabelText('Team Size Limit');
+    const teamSizeLimitInput = screen.getByLabelText('Team Size');
 
     fireEvent.change(maxTeamsInput, {
       target: { value: '' },
@@ -1402,6 +1402,89 @@ describe('EventForm dirty state', () => {
 
     expect(document.getElementById('section-match-rules')).not.toBeNull();
     expect(screen.getAllByText('Match Rules').length).toBeGreaterThan(0);
+  });
+
+  it('renders tournament pool settings and pool scoring config when pool play is enabled', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      teamSignup: true,
+      singleDivision: true,
+      noFixedEndDateTime: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+      },
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          playoffTeamCount: 4,
+          poolCount: 2,
+          poolTeamCount: 5,
+        },
+      ],
+      leagueScoringConfig: {
+        pointsForWin: 3,
+        pointsForDraw: 1,
+        pointsForLoss: 0,
+      },
+    });
+
+    expect(screen.getByText('Pool Play Settings')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bracket Teams')).toBeInTheDocument();
+    expect(screen.getByLabelText('Pool Count')).toBeInTheDocument();
+    expect(screen.getByLabelText('Pool Team Count')).toBeDisabled();
+    expect(screen.getAllByText('Pool Scoring Config').length).toBeGreaterThan(0);
+  });
+
+  it('keeps league scoring config in tournament pool-play draft payloads', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      teamSignup: true,
+      singleDivision: true,
+      noFixedEndDateTime: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+      },
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          playoffTeamCount: 4,
+          poolCount: 2,
+          poolTeamCount: 5,
+        },
+      ],
+      leagueScoringConfig: {
+        pointsForWin: 5,
+        pointsForDraw: 2,
+        pointsForLoss: 0,
+      },
+    });
+
+    await waitFor(() => {
+      expect(formRef.current).not.toBeNull();
+    });
+
+    expect(formRef.current?.getDraft()).toEqual(
+      expect.objectContaining({
+        includePlayoffs: true,
+        includePlayoffsOrPools: true,
+        leagueScoringConfig: expect.objectContaining({
+          pointsForWin: 5,
+          pointsForDraw: 2,
+          pointsForLoss: 0,
+        }),
+      }),
+    );
   });
 
   it('renders organization fields next to required documents in Event Details for managed events', async () => {

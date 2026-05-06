@@ -35,6 +35,21 @@ const buildTeams = (count: number, division: Division) => {
   return teams;
 };
 
+const buildTeamsForDivision = (prefix: string, count: number, division: Division) => {
+  const teams: Record<string, Team> = {};
+  for (let i = 1; i <= count; i += 1) {
+    const id = `${prefix}_team_${i}`;
+    teams[id] = new Team({
+      id,
+      captainId: `captain_${prefix}_${i}`,
+      division,
+      name: `${prefix} Team ${i}`,
+      matches: [],
+    });
+  }
+  return teams;
+};
+
 describe('tournament scheduling (time slots)', () => {
   it('schedules across multiple weekends when weekend slot capacity is limited', () => {
     const division = buildDivision();
@@ -158,5 +173,187 @@ describe('tournament scheduling (time slots)', () => {
     expect(scheduled.matches.every((match) => match.end.getTime() > match.start.getTime())).toBe(true);
     expect(scheduled.matches.every((match) => match.start.getTime() >= slotStart.getTime())).toBe(true);
     expect(scheduled.matches.every((match) => match.end.getTime() <= slotEnd.getTime())).toBe(true);
+  });
+
+  it('lets generated pool divisions inherit their bracket division time slots', () => {
+    const bracketDivision = new Division(
+      'tournament_bracket_open',
+      'CoEd Open',
+      [],
+      null,
+      4,
+      2,
+      'PLAYOFF',
+    );
+    const poolA = new Division(
+      'tournament_bracket_open_pool_a',
+      'Pool A',
+      [],
+      null,
+      2,
+      null,
+      'LEAGUE',
+      [bracketDivision.id, bracketDivision.id],
+    );
+    const poolB = new Division(
+      'tournament_bracket_open_pool_b',
+      'Pool B',
+      [],
+      null,
+      2,
+      null,
+      'LEAGUE',
+      [bracketDivision.id, bracketDivision.id],
+    );
+    const field = buildField(bracketDivision);
+    const teams = {
+      ...buildTeamsForDivision('pool_a', 2, poolA),
+      ...buildTeamsForDivision('pool_b', 2, poolB),
+    };
+
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const timeSlot = new TimeSlot({
+      id: 'slot_bracket_only',
+      dayOfWeek: 5,
+      startDate: start,
+      repeating: true,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 17 * 60,
+      fieldIds: [field.id],
+      divisions: [bracketDivision],
+    });
+
+    const tournament = new Tournament({
+      id: 'tournament_pool_time_slot_inheritance',
+      name: 'Pool Play Tournament',
+      start,
+      end: new Date(2026, 0, 3, 17, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams,
+      divisions: [poolA, poolB],
+      playoffDivisions: [bracketDivision],
+      includePlayoffs: true,
+      fields: { [field.id]: field },
+      timeSlots: [timeSlot],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      usesSets: true,
+      setsPerMatch: 1,
+      setDurationMinutes: 20,
+      restTimeMinutes: 0,
+    });
+
+    const scheduled = scheduleEvent({ event: tournament }, context);
+
+    expect(timeSlot.divisions.map((division) => division.id)).toEqual([
+      bracketDivision.id,
+      poolA.id,
+      poolB.id,
+    ]);
+    expect(scheduled.matches.some((match) => match.division.id === poolA.id)).toBe(true);
+    expect(scheduled.matches.some((match) => match.division.id === poolB.id)).toBe(true);
+  });
+
+  it('removes stale generated placeholders before rebuilding tournament pool play', () => {
+    const bracketDivision = new Division(
+      'tournament_bracket_stale',
+      'CoEd Open',
+      [],
+      null,
+      4,
+      2,
+      'PLAYOFF',
+    );
+    const poolA = new Division(
+      'tournament_bracket_stale_pool_a',
+      'Pool A',
+      [],
+      null,
+      2,
+      1,
+      'LEAGUE',
+      [bracketDivision.id],
+    );
+    const poolB = new Division(
+      'tournament_bracket_stale_pool_b',
+      'Pool B',
+      [],
+      null,
+      2,
+      1,
+      'LEAGUE',
+      [bracketDivision.id],
+    );
+    const field = buildField(bracketDivision);
+
+    const staleTeams: Record<string, Team> = {};
+    for (let index = 1; index <= 4; index += 1) {
+      const id = `stale_pool_a_${index}`;
+      staleTeams[id] = new Team({
+        id,
+        captainId: '',
+        division: poolA,
+        name: `Place Holder ${index}`,
+        matches: [],
+      });
+    }
+    poolA.teamIds = Object.keys(staleTeams);
+
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const timeSlot = new TimeSlot({
+      id: 'slot_stale_placeholders',
+      dayOfWeek: 5,
+      startDate: start,
+      repeating: true,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 17 * 60,
+      fieldIds: [field.id],
+      divisions: [bracketDivision],
+    });
+
+    const tournament = new Tournament({
+      id: 'tournament_pool_stale_placeholders',
+      name: 'Pool Play Tournament',
+      start,
+      end: new Date(2026, 0, 3, 17, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams: staleTeams,
+      divisions: [poolA, poolB],
+      playoffDivisions: [bracketDivision],
+      includePlayoffs: true,
+      fields: { [field.id]: field },
+      timeSlots: [timeSlot],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+      winnerSetCount: 1,
+      loserSetCount: 1,
+      usesSets: true,
+      setsPerMatch: 1,
+      setDurationMinutes: 20,
+      restTimeMinutes: 0,
+    });
+
+    const scheduled = scheduleEvent({ event: tournament }, context);
+    const teamCountsByDivision = Object.values(scheduled.event.teams).reduce<Record<string, number>>((counts, team) => {
+      const divisionId = team.division.id;
+      counts[divisionId] = (counts[divisionId] ?? 0) + 1;
+      return counts;
+    }, {});
+    const matchCountsByDivision = scheduled.matches.reduce<Record<string, number>>((counts, match) => {
+      counts[match.division.id] = (counts[match.division.id] ?? 0) + 1;
+      return counts;
+    }, {});
+
+    expect(Object.keys(scheduled.event.teams).some((teamId) => teamId.startsWith('stale_pool_a_'))).toBe(false);
+    expect(teamCountsByDivision[poolA.id]).toBe(2);
+    expect(teamCountsByDivision[poolB.id]).toBe(2);
+    expect(matchCountsByDivision[poolA.id]).toBe(1);
+    expect(matchCountsByDivision[poolB.id]).toBe(1);
   });
 });

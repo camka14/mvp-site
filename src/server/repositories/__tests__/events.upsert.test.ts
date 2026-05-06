@@ -1645,7 +1645,7 @@ describe('persistScheduledRosterTeams', () => {
     });
   });
 
-  it('removes omitted placeholder team rows when requested', async () => {
+  it('removes omitted placeholder team rows by default', async () => {
     const divisionA = buildEventDivisionId('event_1', 'a');
     const scheduled = {
       eventType: 'LEAGUE',
@@ -1689,7 +1689,7 @@ describe('persistScheduledRosterTeams', () => {
     };
 
     await persistScheduledRosterTeams(
-      { eventId: 'event_1', scheduled, removeOmittedPlaceholderTeams: true },
+      { eventId: 'event_1', scheduled },
       client as any,
     );
 
@@ -1708,8 +1708,12 @@ describe('persistScheduledRosterTeams', () => {
         id: { notIn: ['team_real'] },
         OR: [
           { kind: 'PLACEHOLDER' },
-          { captainId: '' },
-          { name: { startsWith: 'Place Holder', mode: 'insensitive' } },
+          {
+            AND: [
+              { captainId: '' },
+              { name: { startsWith: 'Place Holder', mode: 'insensitive' } },
+            ],
+          },
         ],
       },
     });

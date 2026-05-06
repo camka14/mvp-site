@@ -211,7 +211,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       await persistScheduledRosterTeams({
         eventId,
         scheduled: scheduled.event,
-        removeOmittedPlaceholderTeams: !includePlaceholderTeams,
+        removeOmittedPlaceholderTeams: true,
       }, tx);
       if (!hasExistingMatches || !includePlaceholderTeams) {
         await deleteMatchesByEvent(eventId, tx);

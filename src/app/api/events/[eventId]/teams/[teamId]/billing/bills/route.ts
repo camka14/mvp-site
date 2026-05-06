@@ -138,7 +138,7 @@ export async function POST(
       ]),
     );
     ownerId = ownerType === 'TEAM'
-      ? (requestedOwnerId ?? team.id)
+      ? (normalizeId(team.parentTeamId) ?? team.id)
       : requestedOwnerId;
 
     if (ownerType === 'TEAM') {
@@ -147,7 +147,7 @@ export async function POST(
           [team.id, normalizeId(team.parentTeamId)].filter((value): value is string => Boolean(value)),
         ),
       );
-      if (!ownerId || !allowedTeamOwnerIds.includes(ownerId)) {
+      if (requestedOwnerId && !allowedTeamOwnerIds.includes(requestedOwnerId)) {
         return NextResponse.json({ error: 'Team bill owner must match the participant team.' }, { status: 400 });
       }
       allowSplit = Boolean(parsed.data.allowSplit);

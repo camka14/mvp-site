@@ -289,6 +289,14 @@ describe('schedule routes', () => {
       prismaMock,
     );
     expect(scheduleEventMock).toHaveBeenCalled();
+    expect(persistScheduledRosterTeamsMock).toHaveBeenCalledWith(
+      {
+        eventId: 'event_1',
+        scheduled: { id: 'event_1' },
+        removeOmittedPlaceholderTeams: true,
+      },
+      prismaMock,
+    );
     expect(deleteMatchesByEventMock).toHaveBeenCalledWith('event_1', prismaMock);
     expect(saveMatchesMock).toHaveBeenCalled();
     expect(json.event.$id).toBe('event_1');
@@ -385,6 +393,14 @@ describe('schedule routes', () => {
       prismaMock,
     );
     expect(scheduleEventMock).toHaveBeenCalled();
+    expect(persistScheduledRosterTeamsMock).toHaveBeenCalledWith(
+      {
+        eventId: 'event_1',
+        scheduled: { id: 'event_1' },
+        removeOmittedPlaceholderTeams: true,
+      },
+      prismaMock,
+    );
     expect(deleteMatchesByEventMock).toHaveBeenCalledWith('event_1', prismaMock);
     expect(saveMatchesMock).toHaveBeenCalled();
     expect(json.event.$id).toBe('event_1');

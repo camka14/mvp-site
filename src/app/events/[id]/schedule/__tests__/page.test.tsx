@@ -2666,6 +2666,160 @@ describe('League schedule page', () => {
     });
   });
 
+  it('filters tournament pool standings rows to the selected pool', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'tab') return 'standings';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit&tab=standings',
+    });
+
+    const bracketDivisionId = 'bracket_open';
+    const poolADivisionId = 'pool_a';
+    const poolBDivisionId = 'pool_b';
+    const poolATeam = {
+      $id: 'team_pool_a',
+      id: 'team_pool_a',
+      name: 'Pool A Team',
+      division: bracketDivisionId,
+      sport: 'Volleyball',
+      playerIds: [],
+      captainId: 'captain_a',
+      pending: [],
+      teamSize: 2,
+      currentSize: 2,
+      isFull: true,
+      avatarUrl: '',
+      parentTeamId: 'parent_a',
+    };
+    const poolBTeam = {
+      $id: 'team_pool_b',
+      id: 'team_pool_b',
+      name: 'Pool B Team',
+      division: bracketDivisionId,
+      sport: 'Volleyball',
+      playerIds: [],
+      captainId: 'captain_b',
+      pending: [],
+      teamSize: 2,
+      currentSize: 2,
+      isFull: true,
+      avatarUrl: '',
+      parentTeamId: 'parent_b',
+    };
+    const event = buildApiEvent({
+      name: 'Pool Standings Tournament',
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      singleDivision: false,
+      teamSignup: true,
+      teamIds: [poolATeam.$id, poolBTeam.$id],
+      teams: [poolATeam, poolBTeam],
+      divisions: [poolADivisionId, poolBDivisionId],
+      divisionDetails: [
+        {
+          id: poolADivisionId,
+          key: 'pool_a',
+          name: 'Pool A',
+          kind: 'LEAGUE',
+          teamIds: [poolATeam.$id],
+          playoffPlacementDivisionIds: [bracketDivisionId],
+        },
+        {
+          id: poolBDivisionId,
+          key: 'pool_b',
+          name: 'Pool B',
+          kind: 'LEAGUE',
+          teamIds: [poolBTeam.$id],
+          playoffPlacementDivisionIds: [bracketDivisionId],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: bracketDivisionId,
+          key: 'open',
+          name: 'Open Bracket',
+          kind: 'PLAYOFF',
+          teamIds: [],
+        },
+      ],
+      matches: [],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/chat/terms-consent') {
+        return Promise.resolve({
+          version: '2026-04-14',
+          url: '/terms',
+          summary: ['Creating chats or events requires agreement to the Bracket IQ Terms and EULA.'],
+          accepted: true,
+          acceptedAt: '2026-04-14T12:00:00.000Z',
+        });
+      }
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path.startsWith('/api/events/event_1/standings?')) {
+        return Promise.resolve({
+          division: {
+            divisionId: poolADivisionId,
+            divisionName: 'Pool A',
+            standingsConfirmedAt: null,
+            standingsConfirmedBy: null,
+            playoffTeamCount: 1,
+            playoffPlacementDivisionIds: [bracketDivisionId],
+            standingsOverrides: null,
+            standings: [
+              {
+                position: 1,
+                teamId: poolATeam.$id,
+                teamName: poolATeam.name,
+                wins: 0,
+                losses: 0,
+                draws: 0,
+                goalsFor: 0,
+                goalsAgainst: 0,
+                goalDifference: 0,
+                matchesPlayed: 0,
+                basePoints: 0,
+                finalPoints: 0,
+                pointsDelta: 0,
+              },
+            ],
+            validation: {
+              mappingErrors: [],
+              capacityErrors: [],
+            },
+            playoffDivisions: [
+              {
+                id: bracketDivisionId,
+                name: 'Open Bracket',
+                maxParticipants: 2,
+              },
+            ],
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    expect(await screen.findByText('Pool A Team')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Pool B Team')).not.toBeInTheDocument();
+    });
+    expect(apiRequestMock).toHaveBeenCalledWith('/api/events/event_1/standings?divisionId=pool_a');
+  });
+
   it('names unassigned split-division teams in the warning', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {

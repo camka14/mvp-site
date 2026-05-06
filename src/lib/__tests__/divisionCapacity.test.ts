@@ -75,7 +75,7 @@ describe('divisionCapacity', () => {
     expect(isDivisionAtCapacity(snapshot)).toBe(false);
   });
 
-  it('falls back to event maxParticipants when division capacity is missing', () => {
+  it('returns zero capacity when division capacity is missing', () => {
     const snapshot = resolveDivisionCapacitySnapshot({
       event: {
         singleDivision: false,
@@ -93,8 +93,8 @@ describe('divisionCapacity', () => {
       divisionId: 'event_1__division__open',
     });
 
-    expect(snapshot).toEqual({ capacity: 4, filled: 4 });
-    expect(isDivisionAtCapacity(snapshot)).toBe(true);
+    expect(snapshot).toEqual({ capacity: 0, filled: 4 });
+    expect(isDivisionAtCapacity(snapshot)).toBe(false);
   });
 
   it('filters filled counts to eligibleTeamIds when provided', () => {
@@ -170,5 +170,70 @@ describe('divisionCapacity', () => {
 
     expect(breakdown).toHaveLength(1);
     expect(breakdown[0]?.divisionId).toBe('event_1__division__open');
+  });
+
+  it('shows tournament pool-play bracket capacities instead of generated pools', () => {
+    const bracketId = 'event_1__division__c_skill_open_age_18plus';
+    const poolAId = `${bracketId}_pool_a`;
+    const poolBId = `${bracketId}_pool_b`;
+    const event = {
+      eventType: 'TOURNAMENT',
+      includePlayoffsOrPools: true,
+      includePlayoffs: true,
+      singleDivision: false,
+      maxParticipants: 8,
+      divisionDetails: [
+        {
+          id: poolAId,
+          key: 'c_skill_open_age_18plus_pool_a',
+          name: 'CoEd Open - 18+ Pool A',
+          kind: 'LEAGUE',
+          maxParticipants: 4,
+          playoffPlacementDivisionIds: [bracketId, bracketId],
+          teamIds: ['team_1', 'stale_team'],
+        } as any,
+        {
+          id: poolBId,
+          key: 'c_skill_open_age_18plus_pool_b',
+          name: 'CoEd Open - 18+ Pool B',
+          kind: 'LEAGUE',
+          maxParticipants: 4,
+          playoffPlacementDivisionIds: [bracketId, bracketId],
+          teamIds: ['team_2'],
+        } as any,
+      ],
+      playoffDivisionDetails: [
+        {
+          id: bracketId,
+          key: 'c_skill_open_age_18plus',
+          name: 'CoEd Open - 18+',
+          kind: 'PLAYOFF',
+          maxParticipants: 2,
+          teamIds: ['team_3'],
+        } as any,
+      ],
+    };
+
+    const breakdown = buildDivisionCapacityBreakdown({
+      event,
+      excludePlayoffs: true,
+      eligibleTeamIds: ['team_1', 'team_2', 'team_3'],
+    });
+
+    expect(breakdown).toEqual([
+      expect.objectContaining({
+        divisionId: bracketId,
+        name: 'CoEd Open - 18+',
+        kind: 'PLAYOFF',
+        capacity: 8,
+        filled: 3,
+      }),
+    ]);
+
+    expect(resolveDivisionCapacitySnapshot({
+      event,
+      divisionId: poolAId,
+      eligibleTeamIds: ['team_1', 'team_2', 'team_3'],
+    })).toEqual({ capacity: 8, filled: 3 });
   });
 });

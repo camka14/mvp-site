@@ -175,6 +175,15 @@ const buildTournamentPoolFixture = () => {
     standingsConfirmedAt: null,
     standingsConfirmedBy: null,
   };
+  const otherPool: any = {
+    id: 'pool_2',
+    name: 'Pool B',
+    playoffTeamCount: 1,
+    playoffPlacementDivisionIds: ['bracket_1'],
+    standingsOverrides: null,
+    standingsConfirmedAt: null,
+    standingsConfirmedBy: null,
+  };
   const bracket: any = {
     id: 'bracket_1',
     name: 'Open Bracket',
@@ -199,6 +208,17 @@ const buildTournamentPoolFixture = () => {
     matches: [],
     seed: 0,
     captainId: 'captain_2',
+    playerIds: [],
+    wins: 0,
+    losses: 0,
+  };
+  const otherPoolTeam: any = {
+    id: 'team_3',
+    name: 'Team 3',
+    division: otherPool,
+    matches: [],
+    seed: 0,
+    captainId: 'captain_3',
     playerIds: [],
     wins: 0,
     losses: 0,
@@ -247,11 +267,12 @@ const buildTournamentPoolFixture = () => {
     includePlayoffs: true,
     playoffTeamCount: 2,
     splitLeaguePlayoffDivisions: true,
-    divisions: [pool],
+    divisions: [pool, otherPool],
     playoffDivisions: [bracket],
     teams: {
       [team1.id]: team1,
       [team2.id]: team2,
+      [otherPoolTeam.id]: otherPoolTeam,
     },
     matches: {
       [match.id]: match,
@@ -372,6 +393,7 @@ describe('standings routes', () => {
       wins: 1,
       finalPoints: 3,
     }));
+    expect(json.division.standings.map((row: any) => row.teamId)).not.toContain('team_3');
   });
 
   it('PATCH saves absolute points overrides and returns deltas', async () => {

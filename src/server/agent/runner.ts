@@ -1,4 +1,5 @@
 import type { AgentChatMessage, AgentClientAction, AgentPageContext, AgentPendingConfirmation, AgentToolChange } from '@/lib/agent/types';
+import { shouldIncludeEventFormAgentContext } from '@/lib/agent/eventFormContext';
 import type { AgentConversationOwner } from './conversations';
 import { getAgentModel, getOpenAiClient } from './openai';
 import { buildAgentTools, buildSameOriginLink, executeAgentTool, redactUserFacingObjectIds } from './tools';
@@ -89,8 +90,11 @@ const compactPageContext = (pageContext: AgentPageContext | null): string => {
   });
 };
 
-const buildInstructions = (owner: AgentConversationOwner, pageContext: AgentPageContext | null): string => {
+export const buildInstructions = (owner: AgentConversationOwner, pageContext: AgentPageContext | null): string => {
   const canUseActions = owner.type === 'user';
+  const eventFormContextAvailability = shouldIncludeEventFormAgentContext(pageContext)
+    ? 'available through get_event_form_context because the user is on the event Details tab'
+    : 'not available because the current page/tab is not the event Details tab';
   return `
 You are the BracketIQ web assistant.
 
@@ -101,6 +105,10 @@ Core behavior:
 - Describe the web layout accurately: signed-in users use the top navigation bar. Do not mention a left sidebar unless the current page context or a tool result explicitly says one exists.
 - When explaining where a control is on a BracketIQ page, call get_page_layout_description for the current page or destination page. Use its grid only to infer relative positions such as "top navigation", "upper right", "tab row", or "below the heading". Never mention x/y coordinates or the word "grid" to the user.
 - Use read tools when you need actual event schedule, participant, field, official, or match data.
+- When the event form context is available and the user asks about event form fields, defaults, requirements, presets, validation, available formats, or how form inputs affect event creation/update behavior, call get_event_form_context instead of guessing.
+- For broad EventForm capability/workflow questions, first call get_event_form_context with no filters or with only a broad query. Do not restrict by section unless the user names a visible section/control or you already know the relevant section from the tool inventory.
+- When get_event_form_context returns matchedCapabilities, treat those as the primary source for workflow answers before recommending a workaround or a separate event.
+- If get_event_form_context returns noMatches or only a narrow partial match, call it again with fewer filters before concluding the form cannot do something. Capabilities may be composed from multiple fields in different sections.
 - Never invent IDs, match details, fields, teams, officials, or permissions.
 - Never mention object IDs in user-facing chat, including event IDs, match IDs, team IDs, user IDs, field IDs, UUIDs, or internal database identifiers. Use names, displayed match numbers, or phrases like "the selected match" instead.
 - Schedule changes must be proposed as client-side draft actions. Do not claim that the database was updated. Tell the user the draft is staged on the page and they can use Save Changes or Discard Changes.
@@ -121,6 +129,9 @@ Current capability:
 
 Current page context:
 ${compactPageContext(pageContext)}
+
+Event form context lookup:
+- ${eventFormContextAvailability}.
 `.trim();
 };
 

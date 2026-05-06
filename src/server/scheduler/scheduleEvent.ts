@@ -37,10 +37,19 @@ const isPlaceholderSchedulerTeam = (team: Team | undefined): boolean => {
   return captainId.length === 0 || /^place\s*holder\b/i.test(name);
 };
 
-const stripPlaceholderTeamsFromEvent = (event: League | Tournament): void => {
+const isSyntheticSchedulePlaceholderTeam = (team: Team | undefined): boolean => {
+  if (!team) {
+    return false;
+  }
+  const captainId = String(team.captainId ?? '').trim();
+  const name = String(team.name ?? '').trim();
+  return captainId.length === 0 && /^place\s*holder\b/i.test(name);
+};
+
+const removeTeamsFromEvent = (event: League | Tournament, shouldRemove: (team: Team | undefined) => boolean): void => {
   const retainedTeams: Record<string, Team> = {};
   for (const [teamId, team] of Object.entries(event.teams)) {
-    if (!isPlaceholderSchedulerTeam(team)) {
+    if (!shouldRemove(team)) {
       retainedTeams[teamId] = team;
     }
   }
@@ -49,11 +58,17 @@ const stripPlaceholderTeamsFromEvent = (event: League | Tournament): void => {
   for (const division of event.divisions) {
     division.teamIds = division.teamIds.filter((teamId) => Boolean(retainedTeams[teamId]));
   }
-  if (event instanceof League) {
-    for (const division of event.playoffDivisions) {
-      division.teamIds = division.teamIds.filter((teamId) => Boolean(retainedTeams[teamId]));
-    }
+  for (const division of event.playoffDivisions ?? []) {
+    division.teamIds = division.teamIds.filter((teamId) => Boolean(retainedTeams[teamId]));
   }
+};
+
+const stripPlaceholderTeamsFromEvent = (event: League | Tournament): void => {
+  removeTeamsFromEvent(event, isPlaceholderSchedulerTeam);
+};
+
+const stripSyntheticPlaceholderTeamsFromEvent = (event: League | Tournament): void => {
+  removeTeamsFromEvent(event, isSyntheticSchedulePlaceholderTeam);
 };
 
 const normalizeLeagueRosterTeamIds = (
@@ -167,6 +182,16 @@ const normalizeDivisionId = (value: unknown): string | null => {
   return normalized.length > 0 ? normalized : null;
 };
 
+const normalizeDivisionRefId = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    return normalizeDivisionId(value);
+  }
+  if (!value || typeof value !== 'object' || !('id' in value)) {
+    return null;
+  }
+  return normalizeDivisionId((value as { id?: unknown }).id);
+};
+
 const ensureSplitPlayoffTimeSlotCoverage = (league: League): void => {
   if (!league.splitLeaguePlayoffDivisions || !league.playoffDivisions.length || !league.timeSlots.length) {
     return;
@@ -212,7 +237,7 @@ const ensureSplitPlayoffTimeSlotCoverage = (league: League): void => {
     }
     const normalizedSlotDivisionIds = new Set<string>();
     for (const division of existingDivisions) {
-      const normalizedId = normalizeDivisionId(division?.id);
+      const normalizedId = normalizeDivisionRefId(division);
       if (normalizedId) {
         normalizedSlotDivisionIds.add(normalizedId);
       }
@@ -238,6 +263,92 @@ const ensureSplitPlayoffTimeSlotCoverage = (league: League): void => {
         }
         nextDivisions.push(playoffDivision);
         normalizedSlotDivisionIds.add(playoffDivisionId);
+        changed = true;
+      }
+    }
+    if (changed) {
+      slot.divisions = nextDivisions;
+    }
+  }
+};
+
+const ensureTournamentPoolTimeSlotCoverage = (tournament: Tournament): void => {
+  const playoffDivisions = tournament.playoffDivisions ?? [];
+  if (tournament.includePlayoffs !== true || !playoffDivisions.length || !tournament.divisions.length || !tournament.timeSlots.length) {
+    return;
+  }
+
+  const playoffDivisionById = new Map<string, Division>();
+  for (const playoffDivision of playoffDivisions) {
+    const normalizedId = normalizeDivisionId(playoffDivision.id);
+    if (!normalizedId) {
+      continue;
+    }
+    playoffDivisionById.set(normalizedId, playoffDivision);
+  }
+  if (!playoffDivisionById.size) {
+    return;
+  }
+
+  const poolDivisionsByPlayoffId = new Map<string, Division[]>();
+  const seenPoolIdsByPlayoffId = new Map<string, Set<string>>();
+  for (const poolDivision of tournament.divisions) {
+    const poolDivisionId = normalizeDivisionId(poolDivision.id);
+    if (!poolDivisionId) {
+      continue;
+    }
+    for (const mappedPlayoffDivisionIdRaw of poolDivision.playoffPlacementDivisionIds ?? []) {
+      const mappedPlayoffDivisionId = normalizeDivisionId(mappedPlayoffDivisionIdRaw);
+      if (!mappedPlayoffDivisionId || !playoffDivisionById.has(mappedPlayoffDivisionId)) {
+        continue;
+      }
+      const seenPoolIds = seenPoolIdsByPlayoffId.get(mappedPlayoffDivisionId) ?? new Set<string>();
+      if (seenPoolIds.has(poolDivisionId)) {
+        continue;
+      }
+      seenPoolIds.add(poolDivisionId);
+      seenPoolIdsByPlayoffId.set(mappedPlayoffDivisionId, seenPoolIds);
+
+      const bucket = poolDivisionsByPlayoffId.get(mappedPlayoffDivisionId) ?? [];
+      bucket.push(poolDivision);
+      poolDivisionsByPlayoffId.set(mappedPlayoffDivisionId, bucket);
+    }
+  }
+
+  if (!poolDivisionsByPlayoffId.size) {
+    return;
+  }
+
+  for (const slot of tournament.timeSlots) {
+    const existingDivisions = Array.isArray(slot.divisions) ? slot.divisions : [];
+    if (!existingDivisions.length) {
+      continue;
+    }
+    const normalizedSlotDivisionIds = new Set<string>();
+    for (const division of existingDivisions) {
+      const normalizedId = normalizeDivisionRefId(division);
+      if (normalizedId) {
+        normalizedSlotDivisionIds.add(normalizedId);
+      }
+    }
+    if (!normalizedSlotDivisionIds.size) {
+      continue;
+    }
+
+    const nextDivisions: Division[] = [...existingDivisions];
+    let changed = false;
+    for (const divisionId of Array.from(normalizedSlotDivisionIds)) {
+      const poolDivisions = poolDivisionsByPlayoffId.get(divisionId);
+      if (!poolDivisions) {
+        continue;
+      }
+      for (const poolDivision of poolDivisions) {
+        const poolDivisionId = normalizeDivisionId(poolDivision.id);
+        if (!poolDivisionId || normalizedSlotDivisionIds.has(poolDivisionId)) {
+          continue;
+        }
+        nextDivisions.push(poolDivision);
+        normalizedSlotDivisionIds.add(poolDivisionId);
         changed = true;
       }
     }
@@ -290,6 +401,8 @@ export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContex
   const includePlaceholderTeams = request.includePlaceholderTeams !== false;
   if (!includePlaceholderTeams) {
     stripPlaceholderTeamsFromEvent(event);
+  } else {
+    stripSyntheticPlaceholderTeamsFromEvent(event);
   }
   if (includePlaceholderTeams && typeof request.participantCount === 'number' && request.participantCount > 0) {
     event.maxParticipants = request.participantCount;
@@ -311,6 +424,7 @@ export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContex
     return buildLeagueSchedule(event, context, openEndedSchedule, includePlaceholderTeams);
   }
 
+  ensureTournamentPoolTimeSlotCoverage(event);
   return buildTournamentSchedule(event, context, openEndedSchedule, includePlaceholderTeams);
 };
 

@@ -299,7 +299,7 @@ const eventCapacityForDivisions = async (
 
   const leagueRows = divisionRows.filter((row) => String(row.kind ?? 'LEAGUE').toUpperCase() !== 'PLAYOFF');
   if (!leagueRows.length) {
-    return fallbackCapacity;
+    return null;
   }
 
   if (Boolean(params.event.singleDivision)) {
@@ -308,11 +308,11 @@ const eventCapacityForDivisions = async (
       const aliases = resolveDivisionAliases(row.id).concat(resolveDivisionAliases(row.key));
       return aliases.some((alias) => preferredIds.includes(alias));
     }) ?? leagueRows[0];
-    return positiveInt(preferred?.maxParticipants) ?? fallbackCapacity;
+    return positiveInt(preferred?.maxParticipants);
   }
 
   const summedCapacity = leagueRows.reduce((sum, row) => sum + (positiveInt(row.maxParticipants) ?? 0), 0);
-  return summedCapacity > 0 ? summedCapacity : fallbackCapacity;
+  return summedCapacity > 0 ? summedCapacity : null;
 };
 
 export const buildEventRegistrationId = (params: {

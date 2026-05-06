@@ -668,6 +668,8 @@ const normalizeDivisionDetailsInput = (
     const parsedPrice = normalizeInputNullableNumber(row.price);
     const parsedMaxParticipants = normalizeInputNullableNumber(row.maxParticipants);
     const parsedPlayoffTeamCount = normalizeInputNullableNumber(row.playoffTeamCount);
+    const parsedPoolCount = normalizeInputNullableNumber(row.poolCount);
+    const parsedPoolTeamCount = normalizeInputNullableNumber(row.poolTeamCount);
     const parsedKind = normalizeDivisionKind(row.kind, defaultKind);
     const hasPlacementDivisionIdsInput = Object.prototype.hasOwnProperty.call(row, 'playoffPlacementDivisionIds');
     const parsedPlacementDivisionIds = hasPlacementDivisionIdsInput
@@ -729,6 +731,12 @@ const normalizeDivisionDetailsInput = (
       playoffTeamCount: typeof parsedPlayoffTeamCount === 'number'
         ? Math.max(0, Math.trunc(parsedPlayoffTeamCount))
         : parsedPlayoffTeamCount,
+      poolCount: typeof parsedPoolCount === 'number'
+        ? Math.max(0, Math.trunc(parsedPoolCount))
+        : parsedPoolCount,
+      poolTeamCount: typeof parsedPoolTeamCount === 'number'
+        ? Math.max(0, Math.trunc(parsedPoolTeamCount))
+        : parsedPoolTeamCount,
       ...(parsedKind === 'PLAYOFF'
         ? { playoffPlacementDivisionIds: [] }
         : parsedPlacementDivisionIds !== undefined
@@ -940,6 +948,7 @@ const getDivisionDetailsForEvent = async (
     installmentAmounts?: unknown;
   },
 ): Promise<Array<Record<string, unknown>>> => {
+  void eventDefaults;
   if (!divisionKeys.length) {
     return [];
   }
@@ -1075,10 +1084,10 @@ const getDivisionDetailsForEvent = async (
       sportId: row?.sportId ?? null,
       price: typeof row?.price === 'number'
         ? row.price
-        : (typeof eventDefaults?.price === 'number' ? eventDefaults.price : null),
+        : null,
       maxParticipants: typeof row?.maxParticipants === 'number'
         ? row.maxParticipants
-        : (typeof eventDefaults?.maxParticipants === 'number' ? eventDefaults.maxParticipants : null),
+        : null,
       playoffTeamCount: typeof row?.playoffTeamCount === 'number'
         ? row.playoffTeamCount
         : null,
@@ -1091,22 +1100,22 @@ const getDivisionDetailsForEvent = async (
       playoffConfig: kind === 'PLAYOFF' ? playoffConfig : null,
       allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
         ? row.allowPaymentPlans
-        : (typeof eventDefaults?.allowPaymentPlans === 'boolean' ? eventDefaults.allowPaymentPlans : null),
+        : null,
       installmentCount: typeof row?.installmentCount === 'number'
         ? row.installmentCount
-        : (typeof eventDefaults?.installmentCount === 'number' ? eventDefaults.installmentCount : null),
+        : null,
       installmentDueDates: Array.isArray(row?.installmentDueDates)
         ? row.installmentDueDates
           .map((entry) => parseDateInput(entry))
           .filter((entry): entry is Date => entry instanceof Date && !Number.isNaN(entry.getTime()))
           .map((entry) => entry.toISOString())
-        : normalizeInstallmentDateList(eventDefaults?.installmentDueDates),
+        : [],
       installmentDueRelativeDays: Array.isArray((row as any)?.installmentDueRelativeDays)
         ? normalizeInstallmentRelativeDayList((row as any).installmentDueRelativeDays)
-        : normalizeInstallmentRelativeDayList(eventDefaults?.installmentDueRelativeDays),
+        : [],
       installmentAmounts: Array.isArray(row?.installmentAmounts)
         ? normalizeInstallmentAmountList(row.installmentAmounts)
-        : normalizeInstallmentAmountList(eventDefaults?.installmentAmounts),
+        : [],
       ageCutoffDate,
       ageCutoffLabel: row?.ageCutoffLabel ?? ageEligibility.message ?? null,
       ageCutoffSource: row?.ageCutoffSource ?? (ageEligibility.applies ? ageEligibility.cutoffRule.source : null),
@@ -1132,6 +1141,38 @@ const getDivisionKeysForEventKind = async (
   return rows
     .map((row) => normalizeDivisionKey(row.id))
     .filter((value): value is string => Boolean(value));
+};
+
+const getTournamentPoolDivisionKeysForEvent = async (eventId: string): Promise<string[]> => {
+  const rows = await prisma.divisions.findMany({
+    where: { eventId },
+    select: {
+      id: true,
+      kind: true,
+      playoffPlacementDivisionIds: true,
+    },
+  });
+
+  return rows
+    .filter((row) => normalizeDivisionKind(row.kind, 'LEAGUE') !== 'PLAYOFF')
+    .filter((row) => normalizePlacementDivisionIds(row.playoffPlacementDivisionIds, eventId).length > 0)
+    .map((row) => normalizeDivisionKey(row.id))
+    .filter((value): value is string => Boolean(value));
+};
+
+const getVisibleDivisionKeysForEventResponse = async (
+  eventId: string,
+  event: { eventType?: unknown; includePlayoffs?: unknown; divisions?: unknown },
+): Promise<string[]> => {
+  const baseDivisionKeys = normalizeDivisionKeys(event.divisions);
+  const isTournamentPoolPlay = String(event.eventType ?? '').toUpperCase() === 'TOURNAMENT'
+    && Boolean(event.includePlayoffs);
+  if (!isTournamentPoolPlay) {
+    return baseDivisionKeys;
+  }
+
+  const poolDivisionKeys = await getTournamentPoolDivisionKeysForEvent(eventId);
+  return poolDivisionKeys.length ? poolDivisionKeys : baseDivisionKeys;
 };
 
 const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
@@ -1443,8 +1484,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ eve
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
-  const divisionKeys = normalizeDivisionKeys(event.divisions);
-  const playoffDivisionKeys = await getDivisionKeysForEventKind(eventId, 'PLAYOFF');
+  const [divisionKeys, playoffDivisionKeys] = await Promise.all([
+    getVisibleDivisionKeysForEventResponse(eventId, event),
+    getDivisionKeysForEventKind(eventId, 'PLAYOFF'),
+  ]);
   const [divisionFieldIds, divisionDetails, playoffDivisionDetails, staffInvites, participantIds] = await Promise.all([
     getDivisionFieldMapForEvent(eventId, divisionKeys),
     getDivisionDetailsForEvent(eventId, divisionKeys, event.start, {
@@ -2332,8 +2375,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       return fresh;
     });
-    const divisionKeys = normalizeDivisionKeys(updated.divisions);
-    const playoffDivisionKeys = await getDivisionKeysForEventKind(eventId, 'PLAYOFF');
+    const [divisionKeys, playoffDivisionKeys] = await Promise.all([
+      getVisibleDivisionKeysForEventResponse(eventId, updated),
+      getDivisionKeysForEventKind(eventId, 'PLAYOFF'),
+    ]);
     const [divisionFieldIds, divisionDetails, playoffDivisionDetails, participantIds] = await Promise.all([
       getDivisionFieldMapForEvent(eventId, divisionKeys),
       getDivisionDetailsForEvent(eventId, divisionKeys, updated.start, {

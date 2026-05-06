@@ -105,9 +105,6 @@ export async function POST(
     if (parsed.data.ownerType !== 'TEAM') {
       return NextResponse.json({ error: 'Team events can only receive payment for teams.' }, { status: 400 });
     }
-    if (requestedOwnerId && requestedOwnerId !== normalizedParticipantId) {
-      return NextResponse.json({ error: 'Team bill owner must match the participant team.' }, { status: 400 });
-    }
     if (!participantIds.teamIds.includes(normalizedParticipantId)) {
       return NextResponse.json({ error: 'Team is not a participant of this event.' }, { status: 404 });
     }
@@ -120,14 +117,24 @@ export async function POST(
         managerId: true,
         captainId: true,
         headCoachId: true,
+        parentTeamId: true,
       },
     });
     if (!team) {
       return NextResponse.json({ error: 'Team not found' }, { status: 404 });
     }
+    const parentTeamId = normalizeId(team.parentTeamId);
+    const allowedTeamOwnerIds = Array.from(
+      new Set(
+        [team.id, parentTeamId].filter((value): value is string => Boolean(value)),
+      ),
+    );
+    if (requestedOwnerId && !allowedTeamOwnerIds.includes(requestedOwnerId)) {
+      return NextResponse.json({ error: 'Team bill owner must match the participant team.' }, { status: 400 });
+    }
 
     billOwnerType = 'TEAM';
-    billOwnerId = team.id;
+    billOwnerId = parentTeamId ?? team.id;
     payerUserId = normalizeId(team.managerId)
       ?? normalizeId(team.captainId)
       ?? normalizeId(team.headCoachId)
@@ -196,6 +203,7 @@ export async function POST(
   };
   appendMetadata(metadata, 'user_id', payerUserId);
   appendMetadata(metadata, 'team_id', billOwnerType === 'TEAM' ? billOwnerId : null);
+  appendMetadata(metadata, 'event_team_id', billOwnerType === 'TEAM' ? normalizedParticipantId : null);
   appendMetadata(metadata, 'team_name', teamName);
   appendMetadata(metadata, 'organization_id', event.organizationId);
   appendMetadata(metadata, 'division_id', parsed.data.divisionId);

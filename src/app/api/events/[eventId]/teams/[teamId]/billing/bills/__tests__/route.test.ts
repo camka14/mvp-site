@@ -17,10 +17,14 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
+const getEventParticipantIdsForEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/accessControl', () => ({ canManageEvent: (...args: unknown[]) => canManageEventMock(...args) }));
+jest.mock('@/server/events/eventRegistrations', () => ({
+  getEventParticipantIdsForEvent: (...args: unknown[]) => getEventParticipantIdsForEventMock(...args),
+}));
 
 import { POST } from '@/app/api/events/[eventId]/teams/[teamId]/billing/bills/route';
 
@@ -36,6 +40,12 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/bills', () => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     canManageEventMock.mockResolvedValue(true);
+    getEventParticipantIdsForEventMock.mockResolvedValue({
+      teamIds: ['team_1'],
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       hostId: 'host_1',
@@ -144,6 +154,61 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/bills', () => {
       }),
     );
     expect(payload.bill).toEqual(expect.objectContaining({ id: 'bill_new_1', $id: 'bill_new_1' }));
+  });
+
+  it('creates a team bill against the parent team when billing an event team slot', async () => {
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Beach Aces',
+      playerIds: ['user_2'],
+      captainId: 'user_2',
+      managerId: null,
+      headCoachId: null,
+      parentTeamId: 'team_parent',
+    });
+    txBillsCreateMock.mockResolvedValue({
+      id: 'bill_new_1',
+      ownerType: 'TEAM',
+      ownerId: 'team_parent',
+      eventId: 'event_1',
+      organizationId: 'org_1',
+      totalAmountCents: 5332,
+      paidAmountCents: 0,
+      nextPaymentAmountCents: 5332,
+      nextPaymentDue: new Date('2026-03-04T20:00:00.000Z'),
+      parentBillId: null,
+      allowSplit: true,
+      status: 'OPEN',
+      paymentPlanEnabled: false,
+      createdBy: 'host_1',
+      lineItems: [],
+      createdAt: new Date('2026-03-04T20:00:00.000Z'),
+      updatedAt: new Date('2026-03-04T20:00:00.000Z'),
+    });
+    txBillPaymentsCreateMock.mockResolvedValue({ id: 'payment_new_1' });
+
+    const response = await POST(
+      requestFor({
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        eventAmountCents: 5000,
+        allowSplit: true,
+      }),
+      {
+        params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+      },
+    );
+
+    expect(response.status).toBe(201);
+    expect(txBillsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ownerType: 'TEAM',
+          ownerId: 'team_parent',
+          allowSplit: true,
+        }),
+      }),
+    );
   });
 
   it('rejects user owner ids that are not on the selected team', async () => {

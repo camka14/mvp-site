@@ -133,7 +133,7 @@ export async function POST(req: NextRequest) {
       await persistScheduledRosterTeams({
         eventId,
         scheduled: scheduled.event,
-        removeOmittedPlaceholderTeams: !includePlaceholderTeams,
+        removeOmittedPlaceholderTeams: true,
       }, tx);
       await deleteMatchesByEvent(eventId, tx);
       await saveMatches(eventId, scheduled.matches, tx);

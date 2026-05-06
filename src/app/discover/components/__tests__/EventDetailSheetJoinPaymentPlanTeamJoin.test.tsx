@@ -115,7 +115,132 @@ import { userService } from '@/lib/userService';
 
 describe('EventDetailSheet payment-plan team join', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     (userService.getUserById as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  it('lists tournament bracket divisions, not generated pools, for tournament pool registration', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+    const bracketId = 'event_pool__division__c_skill_open_age_18plus';
+    const poolA = `${bracketId}_pool_a`;
+    const poolB = `${bracketId}_pool_b`;
+
+    const event = buildEvent({
+      $id: 'event_pool',
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      teamSignup: true,
+      singleDivision: false,
+      start: futureStart,
+      end: futureEnd,
+      price: 0,
+      requiredTemplateIds: [],
+      divisions: [poolA, poolB],
+      divisionDetails: [
+        {
+          id: poolA,
+          key: 'c_skill_open_age_18plus_pool_a',
+          name: 'CoEd Open 18+ Pool A',
+          playoffPlacementDivisionIds: [bracketId],
+          maxParticipants: 4,
+        },
+        {
+          id: poolB,
+          key: 'c_skill_open_age_18plus_pool_b',
+          name: 'CoEd Open 18+ Pool B',
+          playoffPlacementDivisionIds: [bracketId],
+          maxParticipants: 4,
+        },
+      ] as any,
+      playoffDivisionDetails: [
+        {
+          id: bracketId,
+          key: 'c_skill_open_age_18plus',
+          kind: 'PLAYOFF',
+          name: 'CoEd Open 18+',
+          price: 2500,
+          maxParticipants: 8,
+        },
+      ] as any,
+    });
+
+    const user = buildUser({ $id: 'user_pool', dateOfBirth: '1990-01-01', teamIds: [] });
+    const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([]);
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    const divisionSelect = await screen.findByPlaceholderText(/Select a division/i);
+    fireEvent.click(divisionSelect);
+
+    await waitFor(() => {
+      const options = Array.from(document.querySelectorAll('[data-combobox-option]'));
+      expect(options.some((element) => (element.textContent ?? '').trim() === 'CoEd Open 18+')).toBe(true);
+      expect(options.some((element) => /Pool A|Pool B/i.test(element.textContent ?? ''))).toBe(false);
+    });
+  });
+
+  it('lists league divisions, not playoff divisions, for league playoff registration', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+
+    const event = buildEvent({
+      $id: 'event_league_playoff',
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      teamSignup: true,
+      singleDivision: false,
+      start: futureStart,
+      end: futureEnd,
+      price: 0,
+      requiredTemplateIds: [],
+      divisions: ['league_open', 'playoff_gold'],
+      divisionDetails: [
+        {
+          id: 'league_open',
+          key: 'league_open',
+          name: 'Open League',
+          playoffPlacementDivisionIds: ['playoff_gold'],
+        },
+        {
+          id: 'playoff_gold',
+          key: 'playoff_gold',
+          kind: 'PLAYOFF',
+          name: 'Gold Playoff',
+        },
+      ] as any,
+    });
+
+    const user = buildUser({ $id: 'user_league', dateOfBirth: '1990-01-01', teamIds: [] });
+    const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([]);
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    const divisionSelect = await screen.findByPlaceholderText(/Select a division/i);
+    fireEvent.click(divisionSelect);
+
+    await waitFor(() => {
+      const options = Array.from(document.querySelectorAll('[data-combobox-option]'));
+      expect(options.some((element) => (element.textContent ?? '').trim() === 'Open League')).toBe(true);
+      expect(options.some((element) => /Gold Playoff/i.test(element.textContent ?? ''))).toBe(false);
+    });
   });
 
   it('registers the team immediately, then creates the payment-plan bill', async () => {

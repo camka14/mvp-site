@@ -81,6 +81,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
       managerId: 'manager_1',
       captainId: 'captain_1',
       headCoachId: null,
+      parentTeamId: null,
     });
     stripeCheckoutSessionsCreateMock.mockResolvedValue({
       id: 'cs_test_1',
@@ -137,6 +138,7 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
             purchase_type: 'event_payment',
             event_id: 'event_1',
             team_id: 'team_1',
+            event_team_id: 'team_1',
             user_id: 'manager_1',
             amount_cents: '5000',
             total_charge_cents: '5232',
@@ -154,6 +156,46 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/checkout', () => {
       hostUserId: 'host_1',
       transferAmountCents: 5000,
     });
+  });
+
+  it('uses parentTeamId as the bill owner for event team checkout payments', async () => {
+    prismaMock.teams.findUnique.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Beachside Blockers',
+      managerId: 'manager_1',
+      captainId: 'captain_1',
+      headCoachId: null,
+      parentTeamId: 'team_parent',
+    });
+
+    const response = await POST(
+      requestFor({
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        eventAmountCents: 5000,
+      }),
+      {
+        params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+      },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual(expect.objectContaining({
+      billOwnerType: 'TEAM',
+      billOwnerId: 'team_parent',
+      payerUserId: 'manager_1',
+    }));
+    expect(stripeCheckoutSessionsCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent_data: expect.objectContaining({
+          metadata: expect.objectContaining({
+            team_id: 'team_parent',
+            event_team_id: 'team_1',
+          }),
+        }),
+      }),
+    );
   });
 
   it('rejects user owner type for a team event', async () => {

@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { Tool } from 'openai/resources/responses/responses';
 import { z } from 'zod';
+import { eventFormAgentContext, shouldIncludeEventFormAgentContext } from '@/lib/agent/eventFormContext';
 import { prisma } from '@/lib/prisma';
 import type { AgentClientAction, AgentPageContext, AgentPendingConfirmation, AgentToolChange } from '@/lib/agent/types';
 import { canManageEvent } from '@/server/accessControl';
@@ -105,6 +106,23 @@ const readTools: Tool[] = [
       properties: {
         pageKey: { type: ['string', 'null'], description: 'Optional known page key, such as discover or event_schedule.' },
         pathname: { type: ['string', 'null'], description: 'Optional current pathname. If omitted, the current page context pathname is used.' },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'get_event_form_context',
+    description: 'Look up detailed EventForm capability and field context for the current event Details tab, including available controls, defaults, validation, visibility, and create/update payload behavior. For broad workflow/capability questions, call with no args first or use only query; avoid section until you know where the relevant controls live. Prefer targeted section, field, or query lookups instead of includeAll.',
+    strict: false,
+    parameters: {
+      type: 'object',
+      properties: {
+        section: { type: ['string', 'null'], description: 'Optional section title or id, such as Event Details, Schedule Config, or basic-information. Do not use this for broad capability questions unless the user named that section.' },
+        field: { type: ['string', 'null'], description: 'Optional form field label or internal path, such as Weekly Timeslots, leagueSlots, price, or maxParticipants.' },
+        query: { type: ['string', 'null'], description: 'Optional natural-language search query for the field or behavior the user asked about.' },
+        includeAll: { type: ['boolean', 'null'], description: 'Return the full context JSON only when the user explicitly asks for the full/raw field map.' },
       },
       required: [],
       additionalProperties: false,
@@ -292,6 +310,284 @@ const getPageLayoutDescription = (args: Record<string, unknown>, pageContext: Ag
     },
     clickableGrid,
     clickableGridJson: JSON.stringify(clickableGrid),
+  };
+};
+
+type EventFormSection = typeof eventFormAgentContext.sections[number];
+type EventFormInput = EventFormSection['inputs'][number];
+type EventFormCapability = typeof eventFormAgentContext.capabilities[number];
+
+const EVENT_FORM_LOOKUP_STOP_WORDS = new Set([
+  'about',
+  'available',
+  'capability',
+  'capabilities',
+  'create',
+  'creating',
+  'does',
+  'event',
+  'field',
+  'fields',
+  'form',
+  'have',
+  'how',
+  'mean',
+  'option',
+  'options',
+  'setup',
+  'that',
+  'there',
+  'this',
+  'toggle',
+  'using',
+  'versus',
+  'vs',
+  'what',
+  'when',
+  'where',
+  'which',
+  'with',
+]);
+
+const compactLookupText = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+
+const lookupTokens = (value: string): string[] => (
+  value
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 3 && !EVENT_FORM_LOOKUP_STOP_WORDS.has(token))
+);
+
+const matchesLookup = (haystack: string, lookup: string | null): boolean => {
+  return lookupScore(haystack, lookup) > 0;
+};
+
+const lookupScore = (haystack: string, lookup: string | null): number => {
+  if (!lookup) return 0;
+  const normalizedHaystack = haystack.toLowerCase();
+  const normalizedLookup = lookup.toLowerCase();
+  let score = normalizedHaystack.includes(normalizedLookup) ? 20 : 0;
+
+  const compactHaystack = compactLookupText(normalizedHaystack);
+  const compactNeedle = compactLookupText(normalizedLookup);
+  if (compactNeedle && compactHaystack.includes(compactNeedle)) score += 18;
+
+  const tokens = lookupTokens(normalizedLookup);
+  tokens.forEach((token) => {
+    if (normalizedHaystack.includes(token)) {
+      score += token.length >= 6 ? 4 : 2;
+      return;
+    }
+    if (compactHaystack.includes(compactLookupText(token))) {
+      score += 1;
+    }
+  });
+  return score;
+};
+
+const sectionSearchText = (section: EventFormSection): string => [
+  section.id,
+  section.title,
+  section.visibleWhen,
+  section.summary,
+].join(' ');
+
+const inputSearchText = (input: EventFormInput): string => [
+  input.path,
+  input.label,
+  input.inputType,
+  input.visibleWhen,
+  input.requiredWhen,
+  input.defaultOrPreset,
+  input.description,
+  ...input.createsOrUpdates,
+].join(' ');
+
+const capabilitySearchText = (capability: EventFormCapability): string => [
+  capability.id,
+  capability.title,
+  capability.appliesWhen,
+  capability.description,
+  ...capability.composedFrom,
+  ...capability.setupSteps,
+  ...capability.cautions,
+].join(' ');
+
+const summarizeEventFormCapability = (capability: EventFormCapability): Record<string, unknown> => ({
+  id: capability.id,
+  title: capability.title,
+  appliesWhen: capability.appliesWhen,
+  composedFrom: capability.composedFrom,
+  description: capability.description,
+});
+
+const summarizeEventFormInput = (input: EventFormInput): Record<string, unknown> => ({
+  path: input.path,
+  label: input.label,
+  inputType: input.inputType,
+  visibleWhen: input.visibleWhen,
+  requiredWhen: input.requiredWhen,
+});
+
+const summarizeEventFormSection = (section: EventFormSection): Record<string, unknown> => ({
+  id: section.id,
+  title: section.title,
+  visibleWhen: section.visibleWhen,
+  summary: section.summary,
+  inputCount: section.inputs.length,
+  inputs: section.inputs.map(summarizeEventFormInput),
+});
+
+const eventFormFieldIndex = (): Record<string, unknown>[] => (
+  eventFormAgentContext.sections.map((section) => ({
+    id: section.id,
+    title: section.title,
+    summary: section.summary,
+    inputs: section.inputs.map((input) => ({
+      path: input.path,
+      label: input.label,
+      inputType: input.inputType,
+    })),
+  }))
+);
+
+const findSuggestedEventFormCapabilities = (
+  lookup: string | null,
+  limit = 5,
+): Record<string, unknown>[] => {
+  if (!lookup) return [];
+
+  return eventFormAgentContext.capabilities
+    .map((capability) => ({
+      score: lookupScore(capabilitySearchText(capability), lookup),
+      ...capability,
+    }))
+    .filter((match) => match.score > 0)
+    .sort((left, right) => right.score - left.score || left.title.localeCompare(right.title))
+    .slice(0, limit)
+    .map(({ score: _score, ...capability }) => capability);
+};
+
+const findSuggestedEventFormInputs = (
+  lookup: string | null,
+  limit = 8,
+): Record<string, unknown>[] => {
+  if (!lookup) return [];
+
+  return eventFormAgentContext.sections
+    .flatMap((section) => (
+      section.inputs.map((input) => ({
+        score: lookupScore(`${sectionSearchText(section)} ${inputSearchText(input)}`, lookup),
+        sectionId: section.id,
+        sectionTitle: section.title,
+        path: input.path,
+        label: input.label,
+        inputType: input.inputType,
+        visibleWhen: input.visibleWhen,
+        requiredWhen: input.requiredWhen,
+        description: input.description,
+      }))
+    ))
+    .filter((match) => match.score > 0)
+    .sort((left, right) => right.score - left.score || left.sectionTitle.localeCompare(right.sectionTitle))
+    .slice(0, limit)
+    .map(({ score: _score, ...match }) => match);
+};
+
+const getEventFormContext = (args: Record<string, unknown>, pageContext: AgentPageContext | null): Record<string, unknown> => {
+  if (!shouldIncludeEventFormAgentContext(pageContext)) {
+    return {
+      status: 'not_applicable',
+      error: 'Event form context is only available when the current page context is the event schedule Details tab.',
+      currentPage: {
+        kind: pageContext?.page?.kind ?? null,
+        activeTab: pageContext?.page?.activeTab ?? null,
+      },
+    };
+  }
+
+  if (args.includeAll === true) {
+    return {
+      status: 'ok',
+      mode: 'full',
+      context: eventFormAgentContext,
+    };
+  }
+
+  const sectionLookup = normalizeString(args.section);
+  const fieldLookup = normalizeString(args.field);
+  const queryLookup = normalizeString(args.query);
+  const hasFilter = Boolean(sectionLookup || fieldLookup || queryLookup);
+
+  if (!hasFilter) {
+    return {
+      status: 'ok',
+      mode: 'overview',
+      purpose: eventFormAgentContext.purpose,
+      answerGuidance: eventFormAgentContext.answerGuidance,
+      lookupHint: 'For broad workflow/capability questions, inspect capabilities and field inventory first, then call this tool again with only query or with a known field/section. Use includeAll only if the user asks for the raw/full map.',
+      capabilities: eventFormAgentContext.capabilities.map(summarizeEventFormCapability),
+      defaultsAndPresets: eventFormAgentContext.defaultsAndPresets,
+      validationRules: eventFormAgentContext.validationRules,
+      sections: eventFormAgentContext.sections.map(summarizeEventFormSection),
+    };
+  }
+
+  const matchedDefaultsAndPresets = queryLookup
+    ? eventFormAgentContext.defaultsAndPresets.filter((item) => matchesLookup(item, queryLookup))
+    : [];
+  const matchedValidationRules = queryLookup
+    ? eventFormAgentContext.validationRules.filter((item) => matchesLookup(item, queryLookup))
+    : [];
+  const suggestionLookup = fieldLookup ?? queryLookup ?? sectionLookup ?? null;
+  const matchedCapabilities = findSuggestedEventFormCapabilities(suggestionLookup);
+  const suggestedMatches = findSuggestedEventFormInputs(suggestionLookup);
+
+  const sections = eventFormAgentContext.sections
+    .map((section) => {
+      const sectionMatchesSection = sectionLookup ? matchesLookup(sectionSearchText(section), sectionLookup) : true;
+      const sectionMatchesQuery = queryLookup ? matchesLookup(sectionSearchText(section), queryLookup) : false;
+      if (!sectionMatchesSection) return null;
+
+      const inputs = section.inputs.filter((input) => {
+        const inputText = inputSearchText(input);
+        const fieldMatches = fieldLookup ? matchesLookup(inputText, fieldLookup) : true;
+        const queryMatches = queryLookup ? (sectionMatchesQuery || matchesLookup(inputText, queryLookup)) : true;
+        return fieldMatches && queryMatches;
+      });
+
+      if (inputs.length === 0 && !(sectionMatchesQuery && !fieldLookup)) return null;
+
+      return {
+        id: section.id,
+        title: section.title,
+        visibleWhen: section.visibleWhen,
+        summary: section.summary,
+        inputs: inputs.length > 0 ? inputs : section.inputs,
+      };
+    })
+    .filter((section): section is NonNullable<typeof section> => Boolean(section));
+  const noMatches = sections.length === 0
+    && matchedCapabilities.length === 0
+    && matchedDefaultsAndPresets.length === 0
+    && matchedValidationRules.length === 0;
+
+  return {
+    status: 'ok',
+    mode: 'filtered',
+    lookupGuidance: 'If this does not answer the workflow question, call get_event_form_context again without section or field filters. Prefer matchedCapabilities for broad workflow answers because capabilities can span multiple EventForm sections.',
+    query: {
+      section: sectionLookup ?? null,
+      field: fieldLookup ?? null,
+      query: queryLookup ?? null,
+    },
+    matchedCapabilities,
+    matchedDefaultsAndPresets,
+    matchedValidationRules,
+    sections,
+    suggestedMatches,
+    availableSections: noMatches ? eventFormFieldIndex() : undefined,
+    noMatches,
   };
 };
 
@@ -1153,6 +1449,10 @@ export const executeAgentTool = async (params: ExecuteToolParams): Promise<Agent
 
     if (params.name === 'get_page_layout_description') {
       return { result: getPageLayoutDescription(args, params.pageContext) };
+    }
+
+    if (params.name === 'get_event_form_context') {
+      return { result: getEventFormContext(args, params.pageContext) };
     }
 
     if (params.name === 'get_event_schedule_context') {

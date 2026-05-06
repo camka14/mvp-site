@@ -490,10 +490,180 @@ type EventDivisionOption = {
     ageCutoffSource?: string;
 };
 
+type EventDivisionDetail = NonNullable<Event['divisionDetails']>[number];
+
 const normalizeDivisionKey = (value: unknown): string | null => {
     if (typeof value !== 'string') return null;
     const normalized = value.trim().toLowerCase();
     return normalized.length ? normalized : null;
+};
+
+const getNormalizedDivisionAliases = (value: unknown): string[] => {
+    const normalized = normalizeDivisionKey(value);
+    if (!normalized) {
+        return [];
+    }
+    const aliases = new Set([normalized]);
+    const token = extractDivisionTokenFromId(normalized);
+    if (token) {
+        aliases.add(token);
+    }
+    return Array.from(aliases);
+};
+
+const getDivisionDetailAliases = (detail: Pick<EventDivisionDetail, 'id' | 'key'>): string[] => {
+    const aliases = new Set<string>();
+    getNormalizedDivisionAliases(detail.id).forEach((alias) => aliases.add(alias));
+    getNormalizedDivisionAliases(detail.key).forEach((alias) => aliases.add(alias));
+    return Array.from(aliases);
+};
+
+const isPlayoffDivisionDetail = (detail: Pick<EventDivisionDetail, 'kind'> | null | undefined): boolean => (
+    normalizeDivisionKey(detail?.kind) === 'playoff'
+);
+
+const stripTournamentPoolSuffix = (value: unknown): string | null => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const stripped = value.trim().replace(/[\s_-]+pool[\s_-]*[a-z0-9]+$/i, '').trim();
+    return stripped.length > 0 ? stripped : null;
+};
+
+const inferTournamentBracketIdFromPoolId = (value: unknown): string | null => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const trimmed = value.trim();
+    if (!trimmed.length) {
+        return null;
+    }
+    const stripped = trimmed.replace(/[\s_-]+pool[\s_-]*[a-z0-9]+$/i, '').trim();
+    return stripped.length > 0 && stripped !== trimmed ? stripped : null;
+};
+
+const getFirstTournamentPoolPlacementId = (detail: Pick<EventDivisionDetail, 'playoffPlacementDivisionIds'>): string | null => {
+    if (!Array.isArray(detail.playoffPlacementDivisionIds)) {
+        return null;
+    }
+    return detail.playoffPlacementDivisionIds
+        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+        .find((entry) => entry.length > 0) ?? null;
+};
+
+const getTournamentPoolBracketId = (detail: EventDivisionDetail): string | null => (
+    getFirstTournamentPoolPlacementId(detail)
+    ?? inferTournamentBracketIdFromPoolId(detail.id)
+    ?? inferTournamentBracketIdFromPoolId(detail.key)
+);
+
+const hasTournamentPoolPlayRegistration = (event: Event, detailRows: EventDivisionDetail[]): boolean => {
+    const eventType = typeof event.eventType === 'string' ? event.eventType.trim().toUpperCase() : '';
+    const includePools = typeof event.includePlayoffsOrPools === 'boolean'
+        ? event.includePlayoffsOrPools
+        : event.includePlayoffs === true;
+    if (eventType !== 'TOURNAMENT' || !includePools) {
+        return false;
+    }
+    return detailRows.some((detail) => !isPlayoffDivisionDetail(detail) && Boolean(getTournamentPoolBracketId(detail)))
+        || (Array.isArray(event.divisions) && event.divisions.some((entry) => {
+            const divisionId = getDivisionIdFromEventEntry(entry);
+            return Boolean(inferTournamentBracketIdFromPoolId(divisionId));
+        }));
+};
+
+const dedupeDivisionDetails = (rows: EventDivisionDetail[]): EventDivisionDetail[] => {
+    const seen = new Set<string>();
+    const deduped: EventDivisionDetail[] = [];
+    rows.forEach((row) => {
+        const aliases = getDivisionDetailAliases(row);
+        const identity = aliases[0] ?? normalizeDivisionKey(row.name);
+        if (!identity || seen.has(identity)) {
+            return;
+        }
+        aliases.forEach((alias) => seen.add(alias));
+        deduped.push(row);
+    });
+    return deduped;
+};
+
+const buildTournamentBracketRegistrationRows = (
+    event: Event,
+    detailRows: EventDivisionDetail[],
+    playoffRows: EventDivisionDetail[],
+): EventDivisionDetail[] => {
+    const explicitBracketRows = dedupeDivisionDetails([
+        ...playoffRows,
+        ...detailRows.filter(isPlayoffDivisionDetail),
+    ]);
+    if (explicitBracketRows.length > 0) {
+        return explicitBracketRows;
+    }
+
+    const detailsByAlias = new Map<string, EventDivisionDetail>();
+    detailRows.forEach((detail) => {
+        getDivisionDetailAliases(detail).forEach((alias) => detailsByAlias.set(alias, detail));
+    });
+
+    const poolRows = new Map<string, EventDivisionDetail>();
+    detailRows
+        .filter((detail) => !isPlayoffDivisionDetail(detail) && Boolean(getTournamentPoolBracketId(detail)))
+        .forEach((detail) => {
+            const id = normalizeDivisionKey(detail.id) ?? normalizeDivisionKey(detail.key);
+            if (id) {
+                poolRows.set(id, detail);
+            }
+        });
+
+    if (Array.isArray(event.divisions)) {
+        event.divisions.forEach((entry) => {
+            const divisionId = getDivisionIdFromEventEntry(entry);
+            if (!divisionId || poolRows.has(divisionId)) {
+                return;
+            }
+            const bracketId = inferTournamentBracketIdFromPoolId(divisionId);
+            if (!bracketId) {
+                return;
+            }
+            const detail = detailsByAlias.get(divisionId) ?? {
+                id: divisionId,
+                key: divisionId,
+                name: stripTournamentPoolSuffix(divisionId) ?? divisionId,
+                playoffPlacementDivisionIds: [bracketId],
+            };
+            poolRows.set(divisionId, detail);
+        });
+    }
+
+    const bracketRows = new Map<string, EventDivisionDetail>();
+    poolRows.forEach((pool) => {
+        const bracketId = getTournamentPoolBracketId(pool);
+        const normalizedBracketId = normalizeDivisionKey(bracketId);
+        if (!bracketId || !normalizedBracketId || bracketRows.has(normalizedBracketId)) {
+            return;
+        }
+        const existingBracketDetail = getNormalizedDivisionAliases(bracketId)
+            .map((alias) => detailsByAlias.get(alias))
+            .find((detail): detail is EventDivisionDetail => Boolean(detail));
+        const bracketKey = stripTournamentPoolSuffix(pool.key)
+            ?? extractDivisionTokenFromId(bracketId)
+            ?? bracketId;
+        const bracketName = stripTournamentPoolSuffix(pool.name)
+            ?? stripTournamentPoolSuffix(pool.key)
+            ?? stripTournamentPoolSuffix(pool.id)
+            ?? bracketId;
+        const sourceDetail = existingBracketDetail ?? pool;
+        bracketRows.set(normalizedBracketId, {
+            ...sourceDetail,
+            id: bracketId,
+            key: existingBracketDetail?.key ?? bracketKey,
+            kind: 'PLAYOFF',
+            name: existingBracketDetail?.name ?? bracketName,
+            playoffPlacementDivisionIds: [],
+        });
+    });
+
+    return Array.from(bracketRows.values());
 };
 
 const normalizePriceCents = (value: unknown): number => {
@@ -576,7 +746,23 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
         ? event.sport
         : event.sport?.name ?? event.sportId ?? '';
     const referenceDate = parseDateValue(event.start ?? null);
-    const detailRows = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
+    const baseDetailRows = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
+    const playoffRows = Array.isArray(event.playoffDivisionDetails) ? event.playoffDivisionDetails : [];
+    const tournamentBracketRows = hasTournamentPoolPlayRegistration(event, baseDetailRows)
+        ? buildTournamentBracketRegistrationRows(event, baseDetailRows, playoffRows)
+        : [];
+    const useTournamentBracketRegistration = tournamentBracketRows.length > 0;
+    const detailRows = useTournamentBracketRegistration
+        ? tournamentBracketRows
+        : baseDetailRows.filter((detail) => !isPlayoffDivisionDetail(detail));
+    const playoffAliases = new Set<string>();
+    if (!useTournamentBracketRegistration) {
+        [...baseDetailRows, ...playoffRows]
+            .filter(isPlayoffDivisionDetail)
+            .forEach((detail) => {
+                getDivisionDetailAliases(detail).forEach((alias) => playoffAliases.add(alias));
+            });
+    }
     const defaultPriceCents = normalizePriceCents(event.price);
     const defaultAllowPaymentPlans = Boolean(event.allowPaymentPlans);
     const defaultInstallmentAmounts = normalizeInstallmentAmountsCents(event.installmentAmounts);
@@ -602,15 +788,18 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
         }
     });
 
-    const divisionIds = Array.isArray(event.divisions)
-        ? Array.from(
-            new Set(
-                event.divisions
-                    .map(getDivisionIdFromEventEntry)
-                    .filter((entry): entry is string => Boolean(entry)),
-            ),
-        )
-        : [];
+    const divisionIds = useTournamentBracketRegistration
+        ? []
+        : Array.isArray(event.divisions)
+            ? Array.from(
+                new Set(
+                    event.divisions
+                        .map(getDivisionIdFromEventEntry)
+                        .filter((entry): entry is string => Boolean(entry))
+                        .filter((entry) => !getNormalizedDivisionAliases(entry).some((alias) => playoffAliases.has(alias))),
+                ),
+            )
+            : [];
 
     const orderedIds = divisionIds.length
         ? divisionIds
@@ -4157,7 +4346,7 @@ export default function EventDetailSheet({
                                                 <span className="font-medium">{participantCapacity}</span>
                                             </div>
                                             <div className="flex justify-between">
-                                                <span className="text-gray-600">Team Size Limit:</span>
+                                                <span className="text-gray-600">Team Size:</span>
                                                 <span className="font-medium">{currentEvent.teamSizeLimit}</span>
                                             </div>
                                             <div className="flex justify-between">

@@ -71,6 +71,14 @@ const dirtyScheduleContext: AgentPageContext = {
   },
 };
 
+const detailsTabContext: AgentPageContext = {
+  ...cleanScheduleContext,
+  page: {
+    ...cleanScheduleContext.page!,
+    activeTab: 'details',
+  },
+};
+
 describe('agent tools dispatcher', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -170,6 +178,114 @@ describe('agent tools dispatcher', () => {
 
     expect(result.result.status).toBe('ok');
     expect((result.result.page as any).key).toBe('organization_detail');
+  });
+
+  it('returns targeted EventForm context on the event details tab', async () => {
+    const result = await executeAgentTool({
+      name: 'get_event_form_context',
+      args: { field: 'timeslots' },
+      owner: guestOwner,
+      conversationId: 'conv-1',
+      pageContext: detailsTabContext,
+      origin: 'http://localhost:3000',
+      mode: 'prepare',
+    });
+
+    const sections = result.result.sections as any[];
+    const inputs = sections.flatMap((section) => section.inputs);
+
+    expect(result.result.status).toBe('ok');
+    expect(result.result.mode).toBe('filtered');
+    expect(inputs).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'leagueSlots', label: 'Weekly Timeslots' }),
+    ]));
+    expect(JSON.stringify(result.result)).toContain('Defines when and where the scheduler can place matches');
+  });
+
+  it('returns EventForm capability workflows for broad format questions', async () => {
+    const result = await executeAgentTool({
+      name: 'get_event_form_context',
+      args: { query: 'preliminary round robin standings into elimination bracket' },
+      owner: guestOwner,
+      conversationId: 'conv-1',
+      pageContext: detailsTabContext,
+      origin: 'http://localhost:3000',
+      mode: 'prepare',
+    });
+
+    expect(result.result.status).toBe('ok');
+    expect(result.result.matchedCapabilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'league-regular-season-with-playoff-bracket',
+        title: 'League regular season with playoff bracket',
+      }),
+    ]));
+    expect(JSON.stringify(result.result.matchedCapabilities)).toContain('same-event multi-stage workflow');
+  });
+
+  it('suggests related EventForm controls when a capability query is too narrowly scoped', async () => {
+    const result = await executeAgentTool({
+      name: 'get_event_form_context',
+      args: {
+        section: 'Schedule Config',
+        query: 'league playoffs division mapping',
+      },
+      owner: guestOwner,
+      conversationId: 'conv-1',
+      pageContext: detailsTabContext,
+      origin: 'http://localhost:3000',
+      mode: 'prepare',
+    });
+
+    expect(result.result.status).toBe('ok');
+    expect(result.result.lookupGuidance).toContain('without section or field filters');
+    expect(result.result.suggestedMatches).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        sectionTitle: 'Division Settings',
+        path: 'splitLeaguePlayoffDivisions',
+      }),
+    ]));
+    expect(result.result.matchedCapabilities).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'league-regular-season-with-playoff-bracket',
+      }),
+    ]));
+  });
+
+  it('returns a field index when EventForm lookup has no direct matches', async () => {
+    const result = await executeAgentTool({
+      name: 'get_event_form_context',
+      args: {
+        section: 'Schedule Config',
+        query: 'nonexistent capability zzz',
+      },
+      owner: guestOwner,
+      conversationId: 'conv-1',
+      pageContext: detailsTabContext,
+      origin: 'http://localhost:3000',
+      mode: 'prepare',
+    });
+
+    expect(result.result.status).toBe('ok');
+    expect(result.result.noMatches).toBe(true);
+    expect(result.result.availableSections).toEqual(expect.arrayContaining([
+      expect.objectContaining({ title: 'Division Settings' }),
+    ]));
+  });
+
+  it('does not return EventForm context away from the event details tab', async () => {
+    const result = await executeAgentTool({
+      name: 'get_event_form_context',
+      args: { field: 'timeslots' },
+      owner: guestOwner,
+      conversationId: 'conv-1',
+      pageContext: cleanScheduleContext,
+      origin: 'http://localhost:3000',
+      mode: 'prepare',
+    });
+
+    expect(result.result.status).toBe('not_applicable');
+    expect(result.result.error).toContain('event schedule Details tab');
   });
 
   it('requires authentication for write tools', async () => {

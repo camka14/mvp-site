@@ -522,6 +522,37 @@ const getDivisionKind = (division: unknown): 'LEAGUE' | 'PLAYOFF' | null => {
   return null;
 };
 
+const getDivisionPlacementDivisionIds = (division: unknown): string[] => {
+  if (!division || typeof division !== 'object') {
+    return [];
+  }
+  const rawPlacementIds = (division as { playoffPlacementDivisionIds?: unknown }).playoffPlacementDivisionIds;
+  if (!Array.isArray(rawPlacementIds)) {
+    return [];
+  }
+  return rawPlacementIds
+    .map((entry) => normalizeIdToken(entry))
+    .filter((entry): entry is string => Boolean(entry));
+};
+
+const divisionReferencesBracket = (division: unknown, bracketDivisionId: string | null | undefined): boolean => {
+  const bracketKey = toDivisionKey(bracketDivisionId);
+  if (!bracketKey) {
+    return false;
+  }
+  return getDivisionPlacementDivisionIds(division).some((placementDivisionId) => (
+    toDivisionKey(placementDivisionId) === bracketKey
+  ));
+};
+
+const isTournamentPoolPlayViewEnabled = (event: Event | null | undefined): boolean => (
+  Boolean(
+    event
+      && event.eventType === 'TOURNAMENT'
+      && (event.includePlayoffsOrPools === true || event.includePlayoffs === true),
+  )
+);
+
 const isDivisionStandingsConfirmed = (division: unknown): boolean => {
   if (!division || typeof division !== 'object') {
     return false;
@@ -1124,8 +1155,10 @@ function EventScheduleContent() {
   const [cancelling, setCancelling] = useState(false);
   const [activeTab, setActiveTab] = useState<string>('details');
   const [selectedScheduleDivision, setSelectedScheduleDivision] = useState<string>('all');
+  const [selectedSchedulePool, setSelectedSchedulePool] = useState<string>('all');
   const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
   const [selectedStandingsDivision, setSelectedStandingsDivision] = useState<string | null>(null);
+  const [selectedStandingsPool, setSelectedStandingsPool] = useState<string | null>(null);
   const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
   const [participantUsers, setParticipantUsers] = useState<UserData[]>([]);
   const [participantOfficials, setParticipantOfficials] = useState<UserData[]>([]);
@@ -1758,6 +1791,11 @@ function EventScheduleContent() {
     });
   }, [activeEvent?.$id, activeEvent?.fields, divisionLabelsByKey, isWeeklyParentEvent, selectedOccurrence, weeklyScheduleOccurrenceOptions]);
 
+  const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
+  const isTournament = eventTypeForView === 'TOURNAMENT';
+  const isLeague = eventTypeForView === 'LEAGUE';
+  const tournamentPoolPlayEnabled = isTournamentPoolPlayViewEnabled(activeEvent ?? changesEvent);
+
   const scheduleDivisionOptions = useMemo<DivisionOption[]>(() => {
     const labels = new Map<string, string>(divisionLabelsByKey);
 
@@ -1777,6 +1815,112 @@ function EventScheduleContent() {
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [activeMatches, divisionLabelsByKey]);
+
+  const tournamentPoolSourceDivisions = useMemo<unknown[]>(() => {
+    if (!tournamentPoolPlayEnabled) {
+      return [];
+    }
+    const sourceDivisions = Array.isArray(activeEvent?.divisionDetails)
+      ? activeEvent.divisionDetails
+      : Array.isArray(activeEvent?.divisions)
+        ? activeEvent.divisions
+        : [];
+    return sourceDivisions.filter((division) => (
+      getDivisionKind(division) !== 'PLAYOFF'
+        && getDivisionPlacementDivisionIds(division).length > 0
+    ));
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions, tournamentPoolPlayEnabled]);
+
+  const tournamentBracketDivisionOptions = useMemo<DivisionOption[]>(() => {
+    if (!tournamentPoolPlayEnabled) {
+      return [];
+    }
+
+    const labels = new Map<string, string>();
+    const addBracketDivision = (division: unknown) => {
+      const divisionId = getDivisionId(division);
+      const divisionKey = toDivisionKey(divisionId);
+      if (!divisionId || !divisionKey || labels.has(divisionKey)) {
+        return;
+      }
+      labels.set(divisionKey, getDivisionLabel(division) ?? divisionLabelsByKey.get(divisionKey) ?? divisionId);
+    };
+
+    if (Array.isArray(activeEvent?.playoffDivisionDetails)) {
+      activeEvent.playoffDivisionDetails.forEach(addBracketDivision);
+    }
+    if (Array.isArray(activeEvent?.divisionDetails)) {
+      activeEvent.divisionDetails
+        .filter((division) => getDivisionKind(division) === 'PLAYOFF')
+        .forEach(addBracketDivision);
+    }
+    if (Array.isArray(activeEvent?.divisions)) {
+      activeEvent.divisions
+        .filter((division) => getDivisionKind(division) === 'PLAYOFF')
+        .forEach(addBracketDivision);
+    }
+
+    tournamentPoolSourceDivisions.forEach((poolDivision) => {
+      getDivisionPlacementDivisionIds(poolDivision).forEach((bracketDivisionId) => {
+        const bracketDivisionKey = toDivisionKey(bracketDivisionId);
+        if (!bracketDivisionKey || labels.has(bracketDivisionKey)) {
+          return;
+        }
+        labels.set(bracketDivisionKey, divisionLabelsByKey.get(bracketDivisionKey) ?? bracketDivisionId);
+      });
+    });
+
+    return Array.from(labels.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [
+    activeEvent?.divisionDetails,
+    activeEvent?.divisions,
+    activeEvent?.playoffDivisionDetails,
+    divisionLabelsByKey,
+    tournamentPoolPlayEnabled,
+    tournamentPoolSourceDivisions,
+  ]);
+
+  const effectiveScheduleDivisionOptions = useMemo<DivisionOption[]>(
+    () => (
+      tournamentPoolPlayEnabled && tournamentBracketDivisionOptions.length > 0
+        ? tournamentBracketDivisionOptions
+        : scheduleDivisionOptions
+    ),
+    [scheduleDivisionOptions, tournamentBracketDivisionOptions, tournamentPoolPlayEnabled],
+  );
+
+  const schedulePoolOptions = useMemo<DivisionOption[]>(() => {
+    if (!tournamentPoolPlayEnabled) {
+      return [];
+    }
+    const selectedBracketKey = selectedScheduleDivision === 'all'
+      ? null
+      : toDivisionKey(selectedScheduleDivision);
+    return tournamentPoolSourceDivisions
+      .filter((division) => (
+        !selectedBracketKey || divisionReferencesBracket(division, selectedBracketKey)
+      ))
+      .map((division) => {
+        const divisionId = getDivisionId(division);
+        const divisionKey = toDivisionKey(divisionId);
+        if (!divisionId || !divisionKey) {
+          return null;
+        }
+        return {
+          value: divisionKey,
+          label: getDivisionLabel(division) ?? divisionLabelsByKey.get(divisionKey) ?? divisionId,
+        };
+      })
+      .filter((option): option is DivisionOption => Boolean(option))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [
+    divisionLabelsByKey,
+    selectedScheduleDivision,
+    tournamentPoolPlayEnabled,
+    tournamentPoolSourceDivisions,
+  ]);
 
   const leagueDivisionOptions = useMemo<DivisionOption[]>(() => {
     const optionsByValue = new Map<string, string>();
@@ -1803,6 +1947,64 @@ function EventScheduleContent() {
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
+
+  const effectiveStandingsDivisionOptions = useMemo<DivisionOption[]>(
+    () => (
+      tournamentPoolPlayEnabled && tournamentBracketDivisionOptions.length > 0
+        ? tournamentBracketDivisionOptions
+        : leagueDivisionOptions
+    ),
+    [leagueDivisionOptions, tournamentBracketDivisionOptions, tournamentPoolPlayEnabled],
+  );
+
+  const standingsPoolOptions = useMemo<DivisionOption[]>(() => {
+    if (!tournamentPoolPlayEnabled) {
+      return [];
+    }
+    const selectedBracketKey = selectedStandingsDivision
+      ? toDivisionKey(selectedStandingsDivision)
+      : null;
+    return tournamentPoolSourceDivisions
+      .filter((division) => (
+        !selectedBracketKey || divisionReferencesBracket(division, selectedBracketKey)
+      ))
+      .map((division) => {
+        const divisionId = getDivisionId(division);
+        const divisionKey = toDivisionKey(divisionId);
+        if (!divisionId || !divisionKey) {
+          return null;
+        }
+        return {
+          value: divisionKey,
+          label: getDivisionLabel(division) ?? divisionLabelsByKey.get(divisionKey) ?? divisionId,
+        };
+      })
+      .filter((option): option is DivisionOption => Boolean(option))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [
+    divisionLabelsByKey,
+    selectedStandingsDivision,
+    tournamentPoolPlayEnabled,
+    tournamentPoolSourceDivisions,
+  ]);
+
+  const selectedStandingsDataDivision = useMemo(() => {
+    if (!tournamentPoolPlayEnabled) {
+      return selectedStandingsDivision;
+    }
+    if (
+      selectedStandingsPool
+      && standingsPoolOptions.some((option) => option.value === selectedStandingsPool)
+    ) {
+      return selectedStandingsPool;
+    }
+    return standingsPoolOptions[0]?.value ?? null;
+  }, [
+    selectedStandingsDivision,
+    selectedStandingsPool,
+    standingsPoolOptions,
+    tournamentPoolPlayEnabled,
+  ]);
 
   const isSplitDivisionEvent = Boolean(
     (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
@@ -1844,25 +2046,54 @@ function EventScheduleContent() {
       return;
     }
 
-    if (!scheduleDivisionOptions.some((option) => option.value === selectedScheduleDivision)) {
+    if (!effectiveScheduleDivisionOptions.some((option) => option.value === selectedScheduleDivision)) {
       setSelectedScheduleDivision('all');
     }
-  }, [scheduleDivisionOptions, selectedScheduleDivision]);
+  }, [effectiveScheduleDivisionOptions, selectedScheduleDivision]);
 
-  const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
-  const isTournament = eventTypeForView === 'TOURNAMENT';
-  const isLeague = eventTypeForView === 'LEAGUE';
+  useEffect(() => {
+    if (selectedSchedulePool === 'all') {
+      return;
+    }
+
+    if (!schedulePoolOptions.some((option) => option.value === selectedSchedulePool)) {
+      setSelectedSchedulePool('all');
+    }
+  }, [schedulePoolOptions, selectedSchedulePool]);
 
   const scheduleMatches = useMemo(() => {
+    if (tournamentPoolPlayEnabled && selectedSchedulePool !== 'all') {
+      return activeMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedSchedulePool);
+    }
+
     if (selectedScheduleDivision === 'all') {
       return activeMatches;
     }
 
+    if (tournamentPoolPlayEnabled) {
+      const poolDivisionKeysForBracket = new Set(schedulePoolOptions.map((option) => option.value));
+      return activeMatches.filter((match) => {
+        const matchDivisionKey = toDivisionKey(getMatchDivisionId(match));
+        return matchDivisionKey === selectedScheduleDivision
+          || Boolean(matchDivisionKey && poolDivisionKeysForBracket.has(matchDivisionKey));
+      });
+    }
+
     return activeMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedScheduleDivision);
-  }, [activeMatches, selectedScheduleDivision]);
+  }, [
+    activeMatches,
+    schedulePoolOptions,
+    selectedScheduleDivision,
+    selectedSchedulePool,
+    tournamentPoolPlayEnabled,
+  ]);
 
   const preferredStandingsDivisionId = useMemo(() => {
-    const validOptionIds = new Set(leagueDivisionOptions.map((option) => option.value));
+    if (tournamentPoolPlayEnabled) {
+      return effectiveStandingsDivisionOptions[0]?.value ?? null;
+    }
+
+    const validOptionIds = new Set(effectiveStandingsDivisionOptions.map((option) => option.value));
     const sourceDivisions = Array.isArray(activeEvent?.divisionDetails)
       ? activeEvent.divisionDetails
       : Array.isArray(activeEvent?.divisions)
@@ -1882,13 +2113,23 @@ function EventScheduleContent() {
       }
     }
 
-    return leagueDivisionOptions[0]?.value ?? null;
-  }, [activeEvent?.divisionDetails, activeEvent?.divisions, leagueDivisionOptions]);
+    return effectiveStandingsDivisionOptions[0]?.value ?? null;
+  }, [
+    activeEvent?.divisionDetails,
+    activeEvent?.divisions,
+    effectiveStandingsDivisionOptions,
+    tournamentPoolPlayEnabled,
+  ]);
+
+  const standingsEventEnabled = isLeague || tournamentPoolPlayEnabled;
 
   useEffect(() => {
-    if (!isLeague || leagueDivisionOptions.length === 0) {
+    if (!standingsEventEnabled || effectiveStandingsDivisionOptions.length === 0) {
       if (selectedStandingsDivision !== null) {
         setSelectedStandingsDivision(null);
+      }
+      if (selectedStandingsPool !== null) {
+        setSelectedStandingsPool(null);
       }
       setStandingsDivisionData(null);
       setStandingsDraftOverrides({});
@@ -1897,19 +2138,48 @@ function EventScheduleContent() {
 
     if (
       selectedStandingsDivision
-      && leagueDivisionOptions.some((option) => option.value === selectedStandingsDivision)
+      && effectiveStandingsDivisionOptions.some((option) => option.value === selectedStandingsDivision)
     ) {
       return;
     }
 
-    setSelectedStandingsDivision(preferredStandingsDivisionId ?? leagueDivisionOptions[0].value);
-  }, [isLeague, leagueDivisionOptions, preferredStandingsDivisionId, selectedStandingsDivision]);
+    setSelectedStandingsDivision(preferredStandingsDivisionId ?? effectiveStandingsDivisionOptions[0].value);
+  }, [
+    effectiveStandingsDivisionOptions,
+    preferredStandingsDivisionId,
+    selectedStandingsDivision,
+    selectedStandingsPool,
+    standingsEventEnabled,
+  ]);
+
+  useEffect(() => {
+    if (!tournamentPoolPlayEnabled) {
+      if (selectedStandingsPool !== null) {
+        setSelectedStandingsPool(null);
+      }
+      return;
+    }
+
+    if (standingsPoolOptions.length === 0) {
+      if (selectedStandingsPool !== null) {
+        setSelectedStandingsPool(null);
+      }
+      return;
+    }
+
+    if (
+      !selectedStandingsPool
+      || !standingsPoolOptions.some((option) => option.value === selectedStandingsPool)
+    ) {
+      setSelectedStandingsPool(standingsPoolOptions[0].value);
+    }
+  }, [selectedStandingsPool, standingsPoolOptions, tournamentPoolPlayEnabled]);
 
   const activeEventId = activeEvent?.$id ?? null;
   const activeEventType = activeEvent?.eventType ?? null;
 
   useEffect(() => {
-    if (isCreateMode || !activeEventId || activeEventType !== 'LEAGUE' || !selectedStandingsDivision) {
+    if (isCreateMode || !activeEventId || !standingsEventEnabled || !selectedStandingsDataDivision) {
       setStandingsDivisionData(null);
       setStandingsDraftOverrides({});
       setStandingsLoading(false);
@@ -1921,7 +2191,7 @@ function EventScheduleContent() {
     setStandingsActionError(null);
 
     tournamentService
-      .getLeagueDivisionStandings(activeEventId, selectedStandingsDivision)
+      .getLeagueDivisionStandings(activeEventId, selectedStandingsDataDivision)
       .then((division) => {
         if (cancelled) {
           return;
@@ -1947,7 +2217,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEventId, activeEventType, isCreateMode, selectedStandingsDivision]);
+  }, [activeEventId, activeEventType, isCreateMode, selectedStandingsDataDivision, standingsEventEnabled]);
 
   const canUseTeamCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup);
   const canUseUserCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup === false);
@@ -3892,7 +4162,7 @@ function EventScheduleContent() {
     const userOnlyBilling = activeEvent?.teamSignup === false;
     const defaultOwnerType: 'TEAM' | 'USER' = userOnlyBilling ? 'USER' : 'TEAM';
     const defaultOwnerId = defaultOwnerType === 'TEAM'
-      ? team.$id
+      ? (normalizeIdToken(team.parentTeamId) ?? team.$id)
       : (Array.isArray(team.playerIds) && team.playerIds.length > 0 ? team.playerIds[0] : team.$id);
 
     setCreateBillTeam(team);
@@ -3959,8 +4229,9 @@ function EventScheduleContent() {
       return;
     }
     if (createBillOwnerType === 'TEAM') {
-      if (createBillOwnerId !== createBillTeam.$id) {
-        setCreateBillOwnerId(createBillTeam.$id);
+      const teamBillOwnerId = normalizeIdToken(createBillTeam.parentTeamId) ?? createBillTeam.$id;
+      if (createBillOwnerId !== teamBillOwnerId) {
+        setCreateBillOwnerId(teamBillOwnerId);
       }
       return;
     }
@@ -4050,7 +4321,9 @@ function EventScheduleContent() {
         method: 'POST',
         body: {
           ownerType: createBillOwnerType,
-          ownerId: createBillOwnerType === 'TEAM' ? team.$id : createBillOwnerId,
+          ownerId: createBillOwnerType === 'TEAM'
+            ? (normalizeIdToken(team.parentTeamId) ?? team.$id)
+            : createBillOwnerId,
           eventAmountCents: createBillEventAmountCents,
           taxAmountCents: createBillTaxAmountCents,
           allowSplit: createBillOwnerType === 'TEAM' ? createBillAllowSplit : false,
@@ -5301,7 +5574,7 @@ function EventScheduleContent() {
       return [];
     }
 
-    const selectedDivisionKey = toDivisionKey(selectedStandingsDivision);
+    const selectedDivisionKey = toDivisionKey(selectedStandingsDataDivision);
     const selectedDivisionTeamIds = new Set<string>();
     const divisionSources = Array.isArray(activeEvent.divisionDetails)
       ? activeEvent.divisionDetails
@@ -5323,7 +5596,7 @@ function EventScheduleContent() {
       if (team?.$id) {
         const teamDivisionId = getDivisionId(team.division);
         if (!teamBelongsToSelectedStandingsDivision({
-          selectedDivisionId: selectedStandingsDivision,
+          selectedDivisionId: selectedStandingsDataDivision,
           selectedDivisionTeamIds,
           teamId: team.$id,
           teamDivisionId,
@@ -5360,10 +5633,8 @@ function EventScheduleContent() {
       return rows.get(teamId) ?? null;
     };
 
-    teamsArray.forEach((team) => {
-      if (team?.$id) {
-        ensureRow(team.$id, team);
-      }
+    teamsById.forEach((team, teamId) => {
+      ensureRow(teamId, team);
     });
 
     activeMatches.forEach((match) => {
@@ -5451,7 +5722,7 @@ function EventScheduleContent() {
     })) ?? [];
 
     if (shouldUseServerStandingsRows({
-      selectedDivisionId: selectedStandingsDivision,
+      selectedDivisionId: selectedStandingsDataDivision,
       loadedDivisionId: standingsDivisionData?.divisionId ?? null,
       localRowCount: localRows.length,
       serverRowCount: serverRows.length,
@@ -5465,7 +5736,7 @@ function EventScheduleContent() {
     activeMatches,
     leagueScoring,
     playoffMatchIds,
-    selectedStandingsDivision,
+    selectedStandingsDataDivision,
     standingsDivisionData,
   ]);
 
@@ -5626,14 +5897,20 @@ function EventScheduleContent() {
   }, [activeEvent, bracketMatchesMap, resolvedMatchTeams, canManageEvent, isPreview, bracketOfficials]);
 
   const scheduleDivisionSelectData = useMemo<DivisionOption[]>(
-    () => [{ value: 'all', label: 'All divisions' }, ...scheduleDivisionOptions],
-    [scheduleDivisionOptions],
+    () => [{ value: 'all', label: 'All divisions' }, ...effectiveScheduleDivisionOptions],
+    [effectiveScheduleDivisionOptions],
   );
-  const shouldShowScheduleDivisionFilter = !isWeeklyParentEvent && scheduleDivisionOptions.length > 1;
+  const schedulePoolSelectData = useMemo<DivisionOption[]>(
+    () => [{ value: 'all', label: 'All pools' }, ...schedulePoolOptions],
+    [schedulePoolOptions],
+  );
+  const shouldShowScheduleDivisionFilter = !isWeeklyParentEvent && effectiveScheduleDivisionOptions.length > 1;
+  const shouldShowSchedulePoolFilter = !isWeeklyParentEvent && tournamentPoolPlayEnabled && schedulePoolOptions.length > 0;
+  const shouldShowStandingsPoolFilter = !isWeeklyParentEvent && tournamentPoolPlayEnabled && standingsPoolOptions.length > 0;
   const shouldShowBracketDivisionFilter = bracketDivisionOptions.length > 1;
 
   const showScheduleTab = isLeague || isTournament || isWeeklyParentEvent;
-  const showStandingsTab = isLeague;
+  const showStandingsTab = standingsEventEnabled;
   const showParticipantsTab = !isTemplateEvent
     && Boolean(
       isWeeklyParentEvent
@@ -5815,6 +6092,8 @@ function EventScheduleContent() {
     }
     if (showScheduleTab) {
       allowed.add('schedule');
+    }
+    if (showStandingsTab) {
       allowed.add('standings');
     }
     if (shouldShowBracketTab) {
@@ -5823,7 +6102,7 @@ function EventScheduleContent() {
 
     const desired = request && allowed.has(request) ? request : defaultTab;
     setActiveTab(desired);
-  }, [searchParams, shouldShowBracketTab, showParticipantsTab, showScheduleTab, defaultTab]);
+  }, [searchParams, shouldShowBracketTab, showParticipantsTab, showScheduleTab, showStandingsTab, defaultTab]);
 
   const handleTabChange = (value: string | null) => {
     if (!value) return;
@@ -5833,6 +6112,8 @@ function EventScheduleContent() {
     }
     if (showScheduleTab) {
       allowed.add('schedule');
+    }
+    if (showStandingsTab) {
       allowed.add('standings');
     }
     if (shouldShowBracketTab) {
@@ -8003,8 +8284,8 @@ function EventScheduleContent() {
     if (loadedDivisionId) {
       return loadedDivisionId;
     }
-    return normalizeIdToken(selectedStandingsDivision);
-  }, [selectedStandingsDivision, standingsDivisionData?.divisionId]);
+    return normalizeIdToken(selectedStandingsDataDivision);
+  }, [selectedStandingsDataDivision, standingsDivisionData?.divisionId]);
 
   const handleSaveStandingsAdjustments = useCallback(async () => {
     if (!activeEvent?.$id || !standingsActionDivisionId || !standingsDivisionData) {
@@ -9108,18 +9389,31 @@ function EventScheduleContent() {
                 ) : (
                 <Stack gap="sm">
                   <Group justify="space-between" align="flex-end" wrap="wrap">
-                    {shouldShowScheduleDivisionFilter ? (
-                      <Select
-                        label="Division"
-                        data={scheduleDivisionSelectData}
-                        value={selectedScheduleDivision}
-                        onChange={(value) => setSelectedScheduleDivision(value ?? 'all')}
-                        allowDeselect={false}
-                        w={220}
-                      />
-                    ) : (
-                      <div />
-                    )}
+                    <Group align="flex-end" wrap="wrap">
+                      {shouldShowScheduleDivisionFilter ? (
+                        <Select
+                          label="Division"
+                          data={scheduleDivisionSelectData}
+                          value={selectedScheduleDivision}
+                          onChange={(value) => {
+                            setSelectedScheduleDivision(value ?? 'all');
+                            setSelectedSchedulePool('all');
+                          }}
+                          allowDeselect={false}
+                          w={220}
+                        />
+                      ) : null}
+                      {shouldShowSchedulePoolFilter ? (
+                        <Select
+                          label="Pool"
+                          data={schedulePoolSelectData}
+                          value={selectedSchedulePool}
+                          onChange={(value) => setSelectedSchedulePool(value ?? 'all')}
+                          allowDeselect={false}
+                          w={220}
+                        />
+                      ) : null}
+                    </Group>
                     {canEditMatches && (
                       <Button onClick={handleAddScheduleMatch}>Add Match</Button>
                     )}
@@ -9131,7 +9425,7 @@ function EventScheduleContent() {
                     </Paper>
                   ) : scheduleMatches.length === 0 ? (
                     <Paper withBorder radius="md" p="xl" ta="center">
-                      <Text>No matches found for the selected division.</Text>
+                      <Text>No matches found for the selected division or pool.</Text>
                     </Paper>
                   ) : (
                     <LeagueCalendarView
@@ -9215,16 +9509,32 @@ function EventScheduleContent() {
               <Tabs.Panel value="standings" pt="md">
                 <Stack gap="sm">
                   <Group justify="space-between" align="flex-end" wrap="wrap">
-                    <Select
-                      label="Division"
-                      data={leagueDivisionOptions}
-                      value={selectedStandingsDivision}
-                      onChange={(value) => setSelectedStandingsDivision(value)}
-                      allowDeselect={false}
-                      disabled={!leagueDivisionOptions.length || standingsLoading}
-                      w={260}
-                    />
-                    {canManageStandings && selectedStandingsDivision && (
+                    <Group align="flex-end" wrap="wrap">
+                      <Select
+                        label="Division"
+                        data={effectiveStandingsDivisionOptions}
+                        value={selectedStandingsDivision}
+                        onChange={(value) => {
+                          setSelectedStandingsDivision(value);
+                          setSelectedStandingsPool(null);
+                        }}
+                        allowDeselect={false}
+                        disabled={!effectiveStandingsDivisionOptions.length || standingsLoading}
+                        w={260}
+                      />
+                      {shouldShowStandingsPoolFilter ? (
+                        <Select
+                          label="Pool"
+                          data={standingsPoolOptions}
+                          value={selectedStandingsDataDivision}
+                          onChange={(value) => setSelectedStandingsPool(value ?? standingsPoolOptions[0]?.value ?? null)}
+                          allowDeselect={false}
+                          disabled={standingsLoading}
+                          w={220}
+                        />
+                      ) : null}
+                    </Group>
+                    {canManageStandings && selectedStandingsDataDivision && (
                       <Stack gap={6} align="flex-end">
                         <Checkbox
                           label="Apply automatic playoff reassignment"

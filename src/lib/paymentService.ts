@@ -1,5 +1,6 @@
 import { apiRequest } from '@/lib/apiClient';
 import type {
+  Bill,
   BillingAddress,
   Event,
   Organization,

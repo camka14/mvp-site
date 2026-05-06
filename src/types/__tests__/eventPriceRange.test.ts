@@ -55,7 +55,7 @@ describe('event division price range', () => {
     expect(formatEventDivisionPriceRange(event)).toBe('$65.00');
   });
 
-  it('falls back to the event price for divisions without an explicit price', () => {
+  it('ignores event price for divisions without an explicit price', () => {
     const event = {
       ...baseEvent(),
       divisions: ['division_a', 'division_b'],
@@ -67,8 +67,24 @@ describe('event division price range', () => {
 
     expect(getEventDivisionPriceRange(event)).toEqual({
       minPriceCents: 0,
-      maxPriceCents: 5000,
+      maxPriceCents: 0,
     });
-    expect(formatEventDivisionPriceRange(event)).toBe('Free - $50.00');
+    expect(formatEventDivisionPriceRange(event)).toBe('Free');
+  });
+
+  it('reports missing price when every division is missing price', () => {
+    const event = {
+      ...baseEvent(),
+      divisions: ['division_a'],
+      divisionDetails: [
+        { id: 'division_a', key: 'division_a', name: 'Division A' },
+      ],
+    } as Event;
+
+    expect(getEventDivisionPriceRange(event)).toEqual({
+      minPriceCents: 0,
+      maxPriceCents: 0,
+    });
+    expect(formatEventDivisionPriceRange(event)).toBe('Price not set');
   });
 });

@@ -37,11 +37,23 @@ const createSchema = z.object({
   user: z.record(z.string(), z.any()).optional(),
 }).passthrough();
 
+const normalizeId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const uniqueIds = (values: Array<string | null | undefined>): string[] => (
+  Array.from(new Set(values.filter((value): value is string => Boolean(value))))
+);
+
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
   const params = req.nextUrl.searchParams;
   const ownerType = params.get('ownerType') as 'USER' | 'TEAM' | null;
-  const ownerId = params.get('ownerId');
+  const ownerId = normalizeId(params.get('ownerId'));
   const limit = Number(params.get('limit') || '100');
 
   if (!ownerType || !ownerId) {
@@ -52,8 +64,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  let ownerIds = [ownerId];
+  if (ownerType === 'TEAM') {
+    const [eventTeam, childEventTeams] = await Promise.all([
+      prisma.teams.findUnique({
+        where: { id: ownerId },
+        select: { parentTeamId: true },
+      }),
+      prisma.teams.findMany({
+        where: { parentTeamId: ownerId },
+        select: { id: true },
+      }),
+    ]);
+    ownerIds = uniqueIds([
+      ownerId,
+      normalizeId(eventTeam?.parentTeamId),
+      ...childEventTeams.map((team) => normalizeId(team.id)),
+    ]);
+  }
+
   const bills = await prisma.bills.findMany({
-    where: { ownerType, ownerId },
+    where: ownerType === 'TEAM'
+      ? { ownerType, ownerId: { in: ownerIds } }
+      : { ownerType, ownerId },
     take: Number.isFinite(limit) ? limit : 100,
     orderBy: { createdAt: 'desc' },
   });
@@ -69,7 +102,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const ownerId = parsed.data.ownerId.trim();
+  const requestedOwnerId = parsed.data.ownerId.trim();
+  let ownerId = requestedOwnerId;
   if (!ownerId) {
     return NextResponse.json({ error: 'ownerId is required' }, { status: 400 });
   }
@@ -116,6 +150,20 @@ export async function POST(req: NextRequest) {
   const organizationId = parsed.data.organizationId?.trim() || null;
   const paymentPlanEnabled = parsed.data.paymentPlanEnabled ?? false;
   const now = new Date();
+
+  const alternateTeamOwnerIds = [ownerId];
+  if (parsed.data.ownerType === 'TEAM') {
+    const eventTeam = await prisma.teams.findUnique({
+      where: { id: ownerId },
+      select: { parentTeamId: true },
+    });
+    const parentTeamId = normalizeId(eventTeam?.parentTeamId);
+    if (parentTeamId) {
+      alternateTeamOwnerIds.push(parentTeamId);
+      ownerId = parentTeamId;
+    }
+  }
+  const duplicateOwnerIds = uniqueIds([ownerId, ...alternateTeamOwnerIds]);
 
   const amounts = Array.isArray(parsed.data.installmentAmounts) && parsed.data.installmentAmounts.length
     ? parsed.data.installmentAmounts.map((amount) => Math.round(amount))
@@ -217,7 +265,7 @@ export async function POST(req: NextRequest) {
       const existing = await tx.bills.findFirst({
         where: {
           ownerType: parsed.data.ownerType,
-          ownerId,
+          ownerId: duplicateOwnerIds.length > 1 ? { in: duplicateOwnerIds } : ownerId,
           eventId,
           parentBillId: null,
           paymentPlanEnabled: true,
