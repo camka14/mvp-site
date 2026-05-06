@@ -10,8 +10,8 @@ import {
 } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { locationService } from '@/lib/locationService';
-import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { resolveEventParticipantCapacity } from '@/lib/eventCapacity';
+import { buildEventDivisionDisplayLabels } from '@/lib/eventDivisionDisplay';
 
 interface EventCardProps {
   event: Event;
@@ -23,23 +23,6 @@ interface EventCardProps {
   onHostChange?: (hostId: string) => void;
   hostChangeDisabled?: boolean;
 }
-
-const normalizeDivisionKey = (value: unknown): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-};
-
-const startCase = (value: string): string => (
-  value
-    .replace(/[_-]+/g, ' ')
-    .split(' ')
-    .filter((chunk) => chunk.length > 0)
-    .map((chunk) => chunk[0].toUpperCase() + chunk.slice(1))
-    .join(' ')
-);
 
 export default function EventCard({
   event,
@@ -180,63 +163,7 @@ export default function EventCard({
     return Array.from(names);
   }, [event.fields, event.timeSlots]);
 
-  const divisionLabels = useMemo(() => {
-    const details = Array.isArray(event.divisionDetails) ? event.divisionDetails : [];
-    const detailsById = new Map<string, (typeof details)[number]>();
-    const detailsByKey = new Map<string, (typeof details)[number]>();
-
-    details.forEach((detail) => {
-      const detailId = normalizeDivisionKey(detail?.id);
-      const detailKey = normalizeDivisionKey(detail?.key);
-      if (detailId) {
-        detailsById.set(detailId, detail);
-        const token = extractDivisionTokenFromId(detailId);
-        if (token) {
-          detailsByKey.set(token, detail);
-        }
-      }
-      if (detailKey) {
-        detailsByKey.set(detailKey, detail);
-      }
-    });
-
-    const seen = new Set<string>();
-    const labels: string[] = [];
-
-    (event.divisions || []).forEach((division) => {
-      const rawId = normalizeDivisionKey(
-        typeof division === 'string'
-          ? division
-          : (division?.id ?? division?.key ?? division?.name),
-      );
-      if (!rawId) {
-        return;
-      }
-
-      const detail = detailsById.get(rawId)
-        ?? detailsByKey.get(rawId)
-        ?? detailsByKey.get(extractDivisionTokenFromId(rawId) ?? '');
-      const labelFromDetail = detail?.name?.trim();
-      const fallbackIdentifier = detail?.key
-        ?? detail?.id
-        ?? extractDivisionTokenFromId(rawId)
-        ?? rawId;
-      const inferred = inferDivisionDetails({
-        identifier: fallbackIdentifier,
-        sportInput: event.sport?.name ?? event.sportId ?? undefined,
-        fallbackName: labelFromDetail || undefined,
-      });
-      const resolvedLabel = labelFromDetail || inferred.defaultName || startCase(fallbackIdentifier);
-      const dedupeKey = resolvedLabel.toLowerCase();
-      if (seen.has(dedupeKey)) {
-        return;
-      }
-      seen.add(dedupeKey);
-      labels.push(resolvedLabel);
-    });
-
-    return labels;
-  }, [event.divisionDetails, event.divisions, event.sport?.name, event.sportId]);
+  const divisionLabels = useMemo(() => buildEventDivisionDisplayLabels(event), [event]);
 
   const hostLabel = useMemo(() => {
     if (typeof event.organization === 'object' && event.organization && 'name' in event.organization) {
