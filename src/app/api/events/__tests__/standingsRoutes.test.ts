@@ -165,6 +165,105 @@ const buildLeagueFixture = () => {
   };
 };
 
+const buildTournamentPoolFixture = () => {
+  const pool: any = {
+    id: 'pool_1',
+    name: 'Pool A',
+    playoffTeamCount: 1,
+    playoffPlacementDivisionIds: ['bracket_1'],
+    standingsOverrides: null,
+    standingsConfirmedAt: null,
+    standingsConfirmedBy: null,
+  };
+  const bracket: any = {
+    id: 'bracket_1',
+    name: 'Open Bracket',
+    maxParticipants: 4,
+    playoffTeamCount: 2,
+  };
+  const team1: any = {
+    id: 'team_1',
+    name: 'Team 1',
+    division: pool,
+    matches: [],
+    seed: 0,
+    captainId: 'captain_1',
+    playerIds: [],
+    wins: 0,
+    losses: 0,
+  };
+  const team2: any = {
+    id: 'team_2',
+    name: 'Team 2',
+    division: pool,
+    matches: [],
+    seed: 0,
+    captainId: 'captain_2',
+    playerIds: [],
+    wins: 0,
+    losses: 0,
+  };
+  const match: any = {
+    id: 'match_1',
+    division: pool,
+    team1,
+    team2,
+    team1Points: [5],
+    team2Points: [3],
+    setResults: [1],
+    matchRulesSnapshot: {
+      scoringModel: 'POINTS_ONLY',
+      pointIncidentRequiresParticipant: true,
+    },
+    resolvedMatchRules: {
+      scoringModel: 'POINTS_ONLY',
+      pointIncidentRequiresParticipant: true,
+    },
+    segments: [
+      {
+        id: 'segment_1',
+        matchId: 'match_1',
+        sequence: 1,
+        status: 'COMPLETE',
+        scores: {
+          team_1: 5,
+          team_2: 3,
+        },
+        winnerEventTeamId: 'team_1',
+      },
+    ],
+    incidents: [],
+    previousLeftMatch: null,
+    previousRightMatch: null,
+    winnerNextMatch: null,
+    loserNextMatch: null,
+  };
+  team1.matches = [match];
+  team2.matches = [match];
+
+  return {
+    id: 'event_1',
+    eventType: 'TOURNAMENT',
+    includePlayoffs: true,
+    playoffTeamCount: 2,
+    splitLeaguePlayoffDivisions: true,
+    divisions: [pool],
+    playoffDivisions: [bracket],
+    teams: {
+      [team1.id]: team1,
+      [team2.id]: team2,
+    },
+    matches: {
+      [match.id]: match,
+    },
+    leagueScoringConfig: {
+      pointsForWin: 3,
+      pointsForDraw: 1,
+      pointsForLoss: 0,
+    },
+  };
+};
+
 const makePatchRequest = (body: unknown) => new NextRequest('http://localhost/api/events/event_1/standings', {
   method: 'PATCH',
   headers: { 'Content-Type': 'application/json' },
@@ -245,6 +344,34 @@ describe('standings routes', () => {
     expect(res.status).toBe(403);
     expect(requireSessionMock).toHaveBeenCalledTimes(1);
     expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
+  });
+
+  it('GET allows tournament pool play standings for generated pool divisions', async () => {
+    loadEventWithRelationsMock.mockResolvedValueOnce(buildTournamentPoolFixture());
+
+    const res = await standingsGet(
+      new NextRequest('http://localhost/api/events/event_1/standings?divisionId=pool_1', { method: 'GET' }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+
+    const json = await res.json();
+    expect(json.division).toEqual(expect.objectContaining({
+      divisionId: 'pool_1',
+      divisionName: 'Pool A',
+    }));
+    expect(json.division.playoffDivisions).toEqual([
+      expect.objectContaining({
+        id: 'bracket_1',
+        name: 'Open Bracket',
+      }),
+    ]);
+    expect(json.division.standings[0]).toEqual(expect.objectContaining({
+      teamId: 'team_1',
+      wins: 1,
+      finalPoints: 3,
+    }));
   });
 
   it('PATCH saves absolute points overrides and returns deltas', async () => {

@@ -9,7 +9,7 @@ import { getLeagueDivisionById } from '@/server/scheduler/standings';
 import {
   applyPointsOverrideUpdates,
   buildDivisionStandingsResponse,
-  toLeagueEvent,
+  toStandingsEvent,
 } from './shared';
 
 export const dynamic = 'force-dynamic';
@@ -62,17 +62,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     }
 
     const loaded = await loadEventWithRelations(eventId);
-    const league = toLeagueEvent(loaded);
-    if (!league) {
-      return NextResponse.json({ error: 'Standings are only available for leagues' }, { status: 400 });
+    const standingsEvent = toStandingsEvent(loaded);
+    if (!standingsEvent) {
+      return NextResponse.json({ error: 'Standings are only available for leagues or tournament pool play' }, { status: 400 });
     }
 
-    if (!getLeagueDivisionById(league, divisionId)) {
-      return NextResponse.json({ error: 'League division not found' }, { status: 404 });
+    if (!getLeagueDivisionById(standingsEvent, divisionId)) {
+      return NextResponse.json({ error: 'Division not found' }, { status: 404 });
     }
 
     return NextResponse.json({
-      division: buildDivisionStandingsResponse(league, divisionId),
+      division: buildDivisionStandingsResponse(standingsEvent, divisionId),
     }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) {
@@ -113,14 +113,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       const loaded = await loadEventWithRelations(eventId, tx);
-      const league = toLeagueEvent(loaded);
-      if (!league) {
-        throw new Response('Standings are only available for leagues', { status: 400 });
+      const standingsEvent = toStandingsEvent(loaded);
+      if (!standingsEvent) {
+        throw new Response('Standings are only available for leagues or tournament pool play', { status: 400 });
       }
 
-      const division = getLeagueDivisionById(league, parsed.data.divisionId);
+      const division = getLeagueDivisionById(standingsEvent, parsed.data.divisionId);
       if (!division) {
-        throw new Response('League division not found', { status: 404 });
+        throw new Response('Division not found', { status: 404 });
       }
 
       const nextOverrides = applyPointsOverrideUpdates(
@@ -137,7 +137,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       });
 
       division.standingsOverrides = nextOverrides;
-      return buildDivisionStandingsResponse(league, division.id);
+      return buildDivisionStandingsResponse(standingsEvent, division.id);
     });
 
     return NextResponse.json({ division: result }, { status: 200 });

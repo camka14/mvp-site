@@ -19,11 +19,11 @@ The behavior is visible by creating or editing a tournament with pool play enabl
 - [x] (2026-05-05) Add site repository helpers to generate and reconcile hidden tournament pool divisions from visible bracket division settings.
 - [x] (2026-05-05) Update registration and payment capacity logic so tournament pool play registers against bracket divisions and assigns teams transactionally to the least-filled generated pool.
 - [x] (2026-05-05) Update scheduler loading and scheduling so pool-play tournaments run pool round-robin matches before generated bracket placeholders.
-- [ ] Generalize standings advancement from league-only playoff reassignment to pool source divisions feeding tournament bracket divisions.
+- [x] (2026-05-05) Generalize standings advancement from league-only playoff reassignment to pool source divisions feeding tournament bracket divisions.
 - [x] (2026-05-05) Update site manage UI to show pool count and read-only pool team count on tournament bracket division cards without rendering pool cards.
 - [x] (2026-05-05) Update mobile app DTOs, models, and event-edit UI enough to preserve and edit pool-play tournament settings.
 - [x] (2026-05-05) Add focused tests in `mvp-site` for generated pool sizing and assignment.
-- [ ] Run focused verification commands and record results.
+- [x] (2026-05-05) Run focused verification commands and record results for generated pools, standings routes, schedule routes, standings reassignment, and TypeScript.
 
 ## Surprises & Discoveries
 
@@ -35,6 +35,10 @@ The behavior is visible by creating or editing a tournament with pool play enabl
   Evidence: `npx tsc --noEmit --pretty false` reports only `src/lib/paymentService.ts(211,23)` and `(229,64): Cannot find name 'Bill'.`
 - Observation: The Android compile in the app worktree is blocked by missing Android SDK configuration, and common metadata compile is blocked by an existing `TeamRepository.kt` error outside this change.
   Evidence: `.\gradlew :composeApp:compileDebugKotlinAndroid` fails because SDK location is not found. `.\gradlew :composeApp:compileCommonMainKotlinMetadata` fails at `TeamRepository.kt:358:23 Unresolved reference 'putIfAbsent'.`
+- Observation: The standings reassignment code could be shared by leagues and pool-play tournaments with a narrow event type instead of a new tournament-only implementation.
+  Evidence: `npm test -- --runTestsByPath src/server/scheduler/__tests__/standingsPlayoffReassignment.test.ts --runInBand` passes with a new tournament pool-play reassignment test and the existing league reassignment tests.
+- Observation: Full TypeScript checking still fails only on the pre-existing `Bill` type references.
+  Evidence: `npx tsc --noEmit --pretty false` reports only `src/lib/paymentService.ts(211,23)` and `(229,64): Cannot find name 'Bill'.`
 
 ## Decision Log
 
@@ -58,9 +62,19 @@ The behavior is visible by creating or editing a tournament with pool play enabl
   Rationale: The same persisted event capability means "playoffs" for leagues and "pool play" for tournaments. Keeping compatibility avoids breaking existing site and mobile clients while new screens use event-specific labels.
   Date/Author: 2026-05-05 / Codex
 
+- Decision: Reuse the standings playoff reassignment algorithm for tournament pool play through a `StandingsAdvancementEvent` type.
+  Rationale: Generated pools already behave like source divisions and bracket divisions already behave like advancement divisions. Sharing the code keeps placement ordering, bracket template assignment, and confirmed-standing behavior consistent with leagues while allowing tournament wording and capacity rules at the API boundary.
+  Date/Author: 2026-05-05 / Codex
+
+- Decision: For tournament pool play, validate advancement capacity against the bracket division `playoffTeamCount` before falling back to `maxParticipants`.
+  Rationale: `maxParticipants` is registration capacity for the bracket division and can intentionally be larger than the number of teams that enter the bracket after pool play. The bracket size must be enforced by the bracket team count.
+  Date/Author: 2026-05-05 / Codex
+
 ## Outcomes & Retrospective
 
-No implementation milestone has completed yet. The intended outcome is a tournament form and API that let hosts configure pool play from bracket division cards only, with generated hidden pools driving registration assignment, scheduling, standings, and bracket seeding.
+The first end-to-end implementation milestone is complete in both repositories. The site now accepts the pool-play contract, derives hidden generated pools, assigns registrations into the least-filled pool, schedules pool round-robin matches before bracket matches, exposes pool settings on visible bracket division cards, and can seed tournament brackets from confirmed generated pool standings. The app can preserve and edit the pool-play contract without showing generated pool rows.
+
+Remaining risk is mostly environmental verification rather than known feature gaps. Full site type checking is blocked by an existing `Bill` type issue in `src/lib/paymentService.ts`, and app Gradle verification is blocked by local SDK/configuration and an existing `TeamRepository.kt` compile issue. Focused Jest coverage for the changed site behavior passes.
 
 ## Context and Orientation
 
@@ -152,6 +166,23 @@ Initial source findings:
     src/server/scheduler/standings.ts reads duplicate placement mappings by index, so generated mappings like [bracket, bracket] are supported.
     src/server/events/eventRegistrations.ts syncs registrations into non-playoff division teamIds, which must be changed or bypassed for tournament pool play.
 
+Verification from the completed standings milestone:
+
+    npm test -- --runTestsByPath src/server/events/__tests__/tournamentPools.test.ts --runInBand
+    Result: PASS, 3 tests.
+
+    npm test -- --runTestsByPath src/server/scheduler/__tests__/standingsPlayoffReassignment.test.ts --runInBand
+    Result: PASS, 7 tests, including tournament pool-play bracket seeding.
+
+    npm test -- --runTestsByPath src/app/api/events/__tests__/standingsRoutes.test.ts --runInBand
+    Result: PASS, 6 tests, including route access for tournament generated pool standings.
+
+    npm test -- --runTestsByPath src/app/api/events/__tests__/scheduleRoutes.test.ts --runInBand
+    Result: PASS, 36 tests. The suite prints expected console.error output for tests that intentionally exercise failure responses.
+
+    npx tsc --noEmit --pretty false
+    Result: FAIL only on pre-existing `src/lib/paymentService.ts` missing `Bill` type references.
+
 ## Interfaces and Dependencies
 
 At the end of implementation, `mvp-site` should expose a helper equivalent to:
@@ -188,3 +219,5 @@ The returned string is the generated pool division id that received the team. Th
 The app DTO layer should expose `includePlayoffsOrPools` while preserving `includePlayoffs`. The UI layer should call the visible field `Pool play` for tournaments and should show a read-only pool team count calculated from max teams divided by pool count.
 
 Revision note, 2026-05-05: Initial plan created after branch/worktree setup. The plan records the decision to use generated hidden `Divisions` rows for pools and visible `PLAYOFF` rows for tournament bracket registration divisions.
+
+Revision note, 2026-05-05: Updated after implementing standings advancement for pool-play tournaments. The plan now records the shared standings advancement type, tournament bracket capacity rule, and focused verification evidence.

@@ -2,6 +2,8 @@ import { Division, League, Tournament } from '@/server/scheduler/types';
 import {
   computeLeagueDivisionStandings,
   getLeagueDivisionById,
+  isStandingsAdvancementEvent,
+  StandingsAdvancementEvent,
   validateDivisionPlayoffMapping,
   validatePlayoffDivisionReferenceCapacities,
 } from '@/server/scheduler/standings';
@@ -55,18 +57,25 @@ export const toLeagueEvent = (event: Tournament | League): League | null => {
   return null;
 };
 
-export const getDivisionValidation = (league: League, division: Division): DivisionValidationResult => ({
+export const toStandingsEvent = (event: Tournament | League): StandingsAdvancementEvent | null => {
+  if (isStandingsAdvancementEvent(event)) {
+    return event;
+  }
+  return null;
+};
+
+export const getDivisionValidation = (league: StandingsAdvancementEvent, division: Division): DivisionValidationResult => ({
   mappingErrors: validateDivisionPlayoffMapping(league, division),
   capacityErrors: validatePlayoffDivisionReferenceCapacities(league),
 });
 
 export const buildDivisionStandingsResponse = (
-  league: League,
+  league: StandingsAdvancementEvent,
   divisionId: string,
 ): DivisionStandingsResponse => {
   const division = getLeagueDivisionById(league, divisionId);
   if (!division) {
-    throw new Error('League division not found.');
+    throw new Error('Division not found.');
   }
 
   const standings = computeLeagueDivisionStandings(
@@ -104,7 +113,7 @@ export const buildDivisionStandingsResponse = (
       pointsDelta: row.pointsDelta,
     })),
     validation,
-    playoffDivisions: league.playoffDivisions.map((playoffDivision) => ({
+    playoffDivisions: (league.playoffDivisions ?? []).map((playoffDivision) => ({
       id: playoffDivision.id,
       name: playoffDivision.name,
       maxParticipants: typeof playoffDivision.maxParticipants === 'number'

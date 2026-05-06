@@ -16,9 +16,11 @@ import { rescheduleEventMatchesPreservingLocks } from '@/server/scheduler/resche
 import { serializeEventLegacy, serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import {
   applyLeagueDivisionPlayoffReassignment,
+  isTournamentPoolPlayStandingsEvent,
   normalizeLeaguePlayoffPlacementMappings,
+  StandingsAdvancementEvent,
 } from '@/server/scheduler/standings';
-import { League, SchedulerContext } from '@/server/scheduler/types';
+import { League, SchedulerContext, Tournament } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
 
 export const dynamic = 'force-dynamic';
@@ -57,8 +59,15 @@ const isLeagueEvent = (event: { eventType?: unknown }): event is League => (
   typeof event.eventType === 'string' && event.eventType.toUpperCase() === 'LEAGUE'
 );
 
-const applyConfirmedLeaguePlayoffReassignments = (
-  league: League,
+const shouldApplyConfirmedAdvancementReassignments = (
+  event: League | Tournament,
+): event is StandingsAdvancementEvent => (
+  (isLeagueEvent(event) && event.singleDivision)
+  || isTournamentPoolPlayStandingsEvent(event)
+);
+
+const applyConfirmedAdvancementReassignments = (
+  league: StandingsAdvancementEvent,
   context: SchedulerContext,
 ): {
   affectedPlayoffDivisionIds: string[];
@@ -173,14 +182,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         }, context);
       })();
 
-      if (isLeagueEvent(scheduled.event) && scheduled.event.singleDivision) {
+      if (shouldApplyConfirmedAdvancementReassignments(scheduled.event)) {
         let reassignment;
         try {
-          reassignment = applyConfirmedLeaguePlayoffReassignments(scheduled.event, context);
+          reassignment = applyConfirmedAdvancementReassignments(scheduled.event, context);
         } catch (error) {
           const message = error instanceof Error
             ? error.message
-            : 'Unable to assign league standings to playoff brackets.';
+            : 'Unable to assign standings to advancement brackets.';
           throw new ScheduleError(message);
         }
         if (reassignment.affectedPlayoffDivisionIds.length) {

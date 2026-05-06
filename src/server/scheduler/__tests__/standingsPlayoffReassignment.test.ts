@@ -7,8 +7,9 @@ import {
   isPlayoffMatch,
   normalizeLeaguePlayoffPlacementMappings,
   validateDivisionPlayoffMapping,
+  validatePlayoffDivisionReferenceCapacities,
 } from '@/server/scheduler/standings';
-import { Division, League, Match, PlayingField, Team, TimeSlot } from '@/server/scheduler/types';
+import { Division, League, Match, PlayingField, Team, TimeSlot, Tournament } from '@/server/scheduler/types';
 
 const context = {
   log: () => {},
@@ -40,7 +41,7 @@ const buildTeamsForDivision = (prefix: string, count: number, division: Division
   return teams;
 };
 
-const getPlayoffMatches = (league: League, playoffDivisionId: string): Match[] => (
+const getPlayoffMatches = (league: League | Tournament, playoffDivisionId: string): Match[] => (
   Object.values(league.matches).filter(
     (match) => match.division.id === playoffDivisionId && isPlayoffMatch(match),
   )
@@ -292,6 +293,167 @@ describe('standings playoff reassignment', () => {
     for (const teamId of assignedTeamIds) {
       expect(assignedCounts.get(teamId)).toBe(1);
     }
+  });
+
+  it('seeds a tournament pool-play bracket from generated pool standings', () => {
+    const poolA = new Division(
+      'pool_a',
+      'Open Pool A',
+      [],
+      null,
+      4,
+      2,
+      'LEAGUE',
+      ['bracket_open', 'bracket_open'],
+    );
+    const poolB = new Division(
+      'pool_b',
+      'Open Pool B',
+      [],
+      null,
+      4,
+      2,
+      'LEAGUE',
+      ['bracket_open', 'bracket_open'],
+    );
+    poolB.standingsConfirmedAt = new Date('2026-01-15T00:00:00.000Z');
+    poolB.standingsConfirmedBy = 'host_1';
+
+    const bracketOpen = new Division('bracket_open', 'Open', [], null, 8, 4, 'PLAYOFF');
+    const field = buildField('field_pool', [poolA, poolB, bracketOpen]);
+    const teams = {
+      ...buildTeamsForDivision('pool_a', 4, poolA),
+      ...buildTeamsForDivision('pool_b', 4, poolB),
+    };
+
+    const tournament = new Tournament({
+      id: 'tournament_pool_reassignment',
+      name: 'Tournament Pool Reassignment',
+      start: new Date('2026-01-05T08:00:00.000Z'),
+      end: new Date('2026-03-30T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      singleDivision: false,
+      teams,
+      divisions: [poolA, poolB],
+      playoffDivisions: [bracketOpen],
+      splitLeaguePlayoffDivisions: true,
+      officials: [],
+      fields: {
+        [field.id]: field,
+      },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_pool',
+          dayOfWeek: 1,
+          startDate: new Date('2026-01-05T08:00:00.000Z'),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: field.id,
+          divisions: [poolA, poolB],
+        }),
+        new TimeSlot({
+          id: 'slot_bracket',
+          dayOfWeek: 2,
+          startDate: new Date('2026-01-06T08:00:00.000Z'),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: field.id,
+          divisions: [bracketOpen],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: tournament }, context);
+    const scheduledTournament = scheduled.event as Tournament;
+    const playoffMatches = getPlayoffMatches(scheduledTournament, bracketOpen.id);
+    expect(playoffMatches.length).toBeGreaterThan(0);
+
+    const reassignment = applyLeagueDivisionPlayoffReassignment(scheduledTournament, poolA.id, context);
+    const assignedTeamIds = reassignment.teamIdsByPlayoffDivision[bracketOpen.id] ?? [];
+
+    expect(assignedTeamIds).toEqual([
+      'pool_a_team_1',
+      'pool_b_team_1',
+      'pool_a_team_2',
+      'pool_b_team_2',
+    ]);
+    expect(bracketOpen.teamIds).toEqual(assignedTeamIds);
+
+    const assignedCounts = new Map<string, number>();
+    for (const match of getPlayoffMatches(scheduledTournament, bracketOpen.id)) {
+      if (match.team1) {
+        assignedCounts.set(match.team1.id, (assignedCounts.get(match.team1.id) ?? 0) + 1);
+      }
+      if (match.team2) {
+        assignedCounts.set(match.team2.id, (assignedCounts.get(match.team2.id) ?? 0) + 1);
+      }
+    }
+
+    for (const teamId of assignedTeamIds) {
+      expect(assignedCounts.get(teamId)).toBe(1);
+    }
+  });
+
+  it('uses tournament bracket team count instead of registration max teams for pool advancement capacity', () => {
+    const poolA = new Division(
+      'pool_a',
+      'Open Pool A',
+      [],
+      null,
+      4,
+      3,
+      'LEAGUE',
+      ['bracket_open', 'bracket_open', 'bracket_open'],
+    );
+    const poolB = new Division(
+      'pool_b',
+      'Open Pool B',
+      [],
+      null,
+      4,
+      3,
+      'LEAGUE',
+      ['bracket_open', 'bracket_open', 'bracket_open'],
+    );
+    const bracketOpen = new Division('bracket_open', 'Open', [], null, 8, 4, 'PLAYOFF');
+    const tournament = new Tournament({
+      id: 'tournament_pool_capacity_validation',
+      name: 'Tournament Pool Capacity Validation',
+      start: new Date('2026-01-05T08:00:00.000Z'),
+      end: new Date('2026-03-30T22:00:00.000Z'),
+      noFixedEndDateTime: false,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      singleDivision: false,
+      teams: {},
+      divisions: [poolA, poolB],
+      playoffDivisions: [bracketOpen],
+      splitLeaguePlayoffDivisions: true,
+      officials: [],
+      fields: {},
+      timeSlots: [],
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    expect(validatePlayoffDivisionReferenceCapacities(tournament)).toEqual([
+      'Playoff division "Open" has 6 mapped positions but only 4 team slots.',
+    ]);
   });
 
   it('preserves carried bye seeds on the actual quarterfinal nodes for a 10-team league playoff', () => {

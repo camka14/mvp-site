@@ -9,7 +9,7 @@ import { applyLeagueDivisionPlayoffReassignment, getLeagueDivisionById } from '@
 import {
   buildDivisionStandingsResponse,
   getDivisionValidation,
-  toLeagueEvent,
+  toStandingsEvent,
 } from '../shared';
 
 export const dynamic = 'force-dynamic';
@@ -54,17 +54,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       }
 
       const loaded = await loadEventWithRelations(eventId, tx);
-      const league = toLeagueEvent(loaded);
-      if (!league) {
-        throw new Response('Standings are only available for leagues', { status: 400 });
+      const standingsEvent = toStandingsEvent(loaded);
+      if (!standingsEvent) {
+        throw new Response('Standings are only available for leagues or tournament pool play', { status: 400 });
       }
 
-      const division = getLeagueDivisionById(league, parsed.data.divisionId);
+      const division = getLeagueDivisionById(standingsEvent, parsed.data.divisionId);
       if (!division) {
-        throw new Response('League division not found', { status: 404 });
+        throw new Response('Division not found', { status: 404 });
       }
 
-      const validation = getDivisionValidation(league, division);
+      const validation = getDivisionValidation(standingsEvent, division);
       const validationErrors = [...validation.mappingErrors, ...validation.capacityErrors];
       if (validationErrors.length) {
         throw new Response(buildValidationMessage(validationErrors), { status: 400 });
@@ -88,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       let teamIdsByPlayoffDivision: Record<string, string[]> = {};
       if (applyReassignment) {
         const reassignment = applyLeagueDivisionPlayoffReassignment(
-          league,
+          standingsEvent,
           division.id,
         );
         reassignedPlayoffDivisionIds = reassignment.affectedPlayoffDivisionIds;
@@ -110,12 +110,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           );
         }
         if (reassignedPlayoffDivisionIds.length || seededTeamIds.length) {
-          await saveMatches(eventId, Object.values(league.matches), tx);
+          await saveMatches(eventId, Object.values(standingsEvent.matches), tx);
         }
       }
 
       return {
-        division: buildDivisionStandingsResponse(league, division.id),
+        division: buildDivisionStandingsResponse(standingsEvent, division.id),
         applyReassignment,
         reassignedPlayoffDivisionIds,
         seededTeamIds,
