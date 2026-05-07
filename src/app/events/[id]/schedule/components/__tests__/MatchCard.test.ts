@@ -43,6 +43,32 @@ describe('resolveDivisionLabel', () => {
 });
 
 describe('MatchCard conflict rendering', () => {
+  it('keeps schedule card names, scores, and field available for adaptive CSS priority', () => {
+    renderWithMantine(
+      createElement(MatchCard, {
+        match: buildMatch({
+          team1: { $id: 'team_1', name: 'Beach volley with camka' } as Match['team1'],
+          team2: { $id: 'team_2', name: 'Pine Valley Power' } as Match['team2'],
+          team1Points: [21],
+          team2Points: [17],
+          setResults: [1],
+        }),
+        fieldLabel: 'Court 2',
+        layout: 'horizontal',
+        hideTimeBadge: true,
+      }),
+    );
+
+    expect(screen.getByText('Match #1').closest('div.relative')).toHaveClass('match-card--adaptive');
+    expect(screen.getByText('Beach volley with camka')).toBeInTheDocument();
+    expect(screen.getByText('Pine Valley Power')).toBeInTheDocument();
+    expect(screen.getByText('Beach volley with camka').closest('.match-card__team-slot')).toHaveClass('match-card__team-slot--longer-name');
+    expect(screen.getByText('Pine Valley Power').closest('.match-card__team-slot')).toHaveClass('match-card__team-slot--shorter-name');
+    expect(screen.getByText('21')).toBeInTheDocument();
+    expect(screen.getByText('17')).toBeInTheDocument();
+    expect(screen.getByText('Court 2')).toBeInTheDocument();
+  });
+
   it('shows a red border and no inline conflict message when match has a field-time conflict', () => {
     renderWithMantine(
       createElement(MatchCard, {
