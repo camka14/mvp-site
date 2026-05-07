@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,7 @@ const createSchema = z.object({
   repeating: z.boolean().optional(),
   scheduledFieldId: z.string().optional(),
   price: z.number().optional(),
+  taxHandling: z.string().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
   hostRequiredTemplateIds: z.array(z.string()).optional(),
 }).passthrough();
@@ -270,6 +272,7 @@ export async function POST(req: NextRequest) {
         scheduledFieldId,
         scheduledFieldIds,
         price: data.price ?? null,
+        taxHandling: normalizeRentalTaxHandling(data.taxHandling),
         requiredTemplateIds,
         hostRequiredTemplateIds,
         createdAt: now,

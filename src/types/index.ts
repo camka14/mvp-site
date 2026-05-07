@@ -5,6 +5,11 @@ import type {
   OrganizationVerificationReviewStatus,
   OrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
+import type {
+  EventTaxHandling,
+  OrganizationTaxClassification,
+  RentalTaxHandling,
+} from '@/lib/taxPolicy';
 
 // User types
 export interface UserAccount {
@@ -415,6 +420,7 @@ export interface TimeSlot {
   endDate?: string | null;
   repeating: boolean;
   price?: number;
+  taxHandling?: RentalTaxHandling;
   requiredTemplateIds?: string[];
   hostRequiredTemplateIds?: string[];
   event?: Event;
@@ -599,6 +605,7 @@ export interface Event {
   address?: string;
   coordinates: [number, number];
   price: number;
+  taxHandling?: EventTaxHandling;
   minAge?: number;
   maxAge?: number;
   rating?: number;
@@ -725,6 +732,14 @@ export interface Organization {
   ownerId?: string;
   hostIds?: string[];
   hasStripeAccount?: boolean;
+  taxOrganizationType?: OrganizationTaxClassification;
+  operatesAthleticFacility?: boolean;
+  defaultEventTaxHandling?: Exclude<EventTaxHandling, 'INHERIT_ORG'>;
+  defaultRentalTaxHandling?: RentalTaxHandling;
+  taxResponsibilityAcceptedAt?: string;
+  taxResponsibilityAcceptedByUserId?: string;
+  taxResponsibilityAgreementVersion?: string;
+  taxResponsibilityAgreementAccepted?: boolean;
   verificationStatus?: OrganizationVerificationStatus;
   verifiedAt?: string;
   verificationReviewStatus?: OrganizationVerificationReviewStatus;
@@ -1746,13 +1761,19 @@ export interface BillingAddressProfile {
 }
 
 export interface PaymentIntent {
-  paymentIntent: string;
+  paymentIntent?: string;
   ephemeralKey?: string;
   customer?: string;
   publishableKey: string;
+  checkoutMode?: 'PAYMENT_INTENT' | 'CHECKOUT_SESSION';
+  checkoutUrl?: string | null;
+  checkoutSessionId?: string | null;
   feeBreakdown: FeeBreakdown;
   taxCalculationId?: string;
   taxCategory?: string;
+  taxMode?: 'ZERO_TAX' | 'STRIPE_TAX_REQUIRED';
+  taxReasonCode?: string;
+  taxJurisdictionState?: string | null;
   error?: string;
   billId?: string | null;
   billPaymentId?: string | null;
@@ -1763,7 +1784,10 @@ export interface PaymentIntent {
 export interface FeeBreakdown {
   eventPrice: number;
   stripeFee: number;
+  stripeProcessingFee?: number;
+  stripeTaxServiceFee?: number;
   processingFee: number;
+  mvpFee?: number;
   taxAmount?: number;
   totalCharge: number;
   hostReceives: number;

@@ -196,6 +196,56 @@ describe('/api/organizations/[id]', () => {
     }));
   });
 
+  it('normalizes tax settings and stamps the tax responsibility agreement', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      publicSlug: null,
+      taxResponsibilityAcceptedAt: null,
+    });
+    prismaMock.organizations.update.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Test Org',
+      taxOrganizationType: 'FACILITY_OPERATOR',
+      operatesAthleticFacility: true,
+      defaultEventTaxHandling: 'EXEMPT_PARTICIPANT_SPORTS',
+      defaultRentalTaxHandling: 'STRIPE_TAX',
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          organization: {
+            taxOrganizationType: 'facility operator',
+            operatesAthleticFacility: true,
+            defaultEventTaxHandling: 'exempt participant sports',
+            defaultRentalTaxHandling: 'stripe tax',
+            taxResponsibilityAgreementAccepted: true,
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.organizations.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'org_1' },
+      data: expect.objectContaining({
+        taxOrganizationType: 'FACILITY_OPERATOR',
+        operatesAthleticFacility: true,
+        defaultEventTaxHandling: 'EXEMPT_PARTICIPANT_SPORTS',
+        defaultRentalTaxHandling: 'STRIPE_TAX',
+        taxResponsibilityAcceptedAt: expect.any(Date),
+        taxResponsibilityAcceptedByUserId: 'owner_1',
+        taxResponsibilityAgreementVersion: '2026-05-07',
+      }),
+    }));
+  });
+
   it('rejects invalid public completion redirect URLs', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
     prismaMock.organizations.findUnique.mockResolvedValue({

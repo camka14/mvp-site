@@ -49,6 +49,13 @@ export type OrganizationsMinAggregateOutputType = {
   publicHeadline: string | null
   publicIntroText: string | null
   publicCompletionRedirectUrl: string | null
+  taxOrganizationType: string | null
+  operatesAthleticFacility: boolean | null
+  defaultEventTaxHandling: string | null
+  defaultRentalTaxHandling: string | null
+  taxResponsibilityAcceptedAt: Date | null
+  taxResponsibilityAcceptedByUserId: string | null
+  taxResponsibilityAgreementVersion: string | null
 }
 
 export type OrganizationsMaxAggregateOutputType = {
@@ -76,6 +83,13 @@ export type OrganizationsMaxAggregateOutputType = {
   publicHeadline: string | null
   publicIntroText: string | null
   publicCompletionRedirectUrl: string | null
+  taxOrganizationType: string | null
+  operatesAthleticFacility: boolean | null
+  defaultEventTaxHandling: string | null
+  defaultRentalTaxHandling: string | null
+  taxResponsibilityAcceptedAt: Date | null
+  taxResponsibilityAcceptedByUserId: string | null
+  taxResponsibilityAgreementVersion: string | null
 }
 
 export type OrganizationsCountAggregateOutputType = {
@@ -109,6 +123,13 @@ export type OrganizationsCountAggregateOutputType = {
   publicIntroText: number
   embedAllowedDomains: number
   publicCompletionRedirectUrl: number
+  taxOrganizationType: number
+  operatesAthleticFacility: number
+  defaultEventTaxHandling: number
+  defaultRentalTaxHandling: number
+  taxResponsibilityAcceptedAt: number
+  taxResponsibilityAcceptedByUserId: number
+  taxResponsibilityAgreementVersion: number
   _all: number
 }
 
@@ -138,6 +159,13 @@ export type OrganizationsMinAggregateInputType = {
   publicHeadline?: true
   publicIntroText?: true
   publicCompletionRedirectUrl?: true
+  taxOrganizationType?: true
+  operatesAthleticFacility?: true
+  defaultEventTaxHandling?: true
+  defaultRentalTaxHandling?: true
+  taxResponsibilityAcceptedAt?: true
+  taxResponsibilityAcceptedByUserId?: true
+  taxResponsibilityAgreementVersion?: true
 }
 
 export type OrganizationsMaxAggregateInputType = {
@@ -165,6 +193,13 @@ export type OrganizationsMaxAggregateInputType = {
   publicHeadline?: true
   publicIntroText?: true
   publicCompletionRedirectUrl?: true
+  taxOrganizationType?: true
+  operatesAthleticFacility?: true
+  defaultEventTaxHandling?: true
+  defaultRentalTaxHandling?: true
+  taxResponsibilityAcceptedAt?: true
+  taxResponsibilityAcceptedByUserId?: true
+  taxResponsibilityAgreementVersion?: true
 }
 
 export type OrganizationsCountAggregateInputType = {
@@ -198,6 +233,13 @@ export type OrganizationsCountAggregateInputType = {
   publicIntroText?: true
   embedAllowedDomains?: true
   publicCompletionRedirectUrl?: true
+  taxOrganizationType?: true
+  operatesAthleticFacility?: true
+  defaultEventTaxHandling?: true
+  defaultRentalTaxHandling?: true
+  taxResponsibilityAcceptedAt?: true
+  taxResponsibilityAcceptedByUserId?: true
+  taxResponsibilityAgreementVersion?: true
   _all?: true
 }
 
@@ -304,6 +346,13 @@ export type OrganizationsGroupByOutputType = {
   publicIntroText: string | null
   embedAllowedDomains: string[]
   publicCompletionRedirectUrl: string | null
+  taxOrganizationType: string
+  operatesAthleticFacility: boolean
+  defaultEventTaxHandling: string
+  defaultRentalTaxHandling: string
+  taxResponsibilityAcceptedAt: Date | null
+  taxResponsibilityAcceptedByUserId: string | null
+  taxResponsibilityAgreementVersion: string | null
   _count: OrganizationsCountAggregateOutputType | null
   _min: OrganizationsMinAggregateOutputType | null
   _max: OrganizationsMaxAggregateOutputType | null
@@ -358,6 +407,13 @@ export type OrganizationsWhereInput = {
   publicIntroText?: Prisma.StringNullableFilter<"Organizations"> | string | null
   embedAllowedDomains?: Prisma.StringNullableListFilter<"Organizations">
   publicCompletionRedirectUrl?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  taxOrganizationType?: Prisma.StringFilter<"Organizations"> | string
+  operatesAthleticFacility?: Prisma.BoolFilter<"Organizations"> | boolean
+  defaultEventTaxHandling?: Prisma.StringFilter<"Organizations"> | string
+  defaultRentalTaxHandling?: Prisma.StringFilter<"Organizations"> | string
+  taxResponsibilityAcceptedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  taxResponsibilityAcceptedByUserId?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  taxResponsibilityAgreementVersion?: Prisma.StringNullableFilter<"Organizations"> | string | null
 }
 
 export type OrganizationsOrderByWithRelationInput = {
@@ -391,6 +447,13 @@ export type OrganizationsOrderByWithRelationInput = {
   publicIntroText?: Prisma.SortOrderInput | Prisma.SortOrder
   embedAllowedDomains?: Prisma.SortOrder
   publicCompletionRedirectUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  taxOrganizationType?: Prisma.SortOrder
+  operatesAthleticFacility?: Prisma.SortOrder
+  defaultEventTaxHandling?: Prisma.SortOrder
+  defaultRentalTaxHandling?: Prisma.SortOrder
+  taxResponsibilityAcceptedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  taxResponsibilityAcceptedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  taxResponsibilityAgreementVersion?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type OrganizationsWhereUniqueInput = Prisma.AtLeast<{
@@ -427,6 +490,13 @@ export type OrganizationsWhereUniqueInput = Prisma.AtLeast<{
   publicIntroText?: Prisma.StringNullableFilter<"Organizations"> | string | null
   embedAllowedDomains?: Prisma.StringNullableListFilter<"Organizations">
   publicCompletionRedirectUrl?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  taxOrganizationType?: Prisma.StringFilter<"Organizations"> | string
+  operatesAthleticFacility?: Prisma.BoolFilter<"Organizations"> | boolean
+  defaultEventTaxHandling?: Prisma.StringFilter<"Organizations"> | string
+  defaultRentalTaxHandling?: Prisma.StringFilter<"Organizations"> | string
+  taxResponsibilityAcceptedAt?: Prisma.DateTimeNullableFilter<"Organizations"> | Date | string | null
+  taxResponsibilityAcceptedByUserId?: Prisma.StringNullableFilter<"Organizations"> | string | null
+  taxResponsibilityAgreementVersion?: Prisma.StringNullableFilter<"Organizations"> | string | null
 }, "id" | "publicSlug">
 
 export type OrganizationsOrderByWithAggregationInput = {
@@ -460,6 +530,13 @@ export type OrganizationsOrderByWithAggregationInput = {
   publicIntroText?: Prisma.SortOrderInput | Prisma.SortOrder
   embedAllowedDomains?: Prisma.SortOrder
   publicCompletionRedirectUrl?: Prisma.SortOrderInput | Prisma.SortOrder
+  taxOrganizationType?: Prisma.SortOrder
+  operatesAthleticFacility?: Prisma.SortOrder
+  defaultEventTaxHandling?: Prisma.SortOrder
+  defaultRentalTaxHandling?: Prisma.SortOrder
+  taxResponsibilityAcceptedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  taxResponsibilityAcceptedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  taxResponsibilityAgreementVersion?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.OrganizationsCountOrderByAggregateInput
   _max?: Prisma.OrganizationsMaxOrderByAggregateInput
   _min?: Prisma.OrganizationsMinOrderByAggregateInput
@@ -499,6 +576,13 @@ export type OrganizationsScalarWhereWithAggregatesInput = {
   publicIntroText?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
   embedAllowedDomains?: Prisma.StringNullableListFilter<"Organizations">
   publicCompletionRedirectUrl?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  taxOrganizationType?: Prisma.StringWithAggregatesFilter<"Organizations"> | string
+  operatesAthleticFacility?: Prisma.BoolWithAggregatesFilter<"Organizations"> | boolean
+  defaultEventTaxHandling?: Prisma.StringWithAggregatesFilter<"Organizations"> | string
+  defaultRentalTaxHandling?: Prisma.StringWithAggregatesFilter<"Organizations"> | string
+  taxResponsibilityAcceptedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Organizations"> | Date | string | null
+  taxResponsibilityAcceptedByUserId?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
+  taxResponsibilityAgreementVersion?: Prisma.StringNullableWithAggregatesFilter<"Organizations"> | string | null
 }
 
 export type OrganizationsCreateInput = {
@@ -532,6 +616,13 @@ export type OrganizationsCreateInput = {
   publicIntroText?: string | null
   embedAllowedDomains?: Prisma.OrganizationsCreateembedAllowedDomainsInput | string[]
   publicCompletionRedirectUrl?: string | null
+  taxOrganizationType?: string
+  operatesAthleticFacility?: boolean
+  defaultEventTaxHandling?: string
+  defaultRentalTaxHandling?: string
+  taxResponsibilityAcceptedAt?: Date | string | null
+  taxResponsibilityAcceptedByUserId?: string | null
+  taxResponsibilityAgreementVersion?: string | null
 }
 
 export type OrganizationsUncheckedCreateInput = {
@@ -565,6 +656,13 @@ export type OrganizationsUncheckedCreateInput = {
   publicIntroText?: string | null
   embedAllowedDomains?: Prisma.OrganizationsCreateembedAllowedDomainsInput | string[]
   publicCompletionRedirectUrl?: string | null
+  taxOrganizationType?: string
+  operatesAthleticFacility?: boolean
+  defaultEventTaxHandling?: string
+  defaultRentalTaxHandling?: string
+  taxResponsibilityAcceptedAt?: Date | string | null
+  taxResponsibilityAcceptedByUserId?: string | null
+  taxResponsibilityAgreementVersion?: string | null
 }
 
 export type OrganizationsUpdateInput = {
@@ -598,6 +696,13 @@ export type OrganizationsUpdateInput = {
   publicIntroText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   embedAllowedDomains?: Prisma.OrganizationsUpdateembedAllowedDomainsInput | string[]
   publicCompletionRedirectUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  taxOrganizationType?: Prisma.StringFieldUpdateOperationsInput | string
+  operatesAthleticFacility?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  defaultEventTaxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  defaultRentalTaxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  taxResponsibilityAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  taxResponsibilityAcceptedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  taxResponsibilityAgreementVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type OrganizationsUncheckedUpdateInput = {
@@ -631,6 +736,13 @@ export type OrganizationsUncheckedUpdateInput = {
   publicIntroText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   embedAllowedDomains?: Prisma.OrganizationsUpdateembedAllowedDomainsInput | string[]
   publicCompletionRedirectUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  taxOrganizationType?: Prisma.StringFieldUpdateOperationsInput | string
+  operatesAthleticFacility?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  defaultEventTaxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  defaultRentalTaxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  taxResponsibilityAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  taxResponsibilityAcceptedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  taxResponsibilityAgreementVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type OrganizationsCreateManyInput = {
@@ -664,6 +776,13 @@ export type OrganizationsCreateManyInput = {
   publicIntroText?: string | null
   embedAllowedDomains?: Prisma.OrganizationsCreateembedAllowedDomainsInput | string[]
   publicCompletionRedirectUrl?: string | null
+  taxOrganizationType?: string
+  operatesAthleticFacility?: boolean
+  defaultEventTaxHandling?: string
+  defaultRentalTaxHandling?: string
+  taxResponsibilityAcceptedAt?: Date | string | null
+  taxResponsibilityAcceptedByUserId?: string | null
+  taxResponsibilityAgreementVersion?: string | null
 }
 
 export type OrganizationsUpdateManyMutationInput = {
@@ -697,6 +816,13 @@ export type OrganizationsUpdateManyMutationInput = {
   publicIntroText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   embedAllowedDomains?: Prisma.OrganizationsUpdateembedAllowedDomainsInput | string[]
   publicCompletionRedirectUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  taxOrganizationType?: Prisma.StringFieldUpdateOperationsInput | string
+  operatesAthleticFacility?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  defaultEventTaxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  defaultRentalTaxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  taxResponsibilityAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  taxResponsibilityAcceptedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  taxResponsibilityAgreementVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type OrganizationsUncheckedUpdateManyInput = {
@@ -730,6 +856,13 @@ export type OrganizationsUncheckedUpdateManyInput = {
   publicIntroText?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   embedAllowedDomains?: Prisma.OrganizationsUpdateembedAllowedDomainsInput | string[]
   publicCompletionRedirectUrl?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  taxOrganizationType?: Prisma.StringFieldUpdateOperationsInput | string
+  operatesAthleticFacility?: Prisma.BoolFieldUpdateOperationsInput | boolean
+  defaultEventTaxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  defaultRentalTaxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  taxResponsibilityAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  taxResponsibilityAcceptedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  taxResponsibilityAgreementVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
 
 export type OrganizationsCountOrderByAggregateInput = {
@@ -763,6 +896,13 @@ export type OrganizationsCountOrderByAggregateInput = {
   publicIntroText?: Prisma.SortOrder
   embedAllowedDomains?: Prisma.SortOrder
   publicCompletionRedirectUrl?: Prisma.SortOrder
+  taxOrganizationType?: Prisma.SortOrder
+  operatesAthleticFacility?: Prisma.SortOrder
+  defaultEventTaxHandling?: Prisma.SortOrder
+  defaultRentalTaxHandling?: Prisma.SortOrder
+  taxResponsibilityAcceptedAt?: Prisma.SortOrder
+  taxResponsibilityAcceptedByUserId?: Prisma.SortOrder
+  taxResponsibilityAgreementVersion?: Prisma.SortOrder
 }
 
 export type OrganizationsMaxOrderByAggregateInput = {
@@ -790,6 +930,13 @@ export type OrganizationsMaxOrderByAggregateInput = {
   publicHeadline?: Prisma.SortOrder
   publicIntroText?: Prisma.SortOrder
   publicCompletionRedirectUrl?: Prisma.SortOrder
+  taxOrganizationType?: Prisma.SortOrder
+  operatesAthleticFacility?: Prisma.SortOrder
+  defaultEventTaxHandling?: Prisma.SortOrder
+  defaultRentalTaxHandling?: Prisma.SortOrder
+  taxResponsibilityAcceptedAt?: Prisma.SortOrder
+  taxResponsibilityAcceptedByUserId?: Prisma.SortOrder
+  taxResponsibilityAgreementVersion?: Prisma.SortOrder
 }
 
 export type OrganizationsMinOrderByAggregateInput = {
@@ -817,6 +964,13 @@ export type OrganizationsMinOrderByAggregateInput = {
   publicHeadline?: Prisma.SortOrder
   publicIntroText?: Prisma.SortOrder
   publicCompletionRedirectUrl?: Prisma.SortOrder
+  taxOrganizationType?: Prisma.SortOrder
+  operatesAthleticFacility?: Prisma.SortOrder
+  defaultEventTaxHandling?: Prisma.SortOrder
+  defaultRentalTaxHandling?: Prisma.SortOrder
+  taxResponsibilityAcceptedAt?: Prisma.SortOrder
+  taxResponsibilityAcceptedByUserId?: Prisma.SortOrder
+  taxResponsibilityAgreementVersion?: Prisma.SortOrder
 }
 
 export type OrganizationsCreatehostIdsInput = {
@@ -905,6 +1059,13 @@ export type OrganizationsSelect<ExtArgs extends runtime.Types.Extensions.Interna
   publicIntroText?: boolean
   embedAllowedDomains?: boolean
   publicCompletionRedirectUrl?: boolean
+  taxOrganizationType?: boolean
+  operatesAthleticFacility?: boolean
+  defaultEventTaxHandling?: boolean
+  defaultRentalTaxHandling?: boolean
+  taxResponsibilityAcceptedAt?: boolean
+  taxResponsibilityAcceptedByUserId?: boolean
+  taxResponsibilityAgreementVersion?: boolean
 }, ExtArgs["result"]["organizations"]>
 
 export type OrganizationsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -938,6 +1099,13 @@ export type OrganizationsSelectCreateManyAndReturn<ExtArgs extends runtime.Types
   publicIntroText?: boolean
   embedAllowedDomains?: boolean
   publicCompletionRedirectUrl?: boolean
+  taxOrganizationType?: boolean
+  operatesAthleticFacility?: boolean
+  defaultEventTaxHandling?: boolean
+  defaultRentalTaxHandling?: boolean
+  taxResponsibilityAcceptedAt?: boolean
+  taxResponsibilityAcceptedByUserId?: boolean
+  taxResponsibilityAgreementVersion?: boolean
 }, ExtArgs["result"]["organizations"]>
 
 export type OrganizationsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -971,6 +1139,13 @@ export type OrganizationsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types
   publicIntroText?: boolean
   embedAllowedDomains?: boolean
   publicCompletionRedirectUrl?: boolean
+  taxOrganizationType?: boolean
+  operatesAthleticFacility?: boolean
+  defaultEventTaxHandling?: boolean
+  defaultRentalTaxHandling?: boolean
+  taxResponsibilityAcceptedAt?: boolean
+  taxResponsibilityAcceptedByUserId?: boolean
+  taxResponsibilityAgreementVersion?: boolean
 }, ExtArgs["result"]["organizations"]>
 
 export type OrganizationsSelectScalar = {
@@ -1004,9 +1179,16 @@ export type OrganizationsSelectScalar = {
   publicIntroText?: boolean
   embedAllowedDomains?: boolean
   publicCompletionRedirectUrl?: boolean
+  taxOrganizationType?: boolean
+  operatesAthleticFacility?: boolean
+  defaultEventTaxHandling?: boolean
+  defaultRentalTaxHandling?: boolean
+  taxResponsibilityAcceptedAt?: boolean
+  taxResponsibilityAcceptedByUserId?: boolean
+  taxResponsibilityAgreementVersion?: boolean
 }
 
-export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "hostIds" | "website" | "sports" | "officialIds" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "coordinates" | "productIds" | "publicSlug" | "publicPageEnabled" | "publicWidgetsEnabled" | "brandPrimaryColor" | "brandAccentColor" | "publicHeadline" | "publicIntroText" | "embedAllowedDomains" | "publicCompletionRedirectUrl", ExtArgs["result"]["organizations"]>
+export type OrganizationsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "location" | "address" | "description" | "logoId" | "ownerId" | "hostIds" | "website" | "sports" | "officialIds" | "hasStripeAccount" | "verificationStatus" | "verifiedAt" | "verificationReviewStatus" | "verificationReviewNotes" | "verificationReviewUpdatedAt" | "coordinates" | "productIds" | "publicSlug" | "publicPageEnabled" | "publicWidgetsEnabled" | "brandPrimaryColor" | "brandAccentColor" | "publicHeadline" | "publicIntroText" | "embedAllowedDomains" | "publicCompletionRedirectUrl" | "taxOrganizationType" | "operatesAthleticFacility" | "defaultEventTaxHandling" | "defaultRentalTaxHandling" | "taxResponsibilityAcceptedAt" | "taxResponsibilityAcceptedByUserId" | "taxResponsibilityAgreementVersion", ExtArgs["result"]["organizations"]>
 
 export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Organizations"
@@ -1042,6 +1224,13 @@ export type $OrganizationsPayload<ExtArgs extends runtime.Types.Extensions.Inter
     publicIntroText: string | null
     embedAllowedDomains: string[]
     publicCompletionRedirectUrl: string | null
+    taxOrganizationType: string
+    operatesAthleticFacility: boolean
+    defaultEventTaxHandling: string
+    defaultRentalTaxHandling: string
+    taxResponsibilityAcceptedAt: Date | null
+    taxResponsibilityAcceptedByUserId: string | null
+    taxResponsibilityAgreementVersion: string | null
   }, ExtArgs["result"]["organizations"]>
   composites: {}
 }
@@ -1495,6 +1684,13 @@ export interface OrganizationsFieldRefs {
   readonly publicIntroText: Prisma.FieldRef<"Organizations", 'String'>
   readonly embedAllowedDomains: Prisma.FieldRef<"Organizations", 'String[]'>
   readonly publicCompletionRedirectUrl: Prisma.FieldRef<"Organizations", 'String'>
+  readonly taxOrganizationType: Prisma.FieldRef<"Organizations", 'String'>
+  readonly operatesAthleticFacility: Prisma.FieldRef<"Organizations", 'Boolean'>
+  readonly defaultEventTaxHandling: Prisma.FieldRef<"Organizations", 'String'>
+  readonly defaultRentalTaxHandling: Prisma.FieldRef<"Organizations", 'String'>
+  readonly taxResponsibilityAcceptedAt: Prisma.FieldRef<"Organizations", 'DateTime'>
+  readonly taxResponsibilityAcceptedByUserId: Prisma.FieldRef<"Organizations", 'String'>
+  readonly taxResponsibilityAgreementVersion: Prisma.FieldRef<"Organizations", 'String'>
 }
     
 

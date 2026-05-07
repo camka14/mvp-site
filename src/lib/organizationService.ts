@@ -21,6 +21,11 @@ import {
   normalizeInviteType,
   normalizeStaffMemberTypes,
 } from './staff';
+import {
+  normalizeOrganizationDefaultEventTaxHandling,
+  normalizeOrganizationTaxClassification,
+  normalizeRentalTaxHandling,
+} from '@/lib/taxPolicy';
 
 type AnyRow = Record<string, any> & { $id: string };
 type OrganizationFetchMode = 'base' | 'eventForm' | 'full';
@@ -211,6 +216,21 @@ class OrganizationService {
       ownerId: row.ownerId ?? row.owner_id ?? undefined,
       hostIds: staffMembers.length > 0 ? derivedHostIds : hostIds,
       hasStripeAccount: Boolean(row.hasStripeAccount),
+      taxOrganizationType: normalizeOrganizationTaxClassification(row.taxOrganizationType),
+      operatesAthleticFacility: Boolean(row.operatesAthleticFacility),
+      defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(row.defaultEventTaxHandling),
+      defaultRentalTaxHandling: normalizeRentalTaxHandling(row.defaultRentalTaxHandling),
+      taxResponsibilityAcceptedAt: typeof row.taxResponsibilityAcceptedAt === 'string'
+        ? row.taxResponsibilityAcceptedAt
+        : row.taxResponsibilityAcceptedAt instanceof Date
+          ? row.taxResponsibilityAcceptedAt.toISOString()
+          : undefined,
+      taxResponsibilityAcceptedByUserId: typeof row.taxResponsibilityAcceptedByUserId === 'string'
+        ? row.taxResponsibilityAcceptedByUserId
+        : undefined,
+      taxResponsibilityAgreementVersion: typeof row.taxResponsibilityAgreementVersion === 'string'
+        ? row.taxResponsibilityAgreementVersion
+        : undefined,
       verificationStatus: resolveOrganizationVerificationStatus({
         verificationStatus: row.verificationStatus,
         hasStripeAccount: row.hasStripeAccount,

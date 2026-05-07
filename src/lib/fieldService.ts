@@ -5,6 +5,7 @@ import { createId } from '@/lib/id';
 import type { Field, Organization, TimeSlot } from '@/types';
 import { eventService } from './eventService';
 import { ensureLocalDateTimeString } from '@/lib/dateUtils';
+import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 
 
 export interface CreateFieldData {
@@ -243,6 +244,7 @@ class FieldService {
       eventId: typeof row.eventId === 'string' ? row.eventId : undefined,
       requiredTemplateIds,
       hostRequiredTemplateIds,
+      taxHandling: normalizeRentalTaxHandling(row.taxHandling),
     };
 
     if (typeof startMinutes === 'number') {
@@ -357,6 +359,7 @@ class FieldService {
       startDate: slot.startDate ?? null,
       endDate: slot.endDate ?? null,
       price: slot.price ?? null,
+      taxHandling: normalizeRentalTaxHandling(slot.taxHandling),
       requiredTemplateIds: Array.isArray(slot.requiredTemplateIds)
         ? Array.from(new Set(slot.requiredTemplateIds.map((id) => String(id)).filter((id) => id.length > 0)))
         : [],

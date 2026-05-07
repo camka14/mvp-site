@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
+import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +19,7 @@ const TIME_SLOT_MUTABLE_FIELDS = new Set<string>([
   'startDate',
   'endDate',
   'price',
+  'taxHandling',
   'requiredTemplateIds',
   'hostRequiredTemplateIds',
   'divisions',
@@ -200,6 +202,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (payload.hostRequiredTemplateIds !== undefined) {
     payload.hostRequiredTemplateIds = normalizeTemplateIds(payload.hostRequiredTemplateIds);
   }
+  if (payload.taxHandling !== undefined) {
+    payload.taxHandling = normalizeRentalTaxHandling(payload.taxHandling);
+  }
   if (payload.scheduledFieldIds !== undefined || payload.scheduledFieldId !== undefined) {
     const normalized = normalizeFieldIds([
       ...(Array.isArray(payload.scheduledFieldIds) ? payload.scheduledFieldIds : []),
@@ -258,6 +263,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'startDate',
     'endDate',
     'price',
+    'taxHandling',
     'requiredTemplateIds',
     'hostRequiredTemplateIds',
   ] as const;

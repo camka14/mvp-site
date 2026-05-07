@@ -12,6 +12,12 @@ import {
   normalizePublicSlug,
   normalizePublicText,
 } from '@/server/organizationPublicSettings';
+import {
+  ORG_TAX_AGREEMENT_VERSION,
+  normalizeOrganizationDefaultEventTaxHandling,
+  normalizeOrganizationTaxClassification,
+  normalizeRentalTaxHandling,
+} from '@/lib/taxPolicy';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -39,6 +45,19 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'publicIntroText',
   'embedAllowedDomains',
   'publicCompletionRedirectUrl',
+  'taxOrganizationType',
+  'operatesAthleticFacility',
+  'defaultEventTaxHandling',
+  'defaultRentalTaxHandling',
+]);
+const ORGANIZATION_TRANSIENT_FIELDS = new Set<string>([
+  'taxResponsibilityAgreementAccepted',
+]);
+const ORGANIZATION_TAX_PROFILE_FIELDS = new Set<string>([
+  'taxOrganizationType',
+  'operatesAthleticFacility',
+  'defaultEventTaxHandling',
+  'defaultRentalTaxHandling',
 ]);
 const ORGANIZATION_HARD_IMMUTABLE_FIELDS = new Set<string>([
   'id',
@@ -188,7 +207,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { id } = await params;
   const existing = await (prisma as any).organizations.findUnique({
     where: { id },
-    select: { id: true, ownerId: true, publicSlug: true },
+    select: {
+      id: true,
+      ownerId: true,
+      publicSlug: true,
+      taxResponsibilityAcceptedAt: true,
+    },
   });
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
@@ -202,6 +226,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ...ORGANIZATION_MUTABLE_FIELDS,
     ...ORGANIZATION_HARD_IMMUTABLE_FIELDS,
     ...ORGANIZATION_ADMIN_OVERRIDABLE_FIELDS,
+    ...ORGANIZATION_TRANSIENT_FIELDS,
   ]);
   if (unknownPayloadKeys.length) {
     return NextResponse.json(
@@ -234,6 +259,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (Object.prototype.hasOwnProperty.call(updateData, 'sports')) {
     updateData.sports = sanitizeStringArray(updateData.sports);
+  }
+  if (Object.prototype.hasOwnProperty.call(updateData, 'taxOrganizationType')) {
+    updateData.taxOrganizationType = normalizeOrganizationTaxClassification(updateData.taxOrganizationType);
+  }
+  if (Object.prototype.hasOwnProperty.call(updateData, 'operatesAthleticFacility')) {
+    updateData.operatesAthleticFacility = updateData.operatesAthleticFacility === true;
+  }
+  if (Object.prototype.hasOwnProperty.call(updateData, 'defaultEventTaxHandling')) {
+    updateData.defaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(updateData.defaultEventTaxHandling);
+  }
+  if (Object.prototype.hasOwnProperty.call(updateData, 'defaultRentalTaxHandling')) {
+    updateData.defaultRentalTaxHandling = normalizeRentalTaxHandling(updateData.defaultRentalTaxHandling);
+  }
+  const updatesTaxProfile = findPresentKeys(payload, ORGANIZATION_TAX_PROFILE_FIELDS).length > 0;
+  const acceptedAgreementNow = payload.taxResponsibilityAgreementAccepted === true;
+  const hasAcceptedAgreementBefore = existing.taxResponsibilityAcceptedAt instanceof Date
+    || (typeof existing.taxResponsibilityAcceptedAt === 'string' && existing.taxResponsibilityAcceptedAt.trim().length > 0);
+  if (updatesTaxProfile && !acceptedAgreementNow && !hasAcceptedAgreementBefore) {
+    return NextResponse.json(
+      { error: 'Organization tax responsibility agreement must be accepted before tax settings can be saved.' },
+      { status: 400 },
+    );
+  }
+  if (acceptedAgreementNow) {
+    updateData.taxResponsibilityAcceptedAt = new Date();
+    updateData.taxResponsibilityAcceptedByUserId = session.userId;
+    updateData.taxResponsibilityAgreementVersion = ORG_TAX_AGREEMENT_VERSION;
   }
   try {
     if (Object.prototype.hasOwnProperty.call(updateData, 'publicSlug')) {

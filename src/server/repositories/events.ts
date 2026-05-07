@@ -2,6 +2,7 @@ import type { PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
+import { normalizeEventTaxHandling, normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 import {
   buildDivisionToken,
   buildEventDivisionId,
@@ -188,6 +189,14 @@ const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
 };
 
 const normalizeEntityId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+};
+
+const normalizeOptionalText = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
   }
@@ -595,6 +604,7 @@ const loadTimeSlotRows = async (client: PrismaLike, timeSlotIds: string[]): Prom
         scheduledFieldId: true,
         scheduledFieldIds: true,
         price: true,
+        taxHandling: true,
         divisions: true,
         requiredTemplateIds: true,
       } as any,
@@ -617,6 +627,7 @@ const loadTimeSlotRows = async (client: PrismaLike, timeSlotIds: string[]): Prom
         endDate: true,
         scheduledFieldId: true,
         price: true,
+        taxHandling: true,
       } as any,
     });
     return legacyRows.map((row: any) => ({
@@ -3578,6 +3589,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       hostId: true,
       organizationId: true,
       parentEvent: true,
+      location: true,
       officialPositions: true as any,
       officialSchedulingMode: true as any,
       matchRulesOverride: true as any,
@@ -3677,6 +3689,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const existingFieldIds = normalizeFieldIds(existingEvent?.fieldIds ?? []);
   const existingTimeSlotIds = normalizeFieldIds(existingEvent?.timeSlotIds ?? []);
   const fields = Array.isArray(payload.fields) ? payload.fields : [];
+  const payloadIncludesLocation = Object.prototype.hasOwnProperty.call(payload, 'location');
+  const eventLocation = payloadIncludesLocation
+    ? payload.location ?? ''
+    : (existingEvent as any)?.location ?? '';
+  const defaultFieldLocation = normalizeOptionalText(eventLocation);
   const teams = Array.isArray(payload.teams) ? payload.teams : [];
   const timeSlots = Array.isArray(payload.timeSlots) ? payload.timeSlots : [];
   const normalizeDivisionBilling = (detail: DivisionDetailPayload): DivisionDetailPayload => {
@@ -3952,6 +3969,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? Boolean((existingEvent as any).autoCreatePointMatchIncidents)
       : undefined;
   const normalizedSportId = normalizeEntityId(payload.sportId) ?? normalizeEntityId(existingEvent?.sportId);
+  const normalizedTaxHandling = normalizeEventTaxHandling(
+    Object.prototype.hasOwnProperty.call(payload, 'taxHandling')
+      ? payload.taxHandling
+      : (existingEvent as any)?.taxHandling,
+  );
 
   const eventData = {
     id,
@@ -3963,7 +3985,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     winnerSetCount: payload.winnerSetCount ?? null,
     loserSetCount: payload.loserSetCount ?? null,
     doubleElimination: payload.doubleElimination ?? false,
-    location: payload.location ?? '',
+    location: eventLocation,
     address: payload.address ?? null,
     rating: payload.rating ?? null,
     teamSizeLimit: payload.teamSizeLimit ?? 0,
@@ -3974,6 +3996,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     assistantHostIds: normalizedAssistantHostIds,
     noFixedEndDateTime,
     price: normalizedEventPrice,
+    taxHandling: normalizedTaxHandling,
     singleDivision: payload.singleDivision ?? false,
     registrationByDivisionType: payload.registrationByDivisionType ?? false,
     cancellationRefundHours: payload.cancellationRefundHours ?? null,
@@ -4164,6 +4187,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     const normalizedRentalSlotIds = hasRentalSlotIdsInput
       ? ensureArray(field.rentalSlotIds).map((value) => String(value)).filter(Boolean)
       : null;
+    const fieldLocation = normalizeOptionalText(field.location);
     await client.fields.upsert({
       where: { id: fieldId },
       create: {
@@ -4174,7 +4198,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         inUse: field.inUse ?? null,
         name: field.name ?? null,
         rentalSlotIds: normalizedRentalSlotIds ?? [],
-        location: field.location ?? null,
+        location: fieldLocation ?? defaultFieldLocation,
         organizationId: createFieldOrganizationId,
         createdBy: persistedFieldCreatedBy ?? (normalizedHostId || null),
         createdAt: new Date(),
@@ -4284,6 +4308,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         scheduledFieldId: slot.scheduledFieldId ?? null,
         scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
+        taxHandling: normalizeRentalTaxHandling((slot as any).taxHandling),
         createdAt: now,
         updatedAt: now,
       } as any,
@@ -4298,6 +4323,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         scheduledFieldId: slot.scheduledFieldId ?? null,
         scheduledFieldIds: slot.scheduledFieldIds,
         price: slot.price ?? null,
+        taxHandling: normalizeRentalTaxHandling((slot as any).taxHandling),
         updatedAt: now,
       } as any,
     });

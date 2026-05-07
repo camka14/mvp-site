@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
+import {
+  ORG_TAX_AGREEMENT_VERSION,
+  normalizeOrganizationDefaultEventTaxHandling,
+  normalizeOrganizationTaxClassification,
+  normalizeRentalTaxHandling,
+} from '@/lib/taxPolicy';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -22,6 +28,11 @@ const createSchema = z.object({
   officialIds: z.array(z.string()).optional(),
   coordinates: z.any().optional(),
   productIds: z.array(z.string()).optional(),
+  taxOrganizationType: z.string().optional(),
+  operatesAthleticFacility: z.boolean().optional(),
+  defaultEventTaxHandling: z.string().optional(),
+  defaultRentalTaxHandling: z.string().optional(),
+  taxResponsibilityAgreementAccepted: z.boolean().optional(),
 }).passthrough();
 
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
@@ -188,6 +199,14 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
+  if (data.taxResponsibilityAgreementAccepted !== true) {
+    return NextResponse.json(
+      { error: 'Organization tax responsibility agreement must be accepted.' },
+      { status: 400 },
+    );
+  }
+
+  const taxAcceptedAt = new Date();
   const organization = await createOrganizationWithUnknownArgFallback({
     id: data.id,
     name: data.name,
@@ -203,6 +222,13 @@ export async function POST(req: NextRequest) {
     hasStripeAccount: false,
     coordinates: data.coordinates ?? null,
     productIds: Array.isArray(data.productIds) ? data.productIds : [],
+    taxOrganizationType: normalizeOrganizationTaxClassification(data.taxOrganizationType),
+    operatesAthleticFacility: data.operatesAthleticFacility === true,
+    defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(data.defaultEventTaxHandling),
+    defaultRentalTaxHandling: normalizeRentalTaxHandling(data.defaultRentalTaxHandling),
+    taxResponsibilityAcceptedAt: taxAcceptedAt,
+    taxResponsibilityAcceptedByUserId: session.userId,
+    taxResponsibilityAgreementVersion: ORG_TAX_AGREEMENT_VERSION,
     createdAt: new Date(),
     updatedAt: new Date(),
   });

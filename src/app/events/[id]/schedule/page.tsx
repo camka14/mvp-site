@@ -2108,6 +2108,13 @@ function EventScheduleContent() {
   }, [effectiveScheduleDivisionOptions, selectedScheduleDivision]);
 
   useEffect(() => {
+    if (selectedScheduleDivision === 'all') {
+      if (selectedSchedulePool !== 'all') {
+        setSelectedSchedulePool('all');
+      }
+      return;
+    }
+
     if (selectedSchedulePool === 'all') {
       return;
     }
@@ -2115,10 +2122,10 @@ function EventScheduleContent() {
     if (!schedulePoolOptions.some((option) => option.value === selectedSchedulePool)) {
       setSelectedSchedulePool('all');
     }
-  }, [schedulePoolOptions, selectedSchedulePool]);
+  }, [schedulePoolOptions, selectedScheduleDivision, selectedSchedulePool]);
 
   const scheduleMatches = useMemo(() => {
-    if (tournamentPoolPlayEnabled && selectedSchedulePool !== 'all') {
+    if (tournamentPoolPlayEnabled && selectedScheduleDivision !== 'all' && selectedSchedulePool !== 'all') {
       return activeMatches.filter((match) => toDivisionKey(getMatchDivisionId(match)) === selectedSchedulePool);
     }
 
@@ -6045,7 +6052,10 @@ function EventScheduleContent() {
     [schedulePoolOptions],
   );
   const shouldShowScheduleDivisionFilter = !isWeeklyParentEvent && effectiveScheduleDivisionOptions.length > 1;
-  const shouldShowSchedulePoolFilter = !isWeeklyParentEvent && tournamentPoolPlayEnabled && schedulePoolOptions.length > 0;
+  const shouldShowSchedulePoolFilter = !isWeeklyParentEvent
+    && tournamentPoolPlayEnabled
+    && selectedScheduleDivision !== 'all'
+    && schedulePoolOptions.length > 0;
   const shouldShowStandingsPoolFilter = !isWeeklyParentEvent && tournamentPoolPlayEnabled && standingsPoolOptions.length > 0;
   const shouldShowBracketDivisionFilter = bracketDivisionOptions.length > 1;
 
@@ -9146,8 +9156,8 @@ function EventScheduleContent() {
               <Tabs.Tab value="details">Details</Tabs.Tab>
               {showParticipantsTab && <Tabs.Tab value="participants">{isSplitDivisionEvent ? 'Divisions' : 'Participants'}</Tabs.Tab>}
               {showScheduleTab && <Tabs.Tab value="schedule">Schedule</Tabs.Tab>}
-              {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
               {showStandingsTab && <Tabs.Tab value="standings">Standings</Tabs.Tab>}
+              {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
             </Tabs.List>
 
             <Tabs.Panel value="details" pt="md">

@@ -86,6 +86,7 @@ describe('/api/organizations', () => {
         name: 'New Org',
         ownerId: 'user_1',
         hasStripeAccount: true,
+        taxResponsibilityAgreementAccepted: true,
       }),
       headers: { 'content-type': 'application/json' },
     }));
@@ -98,8 +99,34 @@ describe('/api/organizations', () => {
         name: 'New Org',
         ownerId: 'user_1',
         hasStripeAccount: false,
+        taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
+        operatesAthleticFacility: false,
+        defaultEventTaxHandling: 'STRIPE_TAX',
+        defaultRentalTaxHandling: 'STRIPE_TAX',
+        taxResponsibilityAcceptedAt: expect.any(Date),
+        taxResponsibilityAcceptedByUserId: 'user_1',
+        taxResponsibilityAgreementVersion: '2026-05-07',
       }),
     });
     expect(payload.hasStripeAccount).toBe(false);
+  });
+
+  it('requires the organization tax responsibility agreement on create', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+
+    const response = await organizationsPost(new NextRequest('http://localhost/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'org_1',
+        name: 'New Org',
+        ownerId: 'user_1',
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain('tax responsibility agreement');
+    expect(createMock).not.toHaveBeenCalled();
   });
 });

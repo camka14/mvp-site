@@ -4250,6 +4250,7 @@ export const EventsScalarFieldEnum = {
   assistantHostIds: 'assistantHostIds',
   noFixedEndDateTime: 'noFixedEndDateTime',
   price: 'price',
+  taxHandling: 'taxHandling',
   singleDivision: 'singleDivision',
   registrationByDivisionType: 'registrationByDivisionType',
   cancellationRefundHours: 'cancellationRefundHours',
@@ -4329,7 +4330,14 @@ export const OrganizationsScalarFieldEnum = {
   publicHeadline: 'publicHeadline',
   publicIntroText: 'publicIntroText',
   embedAllowedDomains: 'embedAllowedDomains',
-  publicCompletionRedirectUrl: 'publicCompletionRedirectUrl'
+  publicCompletionRedirectUrl: 'publicCompletionRedirectUrl',
+  taxOrganizationType: 'taxOrganizationType',
+  operatesAthleticFacility: 'operatesAthleticFacility',
+  defaultEventTaxHandling: 'defaultEventTaxHandling',
+  defaultRentalTaxHandling: 'defaultRentalTaxHandling',
+  taxResponsibilityAcceptedAt: 'taxResponsibilityAcceptedAt',
+  taxResponsibilityAcceptedByUserId: 'taxResponsibilityAcceptedByUserId',
+  taxResponsibilityAgreementVersion: 'taxResponsibilityAgreementVersion'
 } as const
 
 export type OrganizationsScalarFieldEnum = (typeof OrganizationsScalarFieldEnum)[keyof typeof OrganizationsScalarFieldEnum]
@@ -4385,6 +4393,7 @@ export const TimeSlotsScalarFieldEnum = {
   scheduledFieldId: 'scheduledFieldId',
   scheduledFieldIds: 'scheduledFieldIds',
   price: 'price',
+  taxHandling: 'taxHandling',
   divisions: 'divisions',
   requiredTemplateIds: 'requiredTemplateIds',
   hostRequiredTemplateIds: 'hostRequiredTemplateIds'

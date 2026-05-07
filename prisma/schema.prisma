@@ -788,6 +788,7 @@ model Events {
   assistantHostIds             String[]             @default([])
   noFixedEndDateTime           Boolean              @default(true)
   price                        Int
+  taxHandling                  String               @default("INHERIT_ORG")
   singleDivision               Boolean?
   registrationByDivisionType   Boolean?
   cancellationRefundHours      Int?
@@ -870,6 +871,13 @@ model Organizations {
   publicIntroText             String?
   embedAllowedDomains         String[]                                 @default([])
   publicCompletionRedirectUrl String?
+  taxOrganizationType         String                                   @default("INDIVIDUAL_OR_CLUB")
+  operatesAthleticFacility    Boolean                                  @default(false)
+  defaultEventTaxHandling     String                                   @default("STRIPE_TAX")
+  defaultRentalTaxHandling    String                                   @default("STRIPE_TAX")
+  taxResponsibilityAcceptedAt DateTime?
+  taxResponsibilityAcceptedByUserId String?
+  taxResponsibilityAgreementVersion String?
 
   @@index([verificationStatus])
   @@index([verificationReviewStatus])
@@ -919,6 +927,7 @@ model TimeSlots {
   scheduledFieldId    String?
   scheduledFieldIds   String[]  @default([])
   price               Int?
+  taxHandling         String    @default("STRIPE_TAX")
   divisions           String[]  @default([])
   requiredTemplateIds String[]  @default([])
   hostRequiredTemplateIds String[] @default([])

@@ -6,8 +6,6 @@ import {
   calculateMvpAndStripeFees,
   calculateMvpAndStripeFeesWithTax,
   DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS,
-  STRIPE_FIXED_FEE_CENTS,
-  STRIPE_PERCENT_FEE,
 } from '@/lib/billingFees';
 import { normalizePriceCents } from '@/lib/priceUtils';
 import { formatBillAmount } from '@/types';
@@ -59,12 +57,6 @@ export default function PriceWithFeesPreview({
     ),
     [eventType, normalizedAmountCents, stripeTaxServiceFeeCents, taxable],
   );
-  const stripeProcessingFeeCents = 'stripeProcessingFeeCents' in feeBreakdown
-    ? Number(feeBreakdown.stripeProcessingFeeCents)
-    : feeBreakdown.stripeFeeCents;
-  const previewTaxServiceFeeCents = 'stripeTaxServiceFeeCents' in feeBreakdown
-    ? Number(feeBreakdown.stripeTaxServiceFeeCents)
-    : 0;
   const totalDisplayValue = taxable
     ? `${formatBillAmount(feeBreakdown.totalChargeCents)} + Tax`
     : formatBillAmount(feeBreakdown.totalChargeCents);
@@ -104,24 +96,16 @@ export default function PriceWithFeesPreview({
             </span>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <span>{`Stripe fee (${formatPercentage(STRIPE_PERCENT_FEE)} + ${formatBillAmount(STRIPE_FIXED_FEE_CENTS)})`}</span>
+            <span>Stripe fee</span>
             <span className="font-medium text-slate-900">
-              {formatBillAmount(stripeProcessingFeeCents)}
+              {formatBillAmount(feeBreakdown.stripeFeeCents)}
             </span>
           </div>
           {taxable ? (
-            <>
-              <div className="flex items-center justify-between gap-4">
-                <span>Stripe tax service fee</span>
-                <span className="font-medium text-slate-900">
-                  {formatBillAmount(previewTaxServiceFeeCents)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-4">
-                <span>Tax</span>
-                <span className="font-medium text-slate-900">Calculated at checkout</span>
-              </div>
-            </>
+            <div className="flex items-center justify-between gap-4">
+              <span>Tax</span>
+              <span className="font-medium text-slate-900">Calculated at checkout</span>
+            </div>
           ) : null}
           <div className="flex items-center justify-between gap-4 border-t border-slate-200 pt-2 font-semibold text-slate-900">
             <span>Total charged</span>

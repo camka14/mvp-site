@@ -5,13 +5,21 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { calculateMvpAndStripeFeesWithTax } from '@/lib/billingFees';
 import {
+  type BillingAddress,
   loadUserBillingProfile,
   resolveBillingAddressInput,
   upsertUserBillingAddress,
   validateUsBillingAddress,
 } from '@/lib/billingAddress';
 import { resolvePurchaseContext } from '@/lib/purchaseContext';
-import { calculateTaxQuote, INTERNAL_TAX_CATEGORIES, type InternalTaxCategory } from '@/lib/stripeTax';
+import {
+  buildZeroTaxQuote,
+  calculateTaxQuote,
+  INTERNAL_TAX_CATEGORIES,
+  type InternalTaxCategory,
+  type TaxQuote,
+} from '@/lib/stripeTax';
+import { resolvePurchaseTaxPolicy, type TaxPolicyDecision } from '@/lib/taxPolicy';
 import { buildDestinationTransferData } from '@/lib/stripeConnectAccounts';
 import {
   buildBillingAddressFingerprint,
@@ -40,6 +48,7 @@ import {
   resolveWeeklyOccurrence,
   WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
 } from '@/server/events/weeklyOccurrences';
+import { loadBillingTaxPolicyContext } from '@/server/billingTaxContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,6 +172,26 @@ const isSignedStatus = (value: unknown): boolean => {
 };
 
 const STARTED_REGISTRATION_TTL_MS = 5 * 60 * 1000;
+
+const buildFeeBreakdown = (taxQuote: TaxQuote) => ({
+  eventPrice: taxQuote.subtotalCents,
+  stripeFee: taxQuote.stripeFeeCents,
+  stripeProcessingFee: taxQuote.stripeProcessingFeeCents,
+  stripeTaxServiceFee: taxQuote.stripeTaxServiceFeeCents,
+  processingFee: taxQuote.processingFeeCents,
+  mvpFee: taxQuote.processingFeeCents,
+  taxAmount: taxQuote.taxAmountCents,
+  totalCharge: taxQuote.totalChargeCents,
+  hostReceives: taxQuote.hostReceivesCents,
+  feePercentage: taxQuote.feePercentage,
+  purchaseType: taxQuote.purchaseType,
+});
+
+const taxPolicyResponseFields = (taxPolicy: TaxPolicyDecision) => ({
+  taxMode: taxPolicy.mode,
+  taxReasonCode: taxPolicy.reasonCode,
+  taxJurisdictionState: taxPolicy.jurisdictionState,
+});
 
 type RegistrationDivisionSelectionInput = {
   divisionId?: string | null;
@@ -699,6 +728,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  const taxContext = await loadBillingTaxPolicyContext({
+    event: payload.event ?? null,
+    timeSlot: payload.timeSlot ?? null,
+    organization: payload.organization ?? null,
+    organizationId:
+      resolvedPurchase.organizationId
+      ?? normalizeString(payload.event?.organizationId)
+      ?? normalizeString(resolvedPurchase.product?.organizationId)
+      ?? null,
+  });
+
+  const taxPolicy = resolvePurchaseTaxPolicy({
+    purchaseType: resolvedPurchase.purchaseType,
+    taxCategory: resolvedPurchase.taxCategory,
+    event: taxContext.event ?? payload.event ?? null,
+    organization: taxContext.organization ?? payload.organization ?? null,
+    timeSlot: taxContext.timeSlot ?? payload.timeSlot ?? null,
+  });
+
   let existingTeamRegistration: Awaited<ReturnType<typeof findTeamRegistration>> | null = null;
   if (resolvedPurchase.purchaseType === 'team_registration') {
     const registrantId = teamCheckoutTarget.registrantId ?? userId ?? session.userId;
@@ -763,11 +811,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       paymentIntent: `pi_mock_${crypto.randomUUID()}`,
       publishableKey,
-      taxCalculationId: `tax_mock_${crypto.randomUUID()}`,
+      checkoutMode: 'PAYMENT_INTENT',
+      taxCalculationId: taxPolicy.mode === 'ZERO_TAX' ? undefined : `tax_mock_${crypto.randomUUID()}`,
       taxCategory: resolvedPurchase.taxCategory,
+      ...taxPolicyResponseFields(taxPolicy),
       feeBreakdown: {
         eventPrice: resolvedPurchase.amountCents,
         stripeFee: fallbackFees.stripeFeeCents,
+        stripeProcessingFee: fallbackFees.stripeProcessingFeeCents,
+        stripeTaxServiceFee: fallbackFees.stripeTaxServiceFeeCents,
         processingFee: fallbackFees.mvpFeeCents,
         mvpFee: fallbackFees.mvpFeeCents,
         taxAmount: 0,
@@ -795,7 +847,8 @@ export async function POST(req: NextRequest) {
   }
   const billingAddress = savedBillingProfile?.billingAddress ?? billingProfile.billingAddress;
   const billingEmail = savedBillingProfile?.email ?? billingProfile.email;
-  if (!billingAddress) {
+  const requiresBillingAddressForTax = taxPolicy.mode !== 'ZERO_TAX';
+  if (requiresBillingAddressForTax && !billingAddress) {
     return NextResponse.json({
       error: 'Billing address is required before creating a payment intent.',
       billingAddressRequired: true,
@@ -803,59 +856,69 @@ export async function POST(req: NextRequest) {
   }
 
   const stripe = new Stripe(secretKey);
-  const validatedBillingAddress = validateUsBillingAddress(billingAddress);
-  const eventIdForReference = extractEntityId(payload.event);
-  const timeSlotIdForReference = extractEntityId(payload.timeSlot);
+  let validatedBillingAddress: BillingAddress | null = null;
+  if (billingAddress) {
+    try {
+      validatedBillingAddress = validateUsBillingAddress(billingAddress);
+    } catch (error) {
+      if (requiresBillingAddressForTax) {
+        const message = error instanceof Error ? error.message : 'Invalid billing address.';
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
+    }
+  }
+  const eventIdForReference = taxContext.eventId ?? extractEntityId(payload.event);
+  const timeSlotIdForReference = taxContext.timeSlotId ?? extractEntityId(payload.timeSlot);
   const organizationId =
-    extractEntityId(payload.organization)
+    taxContext.organizationId
+    ?? extractEntityId(payload.organization)
     ?? resolvedPurchase.organizationId
     ?? normalizeString(payload.event?.organizationId)
     ?? normalizeString(resolvedPurchase.product?.organizationId)
     ?? null;
   const hostUserId = resolvedPurchase.hostUserId ?? normalizeString(payload.event?.hostId);
 
-  let taxQuote: Awaited<ReturnType<typeof calculateTaxQuote>>;
-  try {
-    taxQuote = await calculateTaxQuote({
-      stripe,
-      userId: session.userId,
-      organizationId,
-      email: billingEmail,
-      billingAddress: validatedBillingAddress,
+  let taxQuote: TaxQuote;
+  if (taxPolicy.mode === 'ZERO_TAX') {
+    taxQuote = buildZeroTaxQuote({
       subtotalCents: resolvedPurchase.amountCents,
       purchaseType: resolvedPurchase.purchaseType,
       taxCategory: resolvedPurchase.taxCategory,
       eventType: resolvedPurchase.eventType,
-      lineItemReference: buildLineItemReference({
-        purchaseType: resolvedPurchase.purchaseType,
-        productId: resolvedPurchase.product?.id ?? null,
-        eventId: eventIdForReference,
-        teamId,
-        timeSlotId: timeSlotIdForReference,
-        billId: payload.billId ?? null,
-        billPaymentId: payload.billPaymentId ?? null,
-      }),
-      description: resolvedPurchase.product?.name
-        ?? resolvedPurchase.team?.name
-        ?? normalizeString(payload.event?.name)
-        ?? resolvedPurchase.purchaseType,
     });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to calculate tax.';
-    return NextResponse.json({ error: message }, { status: 400 });
+  } else {
+    try {
+      taxQuote = await calculateTaxQuote({
+        stripe,
+        userId: session.userId,
+        organizationId,
+        email: billingEmail,
+        billingAddress: validatedBillingAddress as BillingAddress,
+        subtotalCents: resolvedPurchase.amountCents,
+        purchaseType: resolvedPurchase.purchaseType,
+        taxCategory: resolvedPurchase.taxCategory,
+        eventType: resolvedPurchase.eventType,
+        lineItemReference: buildLineItemReference({
+          purchaseType: resolvedPurchase.purchaseType,
+          productId: resolvedPurchase.product?.id ?? null,
+          eventId: eventIdForReference,
+          teamId,
+          timeSlotId: timeSlotIdForReference,
+          billId: payload.billId ?? null,
+          billPaymentId: payload.billPaymentId ?? null,
+        }),
+        description: resolvedPurchase.product?.name
+          ?? resolvedPurchase.team?.name
+          ?? normalizeString(payload.event?.name)
+          ?? resolvedPurchase.purchaseType,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to calculate tax.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
   }
 
-  const feeBreakdown = {
-    eventPrice: taxQuote.subtotalCents,
-    stripeFee: taxQuote.stripeFeeCents,
-    processingFee: taxQuote.processingFeeCents,
-    mvpFee: taxQuote.processingFeeCents,
-    taxAmount: taxQuote.taxAmountCents,
-    totalCharge: taxQuote.totalChargeCents,
-    hostReceives: taxQuote.hostReceivesCents,
-    feePercentage: taxQuote.feePercentage,
-    purchaseType: taxQuote.purchaseType,
-  };
+  const feeBreakdown = buildFeeBreakdown(taxQuote);
 
   const transferData = await buildDestinationTransferData({
     organizationId,
@@ -880,8 +943,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         paymentIntent: reusableIntent.client_secret,
         publishableKey,
-        taxCalculationId: getCheckoutTaxCalculationIdFromMetadata(reusableIntent.metadata) ?? taxQuote.calculationId,
+        checkoutMode: 'PAYMENT_INTENT',
+        taxCalculationId: (getCheckoutTaxCalculationIdFromMetadata(reusableIntent.metadata) ?? taxQuote.calculationId) || undefined,
         taxCategory: getCheckoutTaxCategoryFromMetadata(reusableIntent.metadata) ?? taxQuote.taxCategory,
+        ...taxPolicyResponseFields(taxPolicy),
         feeBreakdown,
       }, { status: 200 });
     }
@@ -976,8 +1041,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({
         paymentIntent: reusableIntent.client_secret,
         publishableKey,
-        taxCalculationId: getCheckoutTaxCalculationIdFromMetadata(reusableIntent.metadata) ?? taxQuote.calculationId,
+        checkoutMode: 'PAYMENT_INTENT',
+        taxCalculationId: (getCheckoutTaxCalculationIdFromMetadata(reusableIntent.metadata) ?? taxQuote.calculationId) || undefined,
         taxCategory: getCheckoutTaxCategoryFromMetadata(reusableIntent.metadata) ?? taxQuote.taxCategory,
+        ...taxPolicyResponseFields(taxPolicy),
         feeBreakdown,
       }, { status: 200 });
     }
@@ -1007,6 +1074,9 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'fee_percentage', taxQuote.feePercentage.toFixed(4));
     appendMetadata(metadata, 'tax_calculation_id', taxQuote.calculationId);
     appendMetadata(metadata, 'tax_category', taxQuote.taxCategory);
+    appendMetadata(metadata, 'tax_mode', taxPolicy.mode);
+    appendMetadata(metadata, 'tax_reason_code', taxPolicy.reasonCode);
+    appendMetadata(metadata, 'tax_jurisdiction_state', taxPolicy.jurisdictionState);
     appendMetadata(metadata, 'billing_address_fingerprint', billingAddressFingerprint);
     appendMetadata(metadata, 'event_name', payload.event?.name);
     appendMetadata(metadata, 'event_location', payload.event?.location);
@@ -1041,15 +1111,19 @@ export async function POST(req: NextRequest) {
       amount: taxQuote.totalChargeCents,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
-      customer: taxQuote.customerId,
+      customer: taxQuote.customerId || undefined,
       receipt_email: billingEmail ?? undefined,
-      hooks: {
-        inputs: {
-          tax: {
-            calculation: taxQuote.calculationId,
+      ...(taxQuote.calculationId
+        ? {
+          hooks: {
+            inputs: {
+              tax: {
+                calculation: taxQuote.calculationId,
+              },
+            },
           },
-        },
-      },
+        }
+        : {}),
       metadata,
       ...(transferData ? { transfer_data: transferData } : {}),
     });
@@ -1057,8 +1131,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       paymentIntent: intent.client_secret ?? intent.id,
       publishableKey,
-      taxCalculationId: taxQuote.calculationId,
+      checkoutMode: 'PAYMENT_INTENT',
+      taxCalculationId: taxQuote.calculationId || undefined,
       taxCategory: taxQuote.taxCategory,
+      ...taxPolicyResponseFields(taxPolicy),
       feeBreakdown,
     }, { status: 200 });
   } catch (error) {
@@ -1077,8 +1153,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       error: message,
       publishableKey,
-      taxCalculationId: taxQuote.calculationId,
+      checkoutMode: 'PAYMENT_INTENT',
+      taxCalculationId: taxQuote.calculationId || undefined,
       taxCategory: taxQuote.taxCategory,
+      ...taxPolicyResponseFields(taxPolicy),
       feeBreakdown,
     }, { status: 502 });
   }

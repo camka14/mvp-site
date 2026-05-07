@@ -1,4 +1,5 @@
 import { parseDateInput } from '@/server/legacyFormat';
+import { normalizeRentalTaxHandling, type RentalTaxHandling } from '@/lib/taxPolicy';
 
 export type CanonicalTimeSlotInput = {
   id: string;
@@ -12,6 +13,7 @@ export type CanonicalTimeSlotInput = {
   scheduledFieldId: string | null;
   scheduledFieldIds: string[];
   price: number | null;
+  taxHandling: RentalTaxHandling;
   divisions: string[];
   requiredTemplateIds: string[];
   hostRequiredTemplateIds: string[];
@@ -207,6 +209,7 @@ export const canonicalizeTimeSlots = ({
       scheduledFieldId: normalizedFieldIds[0] ?? null,
       scheduledFieldIds: normalizedFieldIds,
       price: normalizePrice(slot.price),
+      taxHandling: normalizeRentalTaxHandling(slot.taxHandling),
       divisions,
       requiredTemplateIds: normalizeRequiredTemplateIds(slot.requiredTemplateIds),
       hostRequiredTemplateIds: normalizeRequiredTemplateIds(slot.hostRequiredTemplateIds),

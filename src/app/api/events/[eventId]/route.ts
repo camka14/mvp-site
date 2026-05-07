@@ -31,6 +31,7 @@ import {
   normalizeDivisionRatingType,
 } from '@/lib/divisionTypes';
 import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeSlotCanonical';
+import { normalizeEventTaxHandling } from '@/lib/taxPolicy';
 import {
   buildEventOfficialPositionsFromTemplates,
   normalizeEventOfficials,
@@ -70,6 +71,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'assistantHostIds',
   'noFixedEndDateTime',
   'price',
+  'taxHandling',
   'singleDivision',
   'registrationByDivisionType',
   'cancellationRefundHours',
@@ -1713,6 +1715,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         if (!EVENT_UPDATE_FIELDS.has(key)) continue;
         data[key] = value;
       }
+      if (Object.prototype.hasOwnProperty.call(data, 'taxHandling')) {
+        data.taxHandling = normalizeEventTaxHandling(data.taxHandling);
+      }
       const hasLegacyTeamIdsInput = Object.prototype.hasOwnProperty.call(payload, 'teamIds');
       const hasLegacyUserIdsInput = Object.prototype.hasOwnProperty.call(payload, 'userIds');
       const hasLegacyWaitListIdsInput = Object.prototype.hasOwnProperty.call(payload, 'waitListIds');
@@ -2077,6 +2082,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             scheduledFieldId: slot.scheduledFieldId,
             scheduledFieldIds: slot.scheduledFieldIds,
             price: slot.price,
+            taxHandling: slot.taxHandling,
             requiredTemplateIds: slot.requiredTemplateIds,
             hostRequiredTemplateIds: slot.hostRequiredTemplateIds,
             updatedAt: now,

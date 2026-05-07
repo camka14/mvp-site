@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, Button, Group, TextInput, Textarea, Alert, MultiSelect, Text } from '@mantine/core';
+import { Modal, Button, Group, TextInput, Textarea, Alert, MultiSelect, Text, Select, Checkbox } from '@mantine/core';
 import type { Organization, UserData } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { ImageUploader } from './ImageUploader';
@@ -10,6 +10,11 @@ import LocationSelector from '@/components/location/LocationSelector';
 import { useLocation } from '@/app/hooks/useLocation';
 import type { LocationInfo } from '@/lib/locationService';
 import { useSports } from '@/app/hooks/useSports';
+import type { EventTaxHandling, OrganizationTaxClassification } from '@/lib/taxPolicy';
+import {
+  normalizeOrganizationDefaultEventTaxHandling,
+  normalizeOrganizationTaxClassification,
+} from '@/lib/taxPolicy';
 
 interface Props {
   isOpen: boolean;
@@ -62,6 +67,10 @@ export default function CreateOrganizationModal({
     location: '',
     address: '',
     logoId: '',
+    taxOrganizationType: 'INDIVIDUAL_OR_CLUB' as OrganizationTaxClassification,
+    operatesAthleticFacility: false,
+    defaultEventTaxHandling: 'STRIPE_TAX' as Exclude<EventTaxHandling, 'INHERIT_ORG'>,
+    taxResponsibilityAgreementAccepted: false,
   });
 
   const sportOptions = useMemo(() => {
@@ -126,6 +135,10 @@ export default function CreateOrganizationModal({
         location: editingLabel,
         address: organization.address ?? '',
         logoId: organization.logoId ?? '',
+        taxOrganizationType: normalizeOrganizationTaxClassification(organization.taxOrganizationType),
+        operatesAthleticFacility: Boolean(organization.operatesAthleticFacility),
+        defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(organization.defaultEventTaxHandling),
+        taxResponsibilityAgreementAccepted: Boolean(organization.taxResponsibilityAcceptedAt),
       });
       setCoordinates(editingCoords);
 
@@ -158,6 +171,10 @@ export default function CreateOrganizationModal({
       location: label,
       address: '',
       logoId: '',
+      taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
+      operatesAthleticFacility: false,
+      defaultEventTaxHandling: 'STRIPE_TAX',
+      taxResponsibilityAgreementAccepted: false,
     });
     setCoordinates(baseCoords);
     setLogoUrl('');
@@ -187,6 +204,10 @@ export default function CreateOrganizationModal({
 
     if (!form.location.trim() || !hasValidCoordinates) {
       setError('Select a location on the map.');
+      return;
+    }
+    if (!form.taxResponsibilityAgreementAccepted) {
+      setError('Accept the organization tax responsibility agreement before saving.');
       return;
     }
 
@@ -219,6 +240,11 @@ export default function CreateOrganizationModal({
           location: trimmedLocation || undefined,
           address: trimmedAddress || undefined,
           logoId: form.logoId || undefined,
+          taxOrganizationType: form.taxOrganizationType,
+          operatesAthleticFacility: form.operatesAthleticFacility,
+          defaultEventTaxHandling: form.defaultEventTaxHandling,
+          defaultRentalTaxHandling: 'STRIPE_TAX',
+          taxResponsibilityAgreementAccepted: form.taxResponsibilityAgreementAccepted,
         };
 
         if (coordinatesPayload) {
@@ -239,6 +265,11 @@ export default function CreateOrganizationModal({
           coordinates: coordinatesPayload,
           logoId: form.logoId || undefined,
           ownerId: currentUser.$id,
+          taxOrganizationType: form.taxOrganizationType,
+          operatesAthleticFacility: form.operatesAthleticFacility,
+          defaultEventTaxHandling: form.defaultEventTaxHandling,
+          defaultRentalTaxHandling: 'STRIPE_TAX',
+          taxResponsibilityAgreementAccepted: form.taxResponsibilityAgreementAccepted,
         });
         onCreated?.(created);
         notifications.show({ color: 'teal', message: 'Organization created successfully.' });
@@ -250,6 +281,10 @@ export default function CreateOrganizationModal({
           location: '',
           address: '',
           logoId: '',
+          taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
+          operatesAthleticFacility: false,
+          defaultEventTaxHandling: 'STRIPE_TAX',
+          taxResponsibilityAgreementAccepted: false,
         });
         setLogoUrl('');
         setCoordinates(null);
@@ -276,7 +311,7 @@ export default function CreateOrganizationModal({
     };
 
   return (
-    <Modal opened={isOpen} onClose={onClose} title={modalTitle} size="md" centered>
+    <Modal opened={isOpen} onClose={onClose} title={modalTitle} size="lg" centered>
       <form onSubmit={handleSubmit} className="space-y-4">
         <TextInput
           label="Name"
@@ -331,6 +366,57 @@ export default function CreateOrganizationModal({
           }}
           isValid={Boolean(form.location.trim()) && coordinatesPresent}
         />
+        <div className="space-y-3 rounded-md border border-slate-200 p-4">
+          <Text fw={600} size="sm">Tax settings</Text>
+          <Select
+            label="Organization type"
+            value={form.taxOrganizationType}
+            onChange={(value) => setForm((prev) => ({
+              ...prev,
+              taxOrganizationType: normalizeOrganizationTaxClassification(value),
+            }))}
+            data={[
+              { value: 'INDIVIDUAL_OR_CLUB', label: 'Individual or club' },
+              { value: 'NONPROFIT_OR_ASSOCIATION', label: 'Nonprofit or association' },
+              { value: 'FACILITY_OPERATOR', label: 'Facility operator' },
+              { value: 'BUSINESS_OTHER', label: 'Other business' },
+            ]}
+            required
+          />
+          <Checkbox
+            label="This organization operates or rents out an athletic facility"
+            checked={form.operatesAthleticFacility}
+            onChange={(event) => setForm((prev) => ({
+              ...prev,
+              operatesAthleticFacility: event.currentTarget.checked,
+            }))}
+          />
+          <Select
+            label="Default sports event registration tax handling"
+            value={form.defaultEventTaxHandling}
+            onChange={(value) => setForm((prev) => ({
+              ...prev,
+              defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(value),
+            }))}
+            data={[
+              { value: 'STRIPE_TAX', label: 'Use Stripe Tax' },
+              { value: 'EXEMPT_PARTICIPANT_SPORTS', label: 'Treat participant sports registration as exempt' },
+            ]}
+            required
+          />
+          <Text size="xs" c="dimmed">
+            Facility rentals use Stripe Tax. Stripe Tax calculation costs are included in the Stripe Fee shown to customers.
+          </Text>
+          <Checkbox
+            label="I confirm this organization is responsible for determining taxability for its events and rentals."
+            checked={form.taxResponsibilityAgreementAccepted}
+            onChange={(event) => setForm((prev) => ({
+              ...prev,
+              taxResponsibilityAgreementAccepted: event.currentTarget.checked,
+            }))}
+            required
+          />
+        </div>
         {error && (
           <Alert color="red" radius="md">
             {error}

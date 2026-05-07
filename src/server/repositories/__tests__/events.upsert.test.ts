@@ -438,6 +438,33 @@ describe('upsertEventFromPayload', () => {
     expect(client.divisions.upsert).toHaveBeenCalledTimes(2);
   });
 
+  it('defaults new local field locations to the event location when omitted', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      location: 'City Rec Center',
+      fields: [
+        {
+          $id: 'field_1',
+          name: 'Court A',
+          divisions: ['OPEN'],
+        },
+        {
+          $id: 'field_2',
+          name: 'Court B',
+          location: 'Annex Court',
+          divisions: ['OPEN'],
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const fieldCreatePayloads = client.fields.upsert.mock.calls.map((call) => call[0].create);
+    expect(fieldCreatePayloads[0].location).toBe('City Rec Center');
+    expect(fieldCreatePayloads[1].location).toBe('Annex Court');
+  });
+
   it('does not clear field rentalSlotIds when payload omits rentalSlotIds', async () => {
     const client = createMockClient();
     const payload = {

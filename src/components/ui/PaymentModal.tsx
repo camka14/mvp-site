@@ -118,6 +118,7 @@ export default function PaymentModal({
     const clientSecret = paymentData?.paymentIntent;
     const hasValidClientSecret = isStripePaymentIntentClientSecret(clientSecret);
     const publishableKey = paymentData?.publishableKey || envPublishableKey;
+    const feeBreakdown = paymentData?.feeBreakdown ?? null;
 
     const stripePromise = publishableKey
         ? loadStripe(publishableKey, {
@@ -178,31 +179,31 @@ export default function PaymentModal({
                     </div>
 
                     {/* Price Breakdown */}
-                    {paymentData && paymentData.feeBreakdown ? (
+                    {feeBreakdown ? (
                         <div className="bg-gray-50 p-4 rounded-lg">
                             <h5 className="font-medium mb-3 text-gray-900">Price Breakdown</h5>
                             <div className="space-y-2 text-sm">
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Price:</span>
-                                    <span className="font-medium">{formatPrice(paymentData.feeBreakdown.eventPrice)}</span>
+                                    <span className="font-medium">{formatPrice(feeBreakdown.eventPrice)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-600">Processing Fee:</span>
-                                    <span className="font-medium">{formatPrice(paymentData.feeBreakdown.processingFee)}</span>
+                                    <span className="text-gray-600">BracketIQ Fee:</span>
+                                    <span className="font-medium">{formatPrice(feeBreakdown.processingFee)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-600">Stripe Fee:</span>
-                                    <span className="font-medium">{formatPrice(paymentData.feeBreakdown.stripeFee)}</span>
+                                    <span className="font-medium">{formatPrice(feeBreakdown.stripeFee)}</span>
                                 </div>
-                                {typeof paymentData.feeBreakdown.taxAmount === 'number' ? (
+                                {typeof feeBreakdown.taxAmount === 'number' ? (
                                     <div className="flex justify-between">
                                         <span className="text-gray-600">Tax:</span>
-                                        <span className="font-medium">{formatPrice(paymentData.feeBreakdown.taxAmount)}</span>
+                                        <span className="font-medium">{formatPrice(feeBreakdown.taxAmount)}</span>
                                     </div>
                                 ) : null}
                                 <div className="border-t pt-2 flex justify-between font-semibold text-base">
                                     <span>Total:</span>
-                                    <span>${(paymentData.feeBreakdown.totalCharge / 100).toFixed(2)}</span>
+                                    <span>${(feeBreakdown.totalCharge / 100).toFixed(2)}</span>
                                 </div>
                             </div>
                         </div>

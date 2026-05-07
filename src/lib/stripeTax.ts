@@ -50,6 +50,42 @@ export type TaxQuote = {
   customerId: string;
 };
 
+export const buildZeroTaxQuote = ({
+  subtotalCents,
+  purchaseType,
+  taxCategory,
+  eventType,
+}: {
+  subtotalCents: number;
+  purchaseType: string;
+  taxCategory: InternalTaxCategory;
+  eventType?: unknown;
+}): TaxQuote => {
+  const normalizedSubtotal = Math.max(0, Math.round(subtotalCents));
+  const fees = calculateMvpAndStripeFeesWithTax({
+    eventAmountCents: normalizedSubtotal,
+    eventType,
+    taxAmountCents: 0,
+    stripeTaxServiceFeeCents: 0,
+  });
+
+  return {
+    calculationId: '',
+    subtotalCents: normalizedSubtotal,
+    processingFeeCents: fees.mvpFeeCents,
+    stripeProcessingFeeCents: fees.stripeProcessingFeeCents,
+    stripeTaxServiceFeeCents: fees.stripeTaxServiceFeeCents,
+    stripeFeeCents: fees.stripeFeeCents,
+    taxAmountCents: fees.taxAmountCents,
+    totalChargeCents: fees.totalChargeCents,
+    hostReceivesCents: normalizedSubtotal,
+    feePercentage: fees.mvpFeePercentage * 100,
+    purchaseType,
+    taxCategory,
+    customerId: '',
+  };
+};
+
 const GENERAL_SERVICES_STRIPE_TAX_CODE = 'txcd_20030000';
 const GENERAL_TANGIBLE_GOODS_STRIPE_TAX_CODE = 'txcd_99999999';
 const NON_TAXABLE_STRIPE_TAX_CODE = 'txcd_00000000';

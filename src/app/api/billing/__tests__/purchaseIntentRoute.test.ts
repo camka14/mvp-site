@@ -371,6 +371,57 @@ describe('POST /api/billing/purchase-intent', () => {
     );
   });
 
+  it('skips Stripe Tax for zero-tax sports event jurisdictions and still charges customer fees', async () => {
+    loadUserBillingProfileMock.mockResolvedValueOnce({
+      billingAddress: null,
+      email: 'buyer@example.com',
+    });
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: {
+        $id: 'event_1',
+        name: 'Friday Pickup',
+        price: 2500,
+        eventType: 'EVENT',
+        address: '123 Main St, Hoboken, NJ 07030',
+        location: 'Hoboken, NJ',
+      },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(calculateTaxQuoteMock).not.toHaveBeenCalled();
+    expect(data.taxMode).toBe('ZERO_TAX');
+    expect(data.taxReasonCode).toBe('sports_participant_state_exempt');
+    expect(data.taxJurisdictionState).toBe('NJ');
+    expect(data.taxCalculationId).toBeUndefined();
+    expect(data.feeBreakdown).toEqual(expect.objectContaining({
+      eventPrice: 2500,
+      processingFee: 25,
+      taxAmount: 0,
+      stripeTaxServiceFee: 0,
+      purchaseType: 'event',
+    }));
+    expect(data.feeBreakdown.stripeProcessingFee).toBeGreaterThan(0);
+    expect(data.feeBreakdown.totalCharge).toBeGreaterThan(2500);
+
+    const createParams = mockStripePaymentIntentCreate.mock.calls[0]?.[0];
+    expect(createParams).toEqual(expect.objectContaining({
+      amount: data.feeBreakdown.totalCharge,
+      receipt_email: 'buyer@example.com',
+    }));
+    expect(createParams.customer).toBeUndefined();
+    expect(createParams.hooks).toBeUndefined();
+    expect(createParams.metadata).toEqual(expect.objectContaining({
+      tax_mode: 'ZERO_TAX',
+      tax_reason_code: 'sports_participant_state_exempt',
+      tax_jurisdiction_state: 'NJ',
+      tax_cents: '0',
+      stripe_tax_service_fee_cents: '0',
+    }));
+  });
+
   it('rejects purchase-intent creation when a STARTED reservation already exists', async () => {
     const now = new Date('2026-03-18T12:00:00.000Z');
     prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({

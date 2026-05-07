@@ -430,6 +430,7 @@ export default function CreateRentalSlotModal({
         requiredTemplateIds,
         hostRequiredTemplateIds,
         price: organizationHasStripeAccount ? price : (slot?.price ?? 0),
+        taxHandling: 'STRIPE_TAX',
       };
 
       let results: ManageRentalSlotResult[];
@@ -448,6 +449,7 @@ export default function CreateRentalSlotModal({
           requiredTemplateIds: payload.requiredTemplateIds,
           hostRequiredTemplateIds: payload.hostRequiredTemplateIds,
           price: organizationHasStripeAccount ? payload.price : (slot.price ?? 0),
+          taxHandling: 'STRIPE_TAX',
         };
         const result = await fieldService.updateRentalSlot(field, updatePayload);
         results = [result];
@@ -591,7 +593,10 @@ export default function CreateRentalSlotModal({
               }}
               disabled={!hasTargetFields || !organizationHasStripeAccount}
             />
-            <PriceWithFeesPreview amountCents={organizationHasStripeAccount ? price : 0} />
+            <PriceWithFeesPreview
+              amountCents={organizationHasStripeAccount ? price : 0}
+              taxable={organizationHasStripeAccount && price > 0}
+            />
             {!organizationHasStripeAccount && (
               <Text size="xs" c="dimmed" mt={4}>
                 Connect a Stripe account to charge for rentals.

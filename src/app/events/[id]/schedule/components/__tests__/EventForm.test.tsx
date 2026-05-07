@@ -737,6 +737,35 @@ describe('EventForm dirty state', () => {
     expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
   });
 
+  it('defaults generated local field locations to the event location in create drafts', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        state: 'UNPUBLISHED',
+        eventType: 'LEAGUE',
+        location: 'City Rec Center',
+        fields: [],
+        fieldIds: [],
+        selectedFieldIds: [],
+        fieldCount: 2,
+        timeSlots: [],
+      },
+      null,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
+      expect(draft?.fields).toHaveLength(2);
+      expect(draft?.fields?.[0]?.location).toBe('City Rec Center');
+      expect(draft?.fields?.[1]?.location).toBe('City Rec Center');
+    });
+  });
+
   it('rechecks recurring slot conflicts from the updated event start when the saved slot start mirrored the original event start', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();

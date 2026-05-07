@@ -36,6 +36,12 @@ import {
 import { resolveOrganizationVerificationStatus } from "@/lib/organizationVerification";
 import { normalizeBracketSeed } from "@/lib/bracketSeeds";
 import { createSport } from "@/types/defaults";
+import {
+  normalizeEventTaxHandling,
+  normalizeOrganizationDefaultEventTaxHandling,
+  normalizeOrganizationTaxClassification,
+  normalizeRentalTaxHandling,
+} from "@/lib/taxPolicy";
 
 export interface LeagueGenerationOptions {
   dryRun?: boolean;
@@ -1125,6 +1131,7 @@ class EventService {
       address: row.address ?? undefined,
       coordinates: row.coordinates,
       price: row.price,
+      taxHandling: normalizeEventTaxHandling(row.taxHandling),
       minAge: normalizeAge(row.minAge),
       maxAge: normalizeAge(row.maxAge),
       rating: row.rating,
@@ -2246,6 +2253,30 @@ class EventService {
         typeof row.hasStripeAccount === "boolean"
           ? row.hasStripeAccount
           : Boolean(row.hasStripeAccount),
+      taxOrganizationType: normalizeOrganizationTaxClassification(
+        row.taxOrganizationType,
+      ),
+      operatesAthleticFacility: Boolean(row.operatesAthleticFacility),
+      defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(
+        row.defaultEventTaxHandling,
+      ),
+      defaultRentalTaxHandling: normalizeRentalTaxHandling(
+        row.defaultRentalTaxHandling,
+      ),
+      taxResponsibilityAcceptedAt:
+        typeof row.taxResponsibilityAcceptedAt === "string"
+          ? row.taxResponsibilityAcceptedAt
+          : row.taxResponsibilityAcceptedAt instanceof Date
+            ? row.taxResponsibilityAcceptedAt.toISOString()
+            : undefined,
+      taxResponsibilityAcceptedByUserId:
+        typeof row.taxResponsibilityAcceptedByUserId === "string"
+          ? row.taxResponsibilityAcceptedByUserId
+          : undefined,
+      taxResponsibilityAgreementVersion:
+        typeof row.taxResponsibilityAgreementVersion === "string"
+          ? row.taxResponsibilityAgreementVersion
+          : undefined,
       verificationStatus: resolveOrganizationVerificationStatus({
         verificationStatus: row.verificationStatus,
         hasStripeAccount: row.hasStripeAccount,
@@ -2631,6 +2662,7 @@ class EventService {
             .map((id: unknown) => String(id))
             .filter((id: string) => id.length > 0)
         : [],
+      taxHandling: normalizeRentalTaxHandling(row.taxHandling),
     };
 
     const normalizedStartDate = ensureLocalDateTimeString(

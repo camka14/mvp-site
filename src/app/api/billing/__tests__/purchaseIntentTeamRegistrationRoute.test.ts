@@ -23,6 +23,8 @@ const findReusableIncompleteProductPaymentIntentMock = jest.fn().mockResolvedVal
 const findReusableIncompleteTeamRegistrationPaymentIntentMock = jest.fn();
 const getCheckoutTaxCalculationIdFromMetadataMock = jest.fn();
 const getCheckoutTaxCategoryFromMetadataMock = jest.fn();
+const findTeamRegistrationMock = jest.fn();
+const getTeamRegistrationSignatureStateMock = jest.fn();
 const reserveTeamRegistrationSlotMock = jest.fn();
 const releaseStartedTeamRegistrationMock = jest.fn();
 
@@ -66,8 +68,12 @@ jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
   reserveRentalCheckoutLocks: jest.fn(),
 }));
 jest.mock('@/server/teams/teamOpenRegistration', () => ({
+  findTeamRegistration: (...args: unknown[]) => findTeamRegistrationMock(...args),
   reserveTeamRegistrationSlot: (...args: unknown[]) => reserveTeamRegistrationSlotMock(...args),
   releaseStartedTeamRegistration: (...args: unknown[]) => releaseStartedTeamRegistrationMock(...args),
+}));
+jest.mock('@/server/teams/teamRegistrationDocuments', () => ({
+  getTeamRegistrationSignatureState: (...args: unknown[]) => getTeamRegistrationSignatureStateMock(...args),
 }));
 
 import { POST } from '@/app/api/billing/purchase-intent/route';
@@ -92,6 +98,14 @@ describe('POST /api/billing/purchase-intent team registration reuse', () => {
     }));
     buildBillingAddressFingerprintMock.mockReturnValue('fp_team_123');
     findReusableIncompleteProductPaymentIntentMock.mockResolvedValue(null);
+    findTeamRegistrationMock.mockResolvedValue(null);
+    getTeamRegistrationSignatureStateMock.mockResolvedValue({
+      hasCompletedRequiredSignatures: true,
+      missingTemplateIds: [],
+      missingTemplateLabels: [],
+      missingChildEmail: false,
+      consentStatus: 'completed',
+    });
     validateUsBillingAddressMock.mockImplementation((value) => value);
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     loadUserBillingProfileMock.mockResolvedValue({

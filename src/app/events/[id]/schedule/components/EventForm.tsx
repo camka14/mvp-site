@@ -61,6 +61,12 @@ import {
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
+import type { EventTaxHandling } from '@/lib/taxPolicy';
+import {
+    normalizeEventTaxHandling,
+    normalizeOrganizationDefaultEventTaxHandling,
+    resolvePurchaseTaxPolicy,
+} from '@/lib/taxPolicy';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
 
@@ -2188,6 +2194,33 @@ const sanitizeFieldForForm = (field: Field): Field => {
 const sanitizeFieldsForForm = (fields?: Field[] | null): Field[] =>
     Array.isArray(fields) ? fields.map(sanitizeFieldForForm) : [];
 
+const defaultFieldLocationForEvent = (eventLocation?: string | null): string => {
+    const trimmed = typeof eventLocation === 'string' ? eventLocation.trim() : '';
+    return trimmed.length ? trimmed : '';
+};
+
+const withEventFieldLocationDefault = (
+    field: Field,
+    eventLocation?: string | null,
+    previousEventLocation?: string | null,
+): Field => {
+    const defaultLocation = defaultFieldLocationForEvent(eventLocation);
+    const previousDefaultLocation = defaultFieldLocationForEvent(previousEventLocation);
+    const currentLocation = typeof field.location === 'string' ? field.location.trim() : '';
+
+    if (!defaultLocation) {
+        return previousDefaultLocation && currentLocation === previousDefaultLocation
+            ? { ...field, location: '' }
+            : field;
+    }
+
+    if (!currentLocation || (previousDefaultLocation && currentLocation === previousDefaultLocation)) {
+        return { ...field, location: defaultLocation };
+    }
+
+    return field;
+};
+
 type EventFormState = {
     $id: string;
     name: string;
@@ -2203,6 +2236,7 @@ type EventFormState = {
     sportId: string;
     sportConfig: Sport | null;
     price: number;
+    taxHandling: EventTaxHandling;
     minAge?: number;
     maxAge?: number;
     allowPaymentPlans: boolean;
@@ -2935,6 +2969,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         ? { ...(event.sport as Sport) }
         : null,
     price: normalizePriceCents(event.price),
+    taxHandling: normalizeEventTaxHandling(event.taxHandling),
     minAge: Number.isFinite(event.minAge) ? event.minAge : undefined,
     maxAge: Number.isFinite(event.maxAge) ? event.maxAge : undefined,
     allowPaymentPlans: Boolean(event.allowPaymentPlans),
@@ -3173,6 +3208,7 @@ const eventFormSchema = z
         cancellationRefundHours: z.number().min(0),
         registrationCutoffHours: z.number().min(0),
         organizationId: z.string().optional(),
+        taxHandling: z.enum(['INHERIT_ORG', 'STRIPE_TAX', 'EXEMPT_PARTICIPANT_SPORTS']).default('INHERIT_ORG'),
         requiredTemplateIds: z.array(z.string()).default([]),
         hostId: z.string().optional(),
         noFixedEndDateTime: z.boolean().default(false),
@@ -3655,6 +3691,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const buildDraftForDirtyTrackingRef = useRef<(values: EventFormValues) => Partial<Event>>(
         () => ({}),
     );
+    const previousEventFieldLocationRef = useRef<string>('');
     const slotConflictRequestRef = useRef(0);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
     const createSlotForm = useCallback((
@@ -4040,6 +4077,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return 1;
         })();
+        const defaultFieldLocation = defaultFieldLocationForEvent(base.location);
 
         const defaultFields: Field[] = (() => {
             if (hasImmutableFields) {
@@ -4055,7 +4093,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return Array.from({ length: defaultFieldCount }, (_, idx) => ({
                     $id: createClientId(),
                     name: `Field ${idx + 1}`,
-                    location: '',
+                    location: defaultFieldLocation,
                 } as Field));
             }
             return [];
@@ -4278,6 +4316,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!open) {
             setIsDirtyTrackingReady(false);
             lastResetSourceRef.current = null;
+            previousEventFieldLocationRef.current = '';
             dirtyBaselineValuesRef.current = null;
             pendingInitialDirtyRebaseRef.current = false;
             if (pendingInitialDirtyRebaseTimeoutRef.current) {
@@ -4307,6 +4346,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         onDirtyStateChange?.(false);
         const nextDefaults = buildDefaultFormValues();
+        previousEventFieldLocationRef.current = defaultFieldLocationForEvent(nextDefaults.location);
         dirtyBaselineValuesRef.current = null;
         reset(nextDefaults);
     }, [
@@ -4938,6 +4978,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const shouldManageLocalFields = shouldProvisionFields
         && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
+    const organizationDefaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(
+        resolvedOrganization?.defaultEventTaxHandling,
+    );
+    const eventTaxPolicyForPreview = resolvePurchaseTaxPolicy({
+        purchaseType: 'event',
+        taxCategory: 'EVENT_PARTICIPANT',
+        event: {
+            address: eventData.address,
+            location: eventData.location,
+            organizationId: eventData.organizationId || resolvedOrganizationId || undefined,
+            taxHandling: eventData.taxHandling,
+        },
+        organization: resolvedOrganization
+            ? {
+                defaultEventTaxHandling: organizationDefaultEventTaxHandling,
+                taxResponsibilityAcceptedAt: resolvedOrganization.taxResponsibilityAcceptedAt,
+            }
+            : null,
+    });
+    const eventTaxableForPreview = hasStripeAccount && eventTaxPolicyForPreview.mode !== 'ZERO_TAX';
     const organizationAssignableStaffIds = useMemo(
         () => Array.from(
             new Set([
@@ -7332,18 +7392,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
     // When provisioning local fields, mirror count changes into the generated list.
     useEffect(() => {
+        const previousEventLocation = previousEventFieldLocationRef.current;
+        const eventFieldLocation = defaultFieldLocationForEvent(eventData.location);
+        previousEventFieldLocationRef.current = eventFieldLocation;
+
         if (!shouldManageLocalFields) {
             return;
         }
         setFields(prev => {
-            const normalized: Field[] = prev.slice(0, fieldCount);
+            const normalized: Field[] = prev
+                .slice(0, fieldCount)
+                .map((field) => withEventFieldLocationDefault(
+                    field,
+                    eventFieldLocation,
+                    previousEventLocation,
+                ));
 
             if (normalized.length < fieldCount) {
                 for (let index = normalized.length; index < fieldCount; index += 1) {
                     normalized.push({
                         $id: createClientId(),
                         name: `Field ${index + 1}`,
-                        location: '',
+                        location: eventFieldLocation,
                         lat: 0,
                         long: 0,
                     } as Field);
@@ -7352,7 +7422,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             return normalized;
         }, { shouldDirty: false });
-    }, [fieldCount, shouldManageLocalFields, setFields]);
+    }, [eventData.location, fieldCount, shouldManageLocalFields, setFields]);
 
     // For non-organization events with existing facilities, seed the field list with event ordering.
     useEffect(() => {
@@ -8599,6 +8669,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             return source.end ?? null;
         })();
+        const eventFieldLocation = defaultFieldLocationForEvent(source.location);
+        const previousEventFieldLocation = previousEventFieldLocationRef.current;
 
         const draft: Partial<Event> = {
             $id: activeEditingEvent?.$id,
@@ -8617,6 +8689,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             state: isEditMode ? activeEditingEvent?.state ?? 'PUBLISHED' : 'UNPUBLISHED',
             sportId: sportId || undefined,
             price: eventPriceCents,
+            taxHandling: normalizeEventTaxHandling(source.taxHandling),
             minAge,
             maxAge,
             allowPaymentPlans: eventAllowPaymentPlans,
@@ -8745,7 +8818,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     draft.fieldIds = fieldIds;
                 }
             } else if (fieldsToInclude.length) {
-                draft.fields = fieldsToInclude.map(field => ({ ...field }));
+                draft.fields = fieldsToInclude.map(field => withEventFieldLocationDefault(
+                    { ...field },
+                    eventFieldLocation,
+                    previousEventFieldLocation,
+                ));
                 const fieldIds = toIdList(fieldsToInclude);
                 if (fieldIds.length) {
                     draft.fieldIds = fieldIds;
@@ -8757,9 +8834,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         } else {
             const localFields = hasImmutableFields ? immutableFields : fields;
             if (localFields.length) {
-                draft.fields = localFields.map((field) => ({
-                    ...field,
-                }));
+                draft.fields = localFields.map((field) => withEventFieldLocationDefault(
+                    { ...field },
+                    eventFieldLocation,
+                    previousEventFieldLocation,
+                ));
                 const fieldIds = toIdList(localFields);
                 if (fieldIds.length) {
                     draft.fieldIds = fieldIds;
@@ -10900,10 +10979,34 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 <PriceWithFeesPreview
                                                     amountCents={eventData.price}
                                                     eventType={eventData.eventType}
+                                                    taxable={eventTaxableForPreview}
                                                     helperText={!eventData.singleDivision
                                                         ? 'Used as the base price for new divisions before fees.'
                                                         : null}
                                                 />
+                                                <AnimatedSection in={isOrganizationHostedEvent}>
+                                                    <div className="mt-3">
+                                                        <Controller
+                                                            name="taxHandling"
+                                                            control={control}
+                                                            render={({ field }) => (
+                                                                <MantineSelect
+                                                                    label="Tax handling"
+                                                                    value={field.value}
+                                                                    data={[
+                                                                        { value: 'INHERIT_ORG', label: `Use organization default (${organizationDefaultEventTaxHandling === 'STRIPE_TAX' ? 'Stripe Tax' : 'sports registration exempt'})` },
+                                                                        { value: 'STRIPE_TAX', label: 'Use Stripe Tax' },
+                                                                        { value: 'EXEMPT_PARTICIPANT_SPORTS', label: 'Sports registration is exempt' },
+                                                                    ]}
+                                                                    onChange={(value) => {
+                                                                        field.onChange(normalizeEventTaxHandling(value));
+                                                                    }}
+                                                                    disabled={isImmutableField('price')}
+                                                                />
+                                                            )}
+                                                        />
+                                                    </div>
+                                                </AnimatedSection>
                                                 <AnimatedSection in={!hasStripeAccount}>
                                                     <div className="mt-2">
                                                         <button
@@ -11170,6 +11273,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         <PriceWithFeesPreview
                                             amountCents={eventData.singleDivision ? eventData.price : divisionEditor.price}
                                             eventType={eventData.eventType}
+                                            taxable={eventTaxableForPreview}
                                         />
                                     </div>
                                     <NumberInput

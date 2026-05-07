@@ -3,6 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { requireSession } from '@/lib/permissions';
 import {
+  type BillingAddress,
   loadUserBillingProfile,
   resolveBillingAddressInput,
   upsertUserBillingAddress,
@@ -10,7 +11,15 @@ import {
 } from '@/lib/billingAddress';
 import { calculateMvpAndStripeFeesWithTax } from '@/lib/billingFees';
 import { resolvePurchaseContext } from '@/lib/purchaseContext';
-import { calculateTaxQuote, INTERNAL_TAX_CATEGORIES, type InternalTaxCategory } from '@/lib/stripeTax';
+import {
+  buildZeroTaxQuote,
+  calculateTaxQuote,
+  INTERNAL_TAX_CATEGORIES,
+  type InternalTaxCategory,
+  type TaxQuote,
+} from '@/lib/stripeTax';
+import { resolvePurchaseTaxPolicy, type TaxPolicyDecision } from '@/lib/taxPolicy';
+import { loadBillingTaxPolicyContext } from '@/server/billingTaxContext';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,6 +74,26 @@ const buildLineItemReference = ({
   .join('_')
   .slice(0, 200);
 
+const buildFeeBreakdown = (taxQuote: TaxQuote) => ({
+  eventPrice: taxQuote.subtotalCents,
+  stripeFee: taxQuote.stripeFeeCents,
+  stripeProcessingFee: taxQuote.stripeProcessingFeeCents,
+  stripeTaxServiceFee: taxQuote.stripeTaxServiceFeeCents,
+  processingFee: taxQuote.processingFeeCents,
+  mvpFee: taxQuote.processingFeeCents,
+  taxAmount: taxQuote.taxAmountCents,
+  totalCharge: taxQuote.totalChargeCents,
+  hostReceives: taxQuote.hostReceivesCents,
+  feePercentage: taxQuote.feePercentage,
+  purchaseType: taxQuote.purchaseType,
+});
+
+const taxPolicyResponseFields = (taxPolicy: TaxPolicyDecision) => ({
+  taxMode: taxPolicy.mode,
+  taxReasonCode: taxPolicy.reasonCode,
+  taxJurisdictionState: taxPolicy.jurisdictionState,
+});
+
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -86,6 +115,22 @@ export async function POST(req: NextRequest) {
       timeSlot: payload.timeSlot ?? null,
       requestedTaxCategory: (payload.taxCategory ?? null) as InternalTaxCategory | null,
     });
+    const taxContext = await loadBillingTaxPolicyContext({
+      event: payload.event ?? null,
+      timeSlot: payload.timeSlot ?? null,
+      organization: payload.organization ?? null,
+      organizationId:
+        resolvedPurchase.organizationId
+        ?? normalizeString(payload.event?.organizationId)
+        ?? null,
+    });
+    const taxPolicy = resolvePurchaseTaxPolicy({
+      purchaseType: resolvedPurchase.purchaseType,
+      taxCategory: resolvedPurchase.taxCategory,
+      event: taxContext.event ?? payload.event ?? null,
+      organization: taxContext.organization ?? payload.organization ?? null,
+      timeSlot: taxContext.timeSlot ?? payload.timeSlot ?? null,
+    });
 
     const billingProfile = await loadUserBillingProfile(session.userId);
     let savedBillingProfile: Awaited<ReturnType<typeof upsertUserBillingAddress>> | null = null;
@@ -99,15 +144,26 @@ export async function POST(req: NextRequest) {
     }
     const savedBillingAddress = savedBillingProfile?.billingAddress ?? billingProfile.billingAddress;
     const billingEmail = savedBillingProfile?.email ?? billingProfile.email;
+    const requiresBillingAddressForTax = taxPolicy.mode !== 'ZERO_TAX';
 
-    if (!savedBillingAddress) {
+    if (requiresBillingAddressForTax && !savedBillingAddress) {
       return NextResponse.json({
         error: 'Billing address is required before calculating tax.',
         billingAddressRequired: true,
       }, { status: 400 });
     }
 
-    const billingAddress = validateUsBillingAddress(savedBillingAddress);
+    let billingAddress: BillingAddress | null = null;
+    if (savedBillingAddress) {
+      try {
+        billingAddress = validateUsBillingAddress(savedBillingAddress);
+      } catch (error) {
+        if (requiresBillingAddressForTax) {
+          const message = error instanceof Error ? error.message : 'Invalid billing address.';
+          return NextResponse.json({ error: message }, { status: 400 });
+        }
+      }
+    }
     const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
     const secretKey = process.env.STRIPE_SECRET_KEY;
 
@@ -120,12 +176,16 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({
         publishableKey,
-        taxCalculationId: `tax_mock_${crypto.randomUUID()}`,
+        taxCalculationId: taxPolicy.mode === 'ZERO_TAX' ? undefined : `tax_mock_${crypto.randomUUID()}`,
         taxCategory: resolvedPurchase.taxCategory,
+        ...taxPolicyResponseFields(taxPolicy),
         feeBreakdown: {
           eventPrice: resolvedPurchase.amountCents,
           stripeFee: fallbackFees.stripeFeeCents,
+          stripeProcessingFee: fallbackFees.stripeProcessingFeeCents,
+          stripeTaxServiceFee: fallbackFees.stripeTaxServiceFeeCents,
           processingFee: fallbackFees.mvpFeeCents,
+          mvpFee: fallbackFees.mvpFeeCents,
           taxAmount: 0,
           totalCharge: fallbackFees.totalChargeCents,
           hostReceives: resolvedPurchase.amountCents,
@@ -136,49 +196,50 @@ export async function POST(req: NextRequest) {
     }
 
     const stripe = new Stripe(secretKey);
-    const eventId = extractEntityId(payload.event);
-    const timeSlotId = extractEntityId(payload.timeSlot);
-    const taxQuote = await calculateTaxQuote({
-      stripe,
-      userId: session.userId,
-      organizationId:
-        extractEntityId(payload.organization)
-        ?? resolvedPurchase.organizationId
-        ?? normalizeString(payload.event?.organizationId)
-        ?? null,
-      email: billingEmail,
-      billingAddress,
-      subtotalCents: resolvedPurchase.amountCents,
-      purchaseType: resolvedPurchase.purchaseType,
-      taxCategory: resolvedPurchase.taxCategory,
-      eventType: resolvedPurchase.eventType,
-      lineItemReference: buildLineItemReference({
+    const eventId = taxContext.eventId ?? extractEntityId(payload.event);
+    const timeSlotId = taxContext.timeSlotId ?? extractEntityId(payload.timeSlot);
+    const organizationId =
+      taxContext.organizationId
+      ?? extractEntityId(payload.organization)
+      ?? resolvedPurchase.organizationId
+      ?? normalizeString(payload.event?.organizationId)
+      ?? null;
+    const taxQuote = taxPolicy.mode === 'ZERO_TAX'
+      ? buildZeroTaxQuote({
+        subtotalCents: resolvedPurchase.amountCents,
         purchaseType: resolvedPurchase.purchaseType,
-        productId: resolvedPurchase.product?.id ?? null,
-        eventId,
-        timeSlotId,
-        billId: payload.billId ?? null,
-        billPaymentId: payload.billPaymentId ?? null,
-      }),
-      description: resolvedPurchase.product?.name
-        ?? normalizeString(payload.event?.name)
-        ?? resolvedPurchase.purchaseType,
-    });
+        taxCategory: resolvedPurchase.taxCategory,
+        eventType: resolvedPurchase.eventType,
+      })
+      : await calculateTaxQuote({
+        stripe,
+        userId: session.userId,
+        organizationId,
+        email: billingEmail,
+        billingAddress: billingAddress as BillingAddress,
+        subtotalCents: resolvedPurchase.amountCents,
+        purchaseType: resolvedPurchase.purchaseType,
+        taxCategory: resolvedPurchase.taxCategory,
+        eventType: resolvedPurchase.eventType,
+        lineItemReference: buildLineItemReference({
+          purchaseType: resolvedPurchase.purchaseType,
+          productId: resolvedPurchase.product?.id ?? null,
+          eventId,
+          timeSlotId,
+          billId: payload.billId ?? null,
+          billPaymentId: payload.billPaymentId ?? null,
+        }),
+        description: resolvedPurchase.product?.name
+          ?? normalizeString(payload.event?.name)
+          ?? resolvedPurchase.purchaseType,
+      });
 
     return NextResponse.json({
       publishableKey,
-      taxCalculationId: taxQuote.calculationId,
+      taxCalculationId: taxQuote.calculationId || undefined,
       taxCategory: taxQuote.taxCategory,
-      feeBreakdown: {
-        eventPrice: taxQuote.subtotalCents,
-        stripeFee: taxQuote.stripeFeeCents,
-        processingFee: taxQuote.processingFeeCents,
-        taxAmount: taxQuote.taxAmountCents,
-        totalCharge: taxQuote.totalChargeCents,
-        hostReceives: taxQuote.hostReceivesCents,
-        feePercentage: taxQuote.feePercentage,
-        purchaseType: taxQuote.purchaseType,
-      },
+      ...taxPolicyResponseFields(taxPolicy),
+      feeBreakdown: buildFeeBreakdown(taxQuote),
     }, { status: 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to calculate tax preview.';

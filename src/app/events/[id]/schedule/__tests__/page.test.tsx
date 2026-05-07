@@ -1084,6 +1084,113 @@ describe('League schedule page', () => {
     });
   });
 
+  it('hides the schedule pool selector when all divisions are selected', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        if (key === 'tab') return 'schedule';
+        return null;
+      },
+      toString: () => 'mode=edit&tab=schedule',
+    });
+
+    const goldDivisionId = 'division_gold';
+    const silverDivisionId = 'division_silver';
+    const poolAGoldId = 'pool_a_gold';
+    const poolASilverId = 'pool_a_silver';
+    const event = buildApiEvent({
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      divisions: [poolAGoldId, poolASilverId, goldDivisionId, silverDivisionId],
+      divisionDetails: [
+        {
+          id: poolAGoldId,
+          key: 'pool_a_gold',
+          name: 'Pool A',
+          kind: 'LEAGUE',
+          playoffPlacementDivisionIds: [goldDivisionId],
+          teamIds: [],
+        },
+        {
+          id: poolASilverId,
+          key: 'pool_a_silver',
+          name: 'Pool A',
+          kind: 'LEAGUE',
+          playoffPlacementDivisionIds: [silverDivisionId],
+          teamIds: [],
+        },
+        {
+          id: goldDivisionId,
+          key: 'gold',
+          name: 'Gold',
+          kind: 'PLAYOFF',
+          teamIds: [],
+        },
+        {
+          id: silverDivisionId,
+          key: 'silver',
+          name: 'Silver',
+          kind: 'PLAYOFF',
+          teamIds: [],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: goldDivisionId,
+          key: 'gold',
+          name: 'Gold',
+          kind: 'PLAYOFF',
+          teamIds: [],
+        },
+        {
+          id: silverDivisionId,
+          key: 'silver',
+          name: 'Silver',
+          kind: 'PLAYOFF',
+          teamIds: [],
+        },
+      ],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path.startsWith('/api/events/event_1/standings?')) {
+        return Promise.resolve({
+          division: {
+            divisionId: poolAGoldId,
+            divisionName: 'Pool A',
+            standingsConfirmedAt: null,
+            standingsConfirmedBy: null,
+            playoffTeamCount: null,
+            playoffPlacementDivisionIds: [goldDivisionId],
+            standingsOverrides: null,
+            standings: [],
+            validation: {
+              mappingErrors: [],
+              capacityErrors: [],
+            },
+            playoffDivisions: [],
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const schedulePanel = await screen.findByRole('tabpanel', { name: /^Schedule$/i });
+    expect(within(schedulePanel).getByDisplayValue('All divisions')).toBeInTheDocument();
+    expect(within(schedulePanel).queryByLabelText(/^Pool$/i)).not.toBeInTheDocument();
+  });
+
   it('shows the load error message below the try again button', async () => {
     apiRequestMock.mockRejectedValue(new Error('Network down'));
 
