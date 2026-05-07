@@ -1,5 +1,9 @@
 import type { Division, Event } from '@/types';
-import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
+import {
+  extractDivisionTokenFromId,
+  inferDivisionDetails,
+  looksLikeLegacyDivisionMetadataLabel,
+} from '@/lib/divisionTypes';
 
 const normalizeDivisionKey = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -51,11 +55,18 @@ const isPlayoffDivision = (division: Pick<Division, 'kind'> | null | undefined):
   normalizeDivisionKey(division?.kind) === 'playoff'
 );
 
+const tournamentPoolSuffixRegex = /(?:^|[\s_-]+)pool[\s_-]*[a-z0-9]+$/i;
+
 const stripTournamentPoolSuffix = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
   }
-  const stripped = value.trim().replace(/[\s_-]+pool[\s_-]*[a-z0-9]+$/i, '').trim();
+  const trimmed = value.trim();
+  const match = trimmed.match(tournamentPoolSuffixRegex);
+  if (!match || match.index == null) {
+    return null;
+  }
+  const stripped = trimmed.slice(0, match.index).trim();
   return stripped.length > 0 ? stripped : null;
 };
 
@@ -139,6 +150,7 @@ const buildTournamentBracketDisplayRows = (
     return explicitBracketRows;
   }
 
+  const sportInput = event.sport?.name ?? event.sportId ?? undefined;
   const detailIndexes = indexDivisions(details);
   const detailsByAlias = new Map<string, Division>();
   details.forEach((detail) => {
@@ -185,6 +197,11 @@ const buildTournamentBracketDisplayRows = (
     const existingBracket = aliasesForIdentifier(bracketId)
       .map((alias) => detailsByAlias.get(alias))
       .find((detail): detail is Division => Boolean(detail));
+    const inferredBracketName = inferDivisionDetails({
+      identifier: existingBracket?.key ?? existingBracket?.id ?? bracketId,
+      sportInput,
+      fallbackName: existingBracket?.name,
+    }).defaultName;
     bracketRows.set(normalizedBracketId, {
       ...(existingBracket ?? pool),
       id: bracketId,
@@ -192,9 +209,7 @@ const buildTournamentBracketDisplayRows = (
       kind: 'PLAYOFF',
       name: existingBracket?.name
         ?? stripTournamentPoolSuffix(pool.name)
-        ?? stripTournamentPoolSuffix(pool.key)
-        ?? stripTournamentPoolSuffix(pool.id)
-        ?? bracketId,
+        ?? inferredBracketName,
       playoffPlacementDivisionIds: [],
     });
   });
@@ -217,7 +232,9 @@ const labelForDivision = (params: {
     sportInput: params.sportInput,
     fallbackName: labelFromDetail || undefined,
   });
-  return labelFromDetail || inferred.defaultName || startCase(fallbackIdentifier);
+  return labelFromDetail && !looksLikeLegacyDivisionMetadataLabel(labelFromDetail)
+    ? labelFromDetail
+    : inferred.defaultName || startCase(fallbackIdentifier);
 };
 
 const dedupeLabels = (labels: string[]): string[] => {

@@ -1,4 +1,5 @@
 import {
+  cleanDivisionDisplayName,
   getDivisionTypeOptionsForSport,
   inferDivisionDetails,
 } from '@/lib/divisionTypes';
@@ -37,5 +38,33 @@ describe('divisionTypes age alignment', () => {
     });
 
     expect(inferred.divisionTypeName).toBe('U12');
+  });
+
+  it('derives clean labels from composite skill and age division ids', () => {
+    const inferred = inferDivisionDetails({
+      identifier: 'event_1__division__c_skill_open_age_18plus',
+      sportInput: 'Volleyball',
+    });
+
+    expect(inferred.divisionTypeId).toBe('skill_open_age_18plus');
+    expect(inferred.divisionTypeName).toBe('Open 18+');
+    expect(inferred.defaultName).toBe('Open 18+');
+  });
+
+  it('ignores legacy metadata fallback labels for composite divisions', () => {
+    const inferred = inferDivisionDetails({
+      identifier: 'event_1__division__c_skill_bb_age_18plus',
+      sportInput: 'Volleyball',
+      fallbackName: 'CoEd Skill BB AGE 18plus',
+    });
+
+    expect(inferred.divisionTypeId).toBe('skill_bb_age_18plus');
+    expect(inferred.divisionTypeName).toBe('BB 18+');
+    expect(inferred.defaultName).toBe('BB 18+');
+  });
+
+  it('normalizes legacy composite separators to spaces', () => {
+    expect(cleanDivisionDisplayName('Open / 18+', 'fallback')).toBe('Open 18+');
+    expect(cleanDivisionDisplayName('Open • 18+', 'fallback')).toBe('Open 18+');
   });
 });

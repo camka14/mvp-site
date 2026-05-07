@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import {
+  cleanDivisionDisplayName,
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
@@ -224,9 +225,8 @@ const buildTeamState = (
     sportInput: sportInput ?? undefined,
   });
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
-  const divisionTypeName = normalizeText(payload.divisionTypeName)
-    ?? normalizeText(existing.divisionTypeName)
-    ?? inferredDivision.divisionTypeName;
+  const existingDivisionTypeName = cleanDivisionDisplayName(existing.divisionTypeName, inferredDivision.divisionTypeName);
+  const divisionTypeName = cleanDivisionDisplayName(payload.divisionTypeName, existingDivisionTypeName);
 
   const captainId = hasOwn(payload, 'captainId')
     ? (normalizeText(payload.captainId) ?? '')

@@ -24,6 +24,7 @@ interface MatchCardProps {
     officialUsersById?: Record<string, UserData>;
     showEventOfficialNames?: boolean;
     showDivisionBadge?: boolean;
+    highlightDivisionBadge?: boolean;
 }
 
 type MatchDivisionInput = Match['division'] | string | null | undefined;
@@ -71,6 +72,7 @@ function MatchCard({
     officialUsersById,
     showEventOfficialNames = true,
     showDivisionBadge = true,
+    highlightDivisionBadge = false,
 }: MatchCardProps) {
     const isCompactHorizontal = layout === 'horizontal' && hideTimeBadge;
 
@@ -245,6 +247,9 @@ function MatchCard({
                 ? 'border-orange-200 hover:border-orange-300'
                 : 'border-blue-200 hover:border-blue-300';
     const showFooter = showDivisionBadge || canManage;
+    const divisionBadgeClass = highlightDivisionBadge
+        ? 'bg-green-50 text-green-700 border border-green-200'
+        : 'bg-gray-100 text-gray-700';
 
     const renderTeamRow = ({
         team,
@@ -328,7 +333,7 @@ function MatchCard({
                 <div className="match-card__footer mt-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         {showDivisionBadge && (
-                            <span className="match-card__division text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                            <span className={`match-card__division text-xs px-2 py-1 rounded-full ${divisionBadgeClass}`}>
                                 Division: {divisionLabel}
                             </span>
                         )}
@@ -367,7 +372,7 @@ function MatchCard({
             {showFooter && (
                 <div className="match-card__footer flex items-center justify-between gap-3">
                     {showDivisionBadge && (
-                        <div className="match-card__division text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-full shrink-0">
+                        <div className={`match-card__division text-xs px-2 py-1 rounded-full shrink-0 ${divisionBadgeClass}`}>
                             Division: {divisionLabel}
                         </div>
                     )}

@@ -6,7 +6,7 @@ import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
-import { extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
+import { cleanDivisionDisplayName, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
 import { isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
 
@@ -152,13 +152,19 @@ const getDivisionDetailsForEvents = async (
         sportInput: row?.sportId ?? event.sportId ?? undefined,
         fallbackName: row?.name ?? undefined,
       });
+      const divisionTypeId = row?.divisionTypeId ?? inferred.divisionTypeId;
+      const inferredDivisionType = inferDivisionDetails({
+        identifier: divisionTypeId,
+        sportInput: row?.sportId ?? event.sportId ?? undefined,
+        fallbackName: row?.divisionTypeName ?? undefined,
+      });
 
       return {
         id: row?.id ?? divisionId,
         key: row?.key ?? inferred.token,
-        name: row?.name ?? inferred.defaultName,
-        divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
-        divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+        name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
+        divisionTypeId,
+        divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
         ratingType: row?.ratingType ?? inferred.ratingType,
         gender: row?.gender ?? inferred.gender,
         sportId: row?.sportId ?? event.sportId ?? null,

@@ -16,6 +16,7 @@ import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
+import { loadCanonicalTeamById, normalizeId, normalizeIdList } from '@/server/teams/teamMembership';
 import {
   removeCanonicalPendingInvitee,
   rollbackTeamInviteEventSyncs,
@@ -69,6 +70,47 @@ const mapInviteRecord = (invite: Record<string, any>) => withLegacyFields({
 const unionStrings = (left: string[] | null | undefined, right: string[] | null | undefined): string[] => Array.from(
   new Set([...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])].filter(Boolean)),
 );
+
+const canManageTeamInvites = async (
+  teamId: string,
+  session: { userId: string; isAdmin: boolean },
+  client: any,
+): Promise<boolean> => {
+  if (session.isAdmin) {
+    return true;
+  }
+
+  const team = await loadCanonicalTeamById(teamId, client);
+  if (!team) {
+    return false;
+  }
+
+  const staffAssignments = Array.isArray((team as any).staffAssignments) ? (team as any).staffAssignments : [];
+  const isCaptain = normalizeId((team as any).captainId) === session.userId;
+  const isManager = normalizeId((team as any).managerId) === session.userId
+    || staffAssignments.some((row: any) => (
+      normalizeId(row?.userId) === session.userId
+      && String(row?.status ?? '').toUpperCase() === 'ACTIVE'
+      && String(row?.role ?? '').toUpperCase() === 'MANAGER'
+    ));
+  const isCoach = normalizeId((team as any).headCoachId) === session.userId
+    || normalizeIdList((team as any).coachIds).includes(session.userId);
+
+  if (isCaptain || isManager || isCoach) {
+    return true;
+  }
+
+  const organizationId = normalizeId((team as any).organizationId);
+  if (!organizationId) {
+    return false;
+  }
+
+  const organization = await client.organizations?.findUnique?.({
+    where: { id: organizationId },
+    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+  });
+  return canManageOrganization(session, organization, client);
+};
 
 const resolveInviteUser = async (client: any, invite: z.infer<typeof inviteSchema>, now: Date) => {
   const inviteUserId = typeof invite.userId === 'string' ? invite.userId.trim() : '';
@@ -126,16 +168,23 @@ const resolveInviteUser = async (client: any, invite: z.infer<typeof inviteSchem
 export async function GET(req: NextRequest) {
   const session = await requireSession(req);
   const params = req.nextUrl.searchParams;
-  const userId = params.get('userId');
+  const userId = normalizeId(params.get('userId'));
   const type = normalizeInviteType(params.get('type'));
-  const teamId = params.get('teamId');
+  const teamId = normalizeId(params.get('teamId'));
 
   if (userId && !session.isAdmin && userId !== session.userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const where: any = {};
-  if (userId) where.userId = userId;
+  if (!session.isAdmin) {
+    const canListTeamInvites = teamId ? await canManageTeamInvites(teamId, session, prisma) : false;
+    if (userId || !canListTeamInvites) {
+      where.userId = userId ?? session.userId;
+    }
+  } else if (userId) {
+    where.userId = userId;
+  }
   if (type) where.type = type;
   if (teamId) where.teamId = teamId;
 

@@ -288,6 +288,96 @@ describe('claimOrCreateEventTeamSnapshot', () => {
     randomUuidSpy.mockRestore();
   });
 
+  it('claims a placeholder from a tournament pool while keeping registration on the bracket division', async () => {
+    const updateMock = jest.fn(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => (
+      Promise.resolve({ id: where.id, ...data })
+    ));
+    const findManyMock = jest.fn(({ where }: { where: Record<string, unknown> }) => {
+      if (where.kind === 'PLACEHOLDER') {
+        return Promise.resolve([
+          {
+            id: 'slot_pool_a_1',
+            eventId: 'event_1',
+            kind: 'PLACEHOLDER',
+            parentTeamId: null,
+            division: 'pool_a',
+            divisionTypeId: null,
+            createdAt: new Date('2026-01-01T00:00:00.000Z'),
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const tx = {
+      teams: {
+        findMany: findManyMock,
+        update: updateMock,
+        create: jest.fn(),
+      },
+      eventRegistrations: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      eventTeamStaffAssignments: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+
+    await expect(claimOrCreateEventTeamSnapshot({
+      tx,
+      eventId: 'event_1',
+      canonicalTeamId: 'team_1',
+      createdBy: 'user_1',
+      divisionId: 'bracket_open',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
+      placeholderDivisionIds: ['pool_a'],
+      canonicalTeam: {
+        id: 'team_1',
+        name: 'Canonical Team',
+        division: 'Open',
+        divisionTypeId: 'open',
+        divisionTypeName: 'Open',
+        wins: null,
+        losses: null,
+        teamSize: 2,
+        profileImageId: null,
+        sport: 'volleyball',
+        captainId: '',
+        managerId: 'user_1',
+        headCoachId: null,
+        coachIds: [],
+        pending: [],
+        playerRegistrations: [],
+        staffAssignments: [],
+      },
+    })).resolves.toEqual(expect.objectContaining({
+      id: 'slot_pool_a_1',
+      division: 'pool_a',
+    }));
+
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'slot_pool_a_1' },
+      data: expect.objectContaining({
+        kind: 'REGISTERED',
+        parentTeamId: 'team_1',
+        division: 'pool_a',
+      }),
+    }));
+    expect(upsertEventRegistrationMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      registrantType: 'TEAM',
+      registrantId: 'slot_pool_a_1',
+      eventTeamId: 'slot_pool_a_1',
+      parentId: 'team_1',
+      divisionId: 'bracket_open',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'c_skill_open',
+    }), expect.anything());
+  });
+
   it('reuses the active registered event team when refreshing a team without a placeholder slot', async () => {
     const updateMock = jest.fn(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => (
       Promise.resolve({ id: where.id, ...data })

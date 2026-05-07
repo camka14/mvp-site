@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Calendar as BigCalendar,
@@ -77,7 +78,7 @@ const calendarFormats = {
     `${formatDisplayTime(start)} - ${formatDisplayTime(end)}`,
 };
 
-const MY_SCHEDULE_MONTH_CARD_MIN_HEIGHT = '2.7rem';
+const MY_SCHEDULE_CARD_MIN_HEIGHT = '2.7rem';
 
 const parseDate = (value?: string | null): Date | null => {
   if (!value) return null;
@@ -91,6 +92,22 @@ const getEntityName = (value: unknown, fallback: string): string => {
     if (name.length > 0) return name;
   }
   return fallback;
+};
+
+const isHeaderLikeCalendarEvent = (event: ScheduleCalendarEvent): boolean => {
+  return Boolean(event.allDay) || event.start.toDateString() !== event.end.toDateString();
+};
+
+const getScheduleCardStyle = (
+  view: View,
+  event: ScheduleCalendarEvent,
+): CSSProperties => {
+  const needsReadableAutoHeight = view === 'month' || view === 'agenda' || isHeaderLikeCalendarEvent(event);
+
+  return {
+    minHeight: needsReadableAutoHeight ? MY_SCHEDULE_CARD_MIN_HEIGHT : undefined,
+    height: needsReadableAutoHeight ? 'auto' : '100%',
+  };
 };
 
 const getTeamName = (
@@ -261,7 +278,7 @@ function MySchedulePageContent() {
       colorReferenceList={eventColorReferenceList}
       colorMatchKey={event.resource.eventName}
       className="my-schedule-calendar-event"
-      style={calendarView === 'month' ? { minHeight: MY_SCHEDULE_MONTH_CARD_MIN_HEIGHT, height: 'auto' } : undefined}
+      style={getScheduleCardStyle(calendarView, event)}
       compact
     />
   );
@@ -352,16 +369,21 @@ function MySchedulePageContent() {
                 week: { event: EventTile },
                 day: { event: EventTile },
               }}
-              eventPropGetter={() => ({
-                className: calendarView === 'month' ? 'my-schedule-calendar-event-wrapper' : undefined,
-                style: {
-                  backgroundColor: 'transparent',
-                  border: 'none',
-                  padding: 0,
-                  color: 'var(--mvp-text)',
-                  ...(calendarView === 'month' ? { minHeight: MY_SCHEDULE_MONTH_CARD_MIN_HEIGHT } : {}),
-                },
-              })}
+              eventPropGetter={(entry) => {
+                const needsReadableAutoHeight =
+                  calendarView === 'month' || calendarView === 'agenda' || isHeaderLikeCalendarEvent(entry);
+
+                return {
+                  className: needsReadableAutoHeight ? 'my-schedule-calendar-event-wrapper' : undefined,
+                  style: {
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    color: 'var(--mvp-text)',
+                    ...(needsReadableAutoHeight ? { minHeight: MY_SCHEDULE_CARD_MIN_HEIGHT } : {}),
+                  },
+                };
+              }}
               style={{ minHeight: 700 }}
               formats={calendarFormats}
             />

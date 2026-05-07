@@ -4,6 +4,8 @@ import {
   TournamentPoolValidationError,
   assignRegisteredTeamToTournamentPool,
   buildGeneratedTournamentPools,
+  getTournamentPoolIdsForBracket,
+  removeRegisteredTeamFromTournamentPools,
 } from '@/server/events/tournamentPools';
 
 describe('tournamentPools', () => {
@@ -23,7 +25,7 @@ describe('tournamentPools', () => {
     expect(pools).toEqual([
       expect.objectContaining({
         key: 'open_pool_a',
-        name: 'Open Pool A',
+        name: 'Pool A',
         kind: 'LEAGUE',
         maxParticipants: 4,
         playoffTeamCount: 2,
@@ -31,13 +33,13 @@ describe('tournamentPools', () => {
       }),
       expect.objectContaining({
         key: 'open_pool_b',
-        name: 'Open Pool B',
+        name: 'Pool B',
         maxParticipants: 4,
         playoffTeamCount: 2,
       }),
       expect.objectContaining({
         key: 'open_pool_c',
-        name: 'Open Pool C',
+        name: 'Pool C',
         maxParticipants: 4,
         playoffTeamCount: 2,
       }),
@@ -70,7 +72,7 @@ describe('tournamentPools', () => {
             {
               id: 'pool_a',
               key: 'open_pool_a',
-              name: 'Open Pool A',
+              name: 'Pool A',
               kind: 'LEAGUE',
               maxParticipants: 4,
               playoffPlacementDivisionIds: ['event_1__division__open'],
@@ -79,7 +81,7 @@ describe('tournamentPools', () => {
             {
               id: 'pool_b',
               key: 'open_pool_b',
-              name: 'Open Pool B',
+              name: 'Pool B',
               kind: 'LEAGUE',
               maxParticipants: 4,
               playoffPlacementDivisionIds: ['event_1__division__open'],
@@ -96,6 +98,120 @@ describe('tournamentPools', () => {
       where: { id: 'pool_b' },
       data: {
         teamIds: ['event_team_4', 'event_team_3'],
+        updatedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('honors a claimed placeholder pool when assigning a registered team', async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const assignedPoolId = await assignRegisteredTeamToTournamentPool({
+      eventId: 'event_1',
+      bracketDivisionId: 'event_1__division__open',
+      eventTeamId: 'slot_pool_a_1',
+      preferredPoolId: 'pool_a',
+      client: {
+        divisions: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'pool_a',
+              key: 'open_pool_a',
+              name: 'Pool A',
+              kind: 'LEAGUE',
+              maxParticipants: 4,
+              playoffPlacementDivisionIds: ['event_1__division__open'],
+              teamIds: ['event_team_1'],
+            },
+            {
+              id: 'pool_b',
+              key: 'open_pool_b',
+              name: 'Pool B',
+              kind: 'LEAGUE',
+              maxParticipants: 4,
+              playoffPlacementDivisionIds: ['event_1__division__open'],
+              teamIds: [],
+            },
+          ]),
+          update,
+        },
+      },
+    } as any);
+
+    expect(assignedPoolId).toBe('pool_a');
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'pool_a' },
+      data: {
+        teamIds: ['event_team_1', 'slot_pool_a_1'],
+        updatedAt: expect.any(Date),
+      },
+    });
+  });
+
+  it('returns generated pool ids for a bracket division', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'pool_a',
+        key: 'open_pool_a',
+        name: 'Pool A',
+        kind: 'LEAGUE',
+        playoffPlacementDivisionIds: ['event_1__division__open'],
+        teamIds: [],
+      },
+      {
+        id: 'pool_other',
+        key: 'other_pool_a',
+        name: 'Pool A',
+        kind: 'LEAGUE',
+        playoffPlacementDivisionIds: ['event_1__division__other'],
+        teamIds: [],
+      },
+      {
+        id: 'event_1__division__open',
+        key: 'open',
+        name: 'Open',
+        kind: 'PLAYOFF',
+        playoffPlacementDivisionIds: [],
+        teamIds: [],
+      },
+    ]);
+
+    await expect(getTournamentPoolIdsForBracket({
+      eventId: 'event_1',
+      bracketDivisionId: 'event_1__division__open',
+      client: {
+        divisions: { findMany },
+      },
+    } as any)).resolves.toEqual(['pool_a']);
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        eventId: 'event_1',
+        kind: 'LEAGUE',
+      },
+    }));
+  });
+
+  it('returns the pool id when removing a registered team from pools', async () => {
+    const update = jest.fn().mockResolvedValue({});
+    const removedPoolId = await removeRegisteredTeamFromTournamentPools({
+      eventId: 'event_1',
+      eventTeamId: 'event_team_2',
+      client: {
+        divisions: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'pool_a', teamIds: ['event_team_1'] },
+            { id: 'pool_b', teamIds: ['event_team_2', 'event_team_3'] },
+          ]),
+          update,
+        },
+      },
+    } as any);
+
+    expect(removedPoolId).toBe('pool_b');
+    expect(update).toHaveBeenCalledWith({
+      where: { id: 'pool_b' },
+      data: {
+        teamIds: ['event_team_3'],
         updatedAt: expect.any(Date),
       },
     });

@@ -231,6 +231,38 @@ describe('teamService', () => {
       );
       expect(userServiceMock.updateUser).not.toHaveBeenCalled();
     });
+
+    it('does not serialize a null player id when the captain id is unavailable', async () => {
+      apiRequestMock.mockResolvedValue({
+        $id: 'team_missing_user_id',
+        name: 'Missing User Id Team',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: [],
+        pending: [],
+        teamSize: 6,
+        captainId: '',
+        managerId: '',
+      });
+
+      await teamService.createTeam(
+        'Missing User Id Team',
+        undefined as unknown as string,
+      );
+
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/teams',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            name: 'Missing User Id Team',
+            playerIds: [],
+            captainId: '',
+            managerId: '',
+          }),
+        }),
+      );
+    });
   });
 
   describe('getTeamsByUserId', () => {
@@ -373,7 +405,7 @@ describe('teamService', () => {
   });
 
   describe('invitePlayerToTeam', () => {
-    it('adds pending invitation and notifies user service', async () => {
+    it('posts a player member invite request', async () => {
       userServiceMock.addTeamInvitation.mockResolvedValue(true);
       apiRequestMock.mockResolvedValue({});
 
@@ -388,13 +420,17 @@ describe('teamService', () => {
       const result = await teamService.invitePlayerToTeam(team, user);
 
       expect(apiRequestMock).toHaveBeenCalledWith(
-        '/api/teams/team_1',
+        '/api/teams/team_1/member-invites',
         expect.objectContaining({
-          method: 'PATCH',
-          body: { team: { pending: ['user_2'] } },
+          method: 'POST',
+          body: {
+            userId: 'user_2',
+            role: 'player',
+            eventTeamIds: [],
+          },
         }),
       );
-      expect(userServiceMock.addTeamInvitation).toHaveBeenCalledWith('user_2', 'team_1');
+      expect(userServiceMock.addTeamInvitation).not.toHaveBeenCalled();
       expect(result).toBe(true);
     });
   });

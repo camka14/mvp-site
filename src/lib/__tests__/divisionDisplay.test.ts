@@ -44,5 +44,39 @@ describe('resolveDivisionDisplayName', () => {
       sportInput: 'volleyball',
     })).toBe('CoEd Open');
   });
+
+  it('uses simple pool labels for generated tournament pool rows', () => {
+    const bracketId = 'evt_1__division__c_skill_open_age_18plus';
+    const pool = {
+      id: `${bracketId}_pool_a`,
+      key: 'c_skill_open_age_18plus_pool_a',
+      name: 'Open 18+ Pool A',
+      playoffPlacementDivisionIds: [bracketId],
+    };
+    const index = buildDivisionDisplayNameIndex([pool]);
+
+    expect(resolveDivisionDisplayName({
+      division: pool as any,
+      divisionNameIndex: index,
+      sportInput: 'volleyball',
+    })).toBe('Pool A');
+    expect(resolveDivisionDisplayName({
+      division: `${bracketId}_pool_a`,
+      divisionNameIndex: index,
+      sportInput: 'volleyball',
+    })).toBe('Pool A');
+  });
+
+  it('cleans legacy metadata names before falling back to inferred labels', () => {
+    expect(resolveDivisionDisplayName({
+      division: {
+        id: 'evt_1__division__c_skill_bb_age_18plus',
+        key: 'c_skill_bb_age_18plus',
+        name: 'CoEd Skill BB AGE 18plus',
+      } as any,
+      divisionDetails: [],
+      sportInput: 'volleyball',
+    })).toBe('BB 18+');
+  });
 });
 

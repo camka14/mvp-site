@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover, SegmentedControl, Menu } from '@mantine/core';
+import { Container, Title, Text, Group, Button, Paper, Alert, Tabs, Stack, Table, UnstyledButton, Modal, Select, SimpleGrid, TextInput, Loader, NumberInput, Checkbox, Badge, ActionIcon, Textarea, Popover, SegmentedControl, Menu, type SelectProps } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useMediaQuery } from '@mantine/hooks';
 import { ListChecks, Megaphone, QrCode } from 'lucide-react';
@@ -37,6 +37,11 @@ import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
+import {
+  collectViewerDivisionHighlightKeys,
+  collectViewerTeamIds,
+  isViewerDivisionHighlighted,
+} from '@/lib/viewerTeamHighlights';
 import {
   shouldUseServerStandingsRows,
   teamBelongsToSelectedStandingsDivision,
@@ -1785,6 +1790,9 @@ function EventScheduleContent() {
           occurrenceDate: occurrence.occurrenceDate,
           label: occurrence.label,
           divisionLabel: divisionLabel || null,
+          divisionKeys: occurrence.divisionIds
+            .map((divisionId) => toDivisionKey(divisionId))
+            .filter((divisionKey): divisionKey is string => Boolean(divisionKey)),
           isSelected,
         },
       } as Match;
@@ -2006,13 +2014,56 @@ function EventScheduleContent() {
     tournamentPoolPlayEnabled,
   ]);
 
-  const isSplitDivisionEvent = Boolean(
-    (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
-      && !activeEvent?.singleDivision
-      && leagueDivisionOptions.length > 0,
-  );
-
   const participantDivisionColumns = useMemo<Array<{ id: string; label: string; teamIds: string[] }>>(() => {
+    if (isTournamentPoolPlayViewEnabled(activeEvent)) {
+      const poolDivisions = Array.isArray(activeEvent?.divisionDetails)
+        ? activeEvent.divisionDetails
+        : [];
+      const bracketDivisions = Array.isArray(activeEvent?.playoffDivisionDetails)
+        ? activeEvent.playoffDivisionDetails
+        : [];
+      const columns: Array<{ id: string; label: string; teamIds: string[] }> = [];
+      const bracketTargets = bracketDivisions
+        .map((division) => {
+          const divisionId = getDivisionId(division);
+          return divisionId
+            ? {
+                id: divisionId,
+                label: getDivisionLabel(division) ?? divisionLabelsByKey.get(toDivisionKey(divisionId) ?? '') ?? divisionId,
+              }
+            : null;
+        })
+        .filter((target): target is { id: string; label: string } => Boolean(target));
+      const effectiveBracketTargets = bracketTargets.length > 0
+        ? bracketTargets
+        : tournamentBracketDivisionOptions.map((option) => ({
+            id: option.value,
+            label: option.label,
+          }));
+
+      effectiveBracketTargets.forEach((division) => {
+        const divisionId = division.id;
+
+        const teamIds = new Set<string>(getDivisionTeamIds(division));
+        poolDivisions.forEach((poolDivision) => {
+          if (!divisionReferencesBracket(poolDivision, divisionId)) {
+            return;
+          }
+          getDivisionTeamIds(poolDivision).forEach((teamId) => teamIds.add(teamId));
+        });
+
+        columns.push({
+          id: divisionId,
+          label: division.label,
+          teamIds: Array.from(teamIds),
+        });
+      });
+
+      if (columns.length > 0) {
+        return columns;
+      }
+    }
+
     const sourceDivisions = Array.isArray(activeEvent?.divisionDetails)
       ? activeEvent.divisionDetails
       : Array.isArray(activeEvent?.divisions)
@@ -2034,12 +2085,17 @@ function EventScheduleContent() {
       });
     });
     return columns;
-  }, [activeEvent?.divisionDetails, activeEvent?.divisions]);
+  }, [activeEvent, divisionLabelsByKey, tournamentBracketDivisionOptions]);
 
   const participantDivisionSelectData = useMemo(
     () => participantDivisionColumns.map((column) => ({ value: column.id, label: column.label })),
     [participantDivisionColumns],
   );
+
+  const isSplitDivisionEvent = Boolean(
+    (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
+      || (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'TOURNAMENT',
+  ) && !activeEvent?.singleDivision && participantDivisionColumns.length > 0;
 
   useEffect(() => {
     if (selectedScheduleDivision === 'all') {
@@ -2988,6 +3044,81 @@ function EventScheduleContent() {
     }
     return teams;
   }, [activeEvent?.teams, participantTeams]);
+
+  const viewerHighlightTeams = useMemo(
+    () => Array.from(participantTeamsById.values()),
+    [participantTeamsById],
+  );
+  const eventDivisionHighlightSources = useMemo<unknown[]>(() => {
+    const sources: unknown[] = [];
+    if (Array.isArray(activeEvent?.divisionDetails)) {
+      sources.push(...activeEvent.divisionDetails);
+    }
+    if (Array.isArray(activeEvent?.playoffDivisionDetails)) {
+      sources.push(...activeEvent.playoffDivisionDetails);
+    }
+    if (Array.isArray(activeEvent?.divisions)) {
+      sources.push(...activeEvent.divisions);
+    }
+    return sources;
+  }, [activeEvent?.divisionDetails, activeEvent?.divisions, activeEvent?.playoffDivisionDetails]);
+  const viewerTeamIds = useMemo(
+    () => collectViewerTeamIds({
+      currentUser: user,
+      childUserIds,
+      teams: viewerHighlightTeams,
+    }),
+    [childUserIds, user, viewerHighlightTeams],
+  );
+  const viewerDivisionHighlightKeys = useMemo(
+    () => collectViewerDivisionHighlightKeys({
+      currentUser: user,
+      childUserIds,
+      teams: viewerHighlightTeams,
+      divisions: eventDivisionHighlightSources,
+      matches: activeMatches,
+    }),
+    [activeMatches, childUserIds, eventDivisionHighlightSources, user, viewerHighlightTeams],
+  );
+  const renderViewerHighlightedDivisionOption = useCallback<NonNullable<SelectProps['renderOption']>>(
+    ({ option }) => {
+      const highlighted = isViewerDivisionHighlighted(viewerDivisionHighlightKeys, option.value);
+      return (
+        <Group justify="space-between" gap="xs" wrap="nowrap" w="100%">
+          <Text
+            span
+            size="sm"
+            fw={highlighted ? 700 : 400}
+            c={highlighted ? 'green.8' : undefined}
+            truncate
+          >
+            {option.label}
+          </Text>
+          {highlighted ? (
+            <Badge size="xs" color="green" variant="light">
+              Your team
+            </Badge>
+          ) : null}
+        </Group>
+      );
+    },
+    [viewerDivisionHighlightKeys],
+  );
+  const getViewerHighlightedSelectStyles = useCallback(
+    (value: string | null | undefined): SelectProps['styles'] | undefined => (
+      isViewerDivisionHighlighted(viewerDivisionHighlightKeys, value)
+        ? {
+            input: {
+              backgroundColor: 'var(--mantine-color-green-0)',
+              borderColor: 'var(--mantine-color-green-4)',
+              color: 'var(--mantine-color-green-9)',
+              fontWeight: 700,
+            },
+          }
+        : undefined
+    ),
+    [viewerDivisionHighlightKeys],
+  );
 
   const isPlaceholderParticipantTeam = useCallback(
     (team: Team | null | undefined): boolean => {
@@ -5496,15 +5627,24 @@ function EventScheduleContent() {
   }, [playoffMatchesMap]);
 
   const bracketDivisionOptions = useMemo<DivisionOption[]>(() => {
-    if (!playoffMatchesMap) {
-      return [];
+    if (tournamentPoolPlayEnabled && tournamentBracketDivisionOptions.length > 0) {
+      return tournamentBracketDivisionOptions;
     }
 
-    return buildBracketDivisionOptions(playoffMatchesMap, {
-      labelByDivisionKey: divisionLabelsByKey,
-      resolveLabel: (match, divisionId) => getMatchDivisionLabel(match) ?? divisionId,
-    });
-  }, [divisionLabelsByKey, playoffMatchesMap]);
+    const matchDivisionOptions = playoffMatchesMap
+      ? buildBracketDivisionOptions(playoffMatchesMap, {
+          labelByDivisionKey: divisionLabelsByKey,
+          resolveLabel: (match, divisionId) => getMatchDivisionLabel(match) ?? divisionId,
+        })
+      : [];
+
+    return matchDivisionOptions;
+  }, [
+    divisionLabelsByKey,
+    playoffMatchesMap,
+    tournamentBracketDivisionOptions,
+    tournamentPoolPlayEnabled,
+  ]);
 
   useEffect(() => {
     if (bracketDivisionOptions.length === 0) {
@@ -6075,9 +6215,11 @@ function EventScheduleContent() {
   }, []);
 
   const defaultTab = isLeague ? 'schedule' : 'details';
-  const shouldShowBracketTab = !!bracketData || isPreview;
+  const eventIncludesPlayoffBracket = isTournament
+    || (isLeague && Boolean(activeEvent?.includePlayoffs ?? changesEvent?.includePlayoffs));
+  const shouldShowBracketTab = Boolean(bracketData) || isPreview || (!isTemplateEvent && eventIncludesPlayoffBracket);
 
-  // Ensure the bracket tab is only active when playoff data exists or preview mode demands it.
+  // Keep bracket-capable events on a valid tab; the bracket panel owns the empty-data state.
   useEffect(() => {
     if (!shouldShowBracketTab && activeTab === 'bracket') {
       setActiveTab(defaultTab);
@@ -9383,6 +9525,8 @@ function EventScheduleContent() {
                       showEventOfficialNames={false}
                       currentUser={user}
                       childUserIds={childUserIds}
+                      viewerTeamIds={viewerTeamIds}
+                      highlightDivisionKeys={viewerDivisionHighlightKeys}
                       conflictMatchIdsById={{}}
                     />
                   </Stack>
@@ -9395,6 +9539,8 @@ function EventScheduleContent() {
                           label="Division"
                           data={scheduleDivisionSelectData}
                           value={selectedScheduleDivision}
+                          renderOption={renderViewerHighlightedDivisionOption}
+                          styles={getViewerHighlightedSelectStyles(selectedScheduleDivision)}
                           onChange={(value) => {
                             setSelectedScheduleDivision(value ?? 'all');
                             setSelectedSchedulePool('all');
@@ -9408,6 +9554,8 @@ function EventScheduleContent() {
                           label="Pool"
                           data={schedulePoolSelectData}
                           value={selectedSchedulePool}
+                          renderOption={renderViewerHighlightedDivisionOption}
+                          styles={getViewerHighlightedSelectStyles(selectedSchedulePool)}
                           onChange={(value) => setSelectedSchedulePool(value ?? 'all')}
                           allowDeselect={false}
                           w={220}
@@ -9451,6 +9599,8 @@ function EventScheduleContent() {
                       showEventOfficialNames={showEventOfficialNames}
                       currentUser={user}
                       childUserIds={childUserIds}
+                      viewerTeamIds={viewerTeamIds}
+                      highlightDivisionKeys={viewerDivisionHighlightKeys}
                       onToggleLockAllMatches={handleToggleLockAllMatches}
                       conflictMatchIdsById={matchConflictsById}
                     />
@@ -9469,6 +9619,8 @@ function EventScheduleContent() {
                         label="Division"
                         data={bracketDivisionOptions}
                         value={selectedBracketDivision ?? bracketDivisionOptions[0]?.value ?? null}
+                        renderOption={renderViewerHighlightedDivisionOption}
+                        styles={getViewerHighlightedSelectStyles(selectedBracketDivision ?? bracketDivisionOptions[0]?.value ?? null)}
                         onChange={(value) => setSelectedBracketDivision(value ?? bracketDivisionOptions[0]?.value ?? null)}
                         allowDeselect={false}
                         w={220}
@@ -9485,6 +9637,9 @@ function EventScheduleContent() {
                     <TournamentBracketView
                       bracket={bracketData}
                       currentUser={user ?? undefined}
+                      childUserIds={childUserIds}
+                      viewerTeamIds={viewerTeamIds}
+                      highlightDivisionKeys={viewerDivisionHighlightKeys}
                       isPreview={isPreview}
                       onMatchClick={handleMatchClick}
                       canEditMatches={canEditMatches}
@@ -9514,6 +9669,8 @@ function EventScheduleContent() {
                         label="Division"
                         data={effectiveStandingsDivisionOptions}
                         value={selectedStandingsDivision}
+                        renderOption={renderViewerHighlightedDivisionOption}
+                        styles={getViewerHighlightedSelectStyles(selectedStandingsDivision)}
                         onChange={(value) => {
                           setSelectedStandingsDivision(value);
                           setSelectedStandingsPool(null);
@@ -9527,6 +9684,8 @@ function EventScheduleContent() {
                           label="Pool"
                           data={standingsPoolOptions}
                           value={selectedStandingsDataDivision}
+                          renderOption={renderViewerHighlightedDivisionOption}
+                          styles={getViewerHighlightedSelectStyles(selectedStandingsDataDivision)}
                           onChange={(value) => setSelectedStandingsPool(value ?? standingsPoolOptions[0]?.value ?? null)}
                           allowDeselect={false}
                           disabled={standingsLoading}
@@ -9664,15 +9823,19 @@ function EventScheduleContent() {
                           <Table.Tbody>
                             {standings.map((row) => {
                               const points = getDraftStandingsPoints(row);
+                              const isViewerTeamRow = viewerTeamIds.has(row.teamId);
                               const deltaColor = points.pointsDelta > 0
                                 ? 'teal'
                                 : points.pointsDelta < 0
                                   ? 'red'
                                   : 'dimmed';
                               return (
-                                <Table.Tr key={row.teamId}>
-                                  <Table.Td className="text-sm font-semibold text-gray-600">{row.rank}</Table.Td>
-                                  <Table.Td className="text-sm font-medium text-gray-700">{row.teamName}</Table.Td>
+                                <Table.Tr
+                                  key={row.teamId}
+                                  style={isViewerTeamRow ? { backgroundColor: 'var(--mantine-color-green-0)' } : undefined}
+                                >
+                                  <Table.Td className={`text-sm font-semibold ${isViewerTeamRow ? 'text-green-800' : 'text-gray-600'}`}>{row.rank}</Table.Td>
+                                  <Table.Td className={`text-sm font-medium ${isViewerTeamRow ? 'text-green-900' : 'text-gray-700'}`}>{row.teamName}</Table.Td>
                                   <Table.Td className="text-right text-sm text-gray-700">{row.wins}</Table.Td>
                                   <Table.Td className="text-right text-sm text-gray-700">{row.losses}</Table.Td>
                                   <Table.Td className="text-right text-sm text-gray-700">{row.draws}</Table.Td>

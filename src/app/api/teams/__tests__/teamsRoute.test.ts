@@ -122,6 +122,50 @@ describe('/api/teams route', () => {
     }));
   });
 
+  it('coerces numeric team size input before creating a team', async () => {
+    createMock.mockResolvedValue({
+      id: 'team_size_string',
+      name: 'Team Size String',
+      division: 'Open',
+      sport: 'Indoor Volleyball',
+      playerIds: ['user_1'],
+      captainId: 'user_1',
+      managerId: 'user_1',
+      coachIds: [],
+      pending: [],
+      teamSize: 2,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(postJson({
+      id: 'team_size_string',
+      name: 'Team Size String',
+      teamSize: '2',
+    }));
+
+    expect(response.status).toBe(201);
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        id: 'team_size_string',
+        teamSize: 2,
+      }),
+    }));
+  });
+
+  it('rejects team sizes below two with a specific message', async () => {
+    const response = await POST(postJson({
+      id: 'team_too_small',
+      name: 'Too Small',
+      teamSize: 1,
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe('Team size must be 2 or above.');
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
   it('rejects requests with blank team names', async () => {
     const response = await POST(postJson({
       id: 'team_2',
@@ -131,7 +175,7 @@ describe('/api/teams route', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(400);
-    expect(payload.error).toBe('Invalid input');
+    expect(payload.error).toBe('Team name is required.');
     expect(createMock).not.toHaveBeenCalled();
   });
 
@@ -143,7 +187,7 @@ describe('/api/teams route', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(400);
-    expect(payload.error).toBe('Invalid input');
+    expect(payload.error).toBe('Invalid input: expected string, received undefined');
     expect(createMock).not.toHaveBeenCalled();
   });
 });

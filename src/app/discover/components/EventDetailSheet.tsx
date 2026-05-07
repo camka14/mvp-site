@@ -41,9 +41,9 @@ import { formatEnumDisplayLabel } from '@/lib/enumUtils';
 import { buildDivisionCapacityBreakdown, isDivisionAtCapacity, resolveDivisionCapacitySnapshot } from '@/lib/divisionCapacity';
 import {
     buildDivisionToken,
+    cleanDivisionDisplayName,
     evaluateDivisionAgeEligibility,
     extractDivisionTokenFromId,
-    getDivisionGenderLabel,
     inferDivisionDetails,
     normalizeDivisionGender,
     normalizeDivisionRatingType,
@@ -823,6 +823,11 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
         const ratingType = normalizeDivisionRatingType(row?.ratingType) ?? inferred.ratingType;
         const gender = normalizeDivisionGender(row?.gender) ?? inferred.gender;
         const divisionTypeId = normalizeDivisionKey(row?.divisionTypeId) ?? inferred.divisionTypeId;
+        const inferredDivisionType = inferDivisionDetails({
+            identifier: divisionTypeId,
+            sportInput,
+            fallbackName: typeof row?.divisionTypeName === 'string' ? row.divisionTypeName : undefined,
+        });
         const key = normalizeDivisionKey(row?.key) ?? inferred.token;
         const parsedKey = parseDivisionToken(key);
         const divisionTypeKey = parsedKey
@@ -837,12 +842,9 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
         const option: EventDivisionOption = {
             id: row?.id ?? divisionId,
             key,
-            name: row?.name ?? inferred.defaultName,
+            name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
             divisionTypeId,
-            divisionTypeName:
-                typeof row?.divisionTypeName === 'string' && row.divisionTypeName.trim().length > 0
-                    ? row.divisionTypeName.trim()
-                    : inferred.divisionTypeName,
+            divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
             divisionTypeKey,
             ratingType,
             gender,
@@ -1304,7 +1306,7 @@ export default function EventDetailSheet({
         });
         return Array.from(grouped.values()).map((option) => ({
             value: option.divisionTypeKey,
-            label: `${getDivisionGenderLabel(option.gender)} ${option.divisionTypeName}`,
+            label: option.divisionTypeName,
         }));
     }, [divisionOptions]);
     const selectedDivisionOption = React.useMemo(() => {
@@ -1913,15 +1915,82 @@ export default function EventDetailSheet({
                     eventFreeAgents = [];
                 }
             } else {
-                const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
-                const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
+                try {
+                    const snapshot = await eventService.getEventParticipants(targetId);
+                    const refreshedTeamIds = Array.from(new Set(
+                        (snapshot.participants.teamIds ?? [])
+                            .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
+                            .filter((teamId): teamId is string => teamId.length > 0),
+                    ));
+                    const participantUserIds = Array.from(new Set(
+                        (snapshot.participants.userIds ?? [])
+                            .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
+                            .filter((userId): userId is string => userId.length > 0),
+                    ));
+                    const waitListIds = Array.from(new Set(
+                        (snapshot.participants.waitListIds ?? [])
+                            .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
+                            .filter((userId): userId is string => userId.length > 0),
+                    ));
+                    const freeAgentIds = Array.from(new Set(
+                        (snapshot.participants.freeAgentIds ?? [])
+                            .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
+                            .filter((userId): userId is string => userId.length > 0),
+                    ));
+                    const snapshotTeams = (snapshot.teams ?? [])
+                        .map((team) => ({
+                            ...team,
+                            $id: typeof team.$id === 'string' && team.$id.trim().length > 0
+                                ? team.$id
+                                : String((team as any).id ?? ''),
+                        }))
+                        .filter((team): team is Team => team.$id.length > 0);
+                    const snapshotUsers = (snapshot.users ?? [])
+                        .map((participant) => ({
+                            ...participant,
+                            $id: typeof participant.$id === 'string' && participant.$id.trim().length > 0
+                                ? participant.$id
+                                : String((participant as any).id ?? ''),
+                        }))
+                        .filter((participant): participant is UserData => participant.$id.length > 0);
+                    const teamsById = new Map(snapshotTeams.map((team) => [team.$id, team]));
+                    const orderedTeams = refreshedTeamIds
+                        .map((teamId) => teamsById.get(teamId))
+                        .filter((team): team is Team => Boolean(team));
+                    const usersById = new Map(snapshotUsers.map((participant) => [participant.$id, participant]));
+                    const orderedUsers = participantUserIds
+                        .map((userId) => usersById.get(userId))
+                        .filter((participant): participant is UserData => Boolean(participant));
+                    const orderedFreeAgents = freeAgentIds
+                        .map((userId) => usersById.get(userId))
+                        .filter((participant): participant is UserData => Boolean(participant));
 
-                if (shouldLoadFreeAgents) {
-                    try {
-                        eventFreeAgents = await userService.getUsersByIds(freeAgentIds, { eventId: baseEvent.$id });
-                    } catch (error) {
-                        console.error('Failed to load free agents:', error);
-                        eventFreeAgents = [];
+                    resolvedEvent = {
+                        ...baseEvent,
+                        teamIds: refreshedTeamIds,
+                        teams: orderedTeams,
+                        userIds: participantUserIds,
+                        players: orderedUsers,
+                        waitListIds,
+                        freeAgentIds,
+                        participantCount: snapshot.participantCount,
+                        participantCapacity: snapshot.participantCapacity ?? undefined,
+                    } as Event;
+                    eventPlayers = orderedUsers;
+                    eventTeams = orderedTeams;
+                    eventFreeAgents = orderedFreeAgents;
+                } catch (error) {
+                    console.error('Failed to load event participants:', error);
+                    const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
+                    const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
+
+                    if (shouldLoadFreeAgents) {
+                        try {
+                            eventFreeAgents = await userService.getUsersByIds(freeAgentIds, { eventId: baseEvent.$id });
+                        } catch (freeAgentError) {
+                            console.error('Failed to load free agents:', freeAgentError);
+                            eventFreeAgents = [];
+                        }
                     }
                 }
             }
@@ -4013,7 +4082,7 @@ export default function EventDetailSheet({
                                                                         items={[
                                                                             {
                                                                                 label: 'Format',
-                                                                                value: `${getDivisionGenderLabel(division.gender)} ${division.divisionTypeName}`,
+                                                                                value: division.divisionTypeName,
                                                                             },
                                                                             ...(division.ageCutoffLabel
                                                                                 ? [{ label: 'Age cutoff', value: division.ageCutoffLabel }]

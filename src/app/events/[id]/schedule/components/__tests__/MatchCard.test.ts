@@ -136,4 +136,15 @@ describe('MatchCard conflict rendering', () => {
 
     expect(screen.queryByText(/Division:/i)).not.toBeInTheDocument();
   });
+
+  it('highlights the division badge when the match is in the viewer division', () => {
+    renderWithMantine(
+      createElement(MatchCard, {
+        match: buildMatch({ division: { name: 'CoEd Open' } as Match['division'] }),
+        highlightDivisionBadge: true,
+      }),
+    );
+
+    expect(screen.getByText('Division: CoEd Open')).toHaveClass('bg-green-50', 'text-green-700', 'border-green-200');
+  });
 });

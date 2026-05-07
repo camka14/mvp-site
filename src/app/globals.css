@@ -732,20 +732,31 @@ svg {
 }
 
 .my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .my-schedule-calendar-event-wrapper,
-.my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .rbc-event {
+.my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .rbc-event,
+.my-schedule-calendar-shell .rbc-time-header .rbc-row-segment .my-schedule-calendar-event-wrapper,
+.my-schedule-calendar-shell .rbc-time-header .rbc-row-segment .rbc-event {
   min-height: 2.7rem;
 }
 
 .my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .my-schedule-calendar-event-wrapper .rbc-event-content,
-.my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .rbc-event-content {
+.my-schedule-calendar-shell .rbc-month-view .rbc-row-segment .rbc-event-content,
+.my-schedule-calendar-shell .rbc-time-header .rbc-row-segment .my-schedule-calendar-event-wrapper .rbc-event-content,
+.my-schedule-calendar-shell .rbc-time-header .rbc-row-segment .rbc-event-content {
   min-height: 2.7rem;
   overflow: visible;
 }
 
 .my-schedule-calendar-shell .rbc-month-view .shared-calendar-event,
+.my-schedule-calendar-shell .rbc-time-header .shared-calendar-event,
+.my-schedule-calendar-shell .rbc-agenda-event-cell .shared-calendar-event,
 .rbc-overlay .my-schedule-calendar-event {
   height: auto;
   min-height: 2.7rem;
+}
+
+.my-schedule-calendar-shell .rbc-agenda-event-cell {
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
 }
 
 .my-schedule-calendar-event {

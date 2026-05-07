@@ -10,6 +10,7 @@ import ScoreUpdateModal from './ScoreUpdateModal';
 import { Paper, Group, Button, ActionIcon, Text, SegmentedControl, Badge } from '@mantine/core';
 import BracketCanvas from '@/components/bracket/BracketCanvas';
 import { buildBracketCanvasLayout } from '@/lib/bracketCanvasLayout';
+import { getBracketMatchDivisionId, toBracketDivisionKey } from '@/lib/bracketViewCore';
 import { normalizeBracketSeed } from '@/lib/bracketSeeds';
 
 type BracketTeamSlot = 'team1' | 'team2';
@@ -359,6 +360,9 @@ interface TournamentBracketViewProps {
     bracket: TournamentBracket;
     onScoreUpdate?: (matchId: string, team1Points: number[], team2Points: number[], setResults: number[]) => Promise<void>;
     currentUser?: UserData;
+    childUserIds?: string[];
+    viewerTeamIds?: Iterable<string>;
+    highlightDivisionKeys?: Iterable<string>;
     isExpanded?: boolean;
     onToggleExpand?: () => void;
     isPreview?: boolean;
@@ -373,6 +377,9 @@ export default function TournamentBracketView({
     bracket,
     onScoreUpdate,
     currentUser,
+    childUserIds = [],
+    viewerTeamIds,
+    highlightDivisionKeys,
     isExpanded,
     onToggleExpand,
     isPreview = false,
@@ -615,6 +622,23 @@ export default function TournamentBracketView({
     // Only use the internal score modal when no parent click handler is provided.
     const allowScoreUpdates = !!onScoreUpdate && !isPreview && !hasExternalMatchClick;
     const currentUserId = typeof currentUser?.$id === 'string' ? currentUser.$id.trim() : '';
+    const trackedUserIds = useMemo(() => {
+        const ids = new Set<string>();
+        if (currentUserId) {
+            ids.add(currentUserId);
+        }
+        childUserIds.forEach((childUserId) => {
+            if (typeof childUserId !== 'string') {
+                return;
+            }
+            const normalizedChildUserId = childUserId.trim();
+            if (normalizedChildUserId.length > 0) {
+                ids.add(normalizedChildUserId);
+            }
+        });
+        return ids;
+    }, [childUserIds, currentUserId]);
+    const hasTrackedUsers = trackedUserIds.size > 0;
     const userTeamIds = useMemo(() => {
         const ids = new Set<string>();
         (currentUser?.teamIds ?? []).forEach((teamId) => {
@@ -626,12 +650,35 @@ export default function TournamentBracketView({
                 ids.add(normalizedTeamId);
             }
         });
+        if (viewerTeamIds) {
+            for (const teamId of viewerTeamIds) {
+                if (typeof teamId !== 'string') {
+                    continue;
+                }
+                const normalizedTeamId = teamId.trim();
+                if (normalizedTeamId.length > 0) {
+                    ids.add(normalizedTeamId);
+                }
+            }
+        }
         return ids;
-    }, [currentUser?.teamIds]);
+    }, [currentUser?.teamIds, viewerTeamIds]);
+    const highlightedDivisionKeySet = useMemo(() => {
+        const keys = new Set<string>();
+        if (highlightDivisionKeys) {
+            for (const divisionKey of highlightDivisionKeys) {
+                const normalizedDivisionKey = toBracketDivisionKey(divisionKey);
+                if (normalizedDivisionKey) {
+                    keys.add(normalizedDivisionKey);
+                }
+            }
+        }
+        return keys;
+    }, [highlightDivisionKeys]);
 
     const teamHasCurrentUser = useCallback(
         (team: Match['team1'], fallbackTeamId?: string | null): boolean => {
-            if (!currentUserId) {
+            if (!hasTrackedUsers && userTeamIds.size === 0) {
                 return false;
             }
 
@@ -640,25 +687,34 @@ export default function TournamentBracketView({
             if (resolvedTeamId && userTeamIds.has(resolvedTeamId)) {
                 return true;
             }
+            if (!hasTrackedUsers) {
+                return false;
+            }
 
             const players = Array.isArray((team as any)?.players) ? (team as any).players : [];
-            if (players.some((player: unknown) => extractEntityId(player) === currentUserId)) {
+            if (players.some((player: unknown) => {
+                const playerId = extractEntityId(player);
+                return Boolean(playerId && trackedUserIds.has(playerId));
+            })) {
                 return true;
             }
 
             const playerIds = Array.isArray((team as any)?.playerIds) ? (team as any).playerIds : [];
-            if (playerIds.some((playerId: unknown) => (typeof playerId === 'string' ? playerId.trim() : '') === currentUserId)) {
+            if (playerIds.some((playerId: unknown) => {
+                const normalizedPlayerId = typeof playerId === 'string' ? playerId.trim() : '';
+                return normalizedPlayerId.length > 0 && trackedUserIds.has(normalizedPlayerId);
+            })) {
                 return true;
             }
 
             const captainId = extractEntityId((team as any)?.captain) || (typeof (team as any)?.captainId === 'string' ? (team as any).captainId.trim() : '');
-            return captainId === currentUserId;
+            return captainId.length > 0 && trackedUserIds.has(captainId);
         },
-        [currentUserId, userTeamIds],
+        [hasTrackedUsers, trackedUserIds, userTeamIds],
     );
 
     const matchInvolvesCurrentUser = useCallback((match: Match): boolean => {
-        if (!currentUserId) {
+        if (!hasTrackedUsers && userTeamIds.size === 0) {
             return false;
         }
 
@@ -667,16 +723,21 @@ export default function TournamentBracketView({
         const hasAssignedOfficialSlot = Array.isArray(match.officialIds)
             && match.officialIds.some((assignment) => {
                 const userId = typeof assignment?.userId === 'string' ? assignment.userId.trim() : '';
-                return userId.length > 0 && userId === currentUserId;
+                return userId.length > 0 && trackedUserIds.has(userId);
             });
-        if (matchOfficialId === currentUserId || hasAssignedOfficialSlot) {
+        if ((matchOfficialId && trackedUserIds.has(matchOfficialId)) || hasAssignedOfficialSlot) {
             return true;
         }
 
         return teamHasCurrentUser(match.team1, match.team1Id)
             || teamHasCurrentUser(match.team2, match.team2Id)
             || teamHasCurrentUser(match.teamOfficial, match.teamOfficialId);
-    }, [currentUserId, teamHasCurrentUser]);
+    }, [hasTrackedUsers, teamHasCurrentUser, trackedUserIds, userTeamIds]);
+
+    const matchHasHighlightedDivision = useCallback((match: Match): boolean => {
+        const divisionKey = toBracketDivisionKey(getBracketMatchDivisionId(match));
+        return Boolean(divisionKey && highlightedDivisionKeySet.has(divisionKey));
+    }, [highlightedDivisionKeySet]);
 
     const canManageMatch = (match: Match) => {
         if (allowEditing) return true;
@@ -778,6 +839,7 @@ export default function TournamentBracketView({
                 hasConflict={hasConflict}
                 officialUsersById={officialLookupById}
                 showEventOfficialNames={showEventOfficialNames}
+                highlightDivisionBadge={matchHasHighlightedDivision(resolvedMatch)}
             />
         );
     }, [
@@ -786,6 +848,7 @@ export default function TournamentBracketView({
         handleMatchClick,
         hasExternalMatchClick,
         leaguePlayoffPlaceholderAssignments,
+        matchHasHighlightedDivision,
         matchInvolvesCurrentUser,
         officialLookupById,
         officialsById,

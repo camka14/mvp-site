@@ -975,6 +975,7 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
   divisionId?: string | null;
   divisionTypeId?: string | null;
   divisionTypeKey?: string | null;
+  placeholderDivisionIds?: string[] | null;
   occurrence?: { slotId: string; occurrenceDate: string } | null;
 }) => {
   const canonicalTeam = params.canonicalTeam ?? await loadCanonicalTeamById(params.canonicalTeamId, params.tx);
@@ -999,12 +1000,19 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
       parentTeamId: null,
     },
   }) as EventTeamRow[];
+  const placeholderDivisionIdSet = new Set(
+    normalizeIdList(params.placeholderDivisionIds)
+      .map((divisionId) => divisionId.toLowerCase()),
+  );
   const matchingPlaceholder = placeholderRows
     .filter((row) => {
       const rowDivision = normalizeId(row.division);
       const rowDivisionTypeId = normalizeId(row.divisionTypeId);
       const targetDivisionId = normalizeId(params.divisionId);
       const targetDivisionTypeId = normalizeId(params.divisionTypeId);
+      if (rowDivision && placeholderDivisionIdSet.has(rowDivision.toLowerCase())) {
+        return true;
+      }
       if (targetDivisionId && rowDivision && rowDivision === targetDivisionId) {
         return true;
       }
@@ -1038,12 +1046,20 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
   const eventTeamId = normalizeId(matchingPlaceholder?.id)
     ?? normalizeId(existingRegisteredEventTeam?.id)
     ?? (eventTeamsDelegate.create ? crypto.randomUUID() : params.canonicalTeamId);
+  const matchingPlaceholderDivisionId = normalizeId(matchingPlaceholder?.division);
+  const shouldPreservePlaceholderDivision = Boolean(
+    matchingPlaceholderDivisionId
+    && placeholderDivisionIdSet.has(matchingPlaceholderDivisionId.toLowerCase()),
+  );
   const teamData = {
     eventId: params.eventId,
     kind: 'REGISTERED',
     playerIds: activePlayerRegistrations.map((row: any) => row.userId),
     playerRegistrationIds: [],
-    division: normalizeId(params.divisionId) ?? normalizeId((canonicalTeam as any).division) ?? null,
+    division: (shouldPreservePlaceholderDivision ? matchingPlaceholderDivisionId : null)
+      ?? normalizeId(params.divisionId)
+      ?? normalizeId((canonicalTeam as any).division)
+      ?? null,
     divisionTypeId: normalizeId(params.divisionTypeId) ?? normalizeId((canonicalTeam as any).divisionTypeId) ?? null,
     divisionTypeName: normalizeId((canonicalTeam as any).divisionTypeName) ?? null,
     wins: (canonicalTeam as any).wins ?? null,

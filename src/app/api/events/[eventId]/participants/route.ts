@@ -40,6 +40,7 @@ import {
 } from '@/server/refunds/refundExecution';
 import {
   assignRegisteredTeamToTournamentPool,
+  getTournamentPoolIdsForBracket,
   isTournamentPoolPlayEnabled,
   isTournamentPoolValidationError,
   removeRegisteredTeamFromTournamentPools,
@@ -351,11 +352,16 @@ const resetEventTeamSlotToPlaceholder = async (params: {
   eventTeam?: any;
   team: any;
   existingRegistration: any;
+  poolDivisionId?: string | null;
   createdBy: string;
   occurrence: { slotId: string; occurrenceDate: string } | null;
   now: Date;
 }) => {
-  const divisionId = normalizeId(params.existingRegistration?.divisionId)
+  const eventTeamDivisionId = normalizeId(params.eventTeam?.division);
+  const divisionId = (isTournamentPoolPlayEnabled(params.event)
+    ? (normalizeId(params.poolDivisionId) ?? eventTeamDivisionId)
+    : null)
+    ?? normalizeId(params.existingRegistration?.divisionId)
     ?? normalizeId(params.eventTeam?.division)
     ?? normalizeId(params.team?.division);
   const divisionTypeId = normalizeId(params.existingRegistration?.divisionTypeId)
@@ -1113,6 +1119,13 @@ async function updateParticipants(
       const result = await (async () => {
         try {
           return await prisma.$transaction(async (tx) => {
+            const tournamentPoolIds = isTournamentPoolPlayEnabled(event)
+              ? await getTournamentPoolIdsForBracket({
+                eventId: event.id,
+                bracketDivisionId: divisionSelection.divisionId,
+                client: tx,
+              })
+              : [];
             const eventTeam = await claimOrCreateEventTeamSnapshot({
               tx,
               eventId: event.id,
@@ -1122,6 +1135,7 @@ async function updateParticipants(
               divisionId: divisionSelection.divisionId,
               divisionTypeId: divisionSelection.divisionTypeId,
               divisionTypeKey: divisionSelection.divisionTypeKey,
+              placeholderDivisionIds: tournamentPoolIds,
               occurrence: resolvedOccurrence,
             });
             if (isTournamentPoolPlayEnabled(event)) {
@@ -1129,6 +1143,9 @@ async function updateParticipants(
                 eventId: event.id,
                 bracketDivisionId: divisionSelection.divisionId,
                 eventTeamId: String((eventTeam as any)?.id ?? ''),
+                preferredPoolId: tournamentPoolIds.includes(normalizeId((eventTeam as any)?.division) ?? '')
+                  ? normalizeId((eventTeam as any)?.division)
+                  : null,
                 client: tx,
               });
             } else {
@@ -1228,8 +1245,9 @@ async function updateParticipants(
         registrantId: eventTeamIdToRemove,
         occurrence: resolvedOccurrence,
       }, tx);
+      let removedTournamentPoolId: string | null = null;
       if (isTournamentPoolPlayEnabled(event)) {
-        await removeRegisteredTeamFromTournamentPools({
+        removedTournamentPoolId = await removeRegisteredTeamFromTournamentPools({
           eventId: event.id,
           eventTeamId: eventTeamIdToRemove,
           client: tx,
@@ -1274,6 +1292,7 @@ async function updateParticipants(
           eventTeam: registeredEventTeam,
           team: teamForRemoval,
           existingRegistration,
+          poolDivisionId: removedTournamentPoolId,
           createdBy: session.userId,
           occurrence: resolvedOccurrence,
           now,

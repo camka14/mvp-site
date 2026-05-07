@@ -6,6 +6,7 @@ import {
   buildDivisionName,
   buildDivisionToken,
   buildEventDivisionId,
+  cleanDivisionDisplayName,
   evaluateDivisionAgeEligibility,
   extractDivisionTokenFromId,
   inferDivisionDetails,
@@ -759,9 +760,12 @@ const normalizeDivisionDetailsPayload = (
       const id = rawId
         ? scopeDivisionIdentifierToEvent(rawId, eventId)
         : buildDivisionId(eventId, key);
-      const divisionTypeName = typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
-        ? row.divisionTypeName.trim()
-        : inferred.divisionTypeName;
+      const inferredDivisionType = inferDivisionDetails({
+        identifier: divisionTypeId,
+        sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
+        fallbackName: typeof row.divisionTypeName === 'string' ? row.divisionTypeName : undefined,
+      });
+      const divisionTypeName = cleanDivisionDisplayName(row.divisionTypeName, inferredDivisionType.divisionTypeName);
       const defaultName = buildDivisionName({
         gender,
         divisionTypeName,
@@ -811,7 +815,7 @@ const normalizeDivisionDetailsPayload = (
       const detail: DivisionDetailPayload = {
         id,
         key,
-        name: typeof row.name === 'string' && row.name.trim().length ? row.name.trim() : defaultName,
+        name: cleanDivisionDisplayName(row.name, defaultName),
         kind: rawKind,
         divisionTypeId,
         divisionTypeName,
@@ -3207,12 +3211,17 @@ export const syncEventDivisions = async (
     const gender = detail?.gender ?? inferred.gender;
     const ratingType = detail?.ratingType ?? inferred.ratingType;
     const divisionTypeId = detail?.divisionTypeId ?? inferred.divisionTypeId;
+    const inferredDivisionType = inferDivisionDetails({
+      identifier: divisionTypeId,
+      sportInput: params.sportId ?? undefined,
+      fallbackName: detail?.divisionTypeName,
+    });
     const key = detail?.key ?? buildDivisionToken({
       gender,
       ratingType,
       divisionTypeId,
     });
-    const divisionTypeName = detail?.divisionTypeName ?? inferred.divisionTypeName;
+    const divisionTypeName = cleanDivisionDisplayName(detail?.divisionTypeName, inferredDivisionType.divisionTypeName);
 
     const mappedFieldIds = kind === 'PLAYOFF'
       ? []
@@ -3252,10 +3261,10 @@ export const syncEventDivisions = async (
     const ratings = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? { minRating: null, maxRating: null }
       : divisionRatingWindow(key, params.sportId ?? null);
-    const name = detail?.name
-      ?? existing?.name
-      ?? inferred.defaultName
-      ?? buildDivisionDisplayName(key, params.sportId ?? null);
+    const name = cleanDivisionDisplayName(
+      detail?.name ?? existing?.name,
+      inferred.defaultName ?? buildDivisionDisplayName(key, params.sportId ?? null),
+    );
     const ageEligibility = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? null
       : evaluateDivisionAgeEligibility({
@@ -4209,10 +4218,15 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     });
     const normalizedTeamDivisionTypeId = normalizeDivisionKey(team.divisionTypeId)
       ?? inferredTeamDivision.divisionTypeId;
-    const normalizedTeamDivisionTypeName =
-      (typeof team.divisionTypeName === 'string' && team.divisionTypeName.trim().length
-        ? team.divisionTypeName.trim()
-        : inferredTeamDivision.divisionTypeName);
+    const inferredTeamDivisionType = inferDivisionDetails({
+      identifier: normalizedTeamDivisionTypeId,
+      sportInput: payload.sportId ?? undefined,
+      fallbackName: typeof team.divisionTypeName === 'string' ? team.divisionTypeName : undefined,
+    });
+    const normalizedTeamDivisionTypeName = cleanDivisionDisplayName(
+      team.divisionTypeName,
+      inferredTeamDivisionType.divisionTypeName,
+    );
     await client.teams.upsert({
       where: { id: teamId },
       create: {

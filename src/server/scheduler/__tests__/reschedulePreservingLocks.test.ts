@@ -746,6 +746,155 @@ describe('rescheduleEventMatchesPreservingLocks', () => {
     expect(event.timeSlots[0]?.divisions.some((division) => division.id === playoffDivisionId)).toBe(true);
   });
 
+  it('reschedules tournament pool and bracket matches using bracket division slots', () => {
+    const bracketDivision = new Division(
+      'tournament_reschedule_bracket_open',
+      'Open',
+      [],
+      null,
+      4,
+      4,
+      'PLAYOFF',
+    );
+    const poolDivision = new Division(
+      'tournament_reschedule_bracket_open_pool_a',
+      'Open Pool A',
+      [],
+      null,
+      4,
+      2,
+      'LEAGUE',
+      [bracketDivision.id, bracketDivision.id],
+    );
+    const field = new PlayingField({
+      id: 'field_tournament_pool_reschedule',
+      divisions: [bracketDivision],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court Pool',
+    });
+    const poolTeam1 = new Team({
+      id: 'pool_team_1',
+      captainId: 'pool_captain_1',
+      division: poolDivision,
+      name: 'Pool Team 1',
+      matches: [],
+      playerIds: [],
+    });
+    const poolTeam2 = new Team({
+      id: 'pool_team_2',
+      captainId: 'pool_captain_2',
+      division: poolDivision,
+      name: 'Pool Team 2',
+      matches: [],
+      playerIds: [],
+    });
+    const bracketTeam1 = new Team({
+      id: 'bracket_team_1',
+      captainId: '',
+      division: bracketDivision,
+      name: 'Seed 1',
+      matches: [],
+      playerIds: [],
+    });
+    const bracketTeam2 = new Team({
+      id: 'bracket_team_2',
+      captainId: '',
+      division: bracketDivision,
+      name: 'Seed 2',
+      matches: [],
+      playerIds: [],
+    });
+    const eventStart = new Date('2026-03-02T10:00:00.000Z');
+    const eventEnd = new Date('2026-03-30T20:00:00.000Z');
+    const poolMatch = createMatch({
+      id: 'match_tournament_pool_reschedule',
+      matchId: 1,
+      start: new Date('2026-03-03T10:00:00.000Z'),
+      end: new Date('2026-03-03T11:00:00.000Z'),
+      field,
+      division: poolDivision,
+      team1: poolTeam1,
+      team2: poolTeam2,
+      eventId: 'event_tournament_pool_reschedule',
+    });
+    const bracketMatch = createMatch({
+      id: 'match_tournament_bracket_reschedule',
+      matchId: 2,
+      start: new Date('2026-03-03T11:00:00.000Z'),
+      end: new Date('2026-03-03T12:00:00.000Z'),
+      field,
+      division: bracketDivision,
+      team1: bracketTeam1,
+      team2: bracketTeam2,
+      eventId: 'event_tournament_pool_reschedule',
+    });
+
+    const event = new Tournament({
+      id: 'event_tournament_pool_reschedule',
+      name: 'Tournament Pool Reschedule',
+      description: '',
+      start: eventStart,
+      end: eventEnd,
+      location: '',
+      organizationId: null,
+      teams: {
+        [poolTeam1.id]: poolTeam1,
+        [poolTeam2.id]: poolTeam2,
+        [bracketTeam1.id]: bracketTeam1,
+        [bracketTeam2.id]: bracketTeam2,
+      },
+      players: [],
+      waitListIds: [],
+      freeAgentIds: [],
+      maxParticipants: 4,
+      teamSignup: true,
+      divisions: [poolDivision],
+      playoffDivisions: [bracketDivision],
+      fields: { [field.id]: field },
+      matches: {
+        [poolMatch.id]: poolMatch,
+        [bracketMatch.id]: bracketMatch,
+      },
+      officials: [],
+      eventType: 'TOURNAMENT',
+      doubleElimination: false,
+      winnerSetCount: null,
+      loserSetCount: null,
+      matchDurationMinutes: 60,
+      usesSets: false,
+      setDurationMinutes: 0,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      doTeamsOfficiate: false,
+      noFixedEndDateTime: false,
+      restTimeMinutes: 5,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_tournament_bracket_only',
+          dayOfWeek: 0,
+          startDate: eventStart,
+          endDate: eventEnd,
+          repeating: true,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 20 * 60,
+          field: field.id,
+          divisions: [bracketDivision],
+        }),
+      ],
+    });
+
+    const result = rescheduleEventMatchesPreservingLocks(event);
+
+    expect(result.matches.find((match) => match.id === poolMatch.id)?.division.id).toBe(poolDivision.id);
+    expect(result.matches.find((match) => match.id === bracketMatch.id)?.division.id).toBe(bracketDivision.id);
+    expect(event.timeSlots[0]?.divisions.map((division) => division.id)).toEqual([
+      bracketDivision.id,
+      poolDivision.id,
+    ]);
+  });
+
   it('preserves dependent assignments when upstream winners are unresolved', () => {
     const division = new Division('open', 'Open');
     const field = new PlayingField({

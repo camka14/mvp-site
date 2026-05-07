@@ -282,7 +282,7 @@ describe('EventForm dirty state', () => {
         key: 'open',
         name: 'Open',
         divisionTypeId: 'open__18plus',
-        divisionTypeName: 'Open / 18+',
+        divisionTypeName: 'Open 18+',
         ratingType: 'SKILL',
         gender: 'C',
         skillDivisionTypeId: 'open',
@@ -1438,6 +1438,80 @@ describe('EventForm dirty state', () => {
     expect(screen.getByLabelText('Pool Count')).toBeInTheDocument();
     expect(screen.getByLabelText('Pool Team Count')).toBeDisabled();
     expect(screen.getAllByText('Pool Scoring Config').length).toBeGreaterThan(0);
+  });
+
+  it('hydrates tournament bracket pool counts from persisted pool divisions', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const baseDivision = buildEvent().divisionDetails[0];
+    const bracketDivisionId = 'event_1__division__c_skill_open_age_18plus';
+    const poolADivisionId = 'event_1__division__c_skill_open_age_18plus_pool_a';
+    const poolBDivisionId = 'event_1__division__c_skill_open_age_18plus_pool_b';
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      teamSignup: true,
+      singleDivision: false,
+      maxParticipants: 8,
+      noFixedEndDateTime: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+      },
+      divisions: [poolADivisionId, poolBDivisionId],
+      divisionDetails: [
+        {
+          ...baseDivision,
+          id: poolADivisionId,
+          key: 'c_skill_open_age_18plus_pool_a',
+          name: 'CoEd Open 18+ Pool A',
+          maxParticipants: 4,
+          playoffPlacementDivisionIds: [bracketDivisionId, bracketDivisionId],
+        },
+        {
+          ...baseDivision,
+          id: poolBDivisionId,
+          key: 'c_skill_open_age_18plus_pool_b',
+          name: 'CoEd Open 18+ Pool B',
+          maxParticipants: 4,
+          playoffPlacementDivisionIds: [bracketDivisionId, bracketDivisionId],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          ...baseDivision,
+          id: bracketDivisionId,
+          key: 'c_skill_open_age_18plus',
+          kind: 'PLAYOFF',
+          name: 'CoEd Open 18+',
+          maxParticipants: 8,
+          playoffTeamCount: 4,
+          playoffConfig: {},
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(formRef.current).not.toBeNull();
+    });
+
+    expect(formRef.current?.getDraft()).toEqual(
+      expect.objectContaining({
+        divisions: [bracketDivisionId],
+        divisionDetails: [],
+        playoffDivisionDetails: [
+          expect.objectContaining({
+            id: bracketDivisionId,
+            maxParticipants: 8,
+            playoffTeamCount: 4,
+            poolCount: 2,
+            poolTeamCount: 4,
+          }),
+        ],
+      }),
+    );
   });
 
   it('keeps league scoring config in tournament pool-play draft payloads', async () => {

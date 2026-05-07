@@ -22,6 +22,7 @@ import { canManageEvent } from '@/server/accessControl';
 import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
   buildEventDivisionId,
+  cleanDivisionDisplayName,
   evaluateDivisionAgeEligibility,
   extractDivisionTokenFromId,
   inferDivisionDetails,
@@ -707,18 +708,19 @@ const normalizeDivisionDetailsInput = (
       continue;
     }
     seen.add(id);
+    const divisionTypeId = normalizeDivisionKey(row.divisionTypeId) ?? inferred.divisionTypeId;
+    const inferredDivisionType = inferDivisionDetails({
+      identifier: divisionTypeId,
+      sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
+      fallbackName: typeof row.divisionTypeName === 'string' ? row.divisionTypeName : undefined,
+    });
     details.push({
       id,
       key: normalizeDivisionKey(row.key) ?? inferred.token,
-      name: typeof row.name === 'string' && row.name.trim().length
-        ? row.name.trim()
-        : inferred.defaultName,
+      name: cleanDivisionDisplayName(row.name, inferred.defaultName),
       kind: parsedKind,
-      divisionTypeId: normalizeDivisionKey(row.divisionTypeId) ?? inferred.divisionTypeId,
-      divisionTypeName:
-        typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
-          ? row.divisionTypeName.trim()
-          : inferred.divisionTypeName,
+      divisionTypeId,
+      divisionTypeName: cleanDivisionDisplayName(row.divisionTypeName, inferredDivisionType.divisionTypeName),
       ratingType: inferred.ratingType,
       gender: inferred.gender,
       sportId: typeof row.sportId === 'string' ? row.sportId : sportId ?? null,
@@ -1072,13 +1074,19 @@ const getDivisionDetailsForEvent = async (
       ),
     );
     const poolTeamCount = poolTeamCounts.length === 1 ? poolTeamCounts[0] : null;
+    const divisionTypeId = row?.divisionTypeId ?? inferred.divisionTypeId;
+    const inferredDivisionType = inferDivisionDetails({
+      identifier: divisionTypeId,
+      sportInput: row?.sportId ?? undefined,
+      fallbackName: row?.divisionTypeName ?? undefined,
+    });
     return {
       id: row?.id ?? divisionId,
       key: row?.key ?? inferred.token,
-      name: row?.name ?? inferred.defaultName,
+      name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
       kind,
-      divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
-      divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+      divisionTypeId,
+      divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
       ratingType: row?.ratingType ?? inferred.ratingType,
       gender: row?.gender ?? inferred.gender,
       sportId: row?.sportId ?? null,

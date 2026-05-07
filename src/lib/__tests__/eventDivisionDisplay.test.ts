@@ -38,6 +38,35 @@ describe('buildEventDivisionDisplayLabels', () => {
     expect(buildEventDivisionDisplayLabels(event)).toEqual(['CoEd Open 18+']);
   });
 
+  it('infers bracket division labels when generated pools have simple pool names', () => {
+    const bracketId = 'event_pool__division__c_skill_open_age_18plus';
+    const poolA = `${bracketId}_pool_a`;
+    const poolB = `${bracketId}_pool_b`;
+    const event = buildEvent({
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      divisions: [poolA, poolB],
+      divisionDetails: [
+        {
+          id: poolA,
+          key: 'c_skill_open_age_18plus_pool_a',
+          name: 'Pool A',
+          playoffPlacementDivisionIds: [bracketId],
+        },
+        {
+          id: poolB,
+          key: 'c_skill_open_age_18plus_pool_b',
+          name: 'Pool B',
+          playoffPlacementDivisionIds: [bracketId],
+        },
+      ] as any,
+      playoffDivisionDetails: [],
+    });
+
+    expect(buildEventDivisionDisplayLabels(event)).toEqual(['Open 18+']);
+  });
+
   it('shows league divisions instead of playoff divisions for league playoffs', () => {
     const event = buildEvent({
       eventType: 'LEAGUE',

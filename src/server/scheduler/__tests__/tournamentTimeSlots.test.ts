@@ -182,7 +182,7 @@ describe('tournament scheduling (time slots)', () => {
       [],
       null,
       4,
-      2,
+      4,
       'PLAYOFF',
     );
     const poolA = new Division(
@@ -256,6 +256,7 @@ describe('tournament scheduling (time slots)', () => {
     ]);
     expect(scheduled.matches.some((match) => match.division.id === poolA.id)).toBe(true);
     expect(scheduled.matches.some((match) => match.division.id === poolB.id)).toBe(true);
+    expect(scheduled.matches.filter((match) => match.division.id === bracketDivision.id)).toHaveLength(3);
   });
 
   it('removes stale generated placeholders before rebuilding tournament pool play', () => {

@@ -242,7 +242,7 @@ export const buildGeneratedTournamentPools = (params: {
     return {
       id,
       key,
-      name: `${params.bracket.name || 'Tournament Division'} Pool ${letter}`,
+      name: `Pool ${letter}`,
       kind: 'LEAGUE',
       maxParticipants: poolTeamCount,
       playoffTeamCount: advancingPerPool,
@@ -258,6 +258,7 @@ export const assignRegisteredTeamToTournamentPool = async (params: {
   eventId: string;
   bracketDivisionId: string | null | undefined;
   eventTeamId: string;
+  preferredPoolId?: string | null | undefined;
   client: PrismaLike;
 }): Promise<string | null> => {
   const bracketDivisionId = normalizeTournamentPoolId(params.bracketDivisionId);
@@ -320,7 +321,11 @@ export const assignRegisteredTeamToTournamentPool = async (params: {
 
   const minAssignedCount = Math.min(...eligiblePools.map((pool) => Array.isArray(pool.teamIds) ? pool.teamIds.length : 0));
   const candidates = eligiblePools.filter((pool) => (Array.isArray(pool.teamIds) ? pool.teamIds.length : 0) === minAssignedCount);
-  const selected = candidates[Math.floor(Math.random() * candidates.length)] ?? candidates[0];
+  const preferredPoolId = normalizeTournamentPoolId(params.preferredPoolId);
+  const preferred = preferredPoolId
+    ? eligiblePools.find((pool) => normalizeTournamentPoolId(pool.id) === preferredPoolId)
+    : null;
+  const selected = preferred ?? candidates[Math.floor(Math.random() * candidates.length)] ?? candidates[0];
   const nextTeamIds = Array.from(new Set([...(selected.teamIds ?? []), eventTeamId]));
   const maxParticipants = numericInput(selected.maxParticipants);
   if (maxParticipants != null && maxParticipants > 0 && nextTeamIds.length > maxParticipants) {
@@ -338,14 +343,62 @@ export const assignRegisteredTeamToTournamentPool = async (params: {
   return selected.id;
 };
 
+export const getTournamentPoolIdsForBracket = async (params: {
+  eventId: string;
+  bracketDivisionId: string | null | undefined;
+  client: PrismaLike;
+}): Promise<string[]> => {
+  const bracketDivisionId = normalizeTournamentPoolId(params.bracketDivisionId);
+  if (!bracketDivisionId) {
+    return [];
+  }
+
+  const rows = typeof params.client?.$queryRaw === 'function'
+    ? await params.client.$queryRaw<Array<TournamentPoolSourceRow>>`
+        SELECT
+          "id",
+          "key",
+          "name",
+          "kind",
+          "maxParticipants",
+          "playoffTeamCount",
+          "playoffPlacementDivisionIds",
+          "teamIds"
+        FROM "Divisions"
+        WHERE "eventId" = ${params.eventId}
+          AND COALESCE("kind", 'LEAGUE') <> 'PLAYOFF'
+        FOR UPDATE
+      `
+    : await params.client.divisions.findMany({
+        where: {
+          eventId: params.eventId,
+          kind: 'LEAGUE',
+        },
+        select: {
+          id: true,
+          key: true,
+          name: true,
+          kind: true,
+          maxParticipants: true,
+          playoffTeamCount: true,
+          playoffPlacementDivisionIds: true,
+          teamIds: true,
+        },
+      });
+
+  return generatedPoolsForBracket(rows, bracketDivisionId)
+    .map((pool) => normalizeTournamentPoolId(pool.id))
+    .filter((poolId): poolId is string => Boolean(poolId));
+};
+
 export const removeRegisteredTeamFromTournamentPools = async (params: {
   eventId: string;
   eventTeamId: string | null | undefined;
   client: PrismaLike;
-}): Promise<void> => {
+}): Promise<string | null> => {
   const eventTeamId = normalizeTournamentPoolId(params.eventTeamId);
   if (!eventTeamId) {
-    return;
+    return null;
   }
   const rows = await params.client.divisions.findMany({
     where: {
@@ -357,9 +410,11 @@ export const removeRegisteredTeamFromTournamentPools = async (params: {
       teamIds: true,
     },
   });
+  const rowsContainingTeam = rows
+    .filter((row: { teamIds?: string[] | null }) => Array.isArray(row.teamIds) && row.teamIds.includes(eventTeamId));
+  const removedPoolId = normalizeTournamentPoolId(rowsContainingTeam[0]?.id);
   await Promise.all(
-    rows
-      .filter((row: { teamIds?: string[] | null }) => Array.isArray(row.teamIds) && row.teamIds.includes(eventTeamId))
+    rowsContainingTeam
       .map((row: { id: string; teamIds?: string[] | null }) => params.client.divisions.update({
         where: { id: row.id },
         data: {
@@ -368,4 +423,5 @@ export const removeRegisteredTeamFromTournamentPools = async (params: {
         },
       })),
   );
+  return removedPoolId;
 };

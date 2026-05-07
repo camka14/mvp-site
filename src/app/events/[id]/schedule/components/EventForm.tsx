@@ -46,6 +46,7 @@ import {
     buildDivisionName,
     buildDivisionToken,
     buildEventDivisionId,
+    cleanDivisionDisplayName,
     evaluateDivisionAgeEligibility,
     getDivisionTypeById,
     getDivisionTypeOptionsForSport,
@@ -377,7 +378,11 @@ const parseCompositeDivisionTypeId = (
 };
 
 const buildDivisionTypeCompositeName = (skillDivisionTypeName: string, ageDivisionTypeName: string): string => (
-    `${skillDivisionTypeName} • ${ageDivisionTypeName}`.trim()
+    [skillDivisionTypeName, ageDivisionTypeName]
+        .map((part) => part.trim())
+        .filter(Boolean)
+        .join(' ')
+        || 'Open 18+'
 );
 
 const normalizeWeekdays = (slot: { dayOfWeek?: number; daysOfWeek?: number[] }): number[] => {
@@ -732,6 +737,71 @@ type PlayoffDivisionDetailForm = Omit<
     name: string;
     maxParticipants: number;
     playoffConfig: TournamentConfig;
+};
+
+type TournamentPoolSettings = {
+    poolCount: number;
+    poolTeamCount?: number;
+};
+
+const deriveTournamentPoolSettingsByBracketId = (
+    poolDivisionDetails: DivisionDetailForm[],
+): Map<string, TournamentPoolSettings> => {
+    const grouped = new Map<string, {
+        poolIds: Set<string>;
+        totalPoolTeams: number;
+        poolTeamCounts: Set<number>;
+    }>();
+
+    poolDivisionDetails.forEach((detail) => {
+        const parentBracketIds = Array.from(
+            new Set(normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds).filter(Boolean)),
+        );
+        if (!parentBracketIds.length) {
+            return;
+        }
+
+        const poolId = normalizeDivisionKeys([detail.id])[0] || detail.id;
+        const poolTeamCount = Number.isFinite(detail.maxParticipants)
+            ? Math.max(1, Math.trunc(detail.maxParticipants))
+            : undefined;
+
+        parentBracketIds.forEach((bracketId) => {
+            const current = grouped.get(bracketId) ?? {
+                poolIds: new Set<string>(),
+                totalPoolTeams: 0,
+                poolTeamCounts: new Set<number>(),
+            };
+            if (!current.poolIds.has(poolId)) {
+                current.poolIds.add(poolId);
+                if (typeof poolTeamCount === 'number') {
+                    current.totalPoolTeams += poolTeamCount;
+                    current.poolTeamCounts.add(poolTeamCount);
+                }
+            }
+            grouped.set(bracketId, current);
+        });
+    });
+
+    const settingsByBracketId = new Map<string, TournamentPoolSettings>();
+    grouped.forEach((group, bracketId) => {
+        const poolCount = group.poolIds.size;
+        if (!poolCount) {
+            return;
+        }
+        const uniformPoolTeamCount = group.poolTeamCounts.size === 1
+            ? Array.from(group.poolTeamCounts)[0]
+            : undefined;
+        const evenlyDerivedPoolTeamCount = group.totalPoolTeams > 0 && group.totalPoolTeams % poolCount === 0
+            ? group.totalPoolTeams / poolCount
+            : undefined;
+        settingsByBracketId.set(bracketId, {
+            poolCount,
+            poolTeamCount: uniformPoolTeamCount ?? evenlyDerivedPoolTeamCount,
+        });
+    });
+
+    return settingsByBracketId;
 };
 
 type SlotDivisionLookup = {
@@ -2228,18 +2298,18 @@ const normalizeDivisionDetailEntry = (
             ?? defaults.ageDivisionTypeName
         );
     const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
-    const divisionTypeName = typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length > 0
-        ? row.divisionTypeName.trim()
-        : buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
+    const fallbackDivisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
+    const divisionTypeName = cleanDivisionDisplayName(row.divisionTypeName, fallbackDivisionTypeName);
     const key = normalizeDivisionKeys([row.key])[0] || buildDivisionToken({
         gender,
         ratingType: 'SKILL',
         divisionTypeId,
     });
     const id = rawId || buildEventDivisionId(eventId, key);
-    const name = typeof row.name === 'string' && row.name.trim().length > 0
-        ? row.name.trim()
-        : buildDivisionName({ gender, divisionTypeName });
+    const name = cleanDivisionDisplayName(
+        row.name,
+        buildDivisionName({ gender, divisionTypeName }),
+    );
     const rawDivisionPriceCents = typeof row.price === 'number'
         ? row.price
         : Number.isFinite(Number(row.price))
@@ -2759,33 +2829,64 @@ const mapEventToFormState = (event: Event): EventFormState => {
         event.eventType,
         Boolean((event as any).includePlayoffsOrPools ?? event.includePlayoffs),
     );
+    const derivedTournamentPoolSettingsByBracketId = tournamentPoolPlayEnabled
+        ? deriveTournamentPoolSettingsByBracketId(normalizedDivisionDetailsWithCapacity)
+        : new Map<string, TournamentPoolSettings>();
     const tournamentPoolBracketDivisionDetails: DivisionDetailForm[] = tournamentPoolPlayEnabled
         ? normalizedPlayoffDivisionDetails
-            .map((division) => normalizeDivisionDetailEntry(
-                {
-                    ...division,
-                    kind: 'LEAGUE',
-                    price: typeof division.price === 'number' ? division.price : event.price,
-                    allowPaymentPlans: typeof division.allowPaymentPlans === 'boolean'
-                        ? division.allowPaymentPlans
-                        : defaultEventAllowPaymentPlans,
-                    installmentCount: typeof division.installmentCount === 'number'
-                        ? division.installmentCount
-                        : defaultEventInstallmentCount,
-                    installmentDueDates: Array.isArray(division.installmentDueDates)
-                        ? division.installmentDueDates
-                        : defaultEventInstallmentDueDates,
-                    installmentDueRelativeDays: Array.isArray(division.installmentDueRelativeDays)
-                        ? division.installmentDueRelativeDays
-                        : defaultEventInstallmentDueRelativeDays,
-                    installmentAmounts: Array.isArray(division.installmentAmounts)
-                        ? division.installmentAmounts
-                        : defaultEventInstallmentAmounts,
-                },
-                event.$id,
-                resolvedSportInput,
-                divisionReferenceDate,
-            ))
+            .map((division) => {
+                const bracketDivisionId = normalizeDivisionKeys([division.id])[0];
+                const derivedPoolSettings = bracketDivisionId
+                    ? derivedTournamentPoolSettingsByBracketId.get(bracketDivisionId)
+                    : undefined;
+                const poolCount = Number.isFinite(division.poolCount)
+                    ? Math.max(1, Math.trunc(division.poolCount as number))
+                    : derivedPoolSettings?.poolCount;
+                const rawMaxParticipants = Number.isFinite(division.maxParticipants)
+                    ? Math.max(2, Math.trunc(division.maxParticipants as number))
+                    : Number.isFinite(event.maxParticipants)
+                        ? Math.max(2, Math.trunc(event.maxParticipants as number))
+                        : undefined;
+                const maxParticipantsFromPools = typeof poolCount === 'number'
+                    && typeof derivedPoolSettings?.poolTeamCount === 'number'
+                    ? poolCount * derivedPoolSettings.poolTeamCount
+                    : undefined;
+                const maxParticipants = typeof maxParticipantsFromPools === 'number'
+                    ? Math.max(rawMaxParticipants ?? 2, maxParticipantsFromPools)
+                    : rawMaxParticipants;
+                const poolTeamCount = derivePoolTeamCount(maxParticipants, poolCount)
+                    ?? (Number.isFinite(division.poolTeamCount)
+                        ? Math.max(1, Math.trunc(division.poolTeamCount as number))
+                        : derivedPoolSettings?.poolTeamCount);
+                return normalizeDivisionDetailEntry(
+                    {
+                        ...division,
+                        kind: 'LEAGUE',
+                        price: typeof division.price === 'number' ? division.price : event.price,
+                        maxParticipants,
+                        poolCount,
+                        poolTeamCount,
+                        allowPaymentPlans: typeof division.allowPaymentPlans === 'boolean'
+                            ? division.allowPaymentPlans
+                            : defaultEventAllowPaymentPlans,
+                        installmentCount: typeof division.installmentCount === 'number'
+                            ? division.installmentCount
+                            : defaultEventInstallmentCount,
+                        installmentDueDates: Array.isArray(division.installmentDueDates)
+                            ? division.installmentDueDates
+                            : defaultEventInstallmentDueDates,
+                        installmentDueRelativeDays: Array.isArray(division.installmentDueRelativeDays)
+                            ? division.installmentDueRelativeDays
+                            : defaultEventInstallmentDueRelativeDays,
+                        installmentAmounts: Array.isArray(division.installmentAmounts)
+                            ? division.installmentAmounts
+                            : defaultEventInstallmentAmounts,
+                    },
+                    event.$id,
+                    resolvedSportInput,
+                    divisionReferenceDate,
+                );
+            })
             .filter((entry: DivisionDetailForm | null): entry is DivisionDetailForm => Boolean(entry))
         : [];
     const formDivisionDetails: DivisionDetailForm[] = tournamentPoolBracketDivisionDetails.length
@@ -11362,13 +11463,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     : (detail.installmentCount || effectiveDivisionInstallmentAmounts.length || 0)
                                             )
                                             : 0;
+                                        const divisionTypeSummary = [
+                                            detail.skillDivisionTypeName,
+                                            detail.ageDivisionTypeName,
+                                        ]
+                                            .map((part) => String(part ?? '').trim())
+                                            .filter(Boolean)
+                                            .join(' ')
+                                            || detail.divisionTypeName
+                                            || 'Open 18+';
                                         return (
                                             <Paper key={detail.id} withBorder radius="md" p="sm">
                                                 <Group justify="space-between" align="center" gap="sm">
                                                     <div>
                                                         <Text fw={600}>{detail.name}</Text>
                                                         <Text size="xs" c="dimmed">
-                                                            {`${detail.gender} • Skill: ${detail.skillDivisionTypeName || detail.divisionTypeName} • Age: ${detail.ageDivisionTypeName || detail.divisionTypeName}`}
+                                                            {divisionTypeSummary}
                                                         </Text>
                                                         <Text size="xs" c="dimmed">
                                                             {`Price: ${formatPrice(effectiveDivisionPrice)} • ${eventData.teamSignup ? 'Max teams' : 'Max participants'}: ${effectiveDivisionCapacity}`}

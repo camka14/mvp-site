@@ -17,6 +17,10 @@ import type { Field, Match, Team, UserData } from '@/types';
 import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
+import {
+  getBracketMatchDivisionId,
+  toBracketDivisionKey,
+} from '@/lib/bracketViewCore';
 import SharedCalendarEvent from '@/components/calendar/SharedCalendarEvent';
 import MatchCard from './MatchCard';
 import { shouldDisplayMatchDivisionBadges } from './matchDivisionDisplay';
@@ -38,6 +42,8 @@ interface LeagueCalendarViewProps {
   matchCardPaddingY?: string;
   currentUser?: UserData | null;
   childUserIds?: string[];
+  viewerTeamIds?: Iterable<string>;
+  highlightDivisionKeys?: Iterable<string>;
   onToggleLockAllMatches?: (locked: boolean, matchIds: string[]) => void | Promise<void>;
   lockingAllMatches?: boolean;
   conflictMatchIdsById?: Record<string, string[]>;
@@ -198,6 +204,7 @@ type WeeklyOccurrenceCalendarMeta = {
   occurrenceDate: string;
   label: string;
   divisionLabel?: string | null;
+  divisionKeys?: string[];
   isSelected?: boolean;
 };
 
@@ -218,12 +225,19 @@ const getWeeklyOccurrenceMeta = (match: Match): WeeklyOccurrenceCalendarMeta | n
   const divisionLabel = typeof candidate.divisionLabel === 'string' && candidate.divisionLabel.trim().length > 0
     ? candidate.divisionLabel.trim()
     : null;
+  const rawDivisionKeys = (candidate as { divisionKeys?: unknown }).divisionKeys;
+  const divisionKeys = Array.isArray(rawDivisionKeys)
+    ? rawDivisionKeys
+        .map((entry) => toBracketDivisionKey(typeof entry === 'string' ? entry : null))
+        .filter((entry): entry is string => Boolean(entry))
+    : [];
 
   return {
     slotId,
     occurrenceDate,
     label,
     divisionLabel,
+    divisionKeys,
     isSelected: Boolean(candidate.isSelected),
   };
 };
@@ -276,13 +290,42 @@ export function LeagueCalendarView({
   matchCardPaddingY = 'my-2',
   currentUser,
   childUserIds = [],
+  viewerTeamIds,
+  highlightDivisionKeys,
   onToggleLockAllMatches,
   lockingAllMatches = false,
   conflictMatchIdsById = {},
   showEventOfficialNames = true,
 }: LeagueCalendarViewProps) {
   const DnDCalendar: any = useMemo(() => withDragAndDrop(BigCalendar), []);
-  const userTeamIds = useMemo(() => new Set(currentUser?.teamIds ?? []), [currentUser?.teamIds]);
+  const userTeamIds = useMemo(() => {
+    const ids = new Set<string>();
+    (currentUser?.teamIds ?? []).forEach((teamId) => {
+      if (typeof teamId === 'string' && teamId.trim().length > 0) {
+        ids.add(teamId.trim());
+      }
+    });
+    if (viewerTeamIds) {
+      for (const teamId of viewerTeamIds) {
+        if (typeof teamId === 'string' && teamId.trim().length > 0) {
+          ids.add(teamId.trim());
+        }
+      }
+    }
+    return ids;
+  }, [currentUser?.teamIds, viewerTeamIds]);
+  const highlightedDivisionKeySet = useMemo(() => {
+    const keys = new Set<string>();
+    if (highlightDivisionKeys) {
+      for (const divisionKey of highlightDivisionKeys) {
+        const normalizedKey = toBracketDivisionKey(divisionKey);
+        if (normalizedKey) {
+          keys.add(normalizedKey);
+        }
+      }
+    }
+    return keys;
+  }, [highlightDivisionKeys]);
   const trackedUserIds = useMemo(() => {
     const ids = new Set<string>();
     if (typeof currentUser?.$id === 'string' && currentUser.$id.trim().length > 0) {
@@ -392,6 +435,22 @@ export function LeagueCalendarView({
       return teamHasUser(match.team1, match.team1Id) || teamHasUser(match.team2, match.team2Id);
     },
     [hasTrackedUsers, teamHasUser, trackedUserIds],
+  );
+
+  const matchHasHighlightedDivision = useCallback(
+    (match: Match): boolean => {
+      const divisionKey = toBracketDivisionKey(getBracketMatchDivisionId(match));
+      return Boolean(divisionKey && highlightedDivisionKeySet.has(divisionKey));
+    },
+    [highlightedDivisionKeySet],
+  );
+
+  const occurrenceHasHighlightedDivision = useCallback(
+    (occurrence: WeeklyOccurrenceCalendarMeta): boolean => (
+      Array.isArray(occurrence.divisionKeys)
+      && occurrence.divisionKeys.some((divisionKey) => highlightedDivisionKeySet.has(divisionKey))
+    ),
+    [highlightedDivisionKeySet],
   );
 
   const [showMyMatchesOnly, setShowMyMatchesOnly] = useState(false);
@@ -704,12 +763,14 @@ export function LeagueCalendarView({
       fieldColorMatchKey,
       onClick,
       compact = false,
+      highlightDivision = false,
     }: {
       occurrence: WeeklyOccurrenceCalendarMeta;
       fieldLabel: string;
       fieldColorMatchKey: string;
       onClick?: () => void;
       compact?: boolean;
+      highlightDivision?: boolean;
     }) => (
       <SharedCalendarEvent
         title={occurrence.label}
@@ -719,7 +780,7 @@ export function LeagueCalendarView({
         colorReferenceList={fieldColorReferenceList}
         colorMatchKey={fieldColorMatchKey}
         compact={compact}
-        selected={occurrence.isSelected}
+        selected={occurrence.isSelected || highlightDivision}
         onClick={onClick}
       />
     ),
@@ -738,6 +799,7 @@ export function LeagueCalendarView({
             fieldLabel={event.fieldLabel}
             fieldColorMatchKey={event.resourceId}
             onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
+            highlightDivision={occurrenceHasHighlightedDivision(weeklyOccurrenceMeta)}
           />
         );
       }
@@ -755,10 +817,11 @@ export function LeagueCalendarView({
           officialUsersById={officialLookupById}
           showEventOfficialNames={showEventOfficialNames}
           showDivisionBadge={showMatchDivisionBadges}
+          highlightDivisionBadge={matchHasHighlightedDivision(event.resource)}
         />
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, officialLookupById, onMatchClick, showEventOfficialNames, showMatchDivisionBadges],
+    [WeeklyOccurrenceEventCard, canManage, matchHasHighlightedDivision, occurrenceHasHighlightedDivision, officialLookupById, onMatchClick, showEventOfficialNames, showMatchDivisionBadges],
   );
 
   const AgendaEventComponent = useCallback(
@@ -795,6 +858,7 @@ export function LeagueCalendarView({
                         fieldColorMatchKey={fieldColorMatchKey}
                         onClick={onMatchClick ? () => onMatchClick(match) : undefined}
                         compact
+                        highlightDivision={occurrenceHasHighlightedDivision(weeklyOccurrenceMeta)}
                       />
                     ) : (
                       <MatchCard
@@ -810,6 +874,7 @@ export function LeagueCalendarView({
                         officialUsersById={officialLookupById}
                         showEventOfficialNames={showEventOfficialNames}
                         showDivisionBadge={showMatchDivisionBadges}
+                        highlightDivisionBadge={matchHasHighlightedDivision(match)}
                       />
                     )}
                   </div>
@@ -820,7 +885,7 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, matchHasHighlightedDivision, occurrenceHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
   );
 
   const components = useMemo(

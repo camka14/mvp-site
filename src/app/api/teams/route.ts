@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
+  cleanDivisionDisplayName,
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
@@ -20,6 +21,8 @@ import {
 import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
+
+const TEAM_SIZE_WARNING = 'Team size must be 2 or above.';
 
 const jerseyNumberSchema = z.string().regex(/^\d*$/, 'Jersey number must contain only digits.');
 
@@ -49,7 +52,7 @@ const createSchema = z.object({
   coachIds: z.array(z.string()).optional(),
   parentTeamId: z.string().optional(),
   pending: z.array(z.string()).optional(),
-  teamSize: z.number().optional(),
+  teamSize: z.coerce.number().int().min(2, TEAM_SIZE_WARNING).default(6),
   profileImageId: z.string().optional(),
   organizationId: z.string().nullable().optional(),
   openRegistration: z.boolean().optional(),
@@ -123,6 +126,10 @@ const withTeamRoleAliasesList = (teams: Record<string, any>[]) => (
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
 const UNKNOWN_ARGUMENT_REGEX = /Unknown argument `([^`]+)`/i;
 
+const getZodErrorMessage = (error: z.ZodError): string => (
+  error.issues[0]?.message ?? 'Invalid input'
+);
+
 const extractUnknownArgument = (error: unknown): string | null => {
   const message = error instanceof Error ? error.message : String(error ?? '');
   const match = message.match(UNKNOWN_ARGUMENT_REGEX);
@@ -182,7 +189,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body ?? {});
   if (!parsed.success) {
-    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: getZodErrorMessage(parsed.error), details: parsed.error.flatten() }, { status: 400 });
   }
 
   const data = parsed.data;
@@ -205,7 +212,7 @@ export async function POST(req: NextRequest) {
     sportInput: sportInput ?? undefined,
   });
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
-  const divisionTypeName = normalizeText(data.divisionTypeName) ?? inferredDivision.divisionTypeName;
+  const divisionTypeName = cleanDivisionDisplayName(data.divisionTypeName, inferredDivision.divisionTypeName);
   const organizationId = normalizeText(data.organizationId);
   const requestedRequiredTemplateIds = normalizeTemplateIds(data.requiredTemplateIds);
   if (organizationId) {
@@ -258,7 +265,7 @@ export async function POST(req: NextRequest) {
           divisionTypeId,
           divisionTypeName,
           sport: sportInput,
-          teamSize: data.teamSize ?? 0,
+          teamSize: data.teamSize,
           profileImageId: data.profileImageId ?? null,
           organizationId,
           createdBy: session.userId,
@@ -303,7 +310,7 @@ export async function POST(req: NextRequest) {
       coachIds: assistantCoachIds,
       parentTeamId: normalizeText(data.parentTeamId),
       pending,
-      teamSize: data.teamSize ?? 0,
+      teamSize: data.teamSize,
       profileImageId: data.profileImageId ?? null,
       openRegistration: registrationSettings.openRegistration,
       registrationPriceCents: registrationSettings.registrationPriceCents,

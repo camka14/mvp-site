@@ -22,7 +22,12 @@ import { acquireEventLock } from '@/server/repositories/locks';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
-import { evaluateDivisionAgeEligibility, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
+import {
+  cleanDivisionDisplayName,
+  evaluateDivisionAgeEligibility,
+  extractDivisionTokenFromId,
+  inferDivisionDetails,
+} from '@/lib/divisionTypes';
 import { notifySocialAudienceOfEventCreation } from '@/server/eventCreationNotifications';
 import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
@@ -302,8 +307,14 @@ const getDivisionDetailsForEvent = async (
       sportInput: row?.sportId ?? undefined,
       fallbackName: row?.name ?? undefined,
     });
+    const divisionTypeId = row?.divisionTypeId ?? inferred.divisionTypeId;
+    const inferredDivisionType = inferDivisionDetails({
+      identifier: divisionTypeId,
+      sportInput: row?.sportId ?? undefined,
+      fallbackName: row?.divisionTypeName ?? undefined,
+    });
     const ageEligibility = evaluateDivisionAgeEligibility({
-      divisionTypeId: inferred.divisionTypeId,
+      divisionTypeId,
       sportInput: row?.sportId ?? undefined,
       referenceDate: eventStart ?? null,
     });
@@ -316,9 +327,9 @@ const getDivisionDetailsForEvent = async (
     return {
       id: row?.id ?? divisionId,
       key: row?.key ?? inferred.token,
-      name: row?.name ?? inferred.defaultName,
-      divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
-      divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+      name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
+      divisionTypeId,
+      divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
       ratingType: row?.ratingType ?? inferred.ratingType,
       gender: row?.gender ?? inferred.gender,
       sportId: row?.sportId ?? null,
@@ -442,13 +453,19 @@ const getDivisionDetailsForEvents = async (
         sportInput: row?.sportId ?? event.sportId ?? undefined,
         fallbackName: row?.name ?? undefined,
       });
+      const divisionTypeId = row?.divisionTypeId ?? inferred.divisionTypeId;
+      const inferredDivisionType = inferDivisionDetails({
+        identifier: divisionTypeId,
+        sportInput: row?.sportId ?? event.sportId ?? undefined,
+        fallbackName: row?.divisionTypeName ?? undefined,
+      });
 
       return {
         id: row?.id ?? divisionId,
         key: row?.key ?? inferred.token,
-        name: row?.name ?? inferred.defaultName,
-        divisionTypeId: row?.divisionTypeId ?? inferred.divisionTypeId,
-        divisionTypeName: row?.divisionTypeName ?? inferred.divisionTypeName,
+        name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
+        divisionTypeId,
+        divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
         ratingType: row?.ratingType ?? inferred.ratingType,
         gender: row?.gender ?? inferred.gender,
         sportId: row?.sportId ?? event.sportId ?? null,

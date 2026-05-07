@@ -3,7 +3,7 @@ import { createId } from '@/lib/id';
 import { Team, UserData, getTeamAvatarUrl } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
 import { userService, type UserVisibilityContext } from './userService';
-import { inferDivisionDetails } from '@/lib/divisionTypes';
+import { cleanDivisionDisplayName, inferDivisionDetails } from '@/lib/divisionTypes';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 export type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
@@ -184,15 +184,17 @@ class TeamService {
                 sportInput: sport,
             });
             const addSelfAsPlayer = options?.addSelfAsPlayer ?? true;
+            const normalizedCaptainId = typeof captainId === 'string' ? captainId.trim() : '';
+            const initialPlayerIds = addSelfAsPlayer && normalizedCaptainId ? [normalizedCaptainId] : [];
             const teamData = {
                 name,
                 division,
                 divisionTypeId: options?.divisionTypeId ?? inferredDivision.divisionTypeId,
-                divisionTypeName: options?.divisionTypeName ?? inferredDivision.divisionTypeName,
+                divisionTypeName: cleanDivisionDisplayName(options?.divisionTypeName, inferredDivision.divisionTypeName),
                 sport,
-                playerIds: addSelfAsPlayer ? [captainId] : [],
-                captainId: addSelfAsPlayer ? captainId : '',
-                managerId: captainId,
+                playerIds: initialPlayerIds,
+                captainId: addSelfAsPlayer ? normalizedCaptainId : '',
+                managerId: normalizedCaptainId,
                 headCoachId: null,
                 assistantCoachIds: [],
                 pending: [],
@@ -345,6 +347,21 @@ class TeamService {
         const playerRegistrations = this.mapRowToPlayerRegistrations(row.playerRegistrations);
         const teamSize = typeof row.teamSize === 'number' ? row.teamSize : playerIds.length;
 
+        const inferredDivisionIdentifier =
+            typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length
+                ? row.divisionTypeId
+                : typeof row.division === 'string' && row.division.trim().length
+                ? row.division
+                : typeof row.division?.id === 'string' && row.division.id.trim().length
+                ? row.division.id
+                : typeof row.division?.name === 'string' && row.division.name.trim().length
+                ? row.division.name
+                : 'open';
+        const inferredDivision = inferDivisionDetails({
+            identifier: inferredDivisionIdentifier,
+            sportInput: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? undefined),
+        });
+
         const team: Team = {
             $id: row.$id,
             name: row.name,
@@ -355,8 +372,8 @@ class TeamService {
                     : undefined,
             divisionTypeName:
                 typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
-                    ? row.divisionTypeName
-                    : undefined,
+                    ? cleanDivisionDisplayName(row.divisionTypeName, inferredDivision.divisionTypeName)
+                    : inferredDivision.divisionTypeName,
             sport: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? 'Indoor Volleyball'),
             playerIds,
             captainId: row.captainId,

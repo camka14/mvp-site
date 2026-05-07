@@ -344,7 +344,10 @@ export default function TeamDetailModal({
         const ageName = resolveDivisionTypeName(sportInput, ageDivisionTypeId, 'AGE');
         return buildDivisionName({
             gender,
-            divisionTypeName: `${skillName} • ${ageName}`,
+            divisionTypeName: [skillName, ageName]
+                .map((part) => part.trim())
+                .filter(Boolean)
+                .join(' '),
         });
     }, []);
     const teamDivisionLabel = useMemo(() => {
@@ -851,7 +854,10 @@ export default function TeamDetailModal({
         const nextDivisionTypeId = buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId);
         const nextSkillDivisionTypeName = resolveDivisionTypeName(nextSport, nextSkillDivisionTypeId, 'SKILL');
         const nextAgeDivisionTypeName = resolveDivisionTypeName(nextSport, nextAgeDivisionTypeId, 'AGE');
-        const nextDivisionTypeName = `${nextSkillDivisionTypeName} • ${nextAgeDivisionTypeName}`;
+        const nextDivisionTypeName = [nextSkillDivisionTypeName, nextAgeDivisionTypeName]
+            .map((part) => part.trim())
+            .filter(Boolean)
+            .join(' ');
         const nextDivision = buildDivisionName({
             gender: nextDivisionGender,
             divisionTypeName: nextDivisionTypeName,

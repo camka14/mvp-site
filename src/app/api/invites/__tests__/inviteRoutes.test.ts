@@ -7,6 +7,7 @@ const prismaMock = {
   invites: {
     create: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
     update: jest.fn(),
   },
   authUser: {
@@ -35,6 +36,7 @@ const sendInviteEmailsMock = jest.fn();
 const ensureAuthUserAndUserDataByEmailMock = jest.fn();
 const canManageOrganizationMock = jest.fn();
 const canManageEventMock = jest.fn();
+const loadCanonicalTeamByIdMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -46,8 +48,17 @@ jest.mock('@/server/accessControl', () => ({
   canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
   canManageEvent: (...args: any[]) => canManageEventMock(...args),
 }));
+jest.mock('@/server/teams/teamMembership', () => ({
+  loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
+  normalizeId: (value: unknown) => (typeof value === 'string' && value.trim().length > 0 ? value.trim() : null),
+  normalizeIdList: (value: unknown) => (
+    Array.isArray(value)
+      ? Array.from(new Set(value.map((entry) => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)))
+      : []
+  ),
+}));
 
-import { POST } from '@/app/api/invites/route';
+import { GET, POST } from '@/app/api/invites/route';
 
 const jsonRequest = (body: unknown, headers: Record<string, string> = {}) =>
   new NextRequest('http://localhost/api/invites', {
@@ -63,6 +74,7 @@ describe('/api/invites', () => {
     prismaMock.authUser.findUnique.mockResolvedValue(null);
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
     prismaMock.invites.findFirst.mockResolvedValue(null);
+    prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.staffMembers.upsert.mockResolvedValue({});
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.teams.findUnique.mockResolvedValue({
@@ -83,6 +95,77 @@ describe('/api/invites', () => {
     });
     canManageOrganizationMock.mockResolvedValue(true);
     canManageEventMock.mockResolvedValue(true);
+    loadCanonicalTeamByIdMock.mockResolvedValue(null);
+  });
+
+  it('scopes broad non-admin invite listing to the current session user', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    const createdAt = new Date('2020-01-01T00:00:00.000Z');
+    prismaMock.invites.findMany.mockResolvedValue([{
+      id: 'invite_1',
+      type: 'TEAM',
+      email: 'user@example.com',
+      status: 'PENDING',
+      eventId: null,
+      organizationId: null,
+      teamId: 'team_1',
+      userId: 'user_1',
+      createdBy: 'manager_1',
+      firstName: null,
+      lastName: null,
+      staffTypes: [],
+      createdAt,
+      updatedAt: createdAt,
+    }]);
+
+    const res = await GET(new NextRequest('http://localhost/api/invites?type=TEAM'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(prismaMock.invites.findMany).toHaveBeenCalledWith({
+      where: {
+        userId: 'user_1',
+        type: 'TEAM',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(json.invites).toHaveLength(1);
+    expect(json.invites[0].$id).toBe('invite_1');
+  });
+
+  it('allows team managers to list pending invites for their team', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'manager_1', isAdmin: false });
+    loadCanonicalTeamByIdMock.mockResolvedValue({
+      id: 'team_1',
+      managerId: 'manager_1',
+      captainId: '',
+      headCoachId: null,
+      coachIds: [],
+      staffAssignments: [],
+    });
+
+    const res = await GET(new NextRequest('http://localhost/api/invites?teamId=team_1&type=TEAM'));
+
+    expect(res.status).toBe(200);
+    expect(loadCanonicalTeamByIdMock).toHaveBeenCalledWith('team_1', prismaMock);
+    expect(prismaMock.invites.findMany).toHaveBeenCalledWith({
+      where: {
+        type: 'TEAM',
+        teamId: 'team_1',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('rejects non-admin invite listing for a different user', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+
+    const res = await GET(new NextRequest('http://localhost/api/invites?userId=user_2&type=TEAM'));
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toBe('Forbidden');
+    expect(prismaMock.invites.findMany).not.toHaveBeenCalled();
   });
 
   it('returns a consistent { invites: [] } response shape even for a single TEAM invite', async () => {

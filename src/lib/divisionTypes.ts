@@ -372,6 +372,35 @@ const sanitizeTokenPart = (value: string): string => value
   .replace(/[^a-z0-9]+/g, '_')
   .replace(/^_+|_+$/g, '');
 
+export const looksLikeLegacyDivisionMetadataLabel = (value: unknown): boolean => {
+  if (typeof value !== 'string') {
+    return false;
+  }
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return false;
+  const hasWordSkill = /\bskill\b/.test(normalized);
+  const hasWordAge = /\bage\b/.test(normalized);
+  const hasTokenPattern = normalized.includes('skill_') && normalized.includes('_age_');
+  return (hasWordSkill && hasWordAge) || hasTokenPattern;
+};
+
+export const cleanDivisionDisplayName = (
+  value: unknown,
+  fallback: string,
+): string => {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || looksLikeLegacyDivisionMetadataLabel(trimmed)) {
+    return fallback;
+  }
+  return trimmed
+    .replace(/\s*(?:•|â€¢|\/)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 export const normalizeDivisionIdToken = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -711,6 +740,26 @@ export const buildDivisionName = (params: {
   divisionTypeName: string;
 }): string => `${getDivisionGenderLabel(params.gender)} ${params.divisionTypeName}`.trim();
 
+export const buildDivisionTypeCompositeName = (
+  skillDivisionTypeName: string,
+  ageDivisionTypeName: string,
+): string => (
+  [skillDivisionTypeName, ageDivisionTypeName]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(' ')
+    || 'Open 18+'
+);
+
+export const buildCompositeDivisionTypeId = (
+  skillDivisionTypeId: string,
+  ageDivisionTypeId: string,
+): string => {
+  const normalizedSkill = sanitizeTokenPart(skillDivisionTypeId || 'open') || 'open';
+  const normalizedAge = sanitizeTokenPart(ageDivisionTypeId || '18plus') || '18plus';
+  return `skill_${normalizedSkill}_age_${normalizedAge}`;
+};
+
 export const buildDivisionToken = (params: {
   gender: DivisionGender;
   ratingType: DivisionRatingType;
@@ -737,6 +786,28 @@ const parseCompositeDivisionTypeId = (
   return {
     skillDivisionTypeId: match[1],
     ageDivisionTypeId: match[2],
+  };
+};
+
+const parseCompositeDivisionToken = (
+  token: unknown,
+): { gender: DivisionGender; skillDivisionTypeId: string; ageDivisionTypeId: string } | null => {
+  const normalizedToken = normalizeDivisionIdToken(token);
+  if (!normalizedToken) {
+    return null;
+  }
+  const match = normalizedToken.match(/^(m|f|c)_skill_([a-z0-9_]+)_age_([a-z0-9_]+)$/);
+  if (!match) {
+    return null;
+  }
+  const gender = normalizeDivisionGender(match[1]);
+  if (!gender) {
+    return null;
+  }
+  return {
+    gender,
+    skillDivisionTypeId: match[2],
+    ageDivisionTypeId: match[3],
   };
 };
 
@@ -837,6 +908,36 @@ export const inferDivisionDetails = (params: {
 } => {
   const id = normalizeDivisionIdToken(params.identifier) ?? sanitizeTokenPart(params.identifier);
   const token = extractDivisionTokenFromId(id) ?? 'c_skill_open';
+  const compositeToken = parseCompositeDivisionToken(token);
+  const compositeType = compositeToken ?? parseCompositeDivisionTypeId(token);
+  if (compositeType) {
+    const gender: DivisionGender = compositeToken?.gender ?? 'C';
+    const skillDivisionTypeId = sanitizeTokenPart(compositeType.skillDivisionTypeId || 'open') || 'open';
+    const ageDivisionTypeId = sanitizeTokenPart(compositeType.ageDivisionTypeId || '18plus') || '18plus';
+    const skillDivisionTypeName = getDivisionTypeById(
+      params.sportInput ?? null,
+      skillDivisionTypeId,
+      'SKILL',
+    )?.name ?? humanizeToken(skillDivisionTypeId);
+    const ageDivisionTypeName = getDivisionTypeById(
+      params.sportInput ?? null,
+      ageDivisionTypeId,
+      'AGE',
+    )?.name ?? humanizeToken(ageDivisionTypeId);
+    const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
+    const defaultName = cleanDivisionDisplayName(params.fallbackName, divisionTypeName);
+
+    return {
+      id,
+      token,
+      gender,
+      ratingType: 'SKILL',
+      divisionTypeId: buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId),
+      divisionTypeName,
+      defaultName,
+    };
+  }
+
   const parsed = parseDivisionToken(token);
 
   const divisionTypeId = parsed?.divisionTypeId ?? token;
@@ -856,6 +957,6 @@ export const inferDivisionDetails = (params: {
     ratingType,
     divisionTypeId,
     divisionTypeName,
-    defaultName: params.fallbackName?.trim().length ? params.fallbackName : defaultName,
+    defaultName: cleanDivisionDisplayName(params.fallbackName, defaultName),
   };
 };

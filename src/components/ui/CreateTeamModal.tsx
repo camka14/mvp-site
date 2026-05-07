@@ -15,7 +15,7 @@ import { ImageUploader } from './ImageUploader';
 interface CreateTeamModalProps {
   isOpen: boolean;
   onClose: () => void;
-  currentUser: UserData;
+  currentUser: UserData | null;
   onTeamCreated?: (team: Team) => void;
   organizationId?: string;
 }
@@ -78,6 +78,39 @@ const getDefaultDivisionTypeSelections = (sportInput: string | null | undefined)
 };
 
 const INITIAL_DIVISION_SELECTIONS = getDefaultDivisionTypeSelections(DEFAULT_SPORT);
+const TEAM_SIZE_WARNING = 'Team size must be 2 or above.';
+
+type TeamSizeInputValue = string | number;
+type UserDataWithApiId = UserData & { id?: unknown };
+
+const parseTeamSizeInput = (value: TeamSizeInputValue): number | null => {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? Math.trunc(value) : null;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  const parsedValue = Number(trimmedValue);
+  return Number.isFinite(parsedValue) ? Math.trunc(parsedValue) : null;
+};
+
+const normalizeUserIdValue = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const normalized = value.trim();
+    return normalized.length ? normalized : null;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+};
+
+const getCurrentUserId = (user: UserDataWithApiId | null | undefined): string => (
+  normalizeUserIdValue(user?.$id) ?? normalizeUserIdValue(user?.id) ?? ''
+);
 
 const buildCompositeDivisionTypeId = (skillDivisionTypeId: string, ageDivisionTypeId: string): string => {
   const normalizedSkill = normalizeDivisionToken(skillDivisionTypeId) || 'open';
@@ -95,7 +128,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
   const [skillDivisionTypeId, setSkillDivisionTypeId] = useState('open');
   const [ageDivisionTypeId, setAgeDivisionTypeId] = useState(INITIAL_DIVISION_SELECTIONS.ageDivisionTypeId);
   const [divisionPreview, setDivisionPreview] = useState('');
-  const [teamSize, setTeamSize] = useState(6);
+  const [teamSize, setTeamSize] = useState<TeamSizeInputValue>(6);
   const [addSelfAsPlayer, setAddSelfAsPlayer] = useState(true);
   const [profileImageId, setProfileImageId] = useState('');
   const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
@@ -111,6 +144,9 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     () => getDivisionTypeOptionsForSport(sport),
     [sport],
   );
+  const parsedTeamSize = useMemo(() => parseTeamSizeInput(teamSize), [teamSize]);
+  const teamSizeWarning = parsedTeamSize === null || parsedTeamSize < 2 ? TEAM_SIZE_WARNING : null;
+  const currentUserId = useMemo(() => getCurrentUserId(currentUser), [currentUser]);
 
   const skillDivisionOptions = useMemo(
     () => divisionTypeOptions
@@ -205,7 +241,10 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     const nextAgeDivisionTypeId = normalizeDivisionToken(ageDivisionTypeId);
     const nextSkillDivisionTypeName = resolveDivisionTypeName(sport, nextSkillDivisionTypeId, 'SKILL');
     const nextAgeDivisionTypeName = resolveDivisionTypeName(sport, nextAgeDivisionTypeId, 'AGE');
-    const nextDivisionTypeName = `${nextSkillDivisionTypeName} • ${nextAgeDivisionTypeName}`;
+    const nextDivisionTypeName = [nextSkillDivisionTypeName, nextAgeDivisionTypeName]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(' ');
     setDivisionPreview(
       buildDivisionName({
         gender: divisionGender,
@@ -237,7 +276,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     const nextSport = sport.trim();
     const nextSkillDivisionTypeId = normalizeDivisionToken(skillDivisionTypeId);
     const nextAgeDivisionTypeId = normalizeDivisionToken(ageDivisionTypeId);
-    const nextTeamSize = Math.max(1, Math.trunc(Number(teamSize) || 0));
+    const nextTeamSize = parseTeamSizeInput(teamSize);
 
     if (!trimmedName) {
       setError('Team name is required.');
@@ -251,11 +290,22 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
       setError('Select both skill and age divisions.');
       return;
     }
+    if (nextTeamSize === null || nextTeamSize < 2) {
+      setError(TEAM_SIZE_WARNING);
+      return;
+    }
+    if (!currentUserId) {
+      setError('Sign in again before creating a team.');
+      return;
+    }
 
     const nextDivisionTypeId = buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId);
     const nextSkillDivisionTypeName = resolveDivisionTypeName(nextSport, nextSkillDivisionTypeId, 'SKILL');
     const nextAgeDivisionTypeName = resolveDivisionTypeName(nextSport, nextAgeDivisionTypeId, 'AGE');
-    const nextDivisionTypeName = `${nextSkillDivisionTypeName} • ${nextAgeDivisionTypeName}`;
+    const nextDivisionTypeName = [nextSkillDivisionTypeName, nextAgeDivisionTypeName]
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .join(' ');
     const nextDivision = buildDivisionName({
       gender: divisionGender,
       divisionTypeName: nextDivisionTypeName,
@@ -266,7 +316,7 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     try {
       const newTeam = await teamService.createTeam(
         trimmedName,
-        currentUser.$id,
+        currentUserId,
         nextDivision,
         nextSport,
         nextTeamSize,
@@ -352,9 +402,11 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
           />
           <NumberInput
             label="Team Size"
-            min={1}
+            min={0}
+            allowDecimal={false}
             value={teamSize}
-            onChange={(value) => setTeamSize(Number(value) || 1)}
+            onChange={(value) => setTeamSize(value)}
+            error={teamSizeWarning}
           />
         </SimpleGrid>
 
