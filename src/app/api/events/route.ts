@@ -24,9 +24,12 @@ import { SchedulerContext } from '@/server/scheduler/types';
 import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
 import {
   cleanDivisionDisplayName,
+  deriveDivisionTypeDisplayName,
   evaluateDivisionAgeEligibility,
   extractDivisionTokenFromId,
   inferDivisionDetails,
+  normalizeDivisionGender,
+  normalizeDivisionRatingType,
 } from '@/lib/divisionTypes';
 import { notifySocialAudienceOfEventCreation } from '@/server/eventCreationNotifications';
 import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
@@ -268,7 +271,6 @@ const getDivisionDetailsForEvent = async (
       installmentDueRelativeDays: true,
       installmentAmounts: true,
       divisionTypeId: true,
-      divisionTypeName: true,
       ratingType: true,
       gender: true,
       ageCutoffDate: true,
@@ -308,10 +310,13 @@ const getDivisionDetailsForEvent = async (
       fallbackName: row?.name ?? undefined,
     });
     const divisionTypeId = row?.divisionTypeId ?? inferred.divisionTypeId;
-    const inferredDivisionType = inferDivisionDetails({
-      identifier: divisionTypeId,
+    const ratingType = normalizeDivisionRatingType(row?.ratingType) ?? inferred.ratingType;
+    const gender = normalizeDivisionGender(row?.gender) ?? inferred.gender;
+    const divisionTypeName = deriveDivisionTypeDisplayName({
       sportInput: row?.sportId ?? undefined,
-      fallbackName: row?.divisionTypeName ?? undefined,
+      gender,
+      ratingType,
+      divisionTypeId,
     });
     const ageEligibility = evaluateDivisionAgeEligibility({
       divisionTypeId,
@@ -329,9 +334,9 @@ const getDivisionDetailsForEvent = async (
       key: row?.key ?? inferred.token,
       name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
       divisionTypeId,
-      divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
-      ratingType: row?.ratingType ?? inferred.ratingType,
-      gender: row?.gender ?? inferred.gender,
+      divisionTypeName,
+      ratingType,
+      gender,
       sportId: row?.sportId ?? null,
       price: typeof row?.price === 'number'
         ? row.price
@@ -401,7 +406,6 @@ const getDivisionDetailsForEvents = async (
       price: true,
       maxParticipants: true,
       divisionTypeId: true,
-      divisionTypeName: true,
       ratingType: true,
       gender: true,
     },
@@ -454,10 +458,13 @@ const getDivisionDetailsForEvents = async (
         fallbackName: row?.name ?? undefined,
       });
       const divisionTypeId = row?.divisionTypeId ?? inferred.divisionTypeId;
-      const inferredDivisionType = inferDivisionDetails({
-        identifier: divisionTypeId,
+      const ratingType = normalizeDivisionRatingType(row?.ratingType) ?? inferred.ratingType;
+      const gender = normalizeDivisionGender(row?.gender) ?? inferred.gender;
+      const divisionTypeName = deriveDivisionTypeDisplayName({
         sportInput: row?.sportId ?? event.sportId ?? undefined,
-        fallbackName: row?.divisionTypeName ?? undefined,
+        gender,
+        ratingType,
+        divisionTypeId,
       });
 
       return {
@@ -465,9 +472,9 @@ const getDivisionDetailsForEvents = async (
         key: row?.key ?? inferred.token,
         name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
         divisionTypeId,
-        divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
-        ratingType: row?.ratingType ?? inferred.ratingType,
-        gender: row?.gender ?? inferred.gender,
+        divisionTypeName,
+        ratingType,
+        gender,
         sportId: row?.sportId ?? event.sportId ?? null,
         price: typeof row?.price === 'number' ? row.price : null,
         maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,

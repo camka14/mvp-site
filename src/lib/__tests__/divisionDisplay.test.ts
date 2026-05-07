@@ -42,7 +42,7 @@ describe('resolveDivisionDisplayName', () => {
       division: 'open',
       divisionNameIndex: index,
       sportInput: 'volleyball',
-    })).toBe('CoEd Open');
+    })).toBe('CoEd Open 18+');
   });
 
   it('uses simple pool labels for generated tournament pool rows', () => {
@@ -76,7 +76,7 @@ describe('resolveDivisionDisplayName', () => {
       } as any,
       divisionDetails: [],
       sportInput: 'volleyball',
-    })).toBe('BB 18+');
+    })).toBe('CoEd BB 18+');
   });
 });
 

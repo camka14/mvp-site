@@ -5,7 +5,6 @@ import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
-  cleanDivisionDisplayName,
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
@@ -41,7 +40,6 @@ const createSchema = z.object({
   name: z.string().trim().min(1, 'Team name is required.'),
   division: z.string().optional(),
   divisionTypeId: z.string().optional(),
-  divisionTypeName: z.string().optional(),
   sport: z.string().optional(),
   playerIds: z.array(z.string()).optional(),
   captainId: z.string().optional(),
@@ -212,7 +210,6 @@ export async function POST(req: NextRequest) {
     sportInput: sportInput ?? undefined,
   });
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
-  const divisionTypeName = cleanDivisionDisplayName(data.divisionTypeName, inferredDivision.divisionTypeName);
   const organizationId = normalizeText(data.organizationId);
   const requestedRequiredTemplateIds = normalizeTemplateIds(data.requiredTemplateIds);
   if (organizationId) {
@@ -263,7 +260,6 @@ export async function POST(req: NextRequest) {
           name: normalizedTeamName,
           division: normalizedDivision,
           divisionTypeId,
-          divisionTypeName,
           sport: sportInput,
           teamSize: data.teamSize,
           profileImageId: data.profileImageId ?? null,
@@ -301,7 +297,6 @@ export async function POST(req: NextRequest) {
       name: normalizedTeamName,
       division: normalizedDivision,
       divisionTypeId,
-      divisionTypeName,
       sport: sportInput,
       playerIds,
       captainId,

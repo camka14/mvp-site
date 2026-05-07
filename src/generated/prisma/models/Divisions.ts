@@ -68,7 +68,6 @@ export type DivisionsMinAggregateOutputType = {
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
-  divisionTypeName: string | null
   ratingType: string | null
   gender: string | null
   ageCutoffDate: Date | null
@@ -96,7 +95,6 @@ export type DivisionsMaxAggregateOutputType = {
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
-  divisionTypeName: string | null
   ratingType: string | null
   gender: string | null
   ageCutoffDate: Date | null
@@ -129,7 +127,6 @@ export type DivisionsCountAggregateOutputType = {
   minRating: number
   maxRating: number
   divisionTypeId: number
-  divisionTypeName: number
   ratingType: number
   gender: number
   ageCutoffDate: number
@@ -183,7 +180,6 @@ export type DivisionsMinAggregateInputType = {
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
-  divisionTypeName?: true
   ratingType?: true
   gender?: true
   ageCutoffDate?: true
@@ -211,7 +207,6 @@ export type DivisionsMaxAggregateInputType = {
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
-  divisionTypeName?: true
   ratingType?: true
   gender?: true
   ageCutoffDate?: true
@@ -244,7 +239,6 @@ export type DivisionsCountAggregateInputType = {
   minRating?: true
   maxRating?: true
   divisionTypeId?: true
-  divisionTypeName?: true
   ratingType?: true
   gender?: true
   ageCutoffDate?: true
@@ -366,7 +360,6 @@ export type DivisionsGroupByOutputType = {
   minRating: number | null
   maxRating: number | null
   divisionTypeId: string | null
-  divisionTypeName: string | null
   ratingType: string | null
   gender: string | null
   ageCutoffDate: Date | null
@@ -424,7 +417,6 @@ export type DivisionsWhereInput = {
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
-  divisionTypeName?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ratingType?: Prisma.StringNullableFilter<"Divisions"> | string | null
   gender?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ageCutoffDate?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
@@ -459,7 +451,6 @@ export type DivisionsOrderByWithRelationInput = {
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrderInput | Prisma.SortOrder
   ratingType?: Prisma.SortOrderInput | Prisma.SortOrder
   gender?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -497,7 +488,6 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   minRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableFilter<"Divisions"> | string | null
-  divisionTypeName?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ratingType?: Prisma.StringNullableFilter<"Divisions"> | string | null
   gender?: Prisma.StringNullableFilter<"Divisions"> | string | null
   ageCutoffDate?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
@@ -532,7 +522,6 @@ export type DivisionsOrderByWithAggregationInput = {
   minRating?: Prisma.SortOrderInput | Prisma.SortOrder
   maxRating?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrderInput | Prisma.SortOrder
   ratingType?: Prisma.SortOrderInput | Prisma.SortOrder
   gender?: Prisma.SortOrderInput | Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -575,7 +564,6 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   minRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   maxRating?: Prisma.FloatNullableWithAggregatesFilter<"Divisions"> | number | null
   divisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
-  divisionTypeName?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   ratingType?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   gender?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   ageCutoffDate?: Prisma.DateTimeNullableWithAggregatesFilter<"Divisions"> | Date | string | null
@@ -610,7 +598,6 @@ export type DivisionsCreateInput = {
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
-  divisionTypeName?: string | null
   ratingType?: string | null
   gender?: string | null
   ageCutoffDate?: Date | string | null
@@ -645,7 +632,6 @@ export type DivisionsUncheckedCreateInput = {
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
-  divisionTypeName?: string | null
   ratingType?: string | null
   gender?: string | null
   ageCutoffDate?: Date | string | null
@@ -680,7 +666,6 @@ export type DivisionsUpdateInput = {
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ratingType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   gender?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -715,7 +700,6 @@ export type DivisionsUncheckedUpdateInput = {
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ratingType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   gender?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -750,7 +734,6 @@ export type DivisionsCreateManyInput = {
   minRating?: number | null
   maxRating?: number | null
   divisionTypeId?: string | null
-  divisionTypeName?: string | null
   ratingType?: string | null
   gender?: string | null
   ageCutoffDate?: Date | string | null
@@ -785,7 +768,6 @@ export type DivisionsUpdateManyMutationInput = {
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ratingType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   gender?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -820,7 +802,6 @@ export type DivisionsUncheckedUpdateManyInput = {
   minRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   maxRating?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ratingType?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   gender?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   ageCutoffDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
@@ -863,7 +844,6 @@ export type DivisionsCountOrderByAggregateInput = {
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrder
   ratingType?: Prisma.SortOrder
   gender?: Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrder
@@ -904,7 +884,6 @@ export type DivisionsMaxOrderByAggregateInput = {
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrder
   ratingType?: Prisma.SortOrder
   gender?: Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrder
@@ -932,7 +911,6 @@ export type DivisionsMinOrderByAggregateInput = {
   minRating?: Prisma.SortOrder
   maxRating?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrder
   ratingType?: Prisma.SortOrder
   gender?: Prisma.SortOrder
   ageCutoffDate?: Prisma.SortOrder
@@ -1036,7 +1014,6 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
-  divisionTypeName?: boolean
   ratingType?: boolean
   gender?: boolean
   ageCutoffDate?: boolean
@@ -1071,7 +1048,6 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
-  divisionTypeName?: boolean
   ratingType?: boolean
   gender?: boolean
   ageCutoffDate?: boolean
@@ -1106,7 +1082,6 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
-  divisionTypeName?: boolean
   ratingType?: boolean
   gender?: boolean
   ageCutoffDate?: boolean
@@ -1141,7 +1116,6 @@ export type DivisionsSelectScalar = {
   minRating?: boolean
   maxRating?: boolean
   divisionTypeId?: boolean
-  divisionTypeName?: boolean
   ratingType?: boolean
   gender?: boolean
   ageCutoffDate?: boolean
@@ -1151,7 +1125,7 @@ export type DivisionsSelectScalar = {
   teamIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "divisionTypeName" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -1181,7 +1155,6 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     minRating: number | null
     maxRating: number | null
     divisionTypeId: string | null
-    divisionTypeName: string | null
     ratingType: string | null
     gender: string | null
     ageCutoffDate: Date | null
@@ -1636,7 +1609,6 @@ export interface DivisionsFieldRefs {
   readonly minRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly maxRating: Prisma.FieldRef<"Divisions", 'Float'>
   readonly divisionTypeId: Prisma.FieldRef<"Divisions", 'String'>
-  readonly divisionTypeName: Prisma.FieldRef<"Divisions", 'String'>
   readonly ratingType: Prisma.FieldRef<"Divisions", 'String'>
   readonly gender: Prisma.FieldRef<"Divisions", 'String'>
   readonly ageCutoffDate: Prisma.FieldRef<"Divisions", 'DateTime'>

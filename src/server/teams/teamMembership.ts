@@ -54,7 +54,6 @@ type CanonicalTeamRow = {
   name: string;
   division?: string | null;
   divisionTypeId?: string | null;
-  divisionTypeName?: string | null;
   wins?: number | null;
   losses?: number | null;
   teamSize: number;
@@ -77,7 +76,6 @@ type EventTeamRow = {
   playerRegistrationIds?: string[];
   division?: string | null;
   divisionTypeId?: string | null;
-  divisionTypeName?: string | null;
   wins?: number | null;
   losses?: number | null;
   name: string;
@@ -350,7 +348,6 @@ const buildFallbackCanonicalTeam = (team: EventTeamRow): ReturnType<typeof seria
       name: team.name,
       division: normalizeId(team.division),
       divisionTypeId: normalizeId(team.divisionTypeId),
-      divisionTypeName: normalizeId(team.divisionTypeName),
       wins: team.wins ?? null,
       losses: team.losses ?? null,
       teamSize: team.teamSize,
@@ -1061,7 +1058,6 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
       ?? normalizeId((canonicalTeam as any).division)
       ?? null,
     divisionTypeId: normalizeId(params.divisionTypeId) ?? normalizeId((canonicalTeam as any).divisionTypeId) ?? null,
-    divisionTypeName: normalizeId((canonicalTeam as any).divisionTypeName) ?? null,
     wins: (canonicalTeam as any).wins ?? null,
     losses: (canonicalTeam as any).losses ?? null,
     name: String((canonicalTeam as any).name ?? '').trim(),

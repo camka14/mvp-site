@@ -72,7 +72,6 @@ export default function TeamCard({
     : null;
 
   const divisionLabelFromObjectName = toDisplayDivisionLabel(resolveLabel(divisionObject?.name));
-  const divisionLabelFromObjectTypeName = toDisplayDivisionLabel(resolveLabel(divisionObject?.divisionTypeName));
   const divisionLabelFromObjectSkillLevel = toDisplayDivisionLabel(resolveLabel(divisionObject?.skillLevel));
   const divisionLabelFromObjectId = (() => {
     const divisionId = resolveLabel(divisionObject?.id);
@@ -83,8 +82,6 @@ export default function TeamCard({
     });
     return toDisplayDivisionLabel(resolveLabel(inferred.divisionTypeName) ?? inferred.defaultName);
   })();
-
-  const divisionLabelFromTypeName = toDisplayDivisionLabel(resolveLabel(team.divisionTypeName));
 
   const divisionLabelFromString = (() => {
     const rawDivision = resolveLabel(typeof team.division === 'string' ? team.division : null);
@@ -107,8 +104,6 @@ export default function TeamCard({
   })();
 
   const divisionLabel = divisionLabelFromObjectName
-    ?? divisionLabelFromTypeName
-    ?? divisionLabelFromObjectTypeName
     ?? divisionLabelFromObjectSkillLevel
     ?? divisionLabelFromObjectId
     ?? divisionLabelFromString

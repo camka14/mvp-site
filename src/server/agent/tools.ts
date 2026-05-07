@@ -781,7 +781,7 @@ const getEventScheduleContext = async (
     }),
     prisma.teams.findMany({
       where: { eventId },
-      select: { id: true, name: true, division: true, divisionTypeId: true, divisionTypeName: true, kind: true },
+      select: { id: true, name: true, division: true, divisionTypeId: true, kind: true },
       orderBy: { name: 'asc' },
     }),
     prisma.eventRegistrations.findMany({
@@ -861,7 +861,6 @@ const getEventScheduleContext = async (
       name: team.name,
       division: team.division,
       divisionTypeId: team.divisionTypeId,
-      divisionTypeName: team.divisionTypeName,
       kind: team.kind,
     })),
     officials: eventOfficials.map((official) => ({

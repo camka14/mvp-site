@@ -246,7 +246,6 @@ const loadSelectedFutureEventTeams = async (
       pending: true,
       division: true,
       divisionTypeId: true,
-      divisionTypeName: true,
       playerRegistrationIds: true,
     },
   }) ?? [];
@@ -440,7 +439,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             sourceTeamRegistrationId,
             divisionId: normalizeId(eventTeam.division),
             divisionTypeId: normalizeId(eventTeam.divisionTypeId),
-            divisionTypeKey: normalizeId(eventTeam.divisionTypeName)?.toLowerCase() ?? null,
+            divisionTypeKey: normalizeId(eventTeam.divisionTypeId)?.toLowerCase() ?? null,
             createdBy: session.userId,
           }, tx);
           await getEventTeamsDelegate(tx)?.update?.({

@@ -72,7 +72,6 @@ describe('/api/teams/[id]/member-invites POST', () => {
       name: 'Test team',
       division: 'Open',
       divisionTypeId: 'open',
-      divisionTypeName: 'Open',
       wins: null,
       losses: null,
       teamSize: 6,
@@ -133,7 +132,6 @@ describe('/api/teams/[id]/member-invites POST', () => {
         playerRegistrationIds: [],
         division: 'Open',
         divisionTypeId: 'open',
-        divisionTypeName: 'Open',
       },
     ]);
     txMock.events.findMany.mockResolvedValue([{ id: 'event_1' }]);
@@ -229,7 +227,6 @@ describe('/api/teams/[id]/member-invites POST', () => {
       name: 'Test team',
       division: 'Open',
       divisionTypeId: 'open',
-      divisionTypeName: 'Open',
       wins: null,
       losses: null,
       teamSize: 2,

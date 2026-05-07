@@ -9,7 +9,6 @@ const createTeam = (overrides: Partial<Team> = {}): Team => ({
   name: 'Falcons',
   division: 'event_1__division__c_skill_open',
   divisionTypeId: undefined,
-  divisionTypeName: undefined,
   sport: 'Indoor Volleyball',
   playerIds: [],
   captainId: 'captain_1',
@@ -53,16 +52,15 @@ const createPlayer = (id: string, overrides: Partial<NonNullable<Team['players']
 });
 
 describe('TeamCard division label', () => {
-  it('prefers divisionTypeName instead of rendering a division id', () => {
+  it('infers a clean division label instead of rendering a division id', () => {
     const team = createTeam({
-      division: 'event_123__division__c_skill_open',
-      divisionTypeName: 'Open',
+      division: 'event_123__division__c_skill_open_age_18plus',
     });
 
     renderWithMantine(<TeamCard team={team} />);
 
-    expect(screen.getByText('Open')).toBeInTheDocument();
-    expect(screen.queryByText(/event_123__division__c_skill_open/i)).not.toBeInTheDocument();
+    expect(screen.getByText('CoEd Open 18+')).toBeInTheDocument();
+    expect(screen.queryByText(/event_123__division__c_skill_open_age_18plus/i)).not.toBeInTheDocument();
   });
 
   it('uses expanded division name when available', () => {
@@ -81,7 +79,6 @@ describe('TeamCard division label', () => {
   it('does not fall back to an opaque division id', () => {
     const team = createTeam({
       division: 'division_5f2f1c9d',
-      divisionTypeName: undefined,
     });
 
     renderWithMantine(<TeamCard team={team} />);
@@ -96,12 +93,11 @@ describe('TeamCard division label', () => {
         id: 'event_456__division__c_skill_open_age_u14',
         name: 'C - Skill: Open - Age: U14',
       },
-      divisionTypeName: 'Open / U14',
     });
 
     renderWithMantine(<TeamCard team={team} />);
 
-    expect(screen.getByText('Open / U14')).toBeInTheDocument();
+    expect(screen.getByText('CoEd Open U14')).toBeInTheDocument();
     expect(screen.queryByText(/skill:/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/age:/i)).not.toBeInTheDocument();
   });
@@ -112,7 +108,6 @@ describe('TeamCard division label', () => {
         id: 'event_456__division__c_skill_open_age_u14',
         name: 'C - Skill: Open - Age: U14',
       },
-      divisionTypeName: undefined,
     });
 
     renderWithMantine(<TeamCard team={team} />);

@@ -37,7 +37,7 @@ describe('divisionTypes age alignment', () => {
       sportInput: null,
     });
 
-    expect(inferred.divisionTypeName).toBe('U12');
+    expect(inferred.divisionTypeName).toBe('CoEd Open U12');
   });
 
   it('derives clean labels from composite skill and age division ids', () => {
@@ -47,8 +47,8 @@ describe('divisionTypes age alignment', () => {
     });
 
     expect(inferred.divisionTypeId).toBe('skill_open_age_18plus');
-    expect(inferred.divisionTypeName).toBe('Open 18+');
-    expect(inferred.defaultName).toBe('Open 18+');
+    expect(inferred.divisionTypeName).toBe('CoEd Open 18+');
+    expect(inferred.defaultName).toBe('CoEd Open 18+');
   });
 
   it('ignores legacy metadata fallback labels for composite divisions', () => {
@@ -59,8 +59,8 @@ describe('divisionTypes age alignment', () => {
     });
 
     expect(inferred.divisionTypeId).toBe('skill_bb_age_18plus');
-    expect(inferred.divisionTypeName).toBe('BB 18+');
-    expect(inferred.defaultName).toBe('BB 18+');
+    expect(inferred.divisionTypeName).toBe('CoEd BB 18+');
+    expect(inferred.defaultName).toBe('CoEd BB 18+');
   });
 
   it('normalizes legacy composite separators to spaces', () => {

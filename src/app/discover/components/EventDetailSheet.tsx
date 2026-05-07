@@ -42,6 +42,7 @@ import { buildDivisionCapacityBreakdown, isDivisionAtCapacity, resolveDivisionCa
 import {
     buildDivisionToken,
     cleanDivisionDisplayName,
+    deriveDivisionTypeDisplayName,
     evaluateDivisionAgeEligibility,
     extractDivisionTokenFromId,
     inferDivisionDetails,
@@ -823,11 +824,6 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
         const ratingType = normalizeDivisionRatingType(row?.ratingType) ?? inferred.ratingType;
         const gender = normalizeDivisionGender(row?.gender) ?? inferred.gender;
         const divisionTypeId = normalizeDivisionKey(row?.divisionTypeId) ?? inferred.divisionTypeId;
-        const inferredDivisionType = inferDivisionDetails({
-            identifier: divisionTypeId,
-            sportInput,
-            fallbackName: typeof row?.divisionTypeName === 'string' ? row.divisionTypeName : undefined,
-        });
         const key = normalizeDivisionKey(row?.key) ?? inferred.token;
         const parsedKey = parseDivisionToken(key);
         const divisionTypeKey = parsedKey
@@ -844,7 +840,12 @@ const buildDivisionOptionsForEvent = (event: Event | null): EventDivisionOption[
             key,
             name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
             divisionTypeId,
-            divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
+            divisionTypeName: deriveDivisionTypeDisplayName({
+                sportInput,
+                gender,
+                ratingType,
+                divisionTypeId,
+            }),
             divisionTypeKey,
             ratingType,
             gender,

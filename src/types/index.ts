@@ -548,7 +548,6 @@ export interface Team {
   name: string;
   division: Division | string; // Can be expanded or just ID
   divisionTypeId?: string;
-  divisionTypeName?: string;
   sport: string;
   playerIds: string[];
   captainId: string;

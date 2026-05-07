@@ -43,6 +43,8 @@ type SportCutoffCatalog = {
 };
 
 const GENERIC_SPORT_KEY = 'generic';
+const DEFAULT_SKILL_DIVISION_TYPE_ID = 'open';
+const DEFAULT_AGE_DIVISION_TYPE_ID = '18plus';
 
 const DEFAULT_SPORT_AGE_CUTOFF: SportAgeCutoffRule = {
   sportKey: GENERIC_SPORT_KEY,
@@ -380,8 +382,9 @@ export const looksLikeLegacyDivisionMetadataLabel = (value: unknown): boolean =>
   if (!normalized) return false;
   const hasWordSkill = /\bskill\b/.test(normalized);
   const hasWordAge = /\bage\b/.test(normalized);
+  const startsWithRatingPrefix = /^(?:(?:coed|co-ed|mens|men's|womens|women's)\s+)?(?:skill|age)\b/.test(normalized);
   const hasTokenPattern = normalized.includes('skill_') && normalized.includes('_age_');
-  return (hasWordSkill && hasWordAge) || hasTokenPattern;
+  return (hasWordSkill && hasWordAge) || startsWithRatingPrefix || hasTokenPattern;
 };
 
 export const cleanDivisionDisplayName = (
@@ -692,6 +695,43 @@ export const getDivisionTypeById = (
   ) ?? null;
 };
 
+const normalizeDivisionTypeLookupIds = (
+  divisionTypeId: string,
+  ratingType: DivisionRatingType,
+): string[] => {
+  const normalized = sanitizeTokenPart(divisionTypeId);
+  if (!normalized) {
+    return [];
+  }
+  const ids = [normalized];
+  if (ratingType === 'AGE') {
+    const trailingU = normalized.match(/^(\d+)u$/);
+    if (trailingU) {
+      ids.push(`u${trailingU[1]}`);
+    }
+  }
+  return Array.from(new Set(ids));
+};
+
+const getDerivedDivisionTypeName = (
+  sportInput: string | null | undefined,
+  divisionTypeId: string,
+  ratingType: DivisionRatingType,
+): string => {
+  for (const id of normalizeDivisionTypeLookupIds(divisionTypeId, ratingType)) {
+    const option = getDivisionTypeById(sportInput, id, ratingType);
+    if (option?.name) {
+      return option.name;
+    }
+  }
+
+  if (ratingType === 'AGE') {
+    return parseDivisionAgeBracket(divisionTypeId)?.label ?? '';
+  }
+
+  return '';
+};
+
 export const normalizeDivisionGender = (value: unknown): DivisionGender | null => {
   if (typeof value !== 'string') return null;
   const normalized = value.trim().toUpperCase();
@@ -737,8 +777,15 @@ export const getDivisionGenderLabel = (gender: DivisionGender): string => {
 
 export const buildDivisionName = (params: {
   gender: DivisionGender;
-  divisionTypeName: string;
-}): string => `${getDivisionGenderLabel(params.gender)} ${params.divisionTypeName}`.trim();
+  sportInput?: string | null;
+  skillDivisionTypeId: string;
+  ageDivisionTypeId: string;
+}): string => deriveDivisionTypeDisplayName({
+  sportInput: params.sportInput,
+  gender: params.gender,
+  ratingType: 'SKILL',
+  divisionTypeId: buildCompositeDivisionTypeId(params.skillDivisionTypeId, params.ageDivisionTypeId),
+});
 
 export const buildDivisionTypeCompositeName = (
   skillDivisionTypeName: string,
@@ -749,6 +796,20 @@ export const buildDivisionTypeCompositeName = (
     .filter(Boolean)
     .join(' ')
     || 'Open 18+'
+);
+
+export const buildDivisionTypeDisplayName = (params: {
+  gender: DivisionGender;
+  skillDivisionTypeName: string;
+  ageDivisionTypeName: string;
+}): string => (
+  [
+    getDivisionGenderLabel(params.gender),
+    params.skillDivisionTypeName.trim(),
+    params.ageDivisionTypeName.trim(),
+  ]
+    .filter(Boolean)
+    .join(' ')
 );
 
 export const buildCompositeDivisionTypeId = (
@@ -769,6 +830,9 @@ export const buildDivisionToken = (params: {
   if (!divisionTypeId.length) {
     return `${params.gender.toLowerCase()}_${params.ratingType.toLowerCase()}_open`;
   }
+  if (params.ratingType === 'SKILL' && parseCompositeDivisionTypeId(divisionTypeId)) {
+    return `${params.gender.toLowerCase()}_${divisionTypeId}`;
+  }
   return `${params.gender.toLowerCase()}_${params.ratingType.toLowerCase()}_${divisionTypeId}`;
 };
 
@@ -787,6 +851,32 @@ const parseCompositeDivisionTypeId = (
     skillDivisionTypeId: match[1],
     ageDivisionTypeId: match[2],
   };
+};
+
+export const deriveDivisionTypeDisplayName = (params: {
+  sportInput?: string | null;
+  gender: DivisionGender;
+  ratingType: DivisionRatingType;
+  divisionTypeId: string;
+}): string => {
+  const normalizedDivisionTypeId = sanitizeTokenPart(params.divisionTypeId);
+  const composite = parseCompositeDivisionTypeId(normalizedDivisionTypeId);
+  const skillDivisionTypeId = composite
+    ? composite.skillDivisionTypeId
+    : params.ratingType === 'SKILL'
+      ? normalizedDivisionTypeId || DEFAULT_SKILL_DIVISION_TYPE_ID
+      : DEFAULT_SKILL_DIVISION_TYPE_ID;
+  const ageDivisionTypeId = composite
+    ? composite.ageDivisionTypeId
+    : params.ratingType === 'AGE'
+      ? normalizedDivisionTypeId || DEFAULT_AGE_DIVISION_TYPE_ID
+      : DEFAULT_AGE_DIVISION_TYPE_ID;
+
+  return buildDivisionTypeDisplayName({
+    gender: params.gender,
+    skillDivisionTypeName: getDerivedDivisionTypeName(params.sportInput, skillDivisionTypeId, 'SKILL'),
+    ageDivisionTypeName: getDerivedDivisionTypeName(params.sportInput, ageDivisionTypeId, 'AGE'),
+  });
 };
 
 const parseCompositeDivisionToken = (
@@ -914,27 +1004,22 @@ export const inferDivisionDetails = (params: {
     const gender: DivisionGender = compositeToken?.gender ?? 'C';
     const skillDivisionTypeId = sanitizeTokenPart(compositeType.skillDivisionTypeId || 'open') || 'open';
     const ageDivisionTypeId = sanitizeTokenPart(compositeType.ageDivisionTypeId || '18plus') || '18plus';
-    const skillDivisionTypeName = getDivisionTypeById(
-      params.sportInput ?? null,
-      skillDivisionTypeId,
-      'SKILL',
-    )?.name ?? humanizeToken(skillDivisionTypeId);
-    const ageDivisionTypeName = getDivisionTypeById(
-      params.sportInput ?? null,
-      ageDivisionTypeId,
-      'AGE',
-    )?.name ?? humanizeToken(ageDivisionTypeId);
-    const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
-    const defaultName = cleanDivisionDisplayName(params.fallbackName, divisionTypeName);
+    const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
+    const divisionTypeName = deriveDivisionTypeDisplayName({
+      sportInput: params.sportInput,
+      gender,
+      ratingType: 'SKILL',
+      divisionTypeId,
+    });
 
     return {
       id,
       token,
       gender,
       ratingType: 'SKILL',
-      divisionTypeId: buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId),
+      divisionTypeId,
       divisionTypeName,
-      defaultName,
+      defaultName: divisionTypeName,
     };
   }
 
@@ -943,11 +1028,11 @@ export const inferDivisionDetails = (params: {
   const divisionTypeId = parsed?.divisionTypeId ?? token;
   const ratingType = parsed?.ratingType ?? inferRatingTypeFromTypeId(divisionTypeId);
   const gender = parsed?.gender ?? 'C';
-  const knownType = getDivisionTypeById(params.sportInput ?? null, divisionTypeId, ratingType);
-  const divisionTypeName = knownType?.name ?? humanizeToken(divisionTypeId);
-  const defaultName = buildDivisionName({
+  const divisionTypeName = deriveDivisionTypeDisplayName({
+    sportInput: params.sportInput,
     gender,
-    divisionTypeName,
+    ratingType,
+    divisionTypeId,
   });
 
   return {
@@ -957,6 +1042,6 @@ export const inferDivisionDetails = (params: {
     ratingType,
     divisionTypeId,
     divisionTypeName,
-    defaultName: cleanDivisionDisplayName(params.fallbackName, defaultName),
+    defaultName: divisionTypeName,
   };
 };

@@ -814,6 +814,9 @@ type SlotDivisionLookupDetail = {
     id: string;
     name: string;
     gender?: 'M' | 'F' | 'C';
+    sportId?: string;
+    skillDivisionTypeId?: string;
+    ageDivisionTypeId?: string;
     divisionTypeName?: string;
 };
 
@@ -823,10 +826,15 @@ const getDivisionDetailLabel = (
     if (typeof detail.name === 'string' && detail.name.trim().length > 0) {
         return detail.name.trim();
     }
-    return buildDivisionName({
-        gender: detail.gender ?? 'C',
-        divisionTypeName: detail.divisionTypeName ?? 'Open',
-    });
+    if (detail.skillDivisionTypeId && detail.ageDivisionTypeId) {
+        return buildDivisionName({
+            gender: detail.gender ?? 'C',
+            sportInput: detail.sportId,
+            skillDivisionTypeId: detail.skillDivisionTypeId,
+            ageDivisionTypeId: detail.ageDivisionTypeId,
+        });
+    }
+    return detail.divisionTypeName?.trim() || detail.id;
 };
 
 const buildSlotDivisionLookup = (
@@ -962,15 +970,17 @@ const buildDefaultDivisionDetailsForSport = (
         ratingType: 'SKILL',
         divisionTypeId: compositeDivisionTypeId,
     });
-    const divisionTypeName = buildDivisionTypeCompositeName(fallbackSkill.name, fallbackAge.name);
+    const divisionTypeName = buildDivisionName({
+        gender: 'C',
+        sportInput: sport,
+        skillDivisionTypeId: fallbackSkill.id,
+        ageDivisionTypeId: fallbackAge.id,
+    });
     const detail: DivisionDetailForm = {
         id: buildEventDivisionId(eventId, token),
         key: token,
         kind: 'LEAGUE',
-        name: buildDivisionName({
-            gender: 'C',
-            divisionTypeName,
-        }),
+        name: divisionTypeName,
         divisionTypeId: compositeDivisionTypeId,
         divisionTypeName,
         ratingType: 'SKILL',
@@ -2298,8 +2308,12 @@ const normalizeDivisionDetailEntry = (
             ?? defaults.ageDivisionTypeName
         );
     const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
-    const fallbackDivisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
-    const divisionTypeName = cleanDivisionDisplayName(row.divisionTypeName, fallbackDivisionTypeName);
+    const divisionTypeName = buildDivisionName({
+        gender,
+        sportInput,
+        skillDivisionTypeId,
+        ageDivisionTypeId,
+    });
     const key = normalizeDivisionKeys([row.key])[0] || buildDivisionToken({
         gender,
         ratingType: 'SKILL',
@@ -2308,7 +2322,7 @@ const normalizeDivisionDetailEntry = (
     const id = rawId || buildEventDivisionId(eventId, key);
     const name = cleanDivisionDisplayName(
         row.name,
-        buildDivisionName({ gender, divisionTypeName }),
+        divisionTypeName,
     );
     const rawDivisionPriceCents = typeof row.price === 'number'
         ? row.price
@@ -2679,10 +2693,12 @@ const mapEventToFormState = (event: Event): EventFormState => {
                 'AGE',
             )?.name ?? defaultsForSport.ageDivisionTypeName;
             const compositeDivisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
-            const compositeDivisionTypeName = buildDivisionTypeCompositeName(
-                skillDivisionTypeName,
-                ageDivisionTypeName,
-            );
+            const divisionTypeName = buildDivisionName({
+                gender: inferred.gender,
+                sportInput: resolvedSportInput,
+                skillDivisionTypeId,
+                ageDivisionTypeId,
+            });
             const inferredToken = buildDivisionToken({
                 gender: inferred.gender,
                 ratingType: 'SKILL',
@@ -2692,9 +2708,9 @@ const mapEventToFormState = (event: Event): EventFormState => {
                 id: divisionId,
                 key: inferredToken,
                 kind: 'LEAGUE',
-                name: buildDivisionName({ gender: inferred.gender, divisionTypeName: compositeDivisionTypeName }),
+                name: divisionTypeName,
                 divisionTypeId: compositeDivisionTypeId,
-                divisionTypeName: compositeDivisionTypeName,
+                divisionTypeName,
                 ratingType: 'SKILL',
                 gender: inferred.gender,
                 skillDivisionTypeId,
@@ -3885,7 +3901,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     'AGE',
                 )?.name ?? defaultsForSport.ageDivisionTypeName;
                 const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
-                const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
+                const divisionTypeName = buildDivisionName({
+                    gender: inferred.gender,
+                    sportInput: resolveSportInput(next.sportConfig ?? next.sportId),
+                    skillDivisionTypeId,
+                    ageDivisionTypeId,
+                });
                 const token = buildDivisionToken({
                     gender: inferred.gender,
                     ratingType: 'SKILL',
@@ -3895,7 +3916,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     id: divisionId,
                     key: token,
                     kind: 'LEAGUE',
-                    name: buildDivisionName({ gender: inferred.gender, divisionTypeName }),
+                    name: divisionTypeName,
                     divisionTypeId,
                     divisionTypeName,
                     ratingType: 'SKILL',
@@ -6544,17 +6565,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 return next;
             }
 
-            const skillDivisionTypeName = getDivisionTypeNameForEditor('SKILL', next.skillDivisionTypeId);
-            const ageDivisionTypeName = getDivisionTypeNameForEditor('AGE', next.ageDivisionTypeId);
-            const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
             next.name = buildDivisionName({
                 gender: next.gender as 'M' | 'F' | 'C',
-                divisionTypeName,
+                sportInput: resolveSportInput(eventData.sportConfig ?? eventData.sportId),
+                skillDivisionTypeId: next.skillDivisionTypeId,
+                ageDivisionTypeId: next.ageDivisionTypeId,
             });
             next.nameTouched = false;
             return next;
         });
-    }, [getDivisionTypeNameForEditor]);
+    }, [eventData.sportConfig, eventData.sportId]);
 
     const handleEditDivisionDetail = useCallback((divisionId: string) => {
         const detail = (eventData.divisionDetails || []).find((entry) => entry.id === divisionId);
@@ -6669,7 +6689,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
         const skillDivisionTypeName = getDivisionTypeNameForEditor('SKILL', skillDivisionTypeId);
         const ageDivisionTypeName = getDivisionTypeNameForEditor('AGE', ageDivisionTypeId);
-        const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
         const name = divisionEditor.name.trim();
         const normalizedDivisionPrice = eventData.singleDivision
             ? Math.max(0, eventData.price || 0)
@@ -6740,6 +6759,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }));
             return;
         }
+        const divisionTypeName = buildDivisionName({
+            gender,
+            sportInput: resolveSportInput(eventData.sportConfig ?? eventData.sportId),
+            skillDivisionTypeId,
+            ageDivisionTypeId,
+        });
         if (!name.length) {
             setDivisionEditor((prev) => ({ ...prev, error: 'Division name is required.' }));
             return;
@@ -8301,7 +8326,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     'AGE',
                 )?.name ?? defaultsForSport.ageDivisionTypeName;
                 const divisionTypeId = buildCompositeDivisionTypeId(skillDivisionTypeId, ageDivisionTypeId);
-                const divisionTypeName = buildDivisionTypeCompositeName(skillDivisionTypeName, ageDivisionTypeName);
+                const divisionTypeName = buildDivisionName({
+                    gender: inferred.gender,
+                    sportInput,
+                    skillDivisionTypeId,
+                    ageDivisionTypeId,
+                });
                 const token = buildDivisionToken({
                     gender: inferred.gender,
                     ratingType: 'SKILL',
@@ -8311,7 +8341,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     id: divisionId,
                     key: token,
                     kind: 'LEAGUE',
-                    name: buildDivisionName({ gender: inferred.gender, divisionTypeName }),
+                    name: divisionTypeName,
                     divisionTypeId,
                     divisionTypeName,
                     ratingType: 'SKILL',

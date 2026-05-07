@@ -47,7 +47,6 @@ export type CanonicalTeamsMinAggregateOutputType = {
   name: string | null
   division: string | null
   divisionTypeId: string | null
-  divisionTypeName: string | null
   wins: number | null
   losses: number | null
   teamSize: number | null
@@ -66,7 +65,6 @@ export type CanonicalTeamsMaxAggregateOutputType = {
   name: string | null
   division: string | null
   divisionTypeId: string | null
-  divisionTypeName: string | null
   wins: number | null
   losses: number | null
   teamSize: number | null
@@ -85,7 +83,6 @@ export type CanonicalTeamsCountAggregateOutputType = {
   name: number
   division: number
   divisionTypeId: number
-  divisionTypeName: number
   wins: number
   losses: number
   teamSize: number
@@ -121,7 +118,6 @@ export type CanonicalTeamsMinAggregateInputType = {
   name?: true
   division?: true
   divisionTypeId?: true
-  divisionTypeName?: true
   wins?: true
   losses?: true
   teamSize?: true
@@ -140,7 +136,6 @@ export type CanonicalTeamsMaxAggregateInputType = {
   name?: true
   division?: true
   divisionTypeId?: true
-  divisionTypeName?: true
   wins?: true
   losses?: true
   teamSize?: true
@@ -159,7 +154,6 @@ export type CanonicalTeamsCountAggregateInputType = {
   name?: true
   division?: true
   divisionTypeId?: true
-  divisionTypeName?: true
   wins?: true
   losses?: true
   teamSize?: true
@@ -266,7 +260,6 @@ export type CanonicalTeamsGroupByOutputType = {
   name: string
   division: string | null
   divisionTypeId: string | null
-  divisionTypeName: string | null
   wins: number | null
   losses: number | null
   teamSize: number
@@ -309,7 +302,6 @@ export type CanonicalTeamsWhereInput = {
   name?: Prisma.StringFilter<"CanonicalTeams"> | string
   division?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   divisionTypeId?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
-  divisionTypeName?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   wins?: Prisma.IntNullableFilter<"CanonicalTeams"> | number | null
   losses?: Prisma.IntNullableFilter<"CanonicalTeams"> | number | null
   teamSize?: Prisma.IntFilter<"CanonicalTeams"> | number
@@ -329,7 +321,6 @@ export type CanonicalTeamsOrderByWithRelationInput = {
   name?: Prisma.SortOrder
   division?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrderInput | Prisma.SortOrder
   wins?: Prisma.SortOrderInput | Prisma.SortOrder
   losses?: Prisma.SortOrderInput | Prisma.SortOrder
   teamSize?: Prisma.SortOrder
@@ -352,7 +343,6 @@ export type CanonicalTeamsWhereUniqueInput = Prisma.AtLeast<{
   name?: Prisma.StringFilter<"CanonicalTeams"> | string
   division?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   divisionTypeId?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
-  divisionTypeName?: Prisma.StringNullableFilter<"CanonicalTeams"> | string | null
   wins?: Prisma.IntNullableFilter<"CanonicalTeams"> | number | null
   losses?: Prisma.IntNullableFilter<"CanonicalTeams"> | number | null
   teamSize?: Prisma.IntFilter<"CanonicalTeams"> | number
@@ -372,7 +362,6 @@ export type CanonicalTeamsOrderByWithAggregationInput = {
   name?: Prisma.SortOrder
   division?: Prisma.SortOrderInput | Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrderInput | Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrderInput | Prisma.SortOrder
   wins?: Prisma.SortOrderInput | Prisma.SortOrder
   losses?: Prisma.SortOrderInput | Prisma.SortOrder
   teamSize?: Prisma.SortOrder
@@ -400,7 +389,6 @@ export type CanonicalTeamsScalarWhereWithAggregatesInput = {
   name?: Prisma.StringWithAggregatesFilter<"CanonicalTeams"> | string
   division?: Prisma.StringNullableWithAggregatesFilter<"CanonicalTeams"> | string | null
   divisionTypeId?: Prisma.StringNullableWithAggregatesFilter<"CanonicalTeams"> | string | null
-  divisionTypeName?: Prisma.StringNullableWithAggregatesFilter<"CanonicalTeams"> | string | null
   wins?: Prisma.IntNullableWithAggregatesFilter<"CanonicalTeams"> | number | null
   losses?: Prisma.IntNullableWithAggregatesFilter<"CanonicalTeams"> | number | null
   teamSize?: Prisma.IntWithAggregatesFilter<"CanonicalTeams"> | number
@@ -420,7 +408,6 @@ export type CanonicalTeamsCreateInput = {
   name: string
   division?: string | null
   divisionTypeId?: string | null
-  divisionTypeName?: string | null
   wins?: number | null
   losses?: number | null
   teamSize: number
@@ -440,7 +427,6 @@ export type CanonicalTeamsUncheckedCreateInput = {
   name: string
   division?: string | null
   divisionTypeId?: string | null
-  divisionTypeName?: string | null
   wins?: number | null
   losses?: number | null
   teamSize: number
@@ -460,7 +446,6 @@ export type CanonicalTeamsUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   wins?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   teamSize?: Prisma.IntFieldUpdateOperationsInput | number
@@ -480,7 +465,6 @@ export type CanonicalTeamsUncheckedUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   wins?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   teamSize?: Prisma.IntFieldUpdateOperationsInput | number
@@ -500,7 +484,6 @@ export type CanonicalTeamsCreateManyInput = {
   name: string
   division?: string | null
   divisionTypeId?: string | null
-  divisionTypeName?: string | null
   wins?: number | null
   losses?: number | null
   teamSize: number
@@ -520,7 +503,6 @@ export type CanonicalTeamsUpdateManyMutationInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   wins?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   teamSize?: Prisma.IntFieldUpdateOperationsInput | number
@@ -540,7 +522,6 @@ export type CanonicalTeamsUncheckedUpdateManyInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   division?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   divisionTypeId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisionTypeName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   wins?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   losses?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   teamSize?: Prisma.IntFieldUpdateOperationsInput | number
@@ -560,7 +541,6 @@ export type CanonicalTeamsCountOrderByAggregateInput = {
   name?: Prisma.SortOrder
   division?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrder
   wins?: Prisma.SortOrder
   losses?: Prisma.SortOrder
   teamSize?: Prisma.SortOrder
@@ -587,7 +567,6 @@ export type CanonicalTeamsMaxOrderByAggregateInput = {
   name?: Prisma.SortOrder
   division?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrder
   wins?: Prisma.SortOrder
   losses?: Prisma.SortOrder
   teamSize?: Prisma.SortOrder
@@ -606,7 +585,6 @@ export type CanonicalTeamsMinOrderByAggregateInput = {
   name?: Prisma.SortOrder
   division?: Prisma.SortOrder
   divisionTypeId?: Prisma.SortOrder
-  divisionTypeName?: Prisma.SortOrder
   wins?: Prisma.SortOrder
   losses?: Prisma.SortOrder
   teamSize?: Prisma.SortOrder
@@ -643,7 +621,6 @@ export type CanonicalTeamsSelect<ExtArgs extends runtime.Types.Extensions.Intern
   name?: boolean
   division?: boolean
   divisionTypeId?: boolean
-  divisionTypeName?: boolean
   wins?: boolean
   losses?: boolean
   teamSize?: boolean
@@ -663,7 +640,6 @@ export type CanonicalTeamsSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   name?: boolean
   division?: boolean
   divisionTypeId?: boolean
-  divisionTypeName?: boolean
   wins?: boolean
   losses?: boolean
   teamSize?: boolean
@@ -683,7 +659,6 @@ export type CanonicalTeamsSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   name?: boolean
   division?: boolean
   divisionTypeId?: boolean
-  divisionTypeName?: boolean
   wins?: boolean
   losses?: boolean
   teamSize?: boolean
@@ -703,7 +678,6 @@ export type CanonicalTeamsSelectScalar = {
   name?: boolean
   division?: boolean
   divisionTypeId?: boolean
-  divisionTypeName?: boolean
   wins?: boolean
   losses?: boolean
   teamSize?: boolean
@@ -716,7 +690,7 @@ export type CanonicalTeamsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type CanonicalTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "division" | "divisionTypeId" | "divisionTypeName" | "wins" | "losses" | "teamSize" | "profileImageId" | "sport" | "organizationId" | "createdBy" | "openRegistration" | "registrationPriceCents" | "requiredTemplateIds", ExtArgs["result"]["canonicalTeams"]>
+export type CanonicalTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "division" | "divisionTypeId" | "wins" | "losses" | "teamSize" | "profileImageId" | "sport" | "organizationId" | "createdBy" | "openRegistration" | "registrationPriceCents" | "requiredTemplateIds", ExtArgs["result"]["canonicalTeams"]>
 
 export type $CanonicalTeamsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "CanonicalTeams"
@@ -728,7 +702,6 @@ export type $CanonicalTeamsPayload<ExtArgs extends runtime.Types.Extensions.Inte
     name: string
     division: string | null
     divisionTypeId: string | null
-    divisionTypeName: string | null
     wins: number | null
     losses: number | null
     teamSize: number
@@ -1168,7 +1141,6 @@ export interface CanonicalTeamsFieldRefs {
   readonly name: Prisma.FieldRef<"CanonicalTeams", 'String'>
   readonly division: Prisma.FieldRef<"CanonicalTeams", 'String'>
   readonly divisionTypeId: Prisma.FieldRef<"CanonicalTeams", 'String'>
-  readonly divisionTypeName: Prisma.FieldRef<"CanonicalTeams", 'String'>
   readonly wins: Prisma.FieldRef<"CanonicalTeams", 'Int'>
   readonly losses: Prisma.FieldRef<"CanonicalTeams", 'Int'>
   readonly teamSize: Prisma.FieldRef<"CanonicalTeams", 'Int'>

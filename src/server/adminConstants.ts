@@ -69,7 +69,6 @@ const DIVISION_STRING_FIELDS = [
   'key',
   'sportId',
   'divisionTypeId',
-  'divisionTypeName',
   'ageCutoffLabel',
   'ageCutoffSource',
 ] as const;

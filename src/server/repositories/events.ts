@@ -3,10 +3,10 @@ import { prisma } from '@/lib/prisma';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
 import {
-  buildDivisionName,
   buildDivisionToken,
   buildEventDivisionId,
   cleanDivisionDisplayName,
+  deriveDivisionTypeDisplayName,
   evaluateDivisionAgeEligibility,
   extractDivisionTokenFromId,
   inferDivisionDetails,
@@ -760,16 +760,13 @@ const normalizeDivisionDetailsPayload = (
       const id = rawId
         ? scopeDivisionIdentifierToEvent(rawId, eventId)
         : buildDivisionId(eventId, key);
-      const inferredDivisionType = inferDivisionDetails({
-        identifier: divisionTypeId,
+      const divisionTypeName = deriveDivisionTypeDisplayName({
         sportInput: typeof row.sportId === 'string' ? row.sportId : sportId ?? undefined,
-        fallbackName: typeof row.divisionTypeName === 'string' ? row.divisionTypeName : undefined,
-      });
-      const divisionTypeName = cleanDivisionDisplayName(row.divisionTypeName, inferredDivisionType.divisionTypeName);
-      const defaultName = buildDivisionName({
         gender,
-        divisionTypeName,
+        ratingType,
+        divisionTypeId,
       });
+      const defaultName = divisionTypeName;
       const rawPrice = coerceNullableNumber(row.price);
       const rawMaxParticipants = coerceNullableNumber(row.maxParticipants);
       const rawPlayoffTeamCount = coerceNullableNumber(row.playoffTeamCount);
@@ -2842,7 +2839,6 @@ export const persistScheduledRosterTeams = async (
           playerRegistrationIds: [],
           division: divisionId,
           divisionTypeId: null,
-          divisionTypeName: null,
           name: scheduledTeam.name ?? '',
           captainId,
           managerId: captainId || '',
@@ -3017,7 +3013,6 @@ export const syncEventDivisions = async (
       installmentDueRelativeDays: true,
       installmentAmounts: true,
       divisionTypeId: true,
-      divisionTypeName: true,
       ratingType: true,
       gender: true,
       ageCutoffDate: true,
@@ -3211,17 +3206,17 @@ export const syncEventDivisions = async (
     const gender = detail?.gender ?? inferred.gender;
     const ratingType = detail?.ratingType ?? inferred.ratingType;
     const divisionTypeId = detail?.divisionTypeId ?? inferred.divisionTypeId;
-    const inferredDivisionType = inferDivisionDetails({
-      identifier: divisionTypeId,
-      sportInput: params.sportId ?? undefined,
-      fallbackName: detail?.divisionTypeName,
-    });
     const key = detail?.key ?? buildDivisionToken({
       gender,
       ratingType,
       divisionTypeId,
     });
-    const divisionTypeName = cleanDivisionDisplayName(detail?.divisionTypeName, inferredDivisionType.divisionTypeName);
+    const divisionTypeName = deriveDivisionTypeDisplayName({
+      sportInput: params.sportId ?? undefined,
+      gender,
+      ratingType,
+      divisionTypeId,
+    });
 
     const mappedFieldIds = kind === 'PLAYOFF'
       ? []
@@ -3263,7 +3258,7 @@ export const syncEventDivisions = async (
       : divisionRatingWindow(key, params.sportId ?? null);
     const name = cleanDivisionDisplayName(
       detail?.name ?? existing?.name,
-      inferred.defaultName ?? buildDivisionDisplayName(key, params.sportId ?? null),
+      divisionTypeName || inferred.defaultName || buildDivisionDisplayName(key, params.sportId ?? null),
     );
     const ageEligibility = kind === 'PLAYOFF' && !isTournamentBracketDivision
       ? null
@@ -3513,7 +3508,6 @@ export const syncEventDivisions = async (
         installmentDueRelativeDays: entry.installmentDueRelativeDays,
         installmentAmounts: entry.installmentAmounts,
         divisionTypeId: entry.divisionTypeId,
-        divisionTypeName: entry.divisionTypeName,
         ratingType: entry.ratingType,
         gender: entry.gender,
         ageCutoffDate: entry.ageCutoffDate ? new Date(entry.ageCutoffDate) : null,
@@ -3548,7 +3542,6 @@ export const syncEventDivisions = async (
         installmentDueRelativeDays: entry.installmentDueRelativeDays,
         installmentAmounts: entry.installmentAmounts,
         divisionTypeId: entry.divisionTypeId,
-        divisionTypeName: entry.divisionTypeName,
         ratingType: entry.ratingType,
         gender: entry.gender,
         ageCutoffDate: entry.ageCutoffDate ? new Date(entry.ageCutoffDate) : null,
@@ -4218,15 +4211,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     });
     const normalizedTeamDivisionTypeId = normalizeDivisionKey(team.divisionTypeId)
       ?? inferredTeamDivision.divisionTypeId;
-    const inferredTeamDivisionType = inferDivisionDetails({
-      identifier: normalizedTeamDivisionTypeId,
-      sportInput: payload.sportId ?? undefined,
-      fallbackName: typeof team.divisionTypeName === 'string' ? team.divisionTypeName : undefined,
-    });
-    const normalizedTeamDivisionTypeName = cleanDivisionDisplayName(
-      team.divisionTypeName,
-      inferredTeamDivisionType.divisionTypeName,
-    );
     await client.teams.upsert({
       where: { id: teamId },
       create: {
@@ -4237,7 +4221,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         playerRegistrationIds: ensureArray((team as any).playerRegistrationIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,
-        divisionTypeName: normalizedTeamDivisionTypeName,
         name: team.name ?? null,
         captainId: team.captainId ?? '',
         managerId: team.managerId ?? team.captainId ?? '',
@@ -4259,7 +4242,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         playerRegistrationIds: ensureArray((team as any).playerRegistrationIds),
         division: normalizedTeamDivision,
         divisionTypeId: normalizedTeamDivisionTypeId,
-        divisionTypeName: normalizedTeamDivisionTypeName,
         name: team.name ?? null,
         captainId: team.captainId ?? '',
         managerId: team.managerId ?? team.captainId ?? '',

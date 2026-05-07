@@ -64,7 +64,7 @@ describe('buildEventDivisionDisplayLabels', () => {
       playoffDivisionDetails: [],
     });
 
-    expect(buildEventDivisionDisplayLabels(event)).toEqual(['Open 18+']);
+    expect(buildEventDivisionDisplayLabels(event)).toEqual(['CoEd Open 18+']);
   });
 
   it('shows league divisions instead of playoff divisions for league playoffs', () => {

@@ -7,7 +7,6 @@ import { apiRequest } from '@/lib/apiClient';
 import { teamService } from '@/lib/teamService';
 import {
   buildDivisionName,
-  getDivisionTypeById,
   getDivisionTypeOptionsForSport,
 } from '@/lib/divisionTypes';
 import { ImageUploader } from './ImageUploader';
@@ -37,24 +36,6 @@ const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
   .toLowerCase()
   .replace(/[^a-z0-9]+/g, '_')
   .replace(/^_+|_+$/g, '');
-
-const humanizeDivisionTypeId = (value: string): string => value
-  .split('_')
-  .filter(Boolean)
-  .map((chunk) => (chunk.length <= 3 ? chunk.toUpperCase() : `${chunk.charAt(0).toUpperCase()}${chunk.slice(1)}`))
-  .join(' ');
-
-const resolveDivisionTypeName = (
-  sportInput: string | null | undefined,
-  divisionTypeId: string,
-  ratingType: 'AGE' | 'SKILL',
-): string => {
-  const normalizedId = normalizeDivisionToken(divisionTypeId);
-  if (!normalizedId.length) {
-    return ratingType === 'SKILL' ? 'Open' : '18+';
-  }
-  return getDivisionTypeById(sportInput ?? null, normalizedId, ratingType)?.name ?? humanizeDivisionTypeId(normalizedId);
-};
 
 const getDefaultDivisionTypeSelections = (sportInput: string | null | undefined): {
   skillDivisionTypeId: string;
@@ -239,16 +220,12 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
   useEffect(() => {
     const nextSkillDivisionTypeId = normalizeDivisionToken(skillDivisionTypeId);
     const nextAgeDivisionTypeId = normalizeDivisionToken(ageDivisionTypeId);
-    const nextSkillDivisionTypeName = resolveDivisionTypeName(sport, nextSkillDivisionTypeId, 'SKILL');
-    const nextAgeDivisionTypeName = resolveDivisionTypeName(sport, nextAgeDivisionTypeId, 'AGE');
-    const nextDivisionTypeName = [nextSkillDivisionTypeName, nextAgeDivisionTypeName]
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join(' ');
     setDivisionPreview(
       buildDivisionName({
         gender: divisionGender,
-        divisionTypeName: nextDivisionTypeName,
+        sportInput: sport,
+        skillDivisionTypeId: nextSkillDivisionTypeId,
+        ageDivisionTypeId: nextAgeDivisionTypeId,
       }),
     );
   }, [ageDivisionTypeId, divisionGender, skillDivisionTypeId, sport]);
@@ -300,15 +277,11 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
     }
 
     const nextDivisionTypeId = buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId);
-    const nextSkillDivisionTypeName = resolveDivisionTypeName(nextSport, nextSkillDivisionTypeId, 'SKILL');
-    const nextAgeDivisionTypeName = resolveDivisionTypeName(nextSport, nextAgeDivisionTypeId, 'AGE');
-    const nextDivisionTypeName = [nextSkillDivisionTypeName, nextAgeDivisionTypeName]
-      .map((part) => part.trim())
-      .filter(Boolean)
-      .join(' ');
     const nextDivision = buildDivisionName({
       gender: divisionGender,
-      divisionTypeName: nextDivisionTypeName,
+      sportInput: nextSport,
+      skillDivisionTypeId: nextSkillDivisionTypeId,
+      ageDivisionTypeId: nextAgeDivisionTypeId,
     });
 
     setError(null);
@@ -323,7 +296,6 @@ export default function CreateTeamModal({ isOpen, onClose, currentUser, onTeamCr
         profileImageId || undefined,
         {
           divisionTypeId: nextDivisionTypeId,
-          divisionTypeName: nextDivisionTypeName,
           addSelfAsPlayer,
           organizationId,
           requiredTemplateIds: organizationId ? selectedRequiredTemplateIds : [],

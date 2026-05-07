@@ -6,7 +6,14 @@ import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials';
-import { cleanDivisionDisplayName, extractDivisionTokenFromId, inferDivisionDetails } from '@/lib/divisionTypes';
+import {
+  cleanDivisionDisplayName,
+  deriveDivisionTypeDisplayName,
+  extractDivisionTokenFromId,
+  inferDivisionDetails,
+  normalizeDivisionGender,
+  normalizeDivisionRatingType,
+} from '@/lib/divisionTypes';
 import { isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
 
@@ -102,7 +109,6 @@ const getDivisionDetailsForEvents = async (
       price: true,
       maxParticipants: true,
       divisionTypeId: true,
-      divisionTypeName: true,
       ratingType: true,
       gender: true,
     },
@@ -153,10 +159,13 @@ const getDivisionDetailsForEvents = async (
         fallbackName: row?.name ?? undefined,
       });
       const divisionTypeId = row?.divisionTypeId ?? inferred.divisionTypeId;
-      const inferredDivisionType = inferDivisionDetails({
-        identifier: divisionTypeId,
+      const ratingType = normalizeDivisionRatingType(row?.ratingType) ?? inferred.ratingType;
+      const gender = normalizeDivisionGender(row?.gender) ?? inferred.gender;
+      const divisionTypeName = deriveDivisionTypeDisplayName({
         sportInput: row?.sportId ?? event.sportId ?? undefined,
-        fallbackName: row?.divisionTypeName ?? undefined,
+        gender,
+        ratingType,
+        divisionTypeId,
       });
 
       return {
@@ -164,9 +173,9 @@ const getDivisionDetailsForEvents = async (
         key: row?.key ?? inferred.token,
         name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
         divisionTypeId,
-        divisionTypeName: cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName),
-        ratingType: row?.ratingType ?? inferred.ratingType,
-        gender: row?.gender ?? inferred.gender,
+        divisionTypeName,
+        ratingType,
+        gender,
         sportId: row?.sportId ?? event.sportId ?? null,
         price: typeof row?.price === 'number' ? row.price : null,
         maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,

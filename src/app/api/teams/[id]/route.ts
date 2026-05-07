@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import {
-  cleanDivisionDisplayName,
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
@@ -48,7 +47,6 @@ const teamPatchSchema = z.object({
   name: z.string().trim().min(1, 'Team name cannot be blank.').optional(),
   division: z.string().optional(),
   divisionTypeId: z.string().optional(),
-  divisionTypeName: z.string().optional(),
   sport: z.string().optional(),
   playerIds: z.array(z.string()).optional(),
   captainId: z.string().optional(),
@@ -83,7 +81,6 @@ const VERSIONED_PROFILE_FIELDS: ReadonlySet<string> = new Set([
   'name',
   'division',
   'divisionTypeId',
-  'divisionTypeName',
   'sport',
   'teamSize',
   'openRegistration',
@@ -192,7 +189,6 @@ type TeamState = {
   name: string;
   division: string;
   divisionTypeId: string;
-  divisionTypeName: string;
   sport: string | null;
   playerIds: string[];
   captainId: string;
@@ -225,8 +221,6 @@ const buildTeamState = (
     sportInput: sportInput ?? undefined,
   });
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
-  const existingDivisionTypeName = cleanDivisionDisplayName(existing.divisionTypeName, inferredDivision.divisionTypeName);
-  const divisionTypeName = cleanDivisionDisplayName(payload.divisionTypeName, existingDivisionTypeName);
 
   const captainId = hasOwn(payload, 'captainId')
     ? (normalizeText(payload.captainId) ?? '')
@@ -260,7 +254,6 @@ const buildTeamState = (
     name: payload.name ?? resolvedExistingName,
     division: normalizedDivision,
     divisionTypeId,
-    divisionTypeName,
     sport: sportInput,
     playerIds,
     captainId,
@@ -302,9 +295,6 @@ const hasVersionedProfileChanges = (
         break;
       case 'divisionTypeId':
         if ((normalizeDivisionIdToken(existing.divisionTypeId) ?? '') !== next.divisionTypeId) return true;
-        break;
-      case 'divisionTypeName':
-        if ((normalizeText(existing.divisionTypeName) ?? '') !== next.divisionTypeName) return true;
         break;
       case 'sport':
         if ((normalizeText(existing.sport) ?? null) !== next.sport) return true;
@@ -599,7 +589,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           name: nextState.name,
           division: nextState.division,
           divisionTypeId: nextState.divisionTypeId,
-          divisionTypeName: nextState.divisionTypeName,
           sport: nextState.sport,
           teamSize: nextState.teamSize,
           profileImageId: nextState.profileImageId,
@@ -665,7 +654,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               profileImageId: nextState.profileImageId,
               sport: nextState.sport,
               divisionTypeId: nextState.divisionTypeId,
-              divisionTypeName: nextState.divisionTypeName,
               updatedAt: now,
             };
 
@@ -795,7 +783,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           profileImageId: nextState.profileImageId,
           sport: nextState.sport,
           divisionTypeId: nextState.divisionTypeId,
-          divisionTypeName: nextState.divisionTypeName,
           openRegistration: nextState.openRegistration,
           registrationPriceCents: nextState.registrationPriceCents,
           updatedAt: now,

@@ -1887,11 +1887,6 @@ class EventService {
         row.divisionTypeId.trim().length > 0
           ? row.divisionTypeId
           : undefined,
-      divisionTypeName:
-        typeof row.divisionTypeName === "string" &&
-        row.divisionTypeName.trim().length > 0
-          ? row.divisionTypeName
-          : undefined,
       sport:
         typeof row.sport === "string" ? row.sport : (row.sport?.name ?? ""),
       playerIds,

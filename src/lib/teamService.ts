@@ -3,7 +3,7 @@ import { createId } from '@/lib/id';
 import { Team, UserData, getTeamAvatarUrl } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
 import { userService, type UserVisibilityContext } from './userService';
-import { cleanDivisionDisplayName, inferDivisionDetails } from '@/lib/divisionTypes';
+import { inferDivisionDetails } from '@/lib/divisionTypes';
 
 const isDefined = <T>(value: T | null | undefined): value is T => value !== null && value !== undefined;
 export type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
@@ -170,7 +170,6 @@ class TeamService {
         profileImageId?: string,
           options?: {
               divisionTypeId?: string;
-              divisionTypeName?: string;
               addSelfAsPlayer?: boolean;
               organizationId?: string;
               openRegistration?: boolean;
@@ -190,7 +189,6 @@ class TeamService {
                 name,
                 division,
                 divisionTypeId: options?.divisionTypeId ?? inferredDivision.divisionTypeId,
-                divisionTypeName: cleanDivisionDisplayName(options?.divisionTypeName, inferredDivision.divisionTypeName),
                 sport,
                 playerIds: initialPlayerIds,
                 captainId: addSelfAsPlayer ? normalizedCaptainId : '',
@@ -347,21 +345,6 @@ class TeamService {
         const playerRegistrations = this.mapRowToPlayerRegistrations(row.playerRegistrations);
         const teamSize = typeof row.teamSize === 'number' ? row.teamSize : playerIds.length;
 
-        const inferredDivisionIdentifier =
-            typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length
-                ? row.divisionTypeId
-                : typeof row.division === 'string' && row.division.trim().length
-                ? row.division
-                : typeof row.division?.id === 'string' && row.division.id.trim().length
-                ? row.division.id
-                : typeof row.division?.name === 'string' && row.division.name.trim().length
-                ? row.division.name
-                : 'open';
-        const inferredDivision = inferDivisionDetails({
-            identifier: inferredDivisionIdentifier,
-            sportInput: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? undefined),
-        });
-
         const team: Team = {
             $id: row.$id,
             name: row.name,
@@ -370,10 +353,6 @@ class TeamService {
                 typeof row.divisionTypeId === 'string' && row.divisionTypeId.trim().length
                     ? row.divisionTypeId
                     : undefined,
-            divisionTypeName:
-                typeof row.divisionTypeName === 'string' && row.divisionTypeName.trim().length
-                    ? cleanDivisionDisplayName(row.divisionTypeName, inferredDivision.divisionTypeName)
-                    : inferredDivision.divisionTypeName,
             sport: typeof row.sport === 'string' ? row.sport : (row.sport?.name ?? 'Indoor Volleyball'),
             playerIds,
             captainId: row.captainId,
@@ -555,7 +534,7 @@ class TeamService {
 
     async updateTeamDetails(
         teamId: string,
-        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'divisionTypeName' | 'teamSize' | 'captainId' | 'openRegistration' | 'registrationPriceCents' | 'requiredTemplateIds' | 'playerRegistrations'>>,
+        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'teamSize' | 'captainId' | 'openRegistration' | 'registrationPriceCents' | 'requiredTemplateIds' | 'playerRegistrations'>>,
       ): Promise<Team | undefined> {
         try {
             const response = await apiRequest<any>(`/api/teams/${teamId}`, {

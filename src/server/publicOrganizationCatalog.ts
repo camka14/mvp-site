@@ -1043,11 +1043,7 @@ export const listPublicOrganizationTeams = async (
     id: String(team.id),
     name: String(team.name ?? 'Unnamed team'),
     sport: typeof team.sport === 'string' ? team.sport : null,
-    division: typeof team.divisionTypeName === 'string'
-      ? team.divisionTypeName
-      : typeof team.division === 'string'
-        ? team.division
-        : null,
+    division: typeof team.division === 'string' ? team.division : null,
     imageUrl: imageUrl(team.profileImageId, 240, 240),
     currentSize: occupancyByTeamId.get(String(team.id)) ?? 0,
     teamSize: normalizeNumber(team.teamSize),
@@ -1071,11 +1067,7 @@ const mapPublicTeamCard = (
     id: String(team.id),
     name: String(team.name ?? 'Unnamed team'),
     sport: typeof team.sport === 'string' ? team.sport : null,
-    division: typeof team.divisionTypeName === 'string'
-      ? team.divisionTypeName
-      : typeof team.division === 'string'
-        ? team.division
-        : null,
+    division: typeof team.division === 'string' ? team.division : null,
     imageUrl: imageUrl(team.profileImageId, 640, 360),
     currentSize,
     teamSize,

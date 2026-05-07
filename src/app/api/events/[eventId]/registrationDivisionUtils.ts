@@ -2,6 +2,7 @@ import { calculateAgeOnDate, formatAgeRange, isAgeWithinRange } from '@/lib/age'
 import {
   buildDivisionToken,
   cleanDivisionDisplayName,
+  deriveDivisionTypeDisplayName,
   evaluateDivisionAgeEligibility,
   extractDivisionTokenFromId,
   inferDivisionDetails,
@@ -223,7 +224,6 @@ const buildDivisionOptions = async (
       name: true,
       sportId: true,
       divisionTypeId: true,
-      divisionTypeName: true,
       ratingType: true,
       gender: true,
       ageCutoffDate: true,
@@ -272,11 +272,6 @@ const buildDivisionOptions = async (
     });
 
     const divisionTypeId = normalizeKey(row?.divisionTypeId) ?? inferred.divisionTypeId;
-    const inferredDivisionType = inferDivisionDetails({
-      identifier: divisionTypeId,
-      sportInput: row?.sportId ?? event.sportId ?? undefined,
-      fallbackName: row?.divisionTypeName ?? undefined,
-    });
     const ratingType = normalizeDivisionRatingType(row?.ratingType) ?? inferred.ratingType;
     const gender = normalizeDivisionGender(row?.gender) ?? inferred.gender;
     const key = normalizeKey(row?.key) ?? inferred.token;
@@ -289,7 +284,12 @@ const buildDivisionOptions = async (
         divisionTypeId,
       });
 
-    const divisionTypeName = cleanDivisionDisplayName(row?.divisionTypeName, inferredDivisionType.divisionTypeName);
+    const divisionTypeName = deriveDivisionTypeDisplayName({
+      sportInput: row?.sportId ?? event.sportId ?? undefined,
+      gender,
+      ratingType,
+      divisionTypeId,
+    });
 
     const ageEligibility = evaluateDivisionAgeEligibility({
       divisionTypeId,

@@ -334,7 +334,6 @@ model Divisions {
   minRating                   Float?
   maxRating                   Float?
   divisionTypeId              String?
-  divisionTypeName            String?
   ratingType                  String?
   gender                      String?
   ageCutoffDate               DateTime?
@@ -469,7 +468,6 @@ model Teams {
   playerRegistrationIds String[] @default([])
   division         String?
   divisionTypeId   String?
-  divisionTypeName String?
   wins             Int?
   losses           Int?
   name             String
@@ -500,7 +498,6 @@ model CanonicalTeams {
   name             String
   division         String?
   divisionTypeId   String?
-  divisionTypeName String?
   wins             Int?
   losses           Int?
   teamSize         Int

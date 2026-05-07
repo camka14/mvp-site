@@ -98,7 +98,6 @@ describe('/api/teams/[id]/invite-free-agents GET', () => {
       name: 'Canonical Team',
       division: 'Open',
       divisionTypeId: 'open',
-      divisionTypeName: 'Open',
       wins: null,
       losses: null,
       teamSize: 6,

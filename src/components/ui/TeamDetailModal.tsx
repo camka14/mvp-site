@@ -11,7 +11,6 @@ import { teamService, type TeamInviteEventTeamOption, type TeamInviteFreeAgentCo
 import { userService } from '@/lib/userService';
 import {
     buildDivisionName,
-    getDivisionTypeById,
     getDivisionTypeOptionsForSport,
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
@@ -78,24 +77,6 @@ const parseCompositeDivisionTypeId = (
         skillDivisionTypeId: match[1],
         ageDivisionTypeId: match[2],
     };
-};
-
-const humanizeDivisionTypeId = (value: string): string => value
-    .split('_')
-    .filter(Boolean)
-    .map((chunk) => (chunk.length <= 3 ? chunk.toUpperCase() : `${chunk.charAt(0).toUpperCase()}${chunk.slice(1)}`))
-    .join(' ');
-
-const resolveDivisionTypeName = (
-    sportInput: string | null | undefined,
-    divisionTypeId: string,
-    ratingType: 'AGE' | 'SKILL',
-): string => {
-    const normalizedId = normalizeDivisionToken(divisionTypeId);
-    if (!normalizedId.length) {
-        return ratingType === 'SKILL' ? 'Open' : '18+';
-    }
-    return getDivisionTypeById(sportInput ?? null, normalizedId, ratingType)?.name ?? humanizeDivisionTypeId(normalizedId);
 };
 
 const getDefaultDivisionTypeSelections = (sportInput: string | null | undefined): {
@@ -340,14 +321,11 @@ export default function TeamDetailModal({
         ageDivisionTypeId: string,
         sportInput: string | null | undefined,
     ): string => {
-        const skillName = resolveDivisionTypeName(sportInput, skillDivisionTypeId, 'SKILL');
-        const ageName = resolveDivisionTypeName(sportInput, ageDivisionTypeId, 'AGE');
         return buildDivisionName({
             gender,
-            divisionTypeName: [skillName, ageName]
-                .map((part) => part.trim())
-                .filter(Boolean)
-                .join(' '),
+            sportInput,
+            skillDivisionTypeId,
+            ageDivisionTypeId,
         });
     }, []);
     const teamDivisionLabel = useMemo(() => {
@@ -406,10 +384,6 @@ export default function TeamDetailModal({
                 return divisionSkillLabel;
             }
         }
-        if (typeof currentTeam.divisionTypeName === 'string' && currentTeam.divisionTypeName.trim().length > 0) {
-            return currentTeam.divisionTypeName.trim();
-        }
-
         const divisionTypeIdLabel = toDisplayDivisionLabel(currentTeam.divisionTypeId);
         if (divisionTypeIdLabel) {
             return divisionTypeIdLabel;
@@ -419,7 +393,6 @@ export default function TeamDetailModal({
     }, [
         currentTeam.division,
         currentTeam.divisionTypeId,
-        currentTeam.divisionTypeName,
         currentTeam.sport,
         draftSport,
         resolveDraftDivisionDisplayName,
@@ -852,15 +825,11 @@ export default function TeamDetailModal({
         const nextSkillDivisionTypeId = normalizeDivisionToken(draftSkillDivisionTypeId);
         const nextAgeDivisionTypeId = normalizeDivisionToken(draftAgeDivisionTypeId);
         const nextDivisionTypeId = buildCompositeDivisionTypeId(nextSkillDivisionTypeId, nextAgeDivisionTypeId);
-        const nextSkillDivisionTypeName = resolveDivisionTypeName(nextSport, nextSkillDivisionTypeId, 'SKILL');
-        const nextAgeDivisionTypeName = resolveDivisionTypeName(nextSport, nextAgeDivisionTypeId, 'AGE');
-        const nextDivisionTypeName = [nextSkillDivisionTypeName, nextAgeDivisionTypeName]
-            .map((part) => part.trim())
-            .filter(Boolean)
-            .join(' ');
         const nextDivision = buildDivisionName({
             gender: nextDivisionGender,
-            divisionTypeName: nextDivisionTypeName,
+            sportInput: nextSport,
+            skillDivisionTypeId: nextSkillDivisionTypeId,
+            ageDivisionTypeId: nextAgeDivisionTypeId,
         });
         const nextTeamSize = Number(draftTeamSize) || 0;
         const nextCaptainId = draftCaptainId.trim();
@@ -897,7 +866,6 @@ export default function TeamDetailModal({
             sport: nextSport,
             division: nextDivision,
             divisionTypeId: nextDivisionTypeId,
-            divisionTypeName: nextDivisionTypeName,
             teamSize: nextTeamSize,
             captainId: nextCaptainId,
             openRegistration: draftOpenRegistration,

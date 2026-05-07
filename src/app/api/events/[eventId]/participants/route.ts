@@ -368,8 +368,6 @@ const resetEventTeamSlotToPlaceholder = async (params: {
     ?? normalizeId(params.eventTeam?.divisionTypeId)
     ?? normalizeId(params.team?.divisionTypeId);
   const divisionTypeKey = normalizeId(params.existingRegistration?.divisionTypeKey);
-  const divisionTypeName = normalizeId(params.eventTeam?.divisionTypeName)
-    ?? normalizeId(params.team?.divisionTypeName);
   const teamSize = normalizeNonNegativeInt(params.event?.teamSizeLimit)
     ?? normalizeNonNegativeInt(params.eventTeam?.teamSize)
     ?? normalizeNonNegativeInt(params.team?.teamSize)
@@ -384,7 +382,6 @@ const resetEventTeamSlotToPlaceholder = async (params: {
       playerRegistrationIds: [],
       division: divisionId,
       divisionTypeId,
-      divisionTypeName,
       wins: 0,
       losses: 0,
       name: placeholderNameForEventTeam(params.event, params.eventTeamId),

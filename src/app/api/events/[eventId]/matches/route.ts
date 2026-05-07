@@ -464,7 +464,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
               playerRegistrationIds: [],
               division: matchDivision.id,
               divisionTypeId: null,
-              divisionTypeName: null,
               wins: 0,
               losses: 0,
               name: placeholderName,
