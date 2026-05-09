@@ -125,7 +125,7 @@ describe('RefundSection', () => {
       $id: 'event_1',
       hostId: 'host_2',
       price: 20,
-      cancellationRefundHours: 0,
+      cancellationRefundHours: null,
       start,
     });
 
@@ -203,7 +203,7 @@ describe('RefundSection', () => {
       $id: 'event_team',
       hostId: 'host_2',
       price: 20,
-      cancellationRefundHours: 0,
+      cancellationRefundHours: null,
       start,
       teamSignup: true,
       teams: [team],

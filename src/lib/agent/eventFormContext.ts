@@ -363,13 +363,13 @@ export const eventFormAgentContext: EventFormAgentContext = {
         },
         {
           path: 'cancellationRefundHours',
-          label: 'Cancellation Refund (Hours)',
+          label: 'Refund Cutoff (Hours)',
           inputType: 'number input',
           visibleWhen: visibleAlways,
-          requiredWhen: 'Always present; minimum 0.',
-          defaultOrPreset: 'Existing value, otherwise 24.',
+          requiredWhen: 'Optional. Null disables automatic refunds; when enabled, minimum 0.',
+          defaultOrPreset: 'Existing value, otherwise disabled.',
           createsOrUpdates: ['cancellationRefundHours'],
-          description: 'How many hours before the event/session a cancellation can remain eligible for refund handling. This configures policy data used by registration/billing workflows.',
+          description: 'How many hours before the event/session a cancellation can remain eligible for automatic refund handling. Zero means automatic refunds remain available until event start.',
         },
         {
           path: 'registrationCutoffHours',

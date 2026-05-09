@@ -2259,7 +2259,7 @@ type EventFormState = {
     playoffDivisionDetails: PlayoffDivisionDetailForm[];
     divisionFieldIds: Record<string, string[]>;
     selectedFieldIds: string[];
-    cancellationRefundHours: number;
+    cancellationRefundHours: number | null;
     registrationCutoffHours: number;
     organizationId?: string;
     requiredTemplateIds: string[];
@@ -3003,11 +3003,11 @@ const mapEventToFormState = (event: Event): EventFormState => {
     selectedFieldIds: Array.isArray(event.fieldIds)
         ? Array.from(new Set(event.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)))
         : [],
-    cancellationRefundHours: Number.isFinite(event.cancellationRefundHours)
-        ? event.cancellationRefundHours
-        : 24,
-    registrationCutoffHours: Number.isFinite(event.registrationCutoffHours)
-        ? event.registrationCutoffHours
+    cancellationRefundHours: event.cancellationRefundHours != null && Number.isFinite(Number(event.cancellationRefundHours))
+        ? Number(event.cancellationRefundHours)
+        : null,
+    registrationCutoffHours: event.registrationCutoffHours != null && Number.isFinite(Number(event.registrationCutoffHours))
+        ? Number(event.registrationCutoffHours)
         : 2,
     hostId: event.hostId || undefined,
     noFixedEndDateTime: isSchedulableType ? derivedNoFixedEndDateTime : false,
@@ -3204,7 +3204,7 @@ const eventFormSchema = z
         ).default([]),
         divisionFieldIds: z.record(z.string(), z.array(z.string())).default({}),
         selectedFieldIds: z.array(z.string()).default([]),
-        cancellationRefundHours: z.number().min(0),
+        cancellationRefundHours: z.number().min(0).nullable(),
         registrationCutoffHours: z.number().min(0),
         organizationId: z.string().optional(),
         taxHandling: z.enum([
@@ -4034,8 +4034,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (Array.isArray(defaults.fieldIds)) {
             next.selectedFieldIds = Array.from(new Set(defaults.fieldIds.map((fieldId) => String(fieldId)).filter(Boolean)));
         }
-        if (typeof defaults.cancellationRefundHours === 'number') {
-            next.cancellationRefundHours = defaults.cancellationRefundHours;
+        if ('cancellationRefundHours' in defaults) {
+            next.cancellationRefundHours = typeof defaults.cancellationRefundHours === 'number'
+                ? defaults.cancellationRefundHours
+                : null;
         }
         if (typeof defaults.registrationCutoffHours === 'number') {
             next.registrationCutoffHours = defaults.registrationCutoffHours;
@@ -4398,6 +4400,21 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [formValues, isDirty, isDirtyTrackingReady, onDirtyStateChange, onDraftStateChange]);
 
     const eventData = formValues;
+    const automaticRefundsAvailable = useMemo(() => {
+        if (!hasStripeAccount) {
+            return false;
+        }
+        if (eventData.singleDivision) {
+            return Math.max(0, Number(eventData.price) || 0) > 0;
+        }
+        const details = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        return details.some((detail) => Math.max(0, Number(detail.price) || 0) > 0);
+    }, [
+        eventData.divisionDetails,
+        eventData.price,
+        eventData.singleDivision,
+        hasStripeAccount,
+    ]);
     const hasUnsetTeamCapacityLimits = eventData.maxParticipants == null || eventData.teamSizeLimit == null;
     const leagueSlots = formValues.leagueSlots;
     const leagueData = formValues.leagueData;
@@ -9906,22 +9923,84 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     <Controller
                                         name="registrationCutoffHours"
                                         control={control}
-                                        render={({ field }) => (
+                                        render={({ field, fieldState }) => (
                                             <NumberInput
                                                 label="Registration Cutoff (Hours)"
                                                 min={0}
                                                 max={MAX_STANDARD_NUMBER}
-                                                value={field.value}
+                                                value={typeof field.value === 'number' && field.value > 0 ? field.value : ''}
                                                 w="100%"
                                                 styles={alignedDetailsFieldStyles}
                                                 clampBehavior="strict"
                                                 disabled={isImmutableField('registrationCutoffHours')}
                                                 onChange={(val) => {
                                                     if (isImmutableField('registrationCutoffHours')) return;
-                                                    field.onChange(Number(val) || 2);
+                                                    const numeric = typeof val === 'number' && Number.isFinite(val)
+                                                        ? val
+                                                        : Number(val);
+                                                    field.onChange(Number.isFinite(numeric)
+                                                        ? Math.max(0, Math.trunc(numeric))
+                                                        : 0);
                                                 }}
+                                                error={fieldState.error?.message as string | undefined}
                                             />
                                         )}
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <Controller
+                                        name="cancellationRefundHours"
+                                        control={control}
+                                        render={({ field, fieldState }) => {
+                                            const automaticRefundsChecked = field.value != null;
+                                            const automaticRefundsImmutable = isImmutableField('cancellationRefundHours');
+                                            const automaticRefundsInputDisabled = automaticRefundsImmutable
+                                                || !automaticRefundsAvailable
+                                                || !automaticRefundsChecked;
+                                            const automaticRefundsToggleDisabled = automaticRefundsImmutable
+                                                || !automaticRefundsAvailable;
+
+                                            return (
+                                                <Stack gap={6}>
+                                                    <NumberInput
+                                                        label="Refund Cutoff (Hours)"
+                                                        min={0}
+                                                        max={MAX_STANDARD_NUMBER}
+                                                        value={
+                                                            automaticRefundsChecked
+                                                            && typeof field.value === 'number'
+                                                            && field.value > 0
+                                                                ? field.value
+                                                                : ''
+                                                        }
+                                                        w="100%"
+                                                        styles={alignedDetailsFieldStyles}
+                                                        clampBehavior="strict"
+                                                        disabled={automaticRefundsInputDisabled}
+                                                        onChange={(val) => {
+                                                            if (automaticRefundsInputDisabled) return;
+                                                            const numeric = typeof val === 'number' && Number.isFinite(val)
+                                                                ? val
+                                                                : Number(val);
+                                                            field.onChange(Number.isFinite(numeric)
+                                                                ? Math.max(0, Math.trunc(numeric))
+                                                                : 0);
+                                                        }}
+                                                        error={fieldState.error?.message as string | undefined}
+                                                    />
+                                                    <Checkbox
+                                                        size="xs"
+                                                        label="Automatic Refunds"
+                                                        checked={automaticRefundsChecked}
+                                                        disabled={automaticRefundsToggleDisabled}
+                                                        onChange={(event) => {
+                                                            if (automaticRefundsToggleDisabled) return;
+                                                            field.onChange(event.currentTarget.checked ? field.value ?? 0 : null);
+                                                        }}
+                                                    />
+                                                </Stack>
+                                            );
+                                        }}
                                     />
                                 </div>
                             </div>
@@ -11101,28 +11180,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         </p>
                                                     </div>
                                                 </AnimatedSection>
-                                            </div>
-                                            <div className="md:col-span-3">
-                                                <Controller
-                                                    name="cancellationRefundHours"
-                                                    control={control}
-                                                    render={({ field }) => (
-                                                        <NumberInput
-                                                            label="Cancellation Refund (Hours)"
-                                                            min={0}
-                                                            max={MAX_STANDARD_NUMBER}
-                                                            value={field.value}
-                                                            w="100%"
-                                                            styles={alignedDetailsFieldStyles}
-                                                            clampBehavior="strict"
-                                                            disabled={isImmutableField('cancellationRefundHours')}
-                                                            onChange={(val) => {
-                                                                if (isImmutableField('cancellationRefundHours')) return;
-                                                                field.onChange(Number(val) || 24);
-                                                            }}
-                                                        />
-                                                    )}
-                                                />
                                             </div>
                                             <div className="md:col-span-12">
                                                 <div className="rounded-lg border border-gray-200 bg-white p-4">

@@ -986,27 +986,22 @@ const getSportLabel = (event: Event): string => {
 };
 
 const formatRegistrationCutoffSummary = (value: number | null | undefined): string => {
-    switch (Math.trunc(Number(value))) {
-        case 1:
-            return '24h before start';
-        case 2:
-            return '48h before start';
-        default:
-            return 'No cutoff';
+    const hours = Number(value);
+    if (!Number.isFinite(hours) || hours <= 0) {
+        return 'No cutoff';
     }
+    return `${Math.trunc(hours)}h before start`;
 };
 
 const formatRefundSummary = (value: number | null | undefined): string => {
-    switch (Math.trunc(Number(value))) {
-        case 0:
-            return 'Automatic refunds';
-        case 1:
-            return '24h before start';
-        case 2:
-            return '48h before start';
-        default:
-            return 'No cutoff';
+    if (value == null) {
+        return 'Automatic refunds disabled';
     }
+    const hours = Number(value);
+    if (!Number.isFinite(hours)) {
+        return 'Automatic refunds disabled';
+    }
+    return hours <= 0 ? 'Until event start' : `${Math.trunc(hours)}h before start`;
 };
 
 const formatOfficialSchedulingModeLabel = (value: Event['officialSchedulingMode']): string => {
@@ -4486,7 +4481,7 @@ export default function EventDetailSheet({
                                             </div>
                                             <div className="flex justify-between">
                                                 <span className="text-gray-600">Registration Cutoff:</span>
-                                                <span className="font-medium">{currentEvent.registrationCutoffHours}h before</span>
+                                                <span className="font-medium">{registrationCutoffSummary}</span>
                                             </div>
                                         </div>
                                     </Paper>

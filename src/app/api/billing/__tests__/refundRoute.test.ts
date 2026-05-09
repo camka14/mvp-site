@@ -71,7 +71,7 @@ describe('POST /api/billing/refund', () => {
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       start: new Date('2026-07-01T12:00:00.000Z'),
-      cancellationRefundHours: 0,
+      cancellationRefundHours: null,
       hostId: 'host_1',
       organizationId: 'org_1',
       teamIds: [],
@@ -257,7 +257,7 @@ describe('POST /api/billing/refund', () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({
       id: 'event_1',
       start: new Date('2026-07-01T12:00:00.000Z'),
-      cancellationRefundHours: 0,
+      cancellationRefundHours: null,
       hostId: 'host_1',
       organizationId: 'org_1',
       teamIds: [],
@@ -341,7 +341,7 @@ describe('POST /api/billing/refund', () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({
       id: 'event_1',
       start: new Date('2026-07-01T12:00:00.000Z'),
-      cancellationRefundHours: 0,
+      cancellationRefundHours: null,
       hostId: 'host_1',
       organizationId: 'org_1',
       teamIds: ['slot_team_1'],

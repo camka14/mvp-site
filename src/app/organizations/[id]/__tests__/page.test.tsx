@@ -47,7 +47,7 @@ describe('buildFieldCalendarEvents', () => {
         waitListIds: [],
         freeAgentIds: [],
         seedColor: 0,
-        cancellationRefundHours: 0,
+        cancellationRefundHours: null,
         registrationCutoffHours: 0,
         eventType: 'EVENT',
         sport: createSport({ $id: 'volleyball', name: 'Volleyball' }),

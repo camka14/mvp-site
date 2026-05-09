@@ -4874,7 +4874,7 @@ function EventScheduleContent() {
         teamSignup: false,
         singleDivision: true,
         divisions: [],
-        cancellationRefundHours: 24,
+        cancellationRefundHours: null,
         registrationCutoffHours: 2,
         hostId: user.$id,
         state: 'DRAFT' as EventState,

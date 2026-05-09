@@ -637,8 +637,8 @@ export interface Event {
   assistantHostIds?: string[];
   waitList?: string[];
   freeAgents?: string[];
-  cancellationRefundHours: number;
-  registrationCutoffHours: number;
+  cancellationRefundHours: number | null;
+  registrationCutoffHours: number | null;
   seedColor: number;
   $createdAt: string;
   $updatedAt: string;

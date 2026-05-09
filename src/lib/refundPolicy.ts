@@ -22,7 +22,10 @@ export const getRefundPolicy = (
   now: Date = new Date(),
 ): RefundPolicy => {
   const eventStart = toValidDate(event.start);
-  const refundBufferHours = Number(event.cancellationRefundHours ?? 0);
+  const parsedRefundHours = Number(event.cancellationRefundHours);
+  const refundBufferHours = event.cancellationRefundHours == null || !Number.isFinite(parsedRefundHours)
+    ? null
+    : Math.max(0, Math.trunc(parsedRefundHours));
 
   if (!eventStart) {
     return {
@@ -33,11 +36,14 @@ export const getRefundPolicy = (
   }
 
   const eventHasStarted = now >= eventStart;
-  const refundDeadline = refundBufferHours > 0
-    ? new Date(eventStart.getTime() - (refundBufferHours * 60 * 60 * 1000))
-    : null;
+  const refundDeadline = refundBufferHours == null
+    ? null
+    : refundBufferHours === 0
+      ? eventStart
+      : new Date(eventStart.getTime() - (refundBufferHours * 60 * 60 * 1000));
   const canAutoRefund = Boolean(
-    refundDeadline
+    refundBufferHours != null
+    && refundDeadline
     && !eventHasStarted
     && now < refundDeadline,
   );
