@@ -12,13 +12,20 @@ import {
 import { calculateMvpAndStripeFeesWithTax } from '@/lib/billingFees';
 import { resolvePurchaseContext } from '@/lib/purchaseContext';
 import {
+  buildOrganizerManualTaxQuote,
   buildZeroTaxQuote,
   calculateTaxQuote,
   INTERNAL_TAX_CATEGORIES,
   type InternalTaxCategory,
   type TaxQuote,
 } from '@/lib/stripeTax';
-import { resolvePurchaseTaxPolicy, type TaxPolicyDecision } from '@/lib/taxPolicy';
+import {
+  normalizeOrganizerManualTaxRateBps,
+  resolvePurchaseTaxPolicy,
+  taxPolicyRequiresStripeTaxCalculation,
+  taxPolicyUsesOrganizerManualTax,
+  type TaxPolicyDecision,
+} from '@/lib/taxPolicy';
 import { loadBillingTaxPolicyContext } from '@/server/billingTaxContext';
 
 export const dynamic = 'force-dynamic';
@@ -92,6 +99,12 @@ const taxPolicyResponseFields = (taxPolicy: TaxPolicyDecision) => ({
   taxMode: taxPolicy.mode,
   taxReasonCode: taxPolicy.reasonCode,
   taxJurisdictionState: taxPolicy.jurisdictionState,
+  taxability: taxPolicy.taxability,
+  taxLiabilityParty: taxPolicy.liabilityParty,
+  taxCollectionStrategy: taxPolicy.collectionStrategy,
+  taxPolicyRuleId: taxPolicy.policyRuleId,
+  taxPolicyRuleVersion: taxPolicy.policyRuleVersion,
+  organizerResponsibilityMessage: taxPolicy.organizerResponsibilityMessage,
 });
 
 export async function POST(req: NextRequest) {
@@ -131,6 +144,22 @@ export async function POST(req: NextRequest) {
       organization: taxContext.organization ?? payload.organization ?? null,
       timeSlot: taxContext.timeSlot ?? payload.timeSlot ?? null,
     });
+    const organizerManualTaxRateBps = normalizeOrganizerManualTaxRateBps(
+      (taxContext.event ?? payload.event ?? null)?.organizerManualTaxRateBps,
+    );
+
+    if (taxPolicy.collectionStrategy === 'BLOCKED_NEEDS_REVIEW') {
+      return NextResponse.json({
+        error: 'Tax collection must be configured before calculating a preview.',
+        ...taxPolicyResponseFields(taxPolicy),
+      }, { status: 400 });
+    }
+    if (taxPolicy.collectionStrategy === 'ORGANIZER_STRIPE_TAX') {
+      return NextResponse.json({
+        error: 'Organizer Stripe Tax preview requires connected-account tax setup and is not enabled for this checkout yet.',
+        ...taxPolicyResponseFields(taxPolicy),
+      }, { status: 400 });
+    }
 
     const billingProfile = await loadUserBillingProfile(session.userId);
     let savedBillingProfile: Awaited<ReturnType<typeof upsertUserBillingAddress>> | null = null;
@@ -144,7 +173,7 @@ export async function POST(req: NextRequest) {
     }
     const savedBillingAddress = savedBillingProfile?.billingAddress ?? billingProfile.billingAddress;
     const billingEmail = savedBillingProfile?.email ?? billingProfile.email;
-    const requiresBillingAddressForTax = taxPolicy.mode !== 'ZERO_TAX';
+    const requiresBillingAddressForTax = taxPolicyRequiresStripeTaxCalculation(taxPolicy);
 
     if (requiresBillingAddressForTax && !savedBillingAddress) {
       return NextResponse.json({
@@ -168,6 +197,21 @@ export async function POST(req: NextRequest) {
     const secretKey = process.env.STRIPE_SECRET_KEY;
 
     if (!secretKey) {
+      if (taxPolicyUsesOrganizerManualTax(taxPolicy)) {
+        const manualTaxQuote = buildOrganizerManualTaxQuote({
+          subtotalCents: resolvedPurchase.amountCents,
+          organizerManualTaxRateBps,
+          purchaseType: resolvedPurchase.purchaseType,
+          taxCategory: resolvedPurchase.taxCategory,
+          eventType: resolvedPurchase.eventType,
+        });
+        return NextResponse.json({
+          publishableKey,
+          taxCategory: resolvedPurchase.taxCategory,
+          ...taxPolicyResponseFields(taxPolicy),
+          feeBreakdown: buildFeeBreakdown(manualTaxQuote),
+        }, { status: 200 });
+      }
       const fallbackFees = calculateMvpAndStripeFeesWithTax({
         eventAmountCents: resolvedPurchase.amountCents,
         eventType: resolvedPurchase.eventType,
@@ -176,7 +220,7 @@ export async function POST(req: NextRequest) {
       });
       return NextResponse.json({
         publishableKey,
-        taxCalculationId: taxPolicy.mode === 'ZERO_TAX' ? undefined : `tax_mock_${crypto.randomUUID()}`,
+        taxCalculationId: taxPolicyRequiresStripeTaxCalculation(taxPolicy) ? `tax_mock_${crypto.randomUUID()}` : undefined,
         taxCategory: resolvedPurchase.taxCategory,
         ...taxPolicyResponseFields(taxPolicy),
         feeBreakdown: {
@@ -211,6 +255,14 @@ export async function POST(req: NextRequest) {
         taxCategory: resolvedPurchase.taxCategory,
         eventType: resolvedPurchase.eventType,
       })
+      : taxPolicyUsesOrganizerManualTax(taxPolicy)
+        ? buildOrganizerManualTaxQuote({
+          subtotalCents: resolvedPurchase.amountCents,
+          organizerManualTaxRateBps,
+          purchaseType: resolvedPurchase.purchaseType,
+          taxCategory: resolvedPurchase.taxCategory,
+          eventType: resolvedPurchase.eventType,
+        })
       : await calculateTaxQuote({
         stripe,
         userId: session.userId,

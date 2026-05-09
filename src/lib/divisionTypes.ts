@@ -28,6 +28,11 @@ export type DivisionTypeOption = {
   sportKey: string;
 };
 
+export type DivisionTypeParameterOption = {
+  id: string;
+  name: string;
+};
+
 type DivisionTypeSeed = Omit<DivisionTypeOption, 'sportKey'>;
 
 type SportDivisionTypeCatalog = {
@@ -45,6 +50,12 @@ type SportCutoffCatalog = {
 const GENERIC_SPORT_KEY = 'generic';
 const DEFAULT_SKILL_DIVISION_TYPE_ID = 'open';
 const DEFAULT_AGE_DIVISION_TYPE_ID = '18plus';
+
+const DIVISION_GENDER_OPTIONS: DivisionTypeParameterOption[] = [
+  { id: 'M', name: 'Men' },
+  { id: 'F', name: 'Women' },
+  { id: 'C', name: 'Coed' },
+];
 
 const DEFAULT_SPORT_AGE_CUTOFF: SportAgeCutoffRule = {
   sportKey: GENERIC_SPORT_KEY,
@@ -66,7 +77,7 @@ const DEFAULT_SPORT_AGE_CUTOFF: SportAgeCutoffRule = {
 const SPORT_AGE_CUTOFFS: SportCutoffCatalog[] = [
   {
     sportKey: 'soccer',
-    aliases: ['soccer', 'futbol', 'football'],
+    aliases: ['soccer', 'futbol'],
     rule: {
       month: 8,
       day: 1,
@@ -184,7 +195,7 @@ const GENERIC_DIVISION_TYPES: DivisionTypeSeed[] = [
 const SPORT_DIVISION_TYPES: SportDivisionTypeCatalog[] = [
   {
     sportKey: 'soccer',
-    aliases: ['soccer', 'futbol', 'football'],
+    aliases: ['soccer', 'futbol'],
     options: [
       { id: 'u6', name: 'U6', ratingType: 'AGE' },
       { id: 'u7', name: 'U7', ratingType: 'AGE' },
@@ -458,6 +469,41 @@ export const getDivisionTypeOptionsForSport = (sportInput?: string | null): Divi
     ? buildCatalogOptions(catalog.sportKey, catalog.options)
     : buildCatalogOptions(GENERIC_SPORT_KEY, GENERIC_DIVISION_TYPES);
   return uniqueOptions(base);
+};
+
+const toParameterOption = (option: Pick<DivisionTypeOption, 'id' | 'name'>): DivisionTypeParameterOption => ({
+  id: sanitizeTokenPart(option.id),
+  name: option.name.trim(),
+});
+
+export const getGenderDivisionTypeOptions = (): DivisionTypeParameterOption[] => (
+  DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))
+);
+
+export const getGlobalAgeDivisionTypeOptions = (): DivisionTypeParameterOption[] => (
+  uniqueOptions(buildCatalogOptions(GENERIC_SPORT_KEY, GENERIC_DIVISION_TYPES))
+    .filter((option) => option.ratingType === 'AGE')
+    .map(toParameterOption)
+);
+
+export const getSkillDivisionTypeOptionsForSport = (sportInput?: string | null): DivisionTypeParameterOption[] => (
+  getDivisionTypeOptionsForSport(sportInput)
+    .filter((option) => option.ratingType === 'SKILL')
+    .map(toParameterOption)
+);
+
+export const normalizeDivisionTypeParameterOptions = (value: unknown): DivisionTypeParameterOption[] => {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const option = entry as Record<string, unknown>;
+    const id = sanitizeTokenPart(String(option.id ?? ''));
+    const name = String(option.name ?? '').trim();
+    if (!id || !name || seen.has(id)) return [];
+    seen.add(id);
+    return [{ id, name }];
+  });
 };
 
 const findCutoffRuleForSport = (sportInput?: string | null): SportAgeCutoffRule => {

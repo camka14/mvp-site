@@ -1,4 +1,5 @@
 import {
+  ORGANIZER_TAX_RESPONSIBILITY_MESSAGE,
   extractUsStateCodeFromLocationText,
   resolvePurchaseTaxPolicy,
 } from '@/lib/taxPolicy';
@@ -15,12 +16,15 @@ describe('taxPolicy', () => {
       purchaseType: 'event',
       taxCategory: 'EVENT_PARTICIPANT',
       event: { address: '123 Main St, Hoboken, NJ 07030' },
-    })).toEqual({
+    })).toEqual(expect.objectContaining({
       mode: 'ZERO_TAX',
       reasonCode: 'sports_participant_state_exempt',
       jurisdictionState: 'NJ',
       purchaseType: 'event',
-    });
+      taxability: 'NOT_TAXABLE',
+      liabilityParty: 'NONE',
+      collectionStrategy: 'NO_TAX',
+    }));
 
     expect(resolvePurchaseTaxPolicy({
       purchaseType: 'event',
@@ -75,6 +79,9 @@ describe('taxPolicy', () => {
     })).toEqual(expect.objectContaining({
       mode: 'STRIPE_TAX_REQUIRED',
       reasonCode: 'non_event_purchase',
+      taxability: 'TAXABLE',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
     }));
 
     expect(resolvePurchaseTaxPolicy({
@@ -85,6 +92,58 @@ describe('taxPolicy', () => {
       mode: 'STRIPE_TAX_REQUIRED',
       reasonCode: 'tax_policy_not_configured',
       jurisdictionState: 'CA',
+      taxability: 'TAXABLE',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
+    }));
+  });
+
+  it('starts with no organizer-liable marketplace facilitator states configured', () => {
+    expect(resolvePurchaseTaxPolicy({
+      purchaseType: 'event',
+      taxCategory: 'EVENT_PARTICIPANT',
+      event: {
+        address: '123 Main St, Boise, ID 83702',
+        taxHandling: 'ORGANIZER_MANUAL_TAX',
+      },
+    })).toEqual(expect.objectContaining({
+      mode: 'STRIPE_TAX_REQUIRED',
+      reasonCode: 'organizer_tax_collection_not_allowed',
+      jurisdictionState: 'ID',
+      taxability: 'TAXABLE',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
+    }));
+  });
+
+  it('resolves organizer responsibility when a reviewed state rule is provided', () => {
+    expect(resolvePurchaseTaxPolicy({
+      purchaseType: 'event',
+      taxCategory: 'EVENT_PARTICIPANT',
+      event: {
+        address: '123 Main St, Boise, ID 83702',
+        taxHandling: 'ORGANIZER_MANUAL_TAX',
+      },
+      organizerLiabilityRules: [
+        {
+          stateCode: 'ID',
+          purchaseTypes: ['event'],
+          taxCategories: ['EVENT_PARTICIPANT'],
+          allowedCollectionStrategies: ['ORGANIZER_MANUAL_TAX', 'ORGANIZER_STRIPE_TAX'],
+          ruleId: 'test-id-event-participant-organizer-liable',
+          ruleVersion: 'test-2026-05-08',
+        },
+      ],
+    })).toEqual(expect.objectContaining({
+      mode: 'STRIPE_TAX_REQUIRED',
+      reasonCode: 'organizer_manual_tax_selected',
+      jurisdictionState: 'ID',
+      taxability: 'TAXABLE',
+      liabilityParty: 'ORGANIZER',
+      collectionStrategy: 'ORGANIZER_MANUAL_TAX',
+      organizerResponsibilityMessage: ORGANIZER_TAX_RESPONSIBILITY_MESSAGE,
+      policyRuleId: 'test-id-event-participant-organizer-liable',
+      policyRuleVersion: 'test-2026-05-08',
     }));
   });
 

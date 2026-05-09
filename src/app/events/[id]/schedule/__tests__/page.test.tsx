@@ -144,6 +144,14 @@ jest.mock('../components/LeagueCalendarView', () => {
         {Array.isArray(matches) && matches.map((match) => (
           <span key={match?.$id ?? match?.id ?? 'unknown'} data-testid={`calendar-match-${match?.$id ?? match?.id ?? 'unknown'}`}>
             {match?.$id ?? match?.id ?? 'unknown'}
+            {match?.weeklyOccurrenceMeta ? (
+              <span data-testid={`calendar-match-meta-${match?.$id ?? match?.id ?? 'unknown'}`}>
+                {[
+                  match.weeklyOccurrenceMeta.divisionLabel,
+                  match.weeklyOccurrenceMeta.isViewerRegistered ? 'registered' : 'not-registered',
+                ].filter(Boolean).join('|')}
+              </span>
+            ) : null}
           </span>
         ))}
         <span data-testid="calendar-conflict-count">{Object.keys(conflictMatchIdsById ?? {}).length}</span>
@@ -4016,6 +4024,171 @@ describe('League schedule page', () => {
     expect(screen.getAllByText((content) => content.includes(occurrenceDate)).length).toBeGreaterThan(0);
     expect(screen.getByTestId('league-calendar')).toBeInTheDocument();
     expect(screen.getByTestId(`calendar-match-weekly-occurrence:${slotId}:${occurrenceDate}`)).toBeInTheDocument();
+  });
+
+  it('marks only the viewer registered weekly occurrence and passes division labels to the calendar', async () => {
+    const { event, slotId, occurrenceDate } = buildWeeklyParentEvent({
+      occurrenceDate: new Date(2026, 4, 5),
+      slotEndOffsetDays: 21,
+    });
+    const nextOccurrenceDate = '2026-05-12';
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'tab') return 'schedule';
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const payload = { ...event };
+        delete (payload as any).matches;
+        return Promise.resolve({ event: payload });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path === '/api/profile/registrations?eventId=event_1') {
+        return Promise.resolve({
+          registrations: [
+            {
+              id: 'registration_weekly_selected',
+              eventId: 'event_1',
+              registrantId: 'host_1',
+              registrantType: 'SELF',
+              rosterRole: 'PARTICIPANT',
+              status: 'ACTIVE',
+              slotId,
+              occurrenceDate,
+            },
+            {
+              id: 'registration_weekly_waitlist',
+              eventId: 'event_1',
+              registrantId: 'host_1',
+              registrantType: 'SELF',
+              rosterRole: 'WAITLIST',
+              status: 'ACTIVE',
+              slotId,
+              occurrenceDate: nextOccurrenceDate,
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue({ ...event });
+    (eventService.getEventById as jest.Mock).mockResolvedValue({ ...event });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByText('Weekly Parent Event');
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`calendar-match-meta-weekly-occurrence:${slotId}:${occurrenceDate}`)).toHaveTextContent('Open|registered');
+      expect(screen.getByTestId(`calendar-match-meta-weekly-occurrence:${slotId}:${nextOccurrenceDate}`)).toHaveTextContent('Open|not-registered');
+    });
+  });
+
+  it('loads selected weekly session participants once for the same URL selection', async () => {
+    const { event, slotId, occurrenceDate } = buildWeeklyParentEvent({
+      occurrenceDate: new Date(2026, 5, 16),
+      slotEndOffsetDays: 21,
+    });
+    const teamEvent = {
+      ...event,
+      teamSignup: true,
+      teamIds: [],
+      teams: [],
+      userIds: [],
+      players: [],
+    };
+    const participantTeam = {
+      $id: 'team_weekly_1',
+      id: 'team_weekly_1',
+      name: 'Weeknight Strikers',
+      division: 'Open',
+      sport: 'Soccer',
+      playerIds: [],
+      captainId: '',
+      pending: [],
+      teamSize: 2,
+      currentSize: 0,
+      isFull: false,
+      avatarUrl: '',
+      parentTeamId: 'club_team_1',
+    };
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'tab') return 'schedule';
+        if (key === 'slotId') return slotId;
+        if (key === 'occurrenceDate') return occurrenceDate;
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const payload = { ...teamEvent };
+        delete (payload as any).matches;
+        return Promise.resolve({ event: payload });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path.startsWith('/api/teams?ids=')) {
+        return Promise.resolve({ teams: [participantTeam] });
+      }
+      if (path === '/api/events/event_1/teams/compliance') {
+        return Promise.resolve({ teams: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue({ ...teamEvent });
+    (eventService.getEventById as jest.Mock).mockResolvedValue({ ...teamEvent });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event: teamEvent,
+      participants: {
+        teamIds: ['team_weekly_1'],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams: [participantTeam],
+      users: [],
+      participantCount: 1,
+      participantCapacity: 10,
+      occurrence: { slotId, occurrenceDate },
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByText('Weekly Parent Event');
+    await waitFor(() => {
+      expect(eventService.getEventParticipants).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(eventService.getEventParticipants).toHaveBeenCalledTimes(1);
+    expect(eventService.getEventParticipants).toHaveBeenCalledWith('event_1', {
+      slotId,
+      occurrenceDate,
+    });
+    expect(
+      apiRequestMock.mock.calls.filter(([path]) => (
+        typeof path === 'string' && path.startsWith('/api/teams?ids=')
+      )),
+    ).toHaveLength(1);
   });
 
   it('uses the weekly schedule calendar to select a session', async () => {

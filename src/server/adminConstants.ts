@@ -64,6 +64,8 @@ const SPORT_BOOLEAN_FIELDS = [
   'usePointPrecision',
 ] as const;
 
+const SPORT_JSON_FIELDS = ['skillDivisionTypes'] as const;
+
 const DIVISION_STRING_FIELDS = [
   'name',
   'key',
@@ -94,7 +96,7 @@ const LEAGUE_NUMBER_FIELDS = [
 ] as const;
 
 export const editableFieldsByKind: Record<AdminConstantResponseKey, string[]> = {
-  sports: ['name', ...SPORT_BOOLEAN_FIELDS],
+  sports: ['name', ...SPORT_BOOLEAN_FIELDS, ...SPORT_JSON_FIELDS],
   divisions: [
     ...DIVISION_STRING_FIELDS,
     ...DIVISION_ENUM_FIELDS,
@@ -176,6 +178,30 @@ const toStringArray = (value: unknown): string[] | undefined => {
   );
 };
 
+const toDivisionTypeParameterOptions = (value: unknown): Array<{ id: string; name: string }> | undefined => {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new AdminConstantsInputError('Expected an array of division type options.');
+  }
+  const seen = new Set<string>();
+  return value.map((entry) => {
+    if (!isRecord(entry)) {
+      throw new AdminConstantsInputError('Expected division type options to be objects.');
+    }
+    const id = toNullableString(entry.id, { required: true });
+    const name = toNullableString(entry.name, { required: true });
+    const normalizedId = id?.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!normalizedId || !name) {
+      throw new AdminConstantsInputError('Division type options require id and name.');
+    }
+    if (seen.has(normalizedId)) {
+      throw new AdminConstantsInputError(`Duplicate division type option: ${normalizedId}`);
+    }
+    seen.add(normalizedId);
+    return { id: normalizedId, name };
+  });
+};
+
 const toNullableDate = (value: unknown): Date | null | undefined => {
   if (value === undefined) return undefined;
   if (value === null || value === '') return null;
@@ -246,6 +272,10 @@ export const normalizePatchForKind = (
       if (key === 'name') {
         const parsed = toNullableString(value, { required: true });
         if (parsed !== undefined) normalized[key] = parsed;
+        return;
+      }
+      if ((SPORT_JSON_FIELDS as readonly string[]).includes(key)) {
+        normalized[key] = toDivisionTypeParameterOptions(value);
         return;
       }
       normalized[key] = toNullableBoolean(value);

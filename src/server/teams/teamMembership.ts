@@ -1,7 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { withLegacyFields } from '@/server/legacyFormat';
-import { upsertEventRegistration } from '@/server/events/eventRegistrations';
+import { upsertEventRegistration, type RegistrationLifecycleStatus } from '@/server/events/eventRegistrations';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient | any;
 
@@ -974,6 +974,8 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
   divisionTypeKey?: string | null;
   placeholderDivisionIds?: string[] | null;
   occurrence?: { slotId: string; occurrenceDate: string } | null;
+  registrationStatus?: RegistrationLifecycleStatus;
+  upsertRegistration?: boolean;
 }) => {
   const canonicalTeam = params.canonicalTeam ?? await loadCanonicalTeamById(params.canonicalTeamId, params.tx);
   if (!canonicalTeam) {
@@ -1100,22 +1102,24 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
       });
     })());
 
-  await upsertEventRegistration({
-    eventId: params.eventId,
-    registrantType: 'TEAM',
-    registrantId: eventTeamId,
-    parentId: params.canonicalTeamId,
-    rosterRole: 'PARTICIPANT',
-    status: 'ACTIVE',
-    eventTeamId: eventTeamId,
-    divisionId: normalizeId(params.divisionId) ?? normalizeId((eventTeam as any).division) ?? null,
-    divisionTypeId: normalizeId(params.divisionTypeId) ?? normalizeId((eventTeam as any).divisionTypeId) ?? null,
-    divisionTypeKey: normalizeId(params.divisionTypeKey),
-    createdBy: params.createdBy,
-    occurrence: params.occurrence,
-  }, params.tx);
+  if (params.upsertRegistration !== false) {
+    await upsertEventRegistration({
+      eventId: params.eventId,
+      registrantType: 'TEAM',
+      registrantId: eventTeamId,
+      parentId: params.canonicalTeamId,
+      rosterRole: 'PARTICIPANT',
+      status: params.registrationStatus ?? 'ACTIVE',
+      eventTeamId: eventTeamId,
+      divisionId: normalizeId(params.divisionId) ?? normalizeId((eventTeam as any).division) ?? null,
+      divisionTypeId: normalizeId(params.divisionTypeId) ?? normalizeId((eventTeam as any).divisionTypeId) ?? null,
+      divisionTypeKey: normalizeId(params.divisionTypeKey),
+      createdBy: params.createdBy,
+      occurrence: params.occurrence,
+    }, params.tx);
+  }
 
-  if (params.tx?.eventRegistrations?.findMany && params.tx?.eventRegistrations?.updateMany) {
+  if (params.upsertRegistration !== false && params.tx?.eventRegistrations?.findMany && params.tx?.eventRegistrations?.updateMany) {
     const currentEventPlayerRows = await params.tx.eventRegistrations.findMany({
       where: {
         eventTeamId,
@@ -1143,24 +1147,26 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
     }
   }
 
-  await Promise.all(activePlayerRegistrations.map((row: any) => upsertEventRegistration({
-    eventId: params.eventId,
-    registrantType: 'SELF',
-    registrantId: row.userId,
-    parentId: params.canonicalTeamId,
-    rosterRole: 'PARTICIPANT',
-    status: 'ACTIVE',
-    eventTeamId,
-    sourceTeamRegistrationId: row.id,
-    divisionId: normalizeId(params.divisionId) ?? normalizeId((eventTeam as any).division) ?? null,
-    divisionTypeId: normalizeId(params.divisionTypeId) ?? normalizeId((eventTeam as any).divisionTypeId) ?? null,
-    divisionTypeKey: normalizeId(params.divisionTypeKey),
-    jerseyNumber: normalizeJerseyNumber(row.jerseyNumber),
-    position: normalizeId(row.position),
-    isCaptain: Boolean(row.isCaptain),
-    createdBy: params.createdBy,
-    occurrence: params.occurrence,
-  }, params.tx)));
+  if (params.upsertRegistration !== false) {
+    await Promise.all(activePlayerRegistrations.map((row: any) => upsertEventRegistration({
+      eventId: params.eventId,
+      registrantType: 'SELF',
+      registrantId: row.userId,
+      parentId: params.canonicalTeamId,
+      rosterRole: 'PARTICIPANT',
+      status: 'ACTIVE',
+      eventTeamId,
+      sourceTeamRegistrationId: row.id,
+      divisionId: normalizeId(params.divisionId) ?? normalizeId((eventTeam as any).division) ?? null,
+      divisionTypeId: normalizeId(params.divisionTypeId) ?? normalizeId((eventTeam as any).divisionTypeId) ?? null,
+      divisionTypeKey: normalizeId(params.divisionTypeKey),
+      jerseyNumber: normalizeJerseyNumber(row.jerseyNumber),
+      position: normalizeId(row.position),
+      isCaptain: Boolean(row.isCaptain),
+      createdBy: params.createdBy,
+      occurrence: params.occurrence,
+    }, params.tx)));
+  }
 
   const eventTeamStaffAssignmentsDelegate = getEventTeamStaffAssignmentsDelegate(params.tx);
   if (eventTeamStaffAssignmentsDelegate?.findMany && eventTeamStaffAssignmentsDelegate?.upsert && eventTeamStaffAssignmentsDelegate?.updateMany) {

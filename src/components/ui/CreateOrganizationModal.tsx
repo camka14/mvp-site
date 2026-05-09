@@ -10,7 +10,7 @@ import LocationSelector from '@/components/location/LocationSelector';
 import { useLocation } from '@/app/hooks/useLocation';
 import type { LocationInfo } from '@/lib/locationService';
 import { useSports } from '@/app/hooks/useSports';
-import type { EventTaxHandling, OrganizationTaxClassification } from '@/lib/taxPolicy';
+import type { OrganizationDefaultEventTaxHandling, OrganizationTaxClassification } from '@/lib/taxPolicy';
 import {
   normalizeOrganizationDefaultEventTaxHandling,
   normalizeOrganizationTaxClassification,
@@ -69,7 +69,7 @@ export default function CreateOrganizationModal({
     logoId: '',
     taxOrganizationType: 'INDIVIDUAL_OR_CLUB' as OrganizationTaxClassification,
     operatesAthleticFacility: false,
-    defaultEventTaxHandling: 'STRIPE_TAX' as Exclude<EventTaxHandling, 'INHERIT_ORG'>,
+    defaultEventTaxHandling: 'STRIPE_TAX' as OrganizationDefaultEventTaxHandling,
     taxResponsibilityAgreementAccepted: false,
   });
 
@@ -310,6 +310,14 @@ export default function CreateOrganizationModal({
       setForm((prev) => ({ ...prev, [field]: value }));
     };
 
+  const handleCheckboxChange = (
+    field: 'operatesAthleticFacility' | 'taxResponsibilityAgreementAccepted',
+  ) =>
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const { checked } = event.currentTarget;
+      setForm((prev) => ({ ...prev, [field]: checked }));
+    };
+
   return (
     <Modal opened={isOpen} onClose={onClose} title={modalTitle} size="lg" centered>
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -386,10 +394,7 @@ export default function CreateOrganizationModal({
           <Checkbox
             label="This organization operates or rents out an athletic facility"
             checked={form.operatesAthleticFacility}
-            onChange={(event) => setForm((prev) => ({
-              ...prev,
-              operatesAthleticFacility: event.currentTarget.checked,
-            }))}
+            onChange={handleCheckboxChange('operatesAthleticFacility')}
           />
           <Select
             label="Default sports event registration tax handling"
@@ -410,10 +415,7 @@ export default function CreateOrganizationModal({
           <Checkbox
             label="I confirm this organization is responsible for determining taxability for its events and rentals."
             checked={form.taxResponsibilityAgreementAccepted}
-            onChange={(event) => setForm((prev) => ({
-              ...prev,
-              taxResponsibilityAgreementAccepted: event.currentTarget.checked,
-            }))}
+            onChange={handleCheckboxChange('taxResponsibilityAgreementAccepted')}
             required
           />
         </div>

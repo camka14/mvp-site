@@ -1,0 +1,2 @@
+ALTER TABLE "Events"
+ADD COLUMN "organizerManualTaxRateBps" INTEGER NOT NULL DEFAULT 0;

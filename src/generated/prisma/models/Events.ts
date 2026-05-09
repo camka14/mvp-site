@@ -35,6 +35,7 @@ export type EventsAvgAggregateOutputType = {
   minAge: number | null
   maxAge: number | null
   price: number | null
+  organizerManualTaxRateBps: number | null
   cancellationRefundHours: number | null
   registrationCutoffHours: number | null
   seedColor: number | null
@@ -62,6 +63,7 @@ export type EventsSumAggregateOutputType = {
   minAge: number | null
   maxAge: number | null
   price: number | null
+  organizerManualTaxRateBps: number | null
   cancellationRefundHours: number | null
   registrationCutoffHours: number | null
   seedColor: number | null
@@ -102,6 +104,7 @@ export type EventsMinAggregateOutputType = {
   noFixedEndDateTime: boolean | null
   price: number | null
   taxHandling: string | null
+  organizerManualTaxRateBps: number | null
   singleDivision: boolean | null
   registrationByDivisionType: boolean | null
   cancellationRefundHours: number | null
@@ -158,6 +161,7 @@ export type EventsMaxAggregateOutputType = {
   noFixedEndDateTime: boolean | null
   price: number | null
   taxHandling: string | null
+  organizerManualTaxRateBps: number | null
   singleDivision: boolean | null
   registrationByDivisionType: boolean | null
   cancellationRefundHours: number | null
@@ -216,6 +220,7 @@ export type EventsCountAggregateOutputType = {
   noFixedEndDateTime: number
   price: number
   taxHandling: number
+  organizerManualTaxRateBps: number
   singleDivision: number
   registrationByDivisionType: number
   cancellationRefundHours: number
@@ -273,6 +278,7 @@ export type EventsAvgAggregateInputType = {
   minAge?: true
   maxAge?: true
   price?: true
+  organizerManualTaxRateBps?: true
   cancellationRefundHours?: true
   registrationCutoffHours?: true
   seedColor?: true
@@ -300,6 +306,7 @@ export type EventsSumAggregateInputType = {
   minAge?: true
   maxAge?: true
   price?: true
+  organizerManualTaxRateBps?: true
   cancellationRefundHours?: true
   registrationCutoffHours?: true
   seedColor?: true
@@ -340,6 +347,7 @@ export type EventsMinAggregateInputType = {
   noFixedEndDateTime?: true
   price?: true
   taxHandling?: true
+  organizerManualTaxRateBps?: true
   singleDivision?: true
   registrationByDivisionType?: true
   cancellationRefundHours?: true
@@ -396,6 +404,7 @@ export type EventsMaxAggregateInputType = {
   noFixedEndDateTime?: true
   price?: true
   taxHandling?: true
+  organizerManualTaxRateBps?: true
   singleDivision?: true
   registrationByDivisionType?: true
   cancellationRefundHours?: true
@@ -454,6 +463,7 @@ export type EventsCountAggregateInputType = {
   noFixedEndDateTime?: true
   price?: true
   taxHandling?: true
+  organizerManualTaxRateBps?: true
   singleDivision?: true
   registrationByDivisionType?: true
   cancellationRefundHours?: true
@@ -611,6 +621,7 @@ export type EventsGroupByOutputType = {
   noFixedEndDateTime: boolean
   price: number
   taxHandling: string
+  organizerManualTaxRateBps: number
   singleDivision: boolean | null
   registrationByDivisionType: boolean | null
   cancellationRefundHours: number | null
@@ -704,6 +715,7 @@ export type EventsWhereInput = {
   noFixedEndDateTime?: Prisma.BoolFilter<"Events"> | boolean
   price?: Prisma.IntFilter<"Events"> | number
   taxHandling?: Prisma.StringFilter<"Events"> | string
+  organizerManualTaxRateBps?: Prisma.IntFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   cancellationRefundHours?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -774,6 +786,7 @@ export type EventsOrderByWithRelationInput = {
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
+  organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrderInput | Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrderInput | Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -847,6 +860,7 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   noFixedEndDateTime?: Prisma.BoolFilter<"Events"> | boolean
   price?: Prisma.IntFilter<"Events"> | number
   taxHandling?: Prisma.StringFilter<"Events"> | string
+  organizerManualTaxRateBps?: Prisma.IntFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableFilter<"Events"> | boolean | null
   cancellationRefundHours?: Prisma.IntNullableFilter<"Events"> | number | null
@@ -917,6 +931,7 @@ export type EventsOrderByWithAggregationInput = {
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
+  organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrderInput | Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrderInput | Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -995,6 +1010,7 @@ export type EventsScalarWhereWithAggregatesInput = {
   noFixedEndDateTime?: Prisma.BoolWithAggregatesFilter<"Events"> | boolean
   price?: Prisma.IntWithAggregatesFilter<"Events"> | number
   taxHandling?: Prisma.StringWithAggregatesFilter<"Events"> | string
+  organizerManualTaxRateBps?: Prisma.IntWithAggregatesFilter<"Events"> | number
   singleDivision?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   registrationByDivisionType?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
   cancellationRefundHours?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
@@ -1065,6 +1081,7 @@ export type EventsCreateInput = {
   noFixedEndDateTime?: boolean
   price: number
   taxHandling?: string
+  organizerManualTaxRateBps?: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
   cancellationRefundHours?: number | null
@@ -1135,6 +1152,7 @@ export type EventsUncheckedCreateInput = {
   noFixedEndDateTime?: boolean
   price: number
   taxHandling?: string
+  organizerManualTaxRateBps?: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
   cancellationRefundHours?: number | null
@@ -1205,6 +1223,7 @@ export type EventsUpdateInput = {
   noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
   taxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  organizerManualTaxRateBps?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   cancellationRefundHours?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1275,6 +1294,7 @@ export type EventsUncheckedUpdateInput = {
   noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
   taxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  organizerManualTaxRateBps?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   cancellationRefundHours?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1345,6 +1365,7 @@ export type EventsCreateManyInput = {
   noFixedEndDateTime?: boolean
   price: number
   taxHandling?: string
+  organizerManualTaxRateBps?: number
   singleDivision?: boolean | null
   registrationByDivisionType?: boolean | null
   cancellationRefundHours?: number | null
@@ -1415,6 +1436,7 @@ export type EventsUpdateManyMutationInput = {
   noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
   taxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  organizerManualTaxRateBps?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   cancellationRefundHours?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1485,6 +1507,7 @@ export type EventsUncheckedUpdateManyInput = {
   noFixedEndDateTime?: Prisma.BoolFieldUpdateOperationsInput | boolean
   price?: Prisma.IntFieldUpdateOperationsInput | number
   taxHandling?: Prisma.StringFieldUpdateOperationsInput | string
+  organizerManualTaxRateBps?: Prisma.IntFieldUpdateOperationsInput | number
   singleDivision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   registrationByDivisionType?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   cancellationRefundHours?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
@@ -1555,6 +1578,7 @@ export type EventsCountOrderByAggregateInput = {
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
+  organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrder
@@ -1610,6 +1634,7 @@ export type EventsAvgOrderByAggregateInput = {
   minAge?: Prisma.SortOrder
   maxAge?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  organizerManualTaxRateBps?: Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrder
   registrationCutoffHours?: Prisma.SortOrder
   seedColor?: Prisma.SortOrder
@@ -1650,6 +1675,7 @@ export type EventsMaxOrderByAggregateInput = {
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
+  organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrder
@@ -1706,6 +1732,7 @@ export type EventsMinOrderByAggregateInput = {
   noFixedEndDateTime?: Prisma.SortOrder
   price?: Prisma.SortOrder
   taxHandling?: Prisma.SortOrder
+  organizerManualTaxRateBps?: Prisma.SortOrder
   singleDivision?: Prisma.SortOrder
   registrationByDivisionType?: Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrder
@@ -1749,6 +1776,7 @@ export type EventsSumOrderByAggregateInput = {
   minAge?: Prisma.SortOrder
   maxAge?: Prisma.SortOrder
   price?: Prisma.SortOrder
+  organizerManualTaxRateBps?: Prisma.SortOrder
   cancellationRefundHours?: Prisma.SortOrder
   registrationCutoffHours?: Prisma.SortOrder
   seedColor?: Prisma.SortOrder
@@ -1904,6 +1932,7 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   noFixedEndDateTime?: boolean
   price?: boolean
   taxHandling?: boolean
+  organizerManualTaxRateBps?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
   cancellationRefundHours?: boolean
@@ -1974,6 +2003,7 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   noFixedEndDateTime?: boolean
   price?: boolean
   taxHandling?: boolean
+  organizerManualTaxRateBps?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
   cancellationRefundHours?: boolean
@@ -2044,6 +2074,7 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   noFixedEndDateTime?: boolean
   price?: boolean
   taxHandling?: boolean
+  organizerManualTaxRateBps?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
   cancellationRefundHours?: boolean
@@ -2114,6 +2145,7 @@ export type EventsSelectScalar = {
   noFixedEndDateTime?: boolean
   price?: boolean
   taxHandling?: boolean
+  organizerManualTaxRateBps?: boolean
   singleDivision?: boolean
   registrationByDivisionType?: boolean
   cancellationRefundHours?: boolean
@@ -2160,7 +2192,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "taxHandling" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2189,6 +2221,7 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     noFixedEndDateTime: boolean
     price: number
     taxHandling: string
+    organizerManualTaxRateBps: number
     singleDivision: boolean | null
     registrationByDivisionType: boolean | null
     cancellationRefundHours: number | null
@@ -2679,6 +2712,7 @@ export interface EventsFieldRefs {
   readonly noFixedEndDateTime: Prisma.FieldRef<"Events", 'Boolean'>
   readonly price: Prisma.FieldRef<"Events", 'Int'>
   readonly taxHandling: Prisma.FieldRef<"Events", 'String'>
+  readonly organizerManualTaxRateBps: Prisma.FieldRef<"Events", 'Int'>
   readonly singleDivision: Prisma.FieldRef<"Events", 'Boolean'>
   readonly registrationByDivisionType: Prisma.FieldRef<"Events", 'Boolean'>
   readonly cancellationRefundHours: Prisma.FieldRef<"Events", 'Int'>

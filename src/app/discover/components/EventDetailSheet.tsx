@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
 import { Drawer, Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput } from '@mantine/core';
 import { useRouter } from 'next/navigation';
@@ -107,6 +107,10 @@ type PendingEventCheckoutState = {
     selection?: DivisionRegistrationSelection;
 };
 
+type LoadEventDetailsOptions = {
+    automatic?: boolean;
+};
+
 type AuthModalMode = 'login' | 'signup';
 
 type AuthModalFormState = {
@@ -141,6 +145,30 @@ const dedupeSignSteps = (steps: SignStep[], fallbackSignerContext: 'participant'
         seen.add(key);
         return true;
     });
+};
+
+const normalizeRequestToken = (value: unknown): string | null => {
+    if (typeof value !== 'string') {
+        return null;
+    }
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : null;
+};
+
+const buildEventDetailsLoadKey = (
+    eventId: unknown,
+    occurrence?: WeeklyOccurrenceSelection,
+): string | null => {
+    const normalizedEventId = normalizeRequestToken(eventId);
+    if (!normalizedEventId) {
+        return null;
+    }
+
+    const slotId = normalizeRequestToken(occurrence?.slotId);
+    const occurrenceDate = normalizeRequestToken(occurrence?.occurrenceDate);
+    return slotId && occurrenceDate
+        ? `${normalizedEventId}:${slotId}:${occurrenceDate}`
+        : `${normalizedEventId}:all`;
 };
 
 const parseDateValue = (value?: string | Date | number | null): Date | null => {
@@ -1159,6 +1187,7 @@ export default function EventDetailSheet({
     const [showQrCodeModal, setShowQrCodeModal] = useState(false);
     const [hostUser, setHostUser] = useState<UserData | null>(null);
     const eventRef = React.useRef<Event | null>(event);
+    const loadedEventDetailsKeyRef = useRef<string | null>(null);
 
     // Team-signup join controls
     const [userTeams, setUserTeams] = useState<Team[]>([]);
@@ -1215,6 +1244,8 @@ export default function EventDetailSheet({
         },
         [selectedWeeklyOccurrenceOption],
     );
+    const selectedWeeklyOccurrenceSlotId = selectedWeeklyOccurrence?.slotId ?? null;
+    const selectedWeeklyOccurrenceDate = selectedWeeklyOccurrence?.occurrenceDate ?? null;
     const weeklySelectionRequired = isWeeklyParentEvent && !selectedWeeklyOccurrence;
     const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
@@ -1813,10 +1844,24 @@ export default function EventDetailSheet({
         });
     }, [divisionOptions]);
 
-    const loadEventDetails = useCallback(async (eventId?: string) => {
-        const sourceEvent = eventRef.current ?? event;
+    const loadEventDetails = useCallback(async (eventId?: string, options: LoadEventDetailsOptions = {}) => {
+        const sourceEvent = eventRef.current;
         const targetId = eventId ?? sourceEvent?.$id;
         if (!targetId) return;
+
+        const selectedOccurrence = selectedWeeklyOccurrenceSlotId && selectedWeeklyOccurrenceDate
+            ? {
+                slotId: selectedWeeklyOccurrenceSlotId,
+                occurrenceDate: selectedWeeklyOccurrenceDate,
+            }
+            : undefined;
+        const loadKey = buildEventDetailsLoadKey(targetId, selectedOccurrence);
+        if (options.automatic && loadKey && loadedEventDetailsKeyRef.current === loadKey) {
+            return;
+        }
+        if (options.automatic) {
+            loadedEventDetailsKeyRef.current = loadKey;
+        }
 
         setIsLoadingEvent(true);
         try {
@@ -1836,9 +1881,9 @@ export default function EventDetailSheet({
             let eventFreeAgents: UserData[] = [];
 
             if (baseEvent.eventType === 'WEEKLY_EVENT' && !baseEvent.parentEvent) {
-                if (selectedWeeklyOccurrence?.slotId && selectedWeeklyOccurrence?.occurrenceDate) {
+                if (selectedOccurrence?.slotId && selectedOccurrence?.occurrenceDate) {
                     try {
-                        const snapshot = await eventService.getEventParticipants(targetId, selectedWeeklyOccurrence);
+                        const snapshot = await eventService.getEventParticipants(targetId, selectedOccurrence);
                         const refreshedTeamIds = Array.from(new Set(
                             (snapshot.participants.teamIds ?? [])
                                 .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
@@ -2010,7 +2055,7 @@ export default function EventDetailSheet({
         } finally {
             setIsLoadingEvent(false);
         }
-    }, [event, renderInline, selectedWeeklyOccurrence]);
+    }, [renderInline, selectedWeeklyOccurrenceDate, selectedWeeklyOccurrenceSlotId]);
 
     useEffect(() => {
         eventRef.current = event;
@@ -2036,8 +2081,9 @@ export default function EventDetailSheet({
     useEffect(() => {
         if (isActive && event) {
             setDetailedEvent(event);
-            void loadEventDetails(event.$id);
+            void loadEventDetails(event.$id, { automatic: true });
         } else {
+            loadedEventDetailsKeyRef.current = null;
             setDetailedEvent(null);
             setPlayers([]);
             setTeams([]);
@@ -3438,8 +3484,27 @@ export default function EventDetailSheet({
                             .map((userId) => (typeof userId === 'string' ? userId.trim() : ''))
                             .filter((userId): userId is string => userId.length > 0),
                     ));
+                    const participantTeams = Array.isArray(snapshot.teams) ? snapshot.teams : [];
+                    const targetTeamRegistered = Boolean(
+                        targetTeamId
+                        && (
+                            participantTeamIds.includes(targetTeamId)
+                            || participantTeams.some((team) => {
+                                const teamRecord = team as { $id?: unknown; id?: unknown; parentTeamId?: unknown };
+                                const eventTeamId = typeof teamRecord.$id === 'string'
+                                    ? teamRecord.$id.trim()
+                                    : typeof teamRecord.id === 'string'
+                                        ? teamRecord.id.trim()
+                                        : '';
+                                const parentTeamId = typeof teamRecord.parentTeamId === 'string'
+                                    ? teamRecord.parentTeamId.trim()
+                                    : '';
+                                return eventTeamId === targetTeamId || parentTeamId === targetTeamId;
+                            })
+                        ),
+                    );
                     const registered = currentEvent.teamSignup
-                        ? Boolean(targetTeamId && participantTeamIds.includes(targetTeamId))
+                        ? targetTeamRegistered
                         : participantUserIds.includes(user.$id);
 
                     if (registered) {

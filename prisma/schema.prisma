@@ -789,6 +789,7 @@ model Events {
   noFixedEndDateTime           Boolean              @default(true)
   price                        Int
   taxHandling                  String               @default("INHERIT_ORG")
+  organizerManualTaxRateBps    Int                  @default(0)
   singleDivision               Boolean?
   registrationByDivisionType   Boolean?
   cancellationRefundHours      Int?
@@ -998,6 +999,7 @@ model Sports {
   useEnablePenaltyUnsporting        Boolean?
   usePenaltyPointsUnsporting        Boolean?
   usePointPrecision                 Boolean?
+  skillDivisionTypes                Json?
   officialPositionTemplates         Json?
   matchRulesTemplate                Json?
 }

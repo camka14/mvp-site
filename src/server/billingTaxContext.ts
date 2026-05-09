@@ -75,6 +75,7 @@ export const loadBillingTaxPolicyContext = async ({
           location: true,
           organizationId: true,
           taxHandling: true,
+          organizerManualTaxRateBps: true,
         } as any,
       })
     : null;

@@ -49,6 +49,9 @@ const upsertUserBillingAddressMock = jest.fn();
 const validateUsBillingAddressMock = jest.fn();
 const calculateTaxQuoteMock = jest.fn();
 const buildDestinationTransferDataMock = jest.fn();
+const canManageCanonicalTeamMock = jest.fn();
+const claimOrCreateEventTeamSnapshotMock = jest.fn();
+const loadCanonicalTeamByIdMock = jest.fn();
 
 jest.mock('stripe', () => ({
   __esModule: true,
@@ -77,8 +80,14 @@ jest.mock('@/lib/stripeTax', () => {
 jest.mock('@/lib/stripeConnectAccounts', () => ({
   buildDestinationTransferData: (...args: unknown[]) => buildDestinationTransferDataMock(...args),
 }));
+jest.mock('@/server/teams/teamMembership', () => ({
+  canManageCanonicalTeam: (...args: unknown[]) => canManageCanonicalTeamMock(...args),
+  claimOrCreateEventTeamSnapshot: (...args: unknown[]) => claimOrCreateEventTeamSnapshotMock(...args),
+  loadCanonicalTeamById: (...args: unknown[]) => loadCanonicalTeamByIdMock(...args),
+}));
 
 import { POST } from '@/app/api/billing/purchase-intent/route';
+import { CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES } from '@/lib/taxPolicy';
 
 const jsonPost = (body: unknown) =>
   new NextRequest('http://localhost/api/billing/purchase-intent', {
@@ -106,6 +115,16 @@ describe('POST /api/billing/purchase-intent', () => {
     prismaMock.eventRegistrations.create.mockResolvedValue({});
     prismaMock.eventRegistrations.update.mockResolvedValue({});
     prismaMock.eventRegistrations.deleteMany.mockResolvedValue({ count: 0 });
+    canManageCanonicalTeamMock.mockResolvedValue(true);
+    claimOrCreateEventTeamSnapshotMock.mockResolvedValue({ id: 'event_team_1' });
+    loadCanonicalTeamByIdMock.mockResolvedValue({
+      id: 'canonical_team_1',
+      $id: 'canonical_team_1',
+      name: 'Canonical Team',
+      sport: null,
+      playerRegistrations: [],
+      staffAssignments: [],
+    });
     prismaMock.$queryRaw.mockResolvedValue([
       {
         id: 'event_1',
@@ -371,6 +390,87 @@ describe('POST /api/billing/purchase-intent', () => {
     );
   });
 
+  it('creates an event-team snapshot before reserving paid canonical team checkout', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        start: new Date('2026-03-18T12:00:00.000Z'),
+        minAge: null,
+        maxAge: null,
+        sportId: null,
+        registrationByDivisionType: false,
+        divisions: [],
+        maxParticipants: null,
+        teamSignup: true,
+        eventType: 'EVENT',
+        includePlayoffs: null,
+        parentEvent: null,
+        timeSlotIds: [],
+      },
+    ]);
+    prismaMock.teams.findUnique.mockResolvedValueOnce(null);
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'canonical_team_1',
+      $id: 'canonical_team_1',
+      name: 'Rain Team',
+      sport: null,
+      playerRegistrations: [],
+      staffAssignments: [],
+    });
+    claimOrCreateEventTeamSnapshotMock.mockResolvedValueOnce({ id: 'event_team_1' });
+
+    const res = await POST(jsonPost({
+      user: { $id: 'user_1' },
+      event: {
+        $id: 'event_1',
+        name: 'Paid Team Event',
+        price: 2500,
+        eventType: 'EVENT',
+        teamSignup: true,
+      },
+      team: { $id: 'canonical_team_1', name: 'Rain Team' },
+    }));
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.paymentIntent).toBe('pi_123_secret_456');
+    expect(loadCanonicalTeamByIdMock).toHaveBeenCalledWith('canonical_team_1', expect.any(Object));
+    expect(canManageCanonicalTeamMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        teamId: 'canonical_team_1',
+        userId: 'user_1',
+        isAdmin: false,
+      }),
+      expect.any(Object),
+    );
+    expect(claimOrCreateEventTeamSnapshotMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventId: 'event_1',
+        canonicalTeamId: 'canonical_team_1',
+        createdBy: 'user_1',
+        upsertRegistration: false,
+      }),
+    );
+    expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          id: 'event_1__team__event_team_1',
+          eventId: 'event_1',
+          registrantId: 'event_team_1',
+          parentId: 'canonical_team_1',
+          eventTeamId: 'event_team_1',
+          registrantType: 'TEAM',
+          status: 'STARTED',
+        }),
+      }),
+    );
+    const createParams = mockStripePaymentIntentCreate.mock.calls[0]?.[0];
+    expect(createParams.metadata).toEqual(expect.objectContaining({
+      team_id: 'event_team_1',
+      registration_id: 'event_1__team__event_team_1',
+    }));
+  });
+
   it('skips Stripe Tax for zero-tax sports event jurisdictions and still charges customer fees', async () => {
     loadUserBillingProfileMock.mockResolvedValueOnce({
       billingAddress: null,
@@ -417,9 +517,94 @@ describe('POST /api/billing/purchase-intent', () => {
       tax_mode: 'ZERO_TAX',
       tax_reason_code: 'sports_participant_state_exempt',
       tax_jurisdiction_state: 'NJ',
+      taxability: 'NOT_TAXABLE',
+      tax_liability_party: 'NONE',
+      tax_collection_strategy: 'NO_TAX',
       tax_cents: '0',
       stripe_tax_service_fee_cents: '0',
     }));
+  });
+
+  it('transfers organizer manual tax to the connected account when a reviewed rule allows organizer liability', async () => {
+    const organizerRules = CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES as Array<{
+      stateCode: string;
+      purchaseTypes: string[];
+      taxCategories: string[];
+      allowedCollectionStrategies: Array<'ORGANIZER_MANUAL_TAX'>;
+      ruleId: string;
+      ruleVersion: string;
+    }>;
+    const originalRuleCount = organizerRules.length;
+    organizerRules.push({
+      stateCode: 'ID',
+      purchaseTypes: ['event'],
+      taxCategories: ['EVENT_PARTICIPANT'],
+      allowedCollectionStrategies: ['ORGANIZER_MANUAL_TAX'],
+      ruleId: 'test-id-organizer-liable',
+      ruleVersion: 'test-2026-05-08',
+    });
+    buildDestinationTransferDataMock.mockResolvedValueOnce({
+      destination: 'acct_connected_123',
+      amount: 2650,
+    });
+    loadUserBillingProfileMock.mockResolvedValueOnce({
+      billingAddress: null,
+      email: 'buyer@example.com',
+    });
+
+    try {
+      const res = await POST(jsonPost({
+        user: { $id: 'user_1' },
+        event: {
+          $id: 'event_1',
+          name: 'Boise Pickup',
+          price: 2500,
+          eventType: 'EVENT',
+          address: '123 Main St, Boise, ID 83702',
+          location: 'Boise, ID',
+          taxHandling: 'ORGANIZER_MANUAL_TAX',
+          organizerManualTaxRateBps: 600,
+        },
+      }));
+      const data = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(calculateTaxQuoteMock).not.toHaveBeenCalled();
+      expect(data.taxLiabilityParty).toBe('ORGANIZER');
+      expect(data.taxCollectionStrategy).toBe('ORGANIZER_MANUAL_TAX');
+      expect(data.feeBreakdown).toEqual(expect.objectContaining({
+        eventPrice: 2500,
+        taxAmount: 150,
+        hostReceives: 2650,
+      }));
+      expect(buildDestinationTransferDataMock).toHaveBeenCalledWith({
+        organizationId: null,
+        hostUserId: null,
+        transferAmountCents: 2650,
+      });
+
+      const createParams = mockStripePaymentIntentCreate.mock.calls[0]?.[0];
+      expect(createParams).toEqual(expect.objectContaining({
+        amount: data.feeBreakdown.totalCharge,
+      }));
+      expect(createParams.customer).toBeUndefined();
+      expect(createParams.hooks).toBeUndefined();
+      expect(createParams.transfer_data).toEqual({
+        destination: 'acct_connected_123',
+        amount: 2650,
+      });
+      expect(createParams.metadata).toEqual(expect.objectContaining({
+        tax_liability_party: 'ORGANIZER',
+        tax_collection_strategy: 'ORGANIZER_MANUAL_TAX',
+        tax_policy_rule_id: 'test-id-organizer-liable',
+        tax_policy_rule_version: 'test-2026-05-08',
+        organizer_manual_tax_rate_bps: '600',
+        tax_cents: '150',
+        transfer_amount_cents: '2650',
+      }));
+    } finally {
+      organizerRules.splice(originalRuleCount);
+    }
   });
 
   it('rejects purchase-intent creation when a STARTED reservation already exists', async () => {

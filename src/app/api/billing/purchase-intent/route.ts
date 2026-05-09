@@ -13,13 +13,20 @@ import {
 } from '@/lib/billingAddress';
 import { resolvePurchaseContext } from '@/lib/purchaseContext';
 import {
+  buildOrganizerManualTaxQuote,
   buildZeroTaxQuote,
   calculateTaxQuote,
   INTERNAL_TAX_CATEGORIES,
   type InternalTaxCategory,
   type TaxQuote,
 } from '@/lib/stripeTax';
-import { resolvePurchaseTaxPolicy, type TaxPolicyDecision } from '@/lib/taxPolicy';
+import {
+  normalizeOrganizerManualTaxRateBps,
+  resolvePurchaseTaxPolicy,
+  taxPolicyRequiresStripeTaxCalculation,
+  taxPolicyUsesOrganizerManualTax,
+  type TaxPolicyDecision,
+} from '@/lib/taxPolicy';
 import { buildDestinationTransferData } from '@/lib/stripeConnectAccounts';
 import {
   buildBillingAddressFingerprint,
@@ -41,6 +48,11 @@ import {
   releaseStartedTeamRegistration,
   reserveTeamRegistrationSlot,
 } from '@/server/teams/teamOpenRegistration';
+import {
+  canManageCanonicalTeam,
+  claimOrCreateEventTeamSnapshot,
+  loadCanonicalTeamById,
+} from '@/server/teams/teamMembership';
 import { getTeamRegistrationSignatureState } from '@/server/teams/teamRegistrationDocuments';
 import {
   isWeeklyParentEvent,
@@ -191,6 +203,12 @@ const taxPolicyResponseFields = (taxPolicy: TaxPolicyDecision) => ({
   taxMode: taxPolicy.mode,
   taxReasonCode: taxPolicy.reasonCode,
   taxJurisdictionState: taxPolicy.jurisdictionState,
+  taxability: taxPolicy.taxability,
+  taxLiabilityParty: taxPolicy.liabilityParty,
+  taxCollectionStrategy: taxPolicy.collectionStrategy,
+  taxPolicyRuleId: taxPolicy.policyRuleId,
+  taxPolicyRuleVersion: taxPolicy.policyRuleVersion,
+  organizerResponsibilityMessage: taxPolicy.organizerResponsibilityMessage,
 });
 
 type RegistrationDivisionSelectionInput = {
@@ -213,6 +231,7 @@ const reserveEventRegistrationSlot = async ({
   teamId,
   userId,
   actorUserId,
+  actorIsAdmin,
   divisionSelectionInput,
   slotId,
   occurrenceDate,
@@ -222,11 +241,12 @@ const reserveEventRegistrationSlot = async ({
   teamId: string | null;
   userId: string | null;
   actorUserId: string;
+  actorIsAdmin?: boolean;
   divisionSelectionInput: RegistrationDivisionSelectionInput;
   slotId?: string | null;
   occurrenceDate?: string | null;
   now: Date;
-}): Promise<{ ok: true; registrationId: string } | { ok: false; status: number; error: string }> => {
+}): Promise<{ ok: true; registrationId: string; teamId: string | null } | { ok: false; status: number; error: string }> => {
   if (!eventId) {
     return { ok: false, status: 400, error: 'Event id is required for event checkout.' };
   }
@@ -306,23 +326,88 @@ const reserveEventRegistrationSlot = async ({
     if (occurrence && isWeeklyOccurrenceJoinClosed(occurrence, now)) {
       return { ok: false, status: 409, error: WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR };
     }
-    const registrationId = buildEventRegistrationId({
-      eventId,
-      registrantType: teamId ? 'TEAM' : 'SELF',
-      registrantId: teamId ?? (userId as string),
-      slotId: occurrence?.slotId ?? null,
-      occurrenceDate: occurrence?.occurrenceDate ?? null,
+    const eventStart = event.start instanceof Date
+      ? event.start
+      : (event.start ? new Date(event.start) : now);
+    const normalizedEventStart = Number.isNaN(eventStart.getTime()) ? now : eventStart;
+    const selectionInput = {
+      divisionId: normalizeString(divisionSelectionInput.divisionId ?? null),
+      divisionTypeId: normalizeString(divisionSelectionInput.divisionTypeId ?? null),
+      divisionTypeKey: normalizeString(divisionSelectionInput.divisionTypeKey ?? null),
+    };
+    const divisionSelectionResult = await resolveEventDivisionSelection({
+      event: {
+        id: event.id,
+        start: normalizedEventStart,
+        minAge: event.minAge ?? null,
+        maxAge: event.maxAge ?? null,
+        sportId: event.sportId ?? null,
+        registrationByDivisionType: event.registrationByDivisionType ?? null,
+        divisions: normalizeStringList(event.divisions),
+        eventType: event.eventType ?? null,
+        includePlayoffs: event.includePlayoffs ?? null,
+      },
+      input: selectionInput,
     });
+    if (!divisionSelectionResult.ok) {
+      return {
+        ok: false,
+        status: 400,
+        error: divisionSelectionResult.error ?? 'Invalid division selection.',
+      };
+    }
+    const divisionSelection = divisionSelectionResult.selection;
 
+    let participantTeamId = teamId;
+    let parentTeamId: string | null = null;
     if (teamId) {
-      const team = await tx.teams.findUnique({
+      const eventTeam = await tx.teams.findUnique({
         where: { id: teamId },
         select: { id: true },
       });
-      if (!team) {
+      if (eventTeam?.id) {
+        participantTeamId = eventTeam.id;
+      } else {
+        const canonicalTeam = await loadCanonicalTeamById(teamId, tx);
+        if (!canonicalTeam) {
+          return { ok: false, status: 404, error: 'Team not found.' };
+        }
+        const canManageTeam = await canManageCanonicalTeam({
+          teamId,
+          userId: actorUserId,
+          isAdmin: actorIsAdmin,
+        }, tx);
+        if (!canManageTeam) {
+          return { ok: false, status: 403, error: 'Only the team manager can register this team.' };
+        }
+        const checkoutEventTeam = await claimOrCreateEventTeamSnapshot({
+          tx,
+          eventId,
+          canonicalTeamId: teamId,
+          createdBy: actorUserId,
+          canonicalTeam,
+          divisionId: divisionSelection.divisionId,
+          divisionTypeId: divisionSelection.divisionTypeId,
+          divisionTypeKey: divisionSelection.divisionTypeKey,
+          occurrence,
+          upsertRegistration: false,
+        });
+        participantTeamId = normalizeString((checkoutEventTeam as any)?.id);
+        parentTeamId = teamId;
+      }
+      if (!participantTeamId) {
         return { ok: false, status: 404, error: 'Team not found.' };
       }
     }
+
+    const participantId = participantTeamId ?? (userId as string);
+    const registrationId = buildEventRegistrationId({
+      eventId,
+      registrantType: participantTeamId ? 'TEAM' : 'SELF',
+      registrantId: participantId,
+      slotId: occurrence?.slotId ?? null,
+      occurrenceDate: occurrence?.occurrenceDate ?? null,
+    });
 
     const staleStartedRows = await tx.eventRegistrations.findMany({
       where: {
@@ -356,37 +441,6 @@ const reserveEventRegistrationSlot = async ({
       return { ok: false, status: 409, error: 'Participant is already registered for this event.' };
     }
 
-    const eventStart = event.start instanceof Date
-      ? event.start
-      : (event.start ? new Date(event.start) : now);
-    const normalizedEventStart = Number.isNaN(eventStart.getTime()) ? now : eventStart;
-    const selectionInput = {
-      divisionId: normalizeString(divisionSelectionInput.divisionId ?? existing?.divisionId ?? null),
-      divisionTypeId: normalizeString(divisionSelectionInput.divisionTypeId ?? existing?.divisionTypeId ?? null),
-      divisionTypeKey: normalizeString(divisionSelectionInput.divisionTypeKey ?? existing?.divisionTypeKey ?? null),
-    };
-    const divisionSelectionResult = await resolveEventDivisionSelection({
-      event: {
-        id: event.id,
-        start: normalizedEventStart,
-        minAge: event.minAge ?? null,
-        maxAge: event.maxAge ?? null,
-        sportId: event.sportId ?? null,
-        registrationByDivisionType: event.registrationByDivisionType ?? null,
-        divisions: normalizeStringList(event.divisions),
-        eventType: event.eventType ?? null,
-        includePlayoffs: event.includePlayoffs ?? null,
-      },
-      input: selectionInput,
-    });
-    if (!divisionSelectionResult.ok) {
-      return {
-        ok: false,
-        status: 400,
-        error: divisionSelectionResult.error ?? 'Invalid division selection.',
-      };
-    }
-    const divisionSelection = divisionSelectionResult.selection;
     const eventDivisionIds = normalizeStringList(event.divisions);
     let divisionMaxParticipants: number | null = null;
     let divisionIdForCapacity: string | null = null;
@@ -419,8 +473,10 @@ const reserveEventRegistrationSlot = async ({
         data: {
           id: registrationId,
           eventId,
-          registrantId: teamId ?? (userId as string),
-          registrantType: teamId ? 'TEAM' : 'SELF',
+          registrantId: participantId,
+          parentId: parentTeamId,
+          eventTeamId: participantTeamId,
+          registrantType: participantTeamId ? 'TEAM' : 'SELF',
           rosterRole: 'PARTICIPANT' as any,
           status: 'STARTED' as any,
           slotId: occurrence?.slotId ?? null,
@@ -445,6 +501,10 @@ const reserveEventRegistrationSlot = async ({
       await tx.eventRegistrations.update({
         where: { id: registrationId },
         data: {
+          registrantId: participantId,
+          parentId: parentTeamId,
+          eventTeamId: participantTeamId,
+          registrantType: participantTeamId ? 'TEAM' : 'SELF',
           rosterRole: 'PARTICIPANT' as any,
           status: 'STARTED' as any,
           slotId: occurrence?.slotId ?? null,
@@ -529,7 +589,7 @@ const reserveEventRegistrationSlot = async ({
       }
     }
 
-    return { ok: true, registrationId };
+    return { ok: true, registrationId, teamId: participantTeamId };
   });
 };
 
@@ -645,6 +705,7 @@ export async function POST(req: NextRequest) {
     fallbackUserId: userId ?? session.userId,
   });
   const teamId = teamCheckoutTarget.teamId ?? directTeamId;
+  let checkoutTeamId = teamId;
   const slotId = normalizeString(payload.slotId);
   const occurrenceDate = normalizeString(payload.occurrenceDate);
   const divisionSelectionInput = normalizeDivisionInput(payloadRow);
@@ -746,6 +807,9 @@ export async function POST(req: NextRequest) {
     organization: taxContext.organization ?? payload.organization ?? null,
     timeSlot: taxContext.timeSlot ?? payload.timeSlot ?? null,
   });
+  const organizerManualTaxRateBps = normalizeOrganizerManualTaxRateBps(
+    (taxContext.event ?? payload.event ?? null)?.organizerManualTaxRateBps,
+  );
 
   let existingTeamRegistration: Awaited<ReturnType<typeof findTeamRegistration>> | null = null;
   if (resolvedPurchase.purchaseType === 'team_registration') {
@@ -801,7 +865,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
   }
 
+  if (taxPolicy.collectionStrategy === 'BLOCKED_NEEDS_REVIEW') {
+    return NextResponse.json({
+      error: 'Tax collection must be configured before checkout can continue.',
+      ...taxPolicyResponseFields(taxPolicy),
+    }, { status: 400 });
+  }
+  if (taxPolicy.collectionStrategy === 'ORGANIZER_STRIPE_TAX') {
+    return NextResponse.json({
+      error: 'Organizer Stripe Tax checkout requires connected-account tax setup and is not enabled for this checkout yet.',
+      ...taxPolicyResponseFields(taxPolicy),
+    }, { status: 400 });
+  }
+
   if (!secretKey) {
+    if (taxPolicyUsesOrganizerManualTax(taxPolicy)) {
+      const manualTaxQuote = buildOrganizerManualTaxQuote({
+        subtotalCents: resolvedPurchase.amountCents,
+        organizerManualTaxRateBps,
+        purchaseType: resolvedPurchase.purchaseType,
+        taxCategory: resolvedPurchase.taxCategory,
+        eventType: resolvedPurchase.eventType,
+      });
+      return NextResponse.json({
+        paymentIntent: `pi_mock_${crypto.randomUUID()}`,
+        publishableKey,
+        checkoutMode: 'PAYMENT_INTENT',
+        taxCategory: resolvedPurchase.taxCategory,
+        ...taxPolicyResponseFields(taxPolicy),
+        feeBreakdown: buildFeeBreakdown(manualTaxQuote),
+      }, { status: 200 });
+    }
     const fallbackFees = calculateMvpAndStripeFeesWithTax({
       eventAmountCents: resolvedPurchase.amountCents,
       eventType: resolvedPurchase.eventType,
@@ -812,7 +906,7 @@ export async function POST(req: NextRequest) {
       paymentIntent: `pi_mock_${crypto.randomUUID()}`,
       publishableKey,
       checkoutMode: 'PAYMENT_INTENT',
-      taxCalculationId: taxPolicy.mode === 'ZERO_TAX' ? undefined : `tax_mock_${crypto.randomUUID()}`,
+      taxCalculationId: taxPolicyRequiresStripeTaxCalculation(taxPolicy) ? `tax_mock_${crypto.randomUUID()}` : undefined,
       taxCategory: resolvedPurchase.taxCategory,
       ...taxPolicyResponseFields(taxPolicy),
       feeBreakdown: {
@@ -847,7 +941,7 @@ export async function POST(req: NextRequest) {
   }
   const billingAddress = savedBillingProfile?.billingAddress ?? billingProfile.billingAddress;
   const billingEmail = savedBillingProfile?.email ?? billingProfile.email;
-  const requiresBillingAddressForTax = taxPolicy.mode !== 'ZERO_TAX';
+  const requiresBillingAddressForTax = taxPolicyRequiresStripeTaxCalculation(taxPolicy);
   if (requiresBillingAddressForTax && !billingAddress) {
     return NextResponse.json({
       error: 'Billing address is required before creating a payment intent.',
@@ -886,6 +980,14 @@ export async function POST(req: NextRequest) {
       taxCategory: resolvedPurchase.taxCategory,
       eventType: resolvedPurchase.eventType,
     });
+  } else if (taxPolicyUsesOrganizerManualTax(taxPolicy)) {
+    taxQuote = buildOrganizerManualTaxQuote({
+      subtotalCents: resolvedPurchase.amountCents,
+      organizerManualTaxRateBps,
+      purchaseType: resolvedPurchase.purchaseType,
+      taxCategory: resolvedPurchase.taxCategory,
+      eventType: resolvedPurchase.eventType,
+    });
   } else {
     try {
       taxQuote = await calculateTaxQuote({
@@ -902,7 +1004,7 @@ export async function POST(req: NextRequest) {
           purchaseType: resolvedPurchase.purchaseType,
           productId: resolvedPurchase.product?.id ?? null,
           eventId: eventIdForReference,
-          teamId,
+          teamId: checkoutTeamId,
           timeSlotId: timeSlotIdForReference,
           billId: payload.billId ?? null,
           billPaymentId: payload.billPaymentId ?? null,
@@ -919,11 +1021,14 @@ export async function POST(req: NextRequest) {
   }
 
   const feeBreakdown = buildFeeBreakdown(taxQuote);
+  const connectedAccountTransferAmountCents = taxPolicyUsesOrganizerManualTax(taxPolicy)
+    ? taxQuote.subtotalCents + taxQuote.taxAmountCents
+    : taxQuote.subtotalCents;
 
   const transferData = await buildDestinationTransferData({
     organizationId,
     hostUserId,
-    transferAmountCents: taxQuote.subtotalCents,
+    transferAmountCents: connectedAccountTransferAmountCents,
   });
   const billingAddressFingerprint = buildBillingAddressFingerprint(validatedBillingAddress);
 
@@ -965,6 +1070,7 @@ export async function POST(req: NextRequest) {
       teamId,
       userId: checkoutUserId,
       actorUserId,
+      actorIsAdmin: Boolean(session.isAdmin),
       divisionSelectionInput,
       slotId,
       occurrenceDate,
@@ -974,6 +1080,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: reservationResult.error }, { status: reservationResult.status });
     }
     reservedRegistrationId = reservationResult.registrationId;
+    checkoutTeamId = reservationResult.teamId ?? checkoutTeamId;
   } else if (resolvedPurchase.purchaseType === 'team_registration') {
     const reservationResult = await reserveTeamRegistrationSlot({
       teamId,
@@ -1057,7 +1164,7 @@ export async function POST(req: NextRequest) {
 
     appendMetadata(metadata, 'user_id', checkoutUserId);
     appendMetadata(metadata, 'buyer_user_id', actorUserId);
-    appendMetadata(metadata, 'team_id', teamId);
+    appendMetadata(metadata, 'team_id', checkoutTeamId);
     appendMetadata(metadata, 'event_id', eventId);
     appendMetadata(metadata, 'product_id', payload.productId ?? resolvedPurchase.product?.id);
     appendMetadata(metadata, 'organization_id', organizationId);
@@ -1077,6 +1184,12 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'tax_mode', taxPolicy.mode);
     appendMetadata(metadata, 'tax_reason_code', taxPolicy.reasonCode);
     appendMetadata(metadata, 'tax_jurisdiction_state', taxPolicy.jurisdictionState);
+    appendMetadata(metadata, 'taxability', taxPolicy.taxability);
+    appendMetadata(metadata, 'tax_liability_party', taxPolicy.liabilityParty);
+    appendMetadata(metadata, 'tax_collection_strategy', taxPolicy.collectionStrategy);
+    appendMetadata(metadata, 'tax_policy_rule_id', taxPolicy.policyRuleId);
+    appendMetadata(metadata, 'tax_policy_rule_version', taxPolicy.policyRuleVersion);
+    appendMetadata(metadata, 'organizer_manual_tax_rate_bps', taxPolicyUsesOrganizerManualTax(taxPolicy) ? organizerManualTaxRateBps : null);
     appendMetadata(metadata, 'billing_address_fingerprint', billingAddressFingerprint);
     appendMetadata(metadata, 'event_name', payload.event?.name);
     appendMetadata(metadata, 'event_location', payload.event?.location);
@@ -1143,7 +1256,7 @@ export async function POST(req: NextRequest) {
       purchaseType: resolvedPurchase.purchaseType,
       registrationId: reservedRegistrationId,
       eventId,
-      teamId,
+      teamId: checkoutTeamId,
     });
     await releaseReservedRentalWindow({
       window: reservedRentalWindow,

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TextInput, Button, Paper } from '@mantine/core';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 import { locationService } from '@/lib/locationService';
-import { GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
+import { GOOGLE_MAP_OPTIONS_WITH_MAP_ID, GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_MAP_ID, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
 import { useDebounce } from '@/app/hooks/useDebounce';
 
 interface LocationSelectorProps {
@@ -37,6 +37,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     const [predictionsLoading, setPredictionsLoading] = useState(false);
     const geolocationRequestedRef = useRef(false);
     const advancedMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+    const legacyMarkerRef = useRef<google.maps.Marker | null>(null);
     const debouncedMapSearchQuery = useDebounce(mapSearchQuery, 250);
     const hasCoordinates = coordinates.lat !== 0 || coordinates.lng !== 0;
     const mapCenter = hasCoordinates ? coordinates : center;
@@ -86,6 +87,10 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                 advancedMarkerRef.current.map = null;
                 advancedMarkerRef.current = null;
             }
+            if (legacyMarkerRef.current) {
+                legacyMarkerRef.current.setMap(null);
+                legacyMarkerRef.current = null;
+            }
         };
     }, []);
 
@@ -98,7 +103,37 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                     advancedMarkerRef.current.map = null;
                     advancedMarkerRef.current = null;
                 }
+                if (legacyMarkerRef.current) {
+                    legacyMarkerRef.current.setMap(null);
+                    legacyMarkerRef.current = null;
+                }
                 return;
+            }
+
+            if (!GOOGLE_MAPS_MAP_ID) {
+                if (advancedMarkerRef.current) {
+                    advancedMarkerRef.current.map = null;
+                    advancedMarkerRef.current = null;
+                }
+
+                if (!legacyMarkerRef.current) {
+                    legacyMarkerRef.current = new google.maps.Marker({
+                        map: mapInstance,
+                        position: coordinates,
+                        title: value || 'Selected location',
+                    });
+                    return;
+                }
+
+                legacyMarkerRef.current.setMap(mapInstance);
+                legacyMarkerRef.current.setPosition(coordinates);
+                legacyMarkerRef.current.setTitle(value || 'Selected location');
+                return;
+            }
+
+            if (legacyMarkerRef.current) {
+                legacyMarkerRef.current.setMap(null);
+                legacyMarkerRef.current = null;
             }
 
             const markerLibrary = await google.maps.importLibrary('marker') as google.maps.MarkerLibrary;
@@ -380,6 +415,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                         onUnmount={() => setMapInstance(null)}
                         onClick={onMapClick}
                         options={{
+                            ...GOOGLE_MAP_OPTIONS_WITH_MAP_ID,
                             clickableIcons: true,
                             disableDefaultUI: false,
                             mapTypeControl: false,

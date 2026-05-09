@@ -2,7 +2,7 @@ import type { PrismaClient } from '../../generated/prisma/client';
 import { prisma } from '@/lib/prisma';
 import { canOrganizationUsePaidBilling } from '@/lib/organizationVerification';
 import { sanitizeOrganizationEventAssignments } from '@/lib/organizationEventAccess';
-import { normalizeEventTaxHandling, normalizeRentalTaxHandling } from '@/lib/taxPolicy';
+import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps, normalizeRentalTaxHandling } from '@/lib/taxPolicy';
 import {
   buildDivisionToken,
   buildEventDivisionId,
@@ -3974,6 +3974,11 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? payload.taxHandling
       : (existingEvent as any)?.taxHandling,
   );
+  const normalizedOrganizerManualTaxRateBps = normalizeOrganizerManualTaxRateBps(
+    Object.prototype.hasOwnProperty.call(payload, 'organizerManualTaxRateBps')
+      ? payload.organizerManualTaxRateBps
+      : (existingEvent as any)?.organizerManualTaxRateBps,
+  );
 
   const eventData = {
     id,
@@ -3997,6 +4002,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     noFixedEndDateTime,
     price: normalizedEventPrice,
     taxHandling: normalizedTaxHandling,
+    organizerManualTaxRateBps: normalizedOrganizerManualTaxRateBps,
     singleDivision: payload.singleDivision ?? false,
     registrationByDivisionType: payload.registrationByDivisionType ?? false,
     cancellationRefundHours: payload.cancellationRefundHours ?? null,

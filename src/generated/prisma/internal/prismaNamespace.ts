@@ -4251,6 +4251,7 @@ export const EventsScalarFieldEnum = {
   noFixedEndDateTime: 'noFixedEndDateTime',
   price: 'price',
   taxHandling: 'taxHandling',
+  organizerManualTaxRateBps: 'organizerManualTaxRateBps',
   singleDivision: 'singleDivision',
   registrationByDivisionType: 'registrationByDivisionType',
   cancellationRefundHours: 'cancellationRefundHours',
@@ -4468,6 +4469,7 @@ export const SportsScalarFieldEnum = {
   useEnablePenaltyUnsporting: 'useEnablePenaltyUnsporting',
   usePenaltyPointsUnsporting: 'usePenaltyPointsUnsporting',
   usePointPrecision: 'usePointPrecision',
+  skillDivisionTypes: 'skillDivisionTypes',
   officialPositionTemplates: 'officialPositionTemplates',
   matchRulesTemplate: 'matchRulesTemplate'
 } as const

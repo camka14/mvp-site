@@ -53,6 +53,16 @@ const basketballOfficialPositionTemplates = [
   { name: 'Timekeeper', count: 1 },
 ];
 
+const basketballSkillDivisionTypes = [
+  { id: 'rec', name: 'Recreational' },
+  { id: 'open', name: 'Open' },
+];
+
+const baseballSkillDivisionTypes = [
+  { id: 'aaa', name: 'AAA' },
+  { id: 'open', name: 'Open' },
+];
+
 describe('GET /api/sports', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -97,6 +107,12 @@ describe('GET /api/sports', () => {
     expect(createdNames).not.toContain('Volleyball');
     expect(basketball?.usePointsPerGoalScored).toBe(false);
     expect(basketball?.usePointsPerGoalConceded).toBe(false);
+    expect(basketball?.skillDivisionTypes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'rec', name: 'Recreational' }),
+        expect.objectContaining({ id: 'open', name: 'Open' }),
+      ]),
+    );
     expect(basketball?.matchRulesTemplate).toEqual(
       expect.objectContaining({
         supportsOvertime: true,
@@ -175,6 +191,7 @@ describe('GET /api/sports', () => {
       {
         id: 'Basketball',
         name: 'Basketball',
+        skillDivisionTypes: basketballSkillDivisionTypes,
         officialPositionTemplates: basketballOfficialPositionTemplates,
         matchRulesTemplate: basketballMatchRulesTemplate,
         usePointsForWin: true,
@@ -198,6 +215,7 @@ describe('GET /api/sports', () => {
       {
         id: 'Basketball',
         name: 'Basketball',
+        skillDivisionTypes: basketballSkillDivisionTypes,
         officialPositionTemplates: basketballOfficialPositionTemplates,
         matchRulesTemplate: basketballMatchRulesTemplate,
         usePointsForWin: null,
@@ -237,6 +255,7 @@ describe('GET /api/sports', () => {
       {
         id: 'Basketball',
         name: 'Basketball',
+        skillDivisionTypes: basketballSkillDivisionTypes,
         officialPositionTemplates: null,
         matchRulesTemplate: basketballMatchRulesTemplate,
         usePointsForWin: true,
@@ -270,6 +289,7 @@ describe('GET /api/sports', () => {
       {
         id: 'Baseball',
         name: 'Baseball',
+        skillDivisionTypes: baseballSkillDivisionTypes,
         officialPositionTemplates: [
           { name: 'Plate Umpire', count: 1 },
           { name: 'Base Umpire', count: 2 },

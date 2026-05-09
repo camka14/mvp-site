@@ -172,6 +172,7 @@ export type SportsCountAggregateOutputType = {
   useEnablePenaltyUnsporting: number
   usePenaltyPointsUnsporting: number
   usePointPrecision: number
+  skillDivisionTypes: number
   officialPositionTemplates: number
   matchRulesTemplate: number
   _all: number
@@ -326,6 +327,7 @@ export type SportsCountAggregateInputType = {
   useEnablePenaltyUnsporting?: true
   usePenaltyPointsUnsporting?: true
   usePointPrecision?: true
+  skillDivisionTypes?: true
   officialPositionTemplates?: true
   matchRulesTemplate?: true
   _all?: true
@@ -451,6 +453,7 @@ export type SportsGroupByOutputType = {
   useEnablePenaltyUnsporting: boolean | null
   usePenaltyPointsUnsporting: boolean | null
   usePointPrecision: boolean | null
+  skillDivisionTypes: runtime.JsonValue | null
   officialPositionTemplates: runtime.JsonValue | null
   matchRulesTemplate: runtime.JsonValue | null
   _count: SportsCountAggregateOutputType | null
@@ -524,6 +527,7 @@ export type SportsWhereInput = {
   useEnablePenaltyUnsporting?: Prisma.BoolNullableFilter<"Sports"> | boolean | null
   usePenaltyPointsUnsporting?: Prisma.BoolNullableFilter<"Sports"> | boolean | null
   usePointPrecision?: Prisma.BoolNullableFilter<"Sports"> | boolean | null
+  skillDivisionTypes?: Prisma.JsonNullableFilter<"Sports">
   officialPositionTemplates?: Prisma.JsonNullableFilter<"Sports">
   matchRulesTemplate?: Prisma.JsonNullableFilter<"Sports">
 }
@@ -576,6 +580,7 @@ export type SportsOrderByWithRelationInput = {
   useEnablePenaltyUnsporting?: Prisma.SortOrderInput | Prisma.SortOrder
   usePenaltyPointsUnsporting?: Prisma.SortOrderInput | Prisma.SortOrder
   usePointPrecision?: Prisma.SortOrderInput | Prisma.SortOrder
+  skillDivisionTypes?: Prisma.SortOrderInput | Prisma.SortOrder
   officialPositionTemplates?: Prisma.SortOrderInput | Prisma.SortOrder
   matchRulesTemplate?: Prisma.SortOrderInput | Prisma.SortOrder
 }
@@ -631,6 +636,7 @@ export type SportsWhereUniqueInput = Prisma.AtLeast<{
   useEnablePenaltyUnsporting?: Prisma.BoolNullableFilter<"Sports"> | boolean | null
   usePenaltyPointsUnsporting?: Prisma.BoolNullableFilter<"Sports"> | boolean | null
   usePointPrecision?: Prisma.BoolNullableFilter<"Sports"> | boolean | null
+  skillDivisionTypes?: Prisma.JsonNullableFilter<"Sports">
   officialPositionTemplates?: Prisma.JsonNullableFilter<"Sports">
   matchRulesTemplate?: Prisma.JsonNullableFilter<"Sports">
 }, "id">
@@ -683,6 +689,7 @@ export type SportsOrderByWithAggregationInput = {
   useEnablePenaltyUnsporting?: Prisma.SortOrderInput | Prisma.SortOrder
   usePenaltyPointsUnsporting?: Prisma.SortOrderInput | Prisma.SortOrder
   usePointPrecision?: Prisma.SortOrderInput | Prisma.SortOrder
+  skillDivisionTypes?: Prisma.SortOrderInput | Prisma.SortOrder
   officialPositionTemplates?: Prisma.SortOrderInput | Prisma.SortOrder
   matchRulesTemplate?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.SportsCountOrderByAggregateInput
@@ -741,6 +748,7 @@ export type SportsScalarWhereWithAggregatesInput = {
   useEnablePenaltyUnsporting?: Prisma.BoolNullableWithAggregatesFilter<"Sports"> | boolean | null
   usePenaltyPointsUnsporting?: Prisma.BoolNullableWithAggregatesFilter<"Sports"> | boolean | null
   usePointPrecision?: Prisma.BoolNullableWithAggregatesFilter<"Sports"> | boolean | null
+  skillDivisionTypes?: Prisma.JsonNullableWithAggregatesFilter<"Sports">
   officialPositionTemplates?: Prisma.JsonNullableWithAggregatesFilter<"Sports">
   matchRulesTemplate?: Prisma.JsonNullableWithAggregatesFilter<"Sports">
 }
@@ -793,6 +801,7 @@ export type SportsCreateInput = {
   useEnablePenaltyUnsporting?: boolean | null
   usePenaltyPointsUnsporting?: boolean | null
   usePointPrecision?: boolean | null
+  skillDivisionTypes?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   officialPositionTemplates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesTemplate?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -845,6 +854,7 @@ export type SportsUncheckedCreateInput = {
   useEnablePenaltyUnsporting?: boolean | null
   usePenaltyPointsUnsporting?: boolean | null
   usePointPrecision?: boolean | null
+  skillDivisionTypes?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   officialPositionTemplates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesTemplate?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -897,6 +907,7 @@ export type SportsUpdateInput = {
   useEnablePenaltyUnsporting?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   usePenaltyPointsUnsporting?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   usePointPrecision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  skillDivisionTypes?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   officialPositionTemplates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesTemplate?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -949,6 +960,7 @@ export type SportsUncheckedUpdateInput = {
   useEnablePenaltyUnsporting?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   usePenaltyPointsUnsporting?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   usePointPrecision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  skillDivisionTypes?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   officialPositionTemplates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesTemplate?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -1001,6 +1013,7 @@ export type SportsCreateManyInput = {
   useEnablePenaltyUnsporting?: boolean | null
   usePenaltyPointsUnsporting?: boolean | null
   usePointPrecision?: boolean | null
+  skillDivisionTypes?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   officialPositionTemplates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesTemplate?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -1053,6 +1066,7 @@ export type SportsUpdateManyMutationInput = {
   useEnablePenaltyUnsporting?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   usePenaltyPointsUnsporting?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   usePointPrecision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  skillDivisionTypes?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   officialPositionTemplates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesTemplate?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -1105,6 +1119,7 @@ export type SportsUncheckedUpdateManyInput = {
   useEnablePenaltyUnsporting?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   usePenaltyPointsUnsporting?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
   usePointPrecision?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  skillDivisionTypes?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   officialPositionTemplates?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
   matchRulesTemplate?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
 }
@@ -1157,6 +1172,7 @@ export type SportsCountOrderByAggregateInput = {
   useEnablePenaltyUnsporting?: Prisma.SortOrder
   usePenaltyPointsUnsporting?: Prisma.SortOrder
   usePointPrecision?: Prisma.SortOrder
+  skillDivisionTypes?: Prisma.SortOrder
   officialPositionTemplates?: Prisma.SortOrder
   matchRulesTemplate?: Prisma.SortOrder
 }
@@ -1311,6 +1327,7 @@ export type SportsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   useEnablePenaltyUnsporting?: boolean
   usePenaltyPointsUnsporting?: boolean
   usePointPrecision?: boolean
+  skillDivisionTypes?: boolean
   officialPositionTemplates?: boolean
   matchRulesTemplate?: boolean
 }, ExtArgs["result"]["sports"]>
@@ -1363,6 +1380,7 @@ export type SportsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   useEnablePenaltyUnsporting?: boolean
   usePenaltyPointsUnsporting?: boolean
   usePointPrecision?: boolean
+  skillDivisionTypes?: boolean
   officialPositionTemplates?: boolean
   matchRulesTemplate?: boolean
 }, ExtArgs["result"]["sports"]>
@@ -1415,6 +1433,7 @@ export type SportsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   useEnablePenaltyUnsporting?: boolean
   usePenaltyPointsUnsporting?: boolean
   usePointPrecision?: boolean
+  skillDivisionTypes?: boolean
   officialPositionTemplates?: boolean
   matchRulesTemplate?: boolean
 }, ExtArgs["result"]["sports"]>
@@ -1467,11 +1486,12 @@ export type SportsSelectScalar = {
   useEnablePenaltyUnsporting?: boolean
   usePenaltyPointsUnsporting?: boolean
   usePointPrecision?: boolean
+  skillDivisionTypes?: boolean
   officialPositionTemplates?: boolean
   matchRulesTemplate?: boolean
 }
 
-export type SportsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "usePointsForWin" | "usePointsForDraw" | "usePointsForLoss" | "usePointsForForfeitWin" | "usePointsForForfeitLoss" | "usePointsPerSetWin" | "usePointsPerSetLoss" | "usePointsPerGameWin" | "usePointsPerGameLoss" | "usePointsPerGoalScored" | "usePointsPerGoalConceded" | "useMaxGoalBonusPoints" | "useMinGoalBonusThreshold" | "usePointsForShutout" | "usePointsForCleanSheet" | "useApplyShutoutOnlyIfWin" | "usePointsPerGoalDifference" | "useMaxGoalDifferencePoints" | "usePointsPenaltyPerGoalDifference" | "usePointsForParticipation" | "usePointsForNoShow" | "usePointsForWinStreakBonus" | "useWinStreakThreshold" | "usePointsForOvertimeWin" | "usePointsForOvertimeLoss" | "useOvertimeEnabled" | "usePointsPerRedCard" | "usePointsPerYellowCard" | "usePointsPerPenalty" | "useMaxPenaltyDeductions" | "useMaxPointsPerMatch" | "useMinPointsPerMatch" | "useGoalDifferenceTiebreaker" | "useHeadToHeadTiebreaker" | "useTotalGoalsTiebreaker" | "useEnableBonusForComebackWin" | "useBonusPointsForComebackWin" | "useEnableBonusForHighScoringMatch" | "useHighScoringThreshold" | "useBonusPointsForHighScoringMatch" | "useEnablePenaltyUnsporting" | "usePenaltyPointsUnsporting" | "usePointPrecision" | "officialPositionTemplates" | "matchRulesTemplate", ExtArgs["result"]["sports"]>
+export type SportsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "usePointsForWin" | "usePointsForDraw" | "usePointsForLoss" | "usePointsForForfeitWin" | "usePointsForForfeitLoss" | "usePointsPerSetWin" | "usePointsPerSetLoss" | "usePointsPerGameWin" | "usePointsPerGameLoss" | "usePointsPerGoalScored" | "usePointsPerGoalConceded" | "useMaxGoalBonusPoints" | "useMinGoalBonusThreshold" | "usePointsForShutout" | "usePointsForCleanSheet" | "useApplyShutoutOnlyIfWin" | "usePointsPerGoalDifference" | "useMaxGoalDifferencePoints" | "usePointsPenaltyPerGoalDifference" | "usePointsForParticipation" | "usePointsForNoShow" | "usePointsForWinStreakBonus" | "useWinStreakThreshold" | "usePointsForOvertimeWin" | "usePointsForOvertimeLoss" | "useOvertimeEnabled" | "usePointsPerRedCard" | "usePointsPerYellowCard" | "usePointsPerPenalty" | "useMaxPenaltyDeductions" | "useMaxPointsPerMatch" | "useMinPointsPerMatch" | "useGoalDifferenceTiebreaker" | "useHeadToHeadTiebreaker" | "useTotalGoalsTiebreaker" | "useEnableBonusForComebackWin" | "useBonusPointsForComebackWin" | "useEnableBonusForHighScoringMatch" | "useHighScoringThreshold" | "useBonusPointsForHighScoringMatch" | "useEnablePenaltyUnsporting" | "usePenaltyPointsUnsporting" | "usePointPrecision" | "skillDivisionTypes" | "officialPositionTemplates" | "matchRulesTemplate", ExtArgs["result"]["sports"]>
 
 export type $SportsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Sports"
@@ -1524,6 +1544,7 @@ export type $SportsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     useEnablePenaltyUnsporting: boolean | null
     usePenaltyPointsUnsporting: boolean | null
     usePointPrecision: boolean | null
+    skillDivisionTypes: runtime.JsonValue | null
     officialPositionTemplates: runtime.JsonValue | null
     matchRulesTemplate: runtime.JsonValue | null
   }, ExtArgs["result"]["sports"]>
@@ -1996,6 +2017,7 @@ export interface SportsFieldRefs {
   readonly useEnablePenaltyUnsporting: Prisma.FieldRef<"Sports", 'Boolean'>
   readonly usePenaltyPointsUnsporting: Prisma.FieldRef<"Sports", 'Boolean'>
   readonly usePointPrecision: Prisma.FieldRef<"Sports", 'Boolean'>
+  readonly skillDivisionTypes: Prisma.FieldRef<"Sports", 'Json'>
   readonly officialPositionTemplates: Prisma.FieldRef<"Sports", 'Json'>
   readonly matchRulesTemplate: Prisma.FieldRef<"Sports", 'Json'>
 }

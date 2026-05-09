@@ -285,6 +285,87 @@ describe('claimOrCreateEventTeamSnapshot', () => {
     randomUuidSpy.mockRestore();
   });
 
+  it('can create a checkout snapshot without activating team or player registrations', async () => {
+    const createMock = jest.fn(({ data }: { data: Record<string, unknown> }) => Promise.resolve({ ...data }));
+    const updateMock = jest.fn(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => (
+      Promise.resolve({ id: where.id, ...data })
+    ));
+    const eventRegistrationsFindManyMock = jest.fn().mockResolvedValue([]);
+
+    const tx = {
+      teams: {
+        findMany: jest.fn().mockResolvedValue([]),
+        create: createMock,
+        update: updateMock,
+      },
+      eventRegistrations: {
+        findMany: eventRegistrationsFindManyMock,
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      eventTeamStaffAssignments: {
+        findMany: jest.fn().mockResolvedValue([]),
+        upsert: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+    };
+
+    const randomUuidSpy = jest.spyOn(crypto, 'randomUUID').mockReturnValue('event_team_checkout');
+
+    await expect(claimOrCreateEventTeamSnapshot({
+      tx,
+      eventId: 'event_1',
+      canonicalTeamId: 'team_1',
+      createdBy: 'manager_1',
+      upsertRegistration: false,
+      canonicalTeam: {
+        id: 'team_1',
+        name: 'Checkout Team',
+        division: 'Open',
+        divisionTypeId: 'open',
+        wins: null,
+        losses: null,
+        teamSize: 2,
+        profileImageId: null,
+        sport: 'volleyball',
+        captainId: 'player_1',
+        managerId: 'manager_1',
+        headCoachId: null,
+        coachIds: [],
+        pending: [],
+        playerRegistrations: [
+          {
+            id: 'team_1__player_1',
+            teamId: 'team_1',
+            userId: 'player_1',
+            status: 'ACTIVE',
+            isCaptain: true,
+          },
+        ],
+        staffAssignments: [],
+      },
+    })).resolves.toEqual(expect.objectContaining({
+      id: 'event_team_checkout',
+    }));
+
+    expect(upsertEventRegistrationMock).not.toHaveBeenCalled();
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        id: 'event_team_checkout',
+        parentTeamId: 'team_1',
+        playerIds: ['player_1'],
+      }),
+    }));
+    expect(eventRegistrationsFindManyMock).toHaveBeenCalledTimes(1);
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'event_team_checkout' },
+      data: expect.objectContaining({
+        playerRegistrationIds: [],
+      }),
+    }));
+
+    randomUuidSpy.mockRestore();
+  });
+
   it('claims a placeholder from a tournament pool while keeping registration on the bracket division', async () => {
     const updateMock = jest.fn(({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => (
       Promise.resolve({ id: where.id, ...data })

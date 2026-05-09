@@ -1132,6 +1132,9 @@ class EventService {
       coordinates: row.coordinates,
       price: row.price,
       taxHandling: normalizeEventTaxHandling(row.taxHandling),
+      organizerManualTaxRateBps: Number.isFinite(Number(row.organizerManualTaxRateBps))
+        ? Math.max(0, Math.round(Number(row.organizerManualTaxRateBps)))
+        : 0,
       minAge: normalizeAge(row.minAge),
       maxAge: normalizeAge(row.maxAge),
       rating: row.rating,

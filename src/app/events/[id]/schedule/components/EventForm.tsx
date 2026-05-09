@@ -63,9 +63,11 @@ import { getFieldDisplayName, sortFieldsByCreatedAt } from '@/lib/fieldUtils';
 import { normalizePriceCents, normalizePriceCentsArray } from '@/lib/priceUtils';
 import type { EventTaxHandling } from '@/lib/taxPolicy';
 import {
+    normalizeOrganizerManualTaxRateBps,
     normalizeEventTaxHandling,
     normalizeOrganizationDefaultEventTaxHandling,
     resolvePurchaseTaxPolicy,
+    taxPolicyRequiresStripeTaxCalculation,
 } from '@/lib/taxPolicy';
 
 // UI state will track divisions as string[] of skill keys (e.g., 'beginner')
@@ -2237,6 +2239,7 @@ type EventFormState = {
     sportConfig: Sport | null;
     price: number;
     taxHandling: EventTaxHandling;
+    organizerManualTaxRateBps: number;
     minAge?: number;
     maxAge?: number;
     allowPaymentPlans: boolean;
@@ -2769,11 +2772,6 @@ const mapEventToFormState = (event: Event): EventFormState => {
             }, resolvedSportInput, divisionReferenceDate));
         });
 
-        if (!detailsById.size) {
-            const defaults = buildDefaultDivisionDetailsForSport(event.$id, resolvedSportInput, divisionReferenceDate);
-            defaults.forEach((detail) => detailsById.set(detail.id, detail));
-        }
-
         const preferredOrder = normalizedDivisionIds.length
             ? normalizedDivisionIds
             : Array.from(detailsById.keys());
@@ -2970,6 +2968,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         : null,
     price: normalizePriceCents(event.price),
     taxHandling: normalizeEventTaxHandling(event.taxHandling),
+    organizerManualTaxRateBps: normalizeOrganizerManualTaxRateBps(event.organizerManualTaxRateBps),
     minAge: Number.isFinite(event.minAge) ? event.minAge : undefined,
     maxAge: Number.isFinite(event.maxAge) ? event.maxAge : undefined,
     allowPaymentPlans: Boolean(event.allowPaymentPlans),
@@ -3208,7 +3207,14 @@ const eventFormSchema = z
         cancellationRefundHours: z.number().min(0),
         registrationCutoffHours: z.number().min(0),
         organizationId: z.string().optional(),
-        taxHandling: z.enum(['INHERIT_ORG', 'STRIPE_TAX', 'EXEMPT_PARTICIPANT_SPORTS']).default('INHERIT_ORG'),
+        taxHandling: z.enum([
+            'INHERIT_ORG',
+            'STRIPE_TAX',
+            'EXEMPT_PARTICIPANT_SPORTS',
+            'ORGANIZER_MANUAL_TAX',
+            'ORGANIZER_STRIPE_TAX',
+        ]).default('INHERIT_ORG'),
+        organizerManualTaxRateBps: z.number().int().min(0).max(2500).default(0),
         requiredTemplateIds: z.array(z.string()).default([]),
         hostId: z.string().optional(),
         noFixedEndDateTime: z.boolean().default(false),
@@ -3295,11 +3301,18 @@ const eventFormSchema = z
             });
         }
 
-        if (values.eventType !== 'LEAGUE' && values.divisions.length === 0) {
+        if (values.divisions.length === 0) {
             ctx.addIssue({
                 code: "custom",
                 message: 'Select at least one division',
                 path: ['divisions'],
+            });
+        }
+        if (values.divisionDetails.length === 0) {
+            ctx.addIssue({
+                code: "custom",
+                message: 'Add at least one division',
+                path: ['divisionDetails'],
             });
         }
 
@@ -3586,6 +3599,7 @@ const eventFormSchema = z
                     path: ['leagueSlots'],
                 });
             }
+            const coveredDivisionKeys = new Set<string>();
             values.leagueSlots.forEach((slot, index) => {
                 if (!normalizeSlotFieldIds(slot).length) {
                     ctx.addIssue({
@@ -3641,11 +3655,20 @@ const eventFormSchema = z
                         });
                     }
                 }
+                const normalizedSlotDivisionKeys = normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup);
+                if (!values.singleDivision && selectedDivisionKeys.length && !normalizedSlotDivisionKeys.length) {
+                    ctx.addIssue({
+                        code: "custom",
+                        message: 'Select at least one division for this timeslot.',
+                        path: ['leagueSlots', index, 'divisions'],
+                    });
+                }
+                normalizedSlotDivisionKeys.forEach((divisionKey) => coveredDivisionKeys.add(divisionKey));
                 if (
                     values.singleDivision &&
                     selectedDivisionKeys.length &&
                     !stringSetsEqual(
-                        normalizeSlotDivisionKeysWithLookup(slot.divisions, slotDivisionLookup),
+                        normalizedSlotDivisionKeys,
                         selectedDivisionKeys,
                     )
                 ) {
@@ -3663,6 +3686,19 @@ const eventFormSchema = z
                         path: ['leagueSlots', index, 'error'],
                     });
                 }
+            });
+            selectedDivisionKeys.forEach((divisionKey) => {
+                if (coveredDivisionKeys.has(divisionKey)) {
+                    return;
+                }
+                const division = values.divisionDetails.find((detail) => (
+                    normalizeDivisionKeys([detail.id, detail.key]).includes(divisionKey)
+                ));
+                ctx.addIssue({
+                    code: "custom",
+                    message: `${division?.name || 'Each division'} needs at least one timeslot.`,
+                    path: ['leagueSlots'],
+                });
             });
         }
     });
@@ -4124,11 +4160,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (normalized.length) {
                 return normalized;
             }
-            return buildDefaultDivisionDetailsForSport(
-                base.$id,
-                base.sportConfig ?? base.sportId,
-                parseDateValue(base.start ?? null),
-            );
+            return [];
         })();
         const baseLeagueIncludesPlayoffs = Boolean(
             base.eventType === 'LEAGUE'
@@ -4160,14 +4192,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (normalized.length) {
                 return normalized;
             }
-            return normalizeDivisionKeys(
-                buildDefaultDivisionDetailsForSport(
-                    base.$id,
-                    base.sportConfig ?? base.sportId,
-                    parseDateValue(base.start ?? null),
-                )
-                    .map((detail) => detail.id),
-            );
+            return [];
         })();
         const defaultDivisionFieldIds = normalizeDivisionFieldIds(
             base.divisionFieldIds,
@@ -4989,6 +5014,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             location: eventData.location,
             organizationId: eventData.organizationId || resolvedOrganizationId || undefined,
             taxHandling: eventData.taxHandling,
+            organizerManualTaxRateBps: eventData.organizerManualTaxRateBps,
         },
         organization: resolvedOrganization
             ? {
@@ -4997,7 +5023,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             : null,
     });
-    const eventTaxableForPreview = hasStripeAccount && eventTaxPolicyForPreview.mode !== 'ZERO_TAX';
+    const eventTaxableForPreview = hasStripeAccount && taxPolicyRequiresStripeTaxCalculation(eventTaxPolicyForPreview);
+    const organizerTaxCollectionAllowed = eventTaxPolicyForPreview.liabilityParty === 'ORGANIZER';
+    const organizerManualTaxSelected = organizerTaxCollectionAllowed
+        && eventTaxPolicyForPreview.collectionStrategy === 'ORGANIZER_MANUAL_TAX';
     const organizationAssignableStaffIds = useMemo(
         () => Array.from(
             new Set([
@@ -7087,17 +7116,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     useEffect(() => {
         const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
         if (!currentDetails.length) {
-            const defaults = buildDefaultDivisionDetailsForSport(
-                eventData.$id,
-                eventData.sportConfig ?? eventData.sportId,
-                parseDateValue(eventData.start ?? null),
-            );
-            setValue('divisionDetails', defaults, { shouldDirty: false, shouldValidate: false });
-            setValue(
-                'divisions',
-                defaults.map((detail) => detail.id),
-                { shouldDirty: false, shouldValidate: true },
-            );
+            const currentDivisionIds = normalizeDivisionKeys(getValues('divisions'));
+            if (currentDivisionIds.length) {
+                setValue('divisions', [], { shouldDirty: false, shouldValidate: true });
+            }
             return;
         }
 
@@ -8446,11 +8468,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (fromIds.length) {
                 return fromIds;
             }
-            return buildDefaultDivisionDetailsForSport(
-                source.$id,
-                source.sportConfig ?? source.sportId,
-                divisionReferenceDate,
-            );
+            return [];
         })();
         const normalizedDivisionKeys = (() => {
             const normalized = normalizeDivisionKeys(normalizedDivisionDetails.map((detail) => detail.id));
@@ -8690,6 +8708,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             sportId: sportId || undefined,
             price: eventPriceCents,
             taxHandling: normalizeEventTaxHandling(source.taxHandling),
+            organizerManualTaxRateBps: normalizeOrganizerManualTaxRateBps(source.organizerManualTaxRateBps),
             minAge,
             maxAge,
             allowPaymentPlans: eventAllowPaymentPlans,
@@ -8878,7 +8897,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     ...slot,
                     divisions: singleDivisionEnabled
                         ? normalizedDivisionKeys
-                        : (slotDivisions.length ? slotDivisions : normalizedDivisionKeys),
+                        : slotDivisions,
                 };
             });
             const slotIds = toIdList(immutableTimeSlots);
@@ -9043,7 +9062,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         scheduledFieldIds: slotFieldIds,
                         divisions: singleDivisionEnabled
                             ? normalizedDivisionKeys
-                            : (slotDivisionKeys.length ? slotDivisionKeys : normalizedDivisionKeys),
+                            : slotDivisionKeys,
                         startTimeMinutes,
                         endTimeMinutes,
                         repeating,
@@ -9314,6 +9333,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [activeSectionId, setActiveSectionId] = useState<string>(visibleSectionNavItems[0]?.id ?? 'section-basic-information');
     const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(SECTION_COLLAPSE_DEFAULTS);
     const [fieldNamesCollapsed, setFieldNamesCollapsed] = useState(false);
+    const [divisionDefaultsCollapsed, setDivisionDefaultsCollapsed] = useState(true);
     const sectionNavTargetRef = useRef<string | null>(null);
     const sectionNavSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -9719,26 +9739,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         )}
                                     />
                                 </div>
-                                <AnimatedSection in={supportsEditableTeamSignup} collapseClassName="md:col-span-2">
-                                    <Controller
-                                        name="teamSignup"
-                                        control={control}
-                                        render={({ field: teamSignupField }) => (
-                                            <Checkbox
-                                                data-testid="team-signup-switch"
-                                                size="xs"
-                                                label="Use teams"
-                                                aria-label="Use teams"
-                                                checked={Boolean(teamSignupField.value)}
-                                                disabled={isImmutableField('teamSignup')}
-                                                onChange={(event) => {
-                                                    if (isImmutableField('teamSignup')) return;
-                                                    teamSignupField.onChange(event.currentTarget.checked);
-                                                }}
-                                            />
-                                        )}
-                                    />
-                                </AnimatedSection>
                                 <AnimatedSection
                                     in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs}
                                     collapseClassName="md:col-span-2"
@@ -9768,7 +9768,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         </Text>
                                     </AnimatedSection>
                                 </AnimatedSection>
-                                <div className="md:col-span-1">
+                                <div className="space-y-2 md:col-span-1" data-testid="team-size-control">
                                     <Controller
                                         name="teamSizeLimit"
                                         control={control}
@@ -9793,6 +9793,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             />
                                         )}
                                     />
+                                    <AnimatedSection in={supportsEditableTeamSignup} className="pt-1">
+                                        <Controller
+                                            name="teamSignup"
+                                            control={control}
+                                            render={({ field: teamSignupField }) => (
+                                                <Checkbox
+                                                    data-testid="team-signup-switch"
+                                                    size="xs"
+                                                    label="Use teams"
+                                                    aria-label="Use teams"
+                                                    checked={Boolean(teamSignupField.value)}
+                                                    disabled={isImmutableField('teamSignup')}
+                                                    onChange={(event) => {
+                                                        if (isImmutableField('teamSignup')) return;
+                                                        teamSignupField.onChange(event.currentTarget.checked);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                    </AnimatedSection>
                                 </div>
                                 <div className="md:col-span-3">
                                     <Controller
@@ -10922,13 +10942,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             <div id="section-division-settings-content" className="mt-4 space-y-4">
                                 <div className="rounded-lg border border-gray-200 bg-white p-4">
                                     <Stack gap="md">
-                                        <div>
-                                            <Title order={6}>Division Defaults</Title>
-                                            <Text size="sm" c="dimmed">
-                                                These values seed new division rows. Division rows remain the runtime source after save.
-                                            </Text>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <Title order={6}>Division Defaults</Title>
+                                                <Text size="sm" c="dimmed">
+                                                    These values seed new division rows. Division rows remain the runtime source after save.
+                                                </Text>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="subtle"
+                                                size="xs"
+                                                aria-expanded={!divisionDefaultsCollapsed}
+                                                aria-controls="division-defaults-content"
+                                                onClick={() => setDivisionDefaultsCollapsed((previous) => !previous)}
+                                            >
+                                                {divisionDefaultsCollapsed ? 'Expand' : 'Collapse'}
+                                            </Button>
                                         </div>
-                                        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
+                                        <Collapse in={!divisionDefaultsCollapsed} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                        <div id="division-defaults-content" className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
                                             <div className="md:col-span-3">
                                                 <Controller
                                                     name="maxParticipants"
@@ -10984,7 +11017,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         ? 'Used as the base price for new divisions before fees.'
                                                         : null}
                                                 />
-                                                <AnimatedSection in={isOrganizationHostedEvent}>
+                                                <AnimatedSection in={organizerTaxCollectionAllowed}>
+                                                    <Alert color="yellow" variant="light" mt="sm">
+                                                        {eventTaxPolicyForPreview.organizerResponsibilityMessage}
+                                                    </Alert>
+                                                </AnimatedSection>
+                                                <AnimatedSection in={isOrganizationHostedEvent || organizerTaxCollectionAllowed}>
                                                     <div className="mt-3">
                                                         <Controller
                                                             name="taxHandling"
@@ -10993,11 +11031,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                 <MantineSelect
                                                                     label="Tax handling"
                                                                     value={field.value}
-                                                                    data={[
-                                                                        { value: 'INHERIT_ORG', label: `Use organization default (${organizationDefaultEventTaxHandling === 'STRIPE_TAX' ? 'Stripe Tax' : 'sports registration exempt'})` },
-                                                                        { value: 'STRIPE_TAX', label: 'Use Stripe Tax' },
-                                                                        { value: 'EXEMPT_PARTICIPANT_SPORTS', label: 'Sports registration is exempt' },
-                                                                    ]}
+                                                                    data={organizerTaxCollectionAllowed
+                                                                        ? [
+                                                                            { value: 'INHERIT_ORG', label: 'Choose tax collection method' },
+                                                                            { value: 'ORGANIZER_MANUAL_TAX', label: 'Enter a sales tax rate' },
+                                                                            { value: 'ORGANIZER_STRIPE_TAX', label: 'Use Stripe Tax calculator' },
+                                                                        ]
+                                                                        : [
+                                                                            { value: 'INHERIT_ORG', label: `Use organization default (${organizationDefaultEventTaxHandling === 'STRIPE_TAX' ? 'Stripe Tax' : 'sports registration exempt'})` },
+                                                                            { value: 'STRIPE_TAX', label: 'Use Stripe Tax' },
+                                                                            { value: 'EXEMPT_PARTICIPANT_SPORTS', label: 'Sports registration is exempt' },
+                                                                        ]}
                                                                     onChange={(value) => {
                                                                         field.onChange(normalizeEventTaxHandling(value));
                                                                     }}
@@ -11005,6 +11049,34 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                 />
                                                             )}
                                                         />
+                                                        <AnimatedSection in={organizerManualTaxSelected}>
+                                                            <div className="mt-3">
+                                                                <Controller
+                                                                    name="organizerManualTaxRateBps"
+                                                                    control={control}
+                                                                    render={({ field }) => (
+                                                                        <NumberInput
+                                                                            label="Sales tax rate"
+                                                                            min={0}
+                                                                            max={25}
+                                                                            suffix="%"
+                                                                            decimalScale={3}
+                                                                            value={(Number(field.value) || 0) / 100}
+                                                                            w="100%"
+                                                                            styles={alignedDetailsFieldStyles}
+                                                                            clampBehavior="blur"
+                                                                            disabled={isImmutableField('price')}
+                                                                            onChange={(value) => {
+                                                                                const numeric = typeof value === 'number' && Number.isFinite(value)
+                                                                                    ? value
+                                                                                    : Number(value);
+                                                                                field.onChange(normalizeOrganizerManualTaxRateBps(numeric * 100));
+                                                                            }}
+                                                                        />
+                                                                    )}
+                                                                />
+                                                            </div>
+                                                        </AnimatedSection>
                                                     </div>
                                                 </AnimatedSection>
                                                 <AnimatedSection in={!hasStripeAccount}>
@@ -11173,6 +11245,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 </div>
                                             </div>
                                         </div>
+                                        </Collapse>
                                     </Stack>
                                 </div>
                                 <Text size="sm" fw={600}>
@@ -12108,10 +12181,3 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 EventForm.displayName = 'EventForm';
 
 export default EventForm;
-
-
-
-
-
-
-

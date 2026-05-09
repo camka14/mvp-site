@@ -2,10 +2,10 @@
   "cookies": [
     {
       "name": "auth_token",
-      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX2hvc3QiLCJpc0FkbWluIjpmYWxzZSwiaWF0IjoxNzc1MjQzNDExLCJleHAiOjE3NzU4NDgyMTF9.UY-11c6pyUvQpZYHjFnUp3rKnM4ilwIkpO34xlfYU5A",
+      "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJ1c2VyX2hvc3QiLCJpc0FkbWluIjpmYWxzZSwic2Vzc2lvblZlcnNpb24iOjAsImlhdCI6MTc3ODI3MTQ0NiwiZXhwIjoxNzc4ODc2MjQ2fQ.akmz7NA_D_syH6e7szZfMlGud-942MgRABEKwOLRsKs",
       "domain": "localhost",
       "path": "/",
-      "expires": 1775848211.467,
+      "expires": 1778876246.005,
       "httpOnly": true,
       "secure": false,
       "sameSite": "Lax"
@@ -21,7 +21,7 @@
         },
         {
           "name": "app-user",
-          "value": "{\"id\":\"user_host\",\"createdAt\":\"2026-04-03T19:10:10.727Z\",\"updatedAt\":\"2026-04-03T19:10:10.727Z\",\"firstName\":\"Host\",\"lastName\":\"User\",\"dateOfBirth\":\"1990-01-01T00:00:00.000Z\",\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[],\"friendIds\":[],\"userName\":\"hostuser\",\"hasStripeAccount\":true,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"homePageOrganizationId\":null,\"$id\":\"user_host\",\"fullName\":\"Host User\",\"avatarUrl\":\"\"}"
+          "value": "{\"id\":\"user_host\",\"createdAt\":\"2026-05-08T20:17:23.282Z\",\"updatedAt\":\"2026-05-08T20:17:23.282Z\",\"firstName\":\"Host\",\"lastName\":\"User\",\"dateOfBirth\":\"1990-01-01T00:00:00.000Z\",\"requiredProfileFieldsCompletedAt\":null,\"dobVerified\":null,\"dobVerifiedAt\":null,\"ageVerificationProvider\":null,\"teamIds\":[\"team_1\",\"team_2\",\"team_3\",\"team_4\",\"team_5\",\"team_6\",\"team_7\",\"team_8\"],\"friendIds\":[],\"userName\":\"hostuser\",\"hasStripeAccount\":true,\"followingIds\":[],\"friendRequestIds\":[],\"friendRequestSentIds\":[],\"uploadedImages\":[\"image_1\"],\"profileImageId\":null,\"homePageOrganizationId\":null,\"blockedUserIds\":[],\"hiddenEventIds\":[],\"chatTermsAcceptedAt\":null,\"chatTermsVersion\":null,\"$id\":\"user_host\",\"fullName\":\"Host User\",\"avatarUrl\":\"\"}"
         }
       ]
     }

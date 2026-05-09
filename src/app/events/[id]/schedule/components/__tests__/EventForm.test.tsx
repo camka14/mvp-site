@@ -6,6 +6,7 @@ import { userService } from '@/lib/userService';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { fieldService } from '@/lib/fieldService';
+import { CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES } from '@/lib/taxPolicy';
 
 jest.setTimeout(20000);
 
@@ -403,6 +404,46 @@ describe('EventForm dirty state', () => {
     ],
   });
 
+  it('shows organizer tax responsibility next to price when policy assigns organizer liability', async () => {
+    const organizerRules = CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES as unknown as Array<{
+      stateCode: string;
+      purchaseTypes: string[];
+      taxCategories: string[];
+      allowedCollectionStrategies: Array<'ORGANIZER_MANUAL_TAX' | 'ORGANIZER_STRIPE_TAX'>;
+      ruleId: string;
+      ruleVersion: string;
+    }>;
+    const originalRuleCount = organizerRules.length;
+    organizerRules.push({
+      stateCode: 'ID',
+      purchaseTypes: ['event'],
+      taxCategories: ['EVENT_PARTICIPANT'],
+      allowedCollectionStrategies: ['ORGANIZER_MANUAL_TAX', 'ORGANIZER_STRIPE_TAX'],
+      ruleId: 'test-id-organizer-liable',
+      ruleVersion: 'test-2026-05-08',
+    });
+
+    try {
+      renderForm(
+        jest.fn(),
+        undefined,
+        {
+          address: '123 Main St, Boise, ID 83702',
+          location: 'Boise, ID',
+          price: 2500,
+          taxHandling: 'ORGANIZER_MANUAL_TAX',
+          organizerManualTaxRateBps: 600,
+        },
+      );
+
+      expect(await screen.findByText('You are responsible for reporting and collecting sales tax in your state.')).toBeInTheDocument();
+      expect(screen.getByLabelText('Tax handling')).toHaveValue('ORGANIZER_MANUAL_TAX');
+      expect(screen.getByLabelText('Sales tax rate')).toBeInTheDocument();
+    } finally {
+      organizerRules.splice(originalRuleCount);
+    }
+  });
+
   const waitForStableDirtyState = async (onDirtyStateChange: jest.Mock, expected: boolean) => {
     await waitFor(() => {
       expect(onDirtyStateChange).toHaveBeenLastCalledWith(expected);
@@ -533,6 +574,68 @@ describe('EventForm dirty state', () => {
     await waitFor(() => {
       expect(onDirtyStateChange).toHaveBeenLastCalledWith(true);
     });
+  });
+
+  it('requires users to add a division instead of relying on a default', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(jest.fn(), formRef, {
+      divisions: [],
+      divisionDetails: [],
+    });
+
+    await waitFor(() => {
+      expect(formRef.current).not.toBeNull();
+    });
+
+    let isValid = true;
+    await act(async () => {
+      isValid = await formRef.current!.validate();
+    });
+
+    expect(isValid).toBe(false);
+  });
+
+  it('requires every league division to be assigned to at least one timeslot', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+    const baseDivision = buildEvent().divisionDetails[0];
+    const divisionA = { ...baseDivision, id: 'division-a', key: 'division-a', name: 'Division A' };
+    const divisionB = { ...baseDivision, id: 'division-b', key: 'division-b', name: 'Division B' };
+
+    renderForm(jest.fn(), formRef, {
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      noFixedEndDateTime: true,
+      divisions: ['division-a', 'division-b'],
+      divisionDetails: [divisionA, divisionB],
+      leagueSlots: [
+        {
+          $id: 'slot-a',
+          key: 'slot-a',
+          repeating: true,
+          daysOfWeek: [1],
+          dayOfWeek: 1,
+          startTimeMinutes: 600,
+          endTimeMinutes: 660,
+          scheduledFieldId: 'field-a',
+          scheduledFieldIds: ['field-a'],
+          divisions: ['division-a'],
+        },
+      ],
+      fields: [{ $id: 'field-a', name: 'Field A' }],
+      fieldCount: 1,
+    });
+
+    await waitFor(() => {
+      expect(formRef.current).not.toBeNull();
+    });
+
+    let isValid = true;
+    await act(async () => {
+      isValid = await formRef.current!.validate();
+    });
+
+    expect(isValid).toBe(false);
   });
 
   it('re-establishes dirty tracking after the saved event reloads with the same id', async () => {
@@ -1330,7 +1433,7 @@ describe('EventForm dirty state', () => {
     expect(isValid).toBe(false);
   });
 
-  it('renders the team signup switch inside Event Details', async () => {
+  it('renders the team signup switch under Team Size inside Event Details', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(onDirtyStateChange);
@@ -1340,9 +1443,15 @@ describe('EventForm dirty state', () => {
     });
 
     const eventDetailsSection = document.getElementById('section-event-details-content');
+    const teamSizeControl = screen.getByTestId('team-size-control');
+    const teamSizeInput = screen.getByLabelText('Team Size');
     const teamSignupSwitch = screen.getByTestId('team-signup-switch');
 
     expect(eventDetailsSection).not.toBeNull();
+    expect(eventDetailsSection).toContainElement(teamSizeControl);
+    expect(teamSizeControl).toContainElement(teamSizeInput);
+    expect(teamSizeControl).toContainElement(teamSignupSwitch);
+    expect(teamSizeInput.compareDocumentPosition(teamSignupSwitch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(teamSignupSwitch).toBeInTheDocument();
   });
 

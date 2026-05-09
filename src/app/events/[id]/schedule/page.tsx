@@ -172,6 +172,8 @@ type ParticipantInviteRow = {
 
 type MatchCreateContext = 'schedule' | 'bracket';
 
+const EVENT_SCHEDULE_TABS = new Set(['details', 'participants', 'schedule', 'standings', 'bracket']);
+
 type StagedMatchCreateMeta = {
   clientId: string;
   creationContext: MatchCreateContext;
@@ -264,6 +266,53 @@ type WeeklyOccurrenceSelection = {
   slotId: string;
   occurrenceDate: string;
 };
+
+type ViewerWeeklyRegistrationRow = {
+  slotId?: string | null;
+  occurrenceDate?: string | null;
+  rosterRole?: string | null;
+  status?: string | null;
+};
+
+const VIEWER_WEEKLY_REGISTRATION_STATUSES = new Set(['STARTED', 'ACTIVE', 'BLOCKED']);
+
+const buildParticipantSnapshotKey = (
+  eventId: unknown,
+  occurrence?: { slotId?: string | null; occurrenceDate?: string | null } | null,
+): string | null => {
+  const normalizedEventId = normalizeIdToken(eventId);
+  if (!normalizedEventId) {
+    return null;
+  }
+
+  const slotId = normalizeIdToken(occurrence?.slotId);
+  const occurrenceDate = normalizeIdToken(occurrence?.occurrenceDate);
+  return slotId && occurrenceDate
+    ? `${normalizedEventId}:${slotId}:${occurrenceDate}`
+    : `${normalizedEventId}:all`;
+};
+
+const buildWeeklyOccurrenceRegistrationKey = (
+  slotIdInput: unknown,
+  occurrenceDateInput: unknown,
+): string | null => {
+  const slotId = normalizeIdToken(slotIdInput);
+  const occurrenceDate = normalizeIdToken(occurrenceDateInput);
+  return slotId && occurrenceDate ? `${slotId}:${occurrenceDate}` : null;
+};
+
+const ID_LIST_KEY_SEPARATOR = '|';
+
+const buildStableIdListKey = (ids: string[]): string => ids.join(ID_LIST_KEY_SEPARATOR);
+
+const parseStableIdListKey = (key: string): string[] => (
+  key
+    ? key
+        .split(ID_LIST_KEY_SEPARATOR)
+        .map((id) => id.trim())
+        .filter((id): id is string => id.length > 0)
+    : []
+);
 
 const parseDateValue = (value?: string | null): Date | null => {
   if (!value) return null;
@@ -1158,7 +1207,10 @@ function EventScheduleContent() {
   const [selectedLifecycleStatus, setSelectedLifecycleStatus] = useState<EventLifecycleStatus | null>(null);
   const [isPendingChangesPopoverOpen, setIsPendingChangesPopoverOpen] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('details');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    const requestedTab = searchParams?.get('tab');
+    return requestedTab && EVENT_SCHEDULE_TABS.has(requestedTab) ? requestedTab : 'details';
+  });
   const [selectedScheduleDivision, setSelectedScheduleDivision] = useState<string>('all');
   const [selectedSchedulePool, setSelectedSchedulePool] = useState<string>('all');
   const [selectedBracketDivision, setSelectedBracketDivision] = useState<string | null>(null);
@@ -1167,6 +1219,10 @@ function EventScheduleContent() {
   const [participantTeams, setParticipantTeams] = useState<Team[]>([]);
   const [participantUsers, setParticipantUsers] = useState<UserData[]>([]);
   const [participantOfficials, setParticipantOfficials] = useState<UserData[]>([]);
+  const loadedParticipantSnapshotKeyRef = useRef<string | null>(null);
+  const loadedParticipantTeamsKeyRef = useRef<string | null>(null);
+  const loadedParticipantUsersKeyRef = useRef<string | null>(null);
+  const loadedParticipantOfficialsKeyRef = useRef<string | null>(null);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
   const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
@@ -1570,6 +1626,58 @@ function EventScheduleContent() {
     ),
     [selectedOccurrenceDate, selectedOccurrenceSlotId],
   );
+  const [viewerWeeklyOccurrenceKeys, setViewerWeeklyOccurrenceKeys] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+
+    if (!isWeeklyParentEvent || !targetEventId || !user?.$id) {
+      setViewerWeeklyOccurrenceKeys(new Set());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const loadViewerWeeklyRegistrations = async () => {
+      try {
+        const response = await apiRequest<{ registrations?: ViewerWeeklyRegistrationRow[] }>(
+          `/api/profile/registrations?eventId=${encodeURIComponent(targetEventId)}`,
+        );
+        if (cancelled) {
+          return;
+        }
+
+        const registeredOccurrenceKeys = new Set<string>();
+        (Array.isArray(response?.registrations) ? response.registrations : []).forEach((registration) => {
+          const status = String(registration.status ?? '').trim().toUpperCase();
+          const rosterRole = String(registration.rosterRole ?? '').trim().toUpperCase();
+          if (rosterRole !== 'PARTICIPANT' || !VIEWER_WEEKLY_REGISTRATION_STATUSES.has(status)) {
+            return;
+          }
+          const occurrenceKey = buildWeeklyOccurrenceRegistrationKey(
+            registration.slotId,
+            registration.occurrenceDate,
+          );
+          if (occurrenceKey) {
+            registeredOccurrenceKeys.add(occurrenceKey);
+          }
+        });
+        setViewerWeeklyOccurrenceKeys(registeredOccurrenceKeys);
+      } catch (registrationError) {
+        if (cancelled) {
+          return;
+        }
+        console.warn('Failed to load viewer weekly registrations:', registrationError);
+        setViewerWeeklyOccurrenceKeys(new Set());
+      }
+    };
+
+    void loadViewerWeeklyRegistrations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeEvent?.$id, eventId, isWeeklyParentEvent, user?.$id]);
   const initialWeeklyScheduleDate = useMemo(() => {
     const selectedDate = parseDateValue(selectedOccurrence?.occurrenceDate ?? null);
     return selectedDate ?? parseDateValue(activeEvent?.start ?? null) ?? new Date();
@@ -1771,6 +1879,13 @@ function EventScheduleContent() {
         .join(' • ');
       const isSelected = selectedOccurrence?.slotId === occurrence.slotId
         && selectedOccurrence?.occurrenceDate === occurrence.occurrenceDate;
+      const occurrenceRegistrationKey = buildWeeklyOccurrenceRegistrationKey(
+        occurrence.slotId,
+        occurrence.occurrenceDate,
+      );
+      const isViewerRegistered = Boolean(
+        occurrenceRegistrationKey && viewerWeeklyOccurrenceKeys.has(occurrenceRegistrationKey),
+      );
 
       return {
         $id: `weekly-occurrence:${occurrence.slotId}:${occurrence.occurrenceDate}`,
@@ -1794,10 +1909,11 @@ function EventScheduleContent() {
             .map((divisionId) => toDivisionKey(divisionId))
             .filter((divisionKey): divisionKey is string => Boolean(divisionKey)),
           isSelected,
+          isViewerRegistered,
         },
       } as Match;
     });
-  }, [activeEvent?.$id, activeEvent?.fields, divisionLabelsByKey, isWeeklyParentEvent, selectedOccurrence, weeklyScheduleOccurrenceOptions]);
+  }, [activeEvent?.$id, activeEvent?.fields, divisionLabelsByKey, isWeeklyParentEvent, selectedOccurrence, viewerWeeklyOccurrenceKeys, weeklyScheduleOccurrenceOptions]);
 
   const eventTypeForView = activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT';
   const isTournament = eventTypeForView === 'TOURNAMENT';
@@ -2977,6 +3093,7 @@ function EventScheduleContent() {
 
     return Array.from(ids);
   }, [activeEvent?.teamIds, activeEvent?.teams]);
+  const participantTeamIdsKey = useMemo(() => buildStableIdListKey(participantTeamIds), [participantTeamIds]);
 
   const participantUserIds = useMemo(() => {
     const ids = new Set<string>();
@@ -2999,6 +3116,7 @@ function EventScheduleContent() {
 
     return Array.from(ids);
   }, [activeEvent?.players, activeEvent?.userIds]);
+  const participantUserIdsKey = useMemo(() => buildStableIdListKey(participantUserIds), [participantUserIds]);
 
   const participantTeamIdSet = useMemo(() => new Set(participantTeamIds), [participantTeamIds]);
   const participantUserIdSet = useMemo(() => new Set(participantUserIds), [participantUserIds]);
@@ -3034,6 +3152,7 @@ function EventScheduleContent() {
 
     return Array.from(ids);
   }, [activeEvent?.eventOfficials, activeEvent?.officialIds, activeEvent?.officials, activeMatches]);
+  const participantOfficialIdsKey = useMemo(() => buildStableIdListKey(participantOfficialIds), [participantOfficialIds]);
 
   const participantTeamsById = useMemo(() => {
     const teams = new Map<string, Team>();
@@ -3256,12 +3375,15 @@ function EventScheduleContent() {
 
     const loadParticipantTeams = async () => {
       if (!activeEvent?.teamSignup) {
+        loadedParticipantTeamsKeyRef.current = null;
         setParticipantTeams([]);
         setParticipantsLoading(false);
         return;
       }
 
-      if (participantTeamIds.length === 0) {
+      const teamIds = parseStableIdListKey(participantTeamIdsKey);
+      if (teamIds.length === 0) {
+        loadedParticipantTeamsKeyRef.current = null;
         setParticipantTeams([]);
         setParticipantUsers([]);
         setParticipantsError(null);
@@ -3269,19 +3391,26 @@ function EventScheduleContent() {
         return;
       }
 
+      const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+      const hydrationKey = `${targetEventId ?? ''}:${participantTeamIdsKey}`;
+      if (loadedParticipantTeamsKeyRef.current === hydrationKey) {
+        return;
+      }
+      loadedParticipantTeamsKeyRef.current = hydrationKey;
+
       setParticipantsLoading(true);
       setParticipantsError(null);
       try {
         const hydratedTeams = await teamService.getTeamsByIds(
-          participantTeamIds,
+          teamIds,
           true,
-          { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
+          { eventId: targetEventId ?? undefined },
         );
         if (cancelled) {
           return;
         }
         const hydratedById = new Map(hydratedTeams.map((team) => [team.$id, team]));
-        const orderedTeams = participantTeamIds
+        const orderedTeams = teamIds
           .map((teamId) => hydratedById.get(teamId))
           .filter((team): team is Team => Boolean(team));
         setParticipantTeams(orderedTeams);
@@ -3291,6 +3420,9 @@ function EventScheduleContent() {
           return;
         }
         console.error('Failed to load participant teams:', participantError);
+        if (loadedParticipantTeamsKeyRef.current === hydrationKey) {
+          loadedParticipantTeamsKeyRef.current = null;
+        }
         setParticipantsError(participantError instanceof Error ? participantError.message : 'Failed to load teams.');
       } finally {
         if (!cancelled) {
@@ -3304,36 +3436,46 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, activeEvent?.teamSignup, eventId, participantTeamIds]);
+  }, [activeEvent?.$id, activeEvent?.teamSignup, eventId, participantTeamIdsKey]);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadParticipantUsers = async () => {
       if (activeEvent?.teamSignup !== false) {
+        loadedParticipantUsersKeyRef.current = null;
         setParticipantUsers([]);
         return;
       }
 
-      if (participantUserIds.length === 0) {
+      const userIds = parseStableIdListKey(participantUserIdsKey);
+      if (userIds.length === 0) {
+        loadedParticipantUsersKeyRef.current = null;
         setParticipantUsers([]);
         setParticipantsError(null);
         setParticipantsLoading(false);
         return;
       }
 
+      const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+      const hydrationKey = `${targetEventId ?? ''}:${participantUserIdsKey}`;
+      if (loadedParticipantUsersKeyRef.current === hydrationKey) {
+        return;
+      }
+      loadedParticipantUsersKeyRef.current = hydrationKey;
+
       setParticipantsLoading(true);
       setParticipantsError(null);
       try {
         const hydratedUsers = await userService.getUsersByIds(
-          participantUserIds,
-          { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
+          userIds,
+          { eventId: targetEventId ?? undefined },
         );
         if (cancelled) {
           return;
         }
         const hydratedById = new Map(hydratedUsers.map((participant) => [participant.$id, participant]));
-        const orderedUsers = participantUserIds
+        const orderedUsers = userIds
           .map((userId) => hydratedById.get(userId))
           .filter((participant): participant is UserData => Boolean(participant));
         setParticipantUsers(orderedUsers);
@@ -3343,6 +3485,9 @@ function EventScheduleContent() {
           return;
         }
         console.error('Failed to load participant users:', participantError);
+        if (loadedParticipantUsersKeyRef.current === hydrationKey) {
+          loadedParticipantUsersKeyRef.current = null;
+        }
         setParticipantsError(participantError instanceof Error ? participantError.message : 'Failed to load participants.');
       } finally {
         if (!cancelled) {
@@ -3356,7 +3501,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, activeEvent?.teamSignup, eventId, participantUserIds]);
+  }, [activeEvent?.$id, activeEvent?.teamSignup, eventId, participantUserIdsKey]);
 
   useEffect(() => {
     if (!canUseTeamCompliance) {
@@ -3369,7 +3514,8 @@ function EventScheduleContent() {
     }
 
     const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
-    if (!targetEventId || participantTeamIds.length === 0) {
+    const teamIds = parseStableIdListKey(participantTeamIdsKey);
+    if (!targetEventId || teamIds.length === 0) {
       setTeamComplianceById({});
       setTeamComplianceError(null);
       setTeamComplianceLoading(false);
@@ -3414,7 +3560,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIds, teamComplianceRefreshKey]);
+  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIdsKey, teamComplianceRefreshKey]);
 
   useEffect(() => {
     if (!canUseUserCompliance) {
@@ -3425,7 +3571,8 @@ function EventScheduleContent() {
     }
 
     const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
-    if (!targetEventId || participantUserIds.length === 0) {
+    const userIds = parseStableIdListKey(participantUserIdsKey);
+    if (!targetEventId || userIds.length === 0) {
       setUserComplianceById({});
       setUserComplianceError(null);
       setUserComplianceLoading(false);
@@ -3470,7 +3617,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, canUseUserCompliance, eventId, participantUserIds, teamComplianceRefreshKey]);
+  }, [activeEvent?.$id, canUseUserCompliance, eventId, participantUserIdsKey, teamComplianceRefreshKey]);
 
   useEffect(() => {
     if (!selectedComplianceTeamId) {
@@ -3487,21 +3634,30 @@ function EventScheduleContent() {
     let cancelled = false;
 
     const loadParticipantOfficials = async () => {
-      if (participantOfficialIds.length === 0) {
+      const officialIds = parseStableIdListKey(participantOfficialIdsKey);
+      if (officialIds.length === 0) {
+        loadedParticipantOfficialsKeyRef.current = null;
         setParticipantOfficials([]);
         return;
       }
 
+      const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
+      const hydrationKey = `${targetEventId ?? ''}:${participantOfficialIdsKey}`;
+      if (loadedParticipantOfficialsKeyRef.current === hydrationKey) {
+        return;
+      }
+      loadedParticipantOfficialsKeyRef.current = hydrationKey;
+
       try {
         const hydratedOfficials = await userService.getUsersByIds(
-          participantOfficialIds,
-          { eventId: normalizeIdToken(activeEvent?.$id ?? eventId) ?? undefined },
+          officialIds,
+          { eventId: targetEventId ?? undefined },
         );
         if (cancelled) {
           return;
         }
         const hydratedById = new Map(hydratedOfficials.map((official) => [official.$id, official]));
-        const orderedOfficials = participantOfficialIds
+        const orderedOfficials = officialIds
           .map((officialId) => hydratedById.get(officialId))
           .filter((official): official is UserData => Boolean(official));
         setParticipantOfficials(orderedOfficials);
@@ -3510,6 +3666,9 @@ function EventScheduleContent() {
           return;
         }
         console.error('Failed to load officials for event:', officialsError);
+        if (loadedParticipantOfficialsKeyRef.current === hydrationKey) {
+          loadedParticipantOfficialsKeyRef.current = null;
+        }
       }
     };
 
@@ -3518,7 +3677,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, eventId, participantOfficialIds]);
+  }, [activeEvent?.$id, eventId, participantOfficialIdsKey]);
 
   useEffect(() => {
     if (!isAddTeamModalOpen) {
@@ -3655,6 +3814,7 @@ function EventScheduleContent() {
 
   const refreshParticipantTeamsFromServer = useCallback(
     async (targetEventId: string, occurrence?: { slotId?: string | null; occurrenceDate?: string | null }) => {
+      const snapshotKey = buildParticipantSnapshotKey(targetEventId, occurrence);
       const snapshot = await eventService.getEventParticipants(targetEventId, occurrence);
       const refreshedEvent = snapshot.event ?? await eventService.getEventById(targetEventId);
       if (!refreshedEvent) {
@@ -3719,6 +3879,7 @@ function EventScheduleContent() {
             participantCapacity: snapshot.participantCapacity,
           }
         : prev));
+      loadedParticipantSnapshotKeyRef.current = snapshotKey;
     },
     [],
   );
@@ -3729,6 +3890,7 @@ function EventScheduleContent() {
       setParticipantUsers([]);
       setParticipantsError(null);
       setParticipantsLoading(false);
+      loadedParticipantSnapshotKeyRef.current = null;
       setEvent((prev) => (prev
         ? {
             ...prev,
@@ -3753,6 +3915,10 @@ function EventScheduleContent() {
             participantCount: 0,
           }
         : prev));
+      return;
+    }
+
+    if (!activeEvent?.$id) {
       return;
     }
 
@@ -3766,6 +3932,7 @@ function EventScheduleContent() {
       setParticipantUsers([]);
       setParticipantsError(null);
       setParticipantsLoading(false);
+      loadedParticipantSnapshotKeyRef.current = null;
       setEvent((prev) => (prev
         ? {
             ...prev,
@@ -3791,7 +3958,19 @@ function EventScheduleContent() {
       return;
     }
 
-    void refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
+    const snapshotKey = buildParticipantSnapshotKey(targetEventId, selectedOccurrence);
+    if (!snapshotKey || loadedParticipantSnapshotKeyRef.current === snapshotKey) {
+      return;
+    }
+    loadedParticipantSnapshotKeyRef.current = snapshotKey;
+
+    void refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined).catch((refreshError) => {
+      if (loadedParticipantSnapshotKeyRef.current === snapshotKey) {
+        loadedParticipantSnapshotKeyRef.current = null;
+      }
+      console.error('Failed to refresh event participants:', refreshError);
+      setParticipantsError(refreshError instanceof Error ? refreshError.message : 'Failed to load participants.');
+    });
   }, [
     activeEvent?.$id,
     eventId,
@@ -6238,6 +6417,11 @@ function EventScheduleContent() {
 
   useEffect(() => {
     const request = searchParams?.get('tab');
+    if (!activeEvent?.$id && request && EVENT_SCHEDULE_TABS.has(request)) {
+      setActiveTab(request);
+      return;
+    }
+
     const allowed = new Set<string>(['details']);
     if (showParticipantsTab) {
       allowed.add('participants');
@@ -6254,7 +6438,7 @@ function EventScheduleContent() {
 
     const desired = request && allowed.has(request) ? request : defaultTab;
     setActiveTab(desired);
-  }, [searchParams, shouldShowBracketTab, showParticipantsTab, showScheduleTab, showStandingsTab, defaultTab]);
+  }, [activeEvent?.$id, searchParams, shouldShowBracketTab, showParticipantsTab, showScheduleTab, showStandingsTab, defaultTab]);
 
   const handleTabChange = (value: string | null) => {
     if (!value) return;

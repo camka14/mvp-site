@@ -31,7 +31,7 @@ import {
   normalizeDivisionRatingType,
 } from '@/lib/divisionTypes';
 import { canonicalizeTimeSlots, normalizeTimeSlotFieldIds } from '@/server/timeSlotCanonical';
-import { normalizeEventTaxHandling } from '@/lib/taxPolicy';
+import { normalizeEventTaxHandling, normalizeOrganizerManualTaxRateBps } from '@/lib/taxPolicy';
 import {
   buildEventOfficialPositionsFromTemplates,
   normalizeEventOfficials,
@@ -72,6 +72,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'noFixedEndDateTime',
   'price',
   'taxHandling',
+  'organizerManualTaxRateBps',
   'singleDivision',
   'registrationByDivisionType',
   'cancellationRefundHours',
@@ -1717,6 +1718,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       if (Object.prototype.hasOwnProperty.call(data, 'taxHandling')) {
         data.taxHandling = normalizeEventTaxHandling(data.taxHandling);
+      }
+      if (Object.prototype.hasOwnProperty.call(data, 'organizerManualTaxRateBps')) {
+        data.organizerManualTaxRateBps = normalizeOrganizerManualTaxRateBps(data.organizerManualTaxRateBps);
       }
       const hasLegacyTeamIdsInput = Object.prototype.hasOwnProperty.call(payload, 'teamIds');
       const hasLegacyUserIdsInput = Object.prototype.hasOwnProperty.call(payload, 'userIds');

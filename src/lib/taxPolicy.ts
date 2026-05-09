@@ -1,4 +1,15 @@
 export type TaxMode = 'ZERO_TAX' | 'STRIPE_TAX_REQUIRED';
+export type Taxability = 'TAXABLE' | 'NOT_TAXABLE' | 'UNKNOWN';
+export type TaxLiabilityParty = 'PLATFORM' | 'ORGANIZER' | 'NONE' | 'UNKNOWN';
+export type TaxCollectionStrategy =
+  | 'PLATFORM_STRIPE_TAX'
+  | 'ORGANIZER_STRIPE_TAX'
+  | 'ORGANIZER_MANUAL_TAX'
+  | 'NO_TAX'
+  | 'BLOCKED_NEEDS_REVIEW';
+
+export const ORGANIZER_TAX_RESPONSIBILITY_MESSAGE =
+  'You are responsible for reporting and collecting sales tax in your state.';
 
 export const ORG_TAX_AGREEMENT_VERSION = '2026-05-07';
 
@@ -10,6 +21,12 @@ export type OrganizationTaxClassification =
 
 export type EventTaxHandling =
   | 'INHERIT_ORG'
+  | 'STRIPE_TAX'
+  | 'EXEMPT_PARTICIPANT_SPORTS'
+  | 'ORGANIZER_MANUAL_TAX'
+  | 'ORGANIZER_STRIPE_TAX';
+
+export type OrganizationDefaultEventTaxHandling =
   | 'STRIPE_TAX'
   | 'EXEMPT_PARTICIPANT_SPORTS';
 
@@ -26,9 +43,11 @@ export const EVENT_TAX_HANDLING_VALUES: readonly EventTaxHandling[] = [
   'INHERIT_ORG',
   'STRIPE_TAX',
   'EXEMPT_PARTICIPANT_SPORTS',
+  'ORGANIZER_MANUAL_TAX',
+  'ORGANIZER_STRIPE_TAX',
 ];
 
-export const ORGANIZATION_DEFAULT_EVENT_TAX_HANDLING_VALUES: readonly Exclude<EventTaxHandling, 'INHERIT_ORG'>[] = [
+export const ORGANIZATION_DEFAULT_EVENT_TAX_HANDLING_VALUES: readonly OrganizationDefaultEventTaxHandling[] = [
   'STRIPE_TAX',
   'EXEMPT_PARTICIPANT_SPORTS',
 ];
@@ -42,6 +61,10 @@ export type TaxReasonCode =
   | 'seller_attested_sports_exempt'
   | 'organization_default_stripe_tax'
   | 'organization_default_sports_exempt'
+  | 'organizer_manual_tax_selected'
+  | 'organizer_stripe_tax_selected'
+  | 'organizer_tax_collection_not_selected'
+  | 'organizer_tax_collection_not_allowed'
   | 'organization_tax_profile_incomplete'
   | 'non_event_purchase'
   | 'unsupported_tax_category'
@@ -53,6 +76,22 @@ export type TaxPolicyDecision = {
   reasonCode: TaxReasonCode;
   jurisdictionState: string | null;
   purchaseType: string;
+  taxability: Taxability;
+  liabilityParty: TaxLiabilityParty;
+  collectionStrategy: TaxCollectionStrategy;
+  organizerResponsibilityMessage?: string;
+  policyRuleId?: string;
+  policyRuleVersion?: string;
+};
+
+export type OrganizerLiabilityRule = {
+  stateCode: string;
+  purchaseTypes?: readonly string[];
+  taxCategories?: readonly string[];
+  allowedCollectionStrategies?: readonly Extract<TaxCollectionStrategy, 'ORGANIZER_MANUAL_TAX' | 'ORGANIZER_STRIPE_TAX'>[];
+  defaultCollectionStrategy?: Extract<TaxCollectionStrategy, 'ORGANIZER_MANUAL_TAX' | 'ORGANIZER_STRIPE_TAX'>;
+  ruleId: string;
+  ruleVersion: string;
 };
 
 export type ResolvePurchaseTaxPolicyParams = {
@@ -63,6 +102,7 @@ export type ResolvePurchaseTaxPolicyParams = {
     location?: unknown;
     organizationId?: unknown;
     taxHandling?: unknown;
+    organizerManualTaxRateBps?: unknown;
   } | null;
   organization?: {
     defaultEventTaxHandling?: unknown;
@@ -71,6 +111,7 @@ export type ResolvePurchaseTaxPolicyParams = {
   timeSlot?: {
     taxHandling?: unknown;
   } | null;
+  organizerLiabilityRules?: readonly OrganizerLiabilityRule[];
 };
 
 const US_STATE_NAMES_TO_CODES: Record<string, string> = {
@@ -135,6 +176,10 @@ const SPORTS_PARTICIPANT_EXEMPT_STATE_CODES = new Set(['NJ', 'NY', 'WA']);
 // taxes that need city-level handling before they can be safely auto-exempted.
 const NO_GENERAL_SALES_TAX_STATE_CODES = new Set(['DE', 'OR']);
 
+export const CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES: readonly OrganizerLiabilityRule[] = [];
+
+export const MAX_ORGANIZER_MANUAL_TAX_RATE_BPS = 2500;
+
 const normalizeText = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -169,10 +214,12 @@ export const normalizeEventTaxHandling = (
 
 export const normalizeOrganizationDefaultEventTaxHandling = (
   value: unknown,
-  fallback: Exclude<EventTaxHandling, 'INHERIT_ORG'> = 'STRIPE_TAX',
-): Exclude<EventTaxHandling, 'INHERIT_ORG'> => {
+  fallback: OrganizationDefaultEventTaxHandling = 'STRIPE_TAX',
+): OrganizationDefaultEventTaxHandling => {
   const normalized = normalizeEventTaxHandling(value, fallback);
-  return normalized === 'INHERIT_ORG' ? fallback : normalized;
+  return ORGANIZATION_DEFAULT_EVENT_TAX_HANDLING_VALUES.includes(normalized as OrganizationDefaultEventTaxHandling)
+    ? normalized as OrganizationDefaultEventTaxHandling
+    : fallback;
 };
 
 export const normalizeRentalTaxHandling = (
@@ -189,6 +236,18 @@ const hasAcceptedTaxResponsibility = (value: unknown): boolean => {
     return true;
   }
   return Boolean(normalizeText(value));
+};
+
+export const normalizeOrganizerManualTaxRateBps = (value: unknown): number => {
+  const numeric = typeof value === 'number'
+    ? value
+    : typeof value === 'string' && value.trim().length > 0
+      ? Number(value)
+      : 0;
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return Math.min(MAX_ORGANIZER_MANUAL_TAX_RATE_BPS, Math.max(0, Math.round(numeric)));
 };
 
 const normalizeStateCode = (value: unknown): string | null => {
@@ -264,139 +323,317 @@ export const extractUsStateCodeFromLocationText = (...values: unknown[]): string
   return null;
 };
 
+const normalizePurchaseType = (value: unknown): string => normalizeText(value)?.toLowerCase() ?? '';
+const normalizeTaxCategory = (value: unknown): string => normalizeText(value)?.toUpperCase() ?? 'EVENT_PARTICIPANT';
+
+const buildTaxPolicyDecision = ({
+  mode,
+  reasonCode,
+  jurisdictionState,
+  purchaseType,
+  taxability,
+  liabilityParty,
+  collectionStrategy,
+  organizerResponsibilityMessage,
+  policyRuleId,
+  policyRuleVersion,
+}: TaxPolicyDecision): TaxPolicyDecision => ({
+  mode,
+  reasonCode,
+  jurisdictionState,
+  purchaseType,
+  taxability,
+  liabilityParty,
+  collectionStrategy,
+  ...(organizerResponsibilityMessage ? { organizerResponsibilityMessage } : {}),
+  ...(policyRuleId ? { policyRuleId } : {}),
+  ...(policyRuleVersion ? { policyRuleVersion } : {}),
+});
+
+const findOrganizerLiabilityRule = ({
+  stateCode,
+  purchaseType,
+  taxCategory,
+  rules,
+}: {
+  stateCode: string | null;
+  purchaseType: string;
+  taxCategory: string;
+  rules: readonly OrganizerLiabilityRule[];
+}): OrganizerLiabilityRule | null => {
+  if (!stateCode) {
+    return null;
+  }
+  return rules.find((rule) => {
+    const ruleState = normalizeStateCode(rule.stateCode);
+    if (ruleState !== stateCode) {
+      return false;
+    }
+    const purchaseTypes = rule.purchaseTypes?.map((value) => normalizePurchaseType(value)).filter(Boolean);
+    if (purchaseTypes?.length && !purchaseTypes.includes(purchaseType)) {
+      return false;
+    }
+    const taxCategories = rule.taxCategories?.map((value) => normalizeTaxCategory(value)).filter(Boolean);
+    if (taxCategories?.length && !taxCategories.includes(taxCategory)) {
+      return false;
+    }
+    return true;
+  }) ?? null;
+};
+
+const resolveOrganizerCollectionStrategy = ({
+  selectedEventTaxHandling,
+  rule,
+}: {
+  selectedEventTaxHandling: EventTaxHandling;
+  rule: OrganizerLiabilityRule;
+}): TaxCollectionStrategy => {
+  const allowed = new Set(rule.allowedCollectionStrategies ?? ['ORGANIZER_MANUAL_TAX']);
+  if (selectedEventTaxHandling === 'ORGANIZER_STRIPE_TAX') {
+    return allowed.has('ORGANIZER_STRIPE_TAX') ? 'ORGANIZER_STRIPE_TAX' : 'BLOCKED_NEEDS_REVIEW';
+  }
+  if (selectedEventTaxHandling === 'ORGANIZER_MANUAL_TAX') {
+    return allowed.has('ORGANIZER_MANUAL_TAX') ? 'ORGANIZER_MANUAL_TAX' : 'BLOCKED_NEEDS_REVIEW';
+  }
+  if (rule.defaultCollectionStrategy && allowed.has(rule.defaultCollectionStrategy)) {
+    return rule.defaultCollectionStrategy;
+  }
+  return 'BLOCKED_NEEDS_REVIEW';
+};
+
+export const taxPolicyRequiresStripeTaxCalculation = (taxPolicy: TaxPolicyDecision): boolean => (
+  taxPolicy.collectionStrategy === 'PLATFORM_STRIPE_TAX'
+  || taxPolicy.collectionStrategy === 'ORGANIZER_STRIPE_TAX'
+);
+
+export const taxPolicyUsesOrganizerManualTax = (taxPolicy: TaxPolicyDecision): boolean => (
+  taxPolicy.collectionStrategy === 'ORGANIZER_MANUAL_TAX'
+);
+
 export const resolvePurchaseTaxPolicy = ({
   purchaseType,
   taxCategory,
   event,
   organization,
+  organizerLiabilityRules = CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES,
 }: ResolvePurchaseTaxPolicyParams): TaxPolicyDecision => {
-  const normalizedPurchaseType = normalizeText(purchaseType)?.toLowerCase() ?? '';
+  const normalizedPurchaseType = normalizePurchaseType(purchaseType);
   if (normalizedPurchaseType !== 'event') {
-    return {
+    return buildTaxPolicyDecision({
       mode: 'STRIPE_TAX_REQUIRED',
       reasonCode: 'non_event_purchase',
       jurisdictionState: null,
       purchaseType: normalizedPurchaseType,
-    };
+      taxability: 'TAXABLE',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
+    });
   }
 
-  const normalizedTaxCategory = normalizeText(taxCategory)?.toUpperCase() ?? 'EVENT_PARTICIPANT';
+  const normalizedTaxCategory = normalizeTaxCategory(taxCategory);
   if (normalizedTaxCategory !== 'EVENT_PARTICIPANT') {
-    return {
+    return buildTaxPolicyDecision({
       mode: 'STRIPE_TAX_REQUIRED',
       reasonCode: 'unsupported_tax_category',
       jurisdictionState: null,
       purchaseType: normalizedPurchaseType,
-    };
+      taxability: 'TAXABLE',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
+    });
   }
 
   const jurisdictionState = extractUsStateCodeFromLocationText(event?.address, event?.location);
   const selectedEventTaxHandling = normalizeEventTaxHandling(event?.taxHandling);
   const hasOrganizationContext = Boolean(organization) || Boolean(normalizeText(event?.organizationId));
 
-  if (selectedEventTaxHandling === 'STRIPE_TAX') {
-    return {
-      mode: 'STRIPE_TAX_REQUIRED',
-      reasonCode: 'seller_selected_stripe_tax',
-      jurisdictionState,
-      purchaseType: normalizedPurchaseType,
-    };
-  }
-
   if (selectedEventTaxHandling === 'EXEMPT_PARTICIPANT_SPORTS') {
     if (hasOrganizationContext && !hasAcceptedTaxResponsibility(organization?.taxResponsibilityAcceptedAt)) {
-      return {
+      return buildTaxPolicyDecision({
         mode: 'STRIPE_TAX_REQUIRED',
         reasonCode: 'organization_tax_profile_incomplete',
         jurisdictionState,
         purchaseType: normalizedPurchaseType,
-      };
+        taxability: 'UNKNOWN',
+        liabilityParty: 'PLATFORM',
+        collectionStrategy: 'PLATFORM_STRIPE_TAX',
+      });
     }
     if (!jurisdictionState) {
-      return {
+      return buildTaxPolicyDecision({
         mode: 'STRIPE_TAX_REQUIRED',
         reasonCode: 'missing_event_jurisdiction',
         jurisdictionState: null,
         purchaseType: normalizedPurchaseType,
-      };
+        taxability: 'UNKNOWN',
+        liabilityParty: 'PLATFORM',
+        collectionStrategy: 'PLATFORM_STRIPE_TAX',
+      });
     }
 
-    return {
+    return buildTaxPolicyDecision({
       mode: 'ZERO_TAX',
       reasonCode: 'seller_attested_sports_exempt',
       jurisdictionState,
       purchaseType: normalizedPurchaseType,
-    };
+      taxability: 'NOT_TAXABLE',
+      liabilityParty: 'NONE',
+      collectionStrategy: 'NO_TAX',
+    });
   }
 
-  if (hasOrganizationContext) {
+  if (hasOrganizationContext && selectedEventTaxHandling === 'INHERIT_ORG') {
     const organizationDefaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(
       organization?.defaultEventTaxHandling,
     );
     if (organizationDefaultEventTaxHandling === 'EXEMPT_PARTICIPANT_SPORTS') {
       if (!hasAcceptedTaxResponsibility(organization?.taxResponsibilityAcceptedAt)) {
-        return {
+        return buildTaxPolicyDecision({
           mode: 'STRIPE_TAX_REQUIRED',
           reasonCode: 'organization_tax_profile_incomplete',
           jurisdictionState,
           purchaseType: normalizedPurchaseType,
-        };
+          taxability: 'UNKNOWN',
+          liabilityParty: 'PLATFORM',
+          collectionStrategy: 'PLATFORM_STRIPE_TAX',
+        });
       }
       if (!jurisdictionState) {
-        return {
+        return buildTaxPolicyDecision({
           mode: 'STRIPE_TAX_REQUIRED',
           reasonCode: 'missing_event_jurisdiction',
           jurisdictionState: null,
           purchaseType: normalizedPurchaseType,
-        };
+          taxability: 'UNKNOWN',
+          liabilityParty: 'PLATFORM',
+          collectionStrategy: 'PLATFORM_STRIPE_TAX',
+        });
       }
-      return {
+      return buildTaxPolicyDecision({
         mode: 'ZERO_TAX',
         reasonCode: 'organization_default_sports_exempt',
         jurisdictionState,
         purchaseType: normalizedPurchaseType,
-      };
+        taxability: 'NOT_TAXABLE',
+        liabilityParty: 'NONE',
+        collectionStrategy: 'NO_TAX',
+      });
     }
-
-    return {
-      mode: 'STRIPE_TAX_REQUIRED',
-      reasonCode: 'organization_default_stripe_tax',
-      jurisdictionState,
-      purchaseType: normalizedPurchaseType,
-    };
   }
 
   if (!jurisdictionState) {
-    return {
+    return buildTaxPolicyDecision({
       mode: 'STRIPE_TAX_REQUIRED',
       reasonCode: 'missing_event_jurisdiction',
       jurisdictionState: null,
       purchaseType: normalizedPurchaseType,
-    };
+      taxability: 'UNKNOWN',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
+    });
+  }
+
+  const organizerLiabilityRule = findOrganizerLiabilityRule({
+    stateCode: jurisdictionState,
+    purchaseType: normalizedPurchaseType,
+    taxCategory: normalizedTaxCategory,
+    rules: organizerLiabilityRules,
+  });
+  if (organizerLiabilityRule) {
+    const collectionStrategy = resolveOrganizerCollectionStrategy({
+      selectedEventTaxHandling,
+      rule: organizerLiabilityRule,
+    });
+    const selectedOrganizerStripeTax = selectedEventTaxHandling === 'ORGANIZER_STRIPE_TAX';
+    const selectedOrganizerManualTax = selectedEventTaxHandling === 'ORGANIZER_MANUAL_TAX';
+    const collectionSelected = selectedOrganizerManualTax || selectedOrganizerStripeTax || collectionStrategy !== 'BLOCKED_NEEDS_REVIEW';
+    return buildTaxPolicyDecision({
+      mode: 'STRIPE_TAX_REQUIRED',
+      reasonCode: collectionStrategy === 'ORGANIZER_MANUAL_TAX'
+        ? 'organizer_manual_tax_selected'
+        : collectionStrategy === 'ORGANIZER_STRIPE_TAX'
+          ? 'organizer_stripe_tax_selected'
+          : collectionSelected
+            ? 'organizer_tax_collection_not_allowed'
+            : 'organizer_tax_collection_not_selected',
+      jurisdictionState,
+      purchaseType: normalizedPurchaseType,
+      taxability: 'TAXABLE',
+      liabilityParty: 'ORGANIZER',
+      collectionStrategy,
+      organizerResponsibilityMessage: ORGANIZER_TAX_RESPONSIBILITY_MESSAGE,
+      policyRuleId: organizerLiabilityRule.ruleId,
+      policyRuleVersion: organizerLiabilityRule.ruleVersion,
+    });
+  }
+
+  if (selectedEventTaxHandling === 'ORGANIZER_MANUAL_TAX' || selectedEventTaxHandling === 'ORGANIZER_STRIPE_TAX') {
+    return buildTaxPolicyDecision({
+      mode: 'STRIPE_TAX_REQUIRED',
+      reasonCode: 'organizer_tax_collection_not_allowed',
+      jurisdictionState,
+      purchaseType: normalizedPurchaseType,
+      taxability: 'TAXABLE',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
+    });
+  }
+
+  if (selectedEventTaxHandling === 'STRIPE_TAX') {
+    return buildTaxPolicyDecision({
+      mode: 'STRIPE_TAX_REQUIRED',
+      reasonCode: 'seller_selected_stripe_tax',
+      jurisdictionState,
+      purchaseType: normalizedPurchaseType,
+      taxability: 'TAXABLE',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
+    });
+  }
+
+  if (hasOrganizationContext) {
+    return buildTaxPolicyDecision({
+      mode: 'STRIPE_TAX_REQUIRED',
+      reasonCode: 'organization_default_stripe_tax',
+      jurisdictionState,
+      purchaseType: normalizedPurchaseType,
+      taxability: 'TAXABLE',
+      liabilityParty: 'PLATFORM',
+      collectionStrategy: 'PLATFORM_STRIPE_TAX',
+    });
   }
 
   if (SPORTS_PARTICIPANT_EXEMPT_STATE_CODES.has(jurisdictionState)) {
-    return {
+    return buildTaxPolicyDecision({
       mode: 'ZERO_TAX',
       reasonCode: 'sports_participant_state_exempt',
       jurisdictionState,
       purchaseType: normalizedPurchaseType,
-    };
+      taxability: 'NOT_TAXABLE',
+      liabilityParty: 'NONE',
+      collectionStrategy: 'NO_TAX',
+    });
   }
 
   if (NO_GENERAL_SALES_TAX_STATE_CODES.has(jurisdictionState)) {
-    return {
+    return buildTaxPolicyDecision({
       mode: 'ZERO_TAX',
       reasonCode: 'no_general_sales_tax_state',
       jurisdictionState,
       purchaseType: normalizedPurchaseType,
-    };
+      taxability: 'NOT_TAXABLE',
+      liabilityParty: 'NONE',
+      collectionStrategy: 'NO_TAX',
+    });
   }
 
-  return {
+  return buildTaxPolicyDecision({
     mode: 'STRIPE_TAX_REQUIRED',
     reasonCode: 'tax_policy_not_configured',
     jurisdictionState,
     purchaseType: normalizedPurchaseType,
-  };
+    taxability: 'TAXABLE',
+    liabilityParty: 'PLATFORM',
+    collectionStrategy: 'PLATFORM_STRIPE_TAX',
+  });
 };

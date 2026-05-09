@@ -7,8 +7,13 @@ import type {
 } from '@/lib/organizationVerification';
 import type {
   EventTaxHandling,
+  OrganizationDefaultEventTaxHandling,
   OrganizationTaxClassification,
   RentalTaxHandling,
+  Taxability,
+  TaxCollectionStrategy,
+  TaxLiabilityParty,
+  TaxMode,
 } from '@/lib/taxPolicy';
 
 // User types
@@ -606,6 +611,7 @@ export interface Event {
   coordinates: [number, number];
   price: number;
   taxHandling?: EventTaxHandling;
+  organizerManualTaxRateBps?: number;
   minAge?: number;
   maxAge?: number;
   rating?: number;
@@ -734,7 +740,7 @@ export interface Organization {
   hasStripeAccount?: boolean;
   taxOrganizationType?: OrganizationTaxClassification;
   operatesAthleticFacility?: boolean;
-  defaultEventTaxHandling?: Exclude<EventTaxHandling, 'INHERIT_ORG'>;
+  defaultEventTaxHandling?: OrganizationDefaultEventTaxHandling;
   defaultRentalTaxHandling?: RentalTaxHandling;
   taxResponsibilityAcceptedAt?: string;
   taxResponsibilityAcceptedByUserId?: string;
@@ -1771,9 +1777,15 @@ export interface PaymentIntent {
   feeBreakdown: FeeBreakdown;
   taxCalculationId?: string;
   taxCategory?: string;
-  taxMode?: 'ZERO_TAX' | 'STRIPE_TAX_REQUIRED';
+  taxMode?: TaxMode;
   taxReasonCode?: string;
   taxJurisdictionState?: string | null;
+  taxability?: Taxability;
+  taxLiabilityParty?: TaxLiabilityParty;
+  taxCollectionStrategy?: TaxCollectionStrategy;
+  taxPolicyRuleId?: string;
+  taxPolicyRuleVersion?: string;
+  organizerResponsibilityMessage?: string;
   error?: string;
   billId?: string | null;
   billPaymentId?: string | null;

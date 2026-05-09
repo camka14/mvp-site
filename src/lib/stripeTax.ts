@@ -86,6 +86,48 @@ export const buildZeroTaxQuote = ({
   };
 };
 
+export const buildOrganizerManualTaxQuote = ({
+  subtotalCents,
+  organizerManualTaxRateBps,
+  purchaseType,
+  taxCategory,
+  eventType,
+}: {
+  subtotalCents: number;
+  organizerManualTaxRateBps: number;
+  purchaseType: string;
+  taxCategory: InternalTaxCategory;
+  eventType?: unknown;
+}): TaxQuote => {
+  const normalizedSubtotal = Math.max(0, Math.round(subtotalCents));
+  const normalizedTaxRateBps = Number.isFinite(Number(organizerManualTaxRateBps))
+    ? Math.max(0, Math.round(Number(organizerManualTaxRateBps)))
+    : 0;
+  const taxAmountCents = Math.max(0, Math.round((normalizedSubtotal * normalizedTaxRateBps) / 10000));
+  const fees = calculateMvpAndStripeFeesWithTax({
+    eventAmountCents: normalizedSubtotal,
+    eventType,
+    taxAmountCents,
+    stripeTaxServiceFeeCents: 0,
+  });
+
+  return {
+    calculationId: '',
+    subtotalCents: normalizedSubtotal,
+    processingFeeCents: fees.mvpFeeCents,
+    stripeProcessingFeeCents: fees.stripeProcessingFeeCents,
+    stripeTaxServiceFeeCents: fees.stripeTaxServiceFeeCents,
+    stripeFeeCents: fees.stripeFeeCents,
+    taxAmountCents: fees.taxAmountCents,
+    totalChargeCents: fees.totalChargeCents,
+    hostReceivesCents: normalizedSubtotal + fees.taxAmountCents,
+    feePercentage: fees.mvpFeePercentage * 100,
+    purchaseType,
+    taxCategory,
+    customerId: '',
+  };
+};
+
 const GENERAL_SERVICES_STRIPE_TAX_CODE = 'txcd_20030000';
 const GENERAL_TANGIBLE_GOODS_STRIPE_TAX_CODE = 'txcd_99999999';
 const NON_TAXABLE_STRIPE_TAX_CODE = 'txcd_00000000';

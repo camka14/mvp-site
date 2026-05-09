@@ -10,6 +10,8 @@ BracketIQ currently calls Stripe Tax during every paid event checkout that reach
 
 The first milestone keeps the current PaymentIntent-based checkout UI intact. Later milestones can add Stripe Checkout Sessions and a backend threshold so both `mvp-site` and `mvp-app` switch behavior from the same server response instead of duplicating the threshold in each client.
 
+The next milestone expands the policy from "does this need Stripe Tax" to "who is responsible for collecting and reporting tax." BracketIQ must support state-by-state marketplace facilitator determinations. A marketplace facilitator is a platform that a state treats as the seller responsible for collecting and remitting sales tax on third-party sales. A state can decide that BracketIQ is the responsible marketplace facilitator for one charge type, while another state or charge type can leave responsibility with the organizer. After this milestone, the event creation price area will explain organizer responsibility when policy says BracketIQ is not the marketplace facilitator for the event state and charge type. When BracketIQ is responsible, the UI will not show an organizer warning.
+
 ## Progress
 
 - [x] (2026-05-07 20:35Z) Read the existing billing route, Stripe tax helper, web PaymentModal, mobile PaymentSheet call sites, and `PLANS.md`.
@@ -26,6 +28,11 @@ The first milestone keeps the current PaymentIntent-based checkout UI intact. La
 - [x] (2026-05-08 01:05Z) Confirmed `mvp-app` reads organizations but does not create or update them, so no mobile organization agreement screen is required for this milestone.
 - [x] (2026-05-08 01:25Z) Ran web focused tests, web TypeScript validation, and Android Kotlin compile successfully after the organization tax responsibility milestone.
 - [x] (2026-05-08 01:40Z) Added Washington to the individual/no-organization sports event zero-tax gate while leaving organization-hosted Washington events controlled by org tax settings.
+- [x] (2026-05-08 19:21Z) Revised this ExecPlan for the marketplace-facilitator tax responsibility milestone and the price-section organizer responsibility message.
+- [x] (2026-05-08 19:40Z) Added a tax responsibility policy result that separates taxability, legal liability party, and collection strategy while preserving the legacy `taxMode` field.
+- [x] (2026-05-08 19:45Z) Added an initially empty state/charge-type organizer-liability rule list for jurisdictions where BracketIQ has confirmed it is not the marketplace facilitator.
+- [x] (2026-05-08 20:05Z) Updated the event creation/edit price section to show organizer responsibility only when the resolved policy says the organizer is liable.
+- [x] (2026-05-08 20:20Z) Updated checkout, preview, payment metadata, transfer behavior, and focused tests so organizer-liable manual tax is not treated as platform-retained tax.
 
 ## Surprises & Discoveries
 
@@ -45,6 +52,12 @@ The first milestone keeps the current PaymentIntent-based checkout UI intact. La
   Evidence: Source search under `C:\Users\samue\StudioProjects\mvp-app\composeApp\src` found GET calls for `api/organizations` and `api/organizations/{id}/templates`, but no POST or PATCH path for `api/organizations`.
 - Observation: The Android compile task starts a local backend helper during prebuild.
   Evidence: `.\gradlew.bat :composeApp:compileDebugKotlinAndroid` logged `startLocalBackend: starting (npm) in C:\Users\samue\Documents\Code\mvp-site on port 3000`; the tracked pid was gone after the compile finished.
+- Observation: Stripe Tax for Connect requires BracketIQ to determine whether the platform or connected account is legally responsible before choosing the Stripe Tax integration path.
+  Evidence: Stripe's Connect tax guide states that the first step is determining which entity must collect and report taxes, and that liability can depend on marketplace laws, business model, order amount, and product type.
+- Observation: Connected-account Stripe Tax is not just a UI switch.
+  Evidence: Stripe's tax-for-platforms guide says connected accounts need tax settings and registrations before enabling calculations; otherwise Stripe can return zero tax with a `not_collecting` reason when an account lacks a registration.
+- Observation: Current destination-charge PaymentIntent behavior transfers only the organizer subtotal, while tax remains on the platform side.
+  Evidence: `src/app/api/billing/purchase-intent/route.ts` calls `buildDestinationTransferData` with `transferAmountCents: taxQuote.subtotalCents`, so any organizer-liable manual tax would need an explicit transfer behavior change before launch.
 
 ## Decision Log
 
@@ -75,6 +88,15 @@ The first milestone keeps the current PaymentIntent-based checkout UI intact. La
 - Decision: Keep rentals on Stripe Tax and store rental tax handling as `STRIPE_TAX`.
   Rationale: Facility and field rentals are more often taxable and fact-specific than participant event registration. A one-value field keeps the model extensible without adding an unsafe exemption path.
   Date/Author: 2026-05-08 / Codex.
+- Decision: Model marketplace-facilitator responsibility as a first-class policy dimension, not as another zero-tax state list.
+  Rationale: A state can say a transaction is taxable without making BracketIQ the collector, or it can make BracketIQ the collector for taxable marketplace transactions. The code needs to keep taxability and liability separate so organizer warnings, Stripe Tax setup, transfers, and reports are correct.
+  Date/Author: 2026-05-08 / Codex.
+- Decision: Start the confirmed organizer-liable marketplace-facilitator list empty.
+  Rationale: The user wants states added one at a time after rulings or clear authority. Unknown states should stay conservative and should not expose organizer manual tax controls by default.
+  Date/Author: 2026-05-08 / Codex.
+- Decision: Show the organizer responsibility message only when the policy result says the organizer is liable for tax collection.
+  Rationale: If BracketIQ is responsible, the user requested no message. If no sales tax applies, there is no organizer collection obligation to warn about. If the organizer is responsible, the price section should say exactly: "You are responsible for reporting and collecting sales tax in your state."
+  Date/Author: 2026-05-08 / Codex.
 
 ## Outcomes & Retrospective
 
@@ -82,7 +104,9 @@ The first milestone is implemented. Event registrations in the configured zero-t
 
 The organization tax responsibility milestone is also implemented. Organizations now store a tax profile and agreement timestamp, organization-hosted events can inherit the organization default or explicitly choose Stripe Tax or sports-registration-exempt handling, and checkout/tax preview routes load persisted event and organization tax context before deciding whether Stripe Tax is required. Rentals continue to use Stripe Tax.
 
-The next milestone should implement a Checkout Session creator and a backend payment presentation decision such as `PAYMENT_INTENT` versus `CHECKOUT_SESSION`, using the fields added in this milestone. That work should include mobile Custom Tab/Safari View behavior and web hosted or embedded Checkout behavior.
+The marketplace-facilitator responsibility milestone is implemented for the first safe slice. The policy helper now returns taxability, liability party, and collection strategy in addition to the legacy `ZERO_TAX` or `STRIPE_TAX_REQUIRED` mode. The confirmed organizer-liable rule list starts empty, so unknown taxable states such as Idaho remain platform-liable until a reviewed rule is added. Tests inject a temporary organizer-liable rule to prove the UI, preview, checkout metadata, and destination-transfer behavior without enabling any production state by default.
+
+A later milestone should implement a Checkout Session creator and a backend payment presentation decision such as `PAYMENT_INTENT` versus `CHECKOUT_SESSION`, using the fields added in this milestone. That work should include mobile Custom Tab/Safari View behavior and web hosted or embedded Checkout behavior. It should happen after the marketplace-facilitator policy result exists, because connected-account tax liability may require Checkout or direct connected-account charges rather than the current platform PaymentIntent path.
 
 ## Context and Orientation
 
@@ -91,6 +115,10 @@ The current one-time payment flow is centered on `src/app/api/billing/purchase-i
 The web checkout UI is `src/components/ui/PaymentModal.tsx`. It receives the backend `PaymentIntent` response and displays `feeBreakdown` before mounting Stripe Elements. The mobile app in `C:\Users\samue\StudioProjects\mvp-app` uses the same backend route and presents native Stripe PaymentSheet.
 
 A "zero-tax gate" means a deterministic backend function decides that a Stripe Tax calculation is not needed for a specific purchase. The first gate is limited to sports event participant registrations because BracketIQ events are recreational sports participation, not spectator tickets. The helper must return a reason and state so the decision is auditable in metadata and tests.
+
+The current event editor price area lives in `src/app/events/[id]/schedule/components/EventForm.tsx`. It imports `resolvePurchaseTaxPolicy`, derives `eventTaxPolicyForPreview` near the organization state variables, passes `eventTaxableForPreview` into `PriceWithFeesPreview`, and renders the main event price control around the "Division Defaults" section. The organizer-facing tax responsibility message belongs in this same price area, immediately near the price control and tax handling selector so the organizer sees it before saving the event.
+
+An "organizer-liable" transaction means the state and charge type have been reviewed and BracketIQ has concluded that the organizer, not the platform, is responsible for collecting and reporting sales tax. This plan starts with no organizer-liable states. Adding a state later must be an explicit code/config change that names the state, charge type, ruling or source, and effective date.
 
 ## Plan of Work
 
@@ -104,9 +132,23 @@ Extend `src/types/index.ts` so the existing payment response can include optiona
 
 Add focused tests in `src/lib/__tests__/taxPolicy.test.ts` and the existing purchase-intent route test file. Tests should verify state extraction, New York/New Jersey participant exemptions, safe no-tax states, rental fallback to Stripe Tax, and that a New Jersey sports event checkout skips `calculateTaxQuote` but still creates a PaymentIntent for the fee-inclusive total.
 
+For the marketplace-facilitator milestone, `src/lib/taxPolicy.ts` now returns a richer decision. The old `mode` field remains temporarily for compatibility, and the result also includes `taxability`, `liabilityParty`, `collectionStrategy`, and `organizerResponsibilityMessage`. Taxability answers whether the charge itself is taxable. Liability answers who must collect and report. Collection strategy answers what the checkout code should do. The initial strategies are platform Stripe Tax, organizer Stripe Tax, organizer manual tax, no tax, and blocked review.
+
+`src/lib/taxPolicy.ts` exposes `CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES`, and the list is intentionally empty. This list is state and charge-type aware rather than a broad state-only escape hatch. Its purpose is to hold future rulings or state-specific determinations where BracketIQ is not the marketplace facilitator for sports participant event registrations. The resolver prioritizes this responsibility decision before offering organizer controls. Unknown states stay conservative and do not show organizer manual tax controls.
+
+Preserve the existing no-tax logic as taxability rules, not as marketplace facilitator rules. For example, Oregon and Delaware can resolve to no tax because no general sales tax applies, but that is different from saying the organizer must collect tax. Washington ordinary sports participation can remain a no-tax rule for the facts already modeled, while facility/operator or other charge types remain conservative until reviewed.
+
+Organizer tax handling values are available only where policy allows organizer liability. The relevant type aliases in `src/lib/taxPolicy.ts`, `src/types/index.ts`, and persisted string normalization now distinguish platform Stripe Tax, organizer Stripe Tax, organizer manual tax, and no-tax decisions. The event form does not expose `ORGANIZER_*` choices unless the policy decision says the event state and charge type are organizer-liable.
+
+`src/app/events/[id]/schedule/components/EventForm.tsx` now renders the responsibility message in the price section. Next to the price input and existing tax handling control, it shows no responsibility message when `liabilityParty` is `PLATFORM` or `NONE`. When `liabilityParty` is `ORGANIZER`, it shows exactly: "You are responsible for reporting and collecting sales tax in your state." In that organizer-liable branch, the organizer can choose a manual tax rate or organizer Stripe Tax. The first implementation stores the manual rate in basis points because divisions can have different prices; checkout and preview compute the actual cents from the selected price.
+
+Checkout and transfer behavior now handles organizer manual tax before enabling it through policy. For platform-liable tax, the current behavior remains: the platform collects/remits tax and transfers only the organizer subtotal. For organizer-liable manual tax, the tax dollars are transferred to the connected account along with the organizer subtotal, while BracketIQ keeps only platform and Stripe fees. Organizer-liable Stripe Tax is explicitly blocked for now instead of reusing the existing platform PaymentIntent tax calculation; it needs a connected-account-safe Stripe path such as Checkout with `automatic_tax.liability` set to the connected account, or a direct connected-account charge, after verifying the connected account has tax settings and registrations.
+
+PaymentIntent metadata now records the tax policy result used at checkout: state, charge type, liability party, collection strategy, policy reason code, rule version, tax calculation id if any, and organizer manual tax rate/amount if applicable. This metadata is required for later reconciliation and for explaining why a payment did or did not collect tax.
+
 ## Concrete Steps
 
-From `C:\Users\samue\Documents\Code\mvp-site`, run:
+From `/Users/elesesy/StudioProjects/mvp-site`, run:
 
     npm test -- src/lib/__tests__/taxPolicy.test.ts src/app/api/billing/__tests__/purchaseIntentRoute.test.ts --runInBand
 
@@ -164,6 +206,21 @@ Validation actually run during this milestone:
     C:\Users\samue\StudioProjects\mvp-app> .\gradlew.bat :composeApp:compileDebugKotlinAndroid
     Result after organization tax responsibility update: BUILD SUCCESSFUL. Existing Windows host warnings about disabled iOS targets remain.
 
+    npx prisma generate
+    Result after marketplace-facilitator responsibility update: PASS. Prisma Client 7.7.0 generated to src/generated/prisma.
+
+    npm test -- src/lib/__tests__/taxPolicy.test.ts --runInBand
+    Result after marketplace-facilitator responsibility update: PASS, 1 suite, 10 tests.
+
+    npm test -- src/app/api/billing/__tests__/purchaseIntentRoute.test.ts --runInBand
+    Result after marketplace-facilitator responsibility update: PASS, 1 suite, 15 tests.
+
+    npm test -- --runTestsByPath "src/app/events/[id]/schedule/components/__tests__/EventForm.test.tsx" --runInBand
+    Result after marketplace-facilitator responsibility update: PASS, 1 suite, 40 tests. Existing warning logs from validation paths remain.
+
+    npx tsc --noEmit
+    Result after marketplace-facilitator responsibility update: PASS.
+
 ## Validation and Acceptance
 
 Acceptance for the first milestone is:
@@ -174,11 +231,23 @@ Acceptance for the first milestone is:
 4. Rentals still call the existing Stripe Tax path unless and until a separate rental policy is added.
 5. Existing tests for taxed event checkout still pass.
 
+Acceptance for the marketplace-facilitator milestone is:
+
+1. With the confirmed organizer-liable list empty, event creation in an unknown taxable state such as Idaho does not expose organizer manual tax controls and does not show the organizer responsibility message.
+2. A unit test can add a temporary organizer-liable policy fixture for a state and prove that `resolvePurchaseTaxPolicy` returns `liabilityParty: "ORGANIZER"` and a collection strategy that permits organizer manual or organizer Stripe Tax.
+3. In the event form price area, the organizer-liable fixture shows exactly "You are responsible for reporting and collecting sales tax in your state." next to the price/tax controls.
+4. In platform-liable or no-tax policy states, the price area shows no responsibility message.
+5. Platform-liable checkout metadata records platform liability and preserves the existing transfer amount behavior.
+6. Organizer-liable manual-tax checkout metadata records organizer liability and transfers organizer subtotal plus organizer tax to the connected account. This behavior must be covered by route tests before it is enabled in production UI.
+7. Focused tests pass with `npm test -- src/lib/__tests__/taxPolicy.test.ts --runInBand`, the relevant purchase-intent route tests pass with `--runInBand`, and the EventForm test that covers the price section passes with `--runTestsByPath`.
+
 ## Idempotence and Recovery
 
 The changes are additive and safe to rerun. The policy helper has no external side effects. If a zero-tax route change fails after creating a `STARTED` event registration, the existing purchase-intent error handling still releases the reservation on Stripe PaymentIntent creation failure.
 
 If the state cannot be resolved from event location strings, the helper must return `STRIPE_TAX_REQUIRED`, which preserves current behavior rather than guessing.
+
+For the marketplace-facilitator milestone, adding a state to the organizer-liable list must be an additive change with tests. Removing a state must default affected events back to platform-liable or blocked-review behavior rather than silently keeping organizer controls. If a checkout request carries stale organizer manual tax fields but the current resolver no longer allows organizer liability for that state and charge type, the server must reject the request or ignore the stale fields and return a clear error.
 
 ## Artifacts and Notes
 
@@ -190,16 +259,38 @@ Sources used for the initial safe policy:
 - Oregon Department of Revenue says Oregon does not have a general sales or use/transaction tax.
 - Washington Department of Revenue says sports league participation fees generally are not retail sales, but an athletic or fitness facility operator must collect sales tax on league play charges.
 
+Sources used for the marketplace-facilitator responsibility milestone:
+
+- Stripe's Connect tax guide says the first step is determining whether the platform or connected account has the obligation to collect and report taxes. It also says that liability can depend on marketplace laws, business model, order amount, and type of goods sold.
+- Stripe's tax-for-platforms guide says connected accounts must have tax settings and registrations before connected-account tax calculation is enabled, and that missing registrations can produce a zero amount with a `not_collecting` reason.
+- Stripe's Checkout tax guidance for connected-account liability supports `automatic_tax.liability` with `type=account` and the connected account id for destination-charge Checkout Sessions.
+- Washington's sports leagues guide distinguishes ordinary sports participation fees from fees charged by athletic or fitness facility operators.
+- Idaho's recreation and admissions guidance treats participation fees for recreational activities and admissions as generally taxable. Idaho's online seller terms define marketplace facilitator broadly enough that BracketIQ should not expose organizer-liable controls for Idaho until a ruling or reviewed authority says BracketIQ is not responsible for the relevant event charge type.
+
 ## Interfaces and Dependencies
 
 In `src/lib/taxPolicy.ts`, define:
 
     export type TaxMode = 'ZERO_TAX' | 'STRIPE_TAX_REQUIRED';
+    export type Taxability = 'TAXABLE' | 'NOT_TAXABLE' | 'UNKNOWN';
+    export type TaxLiabilityParty = 'PLATFORM' | 'ORGANIZER' | 'NONE' | 'UNKNOWN';
+    export type TaxCollectionStrategy =
+      | 'PLATFORM_STRIPE_TAX'
+      | 'ORGANIZER_STRIPE_TAX'
+      | 'ORGANIZER_MANUAL_TAX'
+      | 'NO_TAX'
+      | 'BLOCKED_NEEDS_REVIEW';
     export type TaxPolicyDecision = {
       mode: TaxMode;
       reasonCode: string;
       jurisdictionState: string | null;
       purchaseType: string;
+      taxability: Taxability;
+      liabilityParty: TaxLiabilityParty;
+      collectionStrategy: TaxCollectionStrategy;
+      organizerResponsibilityMessage?: string;
+      policyRuleId?: string;
+      policyRuleVersion?: string;
     };
     export const resolvePurchaseTaxPolicy: (params: ResolvePurchaseTaxPolicyParams) => TaxPolicyDecision;
 
@@ -208,8 +299,18 @@ The route responses should include optional fields:
     taxMode?: TaxMode;
     taxReasonCode?: string;
     taxJurisdictionState?: string | null;
+    taxability?: Taxability;
+    taxLiabilityParty?: TaxLiabilityParty;
+    taxCollectionStrategy?: TaxCollectionStrategy;
+    taxPolicyRuleId?: string;
+    taxPolicyRuleVersion?: string;
+    organizerResponsibilityMessage?: string;
 
 Future Checkout work should extend this policy module to choose a checkout presentation. The backend should return a single response shape that tells clients whether to present a PaymentIntent client secret or a Checkout URL, so `mvp-site` and `mvp-app` do not contain duplicated threshold logic.
+
+For organizer-liable manual tax, persist either an event-level or division-level manual tax rate in basis points. A basis point is one hundredth of one percent, so 650 basis points means 6.5 percent. Store the computed tax cents in payment metadata and bill payment rows at checkout time so historical payments keep the amount actually charged even if the event rate later changes.
+
+Revision note: 2026-05-08. Updated the plan for state-by-state marketplace-facilitator responsibility, an initially empty organizer-liable state list, organizer manual/Stripe Tax options, transfer behavior for organizer-retained tax, and the exact price-section message requested by the user.
 
 Revision note: 2026-05-07. Created the initial plan to capture the tax-routing decision and start with a zero-tax event gate before Checkout Session migration.
 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
-import { GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
+import { GOOGLE_MAP_OPTIONS_WITH_MAP_ID, GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_MAP_ID, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
 
 const EventLocationDisplay: React.FC<{
     location: string;
@@ -15,12 +15,17 @@ const EventLocationDisplay: React.FC<{
     const [showMap, setShowMap] = React.useState(false);
     const [mapInstance, setMapInstance] = React.useState<google.maps.Map | null>(null);
     const markerRef = React.useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+    const legacyMarkerRef = React.useRef<google.maps.Marker | null>(null);
 
     React.useEffect(() => {
         return () => {
             if (markerRef.current) {
                 markerRef.current.map = null;
                 markerRef.current = null;
+            }
+            if (legacyMarkerRef.current) {
+                legacyMarkerRef.current.setMap(null);
+                legacyMarkerRef.current = null;
             }
         };
     }, []);
@@ -34,7 +39,37 @@ const EventLocationDisplay: React.FC<{
                     markerRef.current.map = null;
                     markerRef.current = null;
                 }
+                if (legacyMarkerRef.current) {
+                    legacyMarkerRef.current.setMap(null);
+                    legacyMarkerRef.current = null;
+                }
                 return;
+            }
+
+            if (!GOOGLE_MAPS_MAP_ID) {
+                if (markerRef.current) {
+                    markerRef.current.map = null;
+                    markerRef.current = null;
+                }
+
+                if (!legacyMarkerRef.current) {
+                    legacyMarkerRef.current = new google.maps.Marker({
+                        map: mapInstance,
+                        position: coordinates,
+                        title: location || 'Event location',
+                    });
+                    return;
+                }
+
+                legacyMarkerRef.current.setMap(mapInstance);
+                legacyMarkerRef.current.setPosition(coordinates);
+                legacyMarkerRef.current.setTitle(location || 'Event location');
+                return;
+            }
+
+            if (legacyMarkerRef.current) {
+                legacyMarkerRef.current.setMap(null);
+                legacyMarkerRef.current = null;
             }
 
             const markerLibrary = await google.maps.importLibrary('marker') as google.maps.MarkerLibrary;
@@ -89,6 +124,7 @@ const EventLocationDisplay: React.FC<{
                         zoom={15}
                         onLoad={setMapInstance}
                         onUnmount={() => setMapInstance(null)}
+                        options={GOOGLE_MAP_OPTIONS_WITH_MAP_ID}
                     />
                 </div>
             )}

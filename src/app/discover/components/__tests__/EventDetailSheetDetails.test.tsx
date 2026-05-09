@@ -532,4 +532,106 @@ describe('EventDetailSheet details layout', () => {
     expect(screen.getByText('Selected weekly session')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /unavailable/i })).toBeDisabled();
   });
+
+  it('does not reload the same inline weekly participant snapshot when the event prop is recreated', async () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const occurrence = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const occurrenceDate = toIsoDateString(occurrence);
+    const dayIndex = toMondayIndex(occurrence);
+    const event = buildEvent({
+      $id: 'weekly_event_stable_load',
+      eventType: 'WEEKLY_EVENT',
+      teamSignup: true,
+      start: today.toISOString(),
+      end: new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      price: 0,
+      maxParticipants: 10,
+      divisions: ['coed-open'],
+      divisionDetails: [{ id: 'coed-open', name: 'CoEd Open - 18+' }] as any,
+      timeSlots: [
+        buildTimeSlot({
+          $id: 'slot_weekly_stable',
+          dayOfWeek: dayIndex,
+          daysOfWeek: [dayIndex] as any,
+          startDate: today.toISOString(),
+          endDate: new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 10 * 60,
+          repeating: true,
+        }),
+      ],
+      fields: [{ $id: 'field_1', name: 'Court 1' }] as any,
+    });
+    const user = buildUser({ $id: 'user_stable', dateOfBirth: '1990-01-01' });
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser: { $id: user.$id, email: 'user@example.com' } });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUsersByIds as jest.Mock).mockResolvedValue([]);
+    (userService.getUserById as jest.Mock).mockResolvedValue(null);
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teamIds: ['team_weekly_stable'],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams: [
+        {
+          $id: 'team_weekly_stable',
+          name: 'Stable Team',
+          playerIds: [],
+          parentTeamId: 'club_team_stable',
+        },
+      ],
+      users: [],
+      participantCount: 1,
+      participantCapacity: 10,
+      occurrence: { slotId: 'slot_weekly_stable', occurrenceDate },
+    });
+
+    const selectedOccurrence = { slotId: 'slot_weekly_stable', occurrenceDate };
+    const props = {
+      isOpen: true,
+      onClose: jest.fn(),
+      renderInline: true,
+      selectedOccurrence,
+      onWeeklyOccurrenceChange: jest.fn(),
+    };
+
+    function RecreatedEventHarness() {
+      const [currentEvent, setCurrentEvent] = React.useState(event);
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => setCurrentEvent({ ...event, teamIds: [...(event.teamIds ?? [])] })}
+          >
+            Recreate event prop
+          </button>
+          <EventDetailSheet
+            event={currentEvent}
+            {...props}
+          />
+        </>
+      );
+    }
+
+    renderWithMantine(<RecreatedEventHarness />);
+
+    await waitFor(() => {
+      expect(eventService.getEventParticipants).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /recreate event prop/i }));
+
+    await waitFor(() => {
+      expect(eventService.getEventParticipants).toHaveBeenCalledTimes(1);
+    });
+  });
 });

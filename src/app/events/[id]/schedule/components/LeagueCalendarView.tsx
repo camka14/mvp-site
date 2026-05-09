@@ -206,6 +206,7 @@ type WeeklyOccurrenceCalendarMeta = {
   divisionLabel?: string | null;
   divisionKeys?: string[];
   isSelected?: boolean;
+  isViewerRegistered?: boolean;
 };
 
 const getWeeklyOccurrenceMeta = (match: Match): WeeklyOccurrenceCalendarMeta | null => {
@@ -239,6 +240,7 @@ const getWeeklyOccurrenceMeta = (match: Match): WeeklyOccurrenceCalendarMeta | n
     divisionLabel,
     divisionKeys,
     isSelected: Boolean(candidate.isSelected),
+    isViewerRegistered: Boolean(candidate.isViewerRegistered),
   };
 };
 
@@ -442,14 +444,6 @@ export function LeagueCalendarView({
       const divisionKey = toBracketDivisionKey(getBracketMatchDivisionId(match));
       return Boolean(divisionKey && highlightedDivisionKeySet.has(divisionKey));
     },
-    [highlightedDivisionKeySet],
-  );
-
-  const occurrenceHasHighlightedDivision = useCallback(
-    (occurrence: WeeklyOccurrenceCalendarMeta): boolean => (
-      Array.isArray(occurrence.divisionKeys)
-      && occurrence.divisionKeys.some((divisionKey) => highlightedDivisionKeySet.has(divisionKey))
-    ),
     [highlightedDivisionKeySet],
   );
 
@@ -763,27 +757,37 @@ export function LeagueCalendarView({
       fieldColorMatchKey,
       onClick,
       compact = false,
-      highlightDivision = false,
     }: {
       occurrence: WeeklyOccurrenceCalendarMeta;
       fieldLabel: string;
       fieldColorMatchKey: string;
       onClick?: () => void;
       compact?: boolean;
-      highlightDivision?: boolean;
-    }) => (
-      <SharedCalendarEvent
-        title={occurrence.label}
-        subtitle={occurrence.divisionLabel ?? fieldLabel}
-        meta={occurrence.isSelected ? 'Selected' : fieldLabel}
-        colorSeed={`${occurrence.slotId}-${occurrence.label}`}
-        colorReferenceList={fieldColorReferenceList}
-        colorMatchKey={fieldColorMatchKey}
-        compact={compact}
-        selected={occurrence.isSelected || highlightDivision}
-        onClick={onClick}
-      />
-    ),
+    }) => {
+      const title = occurrence.divisionLabel ?? occurrence.label;
+      const subtitle = occurrence.divisionLabel
+        ? `${occurrence.label} • ${fieldLabel}`
+        : fieldLabel;
+      const meta = occurrence.isViewerRegistered
+        ? "You're registered"
+        : occurrence.isSelected
+          ? 'Selected'
+          : undefined;
+
+      return (
+        <SharedCalendarEvent
+          title={title}
+          subtitle={subtitle}
+          meta={meta}
+          colorSeed={`${occurrence.slotId}-${occurrence.label}`}
+          colorReferenceList={fieldColorReferenceList}
+          colorMatchKey={fieldColorMatchKey}
+          compact={compact}
+          selected={Boolean(occurrence.isSelected || occurrence.isViewerRegistered)}
+          onClick={onClick}
+        />
+      );
+    },
     [fieldColorReferenceList],
   );
 
@@ -799,7 +803,6 @@ export function LeagueCalendarView({
             fieldLabel={event.fieldLabel}
             fieldColorMatchKey={event.resourceId}
             onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
-            highlightDivision={occurrenceHasHighlightedDivision(weeklyOccurrenceMeta)}
           />
         );
       }
@@ -821,7 +824,7 @@ export function LeagueCalendarView({
         />
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, matchHasHighlightedDivision, occurrenceHasHighlightedDivision, officialLookupById, onMatchClick, showEventOfficialNames, showMatchDivisionBadges],
+    [WeeklyOccurrenceEventCard, canManage, matchHasHighlightedDivision, officialLookupById, onMatchClick, showEventOfficialNames, showMatchDivisionBadges],
   );
 
   const AgendaEventComponent = useCallback(
@@ -858,7 +861,6 @@ export function LeagueCalendarView({
                         fieldColorMatchKey={fieldColorMatchKey}
                         onClick={onMatchClick ? () => onMatchClick(match) : undefined}
                         compact
-                        highlightDivision={occurrenceHasHighlightedDivision(weeklyOccurrenceMeta)}
                       />
                     ) : (
                       <MatchCard
@@ -885,7 +887,7 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, matchHasHighlightedDivision, occurrenceHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, matchHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
   );
 
   const components = useMemo(

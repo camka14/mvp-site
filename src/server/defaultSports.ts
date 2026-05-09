@@ -1,9 +1,14 @@
 import type { Prisma } from '../generated/prisma/client';
 import type { MatchRulesConfig, SportOfficialPositionTemplate } from '../types';
+import {
+  getSkillDivisionTypeOptionsForSport,
+  normalizeDivisionTypeParameterOptions,
+} from '@/lib/divisionTypes';
 
 type SportRow = {
   id: string;
   name?: string | null;
+  skillDivisionTypes?: unknown;
   matchRulesTemplate?: unknown;
   officialPositionTemplates?: unknown;
   [key: string]: unknown;
@@ -23,6 +28,12 @@ const asJsonObject = (value: MatchRulesConfig): Prisma.InputJsonObject =>
 
 const asJsonArray = (value: SportOfficialPositionTemplate[]): Prisma.InputJsonArray =>
   value as unknown as Prisma.InputJsonArray;
+
+const asJsonInputArray = (value: unknown[]): Prisma.InputJsonArray =>
+  value as Prisma.InputJsonArray;
+
+const skillDivisionTypesForSport = (sportName: string): Prisma.InputJsonArray =>
+  asJsonInputArray(getSkillDivisionTypeOptionsForSport(sportName));
 
 const POINT_INCIDENT_TYPES = ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'];
 const GOAL_INCIDENT_TYPES = ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'];
@@ -219,6 +230,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Indoor Volleyball',
     name: 'Indoor Volleyball',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT['Indoor Volleyball']),
+    skillDivisionTypes: skillDivisionTypesForSport('Indoor Volleyball'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Indoor Volleyball']),
     usePointsForWin: true,
     usePointsForLoss: true,
@@ -231,6 +243,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Beach Volleyball',
     name: 'Beach Volleyball',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT['Beach Volleyball']),
+    skillDivisionTypes: skillDivisionTypesForSport('Beach Volleyball'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Beach Volleyball']),
     usePointsForWin: true,
     usePointsForLoss: true,
@@ -243,6 +256,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Grass Volleyball',
     name: 'Grass Volleyball',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT['Grass Volleyball']),
+    skillDivisionTypes: skillDivisionTypesForSport('Grass Volleyball'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Grass Volleyball']),
     usePointsForWin: true,
     usePointsForLoss: true,
@@ -255,6 +269,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Basketball',
     name: 'Basketball',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Basketball),
+    skillDivisionTypes: skillDivisionTypesForSport('Basketball'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Basketball),
     usePointsForWin: true,
     usePointsForLoss: true,
@@ -265,6 +280,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Indoor Soccer',
     name: 'Indoor Soccer',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT['Indoor Soccer']),
+    skillDivisionTypes: skillDivisionTypesForSport('Indoor Soccer'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Indoor Soccer']),
     usePointsForWin: true,
     usePointsForDraw: true,
@@ -276,6 +292,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Grass Soccer',
     name: 'Grass Soccer',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT['Grass Soccer']),
+    skillDivisionTypes: skillDivisionTypesForSport('Grass Soccer'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Grass Soccer']),
     usePointsForWin: true,
     usePointsForDraw: true,
@@ -287,6 +304,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Beach Soccer',
     name: 'Beach Soccer',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT['Beach Soccer']),
+    skillDivisionTypes: skillDivisionTypesForSport('Beach Soccer'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT['Beach Soccer']),
     usePointsForWin: true,
     usePointsForDraw: true,
@@ -298,6 +316,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Tennis',
     name: 'Tennis',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Tennis),
+    skillDivisionTypes: skillDivisionTypesForSport('Tennis'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Tennis),
     usePointsForWin: true,
     usePointsForLoss: true,
@@ -312,6 +331,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Pickleball',
     name: 'Pickleball',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Pickleball),
+    skillDivisionTypes: skillDivisionTypesForSport('Pickleball'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Pickleball),
     usePointsForWin: true,
     usePointsForLoss: true,
@@ -324,6 +344,11 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Football',
     name: 'Football',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Football),
+    skillDivisionTypes: asJsonInputArray([
+      { id: 'rec', name: 'Recreational' },
+      { id: 'competitive', name: 'Competitive' },
+      { id: 'open', name: 'Open' },
+    ]),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Football),
     usePointsForWin: true,
     usePointsForDraw: true,
@@ -335,6 +360,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Hockey',
     name: 'Hockey',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Hockey),
+    skillDivisionTypes: skillDivisionTypesForSport('Hockey'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Hockey),
     usePointsForWin: true,
     usePointsForDraw: true,
@@ -346,6 +372,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Baseball',
     name: 'Baseball',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Baseball),
+    skillDivisionTypes: skillDivisionTypesForSport('Baseball'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Baseball),
     usePointsForWin: true,
     usePointsForLoss: true,
@@ -356,6 +383,7 @@ export const DEFAULT_SPORTS: Prisma.SportsCreateManyInput[] = [
     id: 'Other',
     name: 'Other',
     officialPositionTemplates: asJsonArray(OFFICIAL_POSITION_TEMPLATES_BY_SPORT.Other),
+    skillDivisionTypes: skillDivisionTypesForSport('Other'),
     matchRulesTemplate: asJsonObject(MATCH_RULE_TEMPLATES_BY_SPORT.Other),
     usePointsForWin: true,
     usePointsForDraw: true,
@@ -428,6 +456,12 @@ export const ensureDefaultSports = async (client: SportsClientLike): Promise<Spo
       }
       if (key === 'officialPositionTemplates') {
         if (existing[key] == null) {
+          patch[key] = value as Prisma.InputJsonValue;
+        }
+        return;
+      }
+      if (key === 'skillDivisionTypes') {
+        if (normalizeDivisionTypeParameterOptions(existing[key]).length === 0) {
           patch[key] = value as Prisma.InputJsonValue;
         }
         return;
