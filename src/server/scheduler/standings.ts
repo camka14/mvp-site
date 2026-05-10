@@ -10,6 +10,7 @@ import {
   Team,
   Tournament,
   UserData,
+  usesTeamOfficialScheduling,
 } from './types';
 
 export type LeagueStanding = {
@@ -1132,7 +1133,7 @@ const assignTeamsToSameDivisionPlayoffMatches = (
     }
   }
 
-  if (league.doTeamsOfficiate) {
+  if (usesTeamOfficialScheduling(league)) {
     assignTeamOfficialsForKnownMatches(playoffMatches, teams);
   }
 
@@ -1191,7 +1192,7 @@ export const assignTeamsToPlayoffDivisionMatches = (
       assignTeamToMatch(firstRoundMatch, 'team1', teams[0], team1Seed);
       assignTeamToMatch(firstRoundMatch, 'team2', teams[1], team2Seed);
     }
-    if (league.doTeamsOfficiate) {
+    if (usesTeamOfficialScheduling(league)) {
       assignTeamOfficialsForKnownMatches(playoffMatches, teams);
     }
     return seededTeamIds;
@@ -1200,7 +1201,7 @@ export const assignTeamsToPlayoffDivisionMatches = (
   const teamLookup = Object.fromEntries(teams.map((team) => [team.id, team]));
   applyTemplateEntrantAssignments(actualRoot, templateRoot, teamLookup);
 
-  if (league.doTeamsOfficiate) {
+  if (usesTeamOfficialScheduling(league)) {
     assignTeamOfficialsForKnownMatches(playoffMatches, teams);
   }
 

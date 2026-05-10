@@ -21,6 +21,16 @@ const buildField = (division: Division) =>
     name: 'Court A',
   });
 
+const buildNamedField = (id: string, name: string, division: Division) =>
+  new PlayingField({
+    id,
+    divisions: [division],
+    matches: [],
+    events: [],
+    rentalSlots: [],
+    name,
+  });
+
 const buildTeams = (count: number, division: Division) => {
   const teams: Record<string, Team> = {};
   for (let i = 1; i <= count; i += 1) {
@@ -137,6 +147,34 @@ describe('tournament scheduling (officials)', () => {
 
     expect(final?.team1 === winner || final?.team2 === winner).toBe(true);
     expect(final?.teamOfficial?.id).toBe(loser.id);
+  });
+
+  it('stagger first-round matches when teams officiate and only one team official is available', () => {
+    const division = buildDivision();
+    const teams = buildTeams(4, division);
+    const fields = {
+      field_1: buildNamedField('field_1', 'Court A', division),
+      field_2: buildNamedField('field_2', 'Court B', division),
+    };
+
+    const tournament = buildTournament({
+      id: 'tournament_team_ref_capacity',
+      teams,
+      divisions: [division],
+      fields,
+      officials: [],
+      doTeamsOfficiate: true,
+      doubleElimination: false,
+    });
+
+    scheduleEvent({ event: tournament }, context);
+    const firstRoundMatches = Object.values(tournament.matches)
+      .filter((match) => match.winnerNextMatch && match.team1 && match.team2)
+      .sort((left, right) => left.start.getTime() - right.start.getTime());
+
+    expect(firstRoundMatches).toHaveLength(2);
+    expect(firstRoundMatches.every((match) => Boolean(match.teamOfficial))).toBe(true);
+    expect(firstRoundMatches[0].end.getTime()).toBeLessThanOrEqual(firstRoundMatches[1].start.getTime());
   });
 
   it('reschedules dependent matches when a match runs long (pushes following matches later)', () => {

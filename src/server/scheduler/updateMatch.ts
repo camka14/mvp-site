@@ -10,6 +10,7 @@ import {
   UserData,
   TIMES,
   MINUTE_MS,
+  usesTeamOfficialScheduling,
 } from './types';
 import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
 import { rescheduleEventMatchesPreservingLocks } from './reschedulePreservingLocks';
@@ -425,8 +426,9 @@ const processMatches = (
 
   for (const match of [...matches].reverse()) {
     if (!match.locked && !match.field) {
-        const segmentDurationCount = Math.max(match.segments?.length ?? 0, match.team1Points.length, 1);
-        bracketSchedule.scheduleEvent(match, segmentDurationCount * TIMES.SET);
+      match.requiresTeamOfficial = useTeamOfficials;
+      const segmentDurationCount = Math.max(match.segments?.length ?? 0, match.team1Points.length, 1);
+      bracketSchedule.scheduleEvent(match, segmentDurationCount * TIMES.SET);
       attachMatchToParticipants(match);
     }
   }
@@ -440,6 +442,9 @@ export const finalizeMatch = (
 ): FinalizeResult => {
   stripEventAvailabilityFromFieldRentalSlots(event);
   syncMatchParticipants(Object.values(event.matches));
+  for (const match of Object.values(event.matches)) {
+    match.requiresTeamOfficial = usesTeamOfficialScheduling(event);
+  }
 
   const seededTeamIds: string[] = [];
 
@@ -511,12 +516,13 @@ export const finalizeMatch = (
     }
   }
 
-  processMatches(matches, matchesSchedule, updatedMatch, event, event.doTeamsOfficiate);
+  const useTeamOfficials = usesTeamOfficialScheduling(event);
+  processMatches(matches, matchesSchedule, updatedMatch, event, useTeamOfficials);
 
   const conflicts = matchesSchedule.getParticipantConflicts();
   for (const [participant, conflictMatches] of conflicts.entries()) {
     if (participant instanceof Team) {
-      if (!event.doTeamsOfficiate) continue;
+      if (!useTeamOfficials) continue;
       for (const match of conflictMatches) {
         if (participant === match.teamOfficial) {
           reassignTeamOfficial(match, matchesSchedule, currentTime);
@@ -531,7 +537,7 @@ export const finalizeMatch = (
     }
   }
 
-  if (event.doTeamsOfficiate) {
+  if (useTeamOfficials) {
     let matchesInRange: Match[] = [];
     if (updatedMatch.losersBracket) {
       if (updatedMatch.winnerNextMatch) {

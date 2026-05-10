@@ -225,6 +225,9 @@ const withLegacyEvent = (row: any) => {
   if (typeof (legacy as any).officialSchedulingMode !== 'string') {
     (legacy as any).officialSchedulingMode = 'SCHEDULE';
   }
+  if ((legacy as any).officialSchedulingMode === 'TEAM_STAFFING') {
+    (legacy as any).doTeamsOfficiate = true;
+  }
   if (!Array.isArray((legacy as any).assistantHostIds)) {
     (legacy as any).assistantHostIds = [];
   }
@@ -1759,6 +1762,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.splitLeaguePlayoffDivisions = Boolean(payload.splitLeaguePlayoffDivisions);
       } else if (!Object.prototype.hasOwnProperty.call(data, 'splitLeaguePlayoffDivisions')) {
         data.splitLeaguePlayoffDivisions = Boolean(existing.splitLeaguePlayoffDivisions);
+      }
+      const targetOfficialSchedulingMode = normalizeOfficialSchedulingMode(
+        data.officialSchedulingMode ?? (existing as any).officialSchedulingMode,
+      );
+      data.officialSchedulingMode = targetOfficialSchedulingMode;
+      if (targetOfficialSchedulingMode === 'TEAM_STAFFING') {
+        data.doTeamsOfficiate = true;
       }
       if (data.doTeamsOfficiate !== true) {
         data.teamOfficialsMaySwap = false;

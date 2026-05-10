@@ -12,6 +12,7 @@ import {
   UserData,
   TIMES,
   oppositeSide,
+  usesTeamOfficialScheduling,
 } from './types';
 
 const createId = () => crypto.randomUUID();
@@ -435,7 +436,8 @@ export class Brackets {
     for (const match of [...matches].reverse()) {
       match.matchId = count;
       try {
-        if (this.tournament.officialSchedulingMode === 'STAFFING' && this.officialStaffingPlanner.hasRequiredSlots()) {
+        match.requiresTeamOfficial = usesTeamOfficialScheduling(this.tournament);
+        if (this.tournament.officialSchedulingMode === 'STAFFING' && this.officialStaffingPlanner.hasStaffingRequirement()) {
           this.bracketSchedule.scheduleEventWithOptions(match, this.getMultiplier(match) * TIMES.SET, {
             canUseCandidate: ({ resource, start, end }) => (
               this.officialStaffingPlanner.previewSchedulingCandidate(match, resource, start, end)
@@ -671,6 +673,7 @@ export class Brackets {
       end: this.tournament.start,
       official: null,
       teamOfficial: ref ?? null,
+      requiresTeamOfficial: usesTeamOfficialScheduling(this.tournament),
       loserNextMatch: null,
       losersBracket: isLoser,
       division: this.currentDivision,

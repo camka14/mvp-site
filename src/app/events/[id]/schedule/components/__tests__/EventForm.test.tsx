@@ -542,6 +542,39 @@ describe('EventForm dirty state', () => {
     expect(isValid).toBe(false);
   });
 
+  it('allows TEAM STAFFING without assigned officials', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        officialSchedulingMode: 'TEAM_STAFFING',
+        doTeamsOfficiate: false,
+        officialIds: [],
+        officialPositions: [
+          { id: 'position_r1', name: 'R1', count: 2, order: 0 },
+        ],
+        eventOfficials: [],
+      },
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.queryByText(/STAFFING requires at least/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /Teams provide officials/i })).toBeChecked();
+
+    let isValid = false;
+    await act(async () => {
+      isValid = await formRef.current!.validate();
+    });
+
+    expect(isValid).toBe(true);
+  });
+
   it('updates the dirty baseline after a successful save commit', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();

@@ -1600,6 +1600,65 @@ describe('league scheduling (time slots)', () => {
     expect(playoffMatches.every((match) => !match.team1 && !match.team2)).toBe(true);
   });
 
+  it('limits simultaneous playoff matches by available team-official slots during full rebuilds', () => {
+    const division = buildDivision();
+    const fields = {
+      field_1: buildFieldById('field_1', division),
+      field_2: buildFieldById('field_2', division),
+      field_3: buildFieldById('field_3', division),
+    };
+    const teams = buildTeams(8, division);
+    const start = new Date(2026, 4, 10, 13, 0, 0); // Sunday
+    const end = new Date(2026, 4, 10, 22, 0, 0);
+
+    const league = new League({
+      id: 'league_team_staffing_playoff_capacity',
+      name: 'Team Staffing Playoff Capacity',
+      start,
+      end,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: true,
+      teams,
+      divisions: [division],
+      officials: [],
+      fields,
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_team_staffing_playoff_capacity',
+          dayOfWeek: 6,
+          startDate: start,
+          repeating: true,
+          startTimeMinutes: 13 * 60,
+          endTimeMinutes: 22 * 60,
+          divisions: [division],
+        }),
+      ],
+      doTeamsOfficiate: true,
+      officialSchedulingMode: 'TEAM_STAFFING',
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 8,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 20,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league, includePlaceholderTeams: true }, context);
+    const playoffMatches = scheduled.matches.filter(isPlayoffMatch);
+    expect(playoffMatches.length).toBeGreaterThan(0);
+
+    const matchesByStart = new Map<number, number>();
+    for (const match of playoffMatches) {
+      matchesByStart.set(match.start.getTime(), (matchesByStart.get(match.start.getTime()) ?? 0) + 1);
+    }
+
+    expect(Math.max(...matchesByStart.values())).toBeLessThanOrEqual(2);
+  });
+
   it('rebuilds with registered teams only when placeholders are disabled', () => {
     const division = buildDivision();
     const field = buildField(division);

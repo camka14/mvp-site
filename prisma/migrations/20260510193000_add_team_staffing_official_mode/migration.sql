@@ -1,0 +1,1 @@
+ALTER TYPE "EventsOfficialSchedulingModeEnum" ADD VALUE IF NOT EXISTS 'TEAM_STAFFING';

@@ -35,7 +35,7 @@ const buildTeams = (count: number, division: Division) => {
   return teams;
 };
 
-const buildTournament = (mode: 'STAFFING' | 'SCHEDULE' | 'OFF') => {
+const buildTournament = (mode: 'STAFFING' | 'TEAM_STAFFING' | 'SCHEDULE' | 'OFF') => {
   const division = buildDivision();
   const fields = {
     field_1: buildField('field_1', 1, division),
@@ -137,6 +137,62 @@ describe('official staffing modes', () => {
     expect(firstRoundMatches).toHaveLength(2);
     const distinctStartTimes = new Set(firstRoundMatches.map((match) => match.start.getTime()));
     expect(distinctStartTimes.size).toBe(2);
+  });
+
+  it('TEAM_STAFFING enforces only team-official capacity', () => {
+    const division = buildDivision();
+    const fields = {
+      field_1: buildField('field_1', 1, division),
+      field_2: buildField('field_2', 2, division),
+    };
+    const official = new UserData({
+      id: 'official_1',
+      divisions: [division],
+      matches: [],
+    });
+    const tournament = new Tournament({
+      id: 'tournament_team_staffing',
+      name: 'Tournament Team Staffing',
+      start: new Date(2026, 0, 3, 9, 0, 0),
+      end: new Date(2026, 0, 3, 13, 0, 0),
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'TOURNAMENT',
+      teams: buildTeams(4, division),
+      divisions: [division],
+      fields,
+      officials: [official],
+      doTeamsOfficiate: false,
+      doubleElimination: false,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      officialSchedulingMode: 'TEAM_STAFFING',
+      officialPositions: [
+        { id: 'referee', name: 'Referee', count: 1, order: 0 },
+      ],
+      eventOfficials: [
+        {
+          id: 'event_official_1',
+          userId: official.id,
+          positionIds: ['referee'],
+          fieldIds: [],
+          isActive: true,
+        },
+      ],
+    });
+
+    const scheduled = scheduleEvent({ event: tournament }, context).event as Tournament;
+    const matches = Object.values(scheduled.matches);
+    const firstRoundMatches = matches
+      .filter((match) => match.winnerNextMatch && match.team1 && match.team2)
+      .sort((left, right) => left.start.getTime() - right.start.getTime());
+
+    expect(matches).toHaveLength(3);
+    expect(matches.every((match) => match.officialAssignments.length === 0)).toBe(true);
+    expect(firstRoundMatches).toHaveLength(2);
+    expect(firstRoundMatches.every((match) => Boolean(match.teamOfficial))).toBe(true);
+    expect(firstRoundMatches[0].end.getTime()).toBeLessThanOrEqual(firstRoundMatches[1].start.getTime());
   });
 
   it('SCHEDULE preserves match timing and leaves unstaffed matches empty when needed', () => {

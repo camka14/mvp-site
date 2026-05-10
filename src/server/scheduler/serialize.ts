@@ -1,4 +1,4 @@
-import { Division, League, Match, PlayingField, Team, TimeSlot, Tournament, UserData } from './types';
+import { Division, League, Match, PlayingField, Team, TimeSlot, Tournament, UserData, usesTeamOfficialScheduling } from './types';
 
 const serializeDivision = (division: Division) => ({
   id: division.id,
@@ -212,8 +212,8 @@ const serializeTournamentExtras = (event: Tournament) => ({
   matchDurationMinutes: event.matchDurationMinutes ?? null,
   setDurationMinutes: event.setDurationMinutes ?? null,
   setsPerMatch: event.setsPerMatch ?? null,
-  doTeamsOfficiate: event.doTeamsOfficiate ?? true,
-  teamOfficialsMaySwap: event.doTeamsOfficiate ? event.teamOfficialsMaySwap ?? false : false,
+  doTeamsOfficiate: usesTeamOfficialScheduling(event),
+  teamOfficialsMaySwap: usesTeamOfficialScheduling(event) ? event.teamOfficialsMaySwap ?? false : false,
 });
 
 const serializeLeagueExtras = (event: League) => ({

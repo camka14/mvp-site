@@ -8,6 +8,7 @@ import {
   Team,
   Tournament,
   UserData,
+  usesTeamOfficialScheduling,
 } from './types';
 import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
 import { OfficialStaffingPlanner } from './officialStaffing';
@@ -674,7 +675,7 @@ const assignMissingTeamOfficials = (
   schedule: Schedule<Match, PlayingField, Team | UserData, Division>,
   matches: Match[],
 ): void => {
-  if (!event.doTeamsOfficiate) {
+  if (!usesTeamOfficialScheduling(event)) {
     return;
   }
   const requireCaptains = isLeagueEvent(event);
@@ -738,7 +739,10 @@ export const rescheduleEventMatchesPreservingLocks = (
   resetScheduleCollections(event);
   const staffingPlanner = new OfficialStaffingPlanner(event);
   const plannerHasRequiredSlots = staffingPlanner.hasRequiredSlots();
-  const staffingModeWithRequiredSlots = event.officialSchedulingMode === 'STAFFING' && plannerHasRequiredSlots;
+  const staffingModeWithRequiredSlots = event.officialSchedulingMode === 'STAFFING' && staffingPlanner.hasStaffingRequirement();
+  for (const match of allMatches) {
+    match.requiresTeamOfficial = usesTeamOfficialScheduling(event);
+  }
 
   for (const match of lockedMatches) {
     if (staffingModeWithRequiredSlots && staffingPlanner && !hasFullStaffingCoverage(match, staffingPlanner)) {

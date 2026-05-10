@@ -101,7 +101,7 @@ export interface TournamentConfig {
   setDurationMinutes?: number;
 }
 
-export type OfficialSchedulingMode = 'STAFFING' | 'SCHEDULE' | 'OFF';
+export type OfficialSchedulingMode = 'STAFFING' | 'TEAM_STAFFING' | 'SCHEDULE' | 'OFF';
 
 export interface SportOfficialPositionTemplate {
   name: string;

@@ -36,7 +36,10 @@ export type PlayoffDivisionConfig = {
   restTimeMinutes: number;
 };
 
-export type OfficialSchedulingMode = 'STAFFING' | 'SCHEDULE' | 'OFF';
+export type OfficialSchedulingMode = 'STAFFING' | 'TEAM_STAFFING' | 'SCHEDULE' | 'OFF';
+export const usesTeamOfficialScheduling = (
+  event: { doTeamsOfficiate?: boolean; officialSchedulingMode?: OfficialSchedulingMode | string | null },
+): boolean => event.doTeamsOfficiate === true || event.officialSchedulingMode === 'TEAM_STAFFING';
 export type EventOfficialPosition = {
   id: string;
   name: string;
@@ -111,6 +114,7 @@ export interface SchedulableEvent {
   getResource(): Resource | null;
   setResource(resource: Resource | null): void;
   getParticipants(): Participant[];
+  getRequiredTeamParticipantCount?(): number;
   getDependencies(): SchedulableEvent[];
   getDependants(): SchedulableEvent[];
 }
@@ -443,6 +447,7 @@ export class Match implements SchedulableEvent {
   officialCheckedIn?: boolean | null;
   officialAssignments: MatchOfficialAssignment[];
   teamOfficial: Team | null;
+  requiresTeamOfficial: boolean;
   official: UserData | null;
   team1: Team | null;
   team2: Team | null;
@@ -484,6 +489,7 @@ export class Match implements SchedulableEvent {
     officialCheckedIn?: boolean | null;
     officialAssignments?: MatchOfficialAssignment[];
     teamOfficial?: Team | null;
+    requiresTeamOfficial?: boolean;
     official?: UserData | null;
     team1?: Team | null;
     team2?: Team | null;
@@ -524,6 +530,7 @@ export class Match implements SchedulableEvent {
     this.officialCheckedIn = params.officialCheckedIn ?? false;
     this.officialAssignments = params.officialAssignments ?? [];
     this.teamOfficial = params.teamOfficial ?? null;
+    this.requiresTeamOfficial = params.requiresTeamOfficial ?? false;
     this.official = params.official ?? null;
     this.team1 = params.team1 ?? null;
     this.team2 = params.team2 ?? null;
@@ -632,6 +639,15 @@ export class Match implements SchedulableEvent {
       if (participant) participants.push(participant);
     }
     return participants;
+  }
+
+  getRequiredTeamParticipantCount(): number {
+    const assignedTeams = new Set<string>();
+    for (const team of [this.team1, this.team2, this.teamOfficial]) {
+      if (team) assignedTeams.add(team.id);
+    }
+    const requiredTeamSlots = this.requiresTeamOfficial ? 3 : 2;
+    return Math.max(requiredTeamSlots, assignedTeams.size);
   }
 
   getResource(): Resource | null {

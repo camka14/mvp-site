@@ -13,6 +13,7 @@ import {
   MINUTE_MS,
   SchedulerContext,
   PlayoffDivisionConfig,
+  usesTeamOfficialScheduling,
 } from './types';
 
 const createId = () => crypto.randomUUID();
@@ -149,7 +150,7 @@ export class EventBuilder {
 
     this.stripPlaceholderAssignments(scheduledMatches);
     this.assignUserOfficials(scheduledMatches);
-    if (this.event.doTeamsOfficiate) {
+    if (usesTeamOfficialScheduling(this.event)) {
       this.assignTeamOfficials(scheduledMatches);
     }
     if (usesPreliminaryPhase) {
@@ -340,16 +341,6 @@ export class EventBuilder {
     }
   }
 
-  private appendPlaceholderToSchedule(team: Team): void {
-    const scheduleParticipants = this.schedule.participants;
-    for (const [group, participants] of scheduleParticipants.entries()) {
-      if (group.id === team.division.id) {
-        participants.push(team);
-        return;
-      }
-    }
-  }
-
   private groupsByDivision(participants: Team[]): Array<{ division: Division; teams: Team[] }> {
     const grouped = new Map<string, { division: Division; teams: Team[] }>();
     for (const team of participants) {
@@ -393,7 +384,6 @@ export class EventBuilder {
       });
       this.event.teams[placeholderId] = placeholder;
       this.playoffPlaceholderIds.add(placeholderId);
-      this.appendPlaceholderToSchedule(placeholder);
       placeholders.push(placeholder);
     }
     return placeholders;
@@ -485,6 +475,7 @@ export class EventBuilder {
       official: null,
       officialAssignments: [],
       teamOfficial: null,
+      requiresTeamOfficial: usesTeamOfficialScheduling(this.event),
       winnerNextMatch: null,
       loserNextMatch: null,
       losersBracket: false,
@@ -807,6 +798,8 @@ export class EventBuilder {
       officialSchedulingMode: this.event.officialSchedulingMode,
       officialPositions: this.event.officialPositions,
       eventOfficials: this.event.eventOfficials,
+      doTeamsOfficiate: usesTeamOfficialScheduling(this.event),
+      teamOfficialsMaySwap: usesTeamOfficialScheduling(this.event) ? this.event.teamOfficialsMaySwap : false,
     });
 
     const bracketBuilder = new Brackets(playoffTournament, this.context);
@@ -835,8 +828,9 @@ export class EventBuilder {
   }
 
   private scheduleMatch(match: Match, durationMs: number): void {
+    match.requiresTeamOfficial = usesTeamOfficialScheduling(this.event);
     const planner = this.officialStaffingPlanner;
-    if (this.event.officialSchedulingMode === 'STAFFING' && planner?.hasRequiredSlots()) {
+    if (this.event.officialSchedulingMode === 'STAFFING' && planner?.hasStaffingRequirement()) {
       this.schedule.scheduleEventWithOptions(match, durationMs, {
         canUseCandidate: ({ resource, start, end }) => planner.previewSchedulingCandidate(match, resource, start, end),
       });
@@ -910,10 +904,16 @@ export class EventBuilder {
   private assignUserOfficials(matches: Match[]): void {
     const planner = this.officialStaffingPlanner ?? new OfficialStaffingPlanner(this.event);
     this.officialStaffingPlanner = planner;
+    if (this.event.officialSchedulingMode === 'TEAM_STAFFING') {
+      return;
+    }
     if (!planner.hasRequiredSlots()) {
       return;
     }
     if (this.event.officialSchedulingMode === 'STAFFING') {
+      if (!planner.hasStaffingRequirement()) {
+        return;
+      }
       const unstafedMatch = matches.find((match) => !planner.hasCommittedAssignments(match));
       if (unstafedMatch) {
         throw new Error('Unable to fully staff all matches without conflicts.');

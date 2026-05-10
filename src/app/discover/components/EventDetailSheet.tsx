@@ -1008,6 +1008,8 @@ const formatOfficialSchedulingModeLabel = (value: Event['officialSchedulingMode'
     switch (value) {
         case 'STAFFING':
             return 'Staffing first';
+        case 'TEAM_STAFFING':
+            return 'Team staffing';
         case 'SCHEDULE':
             return 'Schedule first';
         case 'OFF':

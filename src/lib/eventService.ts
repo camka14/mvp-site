@@ -885,7 +885,12 @@ class EventService {
     if (value === "NONE") {
       return "OFF";
     }
-    if (value === "STAFFING" || value === "SCHEDULE" || value === "OFF") {
+    if (
+      value === "STAFFING" ||
+      value === "TEAM_STAFFING" ||
+      value === "SCHEDULE" ||
+      value === "OFF"
+    ) {
       return value;
     }
     return "SCHEDULE";
@@ -1120,6 +1125,13 @@ class EventService {
     const normalizedResolvedMatchRules = normalizeObjectValue(
       row.resolvedMatchRules,
     ) as Event["resolvedMatchRules"];
+    const officialSchedulingMode = this.normalizeOfficialSchedulingMode(
+      row.officialSchedulingMode,
+    );
+    const doTeamsOfficiate = officialSchedulingMode === "TEAM_STAFFING"
+      || (typeof row.doTeamsOfficiate === "boolean"
+        ? row.doTeamsOfficiate
+        : false);
 
     return {
       $id: row.$id,
@@ -1158,9 +1170,7 @@ class EventService {
       fieldIds: normalizedFieldIds,
       timeSlotIds: row.timeSlotIds,
       officialIds,
-      officialSchedulingMode: this.normalizeOfficialSchedulingMode(
-        row.officialSchedulingMode,
-      ),
+      officialSchedulingMode,
       officialPositions,
       eventOfficials: this.mapEventOfficials(
         row.eventOfficials,
@@ -1392,12 +1402,9 @@ class EventService {
       matchDurationMinutes: row.matchDurationMinutes,
       setDurationMinutes: row.setDurationMinutes,
       setsPerMatch: row.setsPerMatch,
-      doTeamsOfficiate:
-        typeof row.doTeamsOfficiate === "boolean"
-          ? row.doTeamsOfficiate
-          : undefined,
+      doTeamsOfficiate,
       teamOfficialsMaySwap:
-        typeof row.doTeamsOfficiate === "boolean" && row.doTeamsOfficiate
+        doTeamsOfficiate
           ? typeof row.teamOfficialsMaySwap === "boolean"
             ? row.teamOfficialsMaySwap
             : false

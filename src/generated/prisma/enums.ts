@@ -67,6 +67,7 @@ export type EventsEventTypeEnum = (typeof EventsEventTypeEnum)[keyof typeof Even
 
 export const EventsOfficialSchedulingModeEnum = {
   STAFFING: 'STAFFING',
+  TEAM_STAFFING: 'TEAM_STAFFING',
   SCHEDULE: 'SCHEDULE',
   OFF: 'OFF'
 } as const

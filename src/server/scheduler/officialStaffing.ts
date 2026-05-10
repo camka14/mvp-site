@@ -130,6 +130,10 @@ export class OfficialStaffingPlanner {
     return this.requiredSlots.length > 0;
   }
 
+  hasStaffingRequirement(): boolean {
+    return this.hasRequiredSlots() && this.officialById.size > 0;
+  }
+
   hasCommittedAssignments(match: Match): boolean {
     return Array.isArray(match.officialAssignments) && match.officialAssignments.length > 0;
   }

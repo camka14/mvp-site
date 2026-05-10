@@ -1,4 +1,4 @@
-export type OfficialSchedulingMode = 'STAFFING' | 'SCHEDULE' | 'OFF';
+export type OfficialSchedulingMode = 'STAFFING' | 'TEAM_STAFFING' | 'SCHEDULE' | 'OFF';
 export type OfficialAssignmentHolderType = 'OFFICIAL' | 'PLAYER';
 
 export type SportOfficialPositionTemplate = {
@@ -31,7 +31,7 @@ export type MatchOfficialAssignment = {
   hasConflict: boolean;
 };
 
-const SCHEDULING_MODES = new Set<OfficialSchedulingMode>(['STAFFING', 'SCHEDULE', 'OFF']);
+const SCHEDULING_MODES = new Set<OfficialSchedulingMode>(['STAFFING', 'TEAM_STAFFING', 'SCHEDULE', 'OFF']);
 const HOLDER_TYPES = new Set<OfficialAssignmentHolderType>(['OFFICIAL', 'PLAYER']);
 
 const normalizeString = (value: unknown): string | null => {

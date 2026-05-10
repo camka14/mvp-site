@@ -476,7 +476,7 @@ const normalizeOfficialSchedulingMode = (value: unknown): OfficialSchedulingMode
     if (value === 'NONE') {
         return 'OFF';
     }
-    if (value === 'STAFFING' || value === 'SCHEDULE' || value === 'OFF') {
+    if (value === 'STAFFING' || value === 'TEAM_STAFFING' || value === 'SCHEDULE' || value === 'OFF') {
         return value;
     }
     return 'SCHEDULE';
@@ -2949,6 +2949,8 @@ const mapEventToFormState = (event: Event): EventFormState => {
             ))),
         )
         : false;
+    const officialSchedulingMode = normalizeOfficialSchedulingMode(event.officialSchedulingMode);
+    const doTeamsOfficiate = officialSchedulingMode === 'TEAM_STAFFING' || Boolean(event.doTeamsOfficiate);
 
     return {
     $id: event.$id,
@@ -3022,7 +3024,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     teams: event.teams || [],
     officials: event.officials || [],
     officialIds: normalizedOfficialIds,
-    officialSchedulingMode: normalizeOfficialSchedulingMode(event.officialSchedulingMode),
+    officialSchedulingMode,
     officialPositions: normalizedOfficialPositions,
     eventOfficials: normalizeEventOfficials(
         event.eventOfficials,
@@ -3041,8 +3043,8 @@ const mapEventToFormState = (event: Event): EventFormState => {
         }))
         : [],
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
-    doTeamsOfficiate: Boolean(event.doTeamsOfficiate),
-    teamOfficialsMaySwap: Boolean(event.doTeamsOfficiate) && Boolean((event as any).teamOfficialsMaySwap),
+    doTeamsOfficiate,
+    teamOfficialsMaySwap: doTeamsOfficiate && Boolean((event as any).teamOfficialsMaySwap),
     matchRulesOverride: (event as any).matchRulesOverride && typeof (event as any).matchRulesOverride === 'object'
         && !Array.isArray((event as any).matchRulesOverride)
         ? { ...((event as any).matchRulesOverride as MatchRulesConfig) }
@@ -3226,7 +3228,7 @@ const eventFormSchema = z
         teams: z.array(z.any()),
         officials: z.array(z.any()),
         officialIds: z.array(z.string()),
-        officialSchedulingMode: z.enum(['STAFFING', 'SCHEDULE', 'OFF']).default('SCHEDULE'),
+        officialSchedulingMode: z.enum(['STAFFING', 'TEAM_STAFFING', 'SCHEDULE', 'OFF']).default('SCHEDULE'),
         officialPositions: z.array(
             z.object({
                 id: z.string().trim().min(1),
@@ -3915,6 +3917,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         if ((defaults as any).officialSchedulingMode !== undefined) {
             next.officialSchedulingMode = normalizeOfficialSchedulingMode((defaults as any).officialSchedulingMode);
+            if (next.officialSchedulingMode === 'TEAM_STAFFING') {
+                next.doTeamsOfficiate = true;
+            }
         }
         if (Array.isArray((defaults as any).officialPositions)) {
             next.officialPositions = normalizeEventOfficialPositions((defaults as any).officialPositions);
@@ -10462,6 +10467,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     field.onChange(checked);
                                                     if (!checked) {
                                                         setValue('teamOfficialsMaySwap', false, { shouldDirty: true, shouldValidate: true });
+                                                        if (eventData.officialSchedulingMode === 'TEAM_STAFFING') {
+                                                            setValue('officialSchedulingMode', 'SCHEDULE', { shouldDirty: true, shouldValidate: true });
+                                                        }
                                                     }
                                                 }}
                                             />
@@ -10488,11 +10496,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 description="Choose how the scheduler should prioritize staffing requirements."
                                                 data={[
                                                     { value: 'STAFFING', label: 'STAFFING - Requires each match be fully staffed with no conflicts' },
+                                                    { value: 'TEAM_STAFFING', label: 'TEAM STAFFING - Requires each match to have a team official with no conflicts' },
                                                     { value: 'SCHEDULE', label: 'SCHEDULE - Matches do not need to be fully staffed' },
                                                     { value: 'OFF', label: 'NONE - Fully staffed matches, but conflicts allowed' },
                                                 ]}
                                                 value={eventData.officialSchedulingMode}
-                                                onChange={(value) => setValue('officialSchedulingMode', normalizeOfficialSchedulingMode(value), { shouldDirty: true, shouldValidate: true })}
+                                                onChange={(value) => {
+                                                    const nextMode = normalizeOfficialSchedulingMode(value);
+                                                    setValue('officialSchedulingMode', nextMode, { shouldDirty: true, shouldValidate: true });
+                                                    if (nextMode === 'TEAM_STAFFING' && !eventData.doTeamsOfficiate) {
+                                                        setValue('doTeamsOfficiate', true, { shouldDirty: true, shouldValidate: true });
+                                                    }
+                                                }}
                                                 comboboxProps={sharedComboboxProps}
                                                 error={officialStaffingCoverageError ?? undefined}
                                             />

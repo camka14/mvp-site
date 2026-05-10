@@ -2385,6 +2385,12 @@ export const loadEventWithRelations = async (
     matchDurationMinutes: event.matchDurationMinutes,
     officialPositions,
   });
+  const officialSchedulingMode = normalizeOfficialSchedulingMode((event as any).officialSchedulingMode);
+  const doTeamsOfficiate = officialSchedulingMode === 'TEAM_STAFFING'
+    ? true
+    : typeof event.doTeamsOfficiate === 'boolean'
+      ? event.doTeamsOfficiate
+      : true;
 
   const baseParams = {
     id: event.id,
@@ -2423,12 +2429,12 @@ export const loadEventWithRelations = async (
     rating: event.rating ?? null,
     minAge: event.minAge ?? null,
     maxAge: event.maxAge ?? null,
-    doTeamsOfficiate: typeof event.doTeamsOfficiate === 'boolean' ? event.doTeamsOfficiate : true,
+    doTeamsOfficiate,
     teamOfficialsMaySwap:
-      event.doTeamsOfficiate === true && typeof (event as any).teamOfficialsMaySwap === 'boolean'
+      doTeamsOfficiate && typeof (event as any).teamOfficialsMaySwap === 'boolean'
         ? Boolean((event as any).teamOfficialsMaySwap)
         : false,
-    officialSchedulingMode: normalizeOfficialSchedulingMode((event as any).officialSchedulingMode),
+    officialSchedulingMode,
     officialPositions,
     eventOfficials,
     matchRulesOverride: (event as any).matchRulesOverride ?? null,
@@ -3938,14 +3944,17 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const normalizedEventInstallmentAmounts = billingOwnerHasStripeAccount
     ? ensureNumberArray(payload.installmentAmounts)
     : [];
-  const normalizedDoTeamsOfficiate = coerceNullableBoolean(payload.doTeamsOfficiate);
-  const normalizedTeamOfficialsMaySwap = normalizedDoTeamsOfficiate === true
-    ? coerceBoolean(payload.teamOfficialsMaySwap, false)
-    : false;
   const officialSchedulingMode = normalizeOfficialSchedulingMode(
     payload.officialSchedulingMode,
     normalizeOfficialSchedulingMode((existingEvent as any)?.officialSchedulingMode),
   );
+  const requestedDoTeamsOfficiate = coerceNullableBoolean(payload.doTeamsOfficiate);
+  const normalizedDoTeamsOfficiate = officialSchedulingMode === 'TEAM_STAFFING'
+    ? true
+    : requestedDoTeamsOfficiate;
+  const normalizedTeamOfficialsMaySwap = normalizedDoTeamsOfficiate === true
+    ? coerceBoolean(payload.teamOfficialsMaySwap, false)
+    : false;
   const payloadIncludesMatchRulesOverride = Object.prototype.hasOwnProperty.call(payload, 'matchRulesOverride');
   const normalizedMatchRulesOverride = (() => {
     if (payloadIncludesMatchRulesOverride) {

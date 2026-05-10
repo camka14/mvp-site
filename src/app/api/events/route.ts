@@ -507,6 +507,9 @@ const withLegacyEvent = (row: any) => {
   if (typeof (legacy as any).officialSchedulingMode !== 'string') {
     (legacy as any).officialSchedulingMode = 'SCHEDULE';
   }
+  if ((legacy as any).officialSchedulingMode === 'TEAM_STAFFING') {
+    (legacy as any).doTeamsOfficiate = true;
+  }
   if (!Array.isArray((legacy as any).assistantHostIds)) {
     (legacy as any).assistantHostIds = [];
   }

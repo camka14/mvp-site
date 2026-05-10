@@ -1,4 +1,4 @@
-import { Group, Participant, Resource, SchedulableEvent, MINUTE_MS } from './types';
+import { Group, Participant, Resource, SchedulableEvent, Team, MINUTE_MS } from './types';
 
 type SlotWindow = {
   start: Date;
@@ -163,6 +163,24 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     return freeParticipants;
   }
 
+  private participantPoolForCurrentGroups(): P[] {
+    const byId = new Map<string, P>();
+    for (const group of this.currentGroups) {
+      for (const participant of this.participants.get(group) ?? []) {
+        byId.set(participant.id, participant);
+      }
+    }
+    if (byId.size) {
+      return Array.from(byId.values());
+    }
+    for (const participants of this.participants.values()) {
+      for (const participant of participants) {
+        byId.set(participant.id, participant);
+      }
+    }
+    return Array.from(byId.values());
+  }
+
   scheduleEvent(event: E, durationMs: number): void {
     this.scheduleEventWithOptions(event, durationMs);
   }
@@ -180,6 +198,7 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     },
   ): void {
     this.currentGroups = event.getGroups() as G[];
+    this.assertPossibleParticipantCapacity(event);
     let earliestStart = this.getEarliestStartTime(event);
     earliestStart = this.nextValidStartTime(earliestStart, durationMs);
 
@@ -191,7 +210,7 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
       if (this.hasSlots && earliestStart.getTime() + durationMs > this.endTime.getTime()) {
         throw new Error(`${NOT_ENOUGH_TIME_ALLOTTED_MESSAGE} No available time slots remaining for scheduling.`);
       }
-      if (this.checkAvailabilityOfParticipants(earliestStart, new Date(earliestStart.getTime() + durationMs), event.getParticipants().length)) {
+      if (this.checkAvailabilityOfParticipants(earliestStart, new Date(earliestStart.getTime() + durationMs), event)) {
         const resource = this.findAvailableResource(earliestStart, durationMs, event, opts?.canUseCandidate);
         if (resource) {
           event.setResource(resource);
@@ -221,13 +240,28 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     return this.roundToNextMinute(earliest);
   }
 
-  private checkAvailabilityOfParticipants(start: Date, end: Date, minParticipants: number): boolean {
+  private assertPossibleParticipantCapacity(event: E): void {
+    const requiredTeamParticipants = event.getRequiredTeamParticipantCount?.() ?? 0;
+    if (requiredTeamParticipants <= 0) {
+      return;
+    }
+    const currentTeamIds = new Set<string>();
+    for (const participant of this.participantPoolForCurrentGroups()) {
+      if (participant instanceof Team) {
+        currentTeamIds.add(participant.id);
+      }
+    }
+    if (currentTeamIds.size < requiredTeamParticipants) {
+      throw new Error(`${NOT_ENOUGH_TIME_ALLOTTED_MESSAGE} Not enough teams are available to cover match and team-official slots.`);
+    }
+  }
+
+  private checkAvailabilityOfParticipants(start: Date, end: Date, event: E): boolean {
+    const minParticipants = event.getParticipants().length;
     const currentEvents = this.currentEvents(start, end);
     const currentParticipantIds = new Set<string>();
-    for (const group of this.currentGroups) {
-      for (const participant of this.participants.get(group) ?? []) {
-        currentParticipantIds.add(participant.id);
-      }
+    for (const participant of this.participantPoolForCurrentGroups()) {
+      currentParticipantIds.add(participant.id);
     }
     if (!currentParticipantIds.size) {
       return minParticipants <= 0;
@@ -245,7 +279,42 @@ export class Schedule<E extends SchedulableEvent, R extends Resource, P extends 
     }
 
     const availableParticipants = currentParticipantIds.size - busyParticipantIds.size;
-    return availableParticipants >= minParticipants;
+    if (availableParticipants < minParticipants) {
+      return false;
+    }
+
+    const requiredTeamParticipants = event.getRequiredTeamParticipantCount?.() ?? 0;
+    if (requiredTeamParticipants <= 0) {
+      return true;
+    }
+
+    const currentTeamIds = new Set<string>();
+    for (const participant of this.participantPoolForCurrentGroups()) {
+      if (participant instanceof Team) {
+        currentTeamIds.add(participant.id);
+      }
+    }
+    if (!currentTeamIds.size) {
+      return false;
+    }
+
+    const busyTeamIds = new Set<string>();
+    let unassignedTeamReservations = 0;
+    for (const scheduledEvent of currentEvents) {
+      const scheduledTeamIds = new Set<string>();
+      for (const participant of scheduledEvent.getParticipants()) {
+        if (participant instanceof Team && currentTeamIds.has(participant.id)) {
+          scheduledTeamIds.add(participant.id);
+          busyTeamIds.add(participant.id);
+        }
+      }
+      const scheduledRequiredTeams = scheduledEvent.getRequiredTeamParticipantCount?.() ?? scheduledTeamIds.size;
+      unassignedTeamReservations += Math.max(0, scheduledRequiredTeams - scheduledTeamIds.size);
+    }
+
+    const reservedTeamSlots = busyTeamIds.size + unassignedTeamReservations;
+    const availableTeamSlots = currentTeamIds.size - reservedTeamSlots;
+    return availableTeamSlots >= requiredTeamParticipants;
   }
 
   private findAvailableResource(
