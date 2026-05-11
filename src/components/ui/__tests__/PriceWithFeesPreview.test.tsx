@@ -1,11 +1,11 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import PriceWithFeesPreview from '../PriceWithFeesPreview';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 
 describe('PriceWithFeesPreview', () => {
-  it('shows the fee-inclusive total and expandable breakdown', async () => {
+  it('shows the fee-inclusive total and opens the breakdown in a modal', async () => {
     const user = userEvent.setup();
 
     renderWithMantine(
@@ -18,8 +18,9 @@ describe('PriceWithFeesPreview', () => {
       screen.getByRole('button', { name: /show fee breakdown/i }),
     );
 
-    expect(screen.getByText('BracketIQ fee (3%)')).toBeInTheDocument();
-    expect(screen.getByText('Stripe fee')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: /fee breakdown/i });
+    expect(within(dialog).getByText('BracketIQ fee (3%)')).toBeInTheDocument();
+    expect(within(dialog).getByText('Stripe fee')).toBeInTheDocument();
     expect(screen.getAllByText('$10.92')).toHaveLength(2);
   });
 
@@ -34,7 +35,8 @@ describe('PriceWithFeesPreview', () => {
       screen.getByRole('button', { name: /show fee breakdown/i }),
     );
 
-    expect(screen.getByText('BracketIQ fee (1%)')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: /fee breakdown/i });
+    expect(within(dialog).getByText('BracketIQ fee (1%)')).toBeInTheDocument();
     expect(screen.getAllByText('$0.00')).toHaveLength(5);
   });
 
@@ -49,9 +51,10 @@ describe('PriceWithFeesPreview', () => {
       screen.getByRole('button', { name: /show fee breakdown/i }),
     );
 
-    expect(screen.getByText('Stripe fee')).toBeInTheDocument();
-    expect(screen.getByText('$1.13')).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog', { name: /fee breakdown/i });
+    expect(within(dialog).getByText('Stripe fee')).toBeInTheDocument();
+    expect(within(dialog).getByText('$1.13')).toBeInTheDocument();
     expect(screen.queryByText('Stripe tax service fee')).not.toBeInTheDocument();
-    expect(screen.getByText('Calculated at checkout')).toBeInTheDocument();
+    expect(within(dialog).getByText('Calculated at checkout')).toBeInTheDocument();
   });
 });

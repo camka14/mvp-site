@@ -1,5 +1,6 @@
 import React from 'react';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithMantine } from '../../../../../../../test/utils/renderWithMantine';
 import EventForm, { EventFormHandle } from '../EventForm';
 import { userService } from '@/lib/userService';
@@ -16,7 +17,17 @@ jest.mock('@mantine/core', () => {
   const actual = jest.requireActual('@mantine/core');
   return {
     ...actual,
-    Collapse: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    Collapse: ({
+      children,
+      in: opened = true,
+      transitionTimingFunction,
+    }: {
+      children: React.ReactNode;
+      in?: boolean;
+      transitionTimingFunction?: string;
+    }) => (
+      transitionTimingFunction === 'ease' && !opened ? null : <>{children}</>
+    ),
     Select: ({ label, data = [], value = '', onChange, placeholder, disabled }: any) => (
       <label>
         <span>{typeof label === 'string' ? label : 'Select'}</span>
@@ -86,6 +97,24 @@ jest.mock('@mantine/dates', () => ({
     );
   },
 }));
+
+jest.mock('motion/react', () => {
+  const React = require('react');
+  return {
+    AnimatePresence: ({ children }: any) => React.createElement(React.Fragment, null, children),
+    motion: {
+      div: ({
+        children,
+        layout,
+        initial,
+        animate,
+        exit,
+        transition,
+        ...props
+      }: any) => React.createElement('div', props, children),
+    },
+  };
+});
 
 jest.mock('@/components/location/LocationSelector', () => {
   function MockLocationSelector({ label = 'Location', value = '', onChange }: any) {
@@ -402,6 +431,76 @@ describe('EventForm dirty state', () => {
       { $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' },
       { $id: 'official_2', email: 'official2@example.com', firstName: 'Casey', lastName: 'Official' },
     ],
+  });
+
+  it('allows event payment plan totals to drive price instead of matching the existing price', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(onDirtyStateChange, formRef, {
+      price: 10000,
+      allowPaymentPlans: true,
+      installmentCount: 2,
+      installmentAmounts: [2500, 2500],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    let isValid: boolean | undefined;
+    await act(async () => {
+      isValid = await formRef.current?.validate();
+    });
+
+    expect(isValid).toBe(true);
+  });
+
+  it('allows division payment plan totals to drive division price instead of matching the existing price', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(onDirtyStateChange, formRef, {
+      singleDivision: false,
+      divisions: ['open'],
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          price: 10000,
+          allowPaymentPlans: true,
+          installmentCount: 2,
+          installmentAmounts: [2500, 2500],
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    let isValid: boolean | undefined;
+    await act(async () => {
+      isValid = await formRef.current?.validate();
+    });
+
+    expect(isValid).toBe(true);
+  });
+
+  it('shows per-installment fee previews when event payment plans are enabled', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      price: 5000,
+      allowPaymentPlans: true,
+      installmentCount: 2,
+      installmentAmounts: [2500, 2500],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.getAllByTestId('price-preview')).toHaveLength(2);
   });
 
   it('shows organizer tax responsibility next to price when policy assigns organizer liability', async () => {
@@ -1488,6 +1587,160 @@ describe('EventForm dirty state', () => {
     expect(teamSignupSwitch).toBeInTheDocument();
   });
 
+  it('renders division mode switches before division settings fields', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      teamSignup: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const divisionSettingsSection = document.getElementById('section-division-settings-content');
+    const divisionModeSwitches = screen.getByTestId('division-mode-switches');
+    const singleDivisionSettings = screen.getByText('Single Division Settings');
+
+    expect(divisionSettingsSection).not.toBeNull();
+    expect(divisionSettingsSection).toContainElement(divisionModeSwitches);
+    expect(divisionModeSwitches).toContainElement(screen.getByText('Team Event (teams compete rather than individuals)'));
+    expect(divisionModeSwitches).toContainElement(screen.getByText('Single Division (all skill levels play together)'));
+    expect(divisionModeSwitches).toContainElement(screen.getByText('Register by Division Type'));
+    expect(divisionModeSwitches).toContainElement(screen.getByText('Split League & Playoff Divisions'));
+    expect(divisionModeSwitches.compareDocumentPosition(singleDivisionSettings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByLabelText('Playoff Team Count')).toBeInTheDocument();
+  });
+
+  it('transitions division-specific controls when single division is toggled', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange);
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const getSingleDivisionSwitch = () => screen.getByRole('switch', {
+      name: 'Single Division (all skill levels play together)',
+    });
+
+    expect(screen.getByLabelText('Max Participants')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Division Max Participants')).not.toBeInTheDocument();
+    expect(screen.queryByText('Division Payment Plan')).not.toBeInTheDocument();
+
+    await userEvent.click(getSingleDivisionSwitch());
+
+    await waitFor(() => {
+      expect(getSingleDivisionSwitch()).not.toBeChecked();
+      expect(screen.queryByLabelText('Max Participants')).not.toBeInTheDocument();
+      expect(screen.getByLabelText('Division Max Participants')).toBeInTheDocument();
+      expect(screen.getByText('Division Payment Plan')).toBeInTheDocument();
+    });
+
+    await userEvent.click(getSingleDivisionSwitch());
+
+    await waitFor(() => {
+      expect(getSingleDivisionSwitch()).toBeChecked();
+      expect(screen.getByLabelText('Max Participants')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Division Max Participants')).not.toBeInTheDocument();
+      expect(screen.queryByText('Division Payment Plan')).not.toBeInTheDocument();
+    });
+  });
+
+  it('renders event-level capacity controls only for single division mode', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange);
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const divisionSettingsSection = document.getElementById('section-division-settings-content');
+
+    expect(divisionSettingsSection).not.toBeNull();
+    expect(divisionSettingsSection).toContainElement(screen.getByLabelText('Max Participants'));
+    expect(screen.queryByLabelText('Division Max Participants')).not.toBeInTheDocument();
+    expect(screen.queryByText('Division Price')).not.toBeInTheDocument();
+  });
+
+  it('uses division-level capacity controls in multi-division mode', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      singleDivision: false,
+      maxParticipants: null,
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const divisionSettingsSection = document.getElementById('section-division-settings-content');
+
+    expect(divisionSettingsSection).not.toBeNull();
+    expect(screen.queryByLabelText('Max Participants')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Division Max Participants')).toBeInTheDocument();
+  });
+
+  it('uses division playoff team count as the multi-division league default source', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const divisionSettingsSection = document.getElementById('section-division-settings-content');
+
+    expect(divisionSettingsSection).not.toBeNull();
+    expect(screen.queryByText('Event Pricing Defaults')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Default Playoff Team Count')).not.toBeInTheDocument();
+    expect(screen.queryByText('Default Payment Plan')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Division Playoff Team Count')).toBeInTheDocument();
+  });
+
+  it('does not require an event-level max participant value for multi-division events', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(onDirtyStateChange, formRef, {
+      singleDivision: false,
+      maxParticipants: null,
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    let isValid: boolean | undefined;
+    await act(async () => {
+      isValid = await formRef.current?.validate();
+    });
+
+    expect(isValid).toBe(true);
+  });
+
   it('keeps weekly event team signup in Event Details and out of Division Settings', async () => {
     const onDirtyStateChange = jest.fn();
 
@@ -1604,11 +1857,64 @@ describe('EventForm dirty state', () => {
       },
     });
 
-    expect(screen.getByText('Pool Play Settings')).toBeInTheDocument();
-    expect(screen.getByLabelText('Bracket Teams')).toBeInTheDocument();
-    expect(screen.getByLabelText('Pool Count')).toBeInTheDocument();
+    expect(screen.queryByText('Pool Play Settings')).not.toBeInTheDocument();
+    const defaultsContent = document.getElementById('division-defaults-content');
+    expect(defaultsContent).not.toBeNull();
+    expect(defaultsContent).toContainElement(screen.getByLabelText('Bracket Teams'));
+    expect(defaultsContent).toContainElement(screen.getByLabelText('Pool Count'));
+    expect(defaultsContent).toContainElement(screen.getByLabelText('Pool Team Count'));
     expect(screen.getByLabelText('Pool Team Count')).toBeDisabled();
     expect(screen.getAllByText('Pool Scoring Config').length).toBeGreaterThan(0);
+  });
+
+  it('carries single-division tournament pool settings into multi-division defaults', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      teamSignup: true,
+      singleDivision: true,
+      maxParticipants: 12,
+      noFixedEndDateTime: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+      },
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          maxParticipants: 10,
+          playoffTeamCount: 6,
+          poolCount: 3,
+          poolTeamCount: 5,
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    await userEvent.click(screen.getByRole('switch', {
+      name: 'Single Division (all skill levels play together)',
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('switch', {
+        name: 'Single Division (all skill levels play together)',
+      })).not.toBeChecked();
+    });
+
+    const draft = formRef.current?.getDraft();
+    expect(draft?.playoffDivisionDetails?.[0]).toMatchObject({
+      maxParticipants: 12,
+      playoffTeamCount: 6,
+      poolCount: 3,
+      poolTeamCount: 4,
+    });
   });
 
   it('hydrates tournament bracket pool counts from persisted pool divisions', async () => {

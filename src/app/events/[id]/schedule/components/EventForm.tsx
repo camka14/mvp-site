@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo, useImperative
 import { Controller, useForm, Resolver } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { AnimatePresence, motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
 import LocationSelector from '@/components/location/LocationSelector';
@@ -191,6 +192,10 @@ const MAX_PRICE_NUMBER = 9_999_999;
 const MAX_PRICE_CENTS = MAX_PRICE_NUMBER * 100;
 const SECTION_SCROLL_OFFSET = 140;
 const SECTION_ANIMATION_DURATION_MS = 220;
+const DIVISION_LAYOUT_TRANSITION = {
+    duration: SECTION_ANIMATION_DURATION_MS / 1000,
+    ease: 'easeInOut',
+} as const;
 const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
     'section-basic-information': false,
     'section-event-details': true,
@@ -354,6 +359,32 @@ const AnimatedSection = ({
     >
         {className ? <div className={className}>{children}</div> : children}
     </Collapse>
+);
+
+const AnimatedLayoutSection = ({
+    in: inProp,
+    children,
+    className,
+}: {
+    in: boolean;
+    children: React.ReactNode;
+    className?: string;
+}) => (
+    <AnimatePresence initial={false} mode="popLayout">
+        {inProp ? (
+            <motion.div
+                layout
+                className={className}
+                initial={{ opacity: 0, height: 0, y: -6 }}
+                animate={{ opacity: 1, height: 'auto', y: 0 }}
+                exit={{ opacity: 0, height: 0, y: -6 }}
+                transition={DIVISION_LAYOUT_TRANSITION}
+                style={{ overflow: 'hidden' }}
+            >
+                {children}
+            </motion.div>
+        ) : null}
+    </AnimatePresence>
 );
 
 const normalizeDivisionTokenPart = (value: unknown): string => String(value ?? '')
@@ -2107,6 +2138,10 @@ const normalizeBoolean = (value: unknown): boolean | undefined => {
 
 const normalizeInstallmentAmounts = (amounts: unknown): number[] => normalizePriceCentsArray(amounts);
 
+const sumInstallmentAmounts = (amounts: unknown): number => (
+    normalizeInstallmentAmounts(amounts).reduce((sum, amount) => sum + amount, 0)
+);
+
 const normalizeInstallmentDates = (dates: unknown): string[] => {
     if (!Array.isArray(dates)) return [];
     return dates
@@ -2686,6 +2721,9 @@ const mapEventToFormState = (event: Event): EventFormState => {
         ? Math.max(0, Math.trunc(event.installmentCount as number))
         : defaultEventInstallmentAmounts.length;
     const defaultEventAllowPaymentPlans = Boolean(event.allowPaymentPlans);
+    const defaultEventPrice = defaultEventAllowPaymentPlans && defaultEventInstallmentAmounts.length
+        ? sumInstallmentAmounts(defaultEventInstallmentAmounts)
+        : normalizePriceCents(event.price);
 
     const normalizedDivisionIds = Array.isArray(event.divisions)
         ? Array.from(
@@ -2754,7 +2792,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
                 skillDivisionTypeName,
                 ageDivisionTypeId,
                 ageDivisionTypeName,
-                price: normalizePriceCents(event.price),
+                price: defaultEventPrice,
                 maxParticipants: Number.isFinite(event.maxParticipants) ? event.maxParticipants : 10,
                 playoffTeamCount: Number.isFinite(event.playoffTeamCount)
                     ? Math.max(2, Math.trunc(event.playoffTeamCount as number))
@@ -2791,9 +2829,11 @@ const mapEventToFormState = (event: Event): EventFormState => {
     const normalizedDivisionDetailsWithCapacity: DivisionDetailForm[] = normalizedDivisionDetails.map((detail): DivisionDetailForm => ({
         ...detail,
         kind: detail.kind === 'PLAYOFF' ? 'PLAYOFF' : 'LEAGUE',
-        price: Number.isFinite(detail.price)
-            ? Math.max(0, detail.price)
-            : normalizePriceCents(event.price),
+        price: detail.allowPaymentPlans && normalizeInstallmentAmounts(detail.installmentAmounts).length
+            ? sumInstallmentAmounts(detail.installmentAmounts)
+            : Number.isFinite(detail.price)
+                ? Math.max(0, detail.price)
+                : defaultEventPrice,
         maxParticipants: Number.isFinite(detail.maxParticipants)
             ? Math.max(2, Math.trunc(detail.maxParticipants))
             : Number.isFinite(event.maxParticipants)
@@ -2968,7 +3008,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     sportConfig: event.sport && typeof event.sport === 'object'
         ? { ...(event.sport as Sport) }
         : null,
-    price: normalizePriceCents(event.price),
+    price: defaultEventPrice,
     taxHandling: normalizeEventTaxHandling(event.taxHandling),
     organizerManualTaxRateBps: normalizeOrganizerManualTaxRateBps(event.organizerManualTaxRateBps),
     minAge: Number.isFinite(event.minAge) ? event.minAge : undefined,
@@ -3279,7 +3319,7 @@ const eventFormSchema = z
         joinAsParticipant: z.boolean(),
     })
     .superRefine((values, ctx) => {
-        if (values.maxParticipants == null) {
+        if (values.singleDivision && values.maxParticipants == null) {
             ctx.addIssue({
                 code: 'custom',
                 message: values.teamSignup ? 'Max teams is required' : 'Max participants is required',
@@ -3385,14 +3425,6 @@ const eventFormSchema = z
                     path: ['installmentDueDates'],
                 });
             }
-            const total = amounts.reduce((sum, amt) => sum + (Number.isFinite(amt) ? Number(amt) : 0), 0);
-            if (values.price > 0 && total !== values.price) {
-                ctx.addIssue({
-                    code: "custom",
-                    message: 'Installment amounts must add up to the event price',
-                    path: ['installmentAmounts'],
-                });
-            }
         }
 
         if (!values.singleDivision) {
@@ -3433,14 +3465,6 @@ const eventFormSchema = z
                         code: 'custom',
                         message: 'Each division installment needs a due date',
                         path: ['divisionDetails', index, 'installmentDueDates'],
-                    });
-                }
-                const total = amounts.reduce((sum, amount) => sum + (Number.isFinite(amount) ? Number(amount) : 0), 0);
-                if (detail.price > 0 && total !== detail.price) {
-                    ctx.addIssue({
-                        code: 'custom',
-                        message: 'Division installment amounts must add up to the division price',
-                        path: ['divisionDetails', index, 'installmentAmounts'],
                     });
                 }
             });
@@ -3555,7 +3579,9 @@ const eventFormSchema = z
 
             if (isTournamentPoolPlayFormEnabled(values.eventType, values.leagueData.includePlayoffs)) {
                 values.divisionDetails.forEach((detail, index) => {
-                    const maxTeams = Math.max(2, Math.trunc(detail.maxParticipants || 0));
+                    const maxTeams = values.singleDivision
+                        ? Math.max(2, Math.trunc(values.maxParticipants || detail.maxParticipants || 0))
+                        : Math.max(2, Math.trunc(detail.maxParticipants || 0));
                     const poolCount = Number.isFinite(detail.poolCount)
                         ? Math.max(1, Math.trunc(detail.poolCount as number))
                         : null;
@@ -4420,7 +4446,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.singleDivision,
         hasStripeAccount,
     ]);
-    const hasUnsetTeamCapacityLimits = eventData.maxParticipants == null || eventData.teamSizeLimit == null;
+    const hasUnsetTeamCapacityLimits = eventData.teamSizeLimit == null
+        || (eventData.singleDivision && eventData.maxParticipants == null);
     const leagueSlots = formValues.leagueSlots;
     const leagueData = formValues.leagueData;
     const tournamentData = formValues.tournamentData;
@@ -4776,7 +4803,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const startDate = getValues('start');
             const useRelativeDueDates = getValues('eventType') === 'WEEKLY_EVENT' && !getValues('parentEvent');
             while (amounts.length < safeCount) {
-                amounts.push(price);
+                amounts.push(amounts.length === 0 ? price : 0);
                 dueDates.push(startDate);
                 relativeDueDays.push(0);
             }
@@ -4787,6 +4814,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             setValue('installmentCount', safeCount, { shouldDirty: true, shouldValidate: true });
             setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
+            setValue('price', sumInstallmentAmounts(amounts), { shouldDirty: true, shouldValidate: true });
             setValue('installmentDueDates', useRelativeDueDates ? [] : dueDates, { shouldDirty: true, shouldValidate: true });
             setValue(
                 'installmentDueRelativeDays',
@@ -4803,6 +4831,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             if (index >= amounts.length) return;
             amounts[index] = normalizePriceCents(value);
             setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
+            setValue('price', sumInstallmentAmounts(amounts), { shouldDirty: true, shouldValidate: true });
         },
         [getValues, setValue],
     );
@@ -4849,6 +4878,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             dueDates.splice(index, 1);
             relativeDueDays.splice(index, 1);
             setValue('installmentAmounts', amounts, { shouldDirty: true, shouldValidate: true });
+            setValue('price', sumInstallmentAmounts(amounts), { shouldDirty: true, shouldValidate: true });
             setValue('installmentDueDates', dueDates, { shouldDirty: true, shouldValidate: true });
             setValue('installmentDueRelativeDays', relativeDueDays, { shouldDirty: true, shouldValidate: true });
             setValue('installmentCount', amounts.length, { shouldDirty: true, shouldValidate: true });
@@ -4867,7 +4897,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
 
             while (amounts.length < safeCount) {
-                amounts.push(price);
+                amounts.push(amounts.length === 0 ? price : 0);
                 dueDates.push(fallbackDueDate);
                 relativeDueDays.push(0);
             }
@@ -4881,6 +4911,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ...prev,
                 installmentCount: safeCount,
                 installmentAmounts: amounts,
+                price: prev.allowPaymentPlans ? sumInstallmentAmounts(amounts) : prev.price,
                 installmentDueDates: useRelativeDueDates ? [] : dueDates,
                 installmentDueRelativeDays: useRelativeDueDates ? relativeDueDays : [],
                 error: null,
@@ -4898,6 +4929,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return {
                 ...prev,
                 installmentAmounts: amounts,
+                price: prev.allowPaymentPlans ? sumInstallmentAmounts(amounts) : prev.price,
                 error: null,
             };
         });
@@ -4959,6 +4991,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return {
                 ...prev,
                 installmentAmounts: amounts,
+                price: prev.allowPaymentPlans ? sumInstallmentAmounts(amounts) : prev.price,
                 installmentDueDates: dueDates,
                 installmentDueRelativeDays: relativeDueDays,
                 installmentCount: amounts.length,
@@ -5655,6 +5688,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         error: null,
     });
     const previousSingleDivisionRef = useRef<boolean | null>(null);
+    const firstDivisionDetailForDefaults = useMemo(
+        () => (Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails[0] : undefined),
+        [eventData.divisionDetails],
+    );
+    const singleDivisionPoolPlayDefaults = useMemo(() => {
+        const bracketTeams = typeof firstDivisionDetailForDefaults?.playoffTeamCount === 'number'
+            ? Math.max(2, Math.trunc(firstDivisionDetailForDefaults.playoffTeamCount))
+            : divisionEditor.playoffTeamCount;
+        const poolCount = typeof firstDivisionDetailForDefaults?.poolCount === 'number'
+            ? Math.max(1, Math.trunc(firstDivisionDetailForDefaults.poolCount))
+            : divisionEditor.poolCount;
+        return {
+            bracketTeams,
+            poolCount,
+            poolTeamCount: derivePoolTeamCount(eventData.maxParticipants, poolCount),
+        };
+    }, [
+        divisionEditor.playoffTeamCount,
+        divisionEditor.poolCount,
+        eventData.maxParticipants,
+        firstDivisionDetailForDefaults?.playoffTeamCount,
+        firstDivisionDetailForDefaults?.poolCount,
+    ]);
 
     useEffect(() => {
         if (!isCreateMode || hasStripeAccount) {
@@ -6542,6 +6598,58 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }));
     }, [eventData.maxParticipants, eventData.singleDivision, leagueData.playoffTeamCount, setLeagueData, setValue]);
 
+    const updateSingleDivisionTournamentPoolDefaults = useCallback((
+        updates: Partial<Pick<typeof divisionEditor, 'playoffTeamCount' | 'poolCount'>>,
+    ) => {
+        setDivisionEditor((prev) => ({
+            ...prev,
+            ...updates,
+            error: null,
+        }));
+
+        if (!eventData.singleDivision || eventData.eventType !== 'TOURNAMENT' || !leagueData.includePlayoffs) {
+            return;
+        }
+
+        const currentDetails = Array.isArray(eventData.divisionDetails) ? eventData.divisionDetails : [];
+        if (!currentDetails.length) {
+            return;
+        }
+
+        const nextPlayoffTeamCount = Object.prototype.hasOwnProperty.call(updates, 'playoffTeamCount')
+            ? updates.playoffTeamCount
+            : singleDivisionPoolPlayDefaults.bracketTeams;
+        const nextPoolCount = Object.prototype.hasOwnProperty.call(updates, 'poolCount')
+            ? updates.poolCount
+            : singleDivisionPoolPlayDefaults.poolCount;
+        const normalizedMaxParticipants = Math.max(2, Math.trunc(eventData.maxParticipants || 2));
+        const normalizedPlayoffTeamCount = typeof nextPlayoffTeamCount === 'number'
+            ? Math.max(2, Math.trunc(nextPlayoffTeamCount))
+            : undefined;
+        const normalizedPoolCount = typeof nextPoolCount === 'number'
+            ? Math.max(1, Math.trunc(nextPoolCount))
+            : undefined;
+        const normalizedPoolTeamCount = derivePoolTeamCount(normalizedMaxParticipants, normalizedPoolCount);
+
+        const nextDetails = currentDetails.map((detail) => ({
+            ...detail,
+            maxParticipants: normalizedMaxParticipants,
+            playoffTeamCount: normalizedPlayoffTeamCount,
+            poolCount: normalizedPoolCount,
+            poolTeamCount: normalizedPoolTeamCount,
+        }));
+        setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
+    }, [
+        eventData.divisionDetails,
+        eventData.eventType,
+        eventData.maxParticipants,
+        eventData.singleDivision,
+        leagueData.includePlayoffs,
+        setValue,
+        singleDivisionPoolPlayDefaults.bracketTeams,
+        singleDivisionPoolPlayDefaults.poolCount,
+    ]);
+
     const resetDivisionEditor = useCallback(() => {
         const defaultInstallmentAmounts = eventData.allowPaymentPlans
             ? normalizeInstallmentAmounts(eventData.installmentAmounts)
@@ -6563,12 +6671,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             playoffTeamCount: Math.max(
                 2,
                 Math.trunc(
-                    typeof leagueData.playoffTeamCount === 'number'
+                    eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && typeof firstDivisionDetailForDefaults?.playoffTeamCount === 'number'
+                        ? firstDivisionDetailForDefaults.playoffTeamCount
+                        : typeof leagueData.playoffTeamCount === 'number'
                         ? leagueData.playoffTeamCount
                         : eventData.maxParticipants || 2,
                 ),
             ),
-            poolCount: null,
+            poolCount: eventData.eventType === 'TOURNAMENT'
+                && leagueData.includePlayoffs
+                && typeof firstDivisionDetailForDefaults?.poolCount === 'number'
+                ? Math.max(1, Math.trunc(firstDivisionDetailForDefaults.poolCount))
+                : null,
             allowPaymentPlans: Boolean(eventData.allowPaymentPlans),
             installmentCount: eventData.allowPaymentPlans
                 ? (eventData.installmentCount || defaultInstallmentAmounts.length || 0)
@@ -6583,12 +6697,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         defaultDivisionTypeSelections.ageDivisionTypeId,
         defaultDivisionTypeSelections.skillDivisionTypeId,
         eventData.allowPaymentPlans,
+        eventData.divisionDetails,
+        eventData.eventType,
         eventData.installmentAmounts,
         eventData.installmentCount,
         eventData.installmentDueDates,
         eventData.installmentDueRelativeDays,
         eventData.maxParticipants,
         eventData.price,
+        firstDivisionDetailForDefaults?.playoffTeamCount,
+        firstDivisionDetailForDefaults?.poolCount,
+        leagueData.includePlayoffs,
         leagueData.playoffTeamCount,
     ]);
 
@@ -6617,9 +6736,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             includePlayoffs: eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs,
             defaultPlayoffTeamCount: typeof leagueData.playoffTeamCount === 'number'
                 ? leagueData.playoffTeamCount
-                : typeof eventData.maxParticipants === 'number'
+                : eventData.eventType === 'TOURNAMENT' && typeof firstDivisionDetailForDefaults?.playoffTeamCount === 'number'
+                    ? firstDivisionDetailForDefaults.playoffTeamCount
+                    : typeof eventData.maxParticipants === 'number'
                     ? eventData.maxParticipants
                     : undefined,
+            includeTournamentPoolPlay: eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs,
+            defaultPoolCount: eventData.eventType === 'TOURNAMENT'
+                ? firstDivisionDetailForDefaults?.poolCount ?? singleDivisionPoolPlayDefaults.poolCount
+                : undefined,
         });
         if (changed) {
             setValue('divisionDetails', nextDetails, { shouldDirty: true, shouldValidate: true });
@@ -6631,10 +6756,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.maxParticipants,
         eventData.price,
         eventData.singleDivision,
+        firstDivisionDetailForDefaults?.playoffTeamCount,
+        firstDivisionDetailForDefaults?.poolCount,
         leagueData.includePlayoffs,
         leagueData.playoffTeamCount,
         resetDivisionEditor,
         setValue,
+        singleDivisionPoolPlayDefaults.poolCount,
     ]);
 
     const getDivisionTypeNameForEditor = useCallback(
@@ -6801,7 +6929,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const skillDivisionTypeName = getDivisionTypeNameForEditor('SKILL', skillDivisionTypeId);
         const ageDivisionTypeName = getDivisionTypeNameForEditor('AGE', ageDivisionTypeId);
         const name = divisionEditor.name.trim();
-        const normalizedDivisionPrice = eventData.singleDivision
+        const rawNormalizedDivisionPrice = eventData.singleDivision
             ? Math.max(0, eventData.price || 0)
             : Math.max(0, divisionEditor.price || 0);
         const rawDivisionMaxParticipants = eventData.singleDivision
@@ -6862,6 +6990,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? (eventData.installmentCount || normalizedDivisionInstallmentAmounts.length || 0)
                 : (divisionEditor.installmentCount || normalizedDivisionInstallmentAmounts.length || 0))
             : 0;
+        const normalizedDivisionPrice = normalizedDivisionAllowPaymentPlans
+            ? sumInstallmentAmounts(normalizedDivisionInstallmentAmounts)
+            : rawNormalizedDivisionPrice;
 
         if (!gender || !skillDivisionTypeId || !ageDivisionTypeId) {
             setDivisionEditor((prev) => ({
@@ -6974,20 +7105,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }));
                 return;
             }
-            const total = normalizedDivisionInstallmentAmounts.reduce(
-                (sum, amount) => sum + (Number.isFinite(amount) ? amount : 0),
-                0,
-            );
-            if (
-                normalizedDivisionPrice > 0
-                && total !== normalizedDivisionPrice
-            ) {
-                setDivisionEditor((prev) => ({
-                    ...prev,
-                    error: 'Division installment amounts must add up to the division price.',
-                }));
-                return;
-            }
         }
 
         const token = buildDivisionToken({ gender, ratingType, divisionTypeId });
@@ -7075,8 +7192,50 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
         });
         setValue('divisionFieldIds', remappedFieldMap, { shouldDirty: true, shouldValidate: true });
-        resetDivisionEditor();
+        if (!eventData.singleDivision) {
+            setValue('price', normalizedDivisionPrice, { shouldDirty: true, shouldValidate: false });
+            setValue('maxParticipants', normalizedDivisionMaxParticipants, { shouldDirty: true, shouldValidate: true });
+            setValue('allowPaymentPlans', normalizedDivisionAllowPaymentPlans, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentCount', normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentCount : 0, { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueDates', normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueDates : [], { shouldDirty: true, shouldValidate: true });
+            setValue('installmentDueRelativeDays', normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueRelativeDays : [], { shouldDirty: true, shouldValidate: true });
+            setValue('installmentAmounts', normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentAmounts : [], { shouldDirty: true, shouldValidate: true });
+            if (
+                eventData.eventType === 'LEAGUE'
+                && leagueData.includePlayoffs
+                && typeof normalizedDivisionPlayoffTeamCount === 'number'
+            ) {
+                setLeagueData((prev) => ({
+                    ...prev,
+                    playoffTeamCount: normalizedDivisionPlayoffTeamCount,
+                }), { shouldDirty: true, shouldValidate: true });
+            }
+        }
+        setDivisionEditor({
+            editingId: null,
+            gender: '',
+            skillDivisionTypeId: defaultDivisionTypeSelections.skillDivisionTypeId,
+            ageDivisionTypeId: defaultDivisionTypeSelections.ageDivisionTypeId,
+            name: '',
+            price: normalizedDivisionPrice,
+            maxParticipants: normalizedDivisionMaxParticipants,
+            playoffTeamCount: typeof normalizedDivisionPlayoffTeamCount === 'number'
+                ? normalizedDivisionPlayoffTeamCount
+                : Math.max(2, Math.trunc(eventData.maxParticipants || 2)),
+            poolCount: typeof normalizedDivisionPoolCount === 'number'
+                ? normalizedDivisionPoolCount
+                : null,
+            allowPaymentPlans: normalizedDivisionAllowPaymentPlans,
+            installmentCount: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentCount : 0,
+            installmentDueDates: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueDates : [],
+            installmentDueRelativeDays: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueRelativeDays : [],
+            installmentAmounts: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentAmounts : [],
+            nameTouched: false,
+            error: null,
+        });
     }, [
+        defaultDivisionTypeSelections.ageDivisionTypeId,
+        defaultDivisionTypeSelections.skillDivisionTypeId,
         divisionEditor,
         eventData.$id,
         eventData.divisionDetails,
@@ -7098,7 +7257,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         leagueData.playoffTeamCount,
         getDivisionTypeNameForEditor,
         getValues,
-        resetDivisionEditor,
+        setLeagueData,
         setValue,
     ]);
 
@@ -8395,11 +8554,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         };
 
         const pricingEnabled = hasStripeAccount;
-        const eventPriceCents = pricingEnabled ? normalizePriceCents(source.price) : 0;
         const eventAllowPaymentPlans = pricingEnabled ? Boolean(source.allowPaymentPlans) : false;
         const installmentAmountsCents = eventAllowPaymentPlans
             ? normalizeInstallmentAmounts(source.installmentAmounts)
             : [];
+        const eventPriceCents = pricingEnabled
+            ? (eventAllowPaymentPlans ? sumInstallmentAmounts(installmentAmountsCents) : normalizePriceCents(source.price))
+            : 0;
         const minAge = normalizeNumber(source.minAge);
         const maxAge = normalizeNumber(source.maxAge);
         const sportInput = resolveSportInput(resolvedSport ?? sportId);
@@ -8568,7 +8729,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? (
                     singleDivisionEnabled
                         ? eventPriceCents
-                        : normalizePriceCents(detail.price)
+                        : Boolean(detail.allowPaymentPlans)
+                            ? sumInstallmentAmounts(detail.installmentAmounts)
+                            : normalizePriceCents(detail.price)
                 )
                 : 0,
             maxParticipants: singleDivisionEnabled
@@ -9355,7 +9518,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [activeSectionId, setActiveSectionId] = useState<string>(visibleSectionNavItems[0]?.id ?? 'section-basic-information');
     const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(SECTION_COLLAPSE_DEFAULTS);
     const [fieldNamesCollapsed, setFieldNamesCollapsed] = useState(false);
-    const [divisionDefaultsCollapsed, setDivisionDefaultsCollapsed] = useState(true);
     const sectionNavTargetRef = useRef<string | null>(null);
     const sectionNavSettleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -9761,35 +9923,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         )}
                                     />
                                 </div>
-                                <AnimatedSection
-                                    in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs}
-                                    collapseClassName="md:col-span-2"
-                                >
-                                    <NumberInput
-                                        label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
-                                        min={2}
-                                        max={MAX_STANDARD_NUMBER}
-                                        w="100%"
-                                        styles={alignedDetailsFieldStyles}
-                                        value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
-                                        disabled={isImmutableField('playoffTeamCount')}
-                                        clampBehavior="strict"
-                                        onChange={(value) => {
-                                            if (isImmutableField('playoffTeamCount')) return;
-                                            const numeric = typeof value === 'number' ? value : Number(value);
-                                            setLeagueData((prev) => ({
-                                                ...prev,
-                                                playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
-                                            }));
-                                        }}
-                                        error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
-                                    />
-                                    <AnimatedSection in={!eventData.singleDivision}>
-                                        <Text size="xs" c="dimmed" mt="xs">
-                                            Used as the default for new divisions.
-                                        </Text>
-                                    </AnimatedSection>
-                                </AnimatedSection>
                                 <div className="space-y-2 md:col-span-1" data-testid="team-size-control">
                                     <Controller
                                         name="teamSizeLimit"
@@ -10040,30 +10173,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
-                                    <div className="hidden">
-                                        <AnimatedSection in={false}>
-                                            <div className="mt-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={handleConnectStripe}
-                                                    disabled={connectingStripe}
-                                                    className={`px-4 py-2 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed ${connectingStripe ? 'bg-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}
-                                                >
-                                                    {connectingStripe ? (
-                                                        <span className="inline-flex items-center gap-2">
-                                                            <span className="h-4 w-4 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
-                                                            Connecting…
-                                                        </span>
-                                                    ) : (
-                                                        'Connect Stripe Account'
-                                                    )}
-                                                </button>
-                                                <p className="text-sm text-gray-600 mt-1">
-                                                    Connect your Stripe account to enable paid events and set a price.
-                                                </p>
-                                            </div>
-                                        </AnimatedSection>
-                                    </div>
                                     <div className="md:col-span-2">
                                         <Controller
                                             name="requiredTemplateIds"
@@ -10180,135 +10289,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
-                                    <div className="hidden">
-                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                            <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
-                                                <div>
-                                                    <Title order={6}>{eventData.singleDivision ? 'Payment Plans' : 'Default Payment Plan'}</Title>
-                                                    <Text size="sm" c="dimmed">
-                                                        {eventData.singleDivision
-                                                            ? 'Offer installments. Total installment amount must equal event price.'
-                                                            : 'Set payment-plan defaults for new divisions. Total installment amount must equal the default event price.'}
-                                                    </Text>
-                                                </div>
-                                                <Switch
-                                                    checked={eventData.allowPaymentPlans}
-                                                    onChange={(e) => {
-                                                        const next = e.currentTarget.checked;
-                                                        setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
-                                                        if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
-                                                            syncInstallmentCount((eventData.installmentCount || 1));
-                                                        }
-                                                    }}
-                                                    disabled={!hasStripeAccount}
-                                                />
-                                            </Group>
-
-                                            <AnimatedSection in={eventData.allowPaymentPlans}>
-                                                <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
-                                                    <Group align="flex-start" gap="md">
-                                                        <NumberInput
-                                                            label={eventData.singleDivision ? 'Installments' : 'Default Installments'}
-                                                            min={1}
-                                                            max={MAX_STANDARD_NUMBER}
-                                                            value={eventData.installmentCount || eventData.installmentAmounts.length || 1}
-                                                            onChange={(val) => syncInstallmentCount(Number(val) || 1)}
-                                                            clampBehavior="strict"
-                                                            maw={180}
-                                                        />
-                                                        {eventData.teamSignup && (
-                                                            <Switch
-                                                                checked={eventData.allowTeamSplitDefault}
-                                                                onChange={(e) =>
-                                                                    setValue('allowTeamSplitDefault', e.currentTarget.checked, {
-                                                                        shouldDirty: true,
-                                                                        shouldValidate: true,
-                                                                    })
-                                                                }
-                                                                label="Allow team bill splitting by default"
-                                                            />
-                                                        )}
-                                                    </Group>
-
-                                                    <Stack gap="sm">
-                                                        {(eventData.installmentAmounts || []).map((amount, idx) => {
-                                                            const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
-                                                            const dueDateValue = parseLocalDateTime(
-                                                                eventData.installmentDueDates?.[idx] || eventData.start,
-                                                            );
-                                                            return (
-                                                                <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
-                                                                    {useRelativeDueDates ? (
-                                                                        <NumberInput
-                                                                            label={`Installment ${idx + 1} due date offset`}
-                                                                            description="0 = session day; negative = days before session; positive = days after session"
-                                                                            value={eventData.installmentDueRelativeDays?.[idx] ?? 0}
-                                                                            onChange={(val) => setInstallmentDueRelativeDay(idx, Number(val) || 0)}
-                                                                            min={-MAX_STANDARD_NUMBER}
-                                                                            max={MAX_STANDARD_NUMBER}
-                                                                            clampBehavior="strict"
-                                                                            style={{ flex: '1 1 300px', maxWidth: 360 }}
-                                                                        />
-                                                                    ) : (
-                                                                        <DateTimePicker
-                                                                            label={`Installment ${idx + 1} due`}
-                                                                            value={dueDateValue}
-                                                                            onChange={(val) => setInstallmentDueDate(idx, val)}
-                                                                            valueFormat="MM/DD/YYYY hh:mm A"
-                                                                            timePickerProps={{
-                                                                                withDropdown: true,
-                                                                                format: '12h',
-                                                                            }}
-                                                                            style={{ flex: '1 1 260px', maxWidth: 280 }}
-                                                                        />
-                                                                    )}
-                                                                    <CentsInput
-                                                                        label="Amount"
-                                                                        maxCents={MAX_PRICE_CENTS}
-                                                                        value={amount}
-                                                                        onChange={(nextValue) => setInstallmentAmount(idx, nextValue)}
-                                                                        maw={180}
-                                                                    />
-                                                                    {eventData.installmentAmounts.length > 1 && (
-                                                                        <ActionIcon
-                                                                            variant="light"
-                                                                            color="red"
-                                                                            aria-label="Remove installment"
-                                                                            onClick={() => removeInstallment(idx)}
-                                                                        >
-                                                                            ×
-                                                                        </ActionIcon>
-                                                                    )}
-                                                                </Group>
-                                                            );
-                                                        })}
-                                                        <Group justify="space-between" align="center">
-                                                            <Button variant="light" onClick={() => syncInstallmentCount((eventData.installmentAmounts?.length || 0) + 1)}>
-                                                                Add installment
-                                                            </Button>
-                                                            <Text
-                                                                size="sm"
-                                                                c={(eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) === eventData.price
-                                                                    ? 'dimmed'
-                                                                    : 'red'}
-                                                            >
-                                                                Installment total: {formatBillAmount((eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0))} / {formatBillAmount(eventData.price || 0)}
-                                                            </Text>
-                                                        </Group>
-                                                    </Stack>
-                                                </div>
-                                            </AnimatedSection>
+                                    {hasUnsetTeamCapacityLimits ? (
+                                        <div className="md:col-span-12">
+                                            <Alert color="yellow" variant="light" radius="md">
+                                                <Text size="sm" fw={600}>Capacity limits are required before save</Text>
+                                                <Text size="sm">
+                                                    Set {eventData.teamSignup ? 'Max Teams' : 'Max Participants'} and Team Size.
+                                                    Blank values are kept as null and shown as validation errors.
+                                                </Text>
+                                            </Alert>
                                         </div>
-                                    </div>
-                                    <AnimatedSection in={hasUnsetTeamCapacityLimits} className="md:col-span-12">
-                                        <Alert color="yellow" variant="light" radius="md">
-                                            <Text size="sm" fw={600}>Capacity limits are required before save</Text>
-                                            <Text size="sm">
-                                                Set {eventData.teamSignup ? 'Max Teams' : 'Max Participants'} and Team Size.
-                                                Blank values are kept as null and shown as validation errors.
-                                            </Text>
-                                        </Alert>
-                                    </AnimatedSection>
+                                    ) : null}
                                 </div>
                             </div>
 
@@ -11034,37 +11025,143 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             <Collapse in={!collapsedSections['section-division-settings']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
 
                             <div id="section-division-settings-content" className="mt-4 space-y-4">
+                                {supportsEditableTeamSignup ? (
+                                    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-3" data-testid="division-mode-switches">
+                                        <Controller
+                                            name="singleDivision"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <Switch
+                                                    label="Single Division (all skill levels play together)"
+                                                    checked={field.value}
+                                                    disabled={isImmutableField('singleDivision')}
+                                                    onChange={(e) => {
+                                                        if (isImmutableField('singleDivision')) return;
+                                                        field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                        <Controller
+                                            name="registrationByDivisionType"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <Switch
+                                                    label="Register by Division Type"
+                                                    description="When enabled, users pick a division type and are auto-assigned to one matching division."
+                                                    checked={field.value}
+                                                    disabled={isImmutableField('registrationByDivisionType')}
+                                                    onChange={(e) => {
+                                                        if (isImmutableField('registrationByDivisionType')) return;
+                                                        field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                    </div>
+                                ) : showsFixedTeamEventToggle ? (
+                                    <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-2" data-testid="division-mode-switches">
+                                        <Switch
+                                            label="Team Event (teams compete rather than individuals)"
+                                            checked
+                                            disabled
+                                        />
+                                        <Controller
+                                            name="singleDivision"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <Switch
+                                                    label="Single Division (all skill levels play together)"
+                                                    checked={field.value}
+                                                    disabled={isImmutableField('singleDivision')}
+                                                    onChange={(e) => {
+                                                        if (isImmutableField('singleDivision')) return;
+                                                        field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                        <Controller
+                                            name="registrationByDivisionType"
+                                            control={control}
+                                            render={({ field }) => (
+                                                <Switch
+                                                    label="Register by Division Type"
+                                                    description="When enabled, users pick a division type and are auto-assigned to one matching division."
+                                                    checked={field.value}
+                                                    disabled={isImmutableField('registrationByDivisionType')}
+                                                    onChange={(e) => {
+                                                        if (isImmutableField('registrationByDivisionType')) return;
+                                                        field.onChange(e?.currentTarget?.checked ?? field.value);
+                                                    }}
+                                                />
+                                            )}
+                                        />
+                                        {eventData.eventType === 'LEAGUE' ? (
+                                            <Controller
+                                                name="splitLeaguePlayoffDivisions"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <Switch
+                                                        label="Split League & Playoff Divisions"
+                                                        description={leagueData.includePlayoffs
+                                                            ? 'Configure league divisions separately from playoff bracket divisions.'
+                                                            : 'Enable playoffs to configure split league/playoff divisions.'}
+                                                        checked={field.value}
+                                                        disabled={
+                                                            splitLeaguePlayoffDivisionsLocked
+                                                            || !leagueData.includePlayoffs
+                                                            || (eventData.singleDivision && !hasExternalRentalField)
+                                                        }
+                                                        onChange={(event) => {
+                                                            if (
+                                                                splitLeaguePlayoffDivisionsLocked
+                                                                || (eventData.singleDivision && !hasExternalRentalField)
+                                                            ) {
+                                                                return;
+                                                            }
+                                                            const checked = event.currentTarget.checked;
+                                                            field.onChange(checked);
+                                                            if (checked && (eventData.playoffDivisionDetails || []).length === 0) {
+                                                                setValue(
+                                                                    'playoffDivisionDetails',
+                                                                    [createNextPlayoffDivision(eventData.playoffDivisionDetails || [], playoffData)],
+                                                                    { shouldDirty: true, shouldValidate: true },
+                                                                );
+                                                            }
+                                                        }}
+                                                    />
+                                                )}
+                                            />
+                                        ) : null}
+                                        <Text size="sm" c="dimmed">
+                                            Leagues and tournaments are always team events. When single division is enabled,
+                                            each timeslot is automatically assigned all selected divisions.
+                                        </Text>
+                                    </div>
+                                ) : null}
+                                {eventData.singleDivision ? (
                                 <div className="rounded-lg border border-gray-200 bg-white p-4">
                                     <Stack gap="md">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div>
-                                                <Title order={6}>Division Defaults</Title>
-                                                <Text size="sm" c="dimmed">
-                                                    These values seed new division rows. Division rows remain the runtime source after save.
-                                                </Text>
-                                            </div>
-                                            <Button
-                                                type="button"
-                                                variant="subtle"
-                                                size="xs"
-                                                aria-expanded={!divisionDefaultsCollapsed}
-                                                aria-controls="division-defaults-content"
-                                                onClick={() => setDivisionDefaultsCollapsed((previous) => !previous)}
-                                            >
-                                                {divisionDefaultsCollapsed ? 'Expand' : 'Collapse'}
-                                            </Button>
+                                        <div>
+                                            <Title order={6}>Single Division Settings</Title>
+                                            <Text size="sm" c="dimmed">
+                                                Price, capacity, and payment plans apply to every selected division.
+                                            </Text>
                                         </div>
-                                        <Collapse in={!divisionDefaultsCollapsed} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                        <div id="division-defaults-content" className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
-                                            <div className="md:col-span-3">
+                                        <motion.div
+                                            id="division-defaults-content"
+                                            layout
+                                            className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
+                                            transition={DIVISION_LAYOUT_TRANSITION}
+                                        >
+                                            <AnimatedLayoutSection in={eventData.singleDivision} className="md:col-span-3">
                                                 <Controller
                                                     name="maxParticipants"
                                                     control={control}
                                                     render={({ field, fieldState }) => (
                                                         <NumberInput
-                                                            label={eventData.singleDivision
-                                                                ? (eventData.teamSignup ? 'Max Teams' : 'Max Participants')
-                                                                : (eventData.teamSignup ? 'Default Max Teams' : 'Default Max Participants')}
+                                                            label={eventData.teamSignup ? 'Max Teams' : 'Max Participants'}
                                                             min={2}
                                                             max={MAX_STANDARD_NUMBER}
                                                             value={field.value ?? ''}
@@ -11083,18 +11180,113 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         />
                                                     )}
                                                 />
-                                            </div>
-                                            <div className="md:col-span-3">
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
+                                                in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs}
+                                                className="md:col-span-3"
+                                            >
+                                                <NumberInput
+                                                    label={eventData.singleDivision ? 'Playoff Team Count' : 'Default Playoff Team Count'}
+                                                    min={2}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    value={typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined}
+                                                    disabled={isImmutableField('playoffTeamCount')}
+                                                    clampBehavior="strict"
+                                                    onChange={(value) => {
+                                                        if (isImmutableField('playoffTeamCount')) return;
+                                                        const numeric = typeof value === 'number' ? value : Number(value);
+                                                        setLeagueData((prev) => ({
+                                                            ...prev,
+                                                            playoffTeamCount: Number.isFinite(numeric) ? Math.max(2, Math.trunc(numeric)) : undefined,
+                                                        }));
+                                                    }}
+                                                    error={errors.leagueData?.playoffTeamCount?.message as string | undefined}
+                                                />
+                                                {!eventData.singleDivision ? (
+                                                    <Text size="xs" c="dimmed" mt="xs">
+                                                        Used as the default for new divisions.
+                                                    </Text>
+                                                ) : null}
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
+                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                                                className="md:col-span-3"
+                                            >
+                                                <NumberInput
+                                                    label="Bracket Teams"
+                                                    min={2}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={singleDivisionPoolPlayDefaults.bracketTeams ?? ''}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    clampBehavior="strict"
+                                                    disabled={isImmutableField('divisions')}
+                                                    onChange={(val) => {
+                                                        if (isImmutableField('divisions')) {
+                                                            return;
+                                                        }
+                                                        const numeric = typeof val === 'number' ? val : Number(val);
+                                                        updateSingleDivisionTournamentPoolDefaults({
+                                                            playoffTeamCount: Number.isFinite(numeric)
+                                                                ? Math.max(2, Math.trunc(numeric))
+                                                                : null,
+                                                        });
+                                                    }}
+                                                />
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
+                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                                                className="md:col-span-3"
+                                            >
+                                                <NumberInput
+                                                    label="Pool Count"
+                                                    min={1}
+                                                    max={MAX_STANDARD_NUMBER}
+                                                    value={singleDivisionPoolPlayDefaults.poolCount ?? ''}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    clampBehavior="strict"
+                                                    disabled={isImmutableField('divisions')}
+                                                    onChange={(val) => {
+                                                        if (isImmutableField('divisions')) {
+                                                            return;
+                                                        }
+                                                        const numeric = typeof val === 'number' ? val : Number(val);
+                                                        updateSingleDivisionTournamentPoolDefaults({
+                                                            poolCount: Number.isFinite(numeric)
+                                                                ? Math.max(1, Math.trunc(numeric))
+                                                                : null,
+                                                        });
+                                                    }}
+                                                />
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
+                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                                                className="md:col-span-3"
+                                            >
+                                                <NumberInput
+                                                    label="Pool Team Count"
+                                                    value={singleDivisionPoolPlayDefaults.poolTeamCount ?? ''}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    disabled
+                                                />
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
+                                                in={eventData.singleDivision && !eventData.allowPaymentPlans}
+                                                className="md:col-span-3 md:col-start-1"
+                                            >
                                                 <Controller
                                                     name="price"
                                                     control={control}
                                                     render={({ field }) => (
                                                         <CentsInput
-                                                            label={eventData.singleDivision ? 'Price' : 'Default Price'}
+                                                            label="Price"
                                                             maxCents={MAX_PRICE_CENTS}
                                                             value={field.value}
                                                             w="100%"
-                                                            styles={alignedDetailsFieldStyles}
                                                             onChange={(nextValue) => {
                                                                 if (isImmutableField('price')) return;
                                                                 field.onChange(nextValue);
@@ -11107,9 +11299,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     amountCents={eventData.price}
                                                     eventType={eventData.eventType}
                                                     taxable={eventTaxableForPreview}
-                                                    helperText={!eventData.singleDivision
-                                                        ? 'Used as the base price for new divisions before fees.'
-                                                        : null}
+                                                    helperText={null}
                                                 />
                                                 <AnimatedSection in={organizerTaxCollectionAllowed}>
                                                     <Alert color="yellow" variant="light" mt="sm">
@@ -11195,16 +11385,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         </p>
                                                     </div>
                                                 </AnimatedSection>
-                                            </div>
-                                            <div className="md:col-span-12">
+                                            </AnimatedLayoutSection>
+                                            <motion.div
+                                                layout
+                                                className={eventData.allowPaymentPlans ? 'md:col-span-12 md:col-start-1' : 'md:col-span-9'}
+                                                transition={DIVISION_LAYOUT_TRANSITION}
+                                            >
                                                 <div className="rounded-lg border border-gray-200 bg-white p-4">
                                                     <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
                                                         <div>
-                                                            <Title order={6}>{eventData.singleDivision ? 'Payment Plans' : 'Default Payment Plan'}</Title>
+                                                            <Title order={6}>Payment Plans</Title>
                                                             <Text size="sm" c="dimmed">
-                                                                {eventData.singleDivision
-                                                                    ? 'Offer installments. Total installment amount must equal division price.'
-                                                                    : 'Set payment-plan defaults for new divisions. Total installment amount must equal the default division price.'}
+                                                                Offer installments.
                                                             </Text>
                                                         </div>
                                                         <Switch
@@ -11214,6 +11406,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                 setValue('allowPaymentPlans', next, { shouldDirty: true, shouldValidate: true });
                                                                 if (next && (!eventData.installmentAmounts?.length || eventData.installmentAmounts.length === 0)) {
                                                                     syncInstallmentCount((eventData.installmentCount || 1));
+                                                                } else if (next) {
+                                                                    setValue('price', sumInstallmentAmounts(eventData.installmentAmounts), {
+                                                                        shouldDirty: true,
+                                                                        shouldValidate: true,
+                                                                    });
                                                                 }
                                                             }}
                                                             disabled={!hasStripeAccount}
@@ -11224,7 +11421,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
                                                             <Group align="flex-start" gap="md">
                                                                 <NumberInput
-                                                                    label={eventData.singleDivision ? 'Installments' : 'Default Installments'}
+                                                                    label="Installments"
                                                                     min={1}
                                                                     max={MAX_STANDARD_NUMBER}
                                                                     value={eventData.installmentCount || eventData.installmentAmounts.length || 1}
@@ -11285,6 +11482,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                                 onChange={(nextValue) => setInstallmentAmount(idx, nextValue)}
                                                                                 maw={180}
                                                                             />
+                                                                            <PriceWithFeesPreview
+                                                                                amountCents={amount}
+                                                                                baseLabel={`Installment ${idx + 1} amount`}
+                                                                                eventType={eventData.eventType}
+                                                                                taxable={eventTaxableForPreview}
+                                                                                className="min-w-[220px] flex-[1_1_220px]"
+                                                                            />
                                                                             {eventData.installmentAmounts.length > 1 && (
                                                                                 <ActionIcon
                                                                                     variant="light"
@@ -11304,28 +11508,30 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                     </Button>
                                                                     <Text
                                                                         size="sm"
-                                                                        c={(eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) === eventData.price
-                                                                            ? 'dimmed'
-                                                                            : 'red'}
+                                                                        c="dimmed"
                                                                     >
-                                                                        Installment total: {formatBillAmount((eventData.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0))} / {formatBillAmount(eventData.price || 0)}
+                                                                        Installment total: {formatBillAmount(sumInstallmentAmounts(eventData.installmentAmounts))}
                                                                     </Text>
                                                                 </Group>
                                                             </Stack>
                                                         </div>
                                                     </AnimatedSection>
                                                 </div>
-                                            </div>
-                                        </div>
-                                        </Collapse>
+                                            </motion.div>
+                                        </motion.div>
                                     </Stack>
                                 </div>
+                                ) : null}
                                 <Text size="sm" fw={600}>
                                     {eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && eventData.splitLeaguePlayoffDivisions
                                         ? 'League Divisions'
                                         : 'Divisions'}
                                 </Text>
-                                <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
+                                <motion.div
+                                    layout
+                                    className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start"
+                                    transition={DIVISION_LAYOUT_TRANSITION}
+                                >
                                     <MantineSelect
                                         label="Gender"
                                         placeholder="Select gender"
@@ -11387,291 +11593,316 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             }));
                                         }}
                                     />
-                                    <div className="md:col-span-3">
-                                        <CentsInput
-                                            label="Division Price"
-                                            maxCents={MAX_PRICE_CENTS}
-                                            value={eventData.singleDivision ? eventData.price : divisionEditor.price}
+                                    <AnimatedLayoutSection in={!eventData.singleDivision} className="md:col-span-3">
+                                        <NumberInput
+                                            label={eventData.teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
+                                            min={2}
+                                            max={MAX_STANDARD_NUMBER}
+                                            value={divisionEditor.maxParticipants ?? ''}
+                                            w="100%"
                                             maw={220}
-                                            disabled={
-                                                isImmutableField('divisions')
-                                                || !divisionEditorReady
-                                                || eventData.singleDivision
-                                                || !hasStripeAccount
-                                            }
-                                            onChange={(nextValue) => {
-                                                if (
-                                                    isImmutableField('divisions')
-                                                    || !divisionEditorReady
-                                                    || eventData.singleDivision
-                                                    || !hasStripeAccount
-                                                ) {
+                                            clampBehavior="strict"
+                                            disabled={isImmutableField('divisions') || !divisionEditorReady}
+                                            onChange={(val) => {
+                                                if (isImmutableField('divisions') || !divisionEditorReady) {
                                                     return;
                                                 }
+                                                const numeric = typeof val === 'number' ? val : Number(val);
                                                 setDivisionEditor((prev) => ({
                                                     ...prev,
-                                                    price: normalizePriceCents(nextValue),
+                                                    maxParticipants: Number.isFinite(numeric)
+                                                        ? Math.max(2, Math.trunc(numeric))
+                                                        : null,
                                                     error: null,
                                                 }));
                                             }}
                                         />
-                                        <PriceWithFeesPreview
-                                            amountCents={eventData.singleDivision ? eventData.price : divisionEditor.price}
-                                            eventType={eventData.eventType}
-                                            taxable={eventTaxableForPreview}
-                                        />
-                                    </div>
-                                    <NumberInput
-                                        label={eventData.teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
-                                        min={2}
-                                        max={MAX_STANDARD_NUMBER}
-                                        value={eventData.singleDivision
-                                            ? (typeof eventData.maxParticipants === 'number' ? eventData.maxParticipants : undefined)
-                                            : (divisionEditor.maxParticipants ?? '')}
-                                        className="md:col-span-3"
-                                        maw={220}
-                                        clampBehavior="strict"
-                                        disabled={isImmutableField('divisions') || !divisionEditorReady || eventData.singleDivision}
-                                        onChange={(val) => {
-                                            if (isImmutableField('divisions') || !divisionEditorReady || eventData.singleDivision) {
-                                                return;
-                                            }
-                                            const numeric = typeof val === 'number' ? val : Number(val);
-                                            setDivisionEditor((prev) => ({
-                                                ...prev,
-                                                maxParticipants: Number.isFinite(numeric)
-                                                    ? Math.max(2, Math.trunc(numeric))
-                                                    : null,
-                                                error: null,
-                                            }));
-                                        }}
-                                    />
-                                    {eventData.eventType === 'LEAGUE' ? (
-                                        <div className="md:col-span-3">
-                                            <NumberInput
-                                                label="Division Playoff Team Count"
-                                                min={2}
-                                                max={MAX_STANDARD_NUMBER}
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={!eventData.singleDivision && !divisionEditor.allowPaymentPlans}
+                                        className="md:col-span-3 md:col-start-1"
+                                    >
+                                        <div>
+                                            <CentsInput
+                                                label="Division Price"
+                                                maxCents={MAX_PRICE_CENTS}
+                                                value={divisionEditor.price}
                                                 maw={220}
-                                                value={eventData.singleDivision
-                                                    ? (typeof leagueData.playoffTeamCount === 'number' ? leagueData.playoffTeamCount : undefined)
-                                                    : (divisionEditor.playoffTeamCount ?? '')}
-                                                clampBehavior="strict"
                                                 disabled={
                                                     isImmutableField('divisions')
                                                     || !divisionEditorReady
-                                                    || eventData.singleDivision
-                                                    || !leagueData.includePlayoffs
+                                                    || !hasStripeAccount
                                                 }
-                                                onChange={(val) => {
+                                                onChange={(nextValue) => {
                                                     if (
                                                         isImmutableField('divisions')
                                                         || !divisionEditorReady
-                                                        || eventData.singleDivision
-                                                        || !leagueData.includePlayoffs
+                                                        || !hasStripeAccount
                                                     ) {
                                                         return;
                                                     }
-                                                    const numeric = typeof val === 'number' ? val : Number(val);
                                                     setDivisionEditor((prev) => ({
                                                         ...prev,
-                                                        playoffTeamCount: Number.isFinite(numeric)
-                                                            ? Math.max(2, Math.trunc(numeric))
-                                                            : null,
+                                                        price: normalizePriceCents(nextValue),
                                                         error: null,
                                                     }));
                                                 }}
                                             />
-                                        </div>
-                                    ) : null}
-                                    {eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs ? (
-                                        <div className="md:col-span-12 rounded-lg border border-gray-200 bg-white p-4">
-                                            <Text fw={600} size="sm">Pool Play Settings</Text>
-                                            <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-3">
-                                                <NumberInput
-                                                    label="Bracket Teams"
-                                                    min={2}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    value={divisionEditor.playoffTeamCount ?? ''}
-                                                    clampBehavior="strict"
-                                                    disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                                    onChange={(val) => {
-                                                        if (isImmutableField('divisions') || !divisionEditorReady) {
-                                                            return;
-                                                        }
-                                                        const numeric = typeof val === 'number' ? val : Number(val);
-                                                        setDivisionEditor((prev) => ({
-                                                            ...prev,
-                                                            playoffTeamCount: Number.isFinite(numeric)
-                                                                ? Math.max(2, Math.trunc(numeric))
-                                                                : null,
-                                                            error: null,
-                                                        }));
-                                                    }}
-                                                />
-                                                <NumberInput
-                                                    label="Pool Count"
-                                                    min={1}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    value={divisionEditor.poolCount ?? ''}
-                                                    clampBehavior="strict"
-                                                    disabled={isImmutableField('divisions') || !divisionEditorReady}
-                                                    onChange={(val) => {
-                                                        if (isImmutableField('divisions') || !divisionEditorReady) {
-                                                            return;
-                                                        }
-                                                        const numeric = typeof val === 'number' ? val : Number(val);
-                                                        setDivisionEditor((prev) => ({
-                                                            ...prev,
-                                                            poolCount: Number.isFinite(numeric)
-                                                                ? Math.max(1, Math.trunc(numeric))
-                                                                : null,
-                                                            error: null,
-                                                        }));
-                                                    }}
-                                                />
-                                                <NumberInput
-                                                    label="Pool Team Count"
-                                                    value={derivePoolTeamCount(
-                                                        eventData.singleDivision
-                                                            ? eventData.maxParticipants
-                                                            : divisionEditor.maxParticipants,
-                                                        divisionEditor.poolCount,
-                                                    ) ?? ''}
-                                                    disabled
-                                                />
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                </div>
-                                <AnimatedSection in={!eventData.singleDivision}>
-                                    <div className="rounded-lg border border-gray-200 bg-white p-4">
-                                        <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
-                                            <div>
-                                                <Text fw={600} size="sm">Division Payment Plan</Text>
-                                                <Text size="xs" c="dimmed">
-                                                    Configure installments for this division only.
-                                                </Text>
-                                            </div>
-                                            <Switch
-                                                checked={divisionEditor.allowPaymentPlans}
-                                                disabled={isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount}
-                                                onChange={(event) => {
-                                                    if (isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount) {
-                                                        return;
-                                                    }
-                                                    const checked = event.currentTarget.checked;
-                                                    setDivisionEditor((prev) => ({
-                                                        ...prev,
-                                                        allowPaymentPlans: checked,
-                                                        installmentCount: checked
-                                                            ? (prev.installmentCount || prev.installmentAmounts.length || 1)
-                                                            : 0,
-                                                        installmentDueDates: checked ? prev.installmentDueDates : [],
-                                                        installmentDueRelativeDays: checked ? prev.installmentDueRelativeDays : [],
-                                                        installmentAmounts: checked ? prev.installmentAmounts : [],
-                                                        error: null,
-                                                    }));
-                                                    if (checked && (!divisionEditor.installmentAmounts || divisionEditor.installmentAmounts.length === 0)) {
-                                                        syncDivisionInstallmentCount(divisionEditor.installmentCount || 1);
-                                                    }
-                                                }}
+                                            <PriceWithFeesPreview
+                                                amountCents={divisionEditor.price}
+                                                eventType={eventData.eventType}
+                                                taxable={eventTaxableForPreview}
                                             />
-                                        </Group>
+                                        </div>
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={!eventData.singleDivision}
+                                        className={divisionEditor.allowPaymentPlans ? 'md:col-span-12 md:col-start-1' : 'md:col-span-9'}
+                                    >
+                                        <div className="rounded-lg border border-gray-200 bg-white p-4">
+                                            <Group justify="space-between" align="center" wrap="nowrap" gap="lg">
+                                                <div>
+                                                    <Text fw={600} size="sm">Division Payment Plan</Text>
+                                                    <Text size="xs" c="dimmed">
+                                                        Configure installments for this division only.
+                                                    </Text>
+                                                </div>
+                                                <Switch
+                                                    checked={divisionEditor.allowPaymentPlans}
+                                                    disabled={isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount}
+                                                    onChange={(event) => {
+                                                        if (isImmutableField('divisions') || !divisionEditorReady || !hasStripeAccount) {
+                                                            return;
+                                                        }
+                                                        const checked = event.currentTarget.checked;
+                                                        setDivisionEditor((prev) => ({
+                                                            ...prev,
+                                                            allowPaymentPlans: checked,
+                                                            price: checked && prev.installmentAmounts.length
+                                                                ? sumInstallmentAmounts(prev.installmentAmounts)
+                                                                : prev.price,
+                                                            installmentCount: checked
+                                                                ? (prev.installmentCount || prev.installmentAmounts.length || 1)
+                                                                : 0,
+                                                            installmentDueDates: checked ? prev.installmentDueDates : [],
+                                                            installmentDueRelativeDays: checked ? prev.installmentDueRelativeDays : [],
+                                                            installmentAmounts: checked ? prev.installmentAmounts : [],
+                                                            error: null,
+                                                        }));
+                                                        if (checked && (!divisionEditor.installmentAmounts || divisionEditor.installmentAmounts.length === 0)) {
+                                                            syncDivisionInstallmentCount(divisionEditor.installmentCount || 1);
+                                                        }
+                                                    }}
+                                                />
+                                            </Group>
 
-                                        <AnimatedSection in={divisionEditor.allowPaymentPlans}>
-                                            <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
-                                                <NumberInput
-                                                    label="Installments"
-                                                    min={1}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    value={divisionEditor.installmentCount || divisionEditor.installmentAmounts.length || 1}
-                                                    onChange={(value) => syncDivisionInstallmentCount(Number(value) || 1)}
-                                                    clampBehavior="strict"
-                                                    maw={180}
-                                                />
-                                                <Stack gap="sm">
-                                                    {(divisionEditor.installmentAmounts || []).map((amount, idx) => {
-                                                        const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
-                                                        const dueDateValue = parseLocalDateTime(
-                                                            divisionEditor.installmentDueDates?.[idx] || eventData.start,
-                                                        );
-                                                        return (
-                                                            <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
-                                                                {useRelativeDueDates ? (
-                                                                    <NumberInput
-                                                                        label={`Installment ${idx + 1} due date offset`}
-                                                                        description="0 = session day; negative = days before session; positive = days after session"
-                                                                        value={divisionEditor.installmentDueRelativeDays?.[idx] ?? 0}
-                                                                        onChange={(value) => setDivisionInstallmentDueRelativeDay(idx, Number(value) || 0)}
-                                                                        min={-MAX_STANDARD_NUMBER}
-                                                                        max={MAX_STANDARD_NUMBER}
-                                                                        clampBehavior="strict"
-                                                                        style={{ flex: '1 1 300px', maxWidth: 360 }}
+                                            <AnimatedSection in={divisionEditor.allowPaymentPlans}>
+                                                <div className="mt-4 space-y-3 border-l-2 border-slate-200 pl-4">
+                                                    <NumberInput
+                                                        label="Installments"
+                                                        min={1}
+                                                        max={MAX_STANDARD_NUMBER}
+                                                        value={divisionEditor.installmentCount || divisionEditor.installmentAmounts.length || 1}
+                                                        onChange={(value) => syncDivisionInstallmentCount(Number(value) || 1)}
+                                                        clampBehavior="strict"
+                                                        maw={180}
+                                                    />
+                                                    <Stack gap="sm">
+                                                        {(divisionEditor.installmentAmounts || []).map((amount, idx) => {
+                                                            const useRelativeDueDates = eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent;
+                                                            const dueDateValue = parseLocalDateTime(
+                                                                divisionEditor.installmentDueDates?.[idx] || eventData.start,
+                                                            );
+                                                            return (
+                                                                <Group key={idx} align="flex-end" gap="sm" wrap="wrap">
+                                                                    {useRelativeDueDates ? (
+                                                                        <NumberInput
+                                                                            label={`Installment ${idx + 1} due date offset`}
+                                                                            description="0 = session day; negative = days before session; positive = days after session"
+                                                                            value={divisionEditor.installmentDueRelativeDays?.[idx] ?? 0}
+                                                                            onChange={(value) => setDivisionInstallmentDueRelativeDay(idx, Number(value) || 0)}
+                                                                            min={-MAX_STANDARD_NUMBER}
+                                                                            max={MAX_STANDARD_NUMBER}
+                                                                            clampBehavior="strict"
+                                                                            style={{ flex: '1 1 300px', maxWidth: 360 }}
+                                                                        />
+                                                                    ) : (
+                                                                        <DateTimePicker
+                                                                            label={`Installment ${idx + 1} due`}
+                                                                            value={dueDateValue}
+                                                                            onChange={(value) => setDivisionInstallmentDueDate(idx, value)}
+                                                                            valueFormat="MM/DD/YYYY hh:mm A"
+                                                                            timePickerProps={{
+                                                                                withDropdown: true,
+                                                                                format: '12h',
+                                                                            }}
+                                                                            style={{ flex: '1 1 260px', maxWidth: 280 }}
+                                                                        />
+                                                                    )}
+                                                                    <CentsInput
+                                                                        label="Amount"
+                                                                        maxCents={MAX_PRICE_CENTS}
+                                                                        value={amount}
+                                                                        onChange={(nextValue) => setDivisionInstallmentAmount(idx, nextValue)}
+                                                                        maw={180}
                                                                     />
-                                                                ) : (
-                                                                    <DateTimePicker
-                                                                        label={`Installment ${idx + 1} due`}
-                                                                        value={dueDateValue}
-                                                                        onChange={(value) => setDivisionInstallmentDueDate(idx, value)}
-                                                                        valueFormat="MM/DD/YYYY hh:mm A"
-                                                                        timePickerProps={{
-                                                                            withDropdown: true,
-                                                                            format: '12h',
-                                                                        }}
-                                                                        style={{ flex: '1 1 260px', maxWidth: 280 }}
+                                                                    <PriceWithFeesPreview
+                                                                        amountCents={amount}
+                                                                        baseLabel={`Installment ${idx + 1} amount`}
+                                                                        eventType={eventData.eventType}
+                                                                        taxable={eventTaxableForPreview}
+                                                                        className="min-w-[220px] flex-[1_1_220px]"
                                                                     />
-                                                                )}
-                                                                <CentsInput
-                                                                    label="Amount"
-                                                                    maxCents={MAX_PRICE_CENTS}
-                                                                    value={amount}
-                                                                    onChange={(nextValue) => setDivisionInstallmentAmount(idx, nextValue)}
-                                                                    maw={180}
-                                                                />
-                                                                {divisionEditor.installmentAmounts.length > 1 && (
-                                                                    <ActionIcon
-                                                                        variant="light"
-                                                                        color="red"
-                                                                        aria-label="Remove division installment"
-                                                                        onClick={() => removeDivisionInstallment(idx)}
-                                                                    >
-                                                                        ×
-                                                                    </ActionIcon>
-                                                                )}
-                                                            </Group>
-                                                        );
-                                                    })}
-                                                    <Group justify="space-between" align="center">
-                                                        <Button
-                                                            variant="light"
-                                                            onClick={() => syncDivisionInstallmentCount((divisionEditor.installmentAmounts?.length || 0) + 1)}
-                                                        >
-                                                            Add installment
-                                                        </Button>
-                                                        <Text
-                                                            size="sm"
-                                                            c={(divisionEditor.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0) === divisionEditor.price
-                                                                ? 'dimmed'
-                                                                : 'red'}
-                                                        >
-                                                            Installment total: {formatBillAmount((divisionEditor.installmentAmounts || []).reduce((sum, value) => sum + (Number(value) || 0), 0))} / {formatBillAmount(divisionEditor.price || 0)}
-                                                        </Text>
-                                                    </Group>
-                                                </Stack>
-                                            </div>
-                                        </AnimatedSection>
-                                    </div>
-                                </AnimatedSection>
-                                <AnimatedSection in={eventData.singleDivision}>
+                                                                    {divisionEditor.installmentAmounts.length > 1 && (
+                                                                        <ActionIcon
+                                                                            variant="light"
+                                                                            color="red"
+                                                                            aria-label="Remove division installment"
+                                                                            onClick={() => removeDivisionInstallment(idx)}
+                                                                        >
+                                                                            ×
+                                                                        </ActionIcon>
+                                                                    )}
+                                                                </Group>
+                                                            );
+                                                        })}
+                                                        <Group justify="space-between" align="center">
+                                                            <Button
+                                                                variant="light"
+                                                                onClick={() => syncDivisionInstallmentCount((divisionEditor.installmentAmounts?.length || 0) + 1)}
+                                                            >
+                                                                Add installment
+                                                            </Button>
+                                                            <Text
+                                                                size="sm"
+                                                                c="dimmed"
+                                                            >
+                                                                Installment total: {formatBillAmount(sumInstallmentAmounts(divisionEditor.installmentAmounts))}
+                                                            </Text>
+                                                        </Group>
+                                                    </Stack>
+                                                </div>
+                                            </AnimatedSection>
+                                        </div>
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={eventData.eventType === 'LEAGUE' && !eventData.singleDivision && leagueData.includePlayoffs}
+                                        className="md:col-span-3"
+                                    >
+                                        <NumberInput
+                                            label="Division Playoff Team Count"
+                                            min={2}
+                                            max={MAX_STANDARD_NUMBER}
+                                            w="100%"
+                                            styles={alignedDetailsFieldStyles}
+                                            maw={220}
+                                            value={divisionEditor.playoffTeamCount ?? ''}
+                                            clampBehavior="strict"
+                                            disabled={
+                                                isImmutableField('divisions')
+                                                || !divisionEditorReady
+                                            }
+                                            onChange={(val) => {
+                                                if (
+                                                    isImmutableField('divisions')
+                                                    || !divisionEditorReady
+                                                ) {
+                                                    return;
+                                                }
+                                                const numeric = typeof val === 'number' ? val : Number(val);
+                                                setDivisionEditor((prev) => ({
+                                                    ...prev,
+                                                    playoffTeamCount: Number.isFinite(numeric)
+                                                        ? Math.max(2, Math.trunc(numeric))
+                                                        : null,
+                                                    error: null,
+                                                }));
+                                            }}
+                                        />
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
+                                        className="md:col-span-3"
+                                    >
+                                        <NumberInput
+                                            label="Bracket Teams"
+                                            min={2}
+                                            max={MAX_STANDARD_NUMBER}
+                                            value={divisionEditor.playoffTeamCount ?? ''}
+                                            w="100%"
+                                            styles={alignedDetailsFieldStyles}
+                                            clampBehavior="strict"
+                                            disabled={isImmutableField('divisions') || !divisionEditorReady}
+                                            onChange={(val) => {
+                                                if (isImmutableField('divisions') || !divisionEditorReady) {
+                                                    return;
+                                                }
+                                                const numeric = typeof val === 'number' ? val : Number(val);
+                                                setDivisionEditor((prev) => ({
+                                                    ...prev,
+                                                    playoffTeamCount: Number.isFinite(numeric)
+                                                        ? Math.max(2, Math.trunc(numeric))
+                                                        : null,
+                                                    error: null,
+                                                }));
+                                            }}
+                                        />
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
+                                        className="md:col-span-3"
+                                    >
+                                        <NumberInput
+                                            label="Pool Count"
+                                            min={1}
+                                            max={MAX_STANDARD_NUMBER}
+                                            value={divisionEditor.poolCount ?? ''}
+                                            w="100%"
+                                            styles={alignedDetailsFieldStyles}
+                                            clampBehavior="strict"
+                                            disabled={isImmutableField('divisions') || !divisionEditorReady}
+                                            onChange={(val) => {
+                                                if (isImmutableField('divisions') || !divisionEditorReady) {
+                                                    return;
+                                                }
+                                                const numeric = typeof val === 'number' ? val : Number(val);
+                                                setDivisionEditor((prev) => ({
+                                                    ...prev,
+                                                    poolCount: Number.isFinite(numeric)
+                                                        ? Math.max(1, Math.trunc(numeric))
+                                                        : null,
+                                                    error: null,
+                                                }));
+                                            }}
+                                        />
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
+                                        className="md:col-span-3"
+                                    >
+                                        <NumberInput
+                                            label="Pool Team Count"
+                                            value={derivePoolTeamCount(
+                                                eventData.singleDivision
+                                                    ? eventData.maxParticipants
+                                                    : divisionEditor.maxParticipants,
+                                                divisionEditor.poolCount,
+                                            ) ?? ''}
+                                            w="100%"
+                                            styles={alignedDetailsFieldStyles}
+                                            disabled
+                                        />
+                                    </AnimatedLayoutSection>
+                                </motion.div>
+                                <AnimatedLayoutSection in={eventData.singleDivision}>
                                     <Text size="xs" c="dimmed">
                                         {eventData.eventType === 'LEAGUE'
                                             ? 'Division price, capacity, payment plan, and playoff team count mirror event-level values while single division is enabled.'
                                             : eventData.eventType === 'TOURNAMENT'
-                                                ? 'Division price, capacity, and payment plan mirror event-level values while bracket and pool settings stay on the division.'
+                                                ? 'Division price, capacity, payment plan, and pool-play settings apply to every selected division while single division is enabled.'
                                                 : 'Division price, capacity, and payment plan mirror event-level values while single division is enabled.'}
                                     </Text>
-                                </AnimatedSection>
+                                </AnimatedLayoutSection>
                                 <Group justify="space-between" align="center">
                                     <Button
                                         variant="light"
@@ -11935,122 +12166,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </AnimatedSection>
                             </div>
 
-                            {/* Team Settings */}
-                            {supportsEditableTeamSignup ? (
-                                <div className="mt-6 space-y-3">
-                                    <Controller
-                                        name="singleDivision"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <Switch
-                                                label="Single Division (all skill levels play together)"
-                                                checked={field.value}
-                                                disabled={isImmutableField('singleDivision')}
-                                                onChange={(e) => {
-                                                    if (isImmutableField('singleDivision')) return;
-                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
-                                                }}
-                                            />
-                                        )}
-                                    />
-                                    <Controller
-                                        name="registrationByDivisionType"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <Switch
-                                                label="Register by Division Type"
-                                                description="When enabled, users pick a division type and are auto-assigned to one matching division."
-                                                checked={field.value}
-                                                disabled={isImmutableField('registrationByDivisionType')}
-                                                onChange={(e) => {
-                                                    if (isImmutableField('registrationByDivisionType')) return;
-                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
-                                                }}
-                                            />
-                                        )}
-                                    />
-                                </div>
-                            ) : showsFixedTeamEventToggle ? (
-                                <div className="mt-6 space-y-2">
-                                    <Switch
-                                        label="Team Event (teams compete rather than individuals)"
-                                        checked
-                                        disabled
-                                    />
-                                    <Controller
-                                        name="singleDivision"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <Switch
-                                                label="Single Division (all skill levels play together)"
-                                                checked={field.value}
-                                                disabled={isImmutableField('singleDivision')}
-                                                onChange={(e) => {
-                                                    if (isImmutableField('singleDivision')) return;
-                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
-                                                }}
-                                            />
-                                        )}
-                                    />
-                                    <Controller
-                                        name="registrationByDivisionType"
-                                        control={control}
-                                        render={({ field }) => (
-                                            <Switch
-                                                label="Register by Division Type"
-                                                description="When enabled, users pick a division type and are auto-assigned to one matching division."
-                                                checked={field.value}
-                                                disabled={isImmutableField('registrationByDivisionType')}
-                                                onChange={(e) => {
-                                                    if (isImmutableField('registrationByDivisionType')) return;
-                                                    field.onChange(e?.currentTarget?.checked ?? field.value);
-                                                }}
-                                            />
-                                        )}
-                                    />
-                                    {eventData.eventType === 'LEAGUE' ? (
-                                        <Controller
-                                            name="splitLeaguePlayoffDivisions"
-                                            control={control}
-                                            render={({ field }) => (
-                                                <Switch
-                                                    label="Split League & Playoff Divisions"
-                                                    description={leagueData.includePlayoffs
-                                                        ? 'Configure league divisions separately from playoff bracket divisions.'
-                                                        : 'Enable playoffs to configure split league/playoff divisions.'}
-                                                    checked={field.value}
-                                                    disabled={
-                                                        splitLeaguePlayoffDivisionsLocked
-                                                        || !leagueData.includePlayoffs
-                                                        || (eventData.singleDivision && !hasExternalRentalField)
-                                                    }
-                                                    onChange={(event) => {
-                                                        if (
-                                                            splitLeaguePlayoffDivisionsLocked
-                                                            || (eventData.singleDivision && !hasExternalRentalField)
-                                                        ) {
-                                                            return;
-                                                        }
-                                                        const checked = event.currentTarget.checked;
-                                                        field.onChange(checked);
-                                                        if (checked && (eventData.playoffDivisionDetails || []).length === 0) {
-                                                            setValue(
-                                                                'playoffDivisionDetails',
-                                                                [createNextPlayoffDivision(eventData.playoffDivisionDetails || [], playoffData)],
-                                                                { shouldDirty: true, shouldValidate: true },
-                                                            );
-                                                        }
-                                                    }}
-                                                />
-                                            )}
-                                        />
-                                    ) : null}
-                                    <Text size="sm" c="dimmed">
-                                        Leagues and tournaments are always team events. When single division is enabled,
-                                        each timeslot is automatically assigned all selected divisions.
-                                    </Text>
-                                </div>
-                            ) : null}
                             </Collapse>
                         </Paper>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Modal } from '@mantine/core';
 
 import {
   calculateMvpAndStripeFees,
@@ -36,7 +37,7 @@ export default function PriceWithFeesPreview({
   taxable = false,
   totalLabel = 'Total charged with fees:',
 }: PriceWithFeesPreviewProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
   const normalizedAmountCents = normalizePriceCents(amountCents);
   const stripeTaxServiceFeeCents = taxable && normalizedAmountCents > 0
     ? DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS
@@ -75,14 +76,18 @@ export default function PriceWithFeesPreview({
       <button
         type="button"
         className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-slate-600 transition hover:text-slate-900"
-        aria-expanded={isExpanded}
-        onClick={() => setIsExpanded((currentValue) => !currentValue)}
+        onClick={() => setIsBreakdownOpen(true)}
       >
-        {isExpanded ? 'Hide fee breakdown' : 'Show fee breakdown'}
-        <span aria-hidden="true">{isExpanded ? '▴' : '▾'}</span>
+        Show fee breakdown
       </button>
-      {isExpanded ? (
-        <div className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+      <Modal
+        opened={isBreakdownOpen}
+        onClose={() => setIsBreakdownOpen(false)}
+        title="Fee breakdown"
+        centered
+        size="sm"
+      >
+        <div className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
           <div className="flex items-center justify-between gap-4">
             <span>{baseLabel}</span>
             <span className="font-medium text-slate-900">
@@ -112,7 +117,7 @@ export default function PriceWithFeesPreview({
             <span>{totalDisplayValue}</span>
           </div>
         </div>
-      ) : null}
+      </Modal>
     </div>
   );
 }
