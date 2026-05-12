@@ -72,6 +72,7 @@ export default function OrganizationDetailPage() {
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ORG_EVENTS_LIMIT = 18;
+const CUSTOMER_PAGE_SIZE = 25;
 const ORG_EVENTS_DEFAULT_MAX_DISTANCE = 50;
 const ORG_EVENT_CREATE_FIELD_REQUIRED_TEXT = 'Create a field for this organization before creating an event.';
 const ORG_HOSTED_EVENT_TYPE_OPTIONS = ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const;
@@ -484,6 +485,23 @@ const formatSummaryDateTime = (value?: string): string => {
   return formatted || 'Unknown date';
 };
 
+const normalizeCustomerSearchValue = (value: unknown): string => (
+  typeof value === 'string' ? value.trim().toLowerCase() : ''
+);
+
+const matchesCustomerSearch = (query: string, values: unknown[]): boolean => {
+  if (!query) {
+    return true;
+  }
+  return values.some((value) => normalizeCustomerSearchValue(value).includes(query));
+};
+
+const formatPaidProgress = (paidAmountCents: number, totalAmountCents: number): string | null => (
+  totalAmountCents > 0
+    ? `${formatPrice(paidAmountCents)} paid of ${formatPrice(totalAmountCents)}`
+    : null
+);
+
 function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
@@ -864,6 +882,14 @@ function OrganizationDetailContent() {
   const [expandedOrganizationUserIds, setExpandedOrganizationUserIds] = useState<string[]>([]);
   const [expandedOrganizationTeamCustomerIds, setExpandedOrganizationTeamCustomerIds] = useState<string[]>([]);
   const [customerTypeFilters, setCustomerTypeFilters] = useState<OrganizationCustomerTypeFilter[]>(['users', 'teams']);
+  const [userCustomerSearch, setUserCustomerSearch] = useState('');
+  const [teamCustomerSearch, setTeamCustomerSearch] = useState('');
+  const debouncedUserCustomerSearch = useDebounce(userCustomerSearch, 250);
+  const debouncedTeamCustomerSearch = useDebounce(teamCustomerSearch, 250);
+  const [visibleUserCustomerCount, setVisibleUserCustomerCount] = useState(CUSTOMER_PAGE_SIZE);
+  const [visibleTeamCustomerCount, setVisibleTeamCustomerCount] = useState(CUSTOMER_PAGE_SIZE);
+  const userCustomerSentinelRef = useRef<HTMLDivElement | null>(null);
+  const teamCustomerSentinelRef = useRef<HTMLDivElement | null>(null);
   const [previewSignedTextDocument, setPreviewSignedTextDocument] = useState<OrganizationUserDocumentSummary | null>(null);
 
   const closeTemplateBuilder = useCallback(() => {
@@ -2343,7 +2369,117 @@ function OrganizationDetailContent() {
     } finally {
       setUpdatingEventHostId(null);
     }
-  }, [isOwner, org]);
+	  }, [isOwner, org]);
+
+  const showUserCustomers = customerTypeFilters.includes('users');
+  const showTeamCustomers = customerTypeFilters.includes('teams');
+  const normalizedUserCustomerSearch = normalizeCustomerSearchValue(debouncedUserCustomerSearch);
+  const normalizedTeamCustomerSearch = normalizeCustomerSearchValue(debouncedTeamCustomerSearch);
+  const filteredOrganizationUsers = useMemo(() => (
+    organizationUsers.filter((summary) => matchesCustomerSearch(normalizedUserCustomerSearch, [
+      summary.fullName,
+      summary.firstName,
+      summary.lastName,
+      summary.userName,
+      ...summary.events.flatMap((eventSummary) => [
+        eventSummary.eventName,
+        eventSummary.status,
+      ]),
+      ...summary.documents.flatMap((documentSummary) => [
+        documentSummary.title,
+        documentSummary.status,
+        documentSummary.eventName,
+      ]),
+    ]))
+  ), [normalizedUserCustomerSearch, organizationUsers]);
+  const filteredOrganizationTeamCustomers = useMemo(() => (
+    organizationTeamCustomers.filter((summary) => matchesCustomerSearch(normalizedTeamCustomerSearch, [
+      summary.name,
+      summary.division,
+      summary.sport,
+      ...summary.registrations.flatMap((registration) => [
+        registration.eventName,
+        registration.eventTeamName,
+        registration.status,
+        registration.division,
+        registration.sport,
+      ]),
+      ...summary.bills.flatMap((bill) => [
+        bill.eventName,
+        bill.ownerName,
+        bill.status,
+      ]),
+      ...summary.documents.flatMap((documentSummary) => [
+        documentSummary.title,
+        documentSummary.status,
+        documentSummary.eventName,
+      ]),
+    ]))
+  ), [normalizedTeamCustomerSearch, organizationTeamCustomers]);
+  const visibleOrganizationUsers = filteredOrganizationUsers.slice(0, visibleUserCustomerCount);
+  const visibleOrganizationTeamCustomers = filteredOrganizationTeamCustomers.slice(0, visibleTeamCustomerCount);
+  const hasMoreVisibleUserCustomers = visibleOrganizationUsers.length < filteredOrganizationUsers.length;
+  const hasMoreVisibleTeamCustomers = visibleOrganizationTeamCustomers.length < filteredOrganizationTeamCustomers.length;
+  const hasVisibleCustomerResults = (
+    (showUserCustomers && filteredOrganizationUsers.length > 0)
+    || (showTeamCustomers && filteredOrganizationTeamCustomers.length > 0)
+  );
+
+  useEffect(() => {
+    setVisibleUserCustomerCount(CUSTOMER_PAGE_SIZE);
+  }, [normalizedUserCustomerSearch, organizationUsers.length, showUserCustomers]);
+
+  useEffect(() => {
+    setVisibleTeamCustomerCount(CUSTOMER_PAGE_SIZE);
+  }, [normalizedTeamCustomerSearch, organizationTeamCustomers.length, showTeamCustomers]);
+
+  useEffect(() => {
+    if (activeTab !== 'users' || !showUserCustomers || !hasMoreVisibleUserCustomers) {
+      return;
+    }
+    const el = userCustomerSentinelRef.current;
+    if (!el) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting) {
+          setVisibleUserCustomerCount((current) => Math.min(
+            current + CUSTOMER_PAGE_SIZE,
+            filteredOrganizationUsers.length,
+          ));
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeTab, filteredOrganizationUsers.length, hasMoreVisibleUserCustomers, showUserCustomers]);
+
+  useEffect(() => {
+    if (activeTab !== 'users' || !showTeamCustomers || !hasMoreVisibleTeamCustomers) {
+      return;
+    }
+    const el = teamCustomerSentinelRef.current;
+    if (!el) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const [entry] = entries;
+        if (entry.isIntersecting) {
+          setVisibleTeamCustomerCount((current) => Math.min(
+            current + CUSTOMER_PAGE_SIZE,
+            filteredOrganizationTeamCustomers.length,
+          ));
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [activeTab, filteredOrganizationTeamCustomers.length, hasMoreVisibleTeamCustomers, showTeamCustomers]);
 
   if (authLoading) return <Loading fullScreen text="Loading organization..." />;
   if (!isAuthenticated || !user) return null;
@@ -2353,13 +2489,6 @@ function OrganizationDetailContent() {
     : org?.name
       ? `/api/avatars/initials?name=${encodeURIComponent(org.name)}&size=64`
       : '';
-  const showUserCustomers = customerTypeFilters.includes('users');
-  const showTeamCustomers = customerTypeFilters.includes('teams');
-  const hasVisibleCustomerResults = (
-    (showUserCustomers && organizationUsers.length > 0)
-    || (showTeamCustomers && organizationTeamCustomers.length > 0)
-  );
-
   return (
     <>
       <Navigation />
@@ -2689,10 +2818,24 @@ function OrganizationDetailContent() {
                           checked={showUserCustomers}
                           onChange={(event) => toggleCustomerTypeFilter('users', event.currentTarget.checked)}
                         />
+                        <TextInput
+                          label="Search users"
+                          placeholder="Name, username, event..."
+                          value={userCustomerSearch}
+                          onChange={(event) => setUserCustomerSearch(event.currentTarget.value)}
+                          disabled={!showUserCustomers}
+                        />
                         <Checkbox
                           label="Teams"
                           checked={showTeamCustomers}
                           onChange={(event) => toggleCustomerTypeFilter('teams', event.currentTarget.checked)}
+                        />
+                        <TextInput
+                          label="Search teams"
+                          placeholder="Team, event team, bill..."
+                          value={teamCustomerSearch}
+                          onChange={(event) => setTeamCustomerSearch(event.currentTarget.value)}
+                          disabled={!showTeamCustomers}
                         />
                       </Stack>
                     </Paper>
@@ -2704,9 +2847,14 @@ function OrganizationDetailContent() {
                         </Paper>
                       )}
 
-                      {showUserCustomers && organizationUsers.length > 0 && (
+                      {showUserCustomers && filteredOrganizationUsers.length > 0 && (
                         <Paper withBorder p="md" radius="md">
-                          <Title order={6} mb="md">Users</Title>
+                          <Group justify="space-between" align="center" mb="md">
+                            <Title order={6}>Users</Title>
+                            <Text size="xs" c="dimmed">
+                              Showing {visibleOrganizationUsers.length} of {filteredOrganizationUsers.length}
+                            </Text>
+                          </Group>
                           <div
                             style={{
                               border: '1px solid var(--mantine-color-default-border)',
@@ -2725,7 +2873,7 @@ function OrganizationDetailContent() {
                                   </Table.Tr>
                                 </Table.Thead>
                                 <Table.Tbody>
-                                  {organizationUsers.map((summary) => {
+                                  {visibleOrganizationUsers.map((summary) => {
                                     const expanded = expandedOrganizationUserIds.includes(summary.userId);
                                     const condensedEvents = summary.events.slice(0, 2);
                                     const condensedDocuments = summary.documents.slice(0, 2);
@@ -2815,7 +2963,7 @@ function OrganizationDetailContent() {
                                                             </Button>
                                                             <Text size="xs" c="dimmed">
                                                               {formatSummaryDateTime(eventSummary.start)}
-                                                              {eventSummary.status ? ` \u2022 ${eventSummary.status}` : ''}
+                                                              {eventSummary.status ? ` • ${eventSummary.status}` : ''}
                                                             </Text>
                                                           </Stack>
                                                         </Group>
@@ -2835,8 +2983,8 @@ function OrganizationDetailContent() {
                                                             <Text size="sm">{documentSummary.title}</Text>
                                                             <Text size="xs" c="dimmed">
                                                               {documentSummary.type}
-                                                              {documentSummary.status ? ` \u2022 ${documentSummary.status}` : ''}
-                                                              {documentSummary.signedAt ? ` \u2022 ${formatSummaryDateTime(documentSummary.signedAt)}` : ''}
+                                                              {documentSummary.status ? ` • ${documentSummary.status}` : ''}
+                                                              {documentSummary.signedAt ? ` • ${formatSummaryDateTime(documentSummary.signedAt)}` : ''}
                                                             </Text>
                                                             {documentSummary.eventName && (
                                                               <Text size="xs" c="dimmed">
@@ -2869,12 +3017,22 @@ function OrganizationDetailContent() {
                               </Table>
                             </div>
                           </div>
+                          {hasMoreVisibleUserCustomers && (
+                            <Group ref={userCustomerSentinelRef} justify="center" mt="sm">
+                              <Text size="xs" c="dimmed">Scroll for more users.</Text>
+                            </Group>
+                          )}
                         </Paper>
                       )}
 
-                      {showTeamCustomers && organizationTeamCustomers.length > 0 && (
+                      {showTeamCustomers && filteredOrganizationTeamCustomers.length > 0 && (
                         <Paper withBorder p="md" radius="md">
-                          <Title order={6} mb="md">Teams</Title>
+                          <Group justify="space-between" align="center" mb="md">
+                            <Title order={6}>Teams</Title>
+                            <Text size="xs" c="dimmed">
+                              Showing {visibleOrganizationTeamCustomers.length} of {filteredOrganizationTeamCustomers.length}
+                            </Text>
+                          </Group>
                           <div
                             style={{
                               border: '1px solid var(--mantine-color-default-border)',
@@ -2893,12 +3051,16 @@ function OrganizationDetailContent() {
                                   </Table.Tr>
                                 </Table.Thead>
                                 <Table.Tbody>
-                                  {organizationTeamCustomers.map((summary) => {
-                                    const expanded = expandedOrganizationTeamCustomerIds.includes(summary.canonicalTeamId);
-                                    const condensedRegistrations = summary.registrations.slice(0, 2);
-                                    const condensedBills = summary.bills.slice(0, 2);
+	                                  {visibleOrganizationTeamCustomers.map((summary) => {
+	                                    const expanded = expandedOrganizationTeamCustomerIds.includes(summary.canonicalTeamId);
+	                                    const condensedRegistrations = summary.registrations.slice(0, 2);
+	                                    const condensedBills = summary.bills.slice(0, 2);
+	                                    const teamPaymentSummary = formatPaidProgress(
+	                                      summary.totals.paidAmountCents,
+	                                      summary.totals.totalAmountCents,
+	                                    );
 
-                                    return (
+	                                    return (
                                       <Fragment key={summary.canonicalTeamId}>
                                         <Table.Tr>
                                           <Table.Td>
@@ -2928,7 +3090,7 @@ function OrganizationDetailContent() {
                                                     </Button>
                                                     <Text size="xs" c="dimmed">
                                                       {registration.eventTeamName}
-                                                      {registration.status ? ` \u2022 ${registration.status}` : ''}
+                                                      {registration.status ? ` • ${registration.status}` : ''}
                                                     </Text>
                                                   </Stack>
                                                 ))}
@@ -2942,20 +3104,26 @@ function OrganizationDetailContent() {
                                               <Text size="xs" c="dimmed">No event teams</Text>
                                             )}
                                           </Table.Td>
-                                          <Table.Td>
-                                            {summary.bills.length > 0 ? (
-                                              <Stack gap={4}>
-                                                <Text size="xs">
-                                                  {formatPrice(summary.totals.paidAmountCents)} paid of {formatPrice(summary.totals.totalAmountCents)}
-                                                </Text>
-                                                {condensedBills.map((bill) => (
-                                                  <Text key={bill.billId} size="xs" c="dimmed">
-                                                    {bill.eventName ?? 'Event'} \u2022 {bill.status ?? 'OPEN'} \u2022 {formatPrice(bill.totalAmountCents)}
-                                                  </Text>
-                                                ))}
-                                                {summary.bills.length > condensedBills.length && (
-                                                  <Text size="xs" c="dimmed">
-                                                    +{summary.bills.length - condensedBills.length} more
+	                                          <Table.Td>
+	                                            {summary.bills.length > 0 ? (
+	                                              <Stack gap={4}>
+	                                                {teamPaymentSummary && (
+	                                                  <Text size="xs">
+	                                                    {teamPaymentSummary}
+	                                                  </Text>
+	                                                )}
+	                                                {condensedBills.map((bill) => {
+	                                                  const billAmount = bill.totalAmountCents > 0 ? formatPrice(bill.totalAmountCents) : null;
+	                                                  const billParts = [bill.eventName ?? 'Event', bill.status ?? 'OPEN', billAmount].filter(Boolean);
+	                                                  return (
+	                                                    <Text key={bill.billId} size="xs" c="dimmed">
+	                                                      {billParts.join(' • ')}
+	                                                    </Text>
+	                                                  );
+	                                                })}
+	                                                {summary.bills.length > condensedBills.length && (
+	                                                  <Text size="xs" c="dimmed">
+	                                                    +{summary.bills.length - condensedBills.length} more
                                                   </Text>
                                                 )}
                                               </Stack>
@@ -2981,53 +3149,76 @@ function OrganizationDetailContent() {
                                                   <Text fw={600} mb="xs">Event team registrations</Text>
                                                   {summary.registrations.length > 0 ? (
                                                     <Stack gap={6}>
-                                                      {summary.registrations.map((registration) => (
-                                                        <Group key={registration.eventTeamId} justify="space-between" align="flex-start" wrap="wrap">
-                                                          <Stack gap={0}>
-                                                            <Button
-                                                              size="xs"
-                                                              variant="subtle"
-                                                              styles={{ inner: { justifyContent: 'flex-start' }, label: { textAlign: 'left' } }}
-                                                              onClick={() => openOrganizationEvent(registration.eventId)}
-                                                            >
-                                                              {registration.eventName}
-                                                            </Button>
-                                                            <Text size="xs" c="dimmed">
-                                                              {registration.eventTeamName} \u2022 {formatSummaryDateTime(registration.start)}
-                                                              {registration.status ? ` \u2022 ${registration.status}` : ''}
-                                                            </Text>
-                                                            <Text size="xs" c="dimmed">
-                                                              {registration.memberCount} members \u2022 {formatPrice(registration.paidAmountCents)} paid of {formatPrice(registration.totalAmountCents)}
-                                                            </Text>
-                                                          </Stack>
-                                                        </Group>
-                                                      ))}
-                                                    </Stack>
-                                                  ) : (
-                                                    <Text size="xs" c="dimmed">No event team registrations.</Text>
+	                                                      {summary.registrations.map((registration) => {
+	                                                        const registrationPaymentSummary = formatPaidProgress(
+	                                                          registration.paidAmountCents,
+	                                                          registration.totalAmountCents,
+	                                                        );
+	                                                        const registrationMeta = [
+	                                                          registration.eventTeamName,
+	                                                          formatSummaryDateTime(registration.start),
+	                                                          registration.status,
+	                                                        ].filter(Boolean);
+	                                                        const registrationMemberLine = [
+	                                                          `${registration.memberCount} members`,
+	                                                          registrationPaymentSummary,
+	                                                        ].filter(Boolean);
+	                                                        return (
+	                                                          <Group key={registration.eventTeamId} justify="space-between" align="flex-start" wrap="wrap">
+	                                                            <Stack gap={0}>
+	                                                              <Button
+	                                                                size="xs"
+	                                                                variant="subtle"
+	                                                                styles={{ inner: { justifyContent: 'flex-start' }, label: { textAlign: 'left' } }}
+	                                                                onClick={() => openOrganizationEvent(registration.eventId)}
+	                                                              >
+	                                                                {registration.eventName}
+	                                                              </Button>
+	                                                              <Text size="xs" c="dimmed">
+	                                                                {registrationMeta.join(' • ')}
+	                                                              </Text>
+	                                                              <Text size="xs" c="dimmed">
+	                                                                {registrationMemberLine.join(' • ')}
+	                                                              </Text>
+	                                                            </Stack>
+	                                                          </Group>
+	                                                        );
+	                                                      })}
+	                                                    </Stack>
+	                                                  ) : (
+	                                                    <Text size="xs" c="dimmed">No event team registrations.</Text>
                                                   )}
                                                 </Paper>
                                                 <Paper withBorder p="sm" radius="md">
                                                   <Text fw={600} mb="xs">Bills</Text>
                                                   {summary.bills.length > 0 ? (
                                                     <Stack gap={6}>
-                                                      {summary.bills.map((bill) => (
-                                                        <Group key={bill.billId} justify="space-between" align="flex-start" wrap="wrap">
-                                                          <Stack gap={0}>
-                                                            <Text size="sm">{bill.eventName ?? 'Event bill'}</Text>
-                                                            <Text size="xs" c="dimmed">
-                                                              {bill.ownerName} \u2022 {bill.ownerType} \u2022 {bill.status ?? 'OPEN'}
-                                                            </Text>
-                                                            <Text size="xs" c="dimmed">
-                                                              {formatPrice(bill.paidAmountCents)} paid of {formatPrice(bill.totalAmountCents)}
-                                                              {bill.refundedAmountCents > 0 ? ` \u2022 ${formatPrice(bill.refundedAmountCents)} refunded` : ''}
-                                                            </Text>
-                                                          </Stack>
-                                                        </Group>
-                                                      ))}
-                                                    </Stack>
-                                                  ) : (
-                                                    <Text size="xs" c="dimmed">No bills.</Text>
+	                                                      {summary.bills.map((bill) => {
+	                                                        const billMeta = [bill.ownerName, bill.ownerType, bill.status ?? 'OPEN'].filter(Boolean);
+	                                                        const billPaymentSummary = formatPaidProgress(bill.paidAmountCents, bill.totalAmountCents);
+	                                                        const billPaymentLine = [
+	                                                          billPaymentSummary,
+	                                                          bill.refundedAmountCents > 0 ? `${formatPrice(bill.refundedAmountCents)} refunded` : null,
+	                                                        ].filter(Boolean);
+	                                                        return (
+	                                                          <Group key={bill.billId} justify="space-between" align="flex-start" wrap="wrap">
+	                                                            <Stack gap={0}>
+	                                                              <Text size="sm">{bill.eventName ?? 'Event bill'}</Text>
+	                                                              <Text size="xs" c="dimmed">
+	                                                                {billMeta.join(' • ')}
+	                                                              </Text>
+	                                                              {billPaymentLine.length > 0 && (
+	                                                                <Text size="xs" c="dimmed">
+	                                                                  {billPaymentLine.join(' • ')}
+	                                                                </Text>
+	                                                              )}
+	                                                            </Stack>
+	                                                          </Group>
+	                                                        );
+	                                                      })}
+	                                                    </Stack>
+	                                                  ) : (
+	                                                    <Text size="xs" c="dimmed">No bills.</Text>
                                                   )}
                                                 </Paper>
                                               </SimpleGrid>
@@ -3038,11 +3229,16 @@ function OrganizationDetailContent() {
                                     );
                                   })}
                                 </Table.Tbody>
-                              </Table>
-                            </div>
-                          </div>
-                        </Paper>
-                      )}
+	                              </Table>
+	                            </div>
+	                          </div>
+	                          {hasMoreVisibleTeamCustomers && (
+	                            <Group ref={teamCustomerSentinelRef} justify="center" mt="sm">
+	                              <Text size="xs" c="dimmed">Scroll for more teams.</Text>
+	                            </Group>
+	                          )}
+	                        </Paper>
+	                      )}
                     </Stack>
                   </SimpleGrid>
                 )}
@@ -3561,7 +3757,7 @@ function OrganizationDetailContent() {
             ) : (
               <Stack gap="sm">
                 <Text size="sm" c="dimmed">
-                  Document 1 of 1{previewTemplate.title ? ` \u2022 ${previewTemplate.title}` : ''}
+                  Document 1 of 1{previewTemplate.title ? ` • ${previewTemplate.title}` : ''}
                 </Text>
                 <Paper withBorder p="md" style={{ maxHeight: 420, overflowY: 'auto' }}>
                   <Text style={{ whiteSpace: 'pre-wrap' }}>

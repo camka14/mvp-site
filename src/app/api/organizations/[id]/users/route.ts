@@ -156,6 +156,11 @@ const isTeamRegistrantType = (value: unknown): boolean => {
   return normalized.toUpperCase() === 'TEAM';
 };
 
+const isPlaceholderEventTeamKind = (value: unknown): boolean => {
+  const normalized = normalizeId(value);
+  return normalized?.toUpperCase() === 'PLACEHOLDER';
+};
+
 const toEventTeamKey = (eventId: string, teamId: string): string => `${eventId}::${teamId}`;
 
 const getSortTimestamp = (value: string | undefined): number => {
@@ -182,6 +187,41 @@ const isRentalScopeEvent = (
   event: Pick<OrganizationUsersScopeEvent, 'organizationId'>,
   organizationId: string,
 ): boolean => event.organizationId !== organizationId;
+
+const normalizeDivisionLookupKey = (value: unknown): string | null => normalizeId(value)?.toLowerCase() ?? null;
+
+const extractScopedDivisionToken = (value: unknown): string | null => {
+  const normalized = normalizeDivisionLookupKey(value);
+  if (!normalized) {
+    return null;
+  }
+  const marker = '__division__';
+  const markerIndex = normalized.lastIndexOf(marker);
+  if (markerIndex < 0) {
+    return null;
+  }
+  const token = normalized.slice(markerIndex + marker.length).trim();
+  return token.length ? token.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') : null;
+};
+
+const looksLikeOpaqueDivisionId = (value: string): boolean => (
+  value.includes('__DIVISION__')
+  || value.toLowerCase().startsWith('division_')
+  || value.toLowerCase().includes('_division_')
+  || value.length > 36
+  || /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+);
+
+const formatDivisionTokenLabel = (value: string): string | undefined => {
+  const label = value
+    .replace(/[_-]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+    .trim();
+  return label.length ? label : undefined;
+};
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
@@ -267,10 +307,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   );
   const teams = registeredTeamIds.length
     ? await prisma.teams.findMany({
-      where: { id: { in: registeredTeamIds } },
+      where: {
+        id: { in: registeredTeamIds },
+        OR: [
+          { kind: { not: 'PLACEHOLDER' } },
+          { kind: null },
+        ],
+      },
       select: {
         id: true,
         name: true,
+        kind: true,
         division: true,
         divisionTypeId: true,
         sport: true,
@@ -282,11 +329,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	        headCoachId: true,
 	        coachIds: true,
 	        parentTeamId: true,
-	      },
+      },
     })
     : [];
+	  const eventTeams = teams.filter((team) => !isPlaceholderEventTeamKind(team.kind));
+	  const activeEventTeamIds = eventTeams.map((team) => team.id);
+	  const activeEventTeamIdSet = new Set(activeEventTeamIds);
+	  teamIdsByEventId.forEach((teamIds) => {
+	    Array.from(teamIds).forEach((teamId) => {
+	      if (!activeEventTeamIdSet.has(teamId)) {
+	        teamIds.delete(teamId);
+	      }
+	    });
+	  });
 	  const teamMemberIdsByTeamId = new Map<string, string[]>();
-	  teams.forEach((team) => {
+	  eventTeams.forEach((team) => {
 	    const memberIds = normalizeIdList([
 	      ...normalizeIdList(team.playerIds),
       team.captainId,
@@ -296,7 +353,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    ]);
 	    teamMemberIdsByTeamId.set(team.id, memberIds);
 	  });
-	  const eventTeamById = new Map(teams.map((team) => [team.id, team] as const));
+	  const eventTeamById = new Map(eventTeams.map((team) => [team.id, team] as const));
 	  const canonicalTeamIdByEventTeamId = new Map<string, string>();
 	  registrations.forEach((registration) => {
 	    if (!isTeamRegistrantType(registration.registrantType)) {
@@ -306,12 +363,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    if (!eventTeamId) {
 	      return;
 	    }
+	    if (!eventTeamById.has(eventTeamId)) {
+	      return;
+	    }
 	    const canonicalTeamId = normalizeId(registration.parentId)
 	      ?? normalizeId(eventTeamById.get(eventTeamId)?.parentTeamId)
 	      ?? eventTeamId;
 	    canonicalTeamIdByEventTeamId.set(eventTeamId, canonicalTeamId);
 	  });
-	  teams.forEach((team) => {
+	  eventTeams.forEach((team) => {
 	    if (!canonicalTeamIdByEventTeamId.has(team.id)) {
 	      canonicalTeamIdByEventTeamId.set(team.id, normalizeId(team.parentTeamId) ?? team.id);
 	    }
@@ -357,6 +417,79 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	  });
 
 	  const teamSummariesByCanonicalTeamId = new Map<string, TeamSummaryInternal>();
+	  const divisionLookupValues = new Set<string>();
+	  const addDivisionLookupValue = (value: unknown) => {
+	    const normalized = normalizeId(value);
+	    if (normalized) {
+	      divisionLookupValues.add(normalized);
+	      const lookupKey = normalizeDivisionLookupKey(normalized);
+	      if (lookupKey) {
+	        divisionLookupValues.add(lookupKey);
+	      }
+	    }
+	  };
+	  const collectDivisionLookupValues = (row: { division?: unknown; divisionTypeId?: unknown }) => {
+	    addDivisionLookupValue(row.division);
+	    addDivisionLookupValue(row.divisionTypeId);
+	    addDivisionLookupValue(extractScopedDivisionToken(row.division));
+	  };
+	  eventTeams.forEach(collectDivisionLookupValues);
+	  canonicalTeams.forEach((team: Record<string, any>) => collectDivisionLookupValues(team));
+	  const divisionLookupList = Array.from(divisionLookupValues);
+	  const divisionsDelegate = (prisma as any).divisions;
+	  const divisionRows = divisionLookupList.length && typeof divisionsDelegate?.findMany === 'function'
+	    ? await divisionsDelegate.findMany({
+	      where: {
+	        OR: [
+	          { id: { in: divisionLookupList } },
+	          { key: { in: divisionLookupList } },
+	          { divisionTypeId: { in: divisionLookupList } },
+	        ],
+	      },
+	      select: {
+	        id: true,
+	        key: true,
+	        name: true,
+	        divisionTypeId: true,
+	      },
+	    })
+	    : [];
+	  const divisionNameByLookupKey = new Map<string, string>();
+	  const addDivisionNameAlias = (value: unknown, name: unknown) => {
+	    const lookupKey = normalizeDivisionLookupKey(value);
+	    const label = normalizeId(name);
+	    if (lookupKey && label && !looksLikeOpaqueDivisionId(label)) {
+	      divisionNameByLookupKey.set(lookupKey, label);
+	    }
+	  };
+	  divisionRows.forEach((row: Record<string, any>) => {
+	    addDivisionNameAlias(row.id, row.name);
+	    addDivisionNameAlias(row.key, row.name);
+	    addDivisionNameAlias(row.divisionTypeId, row.name);
+	    addDivisionNameAlias(extractScopedDivisionToken(row.id), row.name);
+	    addDivisionNameAlias(extractScopedDivisionToken(row.key), row.name);
+	  });
+	  const resolveTeamDivisionName = (row: { division?: unknown; divisionTypeId?: unknown }): string | undefined => {
+	    const division = normalizeId(row.division);
+	    const divisionTypeId = normalizeId(row.divisionTypeId);
+	    const scopedToken = extractScopedDivisionToken(division);
+	    const lookupValues = [division, scopedToken, divisionTypeId];
+	    for (const value of lookupValues) {
+	      const lookupKey = normalizeDivisionLookupKey(value);
+	      const label = lookupKey ? divisionNameByLookupKey.get(lookupKey) : undefined;
+	      if (label) {
+	        return label;
+	      }
+	    }
+	    if (scopedToken && !scopedToken.includes('_')) {
+	      return formatDivisionTokenLabel(scopedToken);
+	    }
+	    if (division && !looksLikeOpaqueDivisionId(division)) {
+	      return division;
+	    }
+	    return undefined;
+	  };
+
 	  canonicalTeams.forEach((team: Record<string, any>) => {
 	    const canonicalTeamId = String(team.id ?? '').trim();
 	    if (!canonicalTeamId) {
@@ -365,7 +498,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    teamSummariesByCanonicalTeamId.set(canonicalTeamId, {
 	      canonicalTeamId,
 	      name: typeof team.name === 'string' && team.name.trim() ? team.name.trim() : canonicalTeamId,
-	      division: typeof team.division === 'string' && team.division.trim() ? team.division.trim() : undefined,
+	      division: resolveTeamDivisionName(team),
 	      sport: typeof team.sport === 'string' && team.sport.trim() ? team.sport.trim() : undefined,
 	      profileImageId: typeof team.profileImageId === 'string' && team.profileImageId.trim() ? team.profileImageId : null,
 	      memberCount: memberCountByCanonicalTeamId.get(canonicalTeamId) ?? 0,
@@ -386,7 +519,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    teamSummariesByCanonicalTeamId.set(canonicalTeamId, {
 	      canonicalTeamId,
 	      name: typeof eventTeam.name === 'string' && eventTeam.name.trim() ? eventTeam.name.trim() : canonicalTeamId,
-	      division: typeof eventTeam.division === 'string' && eventTeam.division.trim() ? eventTeam.division.trim() : undefined,
+	      division: resolveTeamDivisionName(eventTeam),
 	      sport: typeof eventTeam.sport === 'string' && eventTeam.sport.trim() ? eventTeam.sport.trim() : undefined,
 	      profileImageId: typeof eventTeam.profileImageId === 'string' && eventTeam.profileImageId.trim() ? eventTeam.profileImageId : null,
 	      memberCount: memberCountByCanonicalTeamId.get(canonicalTeamId) ?? teamMemberIdsByTeamId.get(eventTeamId)?.length ?? 0,
@@ -404,6 +537,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    }
 	    const teamId = normalizeId(registration.eventTeamId) ?? normalizeId(registration.registrantId);
 	    if (!teamId) {
+	      return;
+	    }
+	    if (!eventTeamById.has(teamId)) {
 	      return;
 	    }
     const key = toEventTeamKey(registration.eventId, teamId);
@@ -444,7 +580,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
 
   const userIds = Array.from(participantUserIds);
-  if (!userIds.length && registeredTeamIds.length === 0) {
+  if (!userIds.length && activeEventTeamIds.length === 0) {
     return NextResponse.json({ users: [], teams: [] }, { status: 200 });
   }
 
@@ -474,12 +610,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const templateById = new Map(templates.map((template) => [template.id, template]));
   const templateIds = templates.map((template) => template.id);
-	  const documentParticipantScopes = [
-	    ...(userIds.length ? [{ userId: { in: userIds } }] : []),
-	    ...(registeredTeamIds.length || canonicalTeamIds.length
-	      ? [{ teamId: { in: Array.from(new Set([...registeredTeamIds, ...canonicalTeamIds])) } }]
-	      : []),
-	  ];
+		  const documentParticipantScopes = [
+		    ...(userIds.length ? [{ userId: { in: userIds } }] : []),
+		    ...(activeEventTeamIds.length || canonicalTeamIds.length
+		      ? [{ teamId: { in: Array.from(new Set([...activeEventTeamIds, ...canonicalTeamIds])) } }]
+		      : []),
+		  ];
   const documentEventOrTemplateScopes = [
     ...(eventIds.length ? [{ eventId: { in: eventIds } }] : []),
     ...(templateIds.length ? [{ templateId: { in: templateIds } }] : []),
@@ -528,7 +664,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	  });
 	  const usersById = new Map(users.map((user) => [user.id, user] as const));
 
-	  const teamBillOwnerIds = Array.from(new Set([...canonicalTeamIds, ...registeredTeamIds]));
+		  const teamBillOwnerIds = Array.from(new Set([...canonicalTeamIds, ...activeEventTeamIds]));
 	  const teamBills = eventIds.length && teamBillOwnerIds.length
 	    ? await prisma.bills.findMany({
 	      where: {
@@ -804,7 +940,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	          start: event.start.toISOString(),
 	          end: event.end.toISOString(),
 	          status: teamStatus,
-	          division: typeof eventTeam?.division === 'string' && eventTeam.division.trim() ? eventTeam.division.trim() : undefined,
+	          division: eventTeam ? resolveTeamDivisionName(eventTeam) : undefined,
 	          sport: typeof eventTeam?.sport === 'string' && eventTeam.sport.trim() ? eventTeam.sport.trim() : undefined,
 	          memberCount: teamMemberIdsByTeamId.get(teamId)?.length ?? 0,
 	          billIds: registrationBills.map((bill) => bill.billId),
