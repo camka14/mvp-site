@@ -196,6 +196,71 @@ describe('/api/organizations/[id]', () => {
     }));
   });
 
+  it('allows organization managers to mark an organization unlisted', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      publicSlug: null,
+    });
+    prismaMock.organizations.update.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Test Org',
+      status: 'UNLISTED',
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          organization: {
+            status: 'unlisted',
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.status).toBe('UNLISTED');
+    expect(prismaMock.organizations.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'org_1' },
+      data: expect.objectContaining({
+        status: 'UNLISTED',
+      }),
+    }));
+  });
+
+  it('rejects invalid organization status values', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      publicSlug: null,
+    });
+
+    const response = await PATCH(
+      new NextRequest('http://localhost/api/organizations/org_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          organization: {
+            status: 'hidden',
+          },
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toContain('LISTED or UNLISTED');
+    expect(prismaMock.organizations.update).not.toHaveBeenCalled();
+  });
+
   it('normalizes tax settings and stamps the tax responsibility agreement', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
     prismaMock.organizations.findUnique.mockResolvedValue({

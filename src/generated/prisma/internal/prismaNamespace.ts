@@ -4315,6 +4315,7 @@ export const OrganizationsScalarFieldEnum = {
   website: 'website',
   sports: 'sports',
   officialIds: 'officialIds',
+  status: 'status',
   hasStripeAccount: 'hasStripeAccount',
   verificationStatus: 'verificationStatus',
   verifiedAt: 'verifiedAt',
@@ -4712,21 +4713,21 @@ export type JsonNullValueFilter = (typeof JsonNullValueFilter)[keyof typeof Json
  * Reference to a field of type 'String'
  */
 export type StringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'String'>
-    
+
 
 
 /**
  * Reference to a field of type 'String[]'
  */
 export type ListStringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'String[]'>
-    
+
 
 
 /**
  * Reference to a field of type 'DateTime'
  */
 export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime'>
-    
+
 
 
 /**
@@ -5034,7 +5035,21 @@ export type EnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = Fi
  * Reference to a field of type 'EventsOfficialSchedulingModeEnum[]'
  */
 export type ListEnumEventsOfficialSchedulingModeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventsOfficialSchedulingModeEnum[]'>
-    
+
+
+
+/**
+ * Reference to a field of type 'OrganizationsStatusEnum'
+ */
+export type EnumOrganizationsStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationsStatusEnum[]'
+ */
+export type ListEnumOrganizationsStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationsStatusEnum[]'>
+
 
 
 /**
@@ -5390,4 +5405,3 @@ export type PrismaAction =
  * `PrismaClient` proxy available in interactive transactions.
  */
 export type TransactionClient = Omit<DefaultPrismaClient, runtime.ITXClientDenyList>
-

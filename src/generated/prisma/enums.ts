@@ -152,6 +152,14 @@ export const OrganizationsVerificationReviewStatusEnum = {
 export type OrganizationsVerificationReviewStatusEnum = (typeof OrganizationsVerificationReviewStatusEnum)[keyof typeof OrganizationsVerificationReviewStatusEnum]
 
 
+export const OrganizationsStatusEnum = {
+  LISTED: 'LISTED',
+  UNLISTED: 'UNLISTED'
+} as const
+
+export type OrganizationsStatusEnum = (typeof OrganizationsStatusEnum)[keyof typeof OrganizationsStatusEnum]
+
+
 export const StripeAccountsAccountOriginEnum = {
   LEGACY_OAUTH: 'LEGACY_OAUTH',
   PLATFORM_ONBOARDING: 'PLATFORM_ONBOARDING'

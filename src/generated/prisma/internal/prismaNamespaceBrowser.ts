@@ -760,6 +760,7 @@ export const OrganizationsScalarFieldEnum = {
   website: 'website',
   sports: 'sports',
   officialIds: 'officialIds',
+  status: 'status',
   hasStripeAccount: 'hasStripeAccount',
   verificationStatus: 'verificationStatus',
   verifiedAt: 'verifiedAt',

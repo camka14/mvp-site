@@ -105,6 +105,11 @@ enum OrganizationsVerificationReviewStatusEnum {
   RESOLVED
 }
 
+enum OrganizationsStatusEnum {
+  LISTED
+  UNLISTED
+}
+
 enum StripeAccountsAccountOriginEnum {
   LEGACY_OAUTH
   PLATFORM_ONBOARDING
@@ -856,6 +861,7 @@ model Organizations {
   website                     String?
   sports                      String[]                                 @default([])
   officialIds                 String[]
+  status                      OrganizationsStatusEnum                  @default(LISTED)
   hasStripeAccount            Boolean?
   verificationStatus          OrganizationsVerificationStatusEnum      @default(UNVERIFIED)
   verifiedAt                  DateTime?
@@ -883,6 +889,7 @@ model Organizations {
 
   @@index([verificationStatus])
   @@index([verificationReviewStatus])
+  @@index([status])
 }
 
 model Products {

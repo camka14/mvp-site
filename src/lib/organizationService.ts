@@ -6,6 +6,7 @@ import {
   isOrganizationVerificationReviewStatus,
   resolveOrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
+import { getOrganizationStatus } from '@/lib/organizationStatus';
 import type { Event, Field, Invite, Organization, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
@@ -215,6 +216,7 @@ class OrganizationService {
       coordinates: coordinates,
       ownerId: row.ownerId ?? row.owner_id ?? undefined,
       hostIds: staffMembers.length > 0 ? derivedHostIds : hostIds,
+      status: getOrganizationStatus(row.status),
       hasStripeAccount: Boolean(row.hasStripeAccount),
       taxOrganizationType: normalizeOrganizationTaxClassification(row.taxOrganizationType),
       operatesAthleticFacility: Boolean(row.operatesAthleticFacility),

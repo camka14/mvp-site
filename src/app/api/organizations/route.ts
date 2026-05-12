@@ -9,6 +9,10 @@ import {
   normalizeOrganizationTaxClassification,
   normalizeRentalTaxHandling,
 } from '@/lib/taxPolicy';
+import {
+  DEFAULT_ORGANIZATION_STATUS,
+  normalizeOrganizationStatus,
+} from '@/lib/organizationStatus';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -26,6 +30,7 @@ const createSchema = z.object({
   website: z.string().optional(),
   sports: z.array(z.string()).optional(),
   officialIds: z.array(z.string()).optional(),
+  status: z.string().optional(),
   coordinates: z.any().optional(),
   productIds: z.array(z.string()).optional(),
   taxOrganizationType: z.string().optional(),
@@ -102,6 +107,14 @@ const relevanceScore = (
   return [primary, location, address, description];
 };
 
+const shouldApplyListedOnlyFilter = (params: {
+  ids?: string[];
+  ownerId: string | null;
+  userId: string | null;
+}): boolean => (
+  !params.ids?.length && !params.ownerId && !params.userId
+);
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
@@ -135,6 +148,9 @@ export async function GET(req: NextRequest) {
   const where: any = {};
   if (ids?.length) where.id = { in: ids };
   if (ownerId) where.ownerId = ownerId;
+  if (shouldApplyListedOnlyFilter({ ids, ownerId, userId })) {
+    where.status = DEFAULT_ORGANIZATION_STATUS;
+  }
   if (userId) {
     where.OR = [
       { ownerId: userId },
@@ -207,6 +223,18 @@ export async function POST(req: NextRequest) {
   }
 
   const taxAcceptedAt = new Date();
+  let status = DEFAULT_ORGANIZATION_STATUS;
+  try {
+    if (data.status !== undefined) {
+      status = normalizeOrganizationStatus(data.status);
+    }
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Invalid organization status.' },
+      { status: 400 },
+    );
+  }
+
   const organization = await createOrganizationWithUnknownArgFallback({
     id: data.id,
     name: data.name,
@@ -219,6 +247,7 @@ export async function POST(req: NextRequest) {
     website: data.website ?? null,
     sports: Array.isArray(data.sports) ? data.sports : [],
     officialIds: Array.isArray(data.officialIds) ? data.officialIds : [],
+    status,
     hasStripeAccount: false,
     coordinates: data.coordinates ?? null,
     productIds: Array.isArray(data.productIds) ? data.productIds : [],

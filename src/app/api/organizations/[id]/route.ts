@@ -12,6 +12,7 @@ import {
   normalizePublicSlug,
   normalizePublicText,
 } from '@/server/organizationPublicSettings';
+import { normalizeOrganizationStatus } from '@/lib/organizationStatus';
 import {
   ORG_TAX_AGREEMENT_VERSION,
   normalizeOrganizationDefaultEventTaxHandling,
@@ -33,6 +34,7 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'website',
   'sports',
   'officialIds',
+  'status',
   'coordinates',
   'productIds',
   'ownerId',
@@ -259,6 +261,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (Object.prototype.hasOwnProperty.call(updateData, 'sports')) {
     updateData.sports = sanitizeStringArray(updateData.sports);
+  }
+  if (Object.prototype.hasOwnProperty.call(updateData, 'status')) {
+    try {
+      updateData.status = normalizeOrganizationStatus(updateData.status);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : 'Invalid organization status.' },
+        { status: 400 },
+      );
+    }
   }
   if (Object.prototype.hasOwnProperty.call(updateData, 'taxOrganizationType')) {
     updateData.taxOrganizationType = normalizeOrganizationTaxClassification(updateData.taxOrganizationType);

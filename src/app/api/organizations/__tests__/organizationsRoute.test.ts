@@ -43,7 +43,7 @@ describe('/api/organizations', () => {
     expect(res.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ OR: expect.any(Array) }),
+        where: expect.objectContaining({ OR: expect.any(Array), status: 'LISTED' }),
         take: 40,
       }),
     );
@@ -63,11 +63,30 @@ describe('/api/organizations', () => {
 
     expect(res.status).toBe(200);
     expect(findManyMock).toHaveBeenCalledWith({
-      where: {},
+      where: { status: 'LISTED' },
       take: 25,
       orderBy: { name: 'asc' },
     });
     expect(json.organizations).toEqual([]);
+  });
+
+  it('keeps unlisted organizations available for owner-scoped management lists', async () => {
+    findManyMock.mockResolvedValue([
+      { id: 'org_hidden', name: 'Demo Org', ownerId: 'owner_1', status: 'UNLISTED' },
+    ]);
+
+    const res = await organizationsGet(new NextRequest('http://localhost/api/organizations?ownerId=owner_1&limit=25'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: { ownerId: 'owner_1' },
+      take: 25,
+      orderBy: { name: 'asc' },
+    });
+    expect(json.organizations).toEqual([
+      expect.objectContaining({ $id: 'org_hidden', status: 'UNLISTED' }),
+    ]);
   });
 
   it('ignores client hasStripeAccount values when creating organizations', async () => {
@@ -86,6 +105,7 @@ describe('/api/organizations', () => {
         name: 'New Org',
         ownerId: 'user_1',
         hasStripeAccount: true,
+        status: 'UNLISTED',
         taxResponsibilityAgreementAccepted: true,
       }),
       headers: { 'content-type': 'application/json' },
@@ -98,6 +118,7 @@ describe('/api/organizations', () => {
         id: 'org_1',
         name: 'New Org',
         ownerId: 'user_1',
+        status: 'UNLISTED',
         hasStripeAccount: false,
         taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
         operatesAthleticFacility: false,

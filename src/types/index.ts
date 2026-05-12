@@ -15,6 +15,7 @@ import type {
   TaxLiabilityParty,
   TaxMode,
 } from '@/lib/taxPolicy';
+import type { OrganizationStatus } from '@/lib/organizationStatus';
 
 // User types
 export interface UserAccount {
@@ -737,6 +738,7 @@ export interface Organization {
   coordinates?: [number, number];
   ownerId?: string;
   hostIds?: string[];
+  status?: OrganizationStatus;
   hasStripeAccount?: boolean;
   taxOrganizationType?: OrganizationTaxClassification;
   operatesAthleticFacility?: boolean;
