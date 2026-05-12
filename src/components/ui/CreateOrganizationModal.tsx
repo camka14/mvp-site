@@ -10,6 +10,11 @@ import LocationSelector from '@/components/location/LocationSelector';
 import { useLocation } from '@/app/hooks/useLocation';
 import type { LocationInfo } from '@/lib/locationService';
 import { useSports } from '@/app/hooks/useSports';
+import {
+  DEFAULT_ORGANIZATION_STATUS,
+  getOrganizationStatus,
+  type OrganizationStatus,
+} from '@/lib/organizationStatus';
 import type { OrganizationDefaultEventTaxHandling, OrganizationTaxClassification } from '@/lib/taxPolicy';
 import {
   normalizeOrganizationDefaultEventTaxHandling,
@@ -27,6 +32,10 @@ interface Props {
 
 const DEFAULT_COORDINATES = { lat: 37.7749, lng: -122.4194 };
 const DEFAULT_LOCATION_LABEL = 'San Francisco, CA';
+const ORGANIZATION_STATUS_OPTIONS: Array<{ value: OrganizationStatus; label: string }> = [
+  { value: 'LISTED', label: 'Listed' },
+  { value: 'UNLISTED', label: 'Unlisted' },
+];
 
 const formatLocationLabel = (info: LocationInfo | null | undefined, coords: { lat: number; lng: number }) => {
   if (info) {
@@ -56,6 +65,7 @@ export default function CreateOrganizationModal({
   const { location: userLocation, locationInfo } = useLocation();
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const initializedRef = useRef(false);
+  const initializedOrganizationIdRef = useRef<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [logoUrl, setLogoUrl] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +77,7 @@ export default function CreateOrganizationModal({
     location: '',
     address: '',
     logoId: '',
+    status: DEFAULT_ORGANIZATION_STATUS,
     taxOrganizationType: 'INDIVIDUAL_OR_CLUB' as OrganizationTaxClassification,
     operatesAthleticFacility: false,
     defaultEventTaxHandling: 'STRIPE_TAX' as OrganizationDefaultEventTaxHandling,
@@ -108,12 +119,16 @@ export default function CreateOrganizationModal({
   useEffect(() => {
     if (!isOpen) {
       initializedRef.current = false;
+      initializedOrganizationIdRef.current = null;
       return;
     }
 
     setError(null);
 
     if (isEditing && organization) {
+      if (initializedRef.current && initializedOrganizationIdRef.current === organization.$id) {
+        return;
+      }
       const editingCoords = initialCoordinates ?? userLocation ?? DEFAULT_COORDINATES;
       const editingLabel =
         organization.location && organization.location.trim().length > 0
@@ -135,6 +150,7 @@ export default function CreateOrganizationModal({
         location: editingLabel,
         address: organization.address ?? '',
         logoId: organization.logoId ?? '',
+        status: getOrganizationStatus(organization.status),
         taxOrganizationType: normalizeOrganizationTaxClassification(organization.taxOrganizationType),
         operatesAthleticFacility: Boolean(organization.operatesAthleticFacility),
         defaultEventTaxHandling: normalizeOrganizationDefaultEventTaxHandling(organization.defaultEventTaxHandling),
@@ -153,6 +169,7 @@ export default function CreateOrganizationModal({
         setLogoUrl('');
       }
       initializedRef.current = true;
+      initializedOrganizationIdRef.current = organization.$id;
       return;
     }
 
@@ -171,6 +188,7 @@ export default function CreateOrganizationModal({
       location: label,
       address: '',
       logoId: '',
+      status: DEFAULT_ORGANIZATION_STATUS,
       taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
       operatesAthleticFacility: false,
       defaultEventTaxHandling: 'STRIPE_TAX',
@@ -179,6 +197,7 @@ export default function CreateOrganizationModal({
     setCoordinates(baseCoords);
     setLogoUrl('');
     initializedRef.current = true;
+    initializedOrganizationIdRef.current = null;
   }, [isOpen, isEditing, organization, initialCoordinates, userLocation, locationInfo]);
 
   useEffect(() => {
@@ -240,6 +259,7 @@ export default function CreateOrganizationModal({
           location: trimmedLocation || undefined,
           address: trimmedAddress || undefined,
           logoId: form.logoId || undefined,
+          status: form.status,
           taxOrganizationType: form.taxOrganizationType,
           operatesAthleticFacility: form.operatesAthleticFacility,
           defaultEventTaxHandling: form.defaultEventTaxHandling,
@@ -265,6 +285,7 @@ export default function CreateOrganizationModal({
           coordinates: coordinatesPayload,
           logoId: form.logoId || undefined,
           ownerId: currentUser.$id,
+          status: form.status,
           taxOrganizationType: form.taxOrganizationType,
           operatesAthleticFacility: form.operatesAthleticFacility,
           defaultEventTaxHandling: form.defaultEventTaxHandling,
@@ -281,6 +302,7 @@ export default function CreateOrganizationModal({
           location: '',
           address: '',
           logoId: '',
+          status: DEFAULT_ORGANIZATION_STATUS,
           taxOrganizationType: 'INDIVIDUAL_OR_CLUB',
           operatesAthleticFacility: false,
           defaultEventTaxHandling: 'STRIPE_TAX',
@@ -343,6 +365,17 @@ export default function CreateOrganizationModal({
           onChange={handleFieldChange('website')}
           placeholder="https://example.com"
           type="url"
+        />
+        <Select
+          label="Visibility"
+          description="Unlisted organizations stay out of discover pages but can still be opened with a direct link."
+          value={form.status}
+          onChange={(value) => setForm((prev) => ({
+            ...prev,
+            status: getOrganizationStatus(value),
+          }))}
+          data={ORGANIZATION_STATUS_OPTIONS}
+          required
         />
         <div>
           <MultiSelect
