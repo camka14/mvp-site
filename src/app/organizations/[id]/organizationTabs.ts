@@ -43,7 +43,7 @@ export const buildOrganizationTabs = ({
   }
 
   if (viewerCanAccessUsers) {
-    tabs.push({ label: 'Users', value: 'users' });
+    tabs.push({ label: 'Customers', value: 'users' });
   }
 
   if (isOwner) {

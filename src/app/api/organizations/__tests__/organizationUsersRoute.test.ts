@@ -25,6 +25,18 @@ const prismaMock = {
   teams: {
     findMany: jest.fn(),
   },
+  canonicalTeams: {
+    findMany: jest.fn(),
+  },
+  teamRegistrations: {
+    findMany: jest.fn(),
+  },
+  bills: {
+    findMany: jest.fn(),
+  },
+  billPayments: {
+    findMany: jest.fn(),
+  },
   userData: {
     findMany: jest.fn(),
   },
@@ -56,7 +68,19 @@ describe('GET /api/organizations/[id]/users', () => {
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.fields.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        eventId: 'event_org_1',
+        registrantId: 'player_1',
+        registrantType: 'SELF',
+        status: 'ACTIVE',
+      },
+    ]);
     prismaMock.eventOfficials.findMany.mockResolvedValue([]);
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.bills.findMany.mockResolvedValue([]);
+    prismaMock.billPayments.findMany.mockResolvedValue([]);
   });
 
   it('returns 403 for users who are not part of the organization', async () => {
@@ -283,6 +307,184 @@ describe('GET /api/organizations/[id]/users', () => {
     });
   });
 
+  it('returns canonical team customers with event team registrations and bills', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      email: 'owner@example.com',
+      emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      officialIds: [],
+      hostIds: [],
+    });
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'event_1',
+        name: 'Spring League',
+        start: new Date('2026-04-01T18:00:00.000Z'),
+        end: new Date('2026-04-01T20:00:00.000Z'),
+        organizationId: 'org_1',
+        userIds: [],
+        teamIds: ['event_team_1'],
+      },
+    ]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        eventId: 'event_1',
+        registrantId: 'event_team_1',
+        parentId: 'canonical_team_1',
+        registrantType: 'TEAM',
+        eventTeamId: 'event_team_1',
+        status: 'ACTIVE',
+      },
+    ]);
+    prismaMock.teams.findMany.mockResolvedValue([
+      {
+        id: 'event_team_1',
+        name: 'Aces - Spring League',
+        division: 'Open',
+        sport: 'Volleyball',
+        profileImageId: null,
+        teamSize: 6,
+        playerIds: ['player_1'],
+        captainId: 'player_1',
+        managerId: 'manager_1',
+        headCoachId: null,
+        coachIds: [],
+        parentTeamId: 'canonical_team_1',
+      },
+    ]);
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'canonical_team_1',
+        name: 'Aces',
+        division: 'Open',
+        sport: 'Volleyball',
+        profileImageId: null,
+        teamSize: 6,
+      },
+    ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { teamId: 'canonical_team_1', userId: 'player_1' },
+      { teamId: 'canonical_team_1', userId: 'manager_1' },
+    ]);
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'player_1', firstName: 'Alex', lastName: 'Brown', userName: 'abrown' },
+      { id: 'manager_1', firstName: 'Morgan', lastName: 'Diaz', userName: 'mdiaz' },
+    ]);
+    prismaMock.templateDocuments.findMany.mockResolvedValue([]);
+    prismaMock.signedDocuments.findMany.mockResolvedValue([]);
+    prismaMock.bills.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'bill_team_1',
+          ownerType: 'TEAM',
+          ownerId: 'canonical_team_1',
+          eventId: 'event_1',
+          parentBillId: null,
+          totalAmountCents: 12000,
+          paidAmountCents: 0,
+          status: 'OPEN',
+          allowSplit: true,
+          paymentPlanEnabled: false,
+          lineItems: null,
+          createdAt: new Date('2026-04-01T18:05:00.000Z'),
+          updatedAt: new Date('2026-04-01T18:05:00.000Z'),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'bill_user_1',
+          ownerType: 'USER',
+          ownerId: 'player_1',
+          eventId: 'event_1',
+          parentBillId: 'bill_team_1',
+          totalAmountCents: 6000,
+          paidAmountCents: 0,
+          status: 'OPEN',
+          allowSplit: false,
+          paymentPlanEnabled: false,
+          lineItems: null,
+          createdAt: new Date('2026-04-01T18:06:00.000Z'),
+          updatedAt: new Date('2026-04-01T18:06:00.000Z'),
+        },
+      ]);
+    prismaMock.billPayments.findMany.mockResolvedValue([
+      {
+        id: 'payment_team_1',
+        billId: 'bill_team_1',
+        sequence: 1,
+        dueDate: new Date('2026-04-01T18:05:00.000Z'),
+        amountCents: 12000,
+        status: 'PAID',
+        paidAt: new Date('2026-04-01T18:07:00.000Z'),
+        paymentIntentId: 'pi_team_1',
+        payerUserId: 'manager_1',
+        refundedAmountCents: 2000,
+        createdAt: new Date('2026-04-01T18:05:00.000Z'),
+        updatedAt: new Date('2026-04-01T18:07:00.000Z'),
+      },
+      {
+        id: 'payment_user_1',
+        billId: 'bill_user_1',
+        sequence: 1,
+        dueDate: new Date('2026-04-01T18:06:00.000Z'),
+        amountCents: 6000,
+        status: 'PENDING',
+        paidAt: null,
+        paymentIntentId: null,
+        payerUserId: null,
+        refundedAmountCents: 0,
+        createdAt: new Date('2026-04-01T18:06:00.000Z'),
+        updatedAt: new Date('2026-04-01T18:06:00.000Z'),
+      },
+    ]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1/users'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.canonicalTeams.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['canonical_team_1'] } },
+    }));
+    expect(payload.teams).toHaveLength(1);
+    expect(payload.teams[0]).toEqual(expect.objectContaining({
+      canonicalTeamId: 'canonical_team_1',
+      name: 'Aces',
+      memberCount: 2,
+    }));
+    expect(payload.teams[0].registrations).toEqual([
+      expect.objectContaining({
+        eventId: 'event_1',
+        eventTeamId: 'event_team_1',
+        eventTeamName: 'Aces - Spring League',
+        status: 'ACTIVE',
+        billIds: ['bill_team_1', 'bill_user_1'],
+        totalAmountCents: 18000,
+        paidAmountCents: 12000,
+      }),
+    ]);
+    expect(payload.teams[0].bills).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        billId: 'bill_team_1',
+        ownerType: 'TEAM',
+        ownerId: 'canonical_team_1',
+        paidAmountCents: 12000,
+        refundedAmountCents: 2000,
+      }),
+      expect.objectContaining({
+        billId: 'bill_user_1',
+        ownerType: 'USER',
+        ownerId: 'player_1',
+      }),
+    ]));
+  });
+
   it('includes host and staff users from external events that use organization fields', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
     prismaMock.authUser.findUnique.mockResolvedValue({
@@ -312,8 +514,19 @@ describe('GET /api/organizations/[id]/users', () => {
         officialIds: ['official_1'],
       },
     ]);
-    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        eventId: 'event_ext_1',
+        registrantId: 'player_1',
+        registrantType: 'SELF',
+        status: 'ACTIVE',
+      },
+    ]);
     prismaMock.eventOfficials.findMany.mockResolvedValue([
+      {
+        eventId: 'event_ext_1',
+        userId: 'official_1',
+      },
       {
         eventId: 'event_ext_1',
         userId: 'event_official_1',
@@ -385,7 +598,14 @@ describe('GET /api/organizations/[id]/users', () => {
         officialIds: ['official_1'],
       },
     ]);
-    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        eventId: 'event_org_1',
+        registrantId: 'player_1',
+        registrantType: 'SELF',
+        status: 'ACTIVE',
+      },
+    ]);
     prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.userData.findMany.mockResolvedValue([
       { id: 'player_1', firstName: 'Pat', lastName: 'Lee', userName: 'plee' },
@@ -400,7 +620,6 @@ describe('GET /api/organizations/[id]/users', () => {
     const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(prismaMock.eventOfficials.findMany).not.toHaveBeenCalled();
     expect(payload.users.map((row: { userId: string }) => row.userId)).toEqual(['player_1']);
     expect(payload.users[0].events).toEqual(expect.arrayContaining([
       expect.objectContaining({ eventId: 'event_org_1' }),

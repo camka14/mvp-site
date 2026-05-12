@@ -40,7 +40,7 @@ describe('buildOrganizationTabs', () => {
       { label: 'Overview', value: 'overview' },
       { label: 'Events', value: 'events' },
       { label: 'Teams', value: 'teams' },
-      { label: 'Users', value: 'users' },
+      { label: 'Customers', value: 'users' },
       { label: 'Event Templates', value: 'eventTemplates' },
       { label: 'Document Templates', value: 'templates' },
       { label: 'Staff', value: 'staff' },
