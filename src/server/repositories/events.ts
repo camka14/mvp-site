@@ -664,11 +664,44 @@ const buildDivisionDisplayName = (key: string, sportId?: string | null): string 
 
 const buildDivisionId = (eventId: string, key: string): string => buildEventDivisionId(eventId, key);
 
-const scopeDivisionIdentifierToEvent = (identifier: string, eventId: string): string => {
-  if (identifier.startsWith('division_')) {
-    return identifier;
+const normalizeEventIdForDivisionScope = (eventId: string): string => (
+  (eventId || 'event')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_') || 'event'
+);
+
+const isSameEventScopedDivisionId = (identifier: string, eventId: string): boolean => {
+  const marker = '__division__';
+  const markerIndex = identifier.lastIndexOf(marker);
+  if (markerIndex < 0) {
+    return false;
   }
-  const token = extractDivisionTokenFromId(identifier) ?? identifier;
+
+  const prefix = identifier.slice(0, markerIndex);
+  const normalizedEventId = normalizeEventIdForDivisionScope(eventId);
+  if (prefix === normalizedEventId) {
+    return true;
+  }
+
+  if (!prefix.startsWith(`${normalizedEventId}_`)) {
+    return false;
+  }
+
+  const suffix = prefix.slice(normalizedEventId.length + 1);
+  return /^\d+$/.test(suffix);
+};
+
+const scopeDivisionIdentifierToEvent = (identifier: string, eventId: string): string => {
+  const normalizedIdentifier = normalizeDivisionKey(identifier) ?? identifier;
+  if (normalizedIdentifier.startsWith('division_')) {
+    return normalizedIdentifier;
+  }
+  if (isSameEventScopedDivisionId(normalizedIdentifier, eventId)) {
+    return normalizedIdentifier;
+  }
+  const token = extractDivisionTokenFromId(normalizedIdentifier) ?? normalizedIdentifier;
   return buildDivisionId(eventId, token);
 };
 
@@ -2971,6 +3004,7 @@ export const syncEventDivisions = async (
     defaultInstallmentDueRelativeDays?: number[];
     defaultInstallmentAmounts?: number[];
     eventType?: string | null;
+    clearPlayoffPlacementMappings?: boolean;
   },
   client: PrismaLike = prisma,
 ) => {
@@ -3332,7 +3366,7 @@ export const syncEventDivisions = async (
         existing?.allowPaymentPlans ?? undefined,
         params.defaultAllowPaymentPlans ?? undefined,
       ) ?? null;
-    const playoffPlacementDivisionIds = kind === 'PLAYOFF'
+    const playoffPlacementDivisionIds = kind === 'PLAYOFF' || params.clearPlayoffPlacementMappings
       ? []
       : resolveDivisionValue(
           detail?.playoffPlacementDivisionIds,
@@ -3717,7 +3751,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   };
   const normalizedDivisionDetails = normalizeDivisionDetailsPayload(payload.divisionDetails, id, payload.sportId, 'LEAGUE')
     .map(normalizeDivisionBilling);
-  const normalizedPlayoffDivisionDetails = normalizeDivisionDetailsPayload(payload.playoffDivisionDetails, id, payload.sportId, 'PLAYOFF')
+  let normalizedPlayoffDivisionDetails = normalizeDivisionDetailsPayload(payload.playoffDivisionDetails, id, payload.sportId, 'PLAYOFF')
     .map(normalizeDivisionBilling);
   const payloadDivisionIds = normalizeDivisionIdentifierList(payload.divisions, id);
   const divisionIdsFromDetails = normalizedDivisionDetails.map((detail) => detail.id);
@@ -3855,6 +3889,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const splitLeaguePlayoffDivisions = payloadEventType === 'LEAGUE'
     ? coerceBoolean(payload.splitLeaguePlayoffDivisions, false)
     : (nextEventType === 'TOURNAMENT' && includePlayoffsOrPools);
+  const shouldClearLeaguePlayoffDivisionMappings = nextEventType === 'LEAGUE'
+    && Object.prototype.hasOwnProperty.call(payload, 'splitLeaguePlayoffDivisions')
+    && !splitLeaguePlayoffDivisions;
+  if (shouldClearLeaguePlayoffDivisionMappings) {
+    normalizedPlayoffDivisionDetails = [];
+  }
   const fallbackNoFixedEndDateTime = supportsNoFixedEndDateTime
     ? (
       !payloadIncludesNoFixedEndDateTime && typeof (existingEvent as any)?.noFixedEndDateTime === 'boolean'
@@ -4152,6 +4192,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     defaultInstallmentDueRelativeDays: defaultDivisionInstallmentDueRelativeDays,
     defaultInstallmentAmounts: defaultDivisionInstallmentAmounts,
     eventType: nextEventType,
+    clearPlayoffPlacementMappings: shouldClearLeaguePlayoffDivisionMappings,
   }, client);
   if (nextEventType === 'TOURNAMENT' && includePlayoffsOrPools && syncedDivisionIds.length) {
     await client.events.update({

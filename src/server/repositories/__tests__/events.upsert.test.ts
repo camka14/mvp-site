@@ -374,6 +374,185 @@ describe('upsertEventFromPayload', () => {
     expect(persistedSlotDivisions).toEqual([targetOpenDivisionId]);
   });
 
+  it('preserves same-event duplicate division ids when registering by division type', async () => {
+    const client = createMockClient();
+    const leagueDivisionIds = [
+      buildEventDivisionId('event_1', 'm_skill_open_age_16u'),
+      buildEventDivisionId('event_1_2', 'm_skill_open_age_16u'),
+      buildEventDivisionId('event_1_3', 'm_skill_open_age_16u'),
+      buildEventDivisionId('event_1_4', 'm_skill_open_age_16u'),
+    ];
+    const upperPlayoffDivisionId = divisionId('playoff_1');
+    const lowerPlayoffDivisionId = divisionId('playoff_2');
+    const placementMapping = [
+      upperPlayoffDivisionId,
+      upperPlayoffDivisionId,
+      lowerPlayoffDivisionId,
+      lowerPlayoffDivisionId,
+    ];
+
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'LEAGUE',
+      sportId: 'volleyball',
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      registrationByDivisionType: true,
+      splitLeaguePlayoffDivisions: true,
+      divisions: leagueDivisionIds,
+      divisionDetails: leagueDivisionIds.map((id, index) => ({
+        id,
+        key: 'm_skill_open_age_16u',
+        name: `Mens Open U16 - ${String.fromCharCode(65 + index)}`,
+        divisionTypeId: 'skill_open_age_16u',
+        divisionTypeName: 'Mens Open U16',
+        ratingType: 'SKILL',
+        gender: 'M',
+        maxParticipants: 4,
+        playoffTeamCount: 4,
+        playoffPlacementDivisionIds: placementMapping,
+      })),
+      playoffDivisionDetails: [
+        {
+          id: upperPlayoffDivisionId,
+          key: 'playoff_1',
+          kind: 'PLAYOFF',
+          name: 'Upper Division',
+          maxParticipants: 8,
+        },
+        {
+          id: lowerPlayoffDivisionId,
+          key: 'playoff_2',
+          kind: 'PLAYOFF',
+          name: 'Lower Division',
+          maxParticipants: 8,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.registrationByDivisionType).toBe(true);
+    expect(eventUpsertArg.update.registrationByDivisionType).toBe(true);
+    expect(eventUpsertArg.create.divisions).toEqual(leagueDivisionIds);
+    expect(eventUpsertArg.update.divisions).toEqual(leagueDivisionIds);
+
+    const leagueDivisionUpserts = client.divisions.upsert.mock.calls
+      .map(([args]) => args)
+      .filter((args) => leagueDivisionIds.includes(args.where.id));
+    expect(leagueDivisionUpserts).toHaveLength(4);
+    expect(leagueDivisionUpserts.map((args) => args.where.id)).toEqual(leagueDivisionIds);
+    expect(leagueDivisionUpserts.map((args) => args.create.name)).toEqual([
+      'Mens Open U16 - A',
+      'Mens Open U16 - B',
+      'Mens Open U16 - C',
+      'Mens Open U16 - D',
+    ]);
+    leagueDivisionUpserts.forEach((args) => {
+      expect(args.create.key).toBe('m_skill_open_age_16u');
+      expect(args.create.divisionTypeId).toBe('skill_open_age_16u');
+      expect(args.create.playoffPlacementDivisionIds).toEqual(placementMapping);
+      expect(args.update.playoffPlacementDivisionIds).toEqual(placementMapping);
+    });
+  });
+
+  it('removes split playoff divisions and clears explicit mappings when league split playoffs are disabled', async () => {
+    const client = createMockClient();
+    const openDivisionId = divisionId('open');
+    const upperPlayoffDivisionId = divisionId('playoff_1');
+    const lowerPlayoffDivisionId = divisionId('playoff_2');
+    const staleMapping = [upperPlayoffDivisionId, lowerPlayoffDivisionId];
+
+    client.divisions.findMany.mockResolvedValue([
+      {
+        id: openDivisionId,
+        key: 'open',
+        name: 'Open',
+        kind: 'LEAGUE',
+        fieldIds: [],
+        playoffPlacementDivisionIds: staleMapping,
+      },
+      {
+        id: upperPlayoffDivisionId,
+        key: 'playoff_1',
+        name: 'Upper Division',
+        kind: 'PLAYOFF',
+        fieldIds: [],
+        playoffPlacementDivisionIds: [],
+      },
+      {
+        id: lowerPlayoffDivisionId,
+        key: 'playoff_2',
+        name: 'Lower Division',
+        kind: 'PLAYOFF',
+        fieldIds: [],
+        playoffPlacementDivisionIds: [],
+      },
+    ]);
+
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      playoffTeamCount: 2,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: false,
+      divisions: [openDivisionId],
+      divisionDetails: [
+        {
+          id: openDivisionId,
+          key: 'open',
+          name: 'Open',
+          divisionTypeId: 'open',
+          divisionTypeName: 'Open',
+          ratingType: 'SKILL',
+          gender: 'C',
+          playoffTeamCount: 2,
+          playoffPlacementDivisionIds: staleMapping,
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: upperPlayoffDivisionId,
+          key: 'playoff_1',
+          kind: 'PLAYOFF',
+          name: 'Upper Division',
+          maxParticipants: 8,
+        },
+        {
+          id: lowerPlayoffDivisionId,
+          key: 'playoff_2',
+          kind: 'PLAYOFF',
+          name: 'Lower Division',
+          maxParticipants: 8,
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.splitLeaguePlayoffDivisions).toBe(false);
+    expect(eventUpsertArg.update.splitLeaguePlayoffDivisions).toBe(false);
+    expect(client.divisions.deleteMany).toHaveBeenCalledWith({
+      where: { id: { in: [upperPlayoffDivisionId, lowerPlayoffDivisionId] } },
+    });
+    expect(client.divisions.upsert).toHaveBeenCalledTimes(1);
+    expect(client.divisions.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: openDivisionId },
+        create: expect.objectContaining({
+          playoffPlacementDivisionIds: [],
+        }),
+        update: expect.objectContaining({
+          playoffPlacementDivisionIds: [],
+        }),
+      }),
+    );
+  });
+
   it('persists each multi-field slot/day selection as one canonical row and derives event fieldIds from slot assignments', async () => {
     const client = createMockClient();
     const payload = {

@@ -19,6 +19,7 @@ interface TournamentFieldsProps {
   title?: string;
   sport?: Sport;
   showDurationControls?: boolean;
+  unstyled?: boolean;
 }
 
 const BEST_OF_OPTIONS = [
@@ -75,6 +76,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
   title = 'Tournament Settings',
   sport,
   showDurationControls = true,
+  unstyled = false,
 }) => {
   const comboboxProps = { withinPortal: true, zIndex: 1800 };
   const requiresSets = Boolean(sport?.usePointsPerSetWin) || hasSetBasedSignals(tournamentData);
@@ -186,12 +188,13 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
     }
   }, [requiresSets, setTournamentData]);
 
-  return (
-    <Paper withBorder radius="md" shadow="xs" p="lg" className="bg-gray-50">
-      <Title order={4} mb="sm">
-        {title}
-      </Title>
-
+  const content = (
+    <>
+      {title ? (
+        <Title order={unstyled ? 6 : 4} mb="sm">
+          {title}
+        </Title>
+      ) : null}
       <Grid gutter="md" align="flex-end">
         <Grid.Col span={{ base: 12, md: 6 }}>
           <Select
@@ -400,6 +403,16 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
           maw={420}
         />
       </Stack>
+    </>
+  );
+
+  if (unstyled) {
+    return <div>{content}</div>;
+  }
+
+  return (
+    <Paper withBorder radius="md" shadow="xs" p="lg" className="bg-gray-50">
+      {content}
     </Paper>
   );
 };

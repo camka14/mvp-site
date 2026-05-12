@@ -289,6 +289,106 @@ describe('eventTemplates', () => {
     expect(source.timeSlots?.[0]?.divisions).toEqual([openSourceId]);
   });
 
+  it('preserves duplicate same-type league divisions when cloning an event as a template', () => {
+    const divisionTypeToken = 'm_skill_open_age_16u';
+    const sourceDivisionIds = [
+      buildEventDivisionId('event_source', divisionTypeToken),
+      buildEventDivisionId('event_source_2', divisionTypeToken),
+      buildEventDivisionId('event_source_3', divisionTypeToken),
+      buildEventDivisionId('event_source_4', divisionTypeToken),
+    ];
+    const sourceUpperId = buildEventDivisionId('event_source', 'playoff_upper');
+    const sourceLowerId = buildEventDivisionId('event_source', 'playoff_lower');
+
+    const templateId = 'tmpl_duplicates';
+    const templateDivisionIds = [
+      buildEventDivisionId(templateId, divisionTypeToken),
+      buildEventDivisionId(`${templateId}_2`, divisionTypeToken),
+      buildEventDivisionId(`${templateId}_3`, divisionTypeToken),
+      buildEventDivisionId(`${templateId}_4`, divisionTypeToken),
+    ];
+    const templateUpperId = buildEventDivisionId(templateId, 'playoff_upper');
+    const templateLowerId = buildEventDivisionId(templateId, 'playoff_lower');
+
+    const source = buildBaseEvent({
+      $id: 'event_source',
+      name: 'Duplicate Division League',
+      state: 'PUBLISHED',
+      singleDivision: false,
+      registrationByDivisionType: true,
+      splitLeaguePlayoffDivisions: true,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      divisions: sourceDivisionIds,
+      divisionDetails: sourceDivisionIds.map((id, index) => ({
+        id,
+        key: divisionTypeToken,
+        name: `Mens Open U16 - ${['A', 'B', 'C', 'D'][index]}`,
+        divisionTypeId: 'skill_open_age_16u',
+        divisionTypeName: 'Open U16',
+        playoffPlacementDivisionIds: [sourceUpperId, sourceUpperId, sourceLowerId, sourceLowerId],
+        teamIds: [],
+      })) as any,
+      playoffDivisionDetails: [
+        {
+          id: sourceUpperId,
+          key: 'playoff_upper',
+          name: 'Upper Division',
+          kind: 'PLAYOFF',
+        } as any,
+        {
+          id: sourceLowerId,
+          key: 'playoff_lower',
+          name: 'Lower Division',
+          kind: 'PLAYOFF',
+        } as any,
+      ],
+    });
+
+    const template = cloneEventAsTemplate(source, { templateId });
+
+    expect(template.registrationByDivisionType).toBe(true);
+    expect(template.divisions).toEqual(templateDivisionIds);
+    expect(template.divisionDetails?.map((detail) => ({
+      id: detail.id,
+      key: detail.key,
+      name: detail.name,
+      playoffPlacementDivisionIds: detail.playoffPlacementDivisionIds,
+    }))).toEqual([
+      {
+        id: templateDivisionIds[0],
+        key: divisionTypeToken,
+        name: 'Mens Open U16 - A',
+        playoffPlacementDivisionIds: [templateUpperId, templateUpperId, templateLowerId, templateLowerId],
+      },
+      {
+        id: templateDivisionIds[1],
+        key: divisionTypeToken,
+        name: 'Mens Open U16 - B',
+        playoffPlacementDivisionIds: [templateUpperId, templateUpperId, templateLowerId, templateLowerId],
+      },
+      {
+        id: templateDivisionIds[2],
+        key: divisionTypeToken,
+        name: 'Mens Open U16 - C',
+        playoffPlacementDivisionIds: [templateUpperId, templateUpperId, templateLowerId, templateLowerId],
+      },
+      {
+        id: templateDivisionIds[3],
+        key: divisionTypeToken,
+        name: 'Mens Open U16 - D',
+        playoffPlacementDivisionIds: [templateUpperId, templateUpperId, templateLowerId, templateLowerId],
+      },
+    ]);
+    expect(template.playoffDivisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: templateUpperId, name: 'Upper Division' }),
+        expect.objectContaining({ id: templateLowerId, name: 'Lower Division' }),
+      ]),
+    );
+    expect(source.divisions).toEqual(sourceDivisionIds);
+  });
+
   it('seeds a draft event from a template with aligned dates and new slot ids', () => {
     const idFactory = makeIdFactory('seed');
 
@@ -489,5 +589,101 @@ describe('eventTemplates', () => {
     });
     expect((seeded.fields?.[0] as any)?.divisions).toEqual([seededOpenId]);
     expect(seeded.timeSlots?.[0]?.divisions).toEqual([seededOpenId]);
+  });
+
+  it('preserves duplicate same-type league divisions when seeding from a template', () => {
+    const divisionTypeToken = 'm_skill_open_age_16u';
+    const templateDivisionIds = [
+      buildEventDivisionId('tmpl_seed', divisionTypeToken),
+      buildEventDivisionId('tmpl_seed_2', divisionTypeToken),
+      buildEventDivisionId('tmpl_seed_3', divisionTypeToken),
+      buildEventDivisionId('tmpl_seed_4', divisionTypeToken),
+    ];
+    const templateUpperId = buildEventDivisionId('tmpl_seed', 'playoff_upper');
+    const templateLowerId = buildEventDivisionId('tmpl_seed', 'playoff_lower');
+
+    const seededDivisionIds = [
+      buildEventDivisionId('event_seeded', divisionTypeToken),
+      buildEventDivisionId('event_seeded_2', divisionTypeToken),
+      buildEventDivisionId('event_seeded_3', divisionTypeToken),
+      buildEventDivisionId('event_seeded_4', divisionTypeToken),
+    ];
+    const seededUpperId = buildEventDivisionId('event_seeded', 'playoff_upper');
+    const seededLowerId = buildEventDivisionId('event_seeded', 'playoff_lower');
+
+    const seeded = seedEventFromTemplate(
+      buildBaseEvent({
+        $id: 'tmpl_seed',
+        name: 'Duplicate Division League (TEMPLATE)',
+        state: 'TEMPLATE',
+        singleDivision: false,
+        registrationByDivisionType: true,
+        splitLeaguePlayoffDivisions: true,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+        divisions: templateDivisionIds,
+        divisionDetails: templateDivisionIds.map((id, index) => ({
+          id,
+          key: divisionTypeToken,
+          name: `Mens Open U16 - ${['A', 'B', 'C', 'D'][index]}`,
+          divisionTypeId: 'skill_open_age_16u',
+          playoffPlacementDivisionIds: [templateUpperId, templateUpperId, templateLowerId, templateLowerId],
+        })) as any,
+        playoffDivisionDetails: [
+          {
+            id: templateUpperId,
+            key: 'playoff_upper',
+            name: 'Upper Division',
+            kind: 'PLAYOFF',
+          } as any,
+          {
+            id: templateLowerId,
+            key: 'playoff_lower',
+            name: 'Lower Division',
+            kind: 'PLAYOFF',
+          } as any,
+        ],
+      }),
+      {
+        newEventId: 'event_seeded',
+        newStartDate: new Date('2026-03-01T00:00:00'),
+        hostId: 'host_1',
+      },
+    );
+
+    expect(seeded.registrationByDivisionType).toBe(true);
+    expect(seeded.divisions).toEqual(seededDivisionIds);
+    expect(seeded.divisionDetails?.map((detail) => ({
+      id: detail.id,
+      name: detail.name,
+      playoffPlacementDivisionIds: detail.playoffPlacementDivisionIds,
+    }))).toEqual([
+      {
+        id: seededDivisionIds[0],
+        name: 'Mens Open U16 - A',
+        playoffPlacementDivisionIds: [seededUpperId, seededUpperId, seededLowerId, seededLowerId],
+      },
+      {
+        id: seededDivisionIds[1],
+        name: 'Mens Open U16 - B',
+        playoffPlacementDivisionIds: [seededUpperId, seededUpperId, seededLowerId, seededLowerId],
+      },
+      {
+        id: seededDivisionIds[2],
+        name: 'Mens Open U16 - C',
+        playoffPlacementDivisionIds: [seededUpperId, seededUpperId, seededLowerId, seededLowerId],
+      },
+      {
+        id: seededDivisionIds[3],
+        name: 'Mens Open U16 - D',
+        playoffPlacementDivisionIds: [seededUpperId, seededUpperId, seededLowerId, seededLowerId],
+      },
+    ]);
+    expect(seeded.playoffDivisionDetails).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: seededUpperId, name: 'Upper Division' }),
+        expect.objectContaining({ id: seededLowerId, name: 'Lower Division' }),
+      ]),
+    );
   });
 });

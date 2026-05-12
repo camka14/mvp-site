@@ -108,33 +108,74 @@ const resolveDivisionToken = (value: unknown): string | null => {
   return extractDivisionTokenFromId(normalized) ?? normalized;
 };
 
-const registerDivisionAlias = (
-  divisionIdMap: Map<string, string>,
+const isScopedDivisionIdentifier = (value: string): boolean => value.includes('__division__');
+
+const buildTargetDivisionId = (
   targetEventId: string,
-  value: unknown,
-): void => {
-  const normalized = normalizeDivisionIdentifier(value);
-  if (!normalized) return;
-  const token = resolveDivisionToken(normalized);
-  if (!token) return;
-  const scopedId = buildEventDivisionId(targetEventId, token);
-  divisionIdMap.set(normalized, scopedId);
-  divisionIdMap.set(token, scopedId);
-};
+  token: string,
+  duplicateIndex: number,
+): string => buildEventDivisionId(
+  duplicateIndex === 0 ? targetEventId : `${targetEventId}_${duplicateIndex + 1}`,
+  token,
+);
 
 const buildDivisionIdMap = (source: Event, targetEventId: string): Map<string, string> => {
   const divisionIdMap = new Map<string, string>();
+  const targetIds = new Set<string>();
+  const tokenCounts = new Map<string, number>();
+
+  const allocateTargetId = (token: string): string => {
+    let duplicateIndex = tokenCounts.get(token) ?? 0;
+    let targetId = buildTargetDivisionId(targetEventId, token, duplicateIndex);
+    while (targetIds.has(targetId)) {
+      duplicateIndex += 1;
+      targetId = buildTargetDivisionId(targetEventId, token, duplicateIndex);
+    }
+    tokenCounts.set(token, duplicateIndex + 1);
+    targetIds.add(targetId);
+    return targetId;
+  };
+
+  const registerDivisionAliases = (values: unknown[]): void => {
+    const aliases = Array.from(new Set(
+      values
+        .map((value) => normalizeDivisionIdentifier(value))
+        .filter((value): value is string => Boolean(value)),
+    ));
+    if (aliases.length === 0) {
+      return;
+    }
+
+    const scopedAlias = aliases.find(isScopedDivisionIdentifier);
+    const existingTarget = scopedAlias
+      ? divisionIdMap.get(scopedAlias)
+      : aliases.map((alias) => divisionIdMap.get(alias)).find((value): value is string => Boolean(value));
+    const token = resolveDivisionToken(scopedAlias ?? aliases[0]);
+    if (!token) {
+      return;
+    }
+    const targetId = existingTarget ?? allocateTargetId(token);
+
+    aliases.forEach((alias) => {
+      if (!divisionIdMap.has(alias)) {
+        divisionIdMap.set(alias, targetId);
+      }
+      const aliasToken = resolveDivisionToken(alias);
+      if (aliasToken && !divisionIdMap.has(aliasToken)) {
+        divisionIdMap.set(aliasToken, targetId);
+      }
+    });
+  };
 
   const registerDivisionDetail = (detail: unknown) => {
     if (!detail || typeof detail !== 'object') {
       return;
     }
     const row = detail as Record<string, unknown>;
-    registerDivisionAlias(divisionIdMap, targetEventId, row.id);
-    registerDivisionAlias(divisionIdMap, targetEventId, row.key);
+    registerDivisionAliases([row.id, row.key]);
     if (Array.isArray(row.playoffPlacementDivisionIds)) {
       row.playoffPlacementDivisionIds.forEach((divisionId) =>
-        registerDivisionAlias(divisionIdMap, targetEventId, divisionId),
+        registerDivisionAliases([divisionId]),
       );
     }
   };
@@ -142,15 +183,14 @@ const buildDivisionIdMap = (source: Event, targetEventId: string): Map<string, s
   if (Array.isArray(source.divisions)) {
     source.divisions.forEach((entry) => {
       if (typeof entry === 'string') {
-        registerDivisionAlias(divisionIdMap, targetEventId, entry);
+        registerDivisionAliases([entry]);
         return;
       }
       if (!entry || typeof entry !== 'object') {
         return;
       }
       const row = entry as Partial<Division>;
-      registerDivisionAlias(divisionIdMap, targetEventId, row.id);
-      registerDivisionAlias(divisionIdMap, targetEventId, row.key);
+      registerDivisionAliases([row.id, row.key]);
     });
   }
 
@@ -164,7 +204,7 @@ const buildDivisionIdMap = (source: Event, targetEventId: string): Map<string, s
     source.timeSlots.forEach((slot) => {
       if (Array.isArray(slot.divisions)) {
         slot.divisions.forEach((divisionId) =>
-          registerDivisionAlias(divisionIdMap, targetEventId, divisionId),
+          registerDivisionAliases([divisionId]),
         );
       }
     });
@@ -174,14 +214,14 @@ const buildDivisionIdMap = (source: Event, targetEventId: string): Map<string, s
       const fieldDivisions = (field as Field & { divisions?: unknown[] }).divisions;
       if (Array.isArray(fieldDivisions)) {
         fieldDivisions.forEach((divisionId) =>
-          registerDivisionAlias(divisionIdMap, targetEventId, divisionId),
+          registerDivisionAliases([divisionId]),
         );
       }
     });
   }
   if (source.divisionFieldIds && typeof source.divisionFieldIds === 'object' && !Array.isArray(source.divisionFieldIds)) {
     Object.keys(source.divisionFieldIds).forEach((divisionId) => {
-      registerDivisionAlias(divisionIdMap, targetEventId, divisionId);
+      registerDivisionAliases([divisionId]);
     });
   }
 

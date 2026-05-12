@@ -1720,6 +1720,486 @@ describe('EventForm dirty state', () => {
     expect(screen.getByLabelText('Division Playoff Team Count')).toBeInTheDocument();
   });
 
+  it('does not create a default playoff division when split playoff mode is enabled', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const leagueDivisionId = 'event_1__division__open';
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      teamSignup: true,
+      divisions: [leagueDivisionId],
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          id: leagueDivisionId,
+          key: 'open',
+          playoffTeamCount: 4,
+        },
+      ],
+      playoffDivisionDetails: [],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.getByText('Add at least one playoff division before saving split league/playoff divisions.')).toBeInTheDocument();
+    expect(screen.queryByText('Playoff Division 1')).not.toBeInTheDocument();
+    expect(screen.queryByText('Division Type: Playoff')).not.toBeInTheDocument();
+    expect(formRef.current?.getDraft()?.playoffDivisionDetails).toEqual([]);
+
+    let isValid: boolean | undefined;
+    await act(async () => {
+      isValid = await formRef.current?.validate();
+    });
+
+    expect(isValid).toBe(false);
+  });
+
+  it('uses one responsive division grid for league and playoff divisions in split playoff mode', async () => {
+    const onDirtyStateChange = jest.fn();
+    const upperDivisionId = 'event_1__division__playoff_1';
+    const lowerDivisionId = 'event_1__division__playoff_2';
+    const leagueDivisionId = 'event_1__division__m_skill_open_age_16u';
+
+    renderForm(onDirtyStateChange, undefined, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      registrationByDivisionType: true,
+      teamSignup: true,
+      divisions: [leagueDivisionId],
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          id: leagueDivisionId,
+          key: 'm_skill_open_age_16u',
+          name: 'Mens Open U16 - A',
+          gender: 'M',
+          playoffTeamCount: 4,
+          playoffPlacementDivisionIds: [upperDivisionId, upperDivisionId, lowerDivisionId, lowerDivisionId],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: upperDivisionId,
+          key: 'playoff_1',
+          kind: 'PLAYOFF',
+          name: 'Upper Division',
+          maxParticipants: 8,
+          playoffConfig: {},
+        },
+        {
+          id: lowerDivisionId,
+          key: 'playoff_2',
+          kind: 'PLAYOFF',
+          name: 'Lower Division',
+          maxParticipants: 8,
+          playoffConfig: {},
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.getByText('New Division')).toBeInTheDocument();
+    expect(screen.queryByText('League Divisions')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Division Type')).toHaveValue('LEAGUE');
+    expect(screen.getByLabelText('Placement #1')).toBeInTheDocument();
+    expect(document.querySelector('.responsive-card-grid')).not.toBeNull();
+    expect(screen.getByText('Division Type: League')).toBeInTheDocument();
+    expect(screen.getAllByText('Division Type: Playoff')).toHaveLength(2);
+  });
+
+  it('switches the split-division editor between league and playoff inputs', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      teamSignup: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+      playoffDivisionDetails: [
+        {
+          id: 'event_1__division__playoff_1',
+          key: 'playoff_1',
+          kind: 'PLAYOFF',
+          name: 'Upper Division',
+          maxParticipants: 8,
+          playoffConfig: {},
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    await userEvent.selectOptions(screen.getByLabelText('Division Type'), 'PLAYOFF');
+
+    await waitFor(() => {
+      expect(screen.getByLabelText('Playoff Division Name')).toBeInTheDocument();
+      expect(screen.getByLabelText('Teams Count')).toBeInTheDocument();
+      expect(screen.getByTestId('tournament-fields')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Gender')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Skill Division')).not.toBeInTheDocument();
+    });
+  });
+
+  it('warns for playoff division counts below two without coercing the input to two', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      teamSignup: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+      playoffDivisionDetails: [],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    await userEvent.selectOptions(screen.getByLabelText('Division Type'), 'PLAYOFF');
+
+    const teamsCountInput = await screen.findByLabelText('Teams Count');
+    fireEvent.change(teamsCountInput, {
+      target: { value: '1' },
+    });
+    fireEvent.blur(teamsCountInput);
+
+    await userEvent.click(screen.getByText('Add Division'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Playoff division teams count must be at least 2.')).toBeInTheDocument();
+      expect((teamsCountInput as HTMLInputElement).value).toBe('1');
+      expect(formRef.current?.getDraft()?.playoffDivisionDetails).toEqual([]);
+    });
+
+    fireEvent.change(teamsCountInput, {
+      target: { value: '' },
+    });
+    fireEvent.blur(teamsCountInput);
+
+    await userEvent.click(screen.getByText('Add Division'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Playoff division teams count must be at least 2.')).toBeInTheDocument();
+      expect((teamsCountInput as HTMLInputElement).value).toBe('');
+      expect(formRef.current?.getDraft()?.playoffDivisionDetails).toEqual([]);
+    });
+  });
+
+  it('renames a playoff division without reading from a released change event', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const playoffDivisionId = 'event_1__division__playoff_1';
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      teamSignup: true,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+      playoffDivisionDetails: [
+        {
+          id: playoffDivisionId,
+          key: 'playoff_1',
+          kind: 'PLAYOFF',
+          name: 'Upper Division',
+          maxParticipants: 8,
+          playoffConfig: {},
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    await userEvent.click(screen.getAllByText('Edit').at(-1) as HTMLElement);
+
+    const nameInput = await screen.findByLabelText('Playoff Division Name');
+    fireEvent.change(nameInput, {
+      target: { value: 'Gold Division' },
+    });
+
+    await userEvent.click(screen.getByText('Update Division'));
+
+    await waitFor(() => {
+      expect(formRef.current?.getDraft()?.playoffDivisionDetails?.[0]).toMatchObject({
+        id: playoffDivisionId,
+        name: 'Gold Division',
+      });
+    });
+  });
+
+  it('keeps a blank persisted playoff division count blank instead of displaying two', async () => {
+    const onDirtyStateChange = jest.fn();
+    const upperDivisionId = 'event_1__division__playoff_1';
+    const leagueDivisionId = 'event_1__division__m_skill_open_age_16u';
+
+    renderForm(onDirtyStateChange, undefined, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 1,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      registrationByDivisionType: true,
+      teamSignup: true,
+      divisions: [leagueDivisionId],
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 1,
+      },
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          id: leagueDivisionId,
+          key: 'm_skill_open_age_16u',
+          name: 'Mens Open U16 - A',
+          gender: 'M',
+          playoffTeamCount: 1,
+          playoffPlacementDivisionIds: [upperDivisionId],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: upperDivisionId,
+          key: 'playoff_1',
+          kind: 'PLAYOFF',
+          name: 'Upper Division',
+          maxParticipants: null,
+          playoffConfig: {},
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.getByText('Teams count: Not set')).toBeInTheDocument();
+    await userEvent.click(screen.getAllByText('Edit').at(-1) as HTMLElement);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Division')).toBeInTheDocument();
+      expect((screen.getByLabelText('Teams Count') as HTMLInputElement).value).toBe('');
+    });
+  });
+
+  it('saves split playoff placement mapping from the league division editor', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const upperDivisionId = 'event_1__division__playoff_1';
+    const lowerDivisionId = 'event_1__division__playoff_2';
+    const leagueDivisionId = 'event_1__division__m_skill_open_age_16u';
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      registrationByDivisionType: true,
+      teamSignup: true,
+      divisions: [leagueDivisionId],
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          id: leagueDivisionId,
+          key: 'm_skill_open_age_16u',
+          name: 'Mens Open U16 - A',
+          gender: 'M',
+          playoffTeamCount: 4,
+          playoffPlacementDivisionIds: [upperDivisionId, upperDivisionId, lowerDivisionId, lowerDivisionId],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: upperDivisionId,
+          key: 'playoff_1',
+          kind: 'PLAYOFF',
+          name: 'Upper Division',
+          maxParticipants: 8,
+          playoffConfig: {},
+        },
+        {
+          id: lowerDivisionId,
+          key: 'playoff_2',
+          kind: 'PLAYOFF',
+          name: 'Lower Division',
+          maxParticipants: 8,
+          playoffConfig: {},
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.getByText('Division Type: League')).toBeInTheDocument();
+    await userEvent.click(screen.getAllByText('Edit')[0]);
+
+    await waitFor(() => {
+      expect(screen.getByText('Edit Division')).toBeInTheDocument();
+      expect(screen.getByLabelText('Placement #1')).toHaveValue(upperDivisionId);
+    });
+
+    await userEvent.selectOptions(screen.getByLabelText('Placement #1'), lowerDivisionId);
+    await userEvent.click(screen.getByText('Update Division'));
+
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
+      expect(draft?.divisionDetails?.[0]?.playoffPlacementDivisionIds).toEqual([
+        lowerDivisionId,
+        upperDivisionId,
+        lowerDivisionId,
+        lowerDivisionId,
+      ]);
+    });
+  });
+
+  it('normalizes split playoff data for save while preserving it until saved', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const upperDivisionId = 'event_1__division__playoff_1';
+    const lowerDivisionId = 'event_1__division__playoff_2';
+    const leagueDivisionId = 'event_1__division__m_skill_open_age_16u';
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: true,
+      registrationByDivisionType: true,
+      teamSignup: true,
+      divisions: [leagueDivisionId],
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+      divisionDetails: [
+        {
+          ...buildEvent().divisionDetails[0],
+          id: leagueDivisionId,
+          key: 'm_skill_open_age_16u',
+          name: 'Mens Open U16 - A',
+          gender: 'M',
+          playoffTeamCount: 4,
+          playoffPlacementDivisionIds: [upperDivisionId, upperDivisionId, lowerDivisionId, lowerDivisionId],
+        },
+      ],
+      playoffDivisionDetails: [
+        {
+          id: upperDivisionId,
+          key: 'playoff_1',
+          kind: 'PLAYOFF',
+          name: 'Upper Division',
+          maxParticipants: 8,
+          playoffConfig: {},
+        },
+        {
+          id: lowerDivisionId,
+          key: 'playoff_2',
+          kind: 'PLAYOFF',
+          name: 'Lower Division',
+          maxParticipants: 8,
+          playoffConfig: {},
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const splitSwitch = screen.getByRole('switch', { name: /Split League & Playoff Divisions/ });
+    await userEvent.click(splitSwitch);
+
+    await waitFor(() => {
+      expect(splitSwitch).not.toBeChecked();
+      const draft = formRef.current?.getDraft();
+      expect(draft?.splitLeaguePlayoffDivisions).toBe(false);
+      expect(draft?.playoffDivisionDetails).toEqual([]);
+      expect(draft?.divisionDetails?.[0]?.playoffPlacementDivisionIds).toEqual([]);
+    });
+
+    await userEvent.click(splitSwitch);
+
+    await waitFor(() => {
+      expect(splitSwitch).toBeChecked();
+      expect(screen.getAllByText('Upper Division').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Lower Division').length).toBeGreaterThan(0);
+      const draft = formRef.current?.getDraft();
+      expect(draft?.playoffDivisionDetails).toHaveLength(2);
+      expect(draft?.divisionDetails?.[0]?.playoffPlacementDivisionIds).toEqual([
+        upperDivisionId,
+        upperDivisionId,
+        lowerDivisionId,
+        lowerDivisionId,
+      ]);
+    });
+  });
+
   it('does not require an event-level max participant value for multi-division events', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();
