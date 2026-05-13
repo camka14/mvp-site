@@ -2,10 +2,6 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { spawn, spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
-
-const require = createRequire(import.meta.url);
-const nextCli = require.resolve('next/dist/bin/next');
 const DEFAULT_NGROK_DOMAIN = 'untarnished-berserkly-everette.ngrok-free.dev';
 const STRIPE_LISTEN_EVENTS = [
   'account.updated',
@@ -59,9 +55,6 @@ const parsePort = (args) => {
 
   return 3000;
 };
-
-const hasBundlerFlag = (args) =>
-  args.some((arg) => arg === '--webpack' || arg === '--turbo' || arg === '--turbopack');
 
 const isFlagEnabled = (value, defaultValue = true) => {
   if (typeof value !== 'string') {
@@ -582,7 +575,7 @@ const startNgrok = async (port) => {
 const run = async () => {
   const args = process.argv.slice(2);
   const port = parsePort(args);
-  const nextDevArgs = hasBundlerFlag(args) ? args : ['--webpack', ...args];
+  const nextDevArgs = args.filter((arg) => arg !== '--webpack' && arg !== '--turbo' && arg !== '--turbopack');
   const enableNgrok = isFlagEnabled(process.env.MVP_DEV_ENABLE_NGROK, true);
   const enableStripeListen = isFlagEnabled(process.env.MVP_DEV_ENABLE_STRIPE_LISTEN, true);
   const requireNgrok = isFlagEnabled(process.env.MVP_DEV_REQUIRE_NGROK, false);
@@ -658,7 +651,7 @@ const run = async () => {
     }
   }
 
-  const nextProc = spawn(process.execPath, [nextCli, 'dev', ...nextDevArgs], {
+  const nextProc = spawn(process.execPath, ['server.mjs', '--dev', ...nextDevArgs], {
     stdio: 'inherit',
     env: nextEnv,
   });
