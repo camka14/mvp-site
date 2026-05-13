@@ -17,6 +17,14 @@ const serializeDivision = (division: Division) => ({
         loserBracketPointsToVictory: [...(division.playoffConfig.loserBracketPointsToVictory ?? [])],
       }
     : null,
+  leagueConfig: division.leagueConfig
+    ? {
+        ...division.leagueConfig,
+        pointsToVictory: Array.isArray(division.leagueConfig.pointsToVictory)
+          ? [...division.leagueConfig.pointsToVictory]
+          : undefined,
+      }
+    : null,
 });
 
 const serializeTeam = (team: Team) => ({
@@ -364,6 +372,14 @@ export const serializeEventLegacy = (event: Tournament | League) => {
             loserBracketPointsToVictory: [...(division.playoffConfig.loserBracketPointsToVictory ?? [])],
           }
         : null,
+      leagueConfig: division.leagueConfig
+        ? {
+            ...division.leagueConfig,
+            pointsToVictory: Array.isArray(division.leagueConfig.pointsToVictory)
+              ? [...division.leagueConfig.pointsToVictory]
+              : undefined,
+          }
+        : null,
     })),
     playoffDivisionDetails: event instanceof League
       ? event.playoffDivisions.map((division) => ({
@@ -382,6 +398,14 @@ export const serializeEventLegacy = (event: Tournament | League) => {
                 ...division.playoffConfig,
                 winnerBracketPointsToVictory: [...(division.playoffConfig.winnerBracketPointsToVictory ?? [])],
                 loserBracketPointsToVictory: [...(division.playoffConfig.loserBracketPointsToVictory ?? [])],
+              }
+            : null,
+          leagueConfig: division.leagueConfig
+            ? {
+                ...division.leagueConfig,
+                pointsToVictory: Array.isArray(division.leagueConfig.pointsToVictory)
+                  ? [...division.leagueConfig.pointsToVictory]
+                  : undefined,
               }
             : null,
         }))

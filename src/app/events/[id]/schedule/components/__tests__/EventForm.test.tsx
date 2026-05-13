@@ -147,7 +147,9 @@ jest.mock('@/app/discover/components/LeagueFields', () => {
       : 0;
     return (
       <div data-testid="league-fields">
-        <span data-testid="league-conflict-count">{conflictCount}</span>
+        {props?.showTimeslots === false ? null : (
+          <span data-testid="league-conflict-count">{conflictCount}</span>
+        )}
       </div>
     );
   }
@@ -1587,7 +1589,7 @@ describe('EventForm dirty state', () => {
     expect(teamSignupSwitch).toBeInTheDocument();
   });
 
-  it('renders division mode switches before division settings fields', async () => {
+  it('renders division mode switches before division fields', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(onDirtyStateChange, undefined, {
@@ -1607,7 +1609,7 @@ describe('EventForm dirty state', () => {
 
     const divisionSettingsSection = document.getElementById('section-division-settings-content');
     const divisionModeSwitches = screen.getByTestId('division-mode-switches');
-    const singleDivisionSettings = screen.getByText('Single Division Settings');
+    const singleDivisionSettings = screen.getByText('Single Division');
 
     expect(divisionSettingsSection).not.toBeNull();
     expect(divisionSettingsSection).toContainElement(divisionModeSwitches);
@@ -1718,6 +1720,74 @@ describe('EventForm dirty state', () => {
     expect(screen.queryByLabelText('Default Playoff Team Count')).not.toBeInTheDocument();
     expect(screen.queryByText('Default Payment Plan')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Division Playoff Team Count')).toBeInTheDocument();
+  });
+
+  it('keeps non-split league division playoff settings on each division draft', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const leagueDivisionId = 'event_1__division__open';
+    const baseDivision = buildEvent().divisionDetails[0];
+    mockUseSportsState = buildMockUseSportsState({
+      sports: [{ ...mockSport, usePointsPerSetWin: true }],
+    });
+
+    renderForm(onDirtyStateChange, formRef, {
+      eventType: 'LEAGUE',
+      sportConfig: { ...mockSport, usePointsPerSetWin: true },
+      includePlayoffs: true,
+      includePlayoffsOrPools: true,
+      playoffTeamCount: 4,
+      singleDivision: false,
+      splitLeaguePlayoffDivisions: false,
+      teamSignup: true,
+      divisions: [leagueDivisionId],
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+        playoffTeamCount: 4,
+      },
+      divisionDetails: [
+        {
+          ...baseDivision,
+          id: leagueDivisionId,
+          key: 'open',
+          maxParticipants: 4,
+          playoffTeamCount: 4,
+          playoffConfig: {
+            doubleElimination: false,
+            winnerSetCount: 3,
+            loserSetCount: 1,
+            winnerBracketPointsToVictory: [25, 25, 15],
+            loserBracketPointsToVictory: [25],
+            prize: '',
+            fieldCount: 1,
+            restTimeMinutes: 18,
+          },
+        },
+      ],
+      playoffDivisionDetails: [],
+    });
+
+    await waitFor(() => {
+      expect(formRef.current).not.toBeNull();
+    });
+
+    expect(screen.getByTestId('tournament-fields')).toBeInTheDocument();
+    expect(formRef.current?.getDraft()).toEqual(
+      expect.objectContaining({
+        splitLeaguePlayoffDivisions: false,
+        playoffDivisionDetails: [],
+        divisionDetails: [
+          expect.objectContaining({
+            id: leagueDivisionId,
+            playoffConfig: expect.objectContaining({
+              winnerSetCount: 3,
+              restTimeMinutes: 18,
+            }),
+          }),
+        ],
+      }),
+    );
   });
 
   it('does not create a default playoff division when split playoff mode is enabled', async () => {
@@ -2221,7 +2291,7 @@ describe('EventForm dirty state', () => {
     expect(isValid).toBe(true);
   });
 
-  it('keeps weekly event team signup in Event Details and out of Division Settings', async () => {
+  it('keeps weekly event team signup in Event Details and out of Divisions', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(onDirtyStateChange, undefined, {

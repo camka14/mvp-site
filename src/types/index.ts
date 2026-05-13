@@ -57,6 +57,13 @@ export interface Division {
   standingsConfirmedAt?: string;
   standingsConfirmedBy?: string;
   playoffConfig?: TournamentConfig;
+  gamesPerOpponent?: number;
+  restTimeMinutes?: number;
+  usesSets?: boolean;
+  matchDurationMinutes?: number | null;
+  setDurationMinutes?: number | null;
+  setsPerMatch?: number;
+  pointsToVictory?: number[];
   allowPaymentPlans?: boolean;
   installmentCount?: number;
   installmentDueDates?: string[];
@@ -81,9 +88,9 @@ export interface LeagueConfig {
   includePlayoffs: boolean;
   playoffTeamCount?: number;
   usesSets: boolean;
-  matchDurationMinutes: number;
+  matchDurationMinutes?: number | null;
   restTimeMinutes?: number;
-  setDurationMinutes?: number;
+  setDurationMinutes?: number | null;
   setsPerMatch?: number;
   pointsToVictory?: number[];
 }
@@ -98,8 +105,8 @@ export interface TournamentConfig {
   fieldCount: number;
   restTimeMinutes: number;
   usesSets: boolean;
-  matchDurationMinutes: number;
-  setDurationMinutes?: number;
+  matchDurationMinutes?: number | null;
+  setDurationMinutes?: number | null;
 }
 
 export type OfficialSchedulingMode = 'STAFFING' | 'TEAM_STAFFING' | 'SCHEDULE' | 'OFF';
@@ -689,8 +696,8 @@ export interface Event {
   includePlayoffsOrPools?: boolean;
   playoffTeamCount?: number;
   usesSets?: boolean;
-  matchDurationMinutes?: number;
-  setDurationMinutes?: number;
+  matchDurationMinutes?: number | null;
+  setDurationMinutes?: number | null;
   setsPerMatch?: number;
   doTeamsOfficiate?: boolean;
   teamOfficialsMaySwap?: boolean;
@@ -951,6 +958,16 @@ const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig |
     }
     return Math.max(min, Math.trunc(parsed));
   };
+  const normalizeOptionalDuration = (input: unknown): number | undefined => {
+    if (input === null || input === undefined || input === '') {
+      return undefined;
+    }
+    const parsed = typeof input === 'number' ? input : Number(input);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    return Math.max(0, Math.trunc(parsed));
+  };
 
   const normalizePoints = (input: unknown, expectedLength: number): number[] => {
     const values = Array.isArray(input)
@@ -982,8 +999,8 @@ const normalizeTournamentConfigForPayload = (value: unknown): TournamentConfig |
     fieldCount: normalizeNumber(row.fieldCount, 1, 1),
     restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0, 0),
     usesSets,
-    matchDurationMinutes: normalizeNumber(row.matchDurationMinutes, 60, 0),
-    setDurationMinutes: usesSets ? normalizeNumber(row.setDurationMinutes, 20, 0) : undefined,
+    matchDurationMinutes: normalizeOptionalDuration(row.matchDurationMinutes),
+    setDurationMinutes: usesSets ? normalizeOptionalDuration(row.setDurationMinutes) : undefined,
   };
 };
 
@@ -1341,6 +1358,45 @@ export function toEventPayload(event: Event): EventPayload {
               ? (division as unknown as { playoffConfig?: unknown }).playoffConfig
               : undefined,
           ),
+          gamesPerOpponent:
+            typeof division.gamesPerOpponent === 'number'
+              ? division.gamesPerOpponent
+              : Number.isFinite(Number(division.gamesPerOpponent))
+                ? Number(division.gamesPerOpponent)
+                : undefined,
+          restTimeMinutes:
+            typeof division.restTimeMinutes === 'number'
+              ? division.restTimeMinutes
+              : Number.isFinite(Number(division.restTimeMinutes))
+                ? Number(division.restTimeMinutes)
+                : undefined,
+          usesSets:
+            typeof division.usesSets === 'boolean'
+              ? division.usesSets
+              : undefined,
+          matchDurationMinutes:
+            typeof division.matchDurationMinutes === 'number'
+              ? division.matchDurationMinutes
+              : Number.isFinite(Number(division.matchDurationMinutes))
+                ? Number(division.matchDurationMinutes)
+                : undefined,
+          setDurationMinutes:
+            typeof division.setDurationMinutes === 'number'
+              ? division.setDurationMinutes
+              : Number.isFinite(Number(division.setDurationMinutes))
+                ? Number(division.setDurationMinutes)
+                : undefined,
+          setsPerMatch:
+            typeof division.setsPerMatch === 'number'
+              ? division.setsPerMatch
+              : Number.isFinite(Number(division.setsPerMatch))
+                ? Number(division.setsPerMatch)
+                : undefined,
+          pointsToVictory: Array.isArray(division.pointsToVictory)
+            ? division.pointsToVictory
+                .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+                .filter((entry) => Number.isFinite(entry))
+            : undefined,
           allowPaymentPlans:
             typeof division.allowPaymentPlans === 'boolean'
               ? division.allowPaymentPlans

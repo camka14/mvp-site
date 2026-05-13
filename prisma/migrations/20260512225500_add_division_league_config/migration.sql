@@ -1,0 +1,16 @@
+ALTER TABLE "Divisions"
+ADD COLUMN "gamesPerOpponent" INTEGER,
+ADD COLUMN "restTimeMinutes" INTEGER,
+ADD COLUMN "usesSets" BOOLEAN,
+ADD COLUMN "matchDurationMinutes" INTEGER,
+ADD COLUMN "setDurationMinutes" INTEGER,
+ADD COLUMN "setsPerMatch" INTEGER,
+ADD COLUMN "pointsToVictory" INTEGER[] DEFAULT ARRAY[]::INTEGER[],
+ADD COLUMN "playoffDoubleElimination" BOOLEAN,
+ADD COLUMN "playoffWinnerSetCount" INTEGER,
+ADD COLUMN "playoffLoserSetCount" INTEGER,
+ADD COLUMN "playoffWinnerBracketPointsToVictory" INTEGER[] DEFAULT ARRAY[]::INTEGER[],
+ADD COLUMN "playoffLoserBracketPointsToVictory" INTEGER[] DEFAULT ARRAY[]::INTEGER[],
+ADD COLUMN "playoffPrize" TEXT,
+ADD COLUMN "playoffFieldCount" INTEGER,
+ADD COLUMN "playoffRestTimeMinutes" INTEGER;

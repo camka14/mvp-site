@@ -54,7 +54,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
     'If a control is conditional, explain the condition before describing the input.',
     'Do not invent current field values. Use current page context or read tools for live event data when needed.',
     'Use user-facing labels in answers, not internal paths, unless the user asks for implementation details.',
-    'For capability questions, inspect the field inventory across sections before saying a workflow is unsupported. Some workflows are composed from Event Type, Division Settings, League settings, playoff configuration, and timeslots rather than exposed as a single preset.',
+    'For capability questions, inspect the field inventory across sections before saying a workflow is unsupported. Some workflows are composed from Event Type, Divisions, League settings, playoff configuration, and timeslots rather than exposed as a single preset.',
     'If the user describes a workflow using terms that are not literal form labels, identify the nearest supported configuration from the available fields and explain the required toggles/sections. Do not claim a capability is missing just because one queried section did not contain a matching label.',
   ],
   capabilities: [
@@ -65,7 +65,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
       composedFrom: [
         'Event Type = League',
         'Include playoffs',
-        'Single Division or multiple Division Settings',
+        'Single Division or multiple Divisions',
         'Division Playoff Team Count / Playoff Team Count',
         'Split League & Playoff Divisions when regular-season groups and playoff brackets need separate containers',
         'Placement #N mapping from each league division into playoff divisions',
@@ -121,7 +121,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
         'Division Price and division payment plans',
         'Timeslot Divisions',
       ],
-      description: 'Division settings define concrete participant groups and can be used with registration and timeslots. Register by Division Type lets users choose a type while the event assigns them to a matching concrete division.',
+      description: 'Divisions define concrete participant groups and can be used with registration and timeslots. Register by Division Type lets users choose a type while the event assigns them to a matching concrete division.',
       setupSteps: [
         'Turn off Single Division when separate concrete groups are needed.',
         'Add division rows with matching skill/age/gender or custom names.',
@@ -129,7 +129,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
         'Use Timeslot Divisions to restrict which groups can be scheduled in each slot.',
       ],
       cautions: [
-        'League and tournament events are team events and may start from single-division defaults; multi-division workflows require intentionally configuring division settings.',
+        'League and tournament events are team events and may start from single-division defaults; multi-division workflows require intentionally configuring divisions.',
       ],
     },
   ],
@@ -467,18 +467,8 @@ export const eventFormAgentContext: EventFormAgentContext = {
       id: 'match-rules',
       title: 'Match Rules',
       visibleWhen: 'Visible for League and Tournament events. Hidden for simple Event and Weekly Event.',
-      summary: 'Event-specific overrides for the sport scoring template and incident capture behavior.',
+      summary: 'Event-specific overrides for sport-supported result paths and incident capture behavior.',
       inputs: [
-        {
-          path: 'matchRulesOverride.segmentCount',
-          label: 'Set/Period/Inning/Total count',
-          inputType: 'number input',
-          visibleWhen: 'Visible in Match Rules for League and Tournament.',
-          requiredWhen: 'Optional; blank means use sport default or set-count fallback.',
-          defaultOrPreset: 'Blank unless the event already has an override. Sport template supplies resolved default.',
-          createsOrUpdates: ['matchRulesOverride.segmentCount'],
-          description: 'Overrides how many scoring segments a match has while keeping the sport scoring model locked. For set-based events, defaults are derived from setsPerMatch or winnerSetCount.',
-        },
         {
           path: 'matchRulesOverride.supportsOvertime',
           label: 'Allow overtime',
@@ -651,7 +641,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
     },
     {
       id: 'division-settings',
-      title: 'Division Settings',
+      title: 'Divisions',
       visibleWhen: visibleAlways,
       summary: 'Participant grouping, division pricing/capacity, per-division payment plans, playoff qualification counts, and split playoff division mapping.',
       inputs: [
@@ -773,7 +763,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
           requiredWhen: 'At least one division is required.',
           defaultOrPreset: 'Generated from sport defaults when no saved divisions exist.',
           createsOrUpdates: ['divisions', 'divisionDetails'],
-          description: 'Persists division rows and keeps the event divisions array in sync with detailed division settings. Removing a division also affects timeslot division options and playoff placement mapping.',
+          description: 'Persists division rows and keeps the event divisions array in sync with detailed division records. Removing a division also affects timeslot division options and playoff placement mapping.',
         },
         {
           path: 'singleDivision',
@@ -789,7 +779,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
           path: 'registrationByDivisionType',
           label: 'Register by Division Type',
           inputType: 'switch',
-          visibleWhen: 'Visible with division settings for supported event/team settings.',
+          visibleWhen: 'Visible with divisions for supported event/team settings.',
           requiredWhen: 'Optional.',
           defaultOrPreset: 'Existing registrationByDivisionType or false.',
           createsOrUpdates: ['registrationByDivisionType'],
@@ -927,7 +917,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
     },
     {
       id: 'schedule-config',
-      title: 'Schedule Config',
+      title: 'Schedule',
       visibleWhen: 'Visible for League, Tournament, parent Weekly Event, weekly child sessions, and rental-slot contexts.',
       summary: 'Tournament bracket settings, league configuration, recurring/non-recurring timeslots, weekly session fields, and playoff bracket configuration.',
       inputs: [

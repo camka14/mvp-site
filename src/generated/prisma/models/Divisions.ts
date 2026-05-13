@@ -30,6 +30,20 @@ export type DivisionsAvgAggregateOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  gamesPerOpponent: number | null
+  restTimeMinutes: number | null
+  matchDurationMinutes: number | null
+  setDurationMinutes: number | null
+  setsPerMatch: number | null
+  pointsToVictory: number | null
+  playoffWinnerSetCount: number | null
+  playoffLoserSetCount: number | null
+  playoffWinnerBracketPointsToVictory: number | null
+  playoffLoserBracketPointsToVictory: number | null
+  playoffFieldCount: number | null
+  playoffRestTimeMinutes: number | null
+  playoffMatchDurationMinutes: number | null
+  playoffSetDurationMinutes: number | null
   installmentCount: number | null
   installmentDueRelativeDays: number | null
   installmentAmounts: number | null
@@ -41,6 +55,20 @@ export type DivisionsSumAggregateOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  gamesPerOpponent: number | null
+  restTimeMinutes: number | null
+  matchDurationMinutes: number | null
+  setDurationMinutes: number | null
+  setsPerMatch: number | null
+  pointsToVictory: number[]
+  playoffWinnerSetCount: number | null
+  playoffLoserSetCount: number | null
+  playoffWinnerBracketPointsToVictory: number[]
+  playoffLoserBracketPointsToVictory: number[]
+  playoffFieldCount: number | null
+  playoffRestTimeMinutes: number | null
+  playoffMatchDurationMinutes: number | null
+  playoffSetDurationMinutes: number | null
   installmentCount: number | null
   installmentDueRelativeDays: number[]
   installmentAmounts: number[]
@@ -61,6 +89,20 @@ export type DivisionsMinAggregateOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  gamesPerOpponent: number | null
+  restTimeMinutes: number | null
+  usesSets: boolean | null
+  matchDurationMinutes: number | null
+  setDurationMinutes: number | null
+  setsPerMatch: number | null
+  playoffDoubleElimination: boolean | null
+  playoffWinnerSetCount: number | null
+  playoffLoserSetCount: number | null
+  playoffPrize: string | null
+  playoffFieldCount: number | null
+  playoffRestTimeMinutes: number | null
+  playoffMatchDurationMinutes: number | null
+  playoffSetDurationMinutes: number | null
   standingsConfirmedAt: Date | null
   standingsConfirmedBy: string | null
   allowPaymentPlans: boolean | null
@@ -88,6 +130,20 @@ export type DivisionsMaxAggregateOutputType = {
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
+  gamesPerOpponent: number | null
+  restTimeMinutes: number | null
+  usesSets: boolean | null
+  matchDurationMinutes: number | null
+  setDurationMinutes: number | null
+  setsPerMatch: number | null
+  playoffDoubleElimination: boolean | null
+  playoffWinnerSetCount: number | null
+  playoffLoserSetCount: number | null
+  playoffPrize: string | null
+  playoffFieldCount: number | null
+  playoffRestTimeMinutes: number | null
+  playoffMatchDurationMinutes: number | null
+  playoffSetDurationMinutes: number | null
   standingsConfirmedAt: Date | null
   standingsConfirmedBy: string | null
   allowPaymentPlans: boolean | null
@@ -117,6 +173,23 @@ export type DivisionsCountAggregateOutputType = {
   playoffTeamCount: number
   playoffPlacementDivisionIds: number
   standingsOverrides: number
+  gamesPerOpponent: number
+  restTimeMinutes: number
+  usesSets: number
+  matchDurationMinutes: number
+  setDurationMinutes: number
+  setsPerMatch: number
+  pointsToVictory: number
+  playoffDoubleElimination: number
+  playoffWinnerSetCount: number
+  playoffLoserSetCount: number
+  playoffWinnerBracketPointsToVictory: number
+  playoffLoserBracketPointsToVictory: number
+  playoffPrize: number
+  playoffFieldCount: number
+  playoffRestTimeMinutes: number
+  playoffMatchDurationMinutes: number
+  playoffSetDurationMinutes: number
   standingsConfirmedAt: number
   standingsConfirmedBy: number
   allowPaymentPlans: number
@@ -142,6 +215,20 @@ export type DivisionsAvgAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  gamesPerOpponent?: true
+  restTimeMinutes?: true
+  matchDurationMinutes?: true
+  setDurationMinutes?: true
+  setsPerMatch?: true
+  pointsToVictory?: true
+  playoffWinnerSetCount?: true
+  playoffLoserSetCount?: true
+  playoffWinnerBracketPointsToVictory?: true
+  playoffLoserBracketPointsToVictory?: true
+  playoffFieldCount?: true
+  playoffRestTimeMinutes?: true
+  playoffMatchDurationMinutes?: true
+  playoffSetDurationMinutes?: true
   installmentCount?: true
   installmentDueRelativeDays?: true
   installmentAmounts?: true
@@ -153,6 +240,20 @@ export type DivisionsSumAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  gamesPerOpponent?: true
+  restTimeMinutes?: true
+  matchDurationMinutes?: true
+  setDurationMinutes?: true
+  setsPerMatch?: true
+  pointsToVictory?: true
+  playoffWinnerSetCount?: true
+  playoffLoserSetCount?: true
+  playoffWinnerBracketPointsToVictory?: true
+  playoffLoserBracketPointsToVictory?: true
+  playoffFieldCount?: true
+  playoffRestTimeMinutes?: true
+  playoffMatchDurationMinutes?: true
+  playoffSetDurationMinutes?: true
   installmentCount?: true
   installmentDueRelativeDays?: true
   installmentAmounts?: true
@@ -173,6 +274,20 @@ export type DivisionsMinAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  gamesPerOpponent?: true
+  restTimeMinutes?: true
+  usesSets?: true
+  matchDurationMinutes?: true
+  setDurationMinutes?: true
+  setsPerMatch?: true
+  playoffDoubleElimination?: true
+  playoffWinnerSetCount?: true
+  playoffLoserSetCount?: true
+  playoffPrize?: true
+  playoffFieldCount?: true
+  playoffRestTimeMinutes?: true
+  playoffMatchDurationMinutes?: true
+  playoffSetDurationMinutes?: true
   standingsConfirmedAt?: true
   standingsConfirmedBy?: true
   allowPaymentPlans?: true
@@ -200,6 +315,20 @@ export type DivisionsMaxAggregateInputType = {
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
+  gamesPerOpponent?: true
+  restTimeMinutes?: true
+  usesSets?: true
+  matchDurationMinutes?: true
+  setDurationMinutes?: true
+  setsPerMatch?: true
+  playoffDoubleElimination?: true
+  playoffWinnerSetCount?: true
+  playoffLoserSetCount?: true
+  playoffPrize?: true
+  playoffFieldCount?: true
+  playoffRestTimeMinutes?: true
+  playoffMatchDurationMinutes?: true
+  playoffSetDurationMinutes?: true
   standingsConfirmedAt?: true
   standingsConfirmedBy?: true
   allowPaymentPlans?: true
@@ -229,6 +358,23 @@ export type DivisionsCountAggregateInputType = {
   playoffTeamCount?: true
   playoffPlacementDivisionIds?: true
   standingsOverrides?: true
+  gamesPerOpponent?: true
+  restTimeMinutes?: true
+  usesSets?: true
+  matchDurationMinutes?: true
+  setDurationMinutes?: true
+  setsPerMatch?: true
+  pointsToVictory?: true
+  playoffDoubleElimination?: true
+  playoffWinnerSetCount?: true
+  playoffLoserSetCount?: true
+  playoffWinnerBracketPointsToVictory?: true
+  playoffLoserBracketPointsToVictory?: true
+  playoffPrize?: true
+  playoffFieldCount?: true
+  playoffRestTimeMinutes?: true
+  playoffMatchDurationMinutes?: true
+  playoffSetDurationMinutes?: true
   standingsConfirmedAt?: true
   standingsConfirmedBy?: true
   allowPaymentPlans?: true
@@ -350,6 +496,23 @@ export type DivisionsGroupByOutputType = {
   playoffTeamCount: number | null
   playoffPlacementDivisionIds: string[]
   standingsOverrides: runtime.JsonValue | null
+  gamesPerOpponent: number | null
+  restTimeMinutes: number | null
+  usesSets: boolean | null
+  matchDurationMinutes: number | null
+  setDurationMinutes: number | null
+  setsPerMatch: number | null
+  pointsToVictory: number[]
+  playoffDoubleElimination: boolean | null
+  playoffWinnerSetCount: number | null
+  playoffLoserSetCount: number | null
+  playoffWinnerBracketPointsToVictory: number[]
+  playoffLoserBracketPointsToVictory: number[]
+  playoffPrize: string | null
+  playoffFieldCount: number | null
+  playoffRestTimeMinutes: number | null
+  playoffMatchDurationMinutes: number | null
+  playoffSetDurationMinutes: number | null
   standingsConfirmedAt: Date | null
   standingsConfirmedBy: string | null
   allowPaymentPlans: boolean | null
@@ -407,6 +570,23 @@ export type DivisionsWhereInput = {
   playoffTeamCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
   playoffPlacementDivisionIds?: Prisma.StringNullableListFilter<"Divisions">
   standingsOverrides?: Prisma.JsonNullableFilter<"Divisions">
+  gamesPerOpponent?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  restTimeMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  usesSets?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
+  matchDurationMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  setDurationMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  setsPerMatch?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  pointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffDoubleElimination?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
+  playoffWinnerSetCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffLoserSetCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffLoserBracketPointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffPrize?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  playoffFieldCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffRestTimeMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffMatchDurationMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffSetDurationMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
   standingsConfirmedAt?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   standingsConfirmedBy?: Prisma.StringNullableFilter<"Divisions"> | string | null
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
@@ -441,6 +621,23 @@ export type DivisionsOrderByWithRelationInput = {
   playoffTeamCount?: Prisma.SortOrderInput | Prisma.SortOrder
   playoffPlacementDivisionIds?: Prisma.SortOrder
   standingsOverrides?: Prisma.SortOrderInput | Prisma.SortOrder
+  gamesPerOpponent?: Prisma.SortOrderInput | Prisma.SortOrder
+  restTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  usesSets?: Prisma.SortOrderInput | Prisma.SortOrder
+  matchDurationMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  setDurationMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  setsPerMatch?: Prisma.SortOrderInput | Prisma.SortOrder
+  pointsToVictory?: Prisma.SortOrder
+  playoffDoubleElimination?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffWinnerSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffLoserSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffWinnerBracketPointsToVictory?: Prisma.SortOrder
+  playoffLoserBracketPointsToVictory?: Prisma.SortOrder
+  playoffPrize?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffFieldCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffRestTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffMatchDurationMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffSetDurationMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
   standingsConfirmedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   standingsConfirmedBy?: Prisma.SortOrderInput | Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -478,6 +675,23 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   playoffTeamCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
   playoffPlacementDivisionIds?: Prisma.StringNullableListFilter<"Divisions">
   standingsOverrides?: Prisma.JsonNullableFilter<"Divisions">
+  gamesPerOpponent?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  restTimeMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  usesSets?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
+  matchDurationMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  setDurationMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  setsPerMatch?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  pointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffDoubleElimination?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
+  playoffWinnerSetCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffLoserSetCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffLoserBracketPointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffPrize?: Prisma.StringNullableFilter<"Divisions"> | string | null
+  playoffFieldCount?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffRestTimeMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffMatchDurationMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
+  playoffSetDurationMinutes?: Prisma.IntNullableFilter<"Divisions"> | number | null
   standingsConfirmedAt?: Prisma.DateTimeNullableFilter<"Divisions"> | Date | string | null
   standingsConfirmedBy?: Prisma.StringNullableFilter<"Divisions"> | string | null
   allowPaymentPlans?: Prisma.BoolNullableFilter<"Divisions"> | boolean | null
@@ -512,6 +726,23 @@ export type DivisionsOrderByWithAggregationInput = {
   playoffTeamCount?: Prisma.SortOrderInput | Prisma.SortOrder
   playoffPlacementDivisionIds?: Prisma.SortOrder
   standingsOverrides?: Prisma.SortOrderInput | Prisma.SortOrder
+  gamesPerOpponent?: Prisma.SortOrderInput | Prisma.SortOrder
+  restTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  usesSets?: Prisma.SortOrderInput | Prisma.SortOrder
+  matchDurationMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  setDurationMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  setsPerMatch?: Prisma.SortOrderInput | Prisma.SortOrder
+  pointsToVictory?: Prisma.SortOrder
+  playoffDoubleElimination?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffWinnerSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffLoserSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffWinnerBracketPointsToVictory?: Prisma.SortOrder
+  playoffLoserBracketPointsToVictory?: Prisma.SortOrder
+  playoffPrize?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffFieldCount?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffRestTimeMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffMatchDurationMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
+  playoffSetDurationMinutes?: Prisma.SortOrderInput | Prisma.SortOrder
   standingsConfirmedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   standingsConfirmedBy?: Prisma.SortOrderInput | Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -554,6 +785,23 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   playoffTeamCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   playoffPlacementDivisionIds?: Prisma.StringNullableListFilter<"Divisions">
   standingsOverrides?: Prisma.JsonNullableWithAggregatesFilter<"Divisions">
+  gamesPerOpponent?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  restTimeMinutes?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  usesSets?: Prisma.BoolNullableWithAggregatesFilter<"Divisions"> | boolean | null
+  matchDurationMinutes?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  setDurationMinutes?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  setsPerMatch?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  pointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffDoubleElimination?: Prisma.BoolNullableWithAggregatesFilter<"Divisions"> | boolean | null
+  playoffWinnerSetCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  playoffLoserSetCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffLoserBracketPointsToVictory?: Prisma.IntNullableListFilter<"Divisions">
+  playoffPrize?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
+  playoffFieldCount?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  playoffRestTimeMinutes?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  playoffMatchDurationMinutes?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
+  playoffSetDurationMinutes?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   standingsConfirmedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"Divisions"> | Date | string | null
   standingsConfirmedBy?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   allowPaymentPlans?: Prisma.BoolNullableWithAggregatesFilter<"Divisions"> | boolean | null
@@ -588,6 +836,23 @@ export type DivisionsCreateInput = {
   playoffTeamCount?: number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsCreateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  gamesPerOpponent?: number | null
+  restTimeMinutes?: number | null
+  usesSets?: boolean | null
+  matchDurationMinutes?: number | null
+  setDurationMinutes?: number | null
+  setsPerMatch?: number | null
+  pointsToVictory?: Prisma.DivisionsCreatepointsToVictoryInput | number[]
+  playoffDoubleElimination?: boolean | null
+  playoffWinnerSetCount?: number | null
+  playoffLoserSetCount?: number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.DivisionsCreateplayoffWinnerBracketPointsToVictoryInput | number[]
+  playoffLoserBracketPointsToVictory?: Prisma.DivisionsCreateplayoffLoserBracketPointsToVictoryInput | number[]
+  playoffPrize?: string | null
+  playoffFieldCount?: number | null
+  playoffRestTimeMinutes?: number | null
+  playoffMatchDurationMinutes?: number | null
+  playoffSetDurationMinutes?: number | null
   standingsConfirmedAt?: Date | string | null
   standingsConfirmedBy?: string | null
   allowPaymentPlans?: boolean | null
@@ -622,6 +887,23 @@ export type DivisionsUncheckedCreateInput = {
   playoffTeamCount?: number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsCreateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  gamesPerOpponent?: number | null
+  restTimeMinutes?: number | null
+  usesSets?: boolean | null
+  matchDurationMinutes?: number | null
+  setDurationMinutes?: number | null
+  setsPerMatch?: number | null
+  pointsToVictory?: Prisma.DivisionsCreatepointsToVictoryInput | number[]
+  playoffDoubleElimination?: boolean | null
+  playoffWinnerSetCount?: number | null
+  playoffLoserSetCount?: number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.DivisionsCreateplayoffWinnerBracketPointsToVictoryInput | number[]
+  playoffLoserBracketPointsToVictory?: Prisma.DivisionsCreateplayoffLoserBracketPointsToVictoryInput | number[]
+  playoffPrize?: string | null
+  playoffFieldCount?: number | null
+  playoffRestTimeMinutes?: number | null
+  playoffMatchDurationMinutes?: number | null
+  playoffSetDurationMinutes?: number | null
   standingsConfirmedAt?: Date | string | null
   standingsConfirmedBy?: string | null
   allowPaymentPlans?: boolean | null
@@ -656,6 +938,23 @@ export type DivisionsUpdateInput = {
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsUpdateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  gamesPerOpponent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  restTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  usesSets?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  matchDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  setDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  setsPerMatch?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  pointsToVictory?: Prisma.DivisionsUpdatepointsToVictoryInput | number[]
+  playoffDoubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  playoffWinnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffLoserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.DivisionsUpdateplayoffWinnerBracketPointsToVictoryInput | number[]
+  playoffLoserBracketPointsToVictory?: Prisma.DivisionsUpdateplayoffLoserBracketPointsToVictoryInput | number[]
+  playoffPrize?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  playoffFieldCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffRestTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffMatchDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffSetDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   standingsConfirmedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   standingsConfirmedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -690,6 +989,23 @@ export type DivisionsUncheckedUpdateInput = {
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsUpdateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  gamesPerOpponent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  restTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  usesSets?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  matchDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  setDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  setsPerMatch?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  pointsToVictory?: Prisma.DivisionsUpdatepointsToVictoryInput | number[]
+  playoffDoubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  playoffWinnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffLoserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.DivisionsUpdateplayoffWinnerBracketPointsToVictoryInput | number[]
+  playoffLoserBracketPointsToVictory?: Prisma.DivisionsUpdateplayoffLoserBracketPointsToVictoryInput | number[]
+  playoffPrize?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  playoffFieldCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffRestTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffMatchDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffSetDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   standingsConfirmedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   standingsConfirmedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -724,6 +1040,23 @@ export type DivisionsCreateManyInput = {
   playoffTeamCount?: number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsCreateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  gamesPerOpponent?: number | null
+  restTimeMinutes?: number | null
+  usesSets?: boolean | null
+  matchDurationMinutes?: number | null
+  setDurationMinutes?: number | null
+  setsPerMatch?: number | null
+  pointsToVictory?: Prisma.DivisionsCreatepointsToVictoryInput | number[]
+  playoffDoubleElimination?: boolean | null
+  playoffWinnerSetCount?: number | null
+  playoffLoserSetCount?: number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.DivisionsCreateplayoffWinnerBracketPointsToVictoryInput | number[]
+  playoffLoserBracketPointsToVictory?: Prisma.DivisionsCreateplayoffLoserBracketPointsToVictoryInput | number[]
+  playoffPrize?: string | null
+  playoffFieldCount?: number | null
+  playoffRestTimeMinutes?: number | null
+  playoffMatchDurationMinutes?: number | null
+  playoffSetDurationMinutes?: number | null
   standingsConfirmedAt?: Date | string | null
   standingsConfirmedBy?: string | null
   allowPaymentPlans?: boolean | null
@@ -758,6 +1091,23 @@ export type DivisionsUpdateManyMutationInput = {
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsUpdateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  gamesPerOpponent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  restTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  usesSets?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  matchDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  setDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  setsPerMatch?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  pointsToVictory?: Prisma.DivisionsUpdatepointsToVictoryInput | number[]
+  playoffDoubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  playoffWinnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffLoserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.DivisionsUpdateplayoffWinnerBracketPointsToVictoryInput | number[]
+  playoffLoserBracketPointsToVictory?: Prisma.DivisionsUpdateplayoffLoserBracketPointsToVictoryInput | number[]
+  playoffPrize?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  playoffFieldCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffRestTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffMatchDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffSetDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   standingsConfirmedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   standingsConfirmedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -792,6 +1142,23 @@ export type DivisionsUncheckedUpdateManyInput = {
   playoffTeamCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   playoffPlacementDivisionIds?: Prisma.DivisionsUpdateplayoffPlacementDivisionIdsInput | string[]
   standingsOverrides?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue
+  gamesPerOpponent?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  restTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  usesSets?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  matchDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  setDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  setsPerMatch?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  pointsToVictory?: Prisma.DivisionsUpdatepointsToVictoryInput | number[]
+  playoffDoubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
+  playoffWinnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffLoserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffWinnerBracketPointsToVictory?: Prisma.DivisionsUpdateplayoffWinnerBracketPointsToVictoryInput | number[]
+  playoffLoserBracketPointsToVictory?: Prisma.DivisionsUpdateplayoffLoserBracketPointsToVictoryInput | number[]
+  playoffPrize?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  playoffFieldCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffRestTimeMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffMatchDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  playoffSetDurationMinutes?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   standingsConfirmedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   standingsConfirmedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   allowPaymentPlans?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -834,6 +1201,23 @@ export type DivisionsCountOrderByAggregateInput = {
   playoffTeamCount?: Prisma.SortOrder
   playoffPlacementDivisionIds?: Prisma.SortOrder
   standingsOverrides?: Prisma.SortOrder
+  gamesPerOpponent?: Prisma.SortOrder
+  restTimeMinutes?: Prisma.SortOrder
+  usesSets?: Prisma.SortOrder
+  matchDurationMinutes?: Prisma.SortOrder
+  setDurationMinutes?: Prisma.SortOrder
+  setsPerMatch?: Prisma.SortOrder
+  pointsToVictory?: Prisma.SortOrder
+  playoffDoubleElimination?: Prisma.SortOrder
+  playoffWinnerSetCount?: Prisma.SortOrder
+  playoffLoserSetCount?: Prisma.SortOrder
+  playoffWinnerBracketPointsToVictory?: Prisma.SortOrder
+  playoffLoserBracketPointsToVictory?: Prisma.SortOrder
+  playoffPrize?: Prisma.SortOrder
+  playoffFieldCount?: Prisma.SortOrder
+  playoffRestTimeMinutes?: Prisma.SortOrder
+  playoffMatchDurationMinutes?: Prisma.SortOrder
+  playoffSetDurationMinutes?: Prisma.SortOrder
   standingsConfirmedAt?: Prisma.SortOrder
   standingsConfirmedBy?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
@@ -857,6 +1241,20 @@ export type DivisionsAvgOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  gamesPerOpponent?: Prisma.SortOrder
+  restTimeMinutes?: Prisma.SortOrder
+  matchDurationMinutes?: Prisma.SortOrder
+  setDurationMinutes?: Prisma.SortOrder
+  setsPerMatch?: Prisma.SortOrder
+  pointsToVictory?: Prisma.SortOrder
+  playoffWinnerSetCount?: Prisma.SortOrder
+  playoffLoserSetCount?: Prisma.SortOrder
+  playoffWinnerBracketPointsToVictory?: Prisma.SortOrder
+  playoffLoserBracketPointsToVictory?: Prisma.SortOrder
+  playoffFieldCount?: Prisma.SortOrder
+  playoffRestTimeMinutes?: Prisma.SortOrder
+  playoffMatchDurationMinutes?: Prisma.SortOrder
+  playoffSetDurationMinutes?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
@@ -877,6 +1275,20 @@ export type DivisionsMaxOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  gamesPerOpponent?: Prisma.SortOrder
+  restTimeMinutes?: Prisma.SortOrder
+  usesSets?: Prisma.SortOrder
+  matchDurationMinutes?: Prisma.SortOrder
+  setDurationMinutes?: Prisma.SortOrder
+  setsPerMatch?: Prisma.SortOrder
+  playoffDoubleElimination?: Prisma.SortOrder
+  playoffWinnerSetCount?: Prisma.SortOrder
+  playoffLoserSetCount?: Prisma.SortOrder
+  playoffPrize?: Prisma.SortOrder
+  playoffFieldCount?: Prisma.SortOrder
+  playoffRestTimeMinutes?: Prisma.SortOrder
+  playoffMatchDurationMinutes?: Prisma.SortOrder
+  playoffSetDurationMinutes?: Prisma.SortOrder
   standingsConfirmedAt?: Prisma.SortOrder
   standingsConfirmedBy?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
@@ -904,6 +1316,20 @@ export type DivisionsMinOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  gamesPerOpponent?: Prisma.SortOrder
+  restTimeMinutes?: Prisma.SortOrder
+  usesSets?: Prisma.SortOrder
+  matchDurationMinutes?: Prisma.SortOrder
+  setDurationMinutes?: Prisma.SortOrder
+  setsPerMatch?: Prisma.SortOrder
+  playoffDoubleElimination?: Prisma.SortOrder
+  playoffWinnerSetCount?: Prisma.SortOrder
+  playoffLoserSetCount?: Prisma.SortOrder
+  playoffPrize?: Prisma.SortOrder
+  playoffFieldCount?: Prisma.SortOrder
+  playoffRestTimeMinutes?: Prisma.SortOrder
+  playoffMatchDurationMinutes?: Prisma.SortOrder
+  playoffSetDurationMinutes?: Prisma.SortOrder
   standingsConfirmedAt?: Prisma.SortOrder
   standingsConfirmedBy?: Prisma.SortOrder
   allowPaymentPlans?: Prisma.SortOrder
@@ -922,6 +1348,20 @@ export type DivisionsSumOrderByAggregateInput = {
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
+  gamesPerOpponent?: Prisma.SortOrder
+  restTimeMinutes?: Prisma.SortOrder
+  matchDurationMinutes?: Prisma.SortOrder
+  setDurationMinutes?: Prisma.SortOrder
+  setsPerMatch?: Prisma.SortOrder
+  pointsToVictory?: Prisma.SortOrder
+  playoffWinnerSetCount?: Prisma.SortOrder
+  playoffLoserSetCount?: Prisma.SortOrder
+  playoffWinnerBracketPointsToVictory?: Prisma.SortOrder
+  playoffLoserBracketPointsToVictory?: Prisma.SortOrder
+  playoffFieldCount?: Prisma.SortOrder
+  playoffRestTimeMinutes?: Prisma.SortOrder
+  playoffMatchDurationMinutes?: Prisma.SortOrder
+  playoffSetDurationMinutes?: Prisma.SortOrder
   installmentCount?: Prisma.SortOrder
   installmentDueRelativeDays?: Prisma.SortOrder
   installmentAmounts?: Prisma.SortOrder
@@ -931,6 +1371,18 @@ export type DivisionsSumOrderByAggregateInput = {
 
 export type DivisionsCreateplayoffPlacementDivisionIdsInput = {
   set: string[]
+}
+
+export type DivisionsCreatepointsToVictoryInput = {
+  set: number[]
+}
+
+export type DivisionsCreateplayoffWinnerBracketPointsToVictoryInput = {
+  set: number[]
+}
+
+export type DivisionsCreateplayoffLoserBracketPointsToVictoryInput = {
+  set: number[]
 }
 
 export type DivisionsCreateinstallmentDueDatesInput = {
@@ -960,6 +1412,21 @@ export type NullableEnumDivisionsKindEnumFieldUpdateOperationsInput = {
 export type DivisionsUpdateplayoffPlacementDivisionIdsInput = {
   set?: string[]
   push?: string | string[]
+}
+
+export type DivisionsUpdatepointsToVictoryInput = {
+  set?: number[]
+  push?: number | number[]
+}
+
+export type DivisionsUpdateplayoffWinnerBracketPointsToVictoryInput = {
+  set?: number[]
+  push?: number | number[]
+}
+
+export type DivisionsUpdateplayoffLoserBracketPointsToVictoryInput = {
+  set?: number[]
+  push?: number | number[]
 }
 
 export type DivisionsUpdateinstallmentDueDatesInput = {
@@ -1004,6 +1471,23 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   playoffTeamCount?: boolean
   playoffPlacementDivisionIds?: boolean
   standingsOverrides?: boolean
+  gamesPerOpponent?: boolean
+  restTimeMinutes?: boolean
+  usesSets?: boolean
+  matchDurationMinutes?: boolean
+  setDurationMinutes?: boolean
+  setsPerMatch?: boolean
+  pointsToVictory?: boolean
+  playoffDoubleElimination?: boolean
+  playoffWinnerSetCount?: boolean
+  playoffLoserSetCount?: boolean
+  playoffWinnerBracketPointsToVictory?: boolean
+  playoffLoserBracketPointsToVictory?: boolean
+  playoffPrize?: boolean
+  playoffFieldCount?: boolean
+  playoffRestTimeMinutes?: boolean
+  playoffMatchDurationMinutes?: boolean
+  playoffSetDurationMinutes?: boolean
   standingsConfirmedAt?: boolean
   standingsConfirmedBy?: boolean
   allowPaymentPlans?: boolean
@@ -1038,6 +1522,23 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   playoffTeamCount?: boolean
   playoffPlacementDivisionIds?: boolean
   standingsOverrides?: boolean
+  gamesPerOpponent?: boolean
+  restTimeMinutes?: boolean
+  usesSets?: boolean
+  matchDurationMinutes?: boolean
+  setDurationMinutes?: boolean
+  setsPerMatch?: boolean
+  pointsToVictory?: boolean
+  playoffDoubleElimination?: boolean
+  playoffWinnerSetCount?: boolean
+  playoffLoserSetCount?: boolean
+  playoffWinnerBracketPointsToVictory?: boolean
+  playoffLoserBracketPointsToVictory?: boolean
+  playoffPrize?: boolean
+  playoffFieldCount?: boolean
+  playoffRestTimeMinutes?: boolean
+  playoffMatchDurationMinutes?: boolean
+  playoffSetDurationMinutes?: boolean
   standingsConfirmedAt?: boolean
   standingsConfirmedBy?: boolean
   allowPaymentPlans?: boolean
@@ -1072,6 +1573,23 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   playoffTeamCount?: boolean
   playoffPlacementDivisionIds?: boolean
   standingsOverrides?: boolean
+  gamesPerOpponent?: boolean
+  restTimeMinutes?: boolean
+  usesSets?: boolean
+  matchDurationMinutes?: boolean
+  setDurationMinutes?: boolean
+  setsPerMatch?: boolean
+  pointsToVictory?: boolean
+  playoffDoubleElimination?: boolean
+  playoffWinnerSetCount?: boolean
+  playoffLoserSetCount?: boolean
+  playoffWinnerBracketPointsToVictory?: boolean
+  playoffLoserBracketPointsToVictory?: boolean
+  playoffPrize?: boolean
+  playoffFieldCount?: boolean
+  playoffRestTimeMinutes?: boolean
+  playoffMatchDurationMinutes?: boolean
+  playoffSetDurationMinutes?: boolean
   standingsConfirmedAt?: boolean
   standingsConfirmedBy?: boolean
   allowPaymentPlans?: boolean
@@ -1106,6 +1624,23 @@ export type DivisionsSelectScalar = {
   playoffTeamCount?: boolean
   playoffPlacementDivisionIds?: boolean
   standingsOverrides?: boolean
+  gamesPerOpponent?: boolean
+  restTimeMinutes?: boolean
+  usesSets?: boolean
+  matchDurationMinutes?: boolean
+  setDurationMinutes?: boolean
+  setsPerMatch?: boolean
+  pointsToVictory?: boolean
+  playoffDoubleElimination?: boolean
+  playoffWinnerSetCount?: boolean
+  playoffLoserSetCount?: boolean
+  playoffWinnerBracketPointsToVictory?: boolean
+  playoffLoserBracketPointsToVictory?: boolean
+  playoffPrize?: boolean
+  playoffFieldCount?: boolean
+  playoffRestTimeMinutes?: boolean
+  playoffMatchDurationMinutes?: boolean
+  playoffSetDurationMinutes?: boolean
   standingsConfirmedAt?: boolean
   standingsConfirmedBy?: boolean
   allowPaymentPlans?: boolean
@@ -1125,7 +1660,7 @@ export type DivisionsSelectScalar = {
   teamIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "gamesPerOpponent" | "restTimeMinutes" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "pointsToVictory" | "playoffDoubleElimination" | "playoffWinnerSetCount" | "playoffLoserSetCount" | "playoffWinnerBracketPointsToVictory" | "playoffLoserBracketPointsToVictory" | "playoffPrize" | "playoffFieldCount" | "playoffRestTimeMinutes" | "playoffMatchDurationMinutes" | "playoffSetDurationMinutes" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -1145,6 +1680,23 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     playoffTeamCount: number | null
     playoffPlacementDivisionIds: string[]
     standingsOverrides: runtime.JsonValue | null
+    gamesPerOpponent: number | null
+    restTimeMinutes: number | null
+    usesSets: boolean | null
+    matchDurationMinutes: number | null
+    setDurationMinutes: number | null
+    setsPerMatch: number | null
+    pointsToVictory: number[]
+    playoffDoubleElimination: boolean | null
+    playoffWinnerSetCount: number | null
+    playoffLoserSetCount: number | null
+    playoffWinnerBracketPointsToVictory: number[]
+    playoffLoserBracketPointsToVictory: number[]
+    playoffPrize: string | null
+    playoffFieldCount: number | null
+    playoffRestTimeMinutes: number | null
+    playoffMatchDurationMinutes: number | null
+    playoffSetDurationMinutes: number | null
     standingsConfirmedAt: Date | null
     standingsConfirmedBy: string | null
     allowPaymentPlans: boolean | null
@@ -1599,6 +2151,23 @@ export interface DivisionsFieldRefs {
   readonly playoffTeamCount: Prisma.FieldRef<"Divisions", 'Int'>
   readonly playoffPlacementDivisionIds: Prisma.FieldRef<"Divisions", 'String[]'>
   readonly standingsOverrides: Prisma.FieldRef<"Divisions", 'Json'>
+  readonly gamesPerOpponent: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly restTimeMinutes: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly usesSets: Prisma.FieldRef<"Divisions", 'Boolean'>
+  readonly matchDurationMinutes: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly setDurationMinutes: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly setsPerMatch: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly pointsToVictory: Prisma.FieldRef<"Divisions", 'Int[]'>
+  readonly playoffDoubleElimination: Prisma.FieldRef<"Divisions", 'Boolean'>
+  readonly playoffWinnerSetCount: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly playoffLoserSetCount: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly playoffWinnerBracketPointsToVictory: Prisma.FieldRef<"Divisions", 'Int[]'>
+  readonly playoffLoserBracketPointsToVictory: Prisma.FieldRef<"Divisions", 'Int[]'>
+  readonly playoffPrize: Prisma.FieldRef<"Divisions", 'String'>
+  readonly playoffFieldCount: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly playoffRestTimeMinutes: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly playoffMatchDurationMinutes: Prisma.FieldRef<"Divisions", 'Int'>
+  readonly playoffSetDurationMinutes: Prisma.FieldRef<"Divisions", 'Int'>
   readonly standingsConfirmedAt: Prisma.FieldRef<"Divisions", 'DateTime'>
   readonly standingsConfirmedBy: Prisma.FieldRef<"Divisions", 'String'>
   readonly allowPaymentPlans: Prisma.FieldRef<"Divisions", 'Boolean'>

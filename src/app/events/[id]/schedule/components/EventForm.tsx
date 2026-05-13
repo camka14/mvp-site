@@ -191,7 +191,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_STANDARD_NUMBER = 99_999;
 const MAX_PRICE_NUMBER = 9_999_999;
 const MAX_PRICE_CENTS = MAX_PRICE_NUMBER * 100;
-const SECTION_SCROLL_OFFSET = 140;
+const SECTION_SCROLL_OFFSET = 80;
 const SECTION_ANIMATION_DURATION_MS = 220;
 const DIVISION_LAYOUT_TRANSITION = {
     duration: SECTION_ANIMATION_DURATION_MS / 1000,
@@ -773,6 +773,14 @@ type DivisionDetailForm = {
     poolCount?: number;
     poolTeamCount?: number;
     playoffPlacementDivisionIds?: string[];
+    gamesPerOpponent?: number;
+    restTimeMinutes?: number;
+    usesSets?: boolean;
+    matchDurationMinutes?: number | null;
+    setDurationMinutes?: number | null;
+    setsPerMatch?: number;
+    pointsToVictory?: number[];
+    playoffConfig?: TournamentConfig;
     allowPaymentPlans: boolean;
     installmentCount?: number;
     installmentDueDates: string[];
@@ -1151,14 +1159,19 @@ const tournamentConfigEqual = (left: TournamentConfig, right: TournamentConfig):
     )
 );
 
+const nullableNumbersEqual = (
+    left: number | null | undefined,
+    right: number | null | undefined,
+): boolean => (left ?? null) === (right ?? null);
+
 const leagueConfigEqual = (left: LeagueConfig, right: LeagueConfig): boolean => (
     left.gamesPerOpponent === right.gamesPerOpponent
     && left.includePlayoffs === right.includePlayoffs
     && left.playoffTeamCount === right.playoffTeamCount
     && left.usesSets === right.usesSets
-    && left.matchDurationMinutes === right.matchDurationMinutes
+    && nullableNumbersEqual(left.matchDurationMinutes, right.matchDurationMinutes)
     && left.restTimeMinutes === right.restTimeMinutes
-    && left.setDurationMinutes === right.setDurationMinutes
+    && nullableNumbersEqual(left.setDurationMinutes, right.setDurationMinutes)
     && left.setsPerMatch === right.setsPerMatch
     && stringArraysEqual(
         (left.pointsToVictory || []).map((value) => String(value)),
@@ -1170,9 +1183,22 @@ const normalizeLeagueConfigForSetMode = (
     source: Partial<LeagueConfig> | undefined,
     usesSets: boolean,
 ): LeagueConfig => {
-    const normalizedMatchDuration = Number.isFinite(Number(source?.matchDurationMinutes))
-        ? Math.max(1, Math.trunc(Number(source?.matchDurationMinutes)))
-        : 60;
+    const sourceRecord = source && typeof source === 'object' ? source as Record<string, unknown> : {};
+    const hasValue = (key: keyof LeagueConfig): boolean => Object.prototype.hasOwnProperty.call(sourceRecord, key);
+    const normalizeOptionalDuration = (value: unknown, fallback: number | undefined): number | undefined => {
+        if (value === null || value === undefined || value === '') {
+            return fallback;
+        }
+        const parsed = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(parsed)) {
+            return fallback;
+        }
+        return Math.max(0, Math.trunc(parsed));
+    };
+    const normalizedMatchDuration = normalizeOptionalDuration(
+        source?.matchDurationMinutes,
+        hasValue('matchDurationMinutes') ? undefined : 60,
+    );
     const normalizedRestTime = Number.isFinite(Number(source?.restTimeMinutes))
         ? Math.max(0, Math.trunc(Number(source?.restTimeMinutes)))
         : 0;
@@ -1190,9 +1216,10 @@ const normalizeLeagueConfigForSetMode = (
             && allowedSetCounts.includes(Math.trunc(Number(source?.setsPerMatch)))
             ? Math.trunc(Number(source?.setsPerMatch))
             : 1;
-        const normalizedSetDuration = Number.isFinite(Number(source?.setDurationMinutes))
-            ? Math.max(1, Math.trunc(Number(source?.setDurationMinutes)))
-            : 20;
+        const normalizedSetDuration = normalizeOptionalDuration(
+            source?.setDurationMinutes,
+            hasValue('setDurationMinutes') ? undefined : 20,
+        );
         const normalizedPoints = Array.isArray(source?.pointsToVictory)
             ? source.pointsToVictory
                 .slice(0, normalizedSetsPerMatch)
@@ -1229,6 +1256,53 @@ const normalizeLeagueConfigForSetMode = (
         pointsToVictory: undefined,
     };
 };
+
+const buildDivisionLeagueConfig = (
+    detail: Partial<DivisionDetailForm> | undefined,
+    fallback: LeagueConfig,
+    usesSets: boolean,
+): LeagueConfig => {
+    const hasDetailValue = (key: keyof DivisionDetailForm): boolean => Boolean(
+        detail && Object.prototype.hasOwnProperty.call(detail, key),
+    );
+    return normalizeLeagueConfigForSetMode({
+        ...fallback,
+        gamesPerOpponent: detail?.gamesPerOpponent ?? fallback.gamesPerOpponent,
+        includePlayoffs: fallback.includePlayoffs,
+        playoffTeamCount: fallback.playoffTeamCount,
+        usesSets: detail?.usesSets ?? fallback.usesSets,
+        matchDurationMinutes: hasDetailValue('matchDurationMinutes')
+            ? detail?.matchDurationMinutes
+            : fallback.matchDurationMinutes,
+        restTimeMinutes: detail?.restTimeMinutes ?? fallback.restTimeMinutes,
+        setDurationMinutes: hasDetailValue('setDurationMinutes')
+            ? detail?.setDurationMinutes
+            : fallback.setDurationMinutes,
+        setsPerMatch: detail?.setsPerMatch ?? fallback.setsPerMatch,
+        pointsToVictory: Array.isArray(detail?.pointsToVictory) && detail.pointsToVictory.length
+            ? detail.pointsToVictory
+            : fallback.pointsToVictory,
+    }, usesSets);
+};
+
+const leagueConfigToDivisionFields = (config: LeagueConfig): Pick<
+    DivisionDetailForm,
+    'gamesPerOpponent'
+    | 'restTimeMinutes'
+    | 'usesSets'
+    | 'matchDurationMinutes'
+    | 'setDurationMinutes'
+    | 'setsPerMatch'
+    | 'pointsToVictory'
+> => ({
+    gamesPerOpponent: config.gamesPerOpponent,
+    restTimeMinutes: config.restTimeMinutes,
+    usesSets: config.usesSets,
+    matchDurationMinutes: config.matchDurationMinutes,
+    setDurationMinutes: config.setDurationMinutes,
+    setsPerMatch: config.setsPerMatch,
+    pointsToVictory: Array.isArray(config.pointsToVictory) ? [...config.pointsToVictory] : undefined,
+});
 
 const fieldsEqual = (left: Field[], right: Field[]): boolean => {
     if (left.length !== right.length) {
@@ -2180,6 +2254,15 @@ const normalizeInstallmentRelativeDays = (value: unknown): number[] => {
         .map((entry) => Math.trunc(entry));
 };
 
+const sanitizeMatchRulesOverrideForEditor = (value: unknown): MatchRulesConfig | null => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+    const entries = Object.entries(value as Record<string, unknown>)
+        .filter(([key, entry]) => key !== 'segmentCount' && entry !== undefined);
+    return entries.length > 0 ? Object.fromEntries(entries) as MatchRulesConfig : null;
+};
+
 const formatLatLngLabel = (lat?: number, lng?: number): string => {
     if (typeof lat !== 'number' || typeof lng !== 'number') {
         return '';
@@ -2443,6 +2526,14 @@ const normalizeDivisionDetailEntry = (
         : Number.isFinite(Number(row.poolTeamCount))
             ? Number(row.poolTeamCount)
             : undefined;
+    const rawLeagueConfigSource = row.leagueConfig && typeof row.leagueConfig === 'object' && !Array.isArray(row.leagueConfig)
+        ? row.leagueConfig as Partial<LeagueConfig>
+        : row as Partial<LeagueConfig>;
+    const rawLeagueConfig = normalizeLeagueConfigForSetMode(
+        rawLeagueConfigSource,
+        Boolean(rawLeagueConfigSource.usesSets),
+    );
+    const rawPlayoffConfig = extractTournamentConfigFromEvent(row as unknown as Partial<Event>) ?? undefined;
     const rawPlayoffPlacementDivisionIds = normalizePlacementDivisionIds(row.playoffPlacementDivisionIds);
     const rawAllowPaymentPlans = normalizeBoolean(row.allowPaymentPlans) ?? false;
     const rawInstallmentAmounts = Array.isArray(row.installmentAmounts)
@@ -2486,6 +2577,8 @@ const normalizeDivisionDetailEntry = (
             ? Math.max(1, Math.trunc(rawPoolTeamCount as number))
             : undefined,
         playoffPlacementDivisionIds: rawPlayoffPlacementDivisionIds,
+        ...leagueConfigToDivisionFields(rawLeagueConfig),
+        ...(rawPlayoffConfig ? { playoffConfig: rawPlayoffConfig } : {}),
         allowPaymentPlans: rawAllowPaymentPlans,
         installmentCount: rawAllowPaymentPlans
             ? (rawInstallmentCount || rawInstallmentAmounts.length || 0)
@@ -2582,6 +2675,16 @@ const buildTournamentConfig = (source?: Partial<TournamentConfig>): TournamentCo
         while (next.length < len) next.push(21);
         return next;
     };
+    const normalizeOptionalDuration = (value: unknown): number | undefined => {
+        if (value === null || value === undefined || value === '') {
+            return undefined;
+        }
+        const parsed = typeof value === 'number' ? value : Number(value);
+        if (!Number.isFinite(parsed)) {
+            return undefined;
+        }
+        return Math.max(0, Math.trunc(parsed));
+    };
 
     const doubleElimination = Boolean(source?.doubleElimination);
     const winnerSetCount = source?.winnerSetCount ?? 1;
@@ -2600,8 +2703,8 @@ const buildTournamentConfig = (source?: Partial<TournamentConfig>): TournamentCo
         fieldCount: source?.fieldCount ?? 1,
         restTimeMinutes: source?.restTimeMinutes ?? 0,
         usesSets: Boolean(source?.usesSets),
-        matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
-        setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
+        matchDurationMinutes: normalizeOptionalDuration(source?.matchDurationMinutes),
+        setDurationMinutes: normalizeOptionalDuration(source?.setDurationMinutes),
     };
 };
 
@@ -2614,8 +2717,8 @@ const normalizeTournamentConfigForSetMode = (
         return {
             ...normalized,
             usesSets: true,
-            matchDurationMinutes: normalizeNumber(normalized.matchDurationMinutes, 60) ?? 60,
-            setDurationMinutes: normalizeNumber(normalized.setDurationMinutes, 20) ?? 20,
+            matchDurationMinutes: normalizeNumber(normalized.matchDurationMinutes),
+            setDurationMinutes: normalizeNumber(normalized.setDurationMinutes),
         };
     }
 
@@ -2629,7 +2732,7 @@ const normalizeTournamentConfigForSetMode = (
     return {
         ...normalized,
         usesSets: false,
-        matchDurationMinutes: normalizeNumber(normalized.matchDurationMinutes, 60) ?? 60,
+        matchDurationMinutes: normalizeNumber(normalized.matchDurationMinutes),
         setDurationMinutes: undefined,
         winnerSetCount: 1,
         loserSetCount: 1,
@@ -3105,10 +3208,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
     assistantHostIds: Array.isArray(event.assistantHostIds) ? event.assistantHostIds : [],
     doTeamsOfficiate,
     teamOfficialsMaySwap: doTeamsOfficiate && Boolean((event as any).teamOfficialsMaySwap),
-    matchRulesOverride: (event as any).matchRulesOverride && typeof (event as any).matchRulesOverride === 'object'
-        && !Array.isArray((event as any).matchRulesOverride)
-        ? { ...((event as any).matchRulesOverride as MatchRulesConfig) }
-        : null,
+    matchRulesOverride: sanitizeMatchRulesOverrideForEditor((event as any).matchRulesOverride),
     autoCreatePointMatchIncidents: Boolean((event as any).autoCreatePointMatchIncidents),
     leagueScoringConfig: createLeagueScoringConfig(
         typeof event.leagueScoringConfig === 'object'
@@ -3160,7 +3260,6 @@ const leagueConfigSchema = z.object({
 
 const matchRulesConfigSchema = z.object({
     scoringModel: z.enum(['SETS', 'PERIODS', 'INNINGS', 'POINTS_ONLY']).optional(),
-    segmentCount: z.number().int().min(1).max(20).optional(),
     segmentLabel: z.string().trim().optional(),
     supportsDraw: z.boolean().optional(),
     supportsOvertime: z.boolean().optional(),
@@ -3242,6 +3341,14 @@ const eventFormSchema = z
                 poolCount: z.number().int().min(1).optional(),
                 poolTeamCount: z.number().int().min(1).optional(),
                 playoffPlacementDivisionIds: z.array(z.string()).optional(),
+                gamesPerOpponent: z.number().min(1).optional(),
+                restTimeMinutes: z.number().min(0).optional(),
+                usesSets: z.boolean().optional(),
+                matchDurationMinutes: z.number().optional(),
+                setDurationMinutes: z.number().optional(),
+                setsPerMatch: z.number().optional(),
+                pointsToVictory: z.array(z.number()).optional(),
+                playoffConfig: z.any().optional(),
                 allowPaymentPlans: z.boolean().default(false),
                 installmentCount: z.number().int().min(0).default(0),
                 installmentDueDates: z.array(z.string()).default([]),
@@ -3964,7 +4071,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             next.teamOfficialsMaySwap = next.doTeamsOfficiate ? Boolean((defaults as any).teamOfficialsMaySwap) : false;
         }
         if ((defaults as any).matchRulesOverride && typeof (defaults as any).matchRulesOverride === 'object') {
-            next.matchRulesOverride = { ...((defaults as any).matchRulesOverride as MatchRulesConfig) };
+            next.matchRulesOverride = sanitizeMatchRulesOverrideForEditor((defaults as any).matchRulesOverride);
         } else if ((defaults as any).matchRulesOverride === null) {
             next.matchRulesOverride = null;
         }
@@ -4293,11 +4400,32 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 activeEditingEvent
                 && (activeEditingEvent.eventType === 'LEAGUE' || activeEditingEvent.eventType === 'TOURNAMENT')
             ) {
-                const source = activeEditingEvent.leagueConfig || activeEditingEvent;
+                const divisionLeagueDetail = activeEditingEvent.eventType === 'LEAGUE' && Array.isArray(defaultDivisionDetails)
+                    ? defaultDivisionDetails.find((detail) => typeof detail?.gamesPerOpponent === 'number')
+                    : undefined;
+                const eventLeagueFallback = normalizeLeagueConfigForSetMode({
+                    ...(activeEditingEvent.leagueConfig || activeEditingEvent),
+                    gamesPerOpponent: activeEditingEvent.leagueConfig?.gamesPerOpponent ?? activeEditingEvent.gamesPerOpponent ?? 1,
+                    includePlayoffs: Boolean(
+                        (activeEditingEvent as any)?.includePlayoffsOrPools
+                        ?? activeEditingEvent.leagueConfig?.includePlayoffs
+                        ?? activeEditingEvent.includePlayoffs,
+                    ),
+                    playoffTeamCount: activeEditingEvent.leagueConfig?.playoffTeamCount ?? activeEditingEvent.playoffTeamCount,
+                }, requiresSets);
+                const source = divisionLeagueDetail
+                    ? buildDivisionLeagueConfig(divisionLeagueDetail, eventLeagueFallback, requiresSets)
+                    : eventLeagueFallback;
                 return normalizeLeagueConfigForSetMode({
                     ...source,
                     gamesPerOpponent: source?.gamesPerOpponent ?? 1,
-                    includePlayoffs: Boolean((source as any)?.includePlayoffsOrPools ?? source?.includePlayoffs),
+                    includePlayoffs: Boolean(
+                        (source as any)?.includePlayoffsOrPools
+                        ?? source?.includePlayoffs
+                        ?? (activeEditingEvent as any)?.includePlayoffsOrPools
+                        ?? activeEditingEvent.includePlayoffs,
+                    ),
+                    playoffTeamCount: source?.playoffTeamCount ?? activeEditingEvent.playoffTeamCount,
                 }, requiresSets);
             }
             return normalizeLeagueConfigForSetMode({
@@ -4325,7 +4453,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     fieldCount: activeEditingEvent.fieldCount ?? activeEditingEvent.fields?.length ?? 1,
                     restTimeMinutes: normalizeNumber(activeEditingEvent.restTimeMinutes, 0) ?? 0,
                     usesSets: activeEditingEvent.usesSets,
-                    matchDurationMinutes: normalizeNumber(activeEditingEvent.matchDurationMinutes, 60) ?? 60,
+                    matchDurationMinutes: normalizeNumber(activeEditingEvent.matchDurationMinutes),
                     setDurationMinutes: normalizeNumber(activeEditingEvent.setDurationMinutes),
                 });
             }
@@ -5694,6 +5822,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         playoffTeamCount: number | null;
         poolCount: number | null;
         playoffPlacementDivisionIds: string[];
+        leagueConfig: LeagueConfig;
         playoffConfig: TournamentConfig;
         allowPaymentPlans: boolean;
         installmentCount: number;
@@ -5721,6 +5850,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ),
         poolCount: null,
         playoffPlacementDivisionIds: [],
+        leagueConfig: normalizeLeagueConfigForSetMode(leagueData, Boolean(eventData.sportConfig?.usePointsPerSetWin)),
         playoffConfig: buildTournamentConfig(),
         allowPaymentPlans: false,
         installmentCount: 0,
@@ -5760,6 +5890,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         && eventData.splitLeaguePlayoffDivisions
         && !eventData.singleDivision,
     );
+    const currentSportRequiresSets = useMemo(() => {
+        const selectedSport = (
+            eventData.sportId ? sportsById.get(eventData.sportId) : null
+        ) ?? eventData.sportConfig;
+        return Boolean(selectedSport?.usePointsPerSetWin);
+    }, [eventData.sportConfig, eventData.sportId, sportsById]);
 
     useEffect(() => {
         if (!isCreateMode || hasStripeAccount) {
@@ -6673,6 +6809,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? Math.max(1, Math.trunc(firstDivisionDetailForDefaults.poolCount))
                 : null,
             playoffPlacementDivisionIds: [],
+            leagueConfig: normalizeLeagueConfigForSetMode(leagueData, currentSportRequiresSets),
             playoffConfig: buildTournamentConfig(playoffData),
             allowPaymentPlans: Boolean(eventData.allowPaymentPlans),
             installmentCount: eventData.allowPaymentPlans
@@ -6698,8 +6835,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.price,
         firstDivisionDetailForDefaults?.playoffTeamCount,
         firstDivisionDetailForDefaults?.poolCount,
+        currentSportRequiresSets,
         leagueData.includePlayoffs,
         leagueData.playoffTeamCount,
+        leagueData,
         playoffData,
     ]);
 
@@ -6726,6 +6865,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             playoffTeamCount: null,
             poolCount: null,
             playoffPlacementDivisionIds: [],
+            leagueConfig: normalizeLeagueConfigForSetMode(leagueData, currentSportRequiresSets),
             playoffConfig: buildTournamentConfig(nextPlayoffDivision.playoffConfig),
             allowPaymentPlans: false,
             installmentCount: 0,
@@ -6740,6 +6880,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         defaultDivisionTypeSelections.ageDivisionTypeId,
         defaultDivisionTypeSelections.skillDivisionTypeId,
         eventData.playoffDivisionDetails,
+        currentSportRequiresSets,
+        leagueData,
         playoffData,
         resetDivisionEditor,
     ]);
@@ -6757,6 +6899,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             };
         });
     }, []);
+
+    const setDivisionEditorLeagueConfig = useCallback((updates: Partial<LeagueConfig>) => {
+        setDivisionEditor((prev) => ({
+            ...prev,
+            leagueConfig: normalizeLeagueConfigForSetMode(
+                {
+                    ...prev.leagueConfig,
+                    ...updates,
+                    includePlayoffs: prev.leagueConfig.includePlayoffs,
+                    playoffTeamCount: prev.leagueConfig.playoffTeamCount,
+                },
+                currentSportRequiresSets,
+            ),
+            error: null,
+        }));
+    }, [currentSportRequiresSets]);
 
     useEffect(() => {
         if (splitDivisionEditorEnabled || divisionEditor.divisionKind !== 'PLAYOFF') {
@@ -6931,7 +7089,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? Math.max(1, Math.trunc(detail.poolCount))
                 : null,
             playoffPlacementDivisionIds: normalizePlacementDivisionIds(detail.playoffPlacementDivisionIds),
-            playoffConfig: buildTournamentConfig(playoffData),
+            leagueConfig: buildDivisionLeagueConfig(detail, leagueData, currentSportRequiresSets),
+            playoffConfig: buildTournamentConfig(detail.playoffConfig ?? playoffData),
             allowPaymentPlans: detailAllowPaymentPlans,
             installmentCount: detailAllowPaymentPlans
                 ? (detail.installmentCount || detailInstallmentAmounts.length || 0)
@@ -6951,6 +7110,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.maxParticipants,
         eventData.sportConfig,
         eventData.sportId,
+        currentSportRequiresSets,
+        leagueData,
         playoffData,
     ]);
 
@@ -6971,6 +7132,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             playoffTeamCount: null,
             poolCount: null,
             playoffPlacementDivisionIds: [],
+            leagueConfig: normalizeLeagueConfigForSetMode(leagueData, currentSportRequiresSets),
             playoffConfig: buildTournamentConfig(detail.playoffConfig),
             allowPaymentPlans: false,
             installmentCount: 0,
@@ -6984,6 +7146,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         defaultDivisionTypeSelections.ageDivisionTypeId,
         defaultDivisionTypeSelections.skillDivisionTypeId,
         eventData.playoffDivisionDetails,
+        currentSportRequiresSets,
+        leagueData,
     ]);
 
     const handleRemoveDivisionDetail = useCallback((divisionId: string) => {
@@ -7299,6 +7463,28 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? [...existingDetail.playoffPlacementDivisionIds]
                 : [];
         })();
+        const storesLeagueDivisionPlayoffConfig = (
+            eventData.eventType === 'LEAGUE'
+            && leagueData.includePlayoffs
+            && !eventData.singleDivision
+            && !eventData.splitLeaguePlayoffDivisions
+        );
+        const storesTournamentDivisionConfig = (
+            eventData.eventType === 'TOURNAMENT'
+            && !eventData.singleDivision
+        );
+        const normalizedDivisionPlayoffConfig = storesLeagueDivisionPlayoffConfig
+            ? normalizeTournamentConfigForSetMode(
+                divisionEditor.playoffConfig,
+                resolveTournamentSetMode(currentSportRequiresSets, divisionEditor.playoffConfig),
+            )
+            : undefined;
+        const normalizedDivisionTournamentConfig = storesTournamentDivisionConfig
+            ? normalizeTournamentConfigForSetMode(
+                divisionEditor.playoffConfig,
+                resolveTournamentSetMode(currentSportRequiresSets, divisionEditor.playoffConfig),
+            )
+            : undefined;
 
         const nextDetail = applyDivisionAgeCutoff({
             id: nextId,
@@ -7319,6 +7505,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             poolCount: normalizedDivisionPoolCount,
             poolTeamCount: normalizedDivisionPoolTeamCount,
             playoffPlacementDivisionIds: normalizedPlacementMapping,
+            ...((eventData.eventType === 'LEAGUE' || (eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs))
+                ? leagueConfigToDivisionFields(normalizeLeagueConfigForSetMode(divisionEditor.leagueConfig, currentSportRequiresSets))
+                : {}),
+            ...((normalizedDivisionPlayoffConfig || normalizedDivisionTournamentConfig)
+                ? { playoffConfig: normalizedDivisionPlayoffConfig ?? normalizedDivisionTournamentConfig }
+                : {}),
             allowPaymentPlans: normalizedDivisionAllowPaymentPlans,
             installmentCount: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentCount : 0,
             installmentDueDates: normalizedDivisionAllowPaymentPlans && !(eventData.eventType === 'WEEKLY_EVENT' && !eventData.parentEvent)
@@ -7392,7 +7584,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? normalizedDivisionPoolCount
                 : null,
             playoffPlacementDivisionIds: [],
-            playoffConfig: buildTournamentConfig(playoffData),
+            leagueConfig: normalizeLeagueConfigForSetMode(divisionEditor.leagueConfig, currentSportRequiresSets),
+            playoffConfig: buildTournamentConfig(divisionEditor.playoffConfig),
             allowPaymentPlans: normalizedDivisionAllowPaymentPlans,
             installmentCount: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentCount : 0,
             installmentDueDates: normalizedDivisionAllowPaymentPlans ? normalizedDivisionInstallmentDueDates : [],
@@ -7423,6 +7616,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.price,
         eventData.maxParticipants,
         eventData.playoffDivisionDetails,
+        currentSportRequiresSets,
         leagueData.includePlayoffs,
         leagueData.playoffTeamCount,
         playoffData,
@@ -7432,6 +7626,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         resetDivisionEditor,
         setLeagueData,
         setValue,
+        splitDivisionEditorEnabled,
     ]);
 
     const leagueDivisionEditorReady = Boolean(
@@ -7691,6 +7886,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [eventData.sportConfig, eventData.sportId, setLeagueData, sportsById]);
 
     useEffect(() => {
+        setDivisionEditor((prev) => {
+            if (prev.divisionKind !== 'LEAGUE') {
+                return prev;
+            }
+            const normalized = normalizeLeagueConfigForSetMode(prev.leagueConfig, currentSportRequiresSets);
+            if (leagueConfigEqual(prev.leagueConfig, normalized)) {
+                return prev;
+            }
+            return {
+                ...prev,
+                leagueConfig: normalized,
+            };
+        });
+    }, [currentSportRequiresSets]);
+
+    useEffect(() => {
         const selectedSport = (
             eventData.sportId ? sportsById.get(eventData.sportId) : null
         ) ?? eventData.sportConfig;
@@ -7708,6 +7919,29 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             ? eventData.playoffDivisionDetails
             : [];
         if (!currentPlayoffDivisions.length) {
+            const currentLeagueDivisions = Array.isArray(eventData.divisionDetails)
+                ? eventData.divisionDetails
+                : [];
+            let leagueChanged = false;
+            const nextLeagueDivisions = currentLeagueDivisions.map((division) => {
+                if (!division.playoffConfig) {
+                    return division;
+                }
+                const previousConfig = buildTournamentConfig(division.playoffConfig);
+                const normalizedConfig = normalizeTournamentConfigForSetMode(previousConfig, false);
+                if (tournamentConfigEqual(previousConfig, normalizedConfig)) {
+                    return division;
+                }
+                leagueChanged = true;
+                return {
+                    ...division,
+                    playoffConfig: normalizedConfig,
+                };
+            });
+
+            if (leagueChanged) {
+                setValue('divisionDetails', nextLeagueDivisions, { shouldDirty: false, shouldValidate: true });
+            }
             return;
         }
 
@@ -7728,7 +7962,32 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (changed) {
             setValue('playoffDivisionDetails', nextPlayoffDivisions, { shouldDirty: false, shouldValidate: true });
         }
+
+        const currentLeagueDivisions = Array.isArray(eventData.divisionDetails)
+            ? eventData.divisionDetails
+            : [];
+        let leagueChanged = false;
+        const nextLeagueDivisions = currentLeagueDivisions.map((division) => {
+            if (!division.playoffConfig) {
+                return division;
+            }
+            const previousConfig = buildTournamentConfig(division.playoffConfig);
+            const normalizedConfig = normalizeTournamentConfigForSetMode(previousConfig, false);
+            if (tournamentConfigEqual(previousConfig, normalizedConfig)) {
+                return division;
+            }
+            leagueChanged = true;
+            return {
+                ...division,
+                playoffConfig: normalizedConfig,
+            };
+        });
+
+        if (leagueChanged) {
+            setValue('divisionDetails', nextLeagueDivisions, { shouldDirty: false, shouldValidate: true });
+        }
     }, [
+        eventData.divisionDetails,
         eventData.playoffDivisionDetails,
         eventData.sportConfig,
         eventData.sportId,
@@ -8194,7 +8453,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     includePlayoffs: includePlayoffsOrPools,
                     playoffTeamCount: source?.playoffTeamCount ?? undefined,
                     usesSets: source?.usesSets ?? false,
-                    matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes, 60) ?? 60,
+                    matchDurationMinutes: normalizeNumber(source?.matchDurationMinutes),
                     restTimeMinutes: normalizeNumber(source?.restTimeMinutes, 0) ?? 0,
                     setDurationMinutes: normalizeNumber(source?.setDurationMinutes),
                     setsPerMatch: normalizeNumber(source?.setsPerMatch),
@@ -8853,7 +9112,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     poolCount,
                     poolTeamCount: derivePoolTeamCount(maxParticipants, poolCount),
                     playoffPlacementDivisionIds: [],
-                    playoffConfig: tournamentBracketConfig,
+                    playoffConfig: normalizeTournamentConfigForSetMode(
+                        detail.playoffConfig ?? tournamentBracketConfig,
+                        resolveTournamentSetMode(
+                            sportRequiresSets,
+                            detail.playoffConfig ?? tournamentBracketConfig,
+                        ),
+                    ),
                 };
             })
             : [];
@@ -8915,6 +9180,38 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
                 return mapping.slice(0, playoffTeamCount);
             })(),
+            ...((source.eventType === 'LEAGUE' || (source.eventType === 'TOURNAMENT' && source.leagueData.includePlayoffs))
+                ? leagueConfigToDivisionFields(
+                    singleDivisionEnabled
+                        ? normalizeLeagueConfigForSetMode(source.leagueData, sportRequiresSets)
+                        : buildDivisionLeagueConfig(detail, source.leagueData, sportRequiresSets),
+                )
+                : {}),
+            ...(source.eventType === 'LEAGUE'
+                && source.leagueData.includePlayoffs
+                && !singleDivisionEnabled
+                && !splitLeaguePlayoffDivisions
+                ? {
+                    playoffConfig: normalizeTournamentConfigForSetMode(
+                        detail.playoffConfig ?? source.playoffData,
+                        resolveTournamentSetMode(
+                            sportRequiresSets,
+                            detail.playoffConfig ?? source.playoffData,
+                        ),
+                    ),
+                }
+                : {}),
+            ...(source.eventType === 'TOURNAMENT' && !singleDivisionEnabled
+                ? {
+                    playoffConfig: normalizeTournamentConfigForSetMode(
+                        detail.playoffConfig ?? source.tournamentData,
+                        resolveTournamentSetMode(
+                            sportRequiresSets,
+                            detail.playoffConfig ?? source.tournamentData,
+                        ),
+                    ),
+                }
+                : {}),
             allowPaymentPlans: pricingEnabled
                 ? (
                     singleDivisionEnabled
@@ -9292,7 +9589,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
             if (sportRequiresSets) {
                 draft.usesSets = true;
-                draft.setDurationMinutes = normalizeNumber(source.leagueData.setDurationMinutes) ?? 20;
+                draft.setDurationMinutes = normalizeNumber(source.leagueData.setDurationMinutes);
                 draft.setsPerMatch = setsPerMatchValue;
                 draft.pointsToVictory = normalizedPoints;
                 if (restTime !== undefined) {
@@ -9300,7 +9597,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
             } else {
                 draft.usesSets = false;
-                draft.matchDurationMinutes = normalizeNumber(source.leagueData.matchDurationMinutes, 60) ?? 60;
+                draft.matchDurationMinutes = normalizeNumber(source.leagueData.matchDurationMinutes);
                 if (restTime !== undefined) {
                     draft.restTimeMinutes = restTime;
                 }
@@ -9316,6 +9613,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 draft.loserSetCount = normalizedPlayoffConfig.loserSetCount;
                 draft.winnerBracketPointsToVictory = normalizedPlayoffConfig.winnerBracketPointsToVictory;
                 draft.loserBracketPointsToVictory = normalizedPlayoffConfig.loserBracketPointsToVictory;
+                draft.restTimeMinutes = normalizeNumber(normalizedPlayoffConfig.restTimeMinutes, 0) ?? 0;
             }
 
         }
@@ -9338,11 +9636,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             draft.restTimeMinutes = normalizeNumber(normalizedTournamentConfig.restTimeMinutes, 0) ?? 0;
             if (tournamentRequiresSets) {
                 draft.usesSets = true;
-                draft.setDurationMinutes = normalizeNumber(normalizedTournamentConfig.setDurationMinutes, 20) ?? 20;
+                draft.setDurationMinutes = normalizeNumber(normalizedTournamentConfig.setDurationMinutes);
                 draft.matchDurationMinutes = undefined;
             } else {
                 draft.usesSets = false;
-                draft.matchDurationMinutes = normalizeNumber(normalizedTournamentConfig.matchDurationMinutes, 60) ?? 60;
+                draft.matchDurationMinutes = normalizeNumber(normalizedTournamentConfig.matchDurationMinutes);
                 draft.setDurationMinutes = undefined;
             }
         }
@@ -9657,9 +9955,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             { id: 'section-event-details', label: 'Event Details', visible: true },
             { id: 'section-match-rules', label: 'Match Rules', visible: showMatchRulesSection },
             { id: 'section-officials', label: 'Officials', visible: true },
-            { id: 'section-division-settings', label: 'Division Settings', visible: true },
+            { id: 'section-division-settings', label: 'Divisions', visible: true },
             { id: 'section-league-scoring-config', label: scoringConfigSectionLabel, visible: showScoringConfigSection },
-            { id: 'section-schedule-config', label: 'Schedule Config', visible: showScheduleConfig },
+            { id: 'section-schedule-config', label: 'Schedule', visible: showScheduleConfig },
         ],
         [scoringConfigSectionLabel, showMatchRulesSection, showScheduleConfig, showScoringConfigSection],
     );
@@ -9774,11 +10072,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [expandSection]);
 
     const sheetContent = (
-        <div className="mx-auto max-w-[1320px] space-y-6">
-            <div className="p-2">
-                <div className="grid grid-cols-1 gap-8 xl:grid-cols-[240px_minmax(0,1fr)]">
+        <div className="mx-auto w-full max-w-[1320px] space-y-6">
+            <div className="p-4">
+                <div className="grid grid-cols-1 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
                     <aside className="hidden xl:block">
-                        <div className="sticky top-6 rounded-xl border border-gray-200 bg-white/95 p-4 shadow-sm backdrop-blur">
+                        <div className="sticky top-20 rounded-xl border border-gray-200 bg-white/95 p-4 shadow-sm backdrop-blur">
                             <Text fw={700} size="sm" c="gray.8" mb="xs">
                                 Sections
                             </Text>
@@ -9829,7 +10127,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 })}
                             </div>
                         </div>
-                        <div className="mx-auto w-full max-w-[1000px] p-6">
+                        <div className="mx-auto w-full max-w-[1000px]">
                             <form id={formId} className="space-y-8">
                         {/* Basic Information */}
                         <Paper
@@ -9838,7 +10136,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             radius="md"
                             withBorder
                             p="lg"
-                            className="scroll-mt-28 bg-gray-50"
+                            className="scroll-mt-20 bg-gray-50"
                         >
                             <div className="flex items-center justify-between gap-3">
                                 <h3 className="text-lg font-semibold">Basic Information</h3>
@@ -9972,7 +10270,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             radius="md"
                             withBorder
                             p="lg"
-                            className="scroll-mt-28 bg-gray-50"
+                            className="scroll-mt-20 bg-gray-50"
                         >
                             <div className="flex items-center justify-between gap-3">
                                 <h3 className="text-lg font-semibold">Event Details</h3>
@@ -10534,7 +10832,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 radius="md"
                                 withBorder
                                 p="lg"
-                                className="scroll-mt-28 bg-gray-50"
+                                className="scroll-mt-20 bg-gray-50"
                             >
                                 <div className="flex items-center justify-between gap-3">
                                     <h3 className="text-lg font-semibold">Match Rules</h3>
@@ -10562,7 +10860,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
                                             officialPositions={eventData.officialPositions}
                                             value={eventData.matchRulesOverride}
-                                            onChange={(nextValue) => setValue('matchRulesOverride', nextValue, { shouldDirty: true, shouldValidate: false })}
+                                            onChange={(nextValue) => setValue('matchRulesOverride', sanitizeMatchRulesOverrideForEditor(nextValue), { shouldDirty: true, shouldValidate: false })}
                                             autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
                                             onAutoCreatePointMatchIncidentsChange={(checked) => setValue('autoCreatePointMatchIncidents', checked, { shouldDirty: true, shouldValidate: false })}
                                             disabled={isImmutableField('matchRulesOverride')}
@@ -10580,7 +10878,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             radius="md"
                             withBorder
                             p="lg"
-                            className="scroll-mt-28 bg-gray-50"
+                            className="scroll-mt-20 bg-gray-50"
                         >
                             <div className="flex items-center justify-between gap-3">
                                 <h3 className="text-lg font-semibold">Staff</h3>
@@ -11152,17 +11450,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </Collapse>
                         </Paper>
 
-                        {/* Division Settings */}
+                        {/* Divisions */}
                         <Paper
                             id="section-division-settings"
                             shadow="xs"
                             radius="md"
                             withBorder
                             p="lg"
-                            className="scroll-mt-28 bg-gray-50"
+                            className="scroll-mt-20 bg-gray-50"
                         >
                             <div className="flex items-center justify-between gap-3">
-                                <h3 className="text-lg font-semibold">Division Settings</h3>
+                                <h3 className="text-lg font-semibold">Divisions</h3>
                                 <Button
                                     type="button"
                                     variant="subtle"
@@ -11288,7 +11586,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 <div className="rounded-lg border border-gray-200 bg-white p-4">
                                     <Stack gap="md">
                                         <div>
-                                            <Title order={6}>Single Division Settings</Title>
+                                            <Title order={6}>Single Division</Title>
                                             <Text size="sm" c="dimmed">
                                                 Price, capacity, and payment plans apply to every selected division.
                                             </Text>
@@ -11355,8 +11653,40 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 ) : null}
                                             </AnimatedLayoutSection>
                                             <AnimatedLayoutSection
+                                                in={eventData.singleDivision && eventData.eventType === 'LEAGUE'}
+                                                className="md:col-span-12"
+                                            >
+                                                <LeagueFields
+                                                    leagueData={leagueData}
+                                                    sport={eventData.sportConfig ?? undefined}
+                                                    participantCount={eventData.maxParticipants ?? undefined}
+                                                    onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
+                                                    slots={[]}
+                                                    onAddSlot={() => undefined}
+                                                    onUpdateSlot={() => undefined}
+                                                    onRemoveSlot={() => undefined}
+                                                    fields={[]}
+                                                    fieldsLoading={false}
+                                                    showPlayoffSettings={false}
+                                                    showTimeslots={false}
+                                                    unstyled
+                                                />
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
+                                                in={eventData.singleDivision && eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions}
+                                                className="md:col-span-12"
+                                            >
+                                                <TournamentFields
+                                                    title="Playoff Configuration"
+                                                    tournamentData={playoffData}
+                                                    setTournamentData={setPlayoffData}
+                                                    sport={eventData.sportConfig ?? undefined}
+                                                    unstyled
+                                                />
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
                                                 in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                                className="md:col-span-3"
+                                                className="md:col-span-6"
                                             >
                                                 <NumberInput
                                                     label="Bracket Teams"
@@ -11382,7 +11712,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             </AnimatedLayoutSection>
                                             <AnimatedLayoutSection
                                                 in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                                className="md:col-span-3"
+                                                className="md:col-span-6"
                                             >
                                                 <NumberInput
                                                     label="Pool Count"
@@ -11408,7 +11738,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             </AnimatedLayoutSection>
                                             <AnimatedLayoutSection
                                                 in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
-                                                className="md:col-span-3"
+                                                className="md:col-span-6"
                                             >
                                                 <NumberInput
                                                     label="Pool Team Count"
@@ -11416,6 +11746,39 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     w="100%"
                                                     styles={alignedDetailsFieldStyles}
                                                     disabled
+                                                />
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
+                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                                                className="md:col-span-12"
+                                            >
+                                                <LeagueFields
+                                                    configurationTitle="Pool Configuration"
+                                                    leagueData={leagueData}
+                                                    sport={eventData.sportConfig ?? undefined}
+                                                    participantCount={eventData.maxParticipants ?? undefined}
+                                                    onLeagueDataChange={(updates) => setLeagueData((prev) => ({ ...prev, ...updates }))}
+                                                    slots={[]}
+                                                    onAddSlot={() => undefined}
+                                                    onUpdateSlot={() => undefined}
+                                                    onRemoveSlot={() => undefined}
+                                                    fields={[]}
+                                                    fieldsLoading={false}
+                                                    showPlayoffSettings={false}
+                                                    showTimeslots={false}
+                                                    unstyled
+                                                />
+                                            </AnimatedLayoutSection>
+                                            <AnimatedLayoutSection
+                                                in={eventData.singleDivision && eventData.eventType === 'TOURNAMENT'}
+                                                className="md:col-span-12"
+                                            >
+                                                <TournamentFields
+                                                    title="Tournament Configuration"
+                                                    tournamentData={tournamentData}
+                                                    setTournamentData={setTournamentData}
+                                                    sport={eventData.sportConfig ?? undefined}
+                                                    unstyled
                                                 />
                                             </AnimatedLayoutSection>
                                             <AnimatedLayoutSection
@@ -11944,6 +12307,26 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         </div>
                                     </AnimatedLayoutSection>
                                     <AnimatedLayoutSection
+                                        in={eventData.eventType === 'LEAGUE' && !eventData.singleDivision}
+                                        className="md:col-span-12"
+                                    >
+                                        <LeagueFields
+                                            leagueData={divisionEditor.leagueConfig}
+                                            sport={eventData.sportConfig ?? undefined}
+                                            participantCount={divisionEditor.maxParticipants ?? undefined}
+                                            onLeagueDataChange={setDivisionEditorLeagueConfig}
+                                            slots={[]}
+                                            onAddSlot={() => undefined}
+                                            onUpdateSlot={() => undefined}
+                                            onRemoveSlot={() => undefined}
+                                            fields={[]}
+                                            fieldsLoading={false}
+                                            showPlayoffSettings={false}
+                                            showTimeslots={false}
+                                            unstyled
+                                        />
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
                                         in={eventData.eventType === 'LEAGUE' && !eventData.singleDivision && leagueData.includePlayoffs}
                                         className="md:col-span-3"
                                     >
@@ -11976,6 +12359,23 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     error: null,
                                                 }));
                                             }}
+                                        />
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={
+                                            eventData.eventType === 'LEAGUE'
+                                            && !eventData.singleDivision
+                                            && leagueData.includePlayoffs
+                                            && !eventData.splitLeaguePlayoffDivisions
+                                        }
+                                        className="md:col-span-12"
+                                    >
+                                        <TournamentFields
+                                            title="Playoff Configuration"
+                                            tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
+                                            setTournamentData={setDivisionEditorPlayoffConfig}
+                                            sport={eventData.sportConfig ?? undefined}
+                                            unstyled
                                         />
                                     </AnimatedLayoutSection>
                                     <AnimatedLayoutSection
@@ -12024,7 +12424,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </AnimatedLayoutSection>
                                     <AnimatedLayoutSection
                                         in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
-                                        className="md:col-span-3"
+                                        className="md:col-span-6"
                                     >
                                         <NumberInput
                                             label="Bracket Teams"
@@ -12052,7 +12452,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </AnimatedLayoutSection>
                                     <AnimatedLayoutSection
                                         in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
-                                        className="md:col-span-3"
+                                        className="md:col-span-6"
                                     >
                                         <NumberInput
                                             label="Pool Count"
@@ -12080,7 +12480,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </AnimatedLayoutSection>
                                     <AnimatedLayoutSection
                                         in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs && !eventData.singleDivision}
-                                        className="md:col-span-3"
+                                        className="md:col-span-6"
                                     >
                                         <NumberInput
                                             label="Pool Team Count"
@@ -12095,11 +12495,44 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             disabled
                                         />
                                     </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={eventData.eventType === 'TOURNAMENT' && leagueData.includePlayoffs}
+                                        className="md:col-span-12"
+                                    >
+                                        <LeagueFields
+                                            configurationTitle="Pool Configuration"
+                                            leagueData={divisionEditor.leagueConfig}
+                                            sport={eventData.sportConfig ?? undefined}
+                                            participantCount={divisionEditor.maxParticipants ?? undefined}
+                                            onLeagueDataChange={setDivisionEditorLeagueConfig}
+                                            slots={[]}
+                                            onAddSlot={() => undefined}
+                                            onUpdateSlot={() => undefined}
+                                            onRemoveSlot={() => undefined}
+                                            fields={[]}
+                                            fieldsLoading={false}
+                                            showPlayoffSettings={false}
+                                            showTimeslots={false}
+                                            unstyled
+                                        />
+                                    </AnimatedLayoutSection>
+                                    <AnimatedLayoutSection
+                                        in={eventData.eventType === 'TOURNAMENT' && !eventData.singleDivision}
+                                        className="md:col-span-12"
+                                    >
+                                        <TournamentFields
+                                            title="Tournament Configuration"
+                                            tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
+                                            setTournamentData={setDivisionEditorPlayoffConfig}
+                                            sport={eventData.sportConfig ?? undefined}
+                                            unstyled
+                                        />
+                                    </AnimatedLayoutSection>
                                 </motion.div>
                                 <AnimatedLayoutSection in={eventData.singleDivision}>
                                     <Text size="xs" c="dimmed">
                                         {eventData.eventType === 'LEAGUE'
-                                            ? 'Division price, capacity, payment plan, and playoff team count mirror event-level values while single division is enabled.'
+                                            ? 'Division price, capacity, payment plan, league schedule settings, and playoff settings apply to the single combined schedule.'
                                             : eventData.eventType === 'TOURNAMENT'
                                                 ? 'Division price, capacity, payment plan, and pool-play settings apply to every selected division while single division is enabled.'
                                                 : 'Division price, capacity, and payment plan mirror event-level values while single division is enabled.'}
@@ -12148,11 +12581,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         />
                                         <div className="md:col-span-12">
                                             <TournamentFields
-                                                title="Playoff Settings"
+                                                title="Playoff Configuration"
                                                 tournamentData={buildTournamentConfig(divisionEditor.playoffConfig)}
                                                 setTournamentData={setDivisionEditorPlayoffConfig}
                                                 sport={eventData.sportConfig ?? undefined}
-                                                showDurationControls={false}
                                                 unstyled
                                             />
                                         </div>
@@ -12259,9 +12691,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     .filter(Boolean)
                                                     .length;
                                                 return (
-                                                    <Paper key={detail.id} withBorder radius={0} p="sm" className="aspect-square min-h-[15rem] overflow-hidden bg-white">
-                                                        <div className="flex h-full flex-col justify-between gap-3">
-                                                            <div className="min-h-0 space-y-1 overflow-y-auto pr-1">
+                                                    <Paper key={detail.id} withBorder radius={0} p="sm" className="bg-white">
+                                                        <div className="space-y-3">
+                                                            <div className="space-y-1">
                                                                 <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
                                                                     <Text fw={700} size="sm" lineClamp={2}>{detail.name}</Text>
                                                                     <Badge size="sm" radius="sm" variant="light">League</Badge>
@@ -12324,9 +12756,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 ? (eventData.playoffDivisionDetails || []).map((playoffDivision) => {
                                                     const playoffConfig = buildTournamentConfig(playoffDivision.playoffConfig);
                                                     return (
-                                                        <Paper key={playoffDivision.id} withBorder radius={0} p="sm" className="aspect-square min-h-[15rem] overflow-hidden bg-white">
-                                                            <div className="flex h-full flex-col justify-between gap-3">
-                                                                <div className="min-h-0 space-y-1 overflow-y-auto pr-1">
+                                                        <Paper key={playoffDivision.id} withBorder radius={0} p="sm" className="bg-white">
+                                                            <div className="space-y-3">
+                                                                <div className="space-y-1">
                                                                     <Group justify="space-between" align="flex-start" gap="xs" wrap="nowrap">
                                                                         <Text fw={700} size="sm" lineClamp={2}>{playoffDivision.name}</Text>
                                                                         <Badge size="sm" radius="sm" variant="light" color="grape">Playoff</Badge>
@@ -12391,7 +12823,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 radius="md"
                                 withBorder
                                 p="lg"
-                                className="scroll-mt-28 bg-gray-50"
+                                className="scroll-mt-20 bg-gray-50"
                             >
                                 <div className="flex items-center justify-between gap-3">
                                     <h3 className="text-lg font-semibold">{scoringConfigSectionLabel}</h3>
@@ -12426,10 +12858,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 radius="md"
                                 withBorder
                                 p="lg"
-                                className="scroll-mt-28 bg-gray-50"
+                                className="scroll-mt-20 bg-gray-50"
                             >
                                 <div className="flex items-center justify-between gap-3">
-                                    <h3 className="text-lg font-semibold">Schedule Config</h3>
+                                    <h3 className="text-lg font-semibold">Schedule</h3>
                                     <Button
                                         type="button"
                                         variant="subtle"
@@ -12488,14 +12920,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
                                         {isSchedulableEventType ? (
                                             <div className="space-y-4">
-                                                <AnimatedSection in={eventData.eventType === 'TOURNAMENT'}>
-                                                    <TournamentFields
-                                                        tournamentData={tournamentData}
-                                                        setTournamentData={setTournamentData}
-                                                        sport={eventData.sportConfig ?? undefined}
-                                                    />
-                                                </AnimatedSection>
-
                                                 <AnimatedSection in={isOrganizationManagedEvent}>
                                                     <Text size="xs" c="dimmed">
                                                         Select event fields directly inside each timeslot.
@@ -12529,21 +12953,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     readOnly={hasImmutableTimeSlots || hasExternalRentalField}
                                                     allowDivisionEditsWhenReadOnly={hasExternalRentalField && !eventData.singleDivision}
                                                     showPlayoffSettings={false}
-                                                    showLeagueConfiguration={eventData.eventType === 'LEAGUE'}
+                                                    showLeagueConfiguration={false}
                                                     emptyFieldsMessage={isOrganizationManagedEvent
                                                         ? 'No fields found. Create a field on the Organizations page first, then return here to attach weekly availability.'
                                                         : undefined}
                                                 />
-
-                                                <AnimatedSection in={eventData.eventType === 'LEAGUE' && leagueData.includePlayoffs && !eventData.splitLeaguePlayoffDivisions}>
-                                                    <TournamentFields
-                                                        title="Playoffs Configuration"
-                                                        tournamentData={playoffData}
-                                                        setTournamentData={setPlayoffData}
-                                                        sport={eventData.sportConfig ?? undefined}
-                                                        showDurationControls={false}
-                                                    />
-                                                </AnimatedSection>
                                             </div>
                                         ) : null}
                                     </div>

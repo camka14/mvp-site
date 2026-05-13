@@ -17,7 +17,7 @@ import {
 import { acquireEventLock } from '@/server/repositories/locks';
 import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { scheduleEvent, ScheduleError } from '@/server/scheduler/scheduleEvent';
-import { SchedulerContext } from '@/server/scheduler/types';
+import { SchedulerContext, type LeagueDivisionConfig } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
 import { assertEventContentAllowed, EventContentFilterError } from '@/server/contentFilter';
 import {
@@ -383,6 +383,8 @@ type PlayoffDivisionConfig = {
   prize: string;
   fieldCount: number;
   restTimeMinutes: number;
+  matchDurationMinutes?: number | null;
+  setDurationMinutes?: number | null;
 };
 
 const PLAYOFF_CONFIG_KEYS: ReadonlyArray<keyof PlayoffDivisionConfig> = [
@@ -394,6 +396,8 @@ const PLAYOFF_CONFIG_KEYS: ReadonlyArray<keyof PlayoffDivisionConfig> = [
   'prize',
   'fieldCount',
   'restTimeMinutes',
+  'matchDurationMinutes',
+  'setDurationMinutes',
 ];
 
 const normalizePlayoffDivisionConfig = (value: unknown): PlayoffDivisionConfig | null => {
@@ -414,6 +418,16 @@ const normalizePlayoffDivisionConfig = (value: unknown): PlayoffDivisionConfig |
       return fallback;
     }
     return Math.max(min, Math.trunc(parsed));
+  };
+  const normalizeOptionalDuration = (input: unknown): number | undefined => {
+    if (input === null || input === undefined || input === '') {
+      return undefined;
+    }
+    const parsed = typeof input === 'number' ? input : Number(input);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    return Math.max(0, Math.trunc(parsed));
   };
 
   const normalizePoints = (input: unknown, expectedLength: number): number[] => {
@@ -444,7 +458,101 @@ const normalizePlayoffDivisionConfig = (value: unknown): PlayoffDivisionConfig |
     prize: typeof row.prize === 'string' ? row.prize : '',
     fieldCount: normalizeNumber(row.fieldCount, 1, 1),
     restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0, 0),
+    matchDurationMinutes: normalizeOptionalDuration(row.matchDurationMinutes),
+    setDurationMinutes: normalizeOptionalDuration(row.setDurationMinutes),
   };
+};
+
+const normalizeDivisionPlayoffConfigFields = (value: unknown): PlayoffDivisionConfig | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  return normalizePlayoffDivisionConfig({
+    doubleElimination: row.playoffDoubleElimination,
+    winnerSetCount: row.playoffWinnerSetCount,
+    loserSetCount: row.playoffLoserSetCount,
+    winnerBracketPointsToVictory: row.playoffWinnerBracketPointsToVictory,
+    loserBracketPointsToVictory: row.playoffLoserBracketPointsToVictory,
+    prize: row.playoffPrize,
+    fieldCount: row.playoffFieldCount,
+    restTimeMinutes: row.playoffRestTimeMinutes,
+    matchDurationMinutes: row.playoffMatchDurationMinutes,
+    setDurationMinutes: row.playoffSetDurationMinutes,
+  });
+};
+
+type LeagueDivisionConfigPayload = LeagueDivisionConfig;
+
+const LEAGUE_CONFIG_KEYS: ReadonlyArray<keyof LeagueDivisionConfigPayload> = [
+  'gamesPerOpponent',
+  'usesSets',
+  'matchDurationMinutes',
+  'setDurationMinutes',
+  'setsPerMatch',
+  'pointsToVictory',
+  'restTimeMinutes',
+];
+
+const normalizeLeagueDivisionConfig = (value: unknown): LeagueDivisionConfigPayload | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  const hasConfigValue = LEAGUE_CONFIG_KEYS.some(
+    (key) => Object.prototype.hasOwnProperty.call(row, key) && row[key] !== null && row[key] !== undefined,
+  );
+  if (!hasConfigValue) {
+    return null;
+  }
+
+  const normalizeNumber = (input: unknown, min: number): number | undefined => {
+    const parsed = typeof input === 'number' ? input : Number(input);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    return Math.max(min, Math.trunc(parsed));
+  };
+  const normalizeSetCount = (input: unknown): number | undefined => {
+    const parsed = normalizeNumber(input, 1);
+    return parsed && [1, 3, 5].includes(parsed) ? parsed : undefined;
+  };
+  const normalizePoints = (input: unknown, expectedLength: number): number[] | undefined => {
+    if (!Array.isArray(input)) {
+      return undefined;
+    }
+    const values = input
+      .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+      .filter((entry) => Number.isFinite(entry))
+      .map((entry) => Math.max(1, Math.trunc(entry)));
+    const next = values.slice(0, expectedLength);
+    while (next.length < expectedLength) {
+      next.push(21);
+    }
+    return next;
+  };
+
+  const usesSets = typeof row.usesSets === 'boolean'
+    ? row.usesSets
+    : Object.prototype.hasOwnProperty.call(row, 'setsPerMatch')
+      || Object.prototype.hasOwnProperty.call(row, 'setDurationMinutes')
+      || Object.prototype.hasOwnProperty.call(row, 'pointsToVictory')
+        ? true
+        : undefined;
+  const setsPerMatch = usesSets ? (normalizeSetCount(row.setsPerMatch) ?? 1) : undefined;
+  const config: LeagueDivisionConfigPayload = {
+    gamesPerOpponent: normalizeNumber(row.gamesPerOpponent, 1),
+    usesSets,
+    matchDurationMinutes: normalizeNumber(row.matchDurationMinutes, 0),
+    restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0),
+    setDurationMinutes: usesSets ? normalizeNumber(row.setDurationMinutes, 0) : undefined,
+    setsPerMatch,
+    pointsToVictory: usesSets ? normalizePoints(row.pointsToVictory, setsPerMatch ?? 1) : undefined,
+  };
+
+  return Object.fromEntries(
+    Object.entries(config).filter(([, entry]) => entry !== undefined),
+  ) as LeagueDivisionConfigPayload;
 };
 
 const normalizeDivisionKeys = (value: unknown): string[] => {
@@ -693,11 +801,15 @@ const normalizeDivisionDetailsInput = (
     const parsedStandingsConfirmedBy = typeof row.standingsConfirmedBy === 'string'
       ? row.standingsConfirmedBy.trim() || null
       : null;
+    const explicitPlayoffConfig = normalizePlayoffDivisionConfig(row.playoffConfig);
     const parsedPlayoffConfig = parsedKind === 'PLAYOFF'
       ? (
-          normalizePlayoffDivisionConfig(row.playoffConfig)
+          explicitPlayoffConfig
           ?? normalizePlayoffDivisionConfig(row)
         )
+      : explicitPlayoffConfig;
+    const parsedLeagueConfig = parsedKind === 'LEAGUE'
+      ? normalizeLeagueDivisionConfig(row)
       : null;
     const parsedAllowPaymentPlans = normalizeInputOptionalBoolean(row.allowPaymentPlans);
     const parsedInstallmentCount = normalizeInputNullableNumber(row.installmentCount);
@@ -759,7 +871,14 @@ const normalizeDivisionDetailsInput = (
       standingsOverrides: parsedKind === 'PLAYOFF' ? null : parsedStandingsOverrides,
       standingsConfirmedAt: parsedKind === 'PLAYOFF' ? null : parsedStandingsConfirmedAt,
       standingsConfirmedBy: parsedKind === 'PLAYOFF' ? null : parsedStandingsConfirmedBy,
-      playoffConfig: parsedKind === 'PLAYOFF' ? parsedPlayoffConfig : null,
+      playoffConfig: parsedPlayoffConfig,
+      gamesPerOpponent: parsedLeagueConfig?.gamesPerOpponent ?? null,
+      restTimeMinutes: parsedLeagueConfig?.restTimeMinutes ?? null,
+      usesSets: parsedLeagueConfig?.usesSets ?? null,
+      matchDurationMinutes: parsedLeagueConfig?.matchDurationMinutes ?? null,
+      setDurationMinutes: parsedLeagueConfig?.setDurationMinutes ?? null,
+      setsPerMatch: parsedLeagueConfig?.setsPerMatch ?? null,
+      pointsToVictory: parsedLeagueConfig?.pointsToVictory ?? [],
       allowPaymentPlans: parsedAllowPaymentPlans,
       installmentCount: (() => {
         if (typeof parsedInstallmentCount === 'number') {
@@ -986,6 +1105,23 @@ const getDivisionDetailsForEvent = async (
       playoffTeamCount: true,
       playoffPlacementDivisionIds: true,
       standingsOverrides: true,
+      gamesPerOpponent: true,
+      restTimeMinutes: true,
+      usesSets: true,
+      matchDurationMinutes: true,
+      setDurationMinutes: true,
+      setsPerMatch: true,
+      pointsToVictory: true,
+      playoffDoubleElimination: true,
+      playoffWinnerSetCount: true,
+      playoffLoserSetCount: true,
+      playoffWinnerBracketPointsToVictory: true,
+      playoffLoserBracketPointsToVictory: true,
+      playoffPrize: true,
+      playoffFieldCount: true,
+      playoffRestTimeMinutes: true,
+      playoffMatchDurationMinutes: true,
+      playoffSetDurationMinutes: true,
       standingsConfirmedAt: true,
       standingsConfirmedBy: true,
       allowPaymentPlans: true,
@@ -1068,10 +1204,13 @@ const getDivisionDetailsForEvent = async (
       : null;
     const standingsOverrides = normalizeStandingsOverrides((row as any)?.standingsOverrides);
     const playoffConfig = kind === 'PLAYOFF'
-      ? (
-          normalizePlayoffDivisionConfig((row as any)?.standingsOverrides)
-          ?? normalizePlayoffDivisionConfig(row)
-        )
+        ? (
+            normalizePlayoffDivisionConfig((row as any)?.standingsOverrides)
+            ?? normalizePlayoffDivisionConfig(row)
+          )
+        : normalizeDivisionPlayoffConfigFields(row);
+    const leagueConfig = kind === 'LEAGUE'
+      ? normalizeLeagueDivisionConfig(row)
       : null;
     const generatedPools = kind === 'PLAYOFF'
       ? generatedPoolsForBracket(allPoolRows, row?.id ?? divisionId)
@@ -1119,7 +1258,14 @@ const getDivisionDetailsForEvent = async (
       standingsOverrides: kind === 'PLAYOFF' ? null : standingsOverrides,
       standingsConfirmedAt: kind === 'PLAYOFF' ? null : standingsConfirmedAt,
       standingsConfirmedBy: kind === 'PLAYOFF' ? null : standingsConfirmedBy,
-      playoffConfig: kind === 'PLAYOFF' ? playoffConfig : null,
+      playoffConfig,
+      gamesPerOpponent: leagueConfig?.gamesPerOpponent ?? null,
+      restTimeMinutes: leagueConfig?.restTimeMinutes ?? null,
+      usesSets: leagueConfig?.usesSets ?? null,
+      matchDurationMinutes: leagueConfig?.matchDurationMinutes ?? null,
+      setDurationMinutes: leagueConfig?.setDurationMinutes ?? null,
+      setsPerMatch: leagueConfig?.setsPerMatch ?? null,
+      pointsToVictory: leagueConfig?.pointsToVictory ?? [],
       allowPaymentPlans: typeof row?.allowPaymentPlans === 'boolean'
         ? row.allowPaymentPlans
         : null,

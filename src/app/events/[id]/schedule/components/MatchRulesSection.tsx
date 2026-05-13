@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { Button, Group, MultiSelect, NumberInput, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
+import { Button, Group, MultiSelect, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
 
 import type { EventOfficialPosition, MatchRulesConfig, ResolvedMatchRules, Sport } from '@/types';
 
@@ -35,7 +35,10 @@ const normalizeStringList = (value: unknown): string[] => (
     : []
 );
 
-const normalizeRulesConfig = (value: MatchRulesConfig | null | undefined): MatchRulesConfig => {
+const normalizeRulesConfig = (
+  value: MatchRulesConfig | null | undefined,
+  options: { preserveSegmentCount?: boolean } = {},
+): MatchRulesConfig => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
   }
@@ -47,12 +50,14 @@ const normalizeRulesConfig = (value: MatchRulesConfig | null | undefined): Match
   if (scoringModel === 'SETS' || scoringModel === 'PERIODS' || scoringModel === 'INNINGS' || scoringModel === 'POINTS_ONLY') {
     normalized.scoringModel = scoringModel;
   }
-  const segmentCount = normalizePositiveInt(value.segmentCount);
-  if (segmentCount) {
-    normalized.segmentCount = segmentCount;
-  }
   if (typeof value.segmentLabel === 'string' && value.segmentLabel.trim()) {
     normalized.segmentLabel = value.segmentLabel.trim();
+  }
+  if (options.preserveSegmentCount) {
+    const segmentCount = normalizePositiveInt(value.segmentCount);
+    if (segmentCount) {
+      normalized.segmentCount = segmentCount;
+    }
   }
   if (typeof value.supportsDraw === 'boolean') {
     normalized.supportsDraw = value.supportsDraw;
@@ -97,20 +102,6 @@ const segmentLabelForModel = (model: ResolvedMatchRules['scoringModel']): string
     case 'PERIODS':
     default:
       return 'Period';
-  }
-};
-
-const scoringModelLabel = (model: ResolvedMatchRules['scoringModel']): string => {
-  switch (model) {
-    case 'SETS':
-      return 'Sets';
-    case 'INNINGS':
-      return 'Innings';
-    case 'POINTS_ONLY':
-      return 'Points only';
-    case 'PERIODS':
-    default:
-      return 'Periods';
   }
 };
 
@@ -161,7 +152,7 @@ const resolveMatchRules = (params: {
   winnerSetCount?: number | null;
   officialPositions?: EventOfficialPosition[] | null;
 }): ResolvedMatchRules => {
-  const sportTemplate = normalizeRulesConfig(params.sportTemplate);
+  const sportTemplate = normalizeRulesConfig(params.sportTemplate, { preserveSegmentCount: true });
   const eventOverride = normalizeRulesConfig(params.eventOverride);
   const merged: MatchRulesConfig = { ...sportTemplate, ...eventOverride };
   const hasSportTemplate = Object.keys(sportTemplate).length > 0;
@@ -204,22 +195,6 @@ const resolveMatchRules = (params: {
     pointIncidentRequiresParticipant: params.autoCreatePointMatchIncidents === true,
   };
 };
-
-const RuleSummary = ({
-  label,
-  value,
-  help,
-}: {
-  label: string;
-  value: string;
-  help: string;
-}) => (
-  <div className="rounded-lg border border-gray-200 bg-white px-3 py-2">
-    <Text size="xs" c="dimmed">{label}</Text>
-    <Text fw={600} size="sm">{value}</Text>
-    <Text size="xs" c="dimmed" mt={2}>{help}</Text>
-  </div>
-);
 
 export default function MatchRulesSection({
   sport,
@@ -297,19 +272,6 @@ export default function MatchRulesSection({
     });
   }, [updateOverride]);
 
-  const handleSegmentCountChange = useCallback((value: string | number) => {
-    const normalized = typeof value === 'number'
-      ? normalizePositiveInt(value)
-      : normalizePositiveInt(value.trim());
-    updateOverride((draft) => {
-      if (!normalized || normalized === baseRules.segmentCount) {
-        delete draft.segmentCount;
-      } else {
-        draft.segmentCount = normalized;
-      }
-    });
-  }, [baseRules.segmentCount, updateOverride]);
-
   const handleIncidentTypesChange = useCallback((values: string[]) => {
     const normalized = normalizeStringList(values);
     const nextValues = autoCreatePointMatchIncidents && autoPointIncidentType
@@ -352,8 +314,8 @@ export default function MatchRulesSection({
         <div>
           <Text fw={600} size="sm">Match format and incident capture</Text>
           <Text size="sm" c="dimmed">
-            The sport defines the format. This event can adjust how many segments are played,
-            which sport-supported result paths are enabled, and how much incident detail officials record.
+            The sport defines the match format. This event can adjust sport-supported result paths
+            and how much incident detail officials record.
           </Text>
         </div>
         <Button
@@ -366,35 +328,6 @@ export default function MatchRulesSection({
           Reset to sport defaults
         </Button>
       </Group>
-
-      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
-        <RuleSummary
-          label="Scoring model"
-          value={scoringModelLabel(resolvedRules.scoringModel)}
-          help="Locked to the sport template."
-        />
-        <RuleSummary
-          label="Segment label"
-          value={resolvedRules.segmentLabel}
-          help="Used for match scores and incident prompts."
-        />
-        <RuleSummary
-          label="Point incident type"
-          value={incidentTypeLabel(autoPointIncidentType)}
-          help="Created when automatic point incidents are enabled."
-        />
-      </SimpleGrid>
-
-      <NumberInput
-        label={`${resolvedRules.segmentLabel} count`}
-        description={`Leave blank to use the sport default of ${baseRules.segmentCount}.`}
-        value={normalizedOverride.segmentCount ?? ''}
-        min={1}
-        max={20}
-        clampBehavior="strict"
-        disabled={disabled}
-        onChange={handleSegmentCountChange}
-      />
 
       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
         {baseRules.canUseOvertime ? (

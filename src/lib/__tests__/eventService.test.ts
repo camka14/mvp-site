@@ -321,6 +321,22 @@ describe('eventService', () => {
           price: 2500,
           maxParticipants: 16,
           playoffTeamCount: 8,
+          gamesPerOpponent: 2,
+          restTimeMinutes: 10,
+          usesSets: true,
+          setDurationMinutes: 25,
+          setsPerMatch: 3,
+          pointsToVictory: [21, 21, 15],
+          playoffConfig: {
+            doubleElimination: false,
+            winnerSetCount: 1,
+            loserSetCount: 1,
+            winnerBracketPointsToVictory: [21],
+            loserBracketPointsToVictory: [21],
+            prize: '',
+            fieldCount: 1,
+            restTimeMinutes: 12,
+          },
           allowPaymentPlans: true,
           installmentCount: 2,
           installmentAmounts: [1500, 1000],
@@ -422,6 +438,15 @@ describe('eventService', () => {
             expect.objectContaining({
               id: 'evt_1__division__open',
               teamIds: ['team_1', 'team_2'],
+              gamesPerOpponent: 2,
+              restTimeMinutes: 10,
+              usesSets: true,
+              setDurationMinutes: 25,
+              setsPerMatch: 3,
+              pointsToVictory: [21, 21, 15],
+              playoffConfig: expect.objectContaining({
+                restTimeMinutes: 12,
+              }),
             }),
           ],
           leagueScoringConfig: expect.objectContaining({
@@ -441,6 +466,7 @@ describe('eventService', () => {
     expect((options?.body as any)?.event?.participantCapacity).toBeUndefined();
     expect((options?.body as any)?.event?.status).toBeUndefined();
     expect((options?.body as any)?.event?.leagueConfig).toBeUndefined();
+    expect((options?.body as any)?.event?.divisionDetails?.[0]?.leagueConfig).toBeUndefined();
     expect((options?.body as any)?.event?.refType).toBeUndefined();
     expect((options?.body as any)?.event?.resolvedMatchRules).toBeUndefined();
     expect(apiRequestMock.mock.calls[1][0]).toBe('/api/events/evt_1');
@@ -537,6 +563,42 @@ describe('eventService', () => {
     expect((event?.playoffDivisionDetails?.[0] as any)?.playoffConfig).toEqual(
       expect.objectContaining({
         doubleElimination: true,
+      }),
+    );
+  });
+
+  it('preserves non-split league division playoff settings when mapping event rows', async () => {
+    apiRequestMock.mockResolvedValue({
+      ...baseEventRow,
+      eventType: 'LEAGUE',
+      splitLeaguePlayoffDivisions: false,
+      divisionDetails: [
+        {
+          id: 'evt_1__division__open',
+          name: 'Open',
+          key: 'open',
+          kind: 'LEAGUE',
+          playoffTeamCount: 4,
+          playoffConfig: {
+            doubleElimination: false,
+            winnerSetCount: 3,
+            loserSetCount: 1,
+            winnerBracketPointsToVictory: [25, 25, 15],
+            loserBracketPointsToVictory: [25],
+            prize: '',
+            fieldCount: 1,
+            restTimeMinutes: 18,
+          },
+        },
+      ],
+    });
+
+    const event = await eventService.getEvent('evt_1');
+
+    expect((event?.divisionDetails?.[0] as any)?.playoffConfig).toEqual(
+      expect.objectContaining({
+        winnerSetCount: 3,
+        restTimeMinutes: 18,
       }),
     );
   });

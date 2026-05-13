@@ -28,6 +28,7 @@ import {
   UserData,
   sideFrom,
   MINUTE_MS,
+  type LeagueDivisionConfig,
 } from '@/server/scheduler/types';
 import {
   canonicalizeTimeSlots,
@@ -452,6 +453,8 @@ type PlayoffDivisionConfigPayload = {
   prize: string;
   fieldCount: number;
   restTimeMinutes: number;
+  matchDurationMinutes?: number | null;
+  setDurationMinutes?: number | null;
 };
 
 const PLAYOFF_CONFIG_KEYS: ReadonlyArray<keyof PlayoffDivisionConfigPayload> = [
@@ -463,6 +466,8 @@ const PLAYOFF_CONFIG_KEYS: ReadonlyArray<keyof PlayoffDivisionConfigPayload> = [
   'prize',
   'fieldCount',
   'restTimeMinutes',
+  'matchDurationMinutes',
+  'setDurationMinutes',
 ];
 
 const normalizePlayoffDivisionConfig = (value: unknown): PlayoffDivisionConfigPayload | null => {
@@ -483,6 +488,16 @@ const normalizePlayoffDivisionConfig = (value: unknown): PlayoffDivisionConfigPa
       return fallback;
     }
     return Math.max(min, Math.trunc(parsed));
+  };
+  const normalizeOptionalDuration = (input: unknown): number | undefined => {
+    if (input === null || input === undefined || input === '') {
+      return undefined;
+    }
+    const parsed = typeof input === 'number' ? input : Number(input);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    return Math.max(0, Math.trunc(parsed));
   };
 
   const normalizePoints = (input: unknown, expectedLength: number): number[] => {
@@ -513,6 +528,8 @@ const normalizePlayoffDivisionConfig = (value: unknown): PlayoffDivisionConfigPa
     prize: typeof row.prize === 'string' ? row.prize : '',
     fieldCount: normalizeNumber(row.fieldCount, 1, 1),
     restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0, 0),
+    matchDurationMinutes: normalizeOptionalDuration(row.matchDurationMinutes),
+    setDurationMinutes: normalizeOptionalDuration(row.setDurationMinutes),
   };
 };
 
@@ -525,7 +542,114 @@ const serializePlayoffDivisionConfig = (value: PlayoffDivisionConfigPayload): Re
   prize: value.prize,
   fieldCount: value.fieldCount,
   restTimeMinutes: value.restTimeMinutes,
+  matchDurationMinutes: value.matchDurationMinutes ?? null,
+  setDurationMinutes: value.setDurationMinutes ?? null,
 });
+
+const normalizeDivisionPlayoffConfigFields = (value: unknown): PlayoffDivisionConfigPayload | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  return normalizePlayoffDivisionConfig({
+    doubleElimination: row.playoffDoubleElimination,
+    winnerSetCount: row.playoffWinnerSetCount,
+    loserSetCount: row.playoffLoserSetCount,
+    winnerBracketPointsToVictory: row.playoffWinnerBracketPointsToVictory,
+    loserBracketPointsToVictory: row.playoffLoserBracketPointsToVictory,
+    prize: row.playoffPrize,
+    fieldCount: row.playoffFieldCount,
+    restTimeMinutes: row.playoffRestTimeMinutes,
+    matchDurationMinutes: row.playoffMatchDurationMinutes,
+    setDurationMinutes: row.playoffSetDurationMinutes,
+  });
+};
+
+const playoffConfigToDivisionFields = (value: PlayoffDivisionConfigPayload | null | undefined) => ({
+  playoffDoubleElimination: value?.doubleElimination ?? null,
+  playoffWinnerSetCount: value?.winnerSetCount ?? null,
+  playoffLoserSetCount: value?.loserSetCount ?? null,
+  playoffWinnerBracketPointsToVictory: value?.winnerBracketPointsToVictory ?? [],
+  playoffLoserBracketPointsToVictory: value?.loserBracketPointsToVictory ?? [],
+  playoffPrize: value?.prize ?? null,
+  playoffFieldCount: value?.fieldCount ?? null,
+  playoffRestTimeMinutes: value?.restTimeMinutes ?? null,
+  playoffMatchDurationMinutes: value?.matchDurationMinutes ?? null,
+  playoffSetDurationMinutes: value?.setDurationMinutes ?? null,
+});
+
+type LeagueDivisionConfigPayload = LeagueDivisionConfig;
+
+const LEAGUE_CONFIG_KEYS: ReadonlyArray<keyof LeagueDivisionConfigPayload> = [
+  'gamesPerOpponent',
+  'usesSets',
+  'matchDurationMinutes',
+  'setDurationMinutes',
+  'setsPerMatch',
+  'pointsToVictory',
+  'restTimeMinutes',
+];
+
+const normalizeLeagueDivisionConfig = (value: unknown): LeagueDivisionConfigPayload | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const row = value as Record<string, unknown>;
+  const hasConfigValue = LEAGUE_CONFIG_KEYS.some(
+    (key) => Object.prototype.hasOwnProperty.call(row, key) && row[key] !== null && row[key] !== undefined,
+  );
+  if (!hasConfigValue) {
+    return null;
+  }
+
+  const normalizeNumber = (input: unknown, min: number): number | undefined => {
+    const parsed = typeof input === 'number' ? input : Number(input);
+    if (!Number.isFinite(parsed)) {
+      return undefined;
+    }
+    return Math.max(min, Math.trunc(parsed));
+  };
+  const normalizeSetCount = (input: unknown): number | undefined => {
+    const parsed = normalizeNumber(input, 1);
+    return parsed && [1, 3, 5].includes(parsed) ? parsed : undefined;
+  };
+  const normalizePoints = (input: unknown, expectedLength: number): number[] | undefined => {
+    if (!Array.isArray(input)) {
+      return undefined;
+    }
+    const values = input
+      .map((entry) => (typeof entry === 'number' ? entry : Number(entry)))
+      .filter((entry) => Number.isFinite(entry))
+      .map((entry) => Math.max(1, Math.trunc(entry)));
+    const next = values.slice(0, expectedLength);
+    while (next.length < expectedLength) {
+      next.push(21);
+    }
+    return next;
+  };
+
+  const usesSets = typeof row.usesSets === 'boolean'
+    ? row.usesSets
+    : Object.prototype.hasOwnProperty.call(row, 'setsPerMatch')
+      || Object.prototype.hasOwnProperty.call(row, 'setDurationMinutes')
+      || Object.prototype.hasOwnProperty.call(row, 'pointsToVictory')
+        ? true
+        : undefined;
+  const setsPerMatch = usesSets ? (normalizeSetCount(row.setsPerMatch) ?? 1) : undefined;
+  const config: LeagueDivisionConfigPayload = {
+    gamesPerOpponent: normalizeNumber(row.gamesPerOpponent, 1),
+    usesSets,
+    matchDurationMinutes: normalizeNumber(row.matchDurationMinutes, 0),
+    restTimeMinutes: normalizeNumber(row.restTimeMinutes, 0),
+    setDurationMinutes: usesSets ? normalizeNumber(row.setDurationMinutes, 0) : undefined,
+    setsPerMatch,
+    pointsToVictory: usesSets ? normalizePoints(row.pointsToVictory, setsPerMatch ?? 1) : undefined,
+  };
+
+  return Object.fromEntries(
+    Object.entries(config).filter(([, entry]) => entry !== undefined),
+  ) as LeagueDivisionConfigPayload;
+};
 
 const normalizeDivisionKeys = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -755,6 +879,13 @@ type DivisionDetailPayload = {
   playoffPlacementDivisionIds?: string[];
   standingsOverrides?: Record<string, number> | null;
   playoffConfig?: PlayoffDivisionConfigPayload | null;
+  gamesPerOpponent?: number | null;
+  restTimeMinutes?: number | null;
+  usesSets?: boolean | null;
+  matchDurationMinutes?: number | null;
+  setDurationMinutes?: number | null;
+  setsPerMatch?: number | null;
+  pointsToVictory?: number[];
   standingsConfirmedAt?: string | null;
   standingsConfirmedBy?: string | null;
   allowPaymentPlans?: boolean | null;
@@ -821,11 +952,15 @@ const normalizeDivisionDetailsPayload = (
         ? normalizePlacementDivisionIdentifierList(row.playoffPlacementDivisionIds, eventId)
         : undefined;
       const rawStandingsOverrides = normalizeStandingsOverrides(row.standingsOverrides);
+      const rawExplicitPlayoffConfig = normalizePlayoffDivisionConfig(row.playoffConfig);
       const rawPlayoffConfig = rawKind === 'PLAYOFF'
         ? (
-            normalizePlayoffDivisionConfig(row.playoffConfig)
+            rawExplicitPlayoffConfig
             ?? normalizePlayoffDivisionConfig(row)
           )
+        : rawExplicitPlayoffConfig;
+      const rawLeagueConfig = rawKind === 'LEAGUE'
+        ? normalizeLeagueDivisionConfig(row)
         : null;
       const rawStandingsConfirmedAt = normalizeIsoDateString(row.standingsConfirmedAt);
       const rawStandingsConfirmedBy = typeof row.standingsConfirmedBy === 'string'
@@ -883,6 +1018,13 @@ const normalizeDivisionDetailsPayload = (
           : {}),
         standingsOverrides: rawStandingsOverrides,
         playoffConfig: rawPlayoffConfig,
+        gamesPerOpponent: rawLeagueConfig?.gamesPerOpponent ?? null,
+        restTimeMinutes: rawLeagueConfig?.restTimeMinutes ?? null,
+        usesSets: rawLeagueConfig?.usesSets ?? null,
+        matchDurationMinutes: rawLeagueConfig?.matchDurationMinutes ?? null,
+        setDurationMinutes: rawLeagueConfig?.setDurationMinutes ?? null,
+        setsPerMatch: rawLeagueConfig?.setsPerMatch ?? null,
+        pointsToVictory: rawLeagueConfig?.pointsToVictory ?? [],
         standingsConfirmedAt: rawStandingsConfirmedAt,
         standingsConfirmedBy: rawStandingsConfirmedBy,
         allowPaymentPlans: rawAllowPaymentPlans,
@@ -1147,6 +1289,23 @@ const buildDivisions = (
     playoffTeamCount?: number | null;
     playoffPlacementDivisionIds?: string[] | null;
     standingsOverrides?: unknown;
+    gamesPerOpponent?: number | null;
+    restTimeMinutes?: number | null;
+    usesSets?: boolean | null;
+    matchDurationMinutes?: number | null;
+    setDurationMinutes?: number | null;
+    setsPerMatch?: number | null;
+    pointsToVictory?: number[] | null;
+    playoffDoubleElimination?: boolean | null;
+    playoffWinnerSetCount?: number | null;
+    playoffLoserSetCount?: number | null;
+    playoffWinnerBracketPointsToVictory?: number[] | null;
+    playoffLoserBracketPointsToVictory?: number[] | null;
+    playoffPrize?: string | null;
+    playoffFieldCount?: number | null;
+    playoffRestTimeMinutes?: number | null;
+    playoffMatchDurationMinutes?: number | null;
+    playoffSetDurationMinutes?: number | null;
     standingsConfirmedAt?: Date | null;
     standingsConfirmedBy?: string | null;
     teamIds?: string[] | null;
@@ -1199,7 +1358,10 @@ const buildDivisions = (
       ? null
       : normalizeStandingsOverrides(matchedRow?.standingsOverrides) ?? null;
     const playoffConfig = kind === 'PLAYOFF'
-      ? normalizePlayoffDivisionConfig(matchedRow?.standingsOverrides) ?? null
+      ? normalizePlayoffDivisionConfig(matchedRow?.standingsOverrides)
+      : normalizeDivisionPlayoffConfigFields(matchedRow);
+    const leagueConfig = kind === 'LEAGUE'
+      ? normalizeLeagueDivisionConfig(matchedRow)
       : null;
     const divisionName = matchedRow?.name
       ?? inferred.defaultName
@@ -1220,6 +1382,7 @@ const buildDivisions = (
       matchedRow?.standingsConfirmedBy ?? null,
       playoffConfig,
       teamIds,
+      leagueConfig,
     );
     result.push(division);
 
@@ -3073,6 +3236,23 @@ export const syncEventDivisions = async (
       kind: true,
       playoffPlacementDivisionIds: true,
       standingsOverrides: true,
+      gamesPerOpponent: true,
+      restTimeMinutes: true,
+      usesSets: true,
+      matchDurationMinutes: true,
+      setDurationMinutes: true,
+      setsPerMatch: true,
+      pointsToVictory: true,
+      playoffDoubleElimination: true,
+      playoffWinnerSetCount: true,
+      playoffLoserSetCount: true,
+      playoffWinnerBracketPointsToVictory: true,
+      playoffLoserBracketPointsToVictory: true,
+      playoffPrize: true,
+      playoffFieldCount: true,
+      playoffRestTimeMinutes: true,
+      playoffMatchDurationMinutes: true,
+      playoffSetDurationMinutes: true,
       standingsConfirmedAt: true,
       standingsConfirmedBy: true,
       teamIds: true,
@@ -3379,6 +3559,17 @@ export const syncEventDivisions = async (
           normalizePlayoffDivisionConfig(existing?.standingsOverrides),
           normalizePlayoffDivisionConfig(detail),
         ) ?? null
+      : resolveDivisionValue(
+          detail?.playoffConfig,
+          normalizeDivisionPlayoffConfigFields(existing),
+          normalizePlayoffDivisionConfig(detail),
+        ) ?? null;
+    const leagueConfig = kind === 'LEAGUE'
+      ? resolveDivisionValue(
+          normalizeLeagueDivisionConfig(detail),
+          normalizeLeagueDivisionConfig(existing),
+          null,
+        ) ?? null
       : null;
     const standingsOverrides = kind === 'PLAYOFF'
       ? (playoffConfig ? serializePlayoffDivisionConfig(playoffConfig) : null)
@@ -3470,6 +3661,14 @@ export const syncEventDivisions = async (
       playoffTeamCount,
       playoffPlacementDivisionIds,
       standingsOverrides,
+      ...playoffConfigToDivisionFields(kind === 'LEAGUE' ? playoffConfig : null),
+      gamesPerOpponent: leagueConfig?.gamesPerOpponent ?? null,
+      restTimeMinutes: leagueConfig?.restTimeMinutes ?? null,
+      usesSets: leagueConfig?.usesSets ?? null,
+      matchDurationMinutes: leagueConfig?.matchDurationMinutes ?? null,
+      setDurationMinutes: leagueConfig?.setDurationMinutes ?? null,
+      setsPerMatch: leagueConfig?.setsPerMatch ?? null,
+      pointsToVictory: leagueConfig?.pointsToVictory ?? [],
       standingsConfirmedAt,
       standingsConfirmedBy,
       allowPaymentPlans,
@@ -3549,6 +3748,23 @@ export const syncEventDivisions = async (
         playoffTeamCount: entry.playoffTeamCount,
         playoffPlacementDivisionIds: entry.playoffPlacementDivisionIds,
         standingsOverrides: entry.standingsOverrides,
+        gamesPerOpponent: entry.gamesPerOpponent,
+        restTimeMinutes: entry.restTimeMinutes,
+        usesSets: entry.usesSets,
+        matchDurationMinutes: entry.matchDurationMinutes,
+        setDurationMinutes: entry.setDurationMinutes,
+        setsPerMatch: entry.setsPerMatch,
+        pointsToVictory: entry.pointsToVictory,
+        playoffDoubleElimination: entry.playoffDoubleElimination,
+        playoffWinnerSetCount: entry.playoffWinnerSetCount,
+        playoffLoserSetCount: entry.playoffLoserSetCount,
+        playoffWinnerBracketPointsToVictory: entry.playoffWinnerBracketPointsToVictory,
+        playoffLoserBracketPointsToVictory: entry.playoffLoserBracketPointsToVictory,
+        playoffPrize: entry.playoffPrize,
+        playoffFieldCount: entry.playoffFieldCount,
+        playoffRestTimeMinutes: entry.playoffRestTimeMinutes,
+        playoffMatchDurationMinutes: entry.playoffMatchDurationMinutes,
+        playoffSetDurationMinutes: entry.playoffSetDurationMinutes,
         standingsConfirmedAt: entry.standingsConfirmedAt ? new Date(entry.standingsConfirmedAt) : null,
         standingsConfirmedBy: entry.standingsConfirmedBy,
         allowPaymentPlans: entry.allowPaymentPlans,
@@ -3583,6 +3799,23 @@ export const syncEventDivisions = async (
         playoffTeamCount: entry.playoffTeamCount,
         playoffPlacementDivisionIds: entry.playoffPlacementDivisionIds,
         standingsOverrides: entry.standingsOverrides,
+        gamesPerOpponent: entry.gamesPerOpponent,
+        restTimeMinutes: entry.restTimeMinutes,
+        usesSets: entry.usesSets,
+        matchDurationMinutes: entry.matchDurationMinutes,
+        setDurationMinutes: entry.setDurationMinutes,
+        setsPerMatch: entry.setsPerMatch,
+        pointsToVictory: entry.pointsToVictory,
+        playoffDoubleElimination: entry.playoffDoubleElimination,
+        playoffWinnerSetCount: entry.playoffWinnerSetCount,
+        playoffLoserSetCount: entry.playoffLoserSetCount,
+        playoffWinnerBracketPointsToVictory: entry.playoffWinnerBracketPointsToVictory,
+        playoffLoserBracketPointsToVictory: entry.playoffLoserBracketPointsToVictory,
+        playoffPrize: entry.playoffPrize,
+        playoffFieldCount: entry.playoffFieldCount,
+        playoffRestTimeMinutes: entry.playoffRestTimeMinutes,
+        playoffMatchDurationMinutes: entry.playoffMatchDurationMinutes,
+        playoffSetDurationMinutes: entry.playoffSetDurationMinutes,
         standingsConfirmedAt: entry.standingsConfirmedAt ? new Date(entry.standingsConfirmedAt) : null,
         standingsConfirmedBy: entry.standingsConfirmedBy,
         allowPaymentPlans: entry.allowPaymentPlans,

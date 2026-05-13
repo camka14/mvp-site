@@ -274,6 +274,116 @@ describe('LeagueFields', () => {
     expect(screen.getByText(/Playoff team count is required/i)).toBeInTheDocument();
   });
 
+  it('allows zero and blank match duration values while warning', () => {
+    const onLeagueDataChange = jest.fn();
+
+    const warningRender = renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 0,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={onLeagueDataChange}
+        slots={[baseSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    expect(screen.getByText(/Match duration should be greater than 0/i)).toBeInTheDocument();
+    warningRender.unmount();
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: false,
+          matchDurationMinutes: 60,
+          restTimeMinutes: 0,
+        }}
+        onLeagueDataChange={onLeagueDataChange}
+        slots={[baseSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    const matchDurationInput = getLabeledInput(/Match Duration \(minutes\)/i);
+    fireEvent.change(matchDurationInput, { target: { value: '0' } });
+    expect(onLeagueDataChange).toHaveBeenLastCalledWith({ matchDurationMinutes: 0 });
+
+    fireEvent.change(matchDurationInput, { target: { value: '' } });
+    expect(onLeagueDataChange).toHaveBeenLastCalledWith({ matchDurationMinutes: undefined });
+  });
+
+  it('allows zero and blank set duration values while warning', () => {
+    const onLeagueDataChange = jest.fn();
+
+    const warningRender = renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: true,
+          restTimeMinutes: 0,
+          setDurationMinutes: 0,
+          setsPerMatch: 1,
+          pointsToVictory: [21],
+        }}
+        sport={{ usePointsPerSetWin: true } as any}
+        onLeagueDataChange={onLeagueDataChange}
+        slots={[baseSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    expect(screen.getByText(/Set duration should be greater than 0/i)).toBeInTheDocument();
+    warningRender.unmount();
+
+    renderWithMantine(
+      <LeagueFields
+        leagueData={{
+          gamesPerOpponent: 1,
+          includePlayoffs: false,
+          usesSets: true,
+          restTimeMinutes: 0,
+          setDurationMinutes: 20,
+          setsPerMatch: 1,
+          pointsToVictory: [21],
+        }}
+        sport={{ usePointsPerSetWin: true } as any}
+        onLeagueDataChange={onLeagueDataChange}
+        slots={[baseSlot]}
+        onAddSlot={noop}
+        onUpdateSlot={noop}
+        onRemoveSlot={noop}
+        fields={[field]}
+        fieldsLoading={false}
+      />,
+    );
+
+    const setDurationInput = getLabeledInput(/Set Duration \(minutes\)/i);
+    fireEvent.change(setDurationInput, { target: { value: '0' } });
+    expect(onLeagueDataChange).toHaveBeenLastCalledWith({ setDurationMinutes: 0 });
+
+    fireEvent.change(setDurationInput, { target: { value: '' } });
+    expect(onLeagueDataChange).toHaveBeenLastCalledWith({ setDurationMinutes: undefined });
+  });
+
   it('defaults playoff team count from participants each time playoffs are enabled', () => {
     const onLeagueDataChange = jest.fn();
     const participantCount = 12;

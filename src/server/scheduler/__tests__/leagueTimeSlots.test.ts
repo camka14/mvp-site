@@ -75,6 +75,184 @@ const isPlayoffMatch = (match: {
 );
 
 describe('league scheduling (time slots)', () => {
+  it('uses division-owned league config for split regular-season divisions', () => {
+    const rec = new Division(
+      'rec',
+      'Rec',
+      [],
+      null,
+      2,
+      null,
+      'LEAGUE',
+      [],
+      null,
+      null,
+      null,
+      null,
+      [],
+      {
+        gamesPerOpponent: 2,
+        usesSets: true,
+        setDurationMinutes: 10,
+        setsPerMatch: 3,
+        pointsToVictory: [21, 21, 15],
+        restTimeMinutes: 5,
+      },
+    );
+    const open = new Division(
+      'open',
+      'Open',
+      [],
+      null,
+      2,
+      null,
+      'LEAGUE',
+      [],
+      null,
+      null,
+      null,
+      null,
+      [],
+      {
+        gamesPerOpponent: 1,
+        usesSets: false,
+        matchDurationMinutes: 45,
+        restTimeMinutes: 20,
+      },
+    );
+    const field = new PlayingField({
+      id: 'field_division_config',
+      divisions: [rec, open],
+      matches: [],
+      events: [],
+      rentalSlots: [],
+      name: 'Court A',
+    });
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 0, 3, 18, 0, 0);
+    const league = new League({
+      id: 'league_division_owned_config',
+      name: 'Division Owned Config League',
+      start,
+      end,
+      maxParticipants: 4,
+      teamSignup: true,
+      singleDivision: false,
+      eventType: 'LEAGUE',
+      teams: {
+        ...buildTeamsForDivision('rec', 2, rec),
+        ...buildTeamsForDivision('open', 2, open),
+      },
+      divisions: [rec, open],
+      officials: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_division_owned_config',
+          dayOfWeek: 5,
+          startDate: new Date(2026, 0, 3),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 18 * 60,
+          divisions: [rec, open],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const regularMatches = scheduled.matches.filter((match) => !isPlayoffMatch(match));
+    const recMatches = regularMatches.filter((match) => match.division.id === rec.id);
+    const openMatches = regularMatches.filter((match) => match.division.id === open.id);
+
+    expect(recMatches).toHaveLength(2);
+    expect(openMatches).toHaveLength(1);
+    recMatches.forEach((match) => {
+      expect(match.end.getTime() - match.start.getTime()).toBe(30 * MINUTE_MS);
+      expect(match.bufferMs).toBe(5 * MINUTE_MS);
+      expect(match.team1Points).toHaveLength(3);
+    });
+    openMatches.forEach((match) => {
+      expect(match.end.getTime() - match.start.getTime()).toBe(45 * MINUTE_MS);
+      expect(match.bufferMs).toBe(20 * MINUTE_MS);
+      expect(match.team1Points).toHaveLength(1);
+    });
+  });
+
+  it('uses event playoff rest time for non-split single-division league playoffs', () => {
+    const division = new Division(
+      'OPEN',
+      'Open',
+      [],
+      null,
+      4,
+      4,
+      'LEAGUE',
+      [],
+      null,
+      null,
+      null,
+      null,
+      [],
+      {
+        gamesPerOpponent: 1,
+        usesSets: false,
+        matchDurationMinutes: 30,
+        restTimeMinutes: 0,
+      },
+    );
+    const field = buildField(division);
+    const start = new Date(2026, 0, 3, 9, 0, 0);
+    const end = new Date(2026, 0, 3, 20, 0, 0);
+    const league = new League({
+      id: 'league_single_division_playoff_rest',
+      name: 'Single Division Playoff Rest League',
+      start,
+      end,
+      maxParticipants: 4,
+      teamSignup: true,
+      singleDivision: true,
+      eventType: 'LEAGUE',
+      teams: buildTeams(4, division),
+      divisions: [division],
+      officials: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_single_division_playoff_rest',
+          dayOfWeek: 5,
+          startDate: new Date(2026, 0, 3),
+          repeating: true,
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 20 * 60,
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      usesSets: false,
+      matchDurationMinutes: 30,
+      restTimeMinutes: 25,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const playoffMatches = scheduled.matches.filter((match) => isPlayoffMatch(match));
+
+    expect(playoffMatches.length).toBeGreaterThan(0);
+    playoffMatches.forEach((match) => {
+      expect(match.bufferMs).toBe(25 * MINUTE_MS);
+    });
+  });
+
   it('uses zero rest time as-is without applying an implicit default gap', () => {
     const division = buildDivision();
     const field = buildField(division);
@@ -1099,6 +1277,125 @@ describe('league scheduling (time slots)', () => {
 
     expect(divisionCounts.get('rec')).toBe(8);
     expect(divisionCounts.get('open')).toBe(9);
+  });
+
+  it('uses each league division playoff config for non-split multi-division playoffs', () => {
+    const rec = new Division(
+      'rec',
+      'Rec',
+      [],
+      null,
+      4,
+      4,
+      'LEAGUE',
+      [],
+      null,
+      null,
+      null,
+      {
+        doubleElimination: false,
+        winnerSetCount: 3,
+        loserSetCount: 1,
+        winnerBracketPointsToVictory: [25, 25, 15],
+        loserBracketPointsToVictory: [25],
+        prize: '',
+        fieldCount: 1,
+        restTimeMinutes: 7,
+        setDurationMinutes: 10,
+      },
+    );
+    const open = new Division(
+      'open',
+      'Open',
+      [],
+      null,
+      4,
+      4,
+      'LEAGUE',
+      [],
+      null,
+      null,
+      null,
+      {
+        doubleElimination: false,
+        winnerSetCount: 1,
+        loserSetCount: 1,
+        winnerBracketPointsToVictory: [21],
+        loserBracketPointsToVictory: [21],
+        prize: '',
+        fieldCount: 1,
+        restTimeMinutes: 19,
+        setDurationMinutes: 15,
+      },
+    );
+    const fieldRec = buildFieldById('field_rec_playoff_config', rec);
+    const fieldOpen = buildFieldById('field_open_playoff_config', open);
+    const teams = {
+      ...buildTeamsForDivision('rec', 4, rec),
+      ...buildTeamsForDivision('open', 4, open),
+    };
+
+    const league = new League({
+      id: 'league_per_division_playoff_config',
+      name: 'Per Division Playoff Config',
+      start: new Date(2026, 0, 5, 8, 0, 0),
+      end: new Date(2026, 0, 26, 22, 0, 0),
+      noFixedEndDateTime: false,
+      maxParticipants: 8,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teams,
+      divisions: [rec, open],
+      officials: [],
+      fields: { [fieldRec.id]: fieldRec, [fieldOpen.id]: fieldOpen },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_rec_playoff_config',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldRec.id,
+          divisions: [rec],
+        }),
+        new TimeSlot({
+          id: 'slot_open_playoff_config',
+          dayOfWeek: 0,
+          startDate: new Date(2026, 0, 5),
+          repeating: true,
+          startTimeMinutes: 8 * 60,
+          endTimeMinutes: 20 * 60,
+          field: fieldOpen.id,
+          divisions: [open],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: true,
+      playoffTeamCount: 4,
+      doubleElimination: false,
+      usesSets: true,
+      matchDurationMinutes: 60,
+      setDurationMinutes: 20,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const playoffMatches = scheduled.matches.filter((match) => isPlayoffMatch(match));
+    const recPlayoffMatches = playoffMatches.filter((match) => match.division.id === rec.id);
+    const openPlayoffMatches = playoffMatches.filter((match) => match.division.id === open.id);
+
+    expect(recPlayoffMatches).toHaveLength(3);
+    expect(openPlayoffMatches).toHaveLength(3);
+    expect(recPlayoffMatches.every((match) => match.bufferMs === 7 * MINUTE_MS)).toBe(true);
+    expect(openPlayoffMatches.every((match) => match.bufferMs === 19 * MINUTE_MS)).toBe(true);
+    expect(recPlayoffMatches.every((match) => match.team1Points.length === 3)).toBe(true);
+    expect(openPlayoffMatches.every((match) => match.team1Points.length === 1)).toBe(true);
+    expect(recPlayoffMatches.every((match) => match.end.getTime() - match.start.getTime() === 30 * MINUTE_MS)).toBe(true);
+    expect(openPlayoffMatches.every((match) => match.end.getTime() - match.start.getTime() === 15 * MINUTE_MS)).toBe(true);
   });
 
   it('schedules playoffs for odd per-division team counts derived from placeholder capacity', () => {

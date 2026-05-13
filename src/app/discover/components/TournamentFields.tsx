@@ -10,6 +10,7 @@ import {
   Divider,
   Flex,
   Box,
+  Text,
 } from '@mantine/core';
 import type { Sport, TournamentConfig } from '@/types';
 
@@ -28,6 +29,7 @@ const BEST_OF_OPTIONS = [
   { value: '5', label: 'Best of 5' },
 ];
 const MAX_STANDARD_NUMBER = 99_999;
+type ScoringModel = 'SETS' | 'PERIODS' | 'INNINGS' | 'POINTS_ONLY';
 
 const syncArrayLength = (arr: number[], len: number, fill = 21) => {
   const next = arr.slice(0, len);
@@ -35,9 +37,88 @@ const syncArrayLength = (arr: number[], len: number, fill = 21) => {
   return next;
 };
 
+const bracketPointsGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 10rem), 10rem))',
+  columnGap: '1rem',
+  rowGap: '0.75rem',
+  alignItems: 'end',
+  justifyContent: 'start',
+  maxWidth: '21rem',
+};
+
 const toFiniteNumber = (value: unknown): number | null => {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+};
+
+const parseOptionalDurationMinutes = (value: string | number): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.trunc(value));
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : undefined;
+  }
+  return undefined;
+};
+
+const durationNeedsWarning = (value: number | null | undefined): boolean => (
+  typeof value !== 'number' || !Number.isFinite(value) || value <= 0
+);
+
+const normalizeScoringModel = (value: unknown, fallback: ScoringModel): ScoringModel => {
+  const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (normalized === 'SETS' || normalized === 'PERIODS' || normalized === 'INNINGS' || normalized === 'POINTS_ONLY') {
+    return normalized;
+  }
+  return fallback;
+};
+
+const defaultSegmentLabel = (model: ScoringModel): string => {
+  switch (model) {
+    case 'SETS':
+      return 'Set';
+    case 'INNINGS':
+      return 'Inning';
+    case 'PERIODS':
+      return 'Period';
+    case 'POINTS_ONLY':
+    default:
+      return 'Total';
+  }
+};
+
+const titleCase = (value: string): string => (
+  value
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (character) => character.toUpperCase())
+);
+
+const pluralizeSegmentLabel = (label: string, count: number): string => {
+  const normalized = titleCase(label);
+  if (count === 1) {
+    return normalized;
+  }
+  return normalized === 'Half' ? 'Halves' : `${normalized}s`;
+};
+
+const resolveSportSegmentRules = (
+  sport: Sport | undefined,
+  fallbackModel: ScoringModel,
+): { scoringModel: ScoringModel; segmentLabel: string; segmentCount: number } => {
+  const template = sport?.matchRulesTemplate ?? null;
+  const scoringModel = normalizeScoringModel(template?.scoringModel, fallbackModel);
+  const rawLabel = typeof template?.segmentLabel === 'string' ? template.segmentLabel.trim() : '';
+  const rawSegmentCount = toFiniteNumber(template?.segmentCount);
+  return {
+    scoringModel,
+    segmentLabel: rawLabel.length > 0 ? titleCase(rawLabel) : defaultSegmentLabel(scoringModel),
+    segmentCount: rawSegmentCount !== null && rawSegmentCount > 0
+      ? Math.max(1, Math.trunc(rawSegmentCount))
+      : 1,
+  };
 };
 
 const hasSetBasedSignals = (config?: Partial<TournamentConfig> | null): boolean => {
@@ -79,7 +160,25 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
   unstyled = false,
 }) => {
   const comboboxProps = { withinPortal: true, zIndex: 1800 };
-  const requiresSets = Boolean(sport?.usePointsPerSetWin) || hasSetBasedSignals(tournamentData);
+  const sportScoringModel = normalizeScoringModel(
+    sport?.matchRulesTemplate?.scoringModel,
+    sport?.usePointsPerSetWin ? 'SETS' : 'POINTS_ONLY',
+  );
+  const hasSportScoringRules = Boolean(
+    sport && (
+      sport.matchRulesTemplate?.scoringModel
+      || typeof sport.usePointsPerSetWin === 'boolean'
+    ),
+  );
+  const sportRequiresSets = sportScoringModel === 'SETS' || Boolean(sport?.usePointsPerSetWin);
+  const requiresSets = hasSportScoringRules ? sportRequiresSets : hasSetBasedSignals(tournamentData);
+  const sportSegmentRules = resolveSportSegmentRules(sport, requiresSets ? 'SETS' : sportScoringModel);
+  const setSegmentLabel = sportSegmentRules.scoringModel === 'SETS' ? sportSegmentRules.segmentLabel : 'Set';
+  const periodSegmentSummary = !requiresSets && (
+    sportSegmentRules.scoringModel === 'PERIODS' || sportSegmentRules.scoringModel === 'INNINGS'
+  )
+    ? sportSegmentRules
+    : null;
 
   useEffect(() => {
     if (requiresSets) {
@@ -89,16 +188,6 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
 
         if (next.usesSets !== true) {
           next.usesSets = true;
-          changed = true;
-        }
-
-        if (!Number.isFinite(next.setDurationMinutes)) {
-          next.setDurationMinutes = 20;
-          changed = true;
-        }
-
-        if (!Number.isFinite(next.matchDurationMinutes)) {
-          next.matchDurationMinutes = 60;
           changed = true;
         }
 
@@ -150,11 +239,6 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
           changed = true;
         }
 
-        if (!Number.isFinite(next.matchDurationMinutes)) {
-          next.matchDurationMinutes = 60;
-          changed = true;
-        }
-
         if (next.winnerSetCount !== 1) {
           next.winnerSetCount = 1;
           changed = true;
@@ -191,7 +275,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
   const content = (
     <>
       {title ? (
-        <Title order={unstyled ? 6 : 4} mb="sm">
+        <Title order={4} mb="md">
           {title}
         </Title>
       ) : null}
@@ -236,36 +320,58 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
         {showDurationControls && (
           <Grid.Col span={{ base: 12, md: 6 }}>
             <NumberInput
-              label={requiresSets ? 'Set Duration (minutes)' : 'Match Duration (minutes)'}
-              min={requiresSets ? 5 : 15}
+              label={requiresSets ? `${setSegmentLabel} Duration (minutes)` : 'Match Duration (minutes)'}
+              min={0}
               max={MAX_STANDARD_NUMBER}
               step={5}
-              value={requiresSets ? tournamentData.setDurationMinutes : tournamentData.matchDurationMinutes}
+              value={(requiresSets ? tournamentData.setDurationMinutes : tournamentData.matchDurationMinutes) ?? ''}
               onChange={(value) =>
                 setTournamentData((prev) => {
-                  const numeric = Number(value);
+                  const duration = parseOptionalDurationMinutes(value);
                   if (requiresSets) {
                     return {
                       ...prev,
-                      setDurationMinutes: Number.isFinite(numeric) && numeric >= 5 ? numeric : undefined,
+                      setDurationMinutes: duration,
                     };
                   }
                   return {
                     ...prev,
-                    matchDurationMinutes: Number.isFinite(numeric) && numeric >= 15 ? numeric : 60,
+                    matchDurationMinutes: duration,
                   };
                 })
               }
-              clampBehavior="strict"
+              clampBehavior="none"
               maw={220}
             />
+            {durationNeedsWarning(requiresSets ? tournamentData.setDurationMinutes : tournamentData.matchDurationMinutes) ? (
+              <Text size="xs" c="orange" mt={4}>
+                {requiresSets ? `${setSegmentLabel} duration` : 'Match duration'} should be greater than 0 before scheduling.
+              </Text>
+            ) : null}
+          </Grid.Col>
+        )}
+
+        {periodSegmentSummary && (
+          <Grid.Col span={{ base: 12, md: 6 }}>
+            <Box
+              className="rounded-md border border-gray-200 bg-white px-3 py-2"
+              style={{ maxWidth: 260 }}
+            >
+              <Text size="sm" fw={500}>{`${periodSegmentSummary.segmentLabel} Count`}</Text>
+              <Text size="sm" c="dimmed">
+                {`${periodSegmentSummary.segmentCount} ${pluralizeSegmentLabel(
+                  periodSegmentSummary.segmentLabel,
+                  periodSegmentSummary.segmentCount,
+                )} from sport rules`}
+              </Text>
+            </Box>
           </Grid.Col>
         )}
 
         {requiresSets && (
           <Grid.Col span={{ base: 12, md: 6 }}>
             <Select
-              label="Winner Set Count"
+              label={`Winner ${setSegmentLabel} Count`}
               value={String(tournamentData.winnerSetCount)}
               onChange={(value) =>
                 setTournamentData((prev) => {
@@ -290,7 +396,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
         {requiresSets && tournamentData.doubleElimination && (
           <Grid.Col span={{ base: 12, md: 6 }}>
             <Select
-              label="Loser Set Count"
+              label={`Loser ${setSegmentLabel} Count`}
               value={String(tournamentData.loserSetCount)}
               onChange={(value) =>
                 setTournamentData((prev) => {
@@ -314,16 +420,16 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
       </Grid>
 
       {requiresSets && (
-        <Flex mt="md" gap="lg" align="start">
-          <Box style={{ flex: 1 }}>
-            <Title order={6} mb="xs">
+        <Flex mt="md" gap="lg" align="start" direction={{ base: 'column', md: 'row' }}>
+          <Box style={{ flex: 1, minWidth: 0, width: '100%' }}>
+            <Text size="lg" fw={700} mb="sm">
               Winner Bracket Points to Victory
-            </Title>
-            <Grid gutter="xs" align="flex-end">
+            </Text>
+            <Box data-testid="winner-bracket-points-grid" style={bracketPointsGridStyle}>
               {Array.from({ length: tournamentData.winnerSetCount }).map((_, idx) => (
-                <Grid.Col span={{ base: 12, sm: 6 }} key={`win-set-${idx}`}>
+                <Box key={`win-set-${idx}`}>
                   <NumberInput
-                    label={`Set ${idx + 1}`}
+                    label={`${setSegmentLabel} ${idx + 1}`}
                     min={1}
                     max={MAX_STANDARD_NUMBER}
                     value={tournamentData.winnerBracketPointsToVictory[idx] ?? 21}
@@ -341,26 +447,26 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                       })
                     }
                     clampBehavior="strict"
-                    maw={160}
+                    w="100%"
                   />
-                </Grid.Col>
+                </Box>
               ))}
-            </Grid>
+            </Box>
           </Box>
 
           {tournamentData.doubleElimination && (
             <>
               <Divider orientation="vertical" visibleFrom="md" />
               <Divider hiddenFrom="md" my="md" />
-              <Box style={{ flex: 1 }}>
-                <Title order={6} mb="xs">
+              <Box style={{ flex: 1, minWidth: 0, width: '100%' }}>
+                <Text size="lg" fw={700} mb="sm">
                   Loser Bracket Points to Victory
-                </Title>
-                <Grid gutter="xs" align="flex-end">
+                </Text>
+                <Box data-testid="loser-bracket-points-grid" style={bracketPointsGridStyle}>
                   {Array.from({ length: tournamentData.loserSetCount }).map((_, idx) => (
-                    <Grid.Col span={{ base: 12, sm: 6 }} key={`lose-set-${idx}`}>
+                    <Box key={`lose-set-${idx}`}>
                       <NumberInput
-                        label={`Set ${idx + 1}`}
+                        label={`${setSegmentLabel} ${idx + 1}`}
                         min={1}
                         max={MAX_STANDARD_NUMBER}
                         value={tournamentData.loserBracketPointsToVictory[idx] ?? 21}
@@ -378,11 +484,11 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
                           })
                         }
                         clampBehavior="strict"
-                        maw={160}
+                        w="100%"
                       />
-                    </Grid.Col>
+                    </Box>
                   ))}
-                </Grid>
+                </Box>
               </Box>
             </>
           )}
@@ -407,7 +513,7 @@ const TournamentFields: React.FC<TournamentFieldsProps> = ({
   );
 
   if (unstyled) {
-    return <div>{content}</div>;
+    return <div className={title ? 'border-t border-gray-200 pt-5' : undefined}>{content}</div>;
   }
 
   return (

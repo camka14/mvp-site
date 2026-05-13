@@ -918,6 +918,22 @@ const resolvePlayoffDivisionTournamentConfig = (
     }
     return Math.max(0, Math.trunc(parsed));
   };
+  const normalizeOptionalNonNegativeInt = (value: unknown, fallback: unknown): number | undefined => {
+    const parsed = value === null || value === undefined || value === ''
+      ? NaN
+      : typeof value === 'number'
+        ? value
+        : Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.trunc(parsed));
+    }
+    const parsedFallback = fallback === null || fallback === undefined || fallback === ''
+      ? NaN
+      : typeof fallback === 'number'
+        ? fallback
+        : Number(fallback);
+    return Number.isFinite(parsedFallback) ? Math.max(0, Math.trunc(parsedFallback)) : undefined;
+  };
   const normalizePoints = (value: unknown, expectedLength: number, fallback: number[]): number[] => {
     const values = Array.isArray(value)
       ? value
@@ -988,6 +1004,14 @@ const resolvePlayoffDivisionTournamentConfig = (
         ? league.restTimeMinutes
         : 0,
     ),
+    matchDurationMinutes: normalizeOptionalNonNegativeInt(
+      divisionConfig?.matchDurationMinutes,
+      league.matchDurationMinutes,
+    ),
+    setDurationMinutes: normalizeOptionalNonNegativeInt(
+      divisionConfig?.setDurationMinutes,
+      league.setDurationMinutes,
+    ),
   };
 };
 
@@ -1053,9 +1077,9 @@ const buildTemplateBracket = (
     eventType: 'TOURNAMENT',
     timeSlots: league.timeSlots,
     restTimeMinutes: playoffConfig.restTimeMinutes,
-    matchDurationMinutes: league.matchDurationMinutes,
+    matchDurationMinutes: playoffConfig.matchDurationMinutes ?? league.matchDurationMinutes,
     usesSets: league.usesSets,
-    setDurationMinutes: league.setDurationMinutes,
+    setDurationMinutes: playoffConfig.setDurationMinutes ?? league.setDurationMinutes,
   });
 
   const bracketBuilder = new Brackets(tournament, context);

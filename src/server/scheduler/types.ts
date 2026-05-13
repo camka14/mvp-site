@@ -34,6 +34,18 @@ export type PlayoffDivisionConfig = {
   prize: string;
   fieldCount: number;
   restTimeMinutes: number;
+  matchDurationMinutes?: number | null;
+  setDurationMinutes?: number | null;
+};
+
+export type LeagueDivisionConfig = {
+  gamesPerOpponent?: number;
+  usesSets?: boolean;
+  matchDurationMinutes?: number;
+  setDurationMinutes?: number;
+  setsPerMatch?: number;
+  pointsToVictory?: number[];
+  restTimeMinutes?: number;
 };
 
 export type OfficialSchedulingMode = 'STAFFING' | 'TEAM_STAFFING' | 'SCHEDULE' | 'OFF';
@@ -133,6 +145,7 @@ export class Division implements Group {
   standingsConfirmedAt: Date | null;
   standingsConfirmedBy: string | null;
   playoffConfig: PlayoffDivisionConfig | null;
+  leagueConfig: LeagueDivisionConfig | null;
 
   constructor(
     id: string,
@@ -148,6 +161,7 @@ export class Division implements Group {
     standingsConfirmedBy?: string | null,
     playoffConfig?: PlayoffDivisionConfig | null,
     teamIds?: string[],
+    leagueConfig?: LeagueDivisionConfig | null,
   ) {
     this.id = id;
     this.name = name ?? id;
@@ -179,6 +193,14 @@ export class Division implements Group {
     this.teamIds = Array.isArray(teamIds)
       ? Array.from(new Set(teamIds.map((entry) => String(entry).trim()).filter((entry) => entry.length > 0)))
       : [];
+    this.leagueConfig = leagueConfig && typeof leagueConfig === 'object'
+      ? {
+          ...leagueConfig,
+          pointsToVictory: Array.isArray(leagueConfig.pointsToVictory)
+            ? [...leagueConfig.pointsToVictory]
+            : undefined,
+        }
+      : null;
   }
 }
 

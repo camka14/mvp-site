@@ -26,6 +26,21 @@ import { getFieldDisplayName } from '@/lib/fieldUtils';
 const DROPDOWN_PROPS = { withinPortal: true, zIndex: 1800 };
 const MAX_STANDARD_NUMBER = 99_999;
 
+const parseOptionalDurationMinutes = (value: string | number): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.trunc(value));
+  }
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : undefined;
+  }
+  return undefined;
+};
+
+const durationNeedsWarning = (value: number | null | undefined): boolean => (
+  typeof value !== 'number' || !Number.isFinite(value) || value <= 0
+);
+
 const DAYS_OF_WEEK = [
   { value: '0', label: 'Monday' },
   { value: '1', label: 'Tuesday' },
@@ -313,7 +328,10 @@ interface LeagueFieldsProps {
   allowDivisionEditsWhenReadOnly?: boolean;
   onAutoResolveSlotConflict?: (index: number) => void;
   showLeagueConfiguration?: boolean;
+  configurationTitle?: string;
   showPlayoffSettings?: boolean;
+  showTimeslots?: boolean;
+  unstyled?: boolean;
   emptyFieldsMessage?: string;
 }
 
@@ -337,7 +355,10 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
   allowDivisionEditsWhenReadOnly = false,
   onAutoResolveSlotConflict,
   showLeagueConfiguration = true,
+  configurationTitle = 'League Configuration',
   showPlayoffSettings = true,
+  showTimeslots = true,
+  unstyled = false,
   emptyFieldsMessage = 'No fields found. Create a field first so you can attach weekly availability.',
 }) => {
   const fieldLookup = useMemo(
@@ -484,16 +505,15 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
     });
   }, [availableFieldOptions, fieldSearchBySlot, slots]);
 
-  return (
-    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+  const content = (
       <Stack gap="lg">
         {showLeagueConfiguration && (
           <div>
             <Title order={4} mb="md">
-              League Configuration
+              {configurationTitle}
             </Title>
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-end">
-              <div className="md:col-span-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:items-end">
+              <div>
                 <NumberInput
                   label="Games per Opponent"
                   min={1}
@@ -506,21 +526,26 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
               </div>
 
               {!requiresSets && (
-                <div className="md:col-span-4">
+                <div>
                   <NumberInput
                     label="Match Duration (minutes)"
-                    min={15}
+                    min={0}
                     max={MAX_STANDARD_NUMBER}
                     step={5}
-                    value={leagueData.matchDurationMinutes}
-                    onChange={(value) => onLeagueDataChange({ matchDurationMinutes: Number(value) || 60 })}
-                    clampBehavior="strict"
+                    value={leagueData.matchDurationMinutes ?? ''}
+                    onChange={(value) => onLeagueDataChange({ matchDurationMinutes: parseOptionalDurationMinutes(value) })}
+                    clampBehavior="none"
                     maw={220}
                   />
+                  {durationNeedsWarning(leagueData.matchDurationMinutes) ? (
+                    <Text size="xs" c="orange" mt={4}>
+                      Match duration should be greater than 0 before scheduling.
+                    </Text>
+                  ) : null}
                 </div>
               )}
 
-              <div className="md:col-span-4">
+              <div>
                 <NumberInput
                   label="Rest Time Between Matches (minutes)"
                   min={0}
@@ -537,6 +562,42 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                   maw={220}
                 />
               </div>
+
+              {requiresSets && (
+                <>
+                  <div>
+                    <MantineSelect
+                      label="Sets per Match"
+                      value={String(setsPerMatch)}
+                      onChange={handleSetsPerMatchChange}
+                      data={[
+                        { value: '1', label: 'Best of 1' },
+                        { value: '3', label: 'Best of 3' },
+                        { value: '5', label: 'Best of 5' },
+                      ]}
+                      comboboxProps={DROPDOWN_PROPS}
+                      maw={220}
+                    />
+                  </div>
+                  <div>
+                    <NumberInput
+                      label="Set Duration (minutes)"
+                      min={0}
+                      max={MAX_STANDARD_NUMBER}
+                      step={5}
+                      value={leagueData.setDurationMinutes ?? ''}
+                      onChange={(value) => onLeagueDataChange({ setDurationMinutes: parseOptionalDurationMinutes(value) })}
+                      clampBehavior="none"
+                      maw={220}
+                    />
+                    {durationNeedsWarning(leagueData.setDurationMinutes) ? (
+                      <Text size="xs" c="orange" mt={4}>
+                        Set duration should be greater than 0 before scheduling.
+                      </Text>
+                    ) : null}
+                  </div>
+                </>
+              )}
             </div>
 
           {showPlayoffSettings && (
@@ -576,45 +637,14 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           )}
 
           {requiresSets && (
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 mt-4 md:items-end">
-              <div className="md:col-span-6">
-                <MantineSelect
-                  label="Sets per Match"
-                  value={String(setsPerMatch)}
-                  onChange={handleSetsPerMatchChange}
-                  data={[
-                    { value: '1', label: 'Best of 1' },
-                    { value: '3', label: 'Best of 3' },
-                    { value: '5', label: 'Best of 5' },
-                  ]}
-                  comboboxProps={DROPDOWN_PROPS}
-                  maw={220}
-                />
-              </div>
-              <div className="md:col-span-6">
-                <NumberInput
-                  label="Set Duration (minutes)"
-                  min={5}
-                  max={MAX_STANDARD_NUMBER}
-                  step={5}
-                  value={leagueData.setDurationMinutes || undefined}
-                  onChange={(value) => onLeagueDataChange({ setDurationMinutes: Number(value) || undefined })}
-                  clampBehavior="strict"
-                  maw={220}
-                />
-              </div>
-            </div>
-          )}
-
-          {requiresSets && (
             <div className="mt-6">
-              <Text fw={600} mb="xs">
+              <Text size="lg" fw={700} mb="sm">
                 Points to Victory
               </Text>
               <Text size="sm" c="dimmed" mb="sm">
                 Configure the points required to win each set.
               </Text>
-              <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm" className="md:items-end">
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm" className="md:items-end">
                 {Array.from({ length: setsPerMatch }).map((_, idx) => (
                   <NumberInput
                     key={`points-set-${idx}`}
@@ -633,6 +663,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
         </div>
       )}
 
+        {showTimeslots && (
         <div>
           <div className="flex items-center justify-between mb-4 gap-3">
             <Title order={4} className="m-0">
@@ -997,7 +1028,17 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
           })}
           </Stack>
         </div>
+        )}
       </Stack>
+  );
+
+  if (unstyled) {
+    return <div className={showLeagueConfiguration ? 'border-t border-gray-200 pt-5' : undefined}>{content}</div>;
+  }
+
+  return (
+    <Paper shadow="xs" radius="md" withBorder p="lg" className="bg-gray-50">
+      {content}
     </Paper>
   );
 };

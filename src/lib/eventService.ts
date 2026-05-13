@@ -1255,6 +1255,53 @@ class EventService {
                     String(divisionId ?? "").trim(),
                   )
                 : undefined,
+              playoffConfig:
+                entry?.playoffConfig && typeof entry.playoffConfig === "object"
+                  ? entry.playoffConfig
+                  : undefined,
+              gamesPerOpponent:
+                typeof entry?.gamesPerOpponent === "number"
+                  ? entry.gamesPerOpponent
+                  : Number.isFinite(Number(entry?.gamesPerOpponent))
+                    ? Number(entry.gamesPerOpponent)
+                    : undefined,
+              restTimeMinutes:
+                typeof entry?.restTimeMinutes === "number"
+                  ? entry.restTimeMinutes
+                  : Number.isFinite(Number(entry?.restTimeMinutes))
+                    ? Number(entry.restTimeMinutes)
+                    : undefined,
+              usesSets:
+                typeof entry?.usesSets === "boolean"
+                  ? entry.usesSets
+                  : undefined,
+              matchDurationMinutes:
+                typeof entry?.matchDurationMinutes === "number"
+                  ? entry.matchDurationMinutes
+                  : Number.isFinite(Number(entry?.matchDurationMinutes))
+                    ? Number(entry.matchDurationMinutes)
+                    : undefined,
+              setDurationMinutes:
+                typeof entry?.setDurationMinutes === "number"
+                  ? entry.setDurationMinutes
+                  : Number.isFinite(Number(entry?.setDurationMinutes))
+                    ? Number(entry.setDurationMinutes)
+                    : undefined,
+              setsPerMatch:
+                typeof entry?.setsPerMatch === "number"
+                  ? entry.setsPerMatch
+                  : Number.isFinite(Number(entry?.setsPerMatch))
+                    ? Number(entry.setsPerMatch)
+                    : undefined,
+              pointsToVictory: Array.isArray(entry?.pointsToVictory)
+                ? entry.pointsToVictory
+                    .map((pointTarget: unknown) =>
+                      typeof pointTarget === "number"
+                        ? pointTarget
+                        : Number(pointTarget),
+                    )
+                    .filter((pointTarget: number) => Number.isFinite(pointTarget))
+                : undefined,
               allowPaymentPlans:
                 typeof entry?.allowPaymentPlans === "boolean"
                   ? entry.allowPaymentPlans
@@ -1351,6 +1398,15 @@ class EventService {
                 entry?.playoffConfig && typeof entry.playoffConfig === "object"
                   ? entry.playoffConfig
                   : undefined,
+              gamesPerOpponent: entry?.gamesPerOpponent,
+              restTimeMinutes: entry?.restTimeMinutes,
+              usesSets: entry?.usesSets,
+              matchDurationMinutes: entry?.matchDurationMinutes,
+              setDurationMinutes: entry?.setDurationMinutes,
+              setsPerMatch: entry?.setsPerMatch,
+              pointsToVictory: Array.isArray(entry?.pointsToVictory)
+                ? entry.pointsToVictory
+                : undefined,
             }))
             .filter((entry: any) => entry.id.length > 0)
         : undefined,

@@ -175,7 +175,7 @@ describe('tournament scheduling (time slots)', () => {
     expect(scheduled.matches.every((match) => match.end.getTime() <= slotEnd.getTime())).toBe(true);
   });
 
-  it('lets generated pool divisions inherit their bracket division time slots', () => {
+  it('lets generated pool divisions inherit bracket time slots and use pool division schedule config', () => {
     const bracketDivision = new Division(
       'tournament_bracket_open',
       'CoEd Open',
@@ -205,6 +205,22 @@ describe('tournament scheduling (time slots)', () => {
       'LEAGUE',
       [bracketDivision.id, bracketDivision.id],
     );
+    poolA.leagueConfig = {
+      gamesPerOpponent: 2,
+      usesSets: true,
+      setsPerMatch: 3,
+      setDurationMinutes: 5,
+      pointsToVictory: [11, 11, 11],
+      restTimeMinutes: 45,
+    };
+    poolB.leagueConfig = {
+      gamesPerOpponent: 2,
+      usesSets: true,
+      setsPerMatch: 3,
+      setDurationMinutes: 5,
+      pointsToVictory: [11, 11, 11],
+      restTimeMinutes: 45,
+    };
     const field = buildField(bracketDivision);
     const teams = {
       ...buildTeamsForDivision('pool_a', 2, poolA),
@@ -254,6 +270,12 @@ describe('tournament scheduling (time slots)', () => {
       poolA.id,
       poolB.id,
     ]);
+    const poolMatches = scheduled.matches.filter((match) => (
+      match.division.id === poolA.id || match.division.id === poolB.id
+    ));
+    expect(poolMatches).toHaveLength(4);
+    expect(poolMatches.every((match) => match.team1Points.length === 3)).toBe(true);
+    expect(poolMatches.every((match) => match.end.getTime() - match.start.getTime() === 15 * 60 * 1000)).toBe(true);
     expect(scheduled.matches.some((match) => match.division.id === poolA.id)).toBe(true);
     expect(scheduled.matches.some((match) => match.division.id === poolB.id)).toBe(true);
     expect(scheduled.matches.filter((match) => match.division.id === bracketDivision.id)).toHaveLength(3);

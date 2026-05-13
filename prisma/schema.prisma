@@ -330,6 +330,23 @@ model Divisions {
   playoffTeamCount            Int?
   playoffPlacementDivisionIds String[]           @default([])
   standingsOverrides          Json?
+  gamesPerOpponent            Int?
+  restTimeMinutes             Int?
+  usesSets                    Boolean?
+  matchDurationMinutes        Int?
+  setDurationMinutes          Int?
+  setsPerMatch                Int?
+  pointsToVictory             Int[]              @default([])
+  playoffDoubleElimination    Boolean?
+  playoffWinnerSetCount       Int?
+  playoffLoserSetCount        Int?
+  playoffWinnerBracketPointsToVictory Int[]      @default([])
+  playoffLoserBracketPointsToVictory  Int[]      @default([])
+  playoffPrize                String?
+  playoffFieldCount           Int?
+  playoffRestTimeMinutes      Int?
+  playoffMatchDurationMinutes Int?
+  playoffSetDurationMinutes   Int?
   standingsConfirmedAt        DateTime?
   standingsConfirmedBy        String?
   allowPaymentPlans           Boolean?
