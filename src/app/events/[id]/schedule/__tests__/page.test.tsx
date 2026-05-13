@@ -335,6 +335,22 @@ const buildWeeklyParentEvent = ({
   };
 };
 
+const mockScheduleApiEvent = (overrides: Record<string, any> = {}) => {
+  const scheduledEvent = buildApiEvent(overrides);
+  apiRequestMock.mockImplementation((path: string) => {
+    if (path === '/api/events/event_1') {
+      const event = { ...scheduledEvent };
+      delete (event as any).matches;
+      return Promise.resolve({ event });
+    }
+    if (path === '/api/events/event_1/matches') {
+      return Promise.resolve({ matches: scheduledEvent.matches ?? [] });
+    }
+    return Promise.resolve({});
+  });
+  return scheduledEvent;
+};
+
 const openMoreActionsMenu = async () => {
   const moreButton = await screen.findByRole('button', { name: /^more$/i });
   await act(async () => {
@@ -1352,6 +1368,64 @@ describe('League schedule page', () => {
     expect(screen.queryByRole('button', { name: /^more$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /cancel league/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /create template/i })).not.toBeInTheDocument();
+  });
+
+  it('shows a delete event action in the More menu before the event starts', async () => {
+    const futureStart = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const futureEnd = new Date(Date.now() + 26 * 60 * 60 * 1000);
+    const futureEvent = mockScheduleApiEvent({
+      start: formatLocalDateTime(futureStart),
+      end: formatLocalDateTime(futureEnd),
+    });
+    const confirmSpy = jest.spyOn(window, 'confirm').mockReturnValue(true);
+    (leagueService.deleteMatchesByEvent as jest.Mock).mockResolvedValue(undefined);
+    (leagueService.deleteWeeklySchedulesForEvent as jest.Mock).mockResolvedValue(undefined);
+    (eventService.deleteEvent as jest.Mock).mockResolvedValue(true);
+
+    try {
+      renderWithMantine(<LeagueSchedulePage />);
+
+      expect(await screen.findByRole('button', { name: /^manage$/i })).toBeInTheDocument();
+      await clickMoreAction(/delete event/i);
+
+      await waitFor(() => {
+        expect(leagueService.deleteMatchesByEvent).toHaveBeenCalledWith('event_1');
+      });
+      expect(confirmSpy).toHaveBeenCalledWith('Delete this event? This will delete the schedule and the event.');
+      expect(leagueService.deleteWeeklySchedulesForEvent).toHaveBeenCalledWith('event_1');
+      expect(eventService.deleteEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          $id: 'event_1',
+          start: futureEvent.start,
+        }),
+      );
+      expect(mockRouter.push).toHaveBeenCalledWith('/events');
+    } finally {
+      confirmSpy.mockRestore();
+    }
+  });
+
+  it('hides the delete event action after the event starts', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+    const pastStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const pastEnd = new Date(Date.now() - 22 * 60 * 60 * 1000);
+    mockScheduleApiEvent({
+      start: formatLocalDateTime(pastStart),
+      end: formatLocalDateTime(pastEnd),
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await openMoreActionsMenu();
+
+    expect(await screen.findByRole('menuitem', { name: /cancel manage/i })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /delete event/i })).not.toBeInTheDocument();
   });
 
   it('creates a template from an unsaved create-mode draft', async () => {

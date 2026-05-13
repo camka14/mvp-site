@@ -7754,6 +7754,39 @@ function EventScheduleContent() {
     }
   }, [activeEvent, cancelling, event, router]);
 
+  const handleDeleteEvent = useCallback(async () => {
+    if (cancelling) return;
+    const eventToDelete = activeEvent ?? event;
+    if (!eventToDelete?.$id) return;
+
+    const eventStart = parseLocalDateTime(eventToDelete.start);
+    if (!eventStart || eventStart.getTime() <= Date.now()) {
+      setActionError('Events can only be deleted before they start.');
+      return;
+    }
+
+    if (!window.confirm('Delete this event? This will delete the schedule and the event.')) {
+      return;
+    }
+
+    setCancelling(true);
+    setError(null);
+    setInfoMessage(null);
+    setWarningMessage(null);
+    setActionError(null);
+
+    try {
+      await leagueService.deleteMatchesByEvent(eventToDelete.$id);
+      await leagueService.deleteWeeklySchedulesForEvent(eventToDelete.$id);
+      await eventService.deleteEvent(eventToDelete);
+      router.push('/events');
+    } catch (err) {
+      console.error('Failed to delete event:', err);
+      setError('Failed to delete event.');
+      setCancelling(false);
+    }
+  }, [activeEvent, cancelling, event, router]);
+
   const handleDiscardChanges = useCallback(() => {
     if (!hasPendingUnsavedChanges) {
       return;
@@ -9074,6 +9107,15 @@ function EventScheduleContent() {
   const showDeleteTemplateActionButton = isTemplateEvent;
   const showCancelActionButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
   const showCreateTemplateButton = (isEditingEvent || isCreateMode) && !isTemplateEvent;
+  const activeEventStart = activeEvent?.start ? parseLocalDateTime(activeEvent.start) : null;
+  const showDeleteEventActionButton = Boolean(
+    canManageEvent
+    && !isCreateMode
+    && !isTemplateEvent
+    && activeEvent?.$id
+    && activeEventStart
+    && activeEventStart.getTime() > Date.now(),
+  );
   const showQrCodeActionButton = Boolean(canManageEvent && !isCreateMode && !isTemplateEvent && !isEditingEvent && activeEvent?.$id);
   const activeEventPublicUrl = activeEvent?.$id ? buildEventPublicUrl(activeEvent.$id) : '';
   const showMoreActionsMenu = showRescheduleActionButton
@@ -9081,6 +9123,7 @@ function EventScheduleContent() {
     || showRebuildWithoutPlaceholdersActionButton
     || showCancelActionButton
     || showDeleteTemplateActionButton
+    || showDeleteEventActionButton
     || showCreateTemplateButton;
   const isRescheduleActionInFlight = reschedulingMatches && pendingScheduleAction === 'reschedule';
   const isRebuildActionInFlight = reschedulingMatches && pendingScheduleAction === 'rebuild';
@@ -9256,6 +9299,15 @@ function EventScheduleContent() {
                           disabled={hasNetworkActionInFlight && !cancelling}
                         >
                           {cancelling ? 'Deleting...' : 'Delete'}
+                        </Menu.Item>
+                      )}
+                      {showDeleteEventActionButton && (
+                        <Menu.Item
+                          color="red"
+                          onClick={handleDeleteEvent}
+                          disabled={hasNetworkActionInFlight && !cancelling}
+                        >
+                          {cancelling ? 'Deleting...' : 'Delete Event'}
                         </Menu.Item>
                       )}
                       {showCreateTemplateButton && (
