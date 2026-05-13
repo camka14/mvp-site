@@ -2238,6 +2238,30 @@ const sumInstallmentAmounts = (amounts: unknown): number => (
     normalizeInstallmentAmounts(amounts).reduce((sum, amount) => sum + amount, 0)
 );
 
+const hasMobileBlockingPaymentPlanConfig = (config: {
+    allowPaymentPlans?: boolean | null;
+    installmentCount?: number | null;
+    installmentAmounts?: unknown;
+    installmentDueDates?: unknown;
+    installmentDueRelativeDays?: unknown;
+}): boolean => {
+    const installmentCount = Number.isFinite(Number(config.installmentCount))
+        ? Math.max(0, Math.trunc(Number(config.installmentCount)))
+        : 0;
+    return Boolean(config.allowPaymentPlans)
+        || installmentCount > 0
+        || normalizeInstallmentAmounts(config.installmentAmounts).length > 0
+        || (Array.isArray(config.installmentDueDates) && config.installmentDueDates.length > 0)
+        || (Array.isArray(config.installmentDueRelativeDays) && config.installmentDueRelativeDays.length > 0);
+};
+
+const formatMobileEditUnsupportedReasons = (reasons: string[]): string => {
+    if (reasons.length === 0) return 'unsupported settings';
+    if (reasons.length === 1) return reasons[0];
+    if (reasons.length === 2) return `${reasons[0]} and ${reasons[1]}`;
+    return `${reasons.slice(0, -1).join(', ')}, and ${reasons[reasons.length - 1]}`;
+};
+
 const normalizeInstallmentDates = (dates: unknown): string[] => {
     if (!Array.isArray(dates)) return [];
     return dates
@@ -5893,6 +5917,44 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         && eventData.splitLeaguePlayoffDivisions
         && !eventData.singleDivision,
     );
+    const mobileEditUnsupportedReasons = useMemo(() => {
+        const reasons: string[] = [];
+        if (
+            eventData.eventType === 'LEAGUE'
+            && leagueData.includePlayoffs
+            && eventData.splitLeaguePlayoffDivisions
+        ) {
+            reasons.push('split league/playoff divisions');
+        }
+        const hasEventPaymentPlans = hasMobileBlockingPaymentPlanConfig({
+            allowPaymentPlans: eventData.allowPaymentPlans,
+            installmentCount: eventData.installmentCount,
+            installmentAmounts: eventData.installmentAmounts,
+            installmentDueDates: eventData.installmentDueDates,
+            installmentDueRelativeDays: eventData.installmentDueRelativeDays,
+        });
+        const hasDivisionPaymentPlans = (eventData.divisionDetails || [])
+            .some((detail) => hasMobileBlockingPaymentPlanConfig(detail));
+        const hasEditorPaymentPlans = hasMobileBlockingPaymentPlanConfig(divisionEditor);
+        if (hasEventPaymentPlans || hasDivisionPaymentPlans || hasEditorPaymentPlans) {
+            reasons.push('payment plans/installments');
+        }
+        return reasons;
+    }, [
+        divisionEditor,
+        eventData.allowPaymentPlans,
+        eventData.divisionDetails,
+        eventData.eventType,
+        eventData.installmentAmounts,
+        eventData.installmentCount,
+        eventData.installmentDueDates,
+        eventData.installmentDueRelativeDays,
+        eventData.splitLeaguePlayoffDivisions,
+        leagueData.includePlayoffs,
+    ]);
+    const mobileEditUnsupportedWarning = mobileEditUnsupportedReasons.length > 0
+        ? `This event is not editable on mobile because it uses ${formatMobileEditUnsupportedReasons(mobileEditUnsupportedReasons)}. Teams and matches can still be managed from mobile.`
+        : null;
     const currentSportRequiresSets = useMemo(() => {
         const selectedSport = (
             eventData.sportId ? sportsById.get(eventData.sportId) : null
@@ -10132,6 +10194,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         </div>
                         <div className="mx-auto w-full max-w-[1000px]">
                             <form id={formId} className="space-y-8">
+                        {mobileEditUnsupportedWarning && (
+                            <Alert color="yellow" variant="light" radius="md">
+                                {mobileEditUnsupportedWarning}
+                            </Alert>
+                        )}
                         {/* Basic Information */}
                         <Paper
                             id="section-basic-information"

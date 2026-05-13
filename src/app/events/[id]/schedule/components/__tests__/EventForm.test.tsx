@@ -505,6 +505,36 @@ describe('EventForm dirty state', () => {
     expect(screen.getAllByTestId('price-preview')).toHaveLength(2);
   });
 
+  it('warns when payment plans make the event unavailable for mobile editing', async () => {
+    renderForm(jest.fn(), undefined, {
+      price: 5000,
+      allowPaymentPlans: true,
+      installmentCount: 2,
+      installmentAmounts: [2500, 2500],
+    });
+
+    expect(await screen.findByText(
+      'This event is not editable on mobile because it uses payment plans/installments. Teams and matches can still be managed from mobile.',
+    )).toBeInTheDocument();
+  });
+
+  it('warns when split league playoffs make the event unavailable for mobile editing', async () => {
+    renderForm(jest.fn(), undefined, {
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      singleDivision: false,
+      leagueData: {
+        gamesPerOpponent: 1,
+        includePlayoffs: true,
+      },
+      splitLeaguePlayoffDivisions: true,
+    });
+
+    expect(await screen.findByText(
+      'This event is not editable on mobile because it uses split league/playoff divisions. Teams and matches can still be managed from mobile.',
+    )).toBeInTheDocument();
+  });
+
   it('shows organizer tax responsibility next to price when policy assigns organizer liability', async () => {
     const organizerRules = CONFIRMED_ORGANIZER_LIABLE_EVENT_TAX_RULES as unknown as Array<{
       stateCode: string;
