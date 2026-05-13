@@ -2708,7 +2708,7 @@ export const loadEventForMatchMutation = async (
   loadEventWithRelations(eventId, client, {
     hydratedMatchDetailIds: [matchId],
     includeTeamPlayers: false,
-    includeTeamRegistrations: false,
+    includeTeamRegistrations: true,
   })
 );
 

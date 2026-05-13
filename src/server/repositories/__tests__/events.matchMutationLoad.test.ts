@@ -61,7 +61,7 @@ const createClient = () => {
         state: 'PUBLISHED',
         divisions: ['open'],
         fieldIds: ['field_1'],
-        teamIds: ['team_1', 'team_2'],
+        teamIds: [],
         timeSlotIds: [],
         officialIds: [],
         waitListIds: [],
@@ -172,13 +172,40 @@ const createClient = () => {
       upsert: jest.fn(),
     },
     eventRegistrations: {
-      findMany: jest.fn().mockResolvedValue([]),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'team_registration_1',
+          eventId: 'event_1',
+          eventTeamId: 'team_1',
+          registrantId: 'team_1',
+          registrantType: 'TEAM',
+          rosterRole: 'PARTICIPANT',
+          status: 'ACTIVE',
+          createdAt: new Date('2026-04-22T17:00:00.000Z'),
+          jerseyNumber: null,
+          position: null,
+          isCaptain: false,
+        },
+        {
+          id: 'team_registration_2',
+          eventId: 'event_1',
+          eventTeamId: 'team_2',
+          registrantId: 'team_2',
+          registrantType: 'TEAM',
+          rosterRole: 'PARTICIPANT',
+          status: 'ACTIVE',
+          createdAt: new Date('2026-04-22T17:01:00.000Z'),
+          jerseyNumber: null,
+          position: null,
+          isCaptain: false,
+        },
+      ]),
     },
   };
 };
 
 describe('loadEventForMatchMutation', () => {
-  it('hydrates only the target match child rows and skips unrelated roster detail', async () => {
+  it('hydrates the target match child rows and event teams while skipping user roster detail', async () => {
     const client = createClient();
 
     const loaded = await loadEventForMatchMutation('event_1', 'match_target', client as any);
@@ -190,8 +217,10 @@ describe('loadEventForMatchMutation', () => {
       where: { matchId: { in: ['match_target'] } },
     });
     expect(client.userData.findMany).not.toHaveBeenCalled();
-    expect(client.eventRegistrations.findMany).not.toHaveBeenCalled();
+    expect(client.eventRegistrations.findMany).toHaveBeenCalled();
 
+    expect(loaded.matches.match_target.team1?.id).toBe('team_1');
+    expect(loaded.matches.match_target.team2?.id).toBe('team_2');
     expect(loaded.matches.match_target.segments).toHaveLength(1);
     expect(loaded.matches.match_target.incidents).toHaveLength(1);
     expect(loaded.matches.match_other.segments).toEqual([]);
