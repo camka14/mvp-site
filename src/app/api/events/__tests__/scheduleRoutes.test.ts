@@ -1048,6 +1048,85 @@ describe('schedule routes', () => {
     expect(savedMatch.actualEnd).toEqual(new Date('2026-04-19T11:00:00.000Z'));
   });
 
+  it('rejects set completion when the submitted score passed the first valid win-by-two score', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: [] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: [] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      usesSets: true,
+      pointsToVictory: [21, 21, 15],
+      resolvedMatchRules: {
+        scoringModel: 'SETS',
+        segmentCount: 3,
+        pointIncidentRequiresParticipant: false,
+      },
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          team1,
+          team2,
+          team1Points: [22, 0, 0],
+          team2Points: [19, 0, 0],
+          setResults: [0, 0, 0],
+          status: 'IN_PROGRESS',
+          winnerEventTeamId: null,
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            scores: { team_1: 22, team_2: 19 },
+            winnerEventTeamId: null,
+          }],
+          incidents: [],
+          matchRulesSnapshot: null,
+          resolvedMatchRules: {
+            scoringModel: 'SETS',
+            segmentCount: 3,
+            pointIncidentRequiresParticipant: false,
+          },
+        },
+      },
+      teams: { team_1: team1, team_2: team2 },
+      officials: [{ id: 'official_1' }],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        segmentOperations: [
+          {
+            id: 'match_1_segment_1',
+            sequence: 1,
+            status: 'COMPLETE',
+            scores: { team_1: 22, team_2: 19 },
+            winnerEventTeamId: 'team_1',
+            endedAt: '2026-04-19T11:00:00.000Z',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect(saveMatchesMock).not.toHaveBeenCalled();
+  });
+
   it('updates a match when user is host', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -1305,6 +1384,77 @@ describe('schedule routes', () => {
     }));
     expect(savedMatch.team1Points).toEqual([1]);
     expect(savedMatch.incidents).toEqual([]);
+  });
+
+  it('rejects score set writes that push a set past its reachable winning score', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: [] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: [] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      usesSets: true,
+      pointsToVictory: [21, 21, 15],
+      resolvedMatchRules: {
+        scoringModel: 'SETS',
+        segmentCount: 3,
+        pointIncidentRequiresParticipant: false,
+      },
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          team1,
+          team2,
+          team1Points: [21, 0, 0],
+          team2Points: [19, 0, 0],
+          setResults: [0, 0, 0],
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            scores: { team_1: 21, team_2: 19 },
+            winnerEventTeamId: null,
+          }],
+          incidents: [],
+          matchRulesSnapshot: null,
+          resolvedMatchRules: {
+            scoringModel: 'SETS',
+            segmentCount: 3,
+            pointIncidentRequiresParticipant: false,
+          },
+        },
+      },
+      teams: { team_1: team1, team_2: team2 },
+      officials: [{ id: 'official_1' }],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+
+    const res = await matchScorePost(
+      jsonRequest('http://localhost/api/events/event_1/matches/match_1/score', {
+        segmentId: 'match_1_segment_1',
+        sequence: 1,
+        eventTeamId: 'team_1',
+        points: 22,
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(400);
+    expect(saveMatchesMock).not.toHaveBeenCalled();
   });
 
   it('rejects score set writes when player-recorded scoring is required', async () => {

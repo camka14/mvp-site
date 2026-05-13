@@ -24,6 +24,10 @@ import {
   resolveMatchRulesForContext,
   shouldFreezeMatchRulesSnapshot,
 } from '@/server/matches/matchOperations';
+import {
+  assertLegacySetScoreUpdateAllowed,
+  assertSetSegmentOperationsAllowed,
+} from '@/server/matches/setScoringRules';
 import type { MatchIncident, MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -1091,6 +1095,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       });
 
       assertLegacyScoreArraysAllowed(targetMatch, event, parsed.data);
+      assertLegacySetScoreUpdateAllowed(event, targetMatch, parsed.data);
       applyMatchUpdates(event, targetMatch, updates);
       if (shouldFreezeMatchRulesSnapshot({
         segmentOperations: parsed.data.segmentOperations,
@@ -1140,6 +1145,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       applyIncidentOperations(targetMatch, event, sanitizedIncidentOperations);
       assertSegmentScoreOperationsAllowed(targetMatch, event, parsed.data.segmentOperations);
+      assertSetSegmentOperationsAllowed(event, targetMatch, parsed.data.segmentOperations);
       applySegmentOperations(targetMatch, event, parsed.data.segmentOperations);
 
       if (updates.officialCheckedIn === true || targetMatch.officialCheckedIn === true) {

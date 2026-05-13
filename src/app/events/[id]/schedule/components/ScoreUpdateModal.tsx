@@ -17,6 +17,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
+import { canIncreaseSetScore, getSetScoreState, resolveSetVictoryTarget } from '@/lib/matchSetScoring';
 import {
   Event,
   getTeamAvatarUrl,
@@ -1297,8 +1298,33 @@ export default function ScoreUpdateModal({
     if (incident) removeIncident(incident);
   };
 
+  const targetForSegment = (segmentIndex: number): number | null => (
+    resolveSetVictoryTarget(pointTargets, segmentIndex)
+  );
+
+  const targetForActive = (): number | null => targetForSegment(activeIndex);
+
+  const setWinConditionMet = () => (
+    getSetScoreState(team1Score, team2Score, targetForActive()).isValidFinalScore
+  );
+
+  const canIncreaseTeamScore = (eventTeamId: string | null): boolean => {
+    if (rules.scoringModel !== 'SETS') return true;
+    if (!eventTeamId) return false;
+    const nextTeam1Score = eventTeamId === team1Id ? team1Score + 1 : team1Score;
+    const nextTeam2Score = eventTeamId === team2Id ? team2Score + 1 : team2Score;
+    return canIncreaseSetScore(
+      team1Score,
+      team2Score,
+      nextTeam1Score,
+      nextTeam2Score,
+      targetForActive(),
+    );
+  };
+
   const requestScore = (eventTeamId: string | null, delta: number) => {
     if (!eventTeamId) return;
+    if (delta > 0 && !canIncreaseTeamScore(eventTeamId)) return;
     if (delta > 0 && scoringRequiresParticipant) {
       setPendingPoint({ teamId: eventTeamId, delta });
       setIncidentType(scoringIncidentType);
@@ -1309,18 +1335,6 @@ export default function ScoreUpdateModal({
       return;
     }
     updateScore(eventTeamId, delta);
-  };
-
-  const targetForActive = (): number | null => {
-    if (!Array.isArray(pointTargets) || !pointTargets.length) return null;
-    return Number(pointTargets[activeIndex] ?? pointTargets[pointTargets.length - 1]) || null;
-  };
-
-  const setWinConditionMet = () => {
-    const target = targetForActive();
-    if (!target) return false;
-    const leader = Math.max(team1Score, team2Score);
-    return leader >= target && Math.abs(team1Score - team2Score) >= 2;
   };
 
   const matchComplete = (source = segments) => {
@@ -1338,7 +1352,7 @@ export default function ScoreUpdateModal({
     if (!activeSegment || !team1Id || !team2Id) return;
     if (segmentConfirming) return;
     if (rules.scoringModel === 'SETS' && !setWinConditionMet()) {
-      alert('A team must reach the target points and win by 2 to confirm this segment.');
+      alert('A set can only finish at the victory target, or above it when the winner leads by 2.');
       return;
     }
     setSegmentConfirming(true);
@@ -1894,14 +1908,14 @@ export default function ScoreUpdateModal({
                   {canScore && !scoringRequiresParticipant && (
                     <Group gap="xs" wrap="nowrap" style={{ flex: '0 0 auto' }}>
                       <ActionIcon variant="light" color="red" onClick={() => requestScore(teamId, -1)} disabled={current === 0}>-</ActionIcon>
-                      <ActionIcon variant="light" color="green" onClick={() => requestScore(teamId, 1)}>+</ActionIcon>
+                      <ActionIcon variant="light" color="green" onClick={() => requestScore(teamId, 1)} disabled={!canIncreaseTeamScore(teamId)}>+</ActionIcon>
                     </Group>
                   )}
                 </Group>
                 <Text ta="center" fw={700} size="xl">{current}</Text>
                 {canScore && scoringRequiresParticipant && teamId && (
                   <Group justify="center" mt="xs">
-                    <Button size="xs" onClick={() => requestScore(teamId, 1)}>
+                    <Button size="xs" onClick={() => requestScore(teamId, 1)} disabled={!canIncreaseTeamScore(teamId)}>
                       Add Incident
                     </Button>
                   </Group>

@@ -6,6 +6,7 @@ import { canManageEvent } from '@/server/accessControl';
 import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { assertSetScoreUpdateAllowed } from '@/server/matches/setScoringRules';
 import type { MatchSegment } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +22,11 @@ const normalizeIdToken = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed || null;
+};
+
+const nonNegativeScore = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
 };
 
 const isUserOnTeam = (team: unknown, userId: string): boolean => {
@@ -162,6 +168,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         ...(segment.scores ?? {}),
         [parsed.data.eventTeamId]: nextScore,
       };
+      assertSetScoreUpdateAllowed({
+        event,
+        match,
+        segment,
+        nextScores,
+        previousPoints: nonNegativeScore(segment.scores?.[parsed.data.eventTeamId]),
+        nextPoints: nextScore,
+      });
       segments[segmentIndex] = {
         ...segment,
         status: segment.status === 'COMPLETE'

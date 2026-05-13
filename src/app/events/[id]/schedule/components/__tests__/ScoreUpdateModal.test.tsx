@@ -532,6 +532,102 @@ describe('ScoreUpdateModal', () => {
     expect(onScoreChange.mock.calls[0][0].team1Points).toEqual([3, 0]);
   });
 
+  it('limits set score increases to the first reachable win-by-two score', () => {
+    jest.useFakeTimers();
+    const rules = buildRules({ scoringModel: 'SETS', segmentCount: 3, segmentLabel: 'Set' });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [20, 0, 0],
+          team2Points: [20, 0, 0],
+          setResults: [0, 0, 0],
+          matchRulesSnapshot: rules,
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            scores: { team_a: 20, team_b: 20 },
+            winnerEventTeamId: null,
+          }],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          usesSets: true,
+          setsPerMatch: 3,
+          pointsToVictory: [21, 21, 15],
+          resolvedMatchRules: rules as Event['resolvedMatchRules'],
+        })}
+        canManage
+        onScoreChange={jest.fn().mockResolvedValue(undefined)}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Confirm Set 1' })).toBeDisabled();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+
+    expect(screen.getByRole('button', { name: 'Confirm Set 1' })).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: '+' })[0]).toBeEnabled();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+
+    expect(screen.getByRole('button', { name: 'Confirm Set 1' })).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: '+' })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: '+' })[1]).toBeDisabled();
+  });
+
+  it('does not let officials add points after a set already reached target with a two-point lead', () => {
+    const rules = buildRules({ scoringModel: 'SETS', segmentCount: 3, segmentLabel: 'Set' });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [21, 0, 0],
+          team2Points: [19, 0, 0],
+          setResults: [0, 0, 0],
+          matchRulesSnapshot: rules,
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            scores: { team_a: 21, team_b: 19 },
+            winnerEventTeamId: null,
+          }],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          usesSets: true,
+          setsPerMatch: 3,
+          pointsToVictory: [21, 21, 15],
+          resolvedMatchRules: rules as Event['resolvedMatchRules'],
+        })}
+        canManage
+        onScoreChange={jest.fn().mockResolvedValue(undefined)}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Confirm Set 1' })).toBeEnabled();
+    expect(screen.getAllByRole('button', { name: '+' })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: '+' })[1]).toBeDisabled();
+  });
+
   it('keeps locally incremented score visible when stale match props rerender before the debounced sync fires', async () => {
     jest.useFakeTimers();
     const onScoreChange = jest.fn().mockResolvedValue(undefined);
