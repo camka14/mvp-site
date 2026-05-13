@@ -153,6 +153,53 @@ describe('/api/teams route', () => {
     }));
   });
 
+  it('accepts mobile player registration metadata during team creation', async () => {
+    createMock.mockResolvedValue({
+      id: 'team_mobile_registration_metadata',
+      name: 'Mobile Metadata',
+      division: 'Open',
+      sport: 'Indoor Volleyball',
+      playerIds: ['user_1'],
+      captainId: 'user_1',
+      managerId: 'user_1',
+      coachIds: [],
+      pending: [],
+      teamSize: 6,
+      createdAt: new Date('2026-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+    });
+
+    const response = await POST(postJson({
+      id: 'team_mobile_registration_metadata',
+      name: 'Mobile Metadata',
+      teamSize: 6,
+      playerRegistrations: [
+        {
+          id: '',
+          userId: 'user_1',
+          registrantId: 'user_1',
+          registrantType: 'SELF',
+          rosterRole: null,
+          status: 'ACTIVE',
+          jerseyNumber: null,
+          position: null,
+          isCaptain: true,
+          consentDocumentId: null,
+          consentStatus: null,
+          createdBy: 'user_1',
+        },
+      ],
+    }));
+
+    expect(response.status).toBe(201);
+    expect(createMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        id: 'team_mobile_registration_metadata',
+        name: 'Mobile Metadata',
+      }),
+    }));
+  });
+
   it('rejects team sizes below two with a specific message', async () => {
     const response = await POST(postJson({
       id: 'team_too_small',
