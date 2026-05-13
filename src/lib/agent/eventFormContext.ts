@@ -506,7 +506,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
           visibleWhen: 'Visible in Match Rules for League and Tournament.',
           requiredWhen: 'Optional.',
           defaultOrPreset: 'Existing autoCreatePointMatchIncidents or false.',
-          createsOrUpdates: ['autoCreatePointMatchIncidents', 'matchRulesOverride.pointIncidentRequiresParticipant'],
+          createsOrUpdates: ['autoCreatePointMatchIncidents'],
           description: 'When on, officials are prompted to identify the player before each score change, creating point/goal incidents automatically. When off, officials can still add incidents manually if the type is available.',
         },
       ],

@@ -52,7 +52,6 @@ const setBasedRules = (
   officialRoles: [],
   supportedIncidentTypes: POINT_INCIDENT_TYPES,
   autoCreatePointIncidentType: 'POINT',
-  pointIncidentRequiresParticipant: false,
   ...overrides,
 });
 
@@ -72,7 +71,6 @@ const periodRules = (
   officialRoles: [],
   supportedIncidentTypes: POINT_INCIDENT_TYPES,
   autoCreatePointIncidentType: 'POINT',
-  pointIncidentRequiresParticipant: false,
   ...overrides,
 });
 
@@ -90,7 +88,6 @@ const pointsOnlyRules = (
   officialRoles: [],
   supportedIncidentTypes: POINT_INCIDENT_TYPES,
   autoCreatePointIncidentType: 'POINT',
-  pointIncidentRequiresParticipant: false,
   ...overrides,
 });
 
@@ -108,7 +105,6 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     canUseShootout: true,
     supportedIncidentTypes: GOAL_INCIDENT_TYPES,
     autoCreatePointIncidentType: 'GOAL',
-    pointIncidentRequiresParticipant: true,
   }),
   'Grass Soccer': periodRules(2, 'Half', {
     supportsDraw: true,
@@ -116,7 +112,6 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     canUseShootout: true,
     supportedIncidentTypes: GOAL_INCIDENT_TYPES,
     autoCreatePointIncidentType: 'GOAL',
-    pointIncidentRequiresParticipant: true,
   }),
   'Beach Soccer': periodRules(2, 'Half', {
     supportsDraw: true,
@@ -124,7 +119,6 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     canUseShootout: true,
     supportedIncidentTypes: GOAL_INCIDENT_TYPES,
     autoCreatePointIncidentType: 'GOAL',
-    pointIncidentRequiresParticipant: true,
   }),
   Tennis: setBasedRules(),
   Pickleball: setBasedRules({ segmentLabel: 'Game' }),
@@ -141,7 +135,6 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     canUseShootout: true,
     supportedIncidentTypes: GOAL_INCIDENT_TYPES,
     autoCreatePointIncidentType: 'GOAL',
-    pointIncidentRequiresParticipant: true,
   }),
   Baseball: {
     scoringModel: 'INNINGS',
@@ -155,7 +148,6 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     officialRoles: [],
     supportedIncidentTypes: RUN_INCIDENT_TYPES,
     autoCreatePointIncidentType: 'RUN',
-    pointIncidentRequiresParticipant: false,
   },
   Other: pointsOnlyRules({
     supportsDraw: true,

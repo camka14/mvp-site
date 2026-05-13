@@ -44,7 +44,6 @@ const basketballMatchRulesTemplate = {
   officialRoles: [],
   supportedIncidentTypes: ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
   autoCreatePointIncidentType: 'POINT',
-  pointIncidentRequiresParticipant: false,
 };
 
 const basketballOfficialPositionTemplates = [
@@ -320,7 +319,6 @@ describe('GET /api/sports', () => {
             officialRoles: [],
             supportedIncidentTypes: ['RUN', 'DISCIPLINE', 'NOTE', 'ADMIN'],
             autoCreatePointIncidentType: 'RUN',
-            pointIncidentRequiresParticipant: false,
           },
         },
       ]);
@@ -343,7 +341,6 @@ describe('GET /api/sports', () => {
           officialRoles: [],
           supportedIncidentTypes: ['RUN', 'DISCIPLINE', 'NOTE', 'ADMIN'],
           autoCreatePointIncidentType: 'RUN',
-          pointIncidentRequiresParticipant: false,
         },
       },
     });

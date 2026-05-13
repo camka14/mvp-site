@@ -2259,7 +2259,11 @@ const sanitizeMatchRulesOverrideForEditor = (value: unknown): MatchRulesConfig |
         return null;
     }
     const entries = Object.entries(value as Record<string, unknown>)
-        .filter(([key, entry]) => key !== 'segmentCount' && entry !== undefined);
+        .filter(([key, entry]) => (
+            key !== 'segmentCount'
+            && key !== 'pointIncidentRequiresParticipant'
+            && entry !== undefined
+        ));
     return entries.length > 0 ? Object.fromEntries(entries) as MatchRulesConfig : null;
 };
 
@@ -3269,7 +3273,6 @@ const matchRulesConfigSchema = z.object({
     officialRoles: z.array(z.string()).optional(),
     supportedIncidentTypes: z.array(z.string()).optional(),
     autoCreatePointIncidentType: z.string().trim().optional(),
-    pointIncidentRequiresParticipant: z.boolean().optional(),
 }).nullable().optional();
 
 const tournamentConfigSchema = z.object({

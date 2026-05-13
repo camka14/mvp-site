@@ -17,7 +17,6 @@ const soccerSport = {
     canUseShootout: true,
     supportedIncidentTypes: ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'],
     autoCreatePointIncidentType: 'GOAL',
-    pointIncidentRequiresParticipant: true,
   },
   $createdAt: '',
   $updatedAt: '',
@@ -44,6 +43,26 @@ describe('MatchRulesSection', () => {
 
     fireEvent.click(screen.getByLabelText(/allow overtime/i));
 
+    expect(handleChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('does not write participant requirement overrides when automatic scoring incidents change', () => {
+    const handleChange = jest.fn();
+    const handleAutoCreateChange = jest.fn();
+
+    renderWithMantine(
+      <MatchRulesSection
+        sport={soccerSport}
+        value={null}
+        onChange={handleChange}
+        autoCreatePointMatchIncidents={false}
+        onAutoCreatePointMatchIncidentsChange={handleAutoCreateChange}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText(/create a scoring incident/i));
+
+    expect(handleAutoCreateChange).toHaveBeenLastCalledWith(true);
     expect(handleChange).toHaveBeenLastCalledWith(null);
   });
 });

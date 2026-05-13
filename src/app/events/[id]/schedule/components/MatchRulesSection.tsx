@@ -85,9 +85,6 @@ const normalizeRulesConfig = (
   if (typeof value.autoCreatePointIncidentType === 'string' && value.autoCreatePointIncidentType.trim()) {
     normalized.autoCreatePointIncidentType = value.autoCreatePointIncidentType.trim();
   }
-  if (typeof value.pointIncidentRequiresParticipant === 'boolean') {
-    normalized.pointIncidentRequiresParticipant = value.pointIncidentRequiresParticipant;
-  }
   return normalized;
 };
 
@@ -288,15 +285,12 @@ export default function MatchRulesSection({
 
   const handleAutoCreateToggle = useCallback((checked: boolean) => {
     onAutoCreatePointMatchIncidentsChange(checked);
-    updateOverride((draft) => {
-      draft.pointIncidentRequiresParticipant = checked;
-    });
     handleIncidentTypesChange(
       checked
         ? Array.from(new Set([...selectedIncidentTypes, autoPointIncidentType]))
         : selectedIncidentTypes.filter((incidentType) => incidentType !== autoPointIncidentType),
     );
-  }, [autoPointIncidentType, handleIncidentTypesChange, onAutoCreatePointMatchIncidentsChange, selectedIncidentTypes, updateOverride]);
+  }, [autoPointIncidentType, handleIncidentTypesChange, onAutoCreatePointMatchIncidentsChange, selectedIncidentTypes]);
 
   const incidentTypeOptions = useMemo(
     () => availableIncidentTypes
