@@ -231,6 +231,71 @@ describe('event template privacy routes', () => {
     expect(res.status).toBe(200);
   });
 
+  it('includes set config on playoff division details in GET /api/events/:eventId', async () => {
+    const playoffDivisionId = 'event_1__division__m_skill_open_age_18plus';
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      state: 'PUBLISHED',
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      includePlayoffs: true,
+      divisions: [],
+      start: new Date('2026-01-05T09:00:00.000Z'),
+      price: 0,
+      maxParticipants: 16,
+      playoffTeamCount: 8,
+      allowPaymentPlans: false,
+      installmentCount: 0,
+      installmentDueDates: [],
+      installmentDueRelativeDays: [],
+      installmentAmounts: [],
+    });
+    prismaMock.divisions.findMany
+      .mockResolvedValueOnce([{ id: playoffDivisionId }])
+      .mockResolvedValueOnce([
+        {
+          id: playoffDivisionId,
+          key: 'm_skill_open_age_18plus',
+          name: 'Mens Open 18+',
+          kind: 'PLAYOFF',
+          sportId: 'sport_1',
+          maxParticipants: 16,
+          playoffTeamCount: 8,
+          usesSets: true,
+          setDurationMinutes: 20,
+          setsPerMatch: 3,
+          pointsToVictory: [25, 25, 15],
+          standingsOverrides: {
+            winnerSetCount: 3,
+            winnerBracketPointsToVictory: [25, 25, 15],
+          },
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    const res = await eventGet(
+      new NextRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.playoffDivisionDetails).toEqual([
+      expect.objectContaining({
+        id: playoffDivisionId,
+        kind: 'PLAYOFF',
+        usesSets: true,
+        setDurationMinutes: 20,
+        setsPerMatch: 3,
+        pointsToVictory: [25, 25, 15],
+        playoffConfig: expect.objectContaining({
+          winnerSetCount: 3,
+          winnerBracketPointsToVictory: [25, 25, 15],
+        }),
+      }),
+    ]);
+  });
+
   it('allows reading a template event when requester is host', async () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'TEMPLATE', hostId: 'host_1' });
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });

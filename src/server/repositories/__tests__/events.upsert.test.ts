@@ -9,7 +9,7 @@ import { buildEventDivisionId } from '@/lib/divisionTypes';
 
 type MockClient = {
   $executeRaw: jest.Mock;
-  events: { findUnique: jest.Mock; findMany: jest.Mock; upsert: jest.Mock };
+  events: { findUnique: jest.Mock; findMany: jest.Mock; upsert: jest.Mock; update: jest.Mock };
   sports: { findUnique: jest.Mock };
   organizations: { findUnique: jest.Mock };
   staffMembers: { findMany: jest.Mock };
@@ -30,6 +30,7 @@ const createMockClient = (): MockClient => ({
     findUnique: jest.fn().mockResolvedValue(null),
     findMany: jest.fn().mockResolvedValue([]),
     upsert: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue(undefined),
   },
   sports: {
     findUnique: jest.fn().mockResolvedValue(null),
@@ -455,6 +456,75 @@ describe('upsertEventFromPayload', () => {
       expect(args.create.divisionTypeId).toBe('skill_open_age_16u');
       expect(args.create.playoffPlacementDivisionIds).toEqual(placementMapping);
       expect(args.update.playoffPlacementDivisionIds).toEqual(placementMapping);
+    });
+  });
+
+  it('preserves tournament pool set config on bracket and generated pool divisions', async () => {
+    const client = createMockClient();
+    const bracketDivisionId = divisionId('m_skill_open_age_18plus');
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'TOURNAMENT',
+      includePlayoffs: true,
+      singleDivision: false,
+      divisions: [bracketDivisionId],
+      playoffDivisionDetails: [
+        {
+          id: bracketDivisionId,
+          key: 'm_skill_open_age_18plus',
+          kind: 'PLAYOFF',
+          name: 'Mens Open 18+',
+          divisionTypeId: 'skill_open_age_18plus',
+          divisionTypeName: 'Mens Open 18+',
+          ratingType: 'SKILL',
+          gender: 'M',
+          maxParticipants: 16,
+          playoffTeamCount: 8,
+          poolCount: 2,
+          usesSets: true,
+          setDurationMinutes: 20,
+          setsPerMatch: 3,
+          pointsToVictory: [25, 25, 15],
+          playoffConfig: {
+            doubleElimination: false,
+            winnerSetCount: 3,
+            loserSetCount: 1,
+            winnerBracketPointsToVictory: [25, 25, 15],
+            loserBracketPointsToVictory: [25],
+            fieldCount: 1,
+            restTimeMinutes: 0,
+            setDurationMinutes: 20,
+          },
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const divisionUpserts = client.divisions.upsert.mock.calls.map(([args]) => args);
+    const bracketUpsert = divisionUpserts.find((args) => args.where.id === bracketDivisionId);
+    const poolUpserts = divisionUpserts.filter((args) => args.where.id !== bracketDivisionId);
+
+    expect(bracketUpsert?.create).toEqual(expect.objectContaining({
+      kind: 'PLAYOFF',
+      usesSets: true,
+      setDurationMinutes: 20,
+      setsPerMatch: 3,
+      pointsToVictory: [25, 25, 15],
+      standingsOverrides: expect.objectContaining({
+        winnerSetCount: 3,
+        winnerBracketPointsToVictory: [25, 25, 15],
+      }),
+    }));
+    expect(poolUpserts).toHaveLength(2);
+    poolUpserts.forEach((args) => {
+      expect(args.create).toEqual(expect.objectContaining({
+        kind: 'LEAGUE',
+        usesSets: true,
+        setDurationMinutes: 20,
+        setsPerMatch: 3,
+        pointsToVictory: [25, 25, 15],
+      }));
     });
   });
 

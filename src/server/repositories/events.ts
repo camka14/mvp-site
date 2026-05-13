@@ -959,9 +959,7 @@ const normalizeDivisionDetailsPayload = (
             ?? normalizePlayoffDivisionConfig(row)
           )
         : rawExplicitPlayoffConfig;
-      const rawLeagueConfig = rawKind === 'LEAGUE'
-        ? normalizeLeagueDivisionConfig(row)
-        : null;
+      const rawLeagueConfig = normalizeLeagueDivisionConfig(row);
       const rawStandingsConfirmedAt = normalizeIsoDateString(row.standingsConfirmedAt);
       const rawStandingsConfirmedBy = typeof row.standingsConfirmedBy === 'string'
         ? row.standingsConfirmedBy.trim() || null
@@ -3564,13 +3562,11 @@ export const syncEventDivisions = async (
           normalizeDivisionPlayoffConfigFields(existing),
           normalizePlayoffDivisionConfig(detail),
         ) ?? null;
-    const leagueConfig = kind === 'LEAGUE'
-      ? resolveDivisionValue(
-          normalizeLeagueDivisionConfig(detail),
-          normalizeLeagueDivisionConfig(existing),
-          null,
-        ) ?? null
-      : null;
+    const leagueConfig = resolveDivisionValue(
+      normalizeLeagueDivisionConfig(detail),
+      normalizeLeagueDivisionConfig(existing),
+      null,
+    ) ?? null;
     const standingsOverrides = kind === 'PLAYOFF'
       ? (playoffConfig ? serializePlayoffDivisionConfig(playoffConfig) : null)
       : resolveDivisionValue(

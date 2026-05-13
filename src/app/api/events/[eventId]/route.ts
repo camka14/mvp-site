@@ -1209,9 +1209,7 @@ const getDivisionDetailsForEvent = async (
             ?? normalizePlayoffDivisionConfig(row)
           )
         : normalizeDivisionPlayoffConfigFields(row);
-    const leagueConfig = kind === 'LEAGUE'
-      ? normalizeLeagueDivisionConfig(row)
-      : null;
+    const leagueConfig = normalizeLeagueDivisionConfig(row);
     const generatedPools = kind === 'PLAYOFF'
       ? generatedPoolsForBracket(allPoolRows, row?.id ?? divisionId)
       : [];
