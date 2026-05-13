@@ -454,12 +454,20 @@ class TournamentService {
     async updateMatchScores(
         eventId: string,
         matchId: string,
-        updates: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'> & { segmentOperations?: MatchSegmentOperation[] },
+        updates: Pick<Match, 'team1Points' | 'team2Points' | 'setResults'> & {
+            segmentOperations?: MatchSegmentOperation[];
+            finalize?: boolean;
+            time?: string;
+        },
     ): Promise<Match> {
         if (Array.isArray(updates.segmentOperations)) {
-            return this.updateMatchOperations(eventId, matchId, { segmentOperations: updates.segmentOperations });
+            return this.updateMatchOperations(eventId, matchId, {
+                segmentOperations: updates.segmentOperations,
+                finalize: updates.finalize,
+                time: updates.time,
+            });
         }
-        return this.updateMatch(eventId, matchId, updates);
+        return this.updateMatch(eventId, matchId, updates as Partial<Match>);
     }
 
     async updateMatchesBulk(eventId: string, matches: Array<Partial<Match> & { $id: string }>): Promise<Match[]> {

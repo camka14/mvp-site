@@ -4,7 +4,6 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import { isMinorAtUtcDate } from '@/server/userPrivacy';
-import { ensureUserHasAcceptedChatTerms } from '@/server/chatAccess';
 import { handleRouteError } from '@/server/http/routeErrors';
 
 export const dynamic = 'force-dynamic';
@@ -28,9 +27,6 @@ const hasBlockingRelationship = (users: Array<{ id: string; blockedUserIds?: str
 export async function GET(req: NextRequest) {
   try {
     const session = await requireSession(req);
-    if (!session.isAdmin) {
-      await ensureUserHasAcceptedChatTerms(session.userId);
-    }
     const params = req.nextUrl.searchParams;
     const userId = params.get('userId') ?? session.userId;
     if (!session.isAdmin && userId !== session.userId) {
@@ -95,9 +91,6 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const session = await requireSession(req);
-    if (!session.isAdmin) {
-      await ensureUserHasAcceptedChatTerms(session.userId);
-    }
     const body = await req.json().catch(() => null);
     const parsed = createSchema.safeParse(body ?? {});
     if (!parsed.success) {

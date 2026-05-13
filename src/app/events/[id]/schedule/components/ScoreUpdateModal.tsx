@@ -19,6 +19,7 @@ import {
 import { DateTimePicker } from '@mantine/dates';
 import { canIncreaseSetScore, getSetScoreState, resolveSetVictoryTarget } from '@/lib/matchSetScoring';
 import {
+  Division,
   Event,
   getTeamAvatarUrl,
   Match,
@@ -83,6 +84,15 @@ type PendingDirectScoreSync = {
   sequence: number;
   eventTeamId: string;
   points: number;
+  scoreSetAvailable: boolean;
+};
+
+type DivisionWithRuleConfig = Division & {
+  leagueConfig?: {
+    setsPerMatch?: number | null;
+    pointsToVictory?: number[] | null;
+    usesSets?: boolean | null;
+  } | null;
 };
 
 const entityId = (value: unknown): string | null => {
@@ -108,6 +118,41 @@ const coerceActualDate = (value?: string | Date | null): Date | null => {
 const positiveInt = (value: unknown, fallback: number): number => {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
+};
+
+const positiveIntOrNull = (value: unknown): number | null => {
+  const parsed = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+};
+
+const normalizeToken = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+};
+
+const divisionId = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    return normalizeToken(value);
+  }
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  const row = value as { id?: unknown; $id?: unknown; key?: unknown };
+  return normalizeToken(row.id) ?? normalizeToken(row.$id) ?? normalizeToken(row.key);
+};
+
+const divisionKey = (value: unknown): string | null => {
+  const id = divisionId(value);
+  return id ? id.toLowerCase() : null;
+};
+
+const pointsList = (value: unknown): number[] | null => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const normalized = value
+    .map((entry) => positiveIntOrNull(entry))
+    .filter((entry): entry is number => entry !== null);
+  return normalized.length ? normalized : null;
 };
 
 const score = (value: unknown): number => {
@@ -199,13 +244,28 @@ const dateLabel = (value?: string | null): string => {
     : date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
-const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount: number): ResolvedMatchRules => {
+const existingSegmentCount = (match: Match): number => Math.max(
+  Array.isArray(match.segments) ? match.segments.length : 0,
+  Array.isArray(match.team1Points) ? match.team1Points.length : 0,
+  Array.isArray(match.team2Points) ? match.team2Points.length : 0,
+  Array.isArray(match.setResults) ? match.setResults.length : 0,
+  0,
+);
+
+const activeRules = (match: Match, event: Event, usesSets: boolean, configuredSegmentCount: number): ResolvedMatchRules => {
   const eventRules = (event.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
   const matchResolvedRules = (match.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
   const matchSnapshotRules = (match.matchRulesSnapshot || {}) as Partial<ResolvedMatchRules>;
   const source = { ...eventRules, ...matchResolvedRules, ...matchSnapshotRules };
   const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
   const supportsShootout = source.supportsShootout === true;
+  const sourceSegmentCount = positiveIntOrNull(source.segmentCount);
+  const fallbackSegmentCount = Math.max(configuredSegmentCount, existingSegmentCount(match), 1);
+  const segmentCount = scoringModel === 'SETS'
+    ? Math.max(sourceSegmentCount ?? 0, fallbackSegmentCount, 1)
+    : scoringModel === 'POINTS_ONLY'
+      ? 1
+      : Math.max(sourceSegmentCount ?? 0, fallbackSegmentCount, 1);
   const usesPlayerRecordedScoring = typeof matchResolvedRules.pointIncidentRequiresParticipant === 'boolean'
     ? matchResolvedRules.pointIncidentRequiresParticipant === true
     : typeof eventRules.pointIncidentRequiresParticipant === 'boolean'
@@ -215,7 +275,7 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, segmentCount
         : event.autoCreatePointMatchIncidents === true;
   return {
     scoringModel,
-    segmentCount: positiveInt(source.segmentCount, segmentCount),
+    segmentCount,
     segmentLabel: source.segmentLabel || (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Total' : 'Period'),
     supportsDraw: source.supportsDraw === true && !supportsShootout,
     supportsOvertime: source.supportsOvertime === true,
@@ -535,6 +595,69 @@ const mergeSegmentOverride = (
   return merged.sort((left, right) => left.sequence - right.sequence);
 };
 
+const resolveMatchDivision = (event: Event, match: Match, playoff: boolean): DivisionWithRuleConfig | null => {
+  const matchDivisionKey = divisionKey(match.division)
+    ?? divisionKey(match.team1?.division)
+    ?? divisionKey(match.team2?.division);
+  if (!matchDivisionKey) {
+    return typeof match.division === 'object' && match.division
+      ? match.division as DivisionWithRuleConfig
+      : null;
+  }
+
+  const preferredSources = playoff
+    ? [event.playoffDivisionDetails, event.divisionDetails, event.divisions]
+    : [event.divisionDetails, event.divisions, event.playoffDivisionDetails];
+  for (const source of preferredSources) {
+    if (!Array.isArray(source)) continue;
+    const sourceDivision = source.find((division) => divisionKey(division) === matchDivisionKey);
+    if (sourceDivision) {
+      return sourceDivision as DivisionWithRuleConfig;
+    }
+  }
+
+  return typeof match.division === 'object' && match.division
+    ? match.division as DivisionWithRuleConfig
+    : null;
+};
+
+const divisionLeagueSetsPerMatch = (division: DivisionWithRuleConfig | null): number | null => (
+  positiveIntOrNull(division?.setsPerMatch) ?? positiveIntOrNull(division?.leagueConfig?.setsPerMatch)
+);
+
+const divisionLeaguePointsToVictory = (division: DivisionWithRuleConfig | null): number[] | null => (
+  pointsList(division?.pointsToVictory) ?? pointsList(division?.leagueConfig?.pointsToVictory)
+);
+
+const divisionPlayoffSetCount = (
+  division: DivisionWithRuleConfig | null,
+  losersBracket: boolean,
+): number | null => {
+  const playoffConfig = division?.playoffConfig;
+  return losersBracket
+    ? positiveIntOrNull(playoffConfig?.loserSetCount)
+    : positiveIntOrNull(playoffConfig?.winnerSetCount);
+};
+
+const divisionPlayoffPointsToVictory = (
+  division: DivisionWithRuleConfig | null,
+  losersBracket: boolean,
+): number[] | null => {
+  const playoffConfig = division?.playoffConfig;
+  return losersBracket
+    ? pointsList(playoffConfig?.loserBracketPointsToVictory)
+    : pointsList(playoffConfig?.winnerBracketPointsToVictory);
+};
+
+const hasPersistedSegment = (match: Match, segment: MatchSegment | undefined): boolean => {
+  if (!segment || !Array.isArray(match.segments)) return false;
+  const segmentId = segment.id ?? segment.$id ?? null;
+  return match.segments.some((persisted) => (
+    (segmentId && (persisted.id === segmentId || persisted.$id === segmentId))
+    || persisted.sequence === segment.sequence
+  ));
+};
+
 export default function ScoreUpdateModal({
   match,
   tournament,
@@ -596,15 +719,33 @@ export default function ScoreUpdateModal({
   const usesSets = typeof tournament.usesSets === 'boolean' ? tournament.usesSets : Boolean(tournament.leagueConfig?.usesSets);
   const isTimedMatch = !usesSets;
   const playoff = tournament.eventType === 'TOURNAMENT' || Boolean(match.losersBracket || match.winnerNextMatchId || match.loserNextMatchId);
+  const matchDivision = useMemo(
+    () => resolveMatchDivision(tournament, match, playoff),
+    [match, playoff, tournament],
+  );
   const pointTargets = playoff
-    ? match.losersBracket ? tournament.loserBracketPointsToVictory : tournament.winnerBracketPointsToVictory
-    : tournament.pointsToVictory;
+    ? divisionPlayoffPointsToVictory(matchDivision, Boolean(match.losersBracket))
+      ?? (match.losersBracket ? tournament.loserBracketPointsToVictory : tournament.winnerBracketPointsToVictory)
+    : divisionLeaguePointsToVictory(matchDivision)
+      ?? tournament.pointsToVictory
+      ?? tournament.leagueConfig?.pointsToVictory;
   const fallbackSegmentCount = useMemo(() => {
     if (isTimedMatch) return 1;
     const fromTargets = Array.isArray(pointTargets) && pointTargets.length ? pointTargets.length : 1;
-    if (playoff) return positiveInt(match.losersBracket ? tournament.loserSetCount : tournament.winnerSetCount, fromTargets);
-    return positiveInt(tournament.setsPerMatch ?? tournament.leagueConfig?.setsPerMatch, fromTargets);
-  }, [isTimedMatch, match.losersBracket, playoff, pointTargets, tournament.leagueConfig?.setsPerMatch, tournament.loserSetCount, tournament.setsPerMatch, tournament.winnerSetCount]);
+    if (playoff) {
+      return positiveInt(
+        divisionPlayoffSetCount(matchDivision, Boolean(match.losersBracket))
+          ?? (match.losersBracket ? tournament.loserSetCount : tournament.winnerSetCount),
+        fromTargets,
+      );
+    }
+    return positiveInt(
+      divisionLeagueSetsPerMatch(matchDivision)
+        ?? tournament.setsPerMatch
+        ?? tournament.leagueConfig?.setsPerMatch,
+      fromTargets,
+    );
+  }, [isTimedMatch, match.losersBracket, matchDivision, playoff, pointTargets, tournament.leagueConfig?.setsPerMatch, tournament.loserSetCount, tournament.setsPerMatch, tournament.winnerSetCount]);
   const rules = useMemo(() => activeRules(match, tournament, usesSets, fallbackSegmentCount), [fallbackSegmentCount, match, tournament, usesSets]);
   const totalSegments = Math.max(1, rules.segmentCount);
   const scoringIncidentType = rules.autoCreatePointIncidentType ?? 'POINT';
@@ -965,15 +1106,19 @@ export default function ScoreUpdateModal({
       pendingDirectScoreSyncRef.current = null;
       return;
     }
-    const success = await emit(payload(segmentsRef.current, {
-      directScoreVersion: editVersion,
-      scoreSet: {
-        segmentId: pendingSync.segmentId,
-        sequence: pendingSync.sequence,
-        eventTeamId: pendingSync.eventTeamId,
-        points: pendingSync.points,
-      },
-    }));
+    const success = await emit(payload(segmentsRef.current, pendingSync.scoreSetAvailable
+      ? {
+          directScoreVersion: editVersion,
+          scoreSet: {
+            segmentId: pendingSync.segmentId,
+            sequence: pendingSync.sequence,
+            eventTeamId: pendingSync.eventTeamId,
+            points: pendingSync.points,
+          },
+        }
+      : {
+          directScoreVersion: editVersion,
+        }));
     if (success && pendingDirectScoreSyncRef.current?.editVersion === editVersion) {
       pendingDirectScoreSyncRef.current = null;
     }
@@ -1103,6 +1248,7 @@ export default function ScoreUpdateModal({
       sequence: activeSegment.sequence,
       eventTeamId,
       points: score(nextSegment?.scores?.[eventTeamId]),
+      scoreSetAvailable: hasPersistedSegment(match, activeSegment),
     } satisfies PendingDirectScoreSync;
     directScoreEditVersionRef.current = nextPendingSync.editVersion;
     pendingDirectScoreSyncRef.current = nextPendingSync;
@@ -1368,17 +1514,22 @@ export default function ScoreUpdateModal({
     const next = segmentsRef.current.map((segment, index) => (
       index === activeIndex ? { ...segment, status: 'COMPLETE', winnerEventTeamId, endedAt } satisfies MatchSegment : segment
     ));
+    const confirmedSegment = next[activeIndex] ?? activeSegment;
     const shouldFinalize = matchComplete(next);
     const nextPayload = payload(next, {
       ...(shouldFinalize ? { finalize: true, time: endedAt } : {}),
-      segmentOperations: [{
-        id: activeSegment.id,
-        sequence: activeSegment.sequence,
-        status: 'COMPLETE',
-        scores: activeSegment.scores,
-        winnerEventTeamId,
-        endedAt,
-      }],
+      ...(hasPersistedSegment(match, activeSegment)
+        ? {
+            segmentOperations: [{
+              id: confirmedSegment.id,
+              sequence: confirmedSegment.sequence,
+              status: 'COMPLETE',
+              scores: confirmedSegment.scores,
+              winnerEventTeamId,
+              endedAt,
+            }],
+          }
+        : {}),
     });
     try {
       if (onSetComplete) await onSetComplete(nextPayload);

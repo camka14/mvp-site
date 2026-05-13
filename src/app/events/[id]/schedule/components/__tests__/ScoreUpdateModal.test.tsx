@@ -532,6 +532,54 @@ describe('ScoreUpdateModal', () => {
     expect(onScoreChange.mock.calls[0][0].team1Points).toEqual([3, 0]);
   });
 
+  it('uses the match division set count when legacy event-level league rules still say one set', () => {
+    const staleRules = buildRules({ scoringModel: 'SETS', segmentCount: 1, segmentLabel: 'Set' });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          division: 'division_open',
+          team1Points: [0],
+          team2Points: [0],
+          setResults: [0],
+          resolvedMatchRules: staleRules as Match['resolvedMatchRules'],
+          segments: [],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          usesSets: true,
+          setsPerMatch: 1,
+          pointsToVictory: [21],
+          leagueConfig: {
+            gamesPerOpponent: 1,
+            includePlayoffs: false,
+            usesSets: true,
+            setsPerMatch: 1,
+            pointsToVictory: [21],
+          },
+          resolvedMatchRules: staleRules as Event['resolvedMatchRules'],
+          divisionDetails: [{
+            id: 'division_open',
+            name: 'Open',
+            setsPerMatch: 3,
+            pointsToVictory: [21, 21, 15],
+          }],
+        })}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByText(/Best of 3/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set 2' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set 3' })).toBeInTheDocument();
+  });
+
   it('limits set score increases to the first reachable win-by-two score', () => {
     jest.useFakeTimers();
     const rules = buildRules({ scoringModel: 'SETS', segmentCount: 3, segmentLabel: 'Set' });
@@ -626,6 +674,139 @@ describe('ScoreUpdateModal', () => {
     expect(screen.getByRole('button', { name: 'Confirm Set 1' })).toBeEnabled();
     expect(screen.getAllByRole('button', { name: '+' })[0]).toBeDisabled();
     expect(screen.getAllByRole('button', { name: '+' })[1]).toBeDisabled();
+  });
+
+  it('uses legacy score arrays instead of the score endpoint for division-derived segments that are not persisted', async () => {
+    jest.useFakeTimers();
+    const onScoreChange = jest.fn().mockResolvedValue(undefined);
+    const staleRules = buildRules({ scoringModel: 'SETS', segmentCount: 1, segmentLabel: 'Set' });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          division: 'division_open',
+          team1Points: [21],
+          team2Points: [10],
+          setResults: [1],
+          resolvedMatchRules: staleRules as Match['resolvedMatchRules'],
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'COMPLETE',
+            scores: { team_a: 21, team_b: 10 },
+            winnerEventTeamId: 'team_a',
+          }],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          usesSets: true,
+          setsPerMatch: 1,
+          pointsToVictory: [21],
+          leagueConfig: {
+            gamesPerOpponent: 1,
+            includePlayoffs: false,
+            usesSets: true,
+            setsPerMatch: 1,
+            pointsToVictory: [21],
+          },
+          resolvedMatchRules: staleRules as Event['resolvedMatchRules'],
+          divisionDetails: [{
+            id: 'division_open',
+            name: 'Open',
+            setsPerMatch: 3,
+            pointsToVictory: [21, 21, 15],
+          }],
+        })}
+        canManage
+        onScoreChange={onScoreChange}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Confirm Set 2' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: '+' })[0]);
+
+    await advanceDirectScoreDebounce();
+
+    await waitFor(() => {
+      expect(onScoreChange).toHaveBeenCalledTimes(1);
+    });
+    expect(onScoreChange.mock.calls[0][0].scoreSet).toBeUndefined();
+    expect(onScoreChange.mock.calls[0][0].segmentOperations).toBeUndefined();
+    expect(onScoreChange.mock.calls[0][0].team1Points).toEqual([21, 1, 0]);
+    expect(onScoreChange.mock.calls[0][0].team2Points).toEqual([10, 0, 0]);
+  });
+
+  it('confirms a division-derived segment through legacy score arrays when the segment is not persisted', async () => {
+    const onSetComplete = jest.fn().mockResolvedValue(undefined);
+    const staleRules = buildRules({ scoringModel: 'SETS', segmentCount: 1, segmentLabel: 'Set' });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          division: 'division_open',
+          team1Points: [10, 21],
+          team2Points: [21, 10],
+          setResults: [2, 0],
+          resolvedMatchRules: staleRules as Match['resolvedMatchRules'],
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'COMPLETE',
+            scores: { team_a: 10, team_b: 21 },
+            winnerEventTeamId: 'team_b',
+          }],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          usesSets: true,
+          setsPerMatch: 1,
+          pointsToVictory: [21],
+          leagueConfig: {
+            gamesPerOpponent: 1,
+            includePlayoffs: false,
+            usesSets: true,
+            setsPerMatch: 1,
+            pointsToVictory: [21],
+          },
+          resolvedMatchRules: staleRules as Event['resolvedMatchRules'],
+          divisionDetails: [{
+            id: 'division_open',
+            name: 'Open',
+            setsPerMatch: 3,
+            pointsToVictory: [21, 21, 15],
+          }],
+        })}
+        canManage
+        onSetComplete={onSetComplete}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Set 2' }));
+
+    await waitFor(() => {
+      expect(onSetComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onSetComplete.mock.calls[0][0].segmentOperations).toBeUndefined();
+    expect(onSetComplete.mock.calls[0][0].team1Points).toEqual([10, 21, 0]);
+    expect(onSetComplete.mock.calls[0][0].team2Points).toEqual([21, 10, 0]);
+    expect(onSetComplete.mock.calls[0][0].setResults).toEqual([2, 1, 0]);
   });
 
   it('keeps locally incremented score visible when stale match props rerender before the debounced sync fires', async () => {

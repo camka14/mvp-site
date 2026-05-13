@@ -147,7 +147,7 @@ describe('ChatDrawer', () => {
     expect(loadMessagesMock).toHaveBeenCalledWith('chat_1');
   });
 
-  it('gates opening the chat list behind chat terms consent', async () => {
+  it('opens the chat list without requiring chat terms consent', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const ensureChatAccessMock = jest.fn().mockResolvedValue(false);
     const loadChatGroupsMock = jest.fn().mockResolvedValue(undefined);
@@ -178,13 +178,13 @@ describe('ChatDrawer', () => {
     await user.click(screen.getByLabelText('Open chat'));
 
     await waitFor(() => {
-      expect(ensureChatAccessMock).toHaveBeenCalled();
+      expect(loadChatGroupsMock).toHaveBeenCalledWith();
     });
-    expect(loadChatGroupsMock).not.toHaveBeenCalledWith();
-    expect(openChatListMock).not.toHaveBeenCalled();
+    expect(ensureChatAccessMock).not.toHaveBeenCalled();
+    expect(openChatListMock).toHaveBeenCalled();
   });
 
-  it('opens the chat list after accepting terms from the chat button flow', async () => {
+  it('records terms agreement separately from opening the chat list', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const ensureChatAccessMock = jest.fn().mockResolvedValue(false);
     const acceptChatTermsMock = jest.fn().mockResolvedValue(true);
@@ -225,6 +225,7 @@ describe('ChatDrawer', () => {
     await waitFor(() => {
       expect(acceptChatTermsMock).toHaveBeenCalled();
     });
+    expect(ensureChatAccessMock).not.toHaveBeenCalled();
     expect(loadChatGroupsMock).toHaveBeenCalledWith();
     expect(openChatListMock).toHaveBeenCalled();
   });

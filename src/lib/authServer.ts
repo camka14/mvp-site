@@ -17,7 +17,7 @@ export type VerifiedSessionToken = SessionToken & {
   issuedAtSeconds: number | null;
 };
 
-const getAuthSecret = (): string => {
+export const getAuthSecret = (): string => {
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
     throw new Error('AUTH_SECRET is not set');

@@ -13,6 +13,7 @@ import {
   type MatchUpdate,
 } from '@/server/scheduler/updateMatch';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
 import { isEmailEnabled, sendEmail } from '@/server/email';
@@ -1205,7 +1206,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       return targetMatch;
     }, MATCH_UPDATE_TRANSACTION_OPTIONS);
 
-    return NextResponse.json({ match: serializeMatchesLegacy([result])[0] }, { status: 200 });
+    const serializedMatch = serializeMatchesLegacy([result])[0];
+    publishEventMatchChanges({
+      eventId,
+      matches: serializedMatch ? [serializedMatch] : [],
+    });
+    return NextResponse.json({ match: serializedMatch }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     if (error instanceof AutoRescheduleWindowExceededError) {
@@ -1233,6 +1239,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     }
 
     await prisma.matches.delete({ where: { id: matchId } });
+    publishEventMatchChanges({
+      eventId,
+      deleted: [matchId],
+    });
     return NextResponse.json({ deleted: true }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;

@@ -40,6 +40,11 @@ jest.mock('@/context/AgentContext', () => ({
 
 jest.mock('@/lib/apiClient', () => ({
   apiRequest: jest.fn(),
+  isApiRequestError: (error: unknown) => (
+    typeof error === 'object' &&
+    error !== null &&
+    'status' in error
+  ),
 }));
 
 jest.mock('@/components/layout/Navigation', () => {
@@ -427,7 +432,7 @@ describe('League schedule page', () => {
           return Promise.resolve({
             version: '2026-04-14',
             url: '/terms',
-            summary: ['Creating chats or events requires agreement to the Bracket IQ Terms and EULA.'],
+            summary: ['Sending chat messages or creating events requires agreement to the Bracket IQ Terms and EULA.'],
             accepted: true,
             acceptedAt: '2026-04-14T12:00:00.000Z',
           });
@@ -435,7 +440,7 @@ describe('League schedule page', () => {
         return Promise.resolve({
           version: '2026-04-14',
           url: '/terms',
-          summary: ['Creating chats or events requires agreement to the Bracket IQ Terms and EULA.'],
+          summary: ['Sending chat messages or creating events requires agreement to the Bracket IQ Terms and EULA.'],
           accepted: true,
           acceptedAt: '2026-04-14T12:00:00.000Z',
         });
@@ -2945,7 +2950,7 @@ describe('League schedule page', () => {
         return Promise.resolve({
           version: '2026-04-14',
           url: '/terms',
-          summary: ['Creating chats or events requires agreement to the Bracket IQ Terms and EULA.'],
+          summary: ['Sending chat messages or creating events requires agreement to the Bracket IQ Terms and EULA.'],
           accepted: true,
           acceptedAt: '2026-04-14T12:00:00.000Z',
         });

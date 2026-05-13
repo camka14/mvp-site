@@ -89,8 +89,10 @@ export function ChatDetail({ chatId }: ChatDetailProps) {
 
         setSending(true);
         try {
-            await sendMessage(chatId, messageInput.trim());
-            setMessageInput('');
+            const sent = await sendMessage(chatId, messageInput.trim());
+            if (sent) {
+                setMessageInput('');
+            }
         } catch (error) {
             console.error('Failed to send message:', error);
         } finally {

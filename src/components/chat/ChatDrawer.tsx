@@ -22,14 +22,12 @@ export function ChatDrawer() {
         chatTermsState,
         chatTermsLoading,
         chatTermsModalOpen,
-        ensureChatAccess,
         acceptChatTerms,
         closeChatTermsModal,
     } = useChat();
     const { isChatListOpen, openChatWindows, openChatList, isFloatingButtonVisible } = useChatUI();
     const [mounted, setMounted] = useState(false);
     const pollingRef = useRef(false);
-    const openAfterTermsAcceptedRef = useRef(false);
     const uniqueOpenChatWindows = useMemo(
         () => Array.from(new Set(openChatWindows)),
         [openChatWindows],
@@ -105,25 +103,12 @@ export function ChatDrawer() {
     if (!mounted) return null;
 
     const handleOpenChatList = async () => {
-        const allowed = await ensureChatAccess();
-        if (!allowed) {
-            openAfterTermsAcceptedRef.current = true;
-            return;
-        }
         await loadChatGroups();
         openChatList();
     };
 
     const handleAcceptChatTerms = async () => {
-        const accepted = await acceptChatTerms();
-        if (!accepted) {
-            return;
-        }
-        if (openAfterTermsAcceptedRef.current) {
-            openAfterTermsAcceptedRef.current = false;
-            await loadChatGroups();
-            openChatList();
-        }
+        await acceptChatTerms();
     };
 
     const chatWindowWidth = 320; // Width of each chat window
@@ -173,6 +158,7 @@ export function ChatDrawer() {
                 loading={chatTermsLoading}
                 onAccept={() => { void handleAcceptChatTerms(); }}
                 onClose={closeChatTermsModal}
+                intro="Sending chat messages in Bracket IQ requires agreement to the Terms and EULA."
                 allowClose
             />
         </div>

@@ -38,7 +38,7 @@ interface ChatContextType {
     loadMessages: (chatId: string) => Promise<void>;
     loadMoreMessages: (chatId: string) => Promise<void>;
     markChatViewed: (chatId: string) => void;
-    sendMessage: (chatId: string, message: string) => Promise<void>;
+    sendMessage: (chatId: string, message: string) => Promise<boolean>;
     createChatGroup: (name: string, userIds: string[]) => Promise<void>;
     ensureChatAccess: () => Promise<boolean>;
     acceptChatTerms: () => Promise<boolean>;
@@ -202,9 +202,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     const loadChatGroups = useCallback(async (options?: { silent?: boolean }) => {
         if (!user) return;
-        if (!chatTermsAcceptedRef.current) {
-            return;
-        }
         const shouldSetLoading = !options?.silent;
 
         if (shouldSetLoading) {
@@ -323,9 +320,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             if (!currentUserId) {
                 return;
             }
-            if (!chatTermsAcceptedRef.current) {
-                return;
-            }
             const currentPagination = messagePaginationRef.current[chatId];
             if (currentPagination?.loadingMore) {
                 return;
@@ -394,9 +388,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (!currentUserId) {
             return;
         }
-        if (!chatTermsAcceptedRef.current) {
-            return;
-        }
         const currentPagination = messagePaginationRef.current[chatId];
         if (!currentPagination || currentPagination.loadingMore || !currentPagination.hasMore) {
             return;
@@ -459,9 +450,6 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         if (!currentUserId) {
             return;
         }
-        if (!chatTermsAcceptedRef.current) {
-            return;
-        }
 
         // Clear unread counters immediately in the UI when the user opens/views the chat.
         markChatReadLocally(chatId, currentUserId);
@@ -471,8 +459,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }, [currentUserId, markChatReadLocally]);
 
     const sendMessage = async (chatId: string, messageBody: string) => {
-        if (!user) return;
-        if (!chatTermsAcceptedRef.current) return;
+        if (!user) return false;
+        if (!chatTermsAcceptedRef.current) {
+            await ensureChatAccess();
+            return false;
+        }
 
         try {
             const newMessage = await chatService.sendMessage(chatId, messageBody, user.$id);
@@ -519,14 +510,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
                 unreadCount: 0,
                 lastMessage: { body: newMessage.body, sentTime: newMessage.sentTime, userId: newMessage.userId }
             } : g));
+            return true;
         } catch (error) {
             console.error('Failed to send message:', error);
+            return false;
         }
     };
 
     const createChatGroup = async (name: string, userIds: string[]) => {
         if (!user) return;
-        if (!chatTermsAcceptedRef.current) return;
 
         try {
             const newGroup = await chatService.createChatGroup(name, [user.$id, ...userIds]);

@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { ChatDetail } from '../ChatDetail';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
@@ -137,5 +137,35 @@ describe('ChatDetail', () => {
     fireEvent.scroll(messageList);
 
     expect(loadMoreMessagesMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps message input when send is blocked by terms consent', async () => {
+    sendMessageMock.mockResolvedValue(false);
+    renderWithMantine(<ChatDetail chatId="chat_1" />);
+
+    const input = screen.getByPlaceholderText('Type a message...') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Blocked draft' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalledWith('chat_1', 'Blocked draft');
+    });
+    expect(input.value).toBe('Blocked draft');
+  });
+
+  it('clears message input after a message is sent', async () => {
+    sendMessageMock.mockResolvedValue(true);
+    renderWithMantine(<ChatDetail chatId="chat_1" />);
+
+    const input = screen.getByPlaceholderText('Type a message...') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Sent draft' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+
+    await waitFor(() => {
+      expect(sendMessageMock).toHaveBeenCalledWith('chat_1', 'Sent draft');
+    });
+    await waitFor(() => {
+      expect(input.value).toBe('');
+    });
   });
 });

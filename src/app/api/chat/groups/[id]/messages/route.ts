@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList } from '@/server/legacyFormat';
-import { ensureUserHasAcceptedChatTerms } from '@/server/chatAccess';
 import { handleRouteError } from '@/server/http/routeErrors';
 
 export const dynamic = 'force-dynamic';
@@ -10,9 +9,6 @@ export const dynamic = 'force-dynamic';
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession(req);
-    if (!session.isAdmin) {
-      await ensureUserHasAcceptedChatTerms(session.userId);
-    }
     const { id } = await params;
     const group = await prisma.chatGroup.findUnique({ where: { id } });
     if (!group) {

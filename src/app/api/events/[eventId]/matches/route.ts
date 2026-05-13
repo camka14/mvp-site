@@ -11,6 +11,7 @@ import { validateAndNormalizeBracketGraph, type BracketNode } from '@/server/mat
 import { applyMatchUpdates, applyPersistentAutoLock } from '@/server/scheduler/updateMatch';
 import { Division, Match as SchedulerMatch, MINUTE_MS, Team as SchedulerTeam, sideFrom } from '@/server/scheduler/types';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
 import {
   deriveLegacyOfficialIdFromAssignments,
   normalizeMatchOfficialAssignments,
@@ -755,9 +756,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       };
     });
 
+    const serializedMatches = serializeMatchesLegacy(result.matches);
+    publishEventMatchChanges({
+      eventId,
+      matches: serializedMatches,
+      deleted: result.deleted,
+    });
+
     return NextResponse.json(
       {
-        matches: serializeMatchesLegacy(result.matches),
+        matches: serializedMatches,
         created: result.created,
         deleted: result.deleted,
       },
@@ -781,7 +789,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ e
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
+  const deletedMatches = await prisma.matches.findMany({
+    where: { eventId },
+    select: { id: true },
+  });
   await prisma.matches.deleteMany({ where: { eventId } });
+  publishEventMatchChanges({
+    eventId,
+    deleted: deletedMatches.map((match) => match.id),
+  });
   return NextResponse.json({ deleted: true }, { status: 200 });
 }
 

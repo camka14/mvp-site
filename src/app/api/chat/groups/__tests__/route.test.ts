@@ -88,7 +88,7 @@ describe('/api/chat/groups GET', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(ensureUserHasAcceptedChatTermsMock).toHaveBeenCalledWith('user_1');
+    expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
     expect(messagesGroupByMock).toHaveBeenCalledTimes(1);
     expect(messagesFindManyMock).toHaveBeenCalledTimes(1);
     expect(json.groups).toHaveLength(2);
@@ -109,7 +109,7 @@ describe('/api/chat/groups GET', () => {
     expect(messagesFindManyMock).not.toHaveBeenCalled();
   });
 
-  it('returns the thrown chat-terms response instead of a 500', async () => {
+  it('loads chat groups even when chat terms consent is missing', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     ensureUserHasAcceptedChatTermsMock.mockRejectedValue(
       new Response(JSON.stringify({ error: 'Chat terms acceptance required' }), {
@@ -117,13 +117,18 @@ describe('/api/chat/groups GET', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
+    chatGroupFindManyMock.mockResolvedValue([
+      { id: 'chat_1', userIds: ['user_1', 'user_2'], updatedAt: new Date('2026-03-20T00:00:00.000Z') },
+    ]);
+    messagesGroupByMock.mockResolvedValue([]);
+    messagesFindManyMock.mockResolvedValue([]);
 
     const response = await GET(new NextRequest('http://localhost/api/chat/groups?userId=user_1'));
     const json = await response.json();
 
-    expect(response.status).toBe(403);
-    expect(json.error).toBe('Chat terms acceptance required');
-    expect(chatGroupFindManyMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
+    expect(json.groups).toHaveLength(1);
   });
 });
 
@@ -155,7 +160,7 @@ describe('/api/chat/groups POST', () => {
     const json = await response.json();
 
     expect(response.status).toBe(201);
-    expect(ensureUserHasAcceptedChatTermsMock).toHaveBeenCalledWith('user_1');
+    expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
     expect(chatGroupCreateMock).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         hostId: 'user_1',

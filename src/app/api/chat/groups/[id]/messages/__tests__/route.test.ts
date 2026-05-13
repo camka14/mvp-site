@@ -58,7 +58,7 @@ describe('/api/chat/groups/[id]/messages GET', () => {
     const json = await response.json();
 
     expect(response.status).toBe(200);
-    expect(ensureUserHasAcceptedChatTermsMock).toHaveBeenCalledWith('user_1');
+    expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
     expect(messagesFindManyMock).toHaveBeenCalledWith({
       where: { chatId: 'chat_1', removedAt: null },
       orderBy: { sentTime: 'desc' },
@@ -157,7 +157,7 @@ describe('/api/chat/groups/[id]/messages GET', () => {
     expect(json.messages[0].$id).toBe('m_removed');
   });
 
-  it('returns the thrown chat-terms response instead of a 500', async () => {
+  it('loads messages even when chat terms consent is missing', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     ensureUserHasAcceptedChatTermsMock.mockRejectedValue(
       new Response(JSON.stringify({ error: 'Chat terms acceptance required' }), {
@@ -165,14 +165,19 @@ describe('/api/chat/groups/[id]/messages GET', () => {
         headers: { 'content-type': 'application/json' },
       }),
     );
+    chatGroupFindUniqueMock.mockResolvedValue({ id: 'chat_1', userIds: ['user_1'] });
+    messagesCountMock.mockResolvedValue(1);
+    messagesFindManyMock.mockResolvedValue([
+      { id: 'm_1', chatId: 'chat_1', body: 'hello', userId: 'user_2', sentTime: new Date('2026-03-06T01:00:00.000Z') },
+    ]);
 
     const response = await GET(requestFor(), {
       params: Promise.resolve({ id: 'chat_1' }),
     });
     const json = await response.json();
 
-    expect(response.status).toBe(403);
-    expect(json.error).toBe('Chat terms acceptance required');
-    expect(chatGroupFindUniqueMock).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(ensureUserHasAcceptedChatTermsMock).not.toHaveBeenCalled();
+    expect(json.messages).toHaveLength(1);
   });
 });

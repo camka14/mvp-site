@@ -3,7 +3,7 @@ import Link from 'next/link';
 const termsSections = [
   {
     title: 'Content Creation Access',
-    body: 'Creating chats, events, or other user-generated content requires agreement to the Bracket IQ Terms and EULA. If you do not agree, those creation flows stay unavailable until you accept.',
+    body: 'Sending chat messages, creating events, or other user-generated content requires agreement to the Bracket IQ Terms and EULA. If you do not agree, those flows stay unavailable until you accept.',
   },
   {
     title: 'No Tolerance Policy',

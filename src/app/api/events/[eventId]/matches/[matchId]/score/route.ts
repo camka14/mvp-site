@@ -6,6 +6,7 @@ import { canManageEvent } from '@/server/accessControl';
 import { loadEventWithRelations, saveMatches } from '@/server/repositories/events';
 import { acquireEventLock } from '@/server/repositories/locks';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
+import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
 import { assertSetScoreUpdateAllowed } from '@/server/matches/setScoringRules';
 import type { MatchSegment } from '@/types';
 
@@ -189,7 +190,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       return match;
     });
 
-    return NextResponse.json({ match: serializeMatchesLegacy([result])[0] }, { status: 200 });
+    const serializedMatch = serializeMatchesLegacy([result])[0];
+    publishEventMatchChanges({
+      eventId,
+      matches: serializedMatch ? [serializedMatch] : [],
+    });
+    return NextResponse.json({ match: serializedMatch }, { status: 200 });
   } catch (error) {
     if (error instanceof Response) return error;
     console.error('Match score set failed', error);

@@ -5,7 +5,6 @@ import { stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { handleRouteError } from '@/server/http/routeErrors';
 import { archiveChatGroup } from '@/server/moderation';
-import { ensureUserHasAcceptedChatTerms } from '@/server/chatAccess';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,9 +40,6 @@ const hasBlockingRelationship = (users: Array<{ id: string; blockedUserIds?: str
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession(req);
-    if (!session.isAdmin) {
-      await ensureUserHasAcceptedChatTerms(session.userId);
-    }
     const { id } = await params;
 
     const group = await prisma.chatGroup.findUnique({ where: { id } });
@@ -67,9 +63,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession(req);
-    if (!session.isAdmin) {
-      await ensureUserHasAcceptedChatTerms(session.userId);
-    }
     const body = await req.json().catch(() => null);
     const parsed = parseStrictEnvelope({
       body,
@@ -201,9 +194,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession(req);
-    if (!session.isAdmin) {
-      await ensureUserHasAcceptedChatTerms(session.userId);
-    }
     const { id } = await params;
 
     const existing = await prisma.chatGroup.findUnique({ where: { id } });
