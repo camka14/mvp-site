@@ -10137,7 +10137,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [expandSection]);
 
     const sheetContent = (
-        <div className="mx-auto w-full max-w-[1320px] space-y-6">
+        <div className="w-full space-y-6">
             <div className="p-4">
                 <div className="grid grid-cols-1 gap-6 xl:grid-cols-[240px_minmax(0,1fr)]">
                     <aside className="hidden xl:block">
@@ -10192,7 +10192,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 })}
                             </div>
                         </div>
-                        <div className="mx-auto w-full max-w-[1000px]">
+                        <div className="w-full">
                             <form id={formId} className="space-y-8">
                         {mobileEditUnsupportedWarning && (
                             <Alert color="yellow" variant="light" radius="md">
@@ -13058,7 +13058,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }
 
     return (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm p-6 pb-8">
+        <div className="rounded-xl border border-gray-200 bg-white shadow-sm">
             {sheetContent}
         </div>
     );
