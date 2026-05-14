@@ -7510,9 +7510,6 @@ function EventScheduleContent() {
       const draftConflictsById = detectMatchConflictsById(activeMatches);
       const draftConflictPairs = listMatchConflictPairs(draftConflictsById);
       if (draftConflictPairs.length > 0 && !isRescheduleAction) {
-        setInfoMessage(null);
-        setWarningMessage(null);
-        setActionError(null);
         setDismissedMatchConflictSignature(null);
         setMatchConflictOverrideMessage(
           buildMatchConflictAlertMessage({
@@ -7520,7 +7517,6 @@ function EventScheduleContent() {
             pairs: draftConflictPairs,
           }),
         );
-        return;
       }
 
       setError(null);
@@ -9431,7 +9427,6 @@ function EventScheduleContent() {
                           (hasNetworkActionInFlight && !publishing)
                           || (!isCreateMode && !hasPendingUnsavedChanges)
                           || hasSplitDivisionUnassignedTeams
-                          || (!isCreateMode && hasMatchConflicts)
                         }
                       >
                         {isCreateMode ? createButtonLabel : 'Save'}
@@ -9555,7 +9550,7 @@ function EventScheduleContent() {
 
           {visibleMatchConflictMessage && (
             <Alert
-              color="red"
+              color="yellow"
               radius="md"
               withCloseButton
               onClose={() => {

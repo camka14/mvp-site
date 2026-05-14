@@ -10,7 +10,7 @@ type MatchWindow = {
 const DEFAULT_MATCH_DURATION_MS = 60 * 60 * 1000;
 
 export const MATCH_CONFLICT_RESOLUTION_MESSAGE =
-  'To auto resolve it, lock one match and reschedule the other.';
+  'This is a warning. You can still save, or reschedule to let the scheduler avoid the overlap.';
 
 const normalizeToken = (value: unknown): string | null => {
   if (typeof value !== 'string') {

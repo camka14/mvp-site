@@ -122,7 +122,7 @@ describe('LeagueFields', () => {
     expect(onUpdateSlot).toHaveBeenCalledWith(0, expect.objectContaining({ repeating: false }));
   });
 
-  it('renders conflict alert when conflicts are present', () => {
+  it('renders conflict warning when conflicts are present', () => {
     renderWithMantine(
       <LeagueFields
         leagueData={{
@@ -159,7 +159,8 @@ describe('LeagueFields', () => {
       />,
     );
 
-    expect(screen.getByText(/There is a conflict on this field/i)).toBeInTheDocument();
+    expect(screen.getByText(/Field conflict warning/i)).toBeInTheDocument();
+    expect(screen.getByText(/scheduler will avoid the overlap/i)).toBeInTheDocument();
     expect(screen.getByText(/Other Event/)).toBeInTheDocument();
     expect(screen.getByText(/9:00 AM-5:00 PM overlaps this slot/i)).toBeInTheDocument();
   });

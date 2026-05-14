@@ -230,6 +230,82 @@ describe('event PATCH route', () => {
     );
   });
 
+  it('accepts event timeZone on PATCH and applies it to canonical slot saves', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    const existingStart = new Date('2026-05-18T16:00:00.000Z');
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        noFixedEndDateTime: true,
+        timeZone: 'UTC',
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: [],
+        start: existingStart,
+        singleDivision: false,
+      })
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        eventType: 'LEAGUE',
+        noFixedEndDateTime: true,
+        timeZone: 'America/Los_Angeles',
+        divisions: ['open'],
+        fieldIds: ['field_1'],
+        timeSlotIds: ['slot_tz'],
+        start: existingStart,
+        singleDivision: false,
+      });
+    prismaMock.events.update.mockResolvedValueOnce({
+      id: 'event_1',
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      noFixedEndDateTime: true,
+      timeZone: 'America/Los_Angeles',
+      divisions: ['open'],
+      fieldIds: ['field_1'],
+      timeSlotIds: ['slot_tz'],
+      start: existingStart,
+      singleDivision: false,
+    });
+    divisionsMock.findMany.mockResolvedValue([]);
+    timeSlotsMock.upsert.mockResolvedValue({});
+    timeSlotsMock.deleteMany.mockResolvedValue({ count: 0 });
+
+    const res = await eventPatch(
+      patchRequest('http://localhost/api/events/event_1', {
+        event: {
+          eventType: 'LEAGUE',
+          timeZone: 'America/Los_Angeles',
+          timeSlots: [
+            {
+              $id: 'slot_tz',
+              daysOfWeek: [1],
+              scheduledFieldId: 'field_1',
+              startTimeMinutes: 540,
+              endTimeMinutes: 600,
+              repeating: true,
+              divisions: ['open'],
+            },
+          ],
+        },
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const updateArg = prismaMock.events.update.mock.calls[0][0];
+    expect(updateArg.data.timeZone).toBe('America/Los_Angeles');
+    expect(timeSlotsMock.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ timeZone: 'America/Los_Angeles' }),
+        update: expect.objectContaining({ timeZone: 'America/Los_Angeles' }),
+      }),
+    );
+  });
+
   it('restricts org event host and official assignments to organization hosts/officials', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     organizationsMock.findUnique.mockResolvedValueOnce({

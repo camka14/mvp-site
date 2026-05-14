@@ -55,6 +55,7 @@ const EVENT_UPDATE_FIELDS = new Set([
   'name',
   'start',
   'end',
+  'timeZone',
   'description',
   'divisions',
   'winnerSetCount',
@@ -2207,6 +2208,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           eventId,
           slots: incomingTimeSlots,
           fallbackStartDate: existing.start,
+          timeZone: data.timeZone ?? existing.timeZone,
           fallbackDivisionKeys: nextDivisionKeys,
           enforceAllDivisions: nextSingleDivision,
           normalizeDivisions: (value) => (
@@ -2236,6 +2238,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             endTimeMinutes: slot.endTimeMinutes,
             startDate: slot.startDate,
             endDate: slot.endDate,
+            timeZone: slot.timeZone,
             repeating: slot.repeating,
             scheduledFieldId: slot.scheduledFieldId,
             scheduledFieldIds: slot.scheduledFieldIds,

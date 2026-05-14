@@ -162,7 +162,7 @@ export const eventFormAgentContext: EventFormAgentContext = {
     'If league playoffs are enabled, playoffTeamCount is required for single-division leagues. For multi-division leagues, each division needs its own playoffTeamCount.',
     'If split league/playoff divisions are enabled, at least one playoff division is required, each league placement must map to a playoff division, and mapped placements cannot exceed playoff division capacity.',
     'Schedulable events require at least one timeslot. Each timeslot requires at least one field. Repeating slots require at least one weekday, start time, and end time. Non-repeating slots require start and end datetimes.',
-    'Timeslot end must be after start. Timeslots on the same field cannot overlap with another same-kind timeslot in the form, and external field conflicts block submission until resolved.',
+    'Timeslot end must be after start. Timeslots on the same field cannot overlap with another same-kind timeslot in the form. External timeslot field conflicts are shown as warnings so the scheduler can avoid overlaps when building matches.',
     'When singleDivision is enabled, every timeslot is serialized with all selected event divisions.',
     'STAFFING official scheduling mode requires enough active officials and eligible positions to fully staff every match.',
   ],

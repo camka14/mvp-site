@@ -779,7 +779,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                 radius="md"
                 padding="lg"
                 withBorder
-                className={hasConflicts ? 'border-red-500 bg-red-50/30' : undefined}
+                className={hasConflicts ? 'border-yellow-500 bg-yellow-50/40' : undefined}
               >
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start justify-between gap-4">
@@ -987,15 +987,15 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                   />
 
                 {conflictCount > 0 && (
-                  <Alert color="red" radius="md">
+                  <Alert color="yellow" radius="md">
                       <Stack gap="xs">
-                        <Text fw={600}>There is a conflict on this field.</Text>
+                        <Text fw={600}>Field conflict warning.</Text>
                         <Text size="sm">
-                          Resolve it manually, or auto resolve it to lock the conflicting event and reschedule this timeslot.
+                          This timeslot overlaps another event or rental on the same field. The scheduler will avoid the overlap when building matches; review it manually or auto resolve this slot.
                         </Text>
                         {slot.conflicts.map(({ event, schedule }, conflictIndex) => (
                           <div key={`${schedule.$id}-${conflictIndex}`} className="flex items-start gap-2 text-sm">
-                            <Badge color="red" variant="light">{event.name}</Badge>
+                            <Badge color="yellow" variant="light">{event.name}</Badge>
                             <span>
                               {formatConflictTimeRange({ event, schedule }, slot, eventStartDate)} overlaps this slot.
                             </span>
@@ -1005,7 +1005,7 @@ const LeagueFields: React.FC<LeagueFieldsProps> = ({
                           <Group justify="flex-end">
                             <Button
                               size="xs"
-                              color="red"
+                              color="yellow"
                               variant="light"
                               onClick={() => onAutoResolveSlotConflict(index)}
                               disabled={readOnly}

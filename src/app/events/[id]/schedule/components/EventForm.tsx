@@ -5795,11 +5795,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventStart: eventData.start ?? undefined,
         eventEnd: eventData.end ?? undefined,
     }), [activeEditingEvent?.$id, eventData.$id, eventData.end, eventData.start]);
-    const { hasPendingExternalConflictChecks, hasBlockingExternalSlotConflicts } = useMemo(() => {
+    const { hasPendingExternalConflictChecks, hasExternalSlotConflictWarnings } = useMemo(() => {
         if (!supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent)) {
             return {
                 hasPendingExternalConflictChecks: false,
-                hasBlockingExternalSlotConflicts: false,
+                hasExternalSlotConflictWarnings: false,
             };
         }
 
@@ -5822,7 +5822,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
 
         return {
             hasPendingExternalConflictChecks: hasPending,
-            hasBlockingExternalSlotConflicts: hasConflicts,
+            hasExternalSlotConflictWarnings: hasConflicts,
         };
     }, [eventData.eventType, eventData.parentEvent, leagueSlots, slotConflictContext]);
     const divisionTypeOptions = useMemo(() => {
@@ -8975,13 +8975,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
     }, [eventData.eventType, eventData.noFixedEndDateTime, hasExternalRentalField, setValue]);
 
-    const leagueError = (() => {
+    const leagueWarning = (() => {
         if (hasPendingExternalConflictChecks) {
-            return 'Checking field conflicts for timeslots. Please wait.';
+            return 'Checking field conflicts for timeslots. You can still save while this warning check finishes.';
         }
-        if (hasBlockingExternalSlotConflicts) {
-            return 'Resolve field scheduling conflicts in the timeslots before submitting.';
+        if (hasExternalSlotConflictWarnings) {
+            return 'Timeslot field conflicts are warnings. The scheduler will avoid overlaps when building matches, but review or auto resolve the affected slots if needed.';
         }
+        return null;
+    })();
+
+    const leagueError = (() => {
         const issue = errors.leagueSlots;
         if (!issue) {
             return null;
@@ -9980,22 +9984,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return true;
         }
 
-        if (hasPendingExternalConflictChecks || hasBlockingExternalSlotConflicts) {
-            lastValidationErrorsRef.current = [
-                {
-                    path: 'leagueSlots',
-                    message: hasPendingExternalConflictChecks
-                        ? 'Checking field conflicts for timeslots. Please wait.'
-                        : 'Resolve field scheduling conflicts in the timeslots before submitting.',
-                },
-            ];
-            console.warn('Event form submission blocked by timeslot conflicts.', {
-                hasPendingExternalConflictChecks,
-                hasBlockingExternalSlotConflicts,
-            });
-            return false;
-        }
-
         lastValidationErrorsRef.current = [];
         return true;
     }, [
@@ -10005,8 +9993,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.parentEvent,
         errors,
         getValues,
-        hasBlockingExternalSlotConflicts,
-        hasPendingExternalConflictChecks,
         officialStaffingCoverageError,
         requiredOfficialSlotsPerMatch,
         trigger,
@@ -13091,6 +13077,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 {/* Footer */}
                 <div className="border-t p-6 flex justify-between items-center">
                     <div className="flex flex-col gap-3">
+                        {leagueWarning && (
+                            <Alert color="yellow" radius="md">
+                                {leagueWarning}
+                            </Alert>
+                        )}
                         {leagueError && (
                             <Alert color="red" radius="md">
                                 {leagueError}

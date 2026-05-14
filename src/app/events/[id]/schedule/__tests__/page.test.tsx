@@ -2456,7 +2456,7 @@ describe('League schedule page', () => {
     expect(patchOrder).toBeLessThan(scheduleOrder);
   });
 
-  it('disables Save but allows Reschedule when conflicts exist on the same field', async () => {
+  it('warns but allows Save and Reschedule when conflicts exist on the same field', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
         if (key === 'mode') return 'edit';
@@ -2521,10 +2521,16 @@ describe('League schedule page', () => {
 
     expect(await screen.findByText(/Summer League/)).toBeInTheDocument();
     expect(await screen.findByTestId('calendar-conflict-count')).toHaveTextContent('2');
+    expect(await screen.findByText(/You can still save/i)).toBeInTheDocument();
 
     const saveButton = await screen.findByRole('button', { name: /^save$/i });
-    expect(saveButton).toBeDisabled();
-    expect(eventService.updateEvent).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(saveButton).toBeEnabled();
+    });
+    fireEvent.click(saveButton);
+    await waitFor(() => {
+      expect(eventService.updateEvent).toHaveBeenCalledTimes(1);
+    });
 
     await openMoreActionsMenu();
     const rescheduleButton = await screen.findByRole('menuitem', { name: /^reschedule$/i });
