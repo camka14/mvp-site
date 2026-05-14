@@ -26,6 +26,58 @@ export type PlacePredictionOptions = {
   };
 };
 
+const DEFAULT_AUTOCOMPLETE_PRIMARY_TYPES = [
+  'locality',
+  'postal_code',
+  'administrative_area_level_1',
+  'administrative_area_level_2',
+  'country',
+];
+
+const LEGACY_AUTOCOMPLETE_TYPE_MAP: Record<string, string[]> = {
+  '(cities)': DEFAULT_AUTOCOMPLETE_PRIMARY_TYPES,
+  '(regions)': [
+    'locality',
+    'sublocality',
+    'postal_code',
+    'administrative_area_level_1',
+    'country',
+  ],
+  address: ['street_address'],
+};
+
+const toAutocompletePrimaryTypes = (types?: string[]): string[] => {
+  const sourceTypes = types?.length ? types : ['(cities)'];
+  const primaryTypes = new Set<string>();
+
+  sourceTypes.forEach((type) => {
+    const mappedTypes = LEGACY_AUTOCOMPLETE_TYPE_MAP[type];
+    if (mappedTypes) {
+      mappedTypes.forEach((mappedType) => primaryTypes.add(mappedType));
+      return;
+    }
+
+    if (!type.startsWith('(')) {
+      primaryTypes.add(type);
+    }
+  });
+
+  return Array.from(primaryTypes).slice(0, 5);
+};
+
+const toIncludedRegionCodes = (componentRestrictions?: PlacePredictionOptions['componentRestrictions']): string[] | undefined => {
+  const country = componentRestrictions?.country;
+  if (!country) return undefined;
+
+  const countries = Array.isArray(country) ? country : [country];
+  const regionCodes = countries
+    .map((code) => code.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 15);
+
+  return regionCodes.length ? regionCodes : undefined;
+};
+
 const extractLocationInfoFromPlaceResult = (result: any): LocationInfo => {
   const geometryLocation = result.geometry?.location;
   const info: LocationInfo = {
@@ -108,7 +160,7 @@ class LocationService {
       script.async = true;
       script.defer = true;
       script.dataset.source = 'gmaps-places';
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${this.googleApiKey}&libraries=places&v=weekly`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${this.googleApiKey}&libraries=places&v=weekly&loading=async`;
       script.onload = () => resolve();
       script.onerror = () => reject(new Error('Failed to load Google Maps script'));
       document.head.appendChild(script);
@@ -259,6 +311,30 @@ class LocationService {
     if (!query.trim()) return [];
     await this.loadPlacesLibrary();
     const g = (window as any).google;
+
+    if (g.maps.places.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
+      const request: any = {
+        input: query,
+        includedPrimaryTypes: toAutocompletePrimaryTypes(options.types),
+      };
+      const includedRegionCodes = toIncludedRegionCodes(options.componentRestrictions);
+      if (sessionToken) request.sessionToken = sessionToken;
+      if (includedRegionCodes) request.includedRegionCodes = includedRegionCodes;
+
+      try {
+        const { suggestions } = await g.maps.places.AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
+        return (suggestions || [])
+          .map((suggestion: any) => suggestion.placePrediction)
+          .filter((prediction: any) => prediction?.placeId && prediction?.text?.text)
+          .map((prediction: any) => ({
+            description: prediction.text.text,
+            placeId: prediction.placeId,
+          }));
+      } catch (error) {
+        throw new Error(`Places autocomplete failed: ${error}`);
+      }
+    }
+
     const svc = new g.maps.places.AutocompleteService();
     const request: any = { input: query, types: options.types ?? ['(cities)'] };
     if (sessionToken) request.sessionToken = sessionToken;

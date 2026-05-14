@@ -1606,7 +1606,7 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    const eventDetailsSection = document.getElementById('section-event-details-content');
+    const eventDetailsSection = document.getElementById('section-event-details');
     const teamSizeControl = screen.getByTestId('team-size-control');
     const teamSizeInput = screen.getByLabelText('Team Size');
     const teamSignupSwitch = screen.getByTestId('team-signup-switch');
@@ -1660,6 +1660,33 @@ describe('EventForm dirty state', () => {
     expect(divisionModeSwitches).toContainElement(screen.getByText('Split League & Playoff Divisions'));
     expect(divisionModeSwitches.compareDocumentPosition(singleDivisionSettings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByLabelText('Playoff Team Count')).toBeInTheDocument();
+  });
+
+  it('renders location map beside documents and age controls in Event Details', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange);
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const eventDetailsSection = document.getElementById('section-event-details');
+    const locationMapColumn = screen.getByTestId('event-details-location-map');
+    const mapSideControls = screen.getByTestId('event-details-map-side-controls');
+    const locationInput = screen.getByLabelText('Location');
+    const requiredDocumentsInput = screen.getByLabelText('Required Documents');
+    const minimumAgeInput = screen.getByLabelText('Minimum Age');
+    const maximumAgeInput = screen.getByLabelText('Maximum Age');
+
+    expect(eventDetailsSection).not.toBeNull();
+    expect(eventDetailsSection).toContainElement(locationMapColumn);
+    expect(eventDetailsSection).toContainElement(mapSideControls);
+    expect(locationMapColumn).toContainElement(locationInput);
+    expect(mapSideControls).toContainElement(requiredDocumentsInput);
+    expect(mapSideControls).toContainElement(minimumAgeInput);
+    expect(mapSideControls).toContainElement(maximumAgeInput);
+    expect(locationMapColumn.compareDocumentPosition(mapSideControls) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('transitions division-specific controls when single division is toggled', async () => {

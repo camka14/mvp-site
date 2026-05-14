@@ -45,6 +45,11 @@ const parseContextIdParam = (raw: string | null): string | null => {
   return normalized.length ? normalized : null;
 };
 
+const isExcludedSearchEmail = (value: string | null | undefined): boolean => {
+  const normalized = value?.trim().toLowerCase();
+  return Boolean(normalized?.endsWith('@test.com'));
+};
+
 const normalizeNameFields = (data: Record<string, unknown>) => {
   if (Object.prototype.hasOwnProperty.call(data, 'firstName')) {
     data.firstName = normalizeOptionalName(data.firstName);
@@ -103,7 +108,29 @@ export async function GET(req: NextRequest) {
   });
 
   const usersWithDerivedTeamIds = await withDerivedCanonicalTeamIds(users, prisma);
-  const filteredUsers = usersWithDerivedTeamIds.filter((user) => isVisibleInGenericSearch(user)).slice(0, 20);
+  const candidateUserIds = usersWithDerivedTeamIds.map((user) => user.id).filter(Boolean);
+  const [sensitiveEmails, authEmails] = candidateUserIds.length
+    ? await Promise.all([
+      prisma.sensitiveUserData.findMany({
+        where: { userId: { in: candidateUserIds } },
+        select: { userId: true, email: true },
+      }),
+      prisma.authUser.findMany({
+        where: { id: { in: candidateUserIds } },
+        select: { id: true, email: true },
+      }),
+    ])
+    : [[], []] as const;
+  const excludedEmailUserIds = new Set<string>();
+  sensitiveEmails.forEach((row) => {
+    if (isExcludedSearchEmail(row.email)) excludedEmailUserIds.add(row.userId);
+  });
+  authEmails.forEach((row) => {
+    if (isExcludedSearchEmail(row.email)) excludedEmailUserIds.add(row.id);
+  });
+  const filteredUsers = usersWithDerivedTeamIds
+    .filter((user) => isVisibleInGenericSearch(user) && !excludedEmailUserIds.has(user.id))
+    .slice(0, 20);
   return NextResponse.json(
     { users: withLegacyList(applyUserPrivacyList(filteredUsers, visibilityContext)) },
     { status: 200 },

@@ -3,10 +3,13 @@
 import { NextRequest } from 'next/server';
 
 const findManyMock = jest.fn();
+const sensitiveUserDataFindManyMock = jest.fn();
+const authUserFindManyMock = jest.fn();
 const parentChildLinksFindManyMock = jest.fn();
 const teamsFindManyMock = jest.fn();
 const teamsFindUniqueMock = jest.fn();
 const eventsFindUniqueMock = jest.fn();
+const eventRegistrationsFindManyMock = jest.fn();
 const staffMembersFindManyMock = jest.fn();
 const organizationsFindManyMock = jest.fn();
 const organizationsFindUniqueMock = jest.fn();
@@ -20,6 +23,12 @@ const prismaMock = {
   userData: {
     findMany: (...args: any[]) => findManyMock(...args),
   },
+  sensitiveUserData: {
+    findMany: (...args: any[]) => sensitiveUserDataFindManyMock(...args),
+  },
+  authUser: {
+    findMany: (...args: any[]) => authUserFindManyMock(...args),
+  },
   parentChildLinks: {
     findMany: (...args: any[]) => parentChildLinksFindManyMock(...args),
   },
@@ -29,6 +38,9 @@ const prismaMock = {
   },
   events: {
     findUnique: (...args: any[]) => eventsFindUniqueMock(...args),
+  },
+  eventRegistrations: {
+    findMany: (...args: any[]) => eventRegistrationsFindManyMock(...args),
   },
   staffMembers: {
     findMany: (...args: any[]) => staffMembersFindManyMock(...args),
@@ -68,10 +80,13 @@ describe('users list route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     getOptionalSessionMock.mockReturnValue(null);
+    sensitiveUserDataFindManyMock.mockResolvedValue([]);
+    authUserFindManyMock.mockResolvedValue([]);
     parentChildLinksFindManyMock.mockResolvedValue([]);
     teamsFindManyMock.mockResolvedValue([]);
     teamsFindUniqueMock.mockResolvedValue(null);
     eventsFindUniqueMock.mockResolvedValue(null);
+    eventRegistrationsFindManyMock.mockResolvedValue([]);
     staffMembersFindManyMock.mockResolvedValue([]);
     organizationsFindManyMock.mockResolvedValue([]);
     organizationsFindUniqueMock.mockResolvedValue(null);
@@ -119,6 +134,53 @@ describe('users list route', () => {
     expect(json.users).toHaveLength(1);
   });
 
+  it('filters @test.com email accounts from search results', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'user_visible',
+        userName: 'visible_user',
+        firstName: 'Visible',
+        lastName: 'User',
+        dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+      },
+      {
+        id: 'user_sensitive_test',
+        userName: 'sensitive_test',
+        firstName: 'Sensitive',
+        lastName: 'Test',
+        dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+      },
+      {
+        id: 'user_auth_test',
+        userName: 'auth_test',
+        firstName: 'Auth',
+        lastName: 'Test',
+        dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+      },
+    ]);
+    sensitiveUserDataFindManyMock.mockResolvedValue([
+      { userId: 'user_visible', email: 'visible@example.org' },
+      { userId: 'user_sensitive_test', email: 'Hidden@Test.com' },
+    ]);
+    authUserFindManyMock.mockResolvedValue([
+      { id: 'user_auth_test', email: 'auth@test.com' },
+    ]);
+
+    const res = await usersGet(new NextRequest('http://localhost/api/users?query=test'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(sensitiveUserDataFindManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { userId: { in: ['user_visible', 'user_sensitive_test', 'user_auth_test'] } },
+      select: { userId: true, email: true },
+    }));
+    expect(authUserFindManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: { in: ['user_visible', 'user_sensitive_test', 'user_auth_test'] } },
+      select: { id: true, email: true },
+    }));
+    expect(json.users.map((user: any) => user.$id)).toEqual(['user_visible']);
+  });
+
   it('returns an empty list for invalid search payload', async () => {
     const res = await usersGet(new NextRequest('http://localhost/api/users'));
     const json = await res.json();
@@ -136,8 +198,12 @@ describe('users list route', () => {
       userIds: ['minor_1'],
       freeAgentIds: [],
     });
+    eventRegistrationsFindManyMock.mockResolvedValue([
+      { registrantId: 'team_1', registrantType: 'TEAM', rosterRole: 'PARTICIPANT' },
+    ]);
     teamsFindManyMock.mockResolvedValue([
       {
+        id: 'team_1',
         captainId: 'capt_1',
         managerId: 'mgr_1',
         headCoachId: null,
@@ -178,6 +244,11 @@ describe('users list route', () => {
       userIds: [],
       freeAgentIds: ['minor_free_1'],
     });
+    eventRegistrationsFindManyMock.mockResolvedValue([
+      { registrantId: 'team_1', registrantType: 'TEAM', rosterRole: 'PARTICIPANT' },
+      { registrantId: 'team_2', registrantType: 'TEAM', rosterRole: 'PARTICIPANT' },
+      { registrantId: 'minor_free_1', registrantType: 'USER', rosterRole: 'FREE_AGENT' },
+    ]);
     teamsFindManyMock
       .mockResolvedValueOnce([{ id: 'team_1' }])
       .mockResolvedValueOnce([
@@ -248,6 +319,11 @@ describe('users list route', () => {
       userIds: [],
       freeAgentIds: ['minor_free_1'],
     });
+    eventRegistrationsFindManyMock.mockResolvedValue([
+      { registrantId: 'team_1', registrantType: 'TEAM', rosterRole: 'PARTICIPANT' },
+      { registrantId: 'team_2', registrantType: 'TEAM', rosterRole: 'PARTICIPANT' },
+      { registrantId: 'minor_free_1', registrantType: 'USER', rosterRole: 'FREE_AGENT' },
+    ]);
     teamsFindManyMock.mockResolvedValue([
       {
         id: 'team_1',

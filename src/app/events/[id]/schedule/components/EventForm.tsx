@@ -10681,148 +10681,150 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             </div>
 
                             <div className="space-y-6 mb-4">
-                                <div>
-                                    <Controller
-                                        name="location"
-                                        control={control}
-                                        render={({ field, fieldState }) => (
-                                            <LocationSelector
-                                                value={field.value}
-                                                coordinates={{
-                                                    lat: (eventData.coordinates[1] ?? defaultLocation?.coordinates?.[1] ?? 0),
-                                                    lng: (eventData.coordinates[0] ?? defaultLocation?.coordinates?.[0] ?? 0),
-                                                }}
-                                                onChange={(location, lat, lng, address) => {
-                                                    if (isLocationImmutable) return;
-                                                    field.onChange(location);
-                                                    setValue('coordinates', [lng, lat], { shouldDirty: true, shouldValidate: true });
-                                                    setValue('address', address ?? '', { shouldDirty: true, shouldValidate: true });
-                                                }}
-                                                isValid={!fieldState.error}
-                                                disabled={isLocationImmutable}
-                                                label="Location"
-                                                required
-                                                errorMessage={fieldState.error?.message as string | undefined}
-                                                showStreetViewControl={false}
-                                            />
-                                        )}
-                                    />
-                                </div>
-
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">
-                                    <div className="md:col-span-2">
+                                    <div className="md:col-span-6" data-testid="event-details-location-map">
                                         <Controller
-                                            name="requiredTemplateIds"
-                                            control={control}
-                                            render={({ field }) => (
-                                                <MantineMultiSelect
-                                                    label="Required Documents"
-                                                    placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
-                                                    data={templateOptions}
-                                                    value={field.value ?? []}
-                                                    w="100%"
-                                                    styles={alignedDetailsFieldStyles}
-                                                    disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
-                                                    comboboxProps={sharedComboboxProps}
-                                                    onChange={(vals) => {
-                                                        if (isImmutableField('requiredTemplateIds')) return;
-                                                        field.onChange(vals);
-                                                    }}
-                                                    clearable
-                                                    searchable
-                                                />
-                                            )}
-                                        />
-                                        <AnimatedSection in={Boolean(templatesError)}>
-                                            <Text size="sm" c="red">
-                                                {templatesError}
-                                            </Text>
-                                        </AnimatedSection>
-                                        <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
-                                            <Text size="sm" c="dimmed">
-                                                No templates yet. Create one in your organization Document Templates tab.
-                                            </Text>
-                                        </AnimatedSection>
-                                    </div>
-                                    <div className="md:col-span-1">
-                                        <Controller
-                                            name="minAge"
+                                            name="location"
                                             control={control}
                                             render={({ field, fieldState }) => (
-                                                <NumberInput
-                                                    label="Minimum Age"
-                                                    min={0}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    value={normalizeNumber(field.value) ?? ''}
-                                                    w="100%"
-                                                    styles={alignedDetailsFieldStyles}
-                                                    clampBehavior="strict"
-                                                    disabled={isImmutableField('minAge')}
-                                                    onChange={(val) => {
-                                                        if (isImmutableField('minAge')) return;
-                                                        const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
-                                                        field.onChange(next);
+                                                <LocationSelector
+                                                    value={field.value}
+                                                    coordinates={{
+                                                        lat: (eventData.coordinates[1] ?? defaultLocation?.coordinates?.[1] ?? 0),
+                                                        lng: (eventData.coordinates[0] ?? defaultLocation?.coordinates?.[0] ?? 0),
                                                     }}
-                                                    error={fieldState.error?.message as string | undefined}
+                                                    onChange={(location, lat, lng, address) => {
+                                                        if (isLocationImmutable) return;
+                                                        field.onChange(location);
+                                                        setValue('coordinates', [lng, lat], { shouldDirty: true, shouldValidate: true });
+                                                        setValue('address', address ?? '', { shouldDirty: true, shouldValidate: true });
+                                                    }}
+                                                    isValid={!fieldState.error}
+                                                    disabled={isLocationImmutable}
+                                                    label="Location"
+                                                    required
+                                                    errorMessage={fieldState.error?.message as string | undefined}
+                                                    showStreetViewControl={false}
                                                 />
                                             )}
                                         />
                                     </div>
-                                    <div className="md:col-span-1">
-                                        <Controller
-                                            name="maxAge"
-                                            control={control}
-                                            render={({ field, fieldState }) => (
-                                                <NumberInput
-                                                    label="Maximum Age"
-                                                    min={0}
-                                                    max={MAX_STANDARD_NUMBER}
-                                                    value={normalizeNumber(field.value) ?? ''}
-                                                    w="100%"
-                                                    styles={alignedDetailsFieldStyles}
-                                                    clampBehavior="strict"
-                                                    disabled={isImmutableField('maxAge')}
-                                                    onChange={(val) => {
-                                                        if (isImmutableField('maxAge')) return;
-                                                        const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
-                                                        field.onChange(next);
-                                                    }}
-                                                    error={fieldState.error?.message as string | undefined}
-                                                />
-                                            )}
-                                        />
-                                    </div>
-                                    {shouldManageLocalFields && !hasExternalRentalField ? (
-                                        <div className="md:col-span-1">
-                                            <MantineSelect
-                                                label="Number of Fields"
-                                                placeholder="Select field count"
-                                                data={fieldCountOptions}
-                                                value={String(fieldCount)}
-                                                w="100%"
-                                                styles={alignedDetailsFieldStyles}
-                                                onChange={(val) => setFieldCount(Number(val) || 1)}
-                                                error={errors.fieldCount?.message as string | undefined}
-                                                comboboxProps={sharedComboboxProps}
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 md:col-span-6 gap-4 md:items-start" data-testid="event-details-map-side-controls">
+                                        <div className="sm:col-span-2">
+                                            <Controller
+                                                name="requiredTemplateIds"
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <MantineMultiSelect
+                                                        label="Required Documents"
+                                                        placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+                                                        data={templateOptions}
+                                                        value={field.value ?? []}
+                                                        w="100%"
+                                                        styles={alignedDetailsFieldStyles}
+                                                        disabled={!templateOrganizationId || templatesLoading || isImmutableField('requiredTemplateIds')}
+                                                        comboboxProps={sharedComboboxProps}
+                                                        onChange={(vals) => {
+                                                            if (isImmutableField('requiredTemplateIds')) return;
+                                                            field.onChange(vals);
+                                                        }}
+                                                        clearable
+                                                        searchable
+                                                    />
+                                                )}
+                                            />
+                                            <AnimatedSection in={Boolean(templatesError)}>
+                                                <Text size="sm" c="red">
+                                                    {templatesError}
+                                                </Text>
+                                            </AnimatedSection>
+                                            <AnimatedSection in={!templatesLoading && Boolean(templateOrganizationId) && templateOptions.length === 0}>
+                                                <Text size="sm" c="dimmed">
+                                                    No templates yet. Create one in your organization Document Templates tab.
+                                                </Text>
+                                            </AnimatedSection>
+                                        </div>
+                                        <div>
+                                            <Controller
+                                                name="minAge"
+                                                control={control}
+                                                render={({ field, fieldState }) => (
+                                                    <NumberInput
+                                                        label="Minimum Age"
+                                                        min={0}
+                                                        max={MAX_STANDARD_NUMBER}
+                                                        value={normalizeNumber(field.value) ?? ''}
+                                                        w="100%"
+                                                        styles={alignedDetailsFieldStyles}
+                                                        clampBehavior="strict"
+                                                        disabled={isImmutableField('minAge')}
+                                                        onChange={(val) => {
+                                                            if (isImmutableField('minAge')) return;
+                                                            const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
+                                                            field.onChange(next);
+                                                        }}
+                                                        error={fieldState.error?.message as string | undefined}
+                                                    />
+                                                )}
                                             />
                                         </div>
-                                    ) : null}
-                                    <Text size="xs" c="dimmed" className="md:col-span-12">
-                                        Leave age limits blank if anyone can register.
-                                    </Text>
-                                    <AnimatedSection
-                                        in={typeof eventData.minAge === 'number' || typeof eventData.maxAge === 'number'}
-                                        collapseClassName="md:col-span-12"
-                                    >
-                                        <Alert color="yellow" variant="light">
-                                            <Text fw={600} size="sm">
-                                                Age-restricted event
-                                            </Text>
-                                            <Text size="sm">
-                                                We only check age using the date of birth users enter in their profile. If your event requires an age check (for example, 18+ or 21+), you are responsible for verifying attendees&apos; age at check-in.
-                                            </Text>
-                                        </Alert>
-                                    </AnimatedSection>
+                                        <div>
+                                            <Controller
+                                                name="maxAge"
+                                                control={control}
+                                                render={({ field, fieldState }) => (
+                                                    <NumberInput
+                                                        label="Maximum Age"
+                                                        min={0}
+                                                        max={MAX_STANDARD_NUMBER}
+                                                        value={normalizeNumber(field.value) ?? ''}
+                                                        w="100%"
+                                                        styles={alignedDetailsFieldStyles}
+                                                        clampBehavior="strict"
+                                                        disabled={isImmutableField('maxAge')}
+                                                        onChange={(val) => {
+                                                            if (isImmutableField('maxAge')) return;
+                                                            const next = typeof val === 'number' && Number.isFinite(val) ? val : undefined;
+                                                            field.onChange(next);
+                                                        }}
+                                                        error={fieldState.error?.message as string | undefined}
+                                                    />
+                                                )}
+                                            />
+                                        </div>
+                                        {shouldManageLocalFields && !hasExternalRentalField ? (
+                                            <div>
+                                                <MantineSelect
+                                                    label="Number of Fields"
+                                                    placeholder="Select field count"
+                                                    data={fieldCountOptions}
+                                                    value={String(fieldCount)}
+                                                    w="100%"
+                                                    styles={alignedDetailsFieldStyles}
+                                                    onChange={(val) => setFieldCount(Number(val) || 1)}
+                                                    error={errors.fieldCount?.message as string | undefined}
+                                                    comboboxProps={sharedComboboxProps}
+                                                />
+                                            </div>
+                                        ) : null}
+                                        <Text size="xs" c="dimmed" className="sm:col-span-2">
+                                            Leave age limits blank if anyone can register.
+                                        </Text>
+                                        <AnimatedSection
+                                            in={typeof eventData.minAge === 'number' || typeof eventData.maxAge === 'number'}
+                                            collapseClassName="sm:col-span-2"
+                                        >
+                                            <Alert color="yellow" variant="light">
+                                                <Text fw={600} size="sm">
+                                                    Age-restricted event
+                                                </Text>
+                                                <Text size="sm">
+                                                    We only check age using the date of birth users enter in their profile. If your event requires an age check (for example, 18+ or 21+), you are responsible for verifying attendees&apos; age at check-in.
+                                                </Text>
+                                            </Alert>
+                                        </AnimatedSection>
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:items-start">

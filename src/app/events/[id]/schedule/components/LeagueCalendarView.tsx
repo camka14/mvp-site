@@ -14,7 +14,7 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 
 import type { Field, Match, Team, UserData } from '@/types';
-import { formatDisplayDate, formatDisplayTime } from '@/lib/dateUtils';
+import { formatDisplayDate, formatDisplayTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import {
@@ -99,51 +99,7 @@ const ensureMinimumHourSpan = (range: [number, number]): [number, number] => {
   return [start, end];
 };
 
-const parseDateInput = (value?: string | Date | null): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    const [year, month, day] = trimmed.split('-').map(Number);
-    if (![year, month, day].some(Number.isNaN)) {
-      return new Date(year, (month ?? 1) - 1, day ?? 1);
-    }
-  }
-
-  const direct = new Date(trimmed);
-  if (!Number.isNaN(direct.getTime())) {
-    return direct;
-  }
-
-  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(trimmed)) {
-    const withOffset = new Date(`${trimmed}Z`);
-    if (!Number.isNaN(withOffset.getTime())) {
-      return withOffset;
-    }
-  }
-
-  return null;
-};
-
-const coerceDateTime = (value?: string | Date | null): Date | null => {
-  if (!value) return null;
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
-  }
-
-  const raw = String(value);
-  const primary = new Date(raw);
-  if (!Number.isNaN(primary.getTime())) {
-    return primary;
-  }
-  const fallback = new Date(raw);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
-};
+const parseDateInput = (value?: string | Date | null): Date | null => parseLocalDateTime(value ?? null);
 
 const resolveTeamLabel = (match: Match, key: 'team1' | 'team2') => {
   const relation = key === 'team1' ? match.team1 : match.team2;
@@ -507,9 +463,9 @@ export function LeagueCalendarView({
               ? match.teamOfficial
               : (typeof match.teamOfficialId === 'string' ? teamLookup.get(match.teamOfficialId) : undefined),
         };
-        const start = coerceDateTime(match.start);
+        const start = parseLocalDateTime(match.start);
         if (!start) return null;
-        const end = coerceDateTime(match.end)
+        const end = parseLocalDateTime(match.end)
           ?? new Date(start.getTime() + 60 * 60 * 1000);
         const fieldId = resolveMatchFieldId(hydratedMatch);
         const fieldLabel = resolveMatchFieldLabel(hydratedMatch, fieldLookup);
