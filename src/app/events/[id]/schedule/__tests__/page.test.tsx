@@ -1375,7 +1375,14 @@ describe('League schedule page', () => {
     expect(screen.queryByRole('button', { name: /create template/i })).not.toBeInTheDocument();
   });
 
-  it('shows a delete event action in the More menu before the event starts', async () => {
+  it('redirects to the user home page after deleting a future event', async () => {
+    useAppMock.mockReturnValue({
+      user: { $id: 'host_1', homePageOrganizationId: 'org_42' },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      setUser: jest.fn(),
+    });
     const futureStart = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const futureEnd = new Date(Date.now() + 26 * 60 * 60 * 1000);
     const futureEvent = mockScheduleApiEvent({
@@ -1404,7 +1411,7 @@ describe('League schedule page', () => {
           start: futureEvent.start,
         }),
       );
-      expect(mockRouter.push).toHaveBeenCalledWith('/events');
+      expect(mockRouter.push).toHaveBeenCalledWith('/organizations/org_42');
     } finally {
       confirmSpy.mockRestore();
     }

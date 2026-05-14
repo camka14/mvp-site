@@ -18,6 +18,7 @@ import type { AgentClientAction, AgentClientActionResult } from '@/lib/agent/typ
 import { useLocation } from '@/app/hooks/useLocation';
 import { chatService, type ChatTermsConsentState } from '@/lib/chatService';
 import { eventService } from '@/lib/eventService';
+import { getHomePathForUser } from '@/lib/homePage';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
 import { organizationService } from '@/lib/organizationService';
@@ -970,6 +971,7 @@ function EventScheduleContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const pathname = usePathname();
+  const homePath = getHomePathForUser(user);
   const eventId = params?.id as string | undefined;
   const isPreview = searchParams?.get('preview') === '1';
   const isEditParam = searchParams?.get('mode') === 'edit';
@@ -7936,14 +7938,14 @@ function EventScheduleContent() {
       await leagueService.deleteMatchesByEvent(templateEvent.$id);
       await leagueService.deleteWeeklySchedulesForEvent(templateEvent.$id);
       await eventService.deleteEvent(templateEvent);
-      router.push('/events');
+      router.push(homePath);
     } catch (err) {
       console.error('Failed to delete template:', err);
       setError('Failed to delete template.');
     } finally {
       setCancelling(false);
     }
-  }, [activeEvent, cancelling, event, router]);
+  }, [activeEvent, cancelling, event, homePath, router]);
 
   const handleDeleteEvent = useCallback(async () => {
     if (cancelling) return;
@@ -7970,13 +7972,13 @@ function EventScheduleContent() {
       await leagueService.deleteMatchesByEvent(eventToDelete.$id);
       await leagueService.deleteWeeklySchedulesForEvent(eventToDelete.$id);
       await eventService.deleteEvent(eventToDelete);
-      router.push('/events');
+      router.push(homePath);
     } catch (err) {
       console.error('Failed to delete event:', err);
       setError('Failed to delete event.');
       setCancelling(false);
     }
-  }, [activeEvent, cancelling, event, router]);
+  }, [activeEvent, cancelling, event, homePath, router]);
 
   const handleDiscardChanges = useCallback(() => {
     if (!hasPendingUnsavedChanges) {
@@ -8065,7 +8067,7 @@ function EventScheduleContent() {
       await leagueService.deleteMatchesByEvent(event.$id);
       await leagueService.deleteWeeklySchedulesForEvent(event.$id);
       await eventService.deleteEvent(event);
-      router.push('/events');
+      router.push(homePath);
     } catch (err) {
       console.error(`Failed to cancel ${entityLabel.toLowerCase()}:`, err);
       setError(`Failed to cancel ${entityLabel.toLowerCase()}.`);
