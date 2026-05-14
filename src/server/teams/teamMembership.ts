@@ -504,6 +504,8 @@ export const listCanonicalTeamsForUser = async (params: {
   organizationId?: string | null;
   playerId?: string | null;
   managerId?: string | null;
+  query?: string | null;
+  openRegistrationOnly?: boolean;
   limit?: number;
 }, client: PrismaLike = prisma) => {
   if (params.ids?.length) {
@@ -513,26 +515,47 @@ export const listCanonicalTeamsForUser = async (params: {
   const canonicalTeamsDelegate = getCanonicalTeamsDelegate(client);
   const teamRegistrationsDelegate = getTeamRegistrationsDelegate(client);
   const teamStaffAssignmentsDelegate = getTeamStaffAssignmentsDelegate(client);
+  const normalizedQuery = normalizeId(params.query)?.toLowerCase() ?? null;
+  const teamMatchesQuery = (team: Record<string, unknown>) => {
+    if (!normalizedQuery) {
+      return true;
+    }
+    return ['name', 'sport', 'division'].some((field) => (
+      String(team[field] ?? '').toLowerCase().includes(normalizedQuery)
+    ));
+  };
   if (!canonicalTeamsDelegate?.findMany || !teamRegistrationsDelegate?.findMany || !teamStaffAssignmentsDelegate?.findMany) {
     if (params.organizationId) {
       return [];
     }
-    const where: Record<string, unknown> = {};
+    const andFilters: Record<string, unknown>[] = [];
     if (params.playerId && params.managerId) {
-      where.OR = [
+      andFilters.push({ OR: [
         { playerIds: { has: params.playerId } },
         { managerId: params.managerId },
-      ];
+      ] });
     } else if (params.playerId) {
-      where.playerIds = { has: params.playerId };
+      andFilters.push({ playerIds: { has: params.playerId } });
     } else if (params.managerId) {
-      where.managerId = params.managerId;
+      andFilters.push({ managerId: params.managerId });
     } else {
-      where.parentTeamId = null;
-      where.captainId = { not: '' };
+      andFilters.push({
+        parentTeamId: null,
+        captainId: { not: '' },
+      });
+    }
+    if (params.openRegistrationOnly) {
+      andFilters.push({ openRegistration: true });
+    }
+    if (normalizedQuery) {
+      andFilters.push({ OR: [
+        { name: { contains: normalizedQuery, mode: 'insensitive' } },
+        { sport: { contains: normalizedQuery, mode: 'insensitive' } },
+        { division: { contains: normalizedQuery, mode: 'insensitive' } },
+      ] });
     }
     const rows = await getEventTeamsDelegate(client)?.findMany?.({
-      where,
+      where: andFilters.length ? { AND: andFilters } : undefined,
       take: params.limit ?? 100,
       orderBy: { name: 'asc' },
     }) ?? [];
@@ -562,22 +585,38 @@ export const listCanonicalTeamsForUser = async (params: {
     teamIds = teamIds.concat(rows.map((row: { teamId: string }) => row.teamId));
   }
   if (!params.playerId && !params.managerId) {
+    const where: Record<string, unknown> = {};
+    if (params.organizationId) {
+      where.organizationId = params.organizationId;
+    }
+    if (params.openRegistrationOnly) {
+      where.openRegistration = true;
+    }
+    if (normalizedQuery) {
+      where.OR = [
+        { name: { contains: normalizedQuery, mode: 'insensitive' } },
+        { sport: { contains: normalizedQuery, mode: 'insensitive' } },
+        { division: { contains: normalizedQuery, mode: 'insensitive' } },
+      ];
+    }
     const rows = await canonicalTeamsDelegate.findMany({
-      where: params.organizationId
-        ? { organizationId: params.organizationId }
-        : undefined,
+      where: Object.keys(where).length ? where : undefined,
       take: params.limit ?? 100,
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
     });
     return Promise.all((rows as CanonicalTeamRow[]).map((row) => loadCanonicalTeamById(row.id, client))).then((items) => items.filter(Boolean));
   }
 
-  const uniqueTeamIds = Array.from(new Set(teamIds)).slice(0, params.limit ?? 100);
+  const uniqueTeamIds = Array.from(new Set(teamIds));
   const teams = await Promise.all(uniqueTeamIds.map((teamId) => loadCanonicalTeamById(teamId, client)));
-  return teams.filter((team): team is NonNullable<typeof team> => (
-    Boolean(team)
-    && (!params.organizationId || normalizeId((team as Record<string, unknown>).organizationId as string | null | undefined) === params.organizationId)
-  ));
+  return teams
+    .filter((team): team is NonNullable<typeof team> => (
+      Boolean(team)
+      && (!params.organizationId || normalizeId((team as Record<string, unknown>).organizationId as string | null | undefined) === params.organizationId)
+      && (!params.openRegistrationOnly || (team as Record<string, unknown>).openRegistration === true)
+      && teamMatchesQuery(team as Record<string, unknown>)
+    ))
+    .slice(0, params.limit ?? 100);
 };
 
 export const getCanonicalTeamIdsByUserIds = async (

@@ -10,6 +10,7 @@ jest.mock('@/server/events/eventRegistrations', () => ({
 import {
   applyCanonicalTeamRegistrationMetadata,
   claimOrCreateEventTeamSnapshot,
+  listCanonicalTeamsForUser,
   listTeamsByIds,
   normalizeJerseyNumber,
 } from '@/server/teams/teamMembership';
@@ -198,6 +199,76 @@ describe('listTeamsByIds', () => {
     });
     expect(eventTeamsFindManyMock).toHaveBeenCalledWith({
       where: { id: { in: ['event_team_1'] } },
+    });
+  });
+});
+
+describe('listCanonicalTeamsForUser', () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('passes query and open-registration filters to canonical team discovery', async () => {
+    const teamRow = {
+      id: 'team_open',
+      name: 'Open Aces',
+      division: 'Open',
+      divisionTypeId: 'open',
+      wins: null,
+      losses: null,
+      teamSize: 6,
+      profileImageId: null,
+      sport: 'Volleyball',
+      organizationId: 'org_1',
+      createdBy: 'user_1',
+      openRegistration: true,
+      registrationPriceCents: 2500,
+      requiredTemplateIds: [],
+      createdAt: new Date('2026-05-14T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-14T01:00:00.000Z'),
+    };
+    const canonicalFindManyMock = jest.fn().mockResolvedValue([{ id: 'team_open' }]);
+    const canonicalFindUniqueMock = jest.fn().mockResolvedValue(teamRow);
+    const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([]);
+    const teamStaffAssignmentsFindManyMock = jest.fn().mockResolvedValue([]);
+
+    const teams = await listCanonicalTeamsForUser({
+      query: ' Aces ',
+      openRegistrationOnly: true,
+      limit: 25,
+    }, {
+      canonicalTeams: {
+        findMany: canonicalFindManyMock,
+        findUnique: canonicalFindUniqueMock,
+      },
+      teamRegistrations: {
+        findMany: teamRegistrationsFindManyMock,
+      },
+      teamStaffAssignments: {
+        findMany: teamStaffAssignmentsFindManyMock,
+      },
+    });
+
+    expect(canonicalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        openRegistration: true,
+        OR: [
+          { name: { contains: 'aces', mode: 'insensitive' } },
+          { sport: { contains: 'aces', mode: 'insensitive' } },
+          { division: { contains: 'aces', mode: 'insensitive' } },
+        ],
+      },
+      take: 25,
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+    });
+    expect(canonicalFindUniqueMock).toHaveBeenCalledWith({
+      where: { id: 'team_open' },
+    });
+    expect(teams).toHaveLength(1);
+    expect(teams[0]).toMatchObject({
+      id: 'team_open',
+      name: 'Open Aces',
+      openRegistration: true,
     });
   });
 });

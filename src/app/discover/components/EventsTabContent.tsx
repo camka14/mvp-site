@@ -22,14 +22,14 @@ import {
   TextInput,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
-import { ArrowUpDown, CalendarDays, Search, X } from 'lucide-react';
+import { ArrowUpDown, CalendarDays, X } from 'lucide-react';
 
 import EventCard from '@/components/ui/EventCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
-import LocationSearch from '@/components/location/LocationSearch';
 import Loading from '@/components/ui/Loading';
 import { Event, getEventDivisionPriceRange } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
+import DiscoverSearchControls, { type DiscoverSearchTarget } from './DiscoverSearchControls';
 
 const EVENT_SORT_OPTIONS = [
   { value: 'soonest', label: 'Soonest' },
@@ -59,6 +59,10 @@ type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   location: { lat: number; lng: number } | null;
   searchTerm: string;
   setSearchTerm: (value: string) => void;
+  searchTarget?: DiscoverSearchTarget;
+  setSearchTarget?: (target: DiscoverSearchTarget) => void;
+  onSearchSubmit?: () => void;
+  onOpenMap?: () => void;
   selectedEventTypes: TEventType[];
   setSelectedEventTypes: (value: TEventType[]) => void;
   eventTypeOptions: readonly TEventType[];
@@ -97,6 +101,10 @@ export default function EventsTabContent<TEventType extends string = Event['even
     location,
     searchTerm,
     setSearchTerm,
+    searchTarget = 'events',
+    setSearchTarget,
+    onSearchSubmit = () => {},
+    onOpenMap,
     selectedEventTypes,
     setSelectedEventTypes,
     eventTypeOptions,
@@ -464,19 +472,17 @@ export default function EventsTabContent<TEventType extends string = Event['even
     <>
       <div className="space-y-6 mb-8">
         <Group justify="space-between" align="center" gap="md" wrap="wrap">
-          <Group align="center" gap="sm" wrap="wrap" style={{ flex: 1, minWidth: 320 }}>
-            <TextInput
-              aria-label="Search events"
-              leftSection={<Search size={16} />}
-              placeholder="Search events, venues, teams..."
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.currentTarget.value)}
-              style={{ flex: 1, minWidth: 220 }}
-            />
-            <div style={{ minWidth: 190, flexShrink: 0 }}>
-              <LocationSearch />
-            </div>
-          </Group>
+          <DiscoverSearchControls
+            target={searchTarget}
+            onTargetChange={setSearchTarget ?? (() => {})}
+            value={searchTerm}
+            onValueChange={setSearchTerm}
+            placeholder="Search events, venues, teams..."
+            onSearch={onSearchSubmit}
+            onOpenMap={onOpenMap}
+            searchLabel="Search events"
+            showTargetSelect={Boolean(setSearchTarget)}
+          />
           {showCreateEventButton && (
             <div style={{ minWidth: 260 }}>
               <Button size="md" fullWidth onClick={onCreateEvent} disabled={createEventDisabled}>

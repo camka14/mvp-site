@@ -18,25 +18,27 @@ import {
   Title,
 } from '@mantine/core';
 
-import { Search, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
-import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
+import TeamCard from '@/components/ui/TeamCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
-import LocationSearch from '@/components/location/LocationSearch';
 import { useApp } from '@/app/providers';
 import { useLocation } from '@/app/hooks/useLocation';
 import { useDebounce } from '@/app/hooks/useDebounce';
-import { Event, Field, Organization, TimeSlot } from '@/types';
+import { Event, Field, Organization, Team, TimeSlot } from '@/types';
 import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
+import { teamService } from '@/lib/teamService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
 import { useSports } from '@/app/hooks/useSports';
 import { createId } from '@/lib/id';
 import { formatDisplayTime } from '@/lib/dateUtils';
 import EventsTabContent from './components/EventsTabContent';
+import DiscoverSearchControls, { type DiscoverSearchTarget } from './components/DiscoverSearchControls';
+import DiscoverMapModal from './components/DiscoverMapModal';
 
 type RentalListing = {
   organization: Organization;
@@ -106,7 +108,8 @@ function DiscoverPageContent() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
   const { location, requestLocation } = useLocation();
 
-  const [activeTab, setActiveTab] = useState<'events' | 'rentals' | 'organizations'>('events');
+  const [activeTab, setActiveTab] = useState<DiscoverSearchTarget>('events');
+  const [searchTarget, setSearchTarget] = useState<DiscoverSearchTarget>('events');
 
   /**
    * Events tab state
@@ -150,6 +153,18 @@ function DiscoverPageContent() {
   const [organizationsLoading, setOrganizationsLoading] = useState(false);
   const [organizationsError, setOrganizationsError] = useState<string | null>(null);
   const [organizationsMaxDistance, setOrganizationsMaxDistance] = useState<number | null>(null);
+
+  /**
+   * Teams tab state
+   */
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [teamsLoading, setTeamsLoading] = useState(false);
+  const [teamsError, setTeamsError] = useState<string | null>(null);
+
+  /**
+   * Map modal state
+   */
+  const [mapOpened, setMapOpened] = useState(false);
 
   const hasGuestSession = isGuest || (
     typeof window !== 'undefined' && window.localStorage.getItem('guest-session') === '1'
@@ -382,6 +397,33 @@ function DiscoverPageContent() {
     }
   }, [organizationsLoaded, organizationsLoading]);
 
+  const loadTeams = useCallback(async () => {
+    setTeamsLoading(true);
+    setTeamsError(null);
+    try {
+      const rows = await teamService.searchOpenRegistrationTeams(searchTerm.trim(), 100);
+      setTeams(rows);
+    } catch (error) {
+      console.error('Failed to load open registration teams:', error);
+      setTeamsError('Failed to load teams. Please try again.');
+    } finally {
+      setTeamsLoading(false);
+    }
+  }, [searchTerm]);
+
+  const handleSearchSubmit = useCallback(() => {
+    setActiveTab(searchTarget);
+    if (searchTarget === 'organizations') {
+      void loadOrganizations();
+    }
+    if (searchTarget === 'rentals') {
+      void loadRentals();
+    }
+    if (searchTarget === 'teams') {
+      void loadTeams();
+    }
+  }, [loadOrganizations, loadRentals, loadTeams, searchTarget]);
+
   /**
    * Effects
    */
@@ -430,7 +472,10 @@ function DiscoverPageContent() {
     if (activeTab === 'organizations') {
       loadOrganizations();
     }
-  }, [activeTab, loadOrganizations, loadRentals]);
+    if (activeTab === 'teams') {
+      loadTeams();
+    }
+  }, [activeTab, loadOrganizations, loadRentals, loadTeams]);
 
   const handleCreateEventNavigation = useCallback(() => {
     if (!user) {
@@ -658,7 +703,11 @@ function DiscoverPageContent() {
 
         <Tabs
           value={activeTab}
-          onChange={(value) => setActiveTab(value as 'events' | 'rentals' | 'organizations')}
+          onChange={(value) => {
+            const next = (value as DiscoverSearchTarget) ?? 'events';
+            setActiveTab(next);
+            setSearchTarget(next);
+          }}
           variant="pills"
           radius="xl"
           classNames={{
@@ -670,6 +719,7 @@ function DiscoverPageContent() {
             <Tabs.Tab value="events">Events</Tabs.Tab>
             <Tabs.Tab value="organizations">Organizations</Tabs.Tab>
             <Tabs.Tab value="rentals">Rentals</Tabs.Tab>
+            <Tabs.Tab value="teams">Teams</Tabs.Tab>
           </Tabs.List>
 
           <Tabs.Panel value="events">
@@ -677,6 +727,10 @@ function DiscoverPageContent() {
               location={location}
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
+              searchTarget={searchTarget}
+              setSearchTarget={setSearchTarget}
+              onSearchSubmit={handleSearchSubmit}
+              onOpenMap={() => setMapOpened(true)}
               selectedEventTypes={selectedEventTypes}
               setSelectedEventTypes={setSelectedEventTypes}
               eventTypeOptions={EVENT_TYPE_OPTIONS}
@@ -708,6 +762,10 @@ function DiscoverPageContent() {
             <OrganizationsTabContent
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
+              searchTarget={searchTarget}
+              setSearchTarget={setSearchTarget}
+              onSearchSubmit={handleSearchSubmit}
+              onOpenMap={() => setMapOpened(true)}
               location={location}
               selectedSports={selectedSports}
               setSelectedSports={setSelectedSports}
@@ -728,6 +786,10 @@ function DiscoverPageContent() {
             <RentalsTabContent
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
+              searchTarget={searchTarget}
+              setSearchTarget={setSearchTarget}
+              onSearchSubmit={handleSearchSubmit}
+              onOpenMap={() => setMapOpened(true)}
               location={location}
               rentalsLoading={rentalsLoading}
               rentalsError={rentalsError}
@@ -746,8 +808,38 @@ function DiscoverPageContent() {
               onSelectOrganization={(org) => handleSelectRentalOrganization(org)}
             />
           </Tabs.Panel>
+
+          <Tabs.Panel value="teams">
+            <TeamsTabContent
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              searchTarget={searchTarget}
+              setSearchTarget={setSearchTarget}
+              onSearchSubmit={handleSearchSubmit}
+              onOpenMap={() => setMapOpened(true)}
+              teams={teams}
+              loading={teamsLoading}
+              error={teamsError}
+              onSelectTeam={(team) => {
+                if (team.organizationId) {
+                  router.push(`/organizations/${team.organizationId}?tab=teams`);
+                  return;
+                }
+                router.push('/teams');
+              }}
+            />
+          </Tabs.Panel>
         </Tabs>
       </Container>
+      <DiscoverMapModal
+        opened={mapOpened}
+        onClose={() => setMapOpened(false)}
+        location={location}
+        requestLocation={requestLocation}
+        kmBetween={kmBetween}
+        onEventClick={handleSelectEvent}
+        onOrganizationClick={handleSelectOrganization}
+      />
     </>
   );
 }
@@ -755,6 +847,10 @@ function DiscoverPageContent() {
 function OrganizationsTabContent(props: {
   searchTerm: string;
   setSearchTerm: (value: string) => void;
+  searchTarget: DiscoverSearchTarget;
+  setSearchTarget: (target: DiscoverSearchTarget) => void;
+  onSearchSubmit: () => void;
+  onOpenMap: () => void;
   location: { lat: number; lng: number } | null;
   selectedSports: string[];
   setSelectedSports: Dispatch<SetStateAction<string[]>>;
@@ -772,6 +868,10 @@ function OrganizationsTabContent(props: {
   const {
     searchTerm,
     setSearchTerm,
+    searchTarget,
+    setSearchTarget,
+    onSearchSubmit,
+    onOpenMap,
     location,
     selectedSports,
     setSelectedSports,
@@ -918,19 +1018,16 @@ function OrganizationsTabContent(props: {
   return (
     <div className="space-y-6 mb-8">
       <Group justify="space-between" align="center" gap="md" wrap="wrap">
-        <Group align="center" gap="sm" wrap="wrap" style={{ flex: 1, minWidth: 320 }}>
-          <TextInput
-            aria-label="Search organizations"
-            leftSection={<Search size={16} />}
-            placeholder="Search by name or description"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.currentTarget.value)}
-            style={{ flex: 1, minWidth: 220 }}
-          />
-          <div style={{ minWidth: 170, flexShrink: 0 }}>
-            <LocationSearch />
-          </div>
-        </Group>
+        <DiscoverSearchControls
+          target={searchTarget}
+          onTargetChange={setSearchTarget}
+          value={searchTerm}
+          onValueChange={setSearchTerm}
+          placeholder="Search by name or description"
+          onSearch={onSearchSubmit}
+          onOpenMap={onOpenMap}
+          searchLabel="Search organizations"
+        />
         <Text size="sm" c="dimmed">
           {results.length} organization{results.length === 1 ? '' : 's'}
           {location ? ' near you.' : '. Enable location for distance filtering.'}
@@ -1027,9 +1124,95 @@ function OrganizationsTabContent(props: {
   );
 }
 
+function TeamsTabContent(props: {
+  searchTerm: string;
+  setSearchTerm: (value: string) => void;
+  searchTarget: DiscoverSearchTarget;
+  setSearchTarget: (target: DiscoverSearchTarget) => void;
+  onSearchSubmit: () => void;
+  onOpenMap: () => void;
+  teams: Team[];
+  loading: boolean;
+  error: string | null;
+  onSelectTeam: (team: Team) => void;
+}) {
+  const {
+    searchTerm,
+    setSearchTerm,
+    searchTarget,
+    setSearchTarget,
+    onSearchSubmit,
+    onOpenMap,
+    teams,
+    loading,
+    error,
+    onSelectTeam,
+  } = props;
+  const activeQuery = searchTerm.trim();
+
+  return (
+    <div className="space-y-6 mb-8">
+      <Group justify="space-between" align="center" gap="md" wrap="wrap">
+        <DiscoverSearchControls
+          target={searchTarget}
+          onTargetChange={setSearchTarget}
+          value={searchTerm}
+          onValueChange={setSearchTerm}
+          placeholder="Search open-registration teams..."
+          onSearch={onSearchSubmit}
+          onOpenMap={onOpenMap}
+          searchLabel="Search teams"
+        />
+        <Text size="sm" c="dimmed">
+          {teams.length} open team{teams.length === 1 ? '' : 's'}
+          {activeQuery ? ` matching "${activeQuery}".` : '.'}
+        </Text>
+      </Group>
+
+      {error && (
+        <Alert color="red" radius="md">
+          {error}
+        </Alert>
+      )}
+
+      {loading ? (
+        <Loading text="Loading open teams..." />
+      ) : teams.length === 0 ? (
+        <Paper withBorder p="xl" radius="md">
+          <Text fw={600} mb={4}>
+            No open-registration teams found
+          </Text>
+          <Text size="sm" c="dimmed">
+            Try another team, sport, or division search.
+          </Text>
+        </Paper>
+      ) : (
+        <ResponsiveCardGrid>
+          {teams.map((team) => (
+            <TeamCard
+              key={team.$id}
+              team={team}
+              onClick={() => onSelectTeam(team)}
+              actions={
+                <Text size="xs" c="green" fw={600}>
+                  Open registration
+                </Text>
+              }
+            />
+          ))}
+        </ResponsiveCardGrid>
+      )}
+    </div>
+  );
+}
+
 function RentalsTabContent(props: {
   searchTerm: string;
   setSearchTerm: (value: string) => void;
+  searchTarget: DiscoverSearchTarget;
+  setSearchTarget: (target: DiscoverSearchTarget) => void;
+  onSearchSubmit: () => void;
+  onOpenMap: () => void;
   location: { lat: number; lng: number } | null;
   rentalsLoading: boolean;
   rentalsError: string | null;
@@ -1050,6 +1233,10 @@ function RentalsTabContent(props: {
   const {
     searchTerm,
     setSearchTerm,
+    searchTarget,
+    setSearchTarget,
+    onSearchSubmit,
+    onOpenMap,
     location,
     rentalsLoading,
     rentalsError,
@@ -1266,19 +1453,16 @@ function RentalsTabContent(props: {
   return (
     <div className="space-y-6 mb-8">
       <Group justify="space-between" align="center" gap="md" wrap="wrap">
-        <Group align="center" gap="sm" wrap="wrap" style={{ flex: 1, minWidth: 320 }}>
-          <TextInput
-            aria-label="Search rentals"
-            leftSection={<Search size={16} />}
-            placeholder="Search organizations and fields..."
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.currentTarget.value)}
-            style={{ flex: 1, minWidth: 220 }}
-          />
-          <div style={{ minWidth: 170, flexShrink: 0 }}>
-            <LocationSearch />
-          </div>
-        </Group>
+        <DiscoverSearchControls
+          target={searchTarget}
+          onTargetChange={setSearchTarget}
+          value={searchTerm}
+          onValueChange={setSearchTerm}
+          placeholder="Search organizations and fields..."
+          onSearch={onSearchSubmit}
+          onOpenMap={onOpenMap}
+          searchLabel="Search rentals"
+        />
         <Text size="sm" c="dimmed">
           {organizationsWithListings.length} organization{organizationsWithListings.length === 1 ? '' : 's'} with rentals
           {location ? ' near you.' : '.'}

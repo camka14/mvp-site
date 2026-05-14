@@ -176,6 +176,10 @@ export async function GET(req: NextRequest) {
   const organizationId = params.get('organizationId');
   const playerId = params.get('playerId');
   const managerId = params.get('managerId');
+  const query = params.get('query');
+  const openRegistrationOnly = ['1', 'true', 'yes', 'on'].includes(
+    String(params.get('openRegistration') ?? '').trim().toLowerCase(),
+  );
   const limit = Number(params.get('limit') || '100');
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
@@ -184,6 +188,8 @@ export async function GET(req: NextRequest) {
     organizationId: normalizeId(organizationId),
     playerId: normalizeId(playerId),
     managerId: normalizeId(managerId),
+    query: normalizeId(query),
+    openRegistrationOnly,
     limit: Number.isFinite(limit) ? limit : 100,
   }, prisma);
   return NextResponse.json({ teams: withTeamRoleAliasesList(teams as Record<string, any>[]) }, { status: 200 });

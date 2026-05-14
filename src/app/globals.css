@@ -297,6 +297,66 @@ svg {
   transform: translateX(-100%);
 }
 
+.discover-map-search-result {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.625rem;
+  border: 0;
+  border-bottom: 1px solid var(--discover-border, #e5e7eb);
+  border-radius: 0.375rem;
+  background: var(--discover-surface, #fff);
+  cursor: pointer;
+}
+
+.discover-map-search-result:hover {
+  background: var(--discover-surface-muted, #f8fafc);
+}
+
+.discover-map-search-result span {
+  color: var(--discover-text, #111827);
+  font-weight: 600;
+}
+
+.discover-map-search-result small {
+  color: var(--discover-text-muted, #6b7280);
+}
+
+.discover-map-info {
+  display: grid;
+  gap: 0.375rem;
+  min-width: 11.25rem;
+}
+
+.discover-map-info strong {
+  color: #111827;
+  font-size: 0.875rem;
+}
+
+.discover-map-info span {
+  color: #4b5563;
+  font-size: 0.75rem;
+}
+
+.discover-map-info button {
+  border: 0;
+  border-radius: 0.375rem;
+  background: var(--discover-primary, #1c7ed6);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 0.375rem 0.625rem;
+}
+
+.discover-map-placeholder {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  background: var(--discover-surface-muted, #f8fafc);
+}
+
 .discover-event-card {
   background: var(--discover-surface);
 }

@@ -275,6 +275,47 @@ describe('teamService', () => {
     });
   });
 
+  describe('searchOpenRegistrationTeams', () => {
+    it('requests open-registration teams with the search query and drops closed teams defensively', async () => {
+      apiRequestMock.mockResolvedValue({
+        teams: [
+          {
+            $id: 'team_open',
+            name: 'Open Aces',
+            sport: 'Volleyball',
+            division: 'Open',
+            playerIds: [],
+            pending: [],
+            teamSize: 6,
+            captainId: 'captain_1',
+            openRegistration: true,
+          },
+          {
+            $id: 'team_closed',
+            name: 'Closed Aces',
+            sport: 'Volleyball',
+            division: 'Open',
+            playerIds: [],
+            pending: [],
+            teamSize: 6,
+            captainId: 'captain_2',
+            openRegistration: false,
+          },
+        ],
+      });
+
+      const teams = await teamService.searchOpenRegistrationTeams(' aces ', 25);
+
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams?query=aces&openRegistration=true&limit=25');
+      expect(teams).toHaveLength(1);
+      expect(teams[0]).toMatchObject({
+        $id: 'team_open',
+        name: 'Open Aces',
+        openRegistration: true,
+      });
+    });
+  });
+
   describe('updateTeamRosterAndRoles', () => {
     it('patches captain and roster updates through the teams API', async () => {
       apiRequestMock.mockResolvedValue({

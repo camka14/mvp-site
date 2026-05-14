@@ -458,6 +458,28 @@ class TeamService {
         }
     }
 
+    async searchOpenRegistrationTeams(
+        query: string = '',
+        limit: number = 100,
+    ): Promise<Team[]> {
+        try {
+            const params = new URLSearchParams();
+            const normalizedQuery = query.trim();
+            if (normalizedQuery) {
+                params.set('query', normalizedQuery);
+            }
+            params.set('openRegistration', 'true');
+            params.set('limit', String(limit));
+            const response = await apiRequest<{ teams?: any[] }>(`/api/teams?${params.toString()}`);
+            return (response.teams ?? [])
+                .map((row: any) => this.mapRowToTeam(row))
+                .filter((team) => team.openRegistration === true);
+        } catch (error) {
+            console.error('Failed to search open registration teams:', error);
+            return [];
+        }
+    }
+
     async getTeamsByUserId(userId: string): Promise<Team[]> {
         try {
             const params = new URLSearchParams();
