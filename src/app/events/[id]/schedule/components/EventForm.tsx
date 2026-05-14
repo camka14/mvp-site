@@ -10488,6 +10488,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             )}
                                         />
                                     </AnimatedSection>
+                                    <AnimatedSection in={showsFixedTeamEventToggle} className="pt-1">
+                                        <Checkbox
+                                            data-testid="team-event-checkbox"
+                                            size="xs"
+                                            label="Team Event"
+                                            aria-label="Team Event"
+                                            checked
+                                            disabled
+                                        />
+                                    </AnimatedSection>
                                 </div>
                                 <div className="md:col-span-3">
                                     <Controller
@@ -11581,11 +11591,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </div>
                                 ) : showsFixedTeamEventToggle ? (
                                     <div className="rounded-lg border border-gray-200 bg-white p-4 space-y-2" data-testid="division-mode-switches">
-                                        <Switch
-                                            label="Team Event (teams compete rather than individuals)"
-                                            checked
-                                            disabled
-                                        />
                                         <Controller
                                             name="singleDivision"
                                             control={control}

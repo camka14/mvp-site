@@ -1619,7 +1619,7 @@ describe('EventForm dirty state', () => {
     expect(teamSignupSwitch).toBeInTheDocument();
   });
 
-  it('renders division mode switches before division fields', async () => {
+  it('renders fixed team event checkbox under Team Size and division mode switches before division fields', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(onDirtyStateChange, undefined, {
@@ -1637,13 +1637,24 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
+    const eventDetailsSection = document.getElementById('section-event-details');
     const divisionSettingsSection = document.getElementById('section-division-settings-content');
+    const teamSizeControl = screen.getByTestId('team-size-control');
+    const teamSizeInput = screen.getByLabelText('Team Size');
+    const teamEventCheckbox = screen.getByTestId('team-event-checkbox');
     const divisionModeSwitches = screen.getByTestId('division-mode-switches');
     const singleDivisionSettings = screen.getByText('Single Division');
 
+    expect(eventDetailsSection).not.toBeNull();
+    expect(eventDetailsSection).toContainElement(teamSizeControl);
+    expect(teamSizeControl).toContainElement(teamSizeInput);
+    expect(teamSizeControl).toContainElement(teamEventCheckbox);
+    expect(teamSizeInput.compareDocumentPosition(teamEventCheckbox) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(teamEventCheckbox).toBeChecked();
+    expect(teamEventCheckbox).toBeDisabled();
     expect(divisionSettingsSection).not.toBeNull();
     expect(divisionSettingsSection).toContainElement(divisionModeSwitches);
-    expect(divisionModeSwitches).toContainElement(screen.getByText('Team Event (teams compete rather than individuals)'));
+    expect(divisionModeSwitches).not.toContainElement(teamEventCheckbox);
     expect(divisionModeSwitches).toContainElement(screen.getByText('Single Division (all skill levels play together)'));
     expect(divisionModeSwitches).toContainElement(screen.getByText('Register by Division Type'));
     expect(divisionModeSwitches).toContainElement(screen.getByText('Split League & Playoff Divisions'));
