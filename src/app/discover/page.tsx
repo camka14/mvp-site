@@ -37,7 +37,7 @@ import { useSports } from '@/app/hooks/useSports';
 import { createId } from '@/lib/id';
 import { formatDisplayTime } from '@/lib/dateUtils';
 import EventsTabContent from './components/EventsTabContent';
-import DiscoverSearchControls, { type DiscoverSearchTarget } from './components/DiscoverSearchControls';
+import DiscoverSearchControls from './components/DiscoverSearchControls';
 import DiscoverMapModal from './components/DiscoverMapModal';
 
 type RentalListing = {
@@ -53,6 +53,8 @@ type OrganizationResult = {
   distanceKm?: number;
   relevance: number;
 };
+
+type DiscoverTab = 'events' | 'organizations' | 'rentals' | 'teams';
 
 const EVENTS_LIMIT = 18;
 const DEFAULT_MAX_DISTANCE = 50;
@@ -108,8 +110,7 @@ function DiscoverPageContent() {
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
   const { location, requestLocation } = useLocation();
 
-  const [activeTab, setActiveTab] = useState<DiscoverSearchTarget>('events');
-  const [searchTarget, setSearchTarget] = useState<DiscoverSearchTarget>('events');
+  const [activeTab, setActiveTab] = useState<DiscoverTab>('events');
 
   /**
    * Events tab state
@@ -242,10 +243,10 @@ function DiscoverPageContent() {
   }, [sportOptions, sportsLoading]);
 
   const buildEventFilters = useCallback(
-    () => {
+    (queryOverride?: string) => {
       const today = new Date();
       const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
-      const normalizedQuery = debouncedSearch.trim();
+      const normalizedQuery = (queryOverride ?? debouncedSearch).trim();
       const normalizedStartDate =
         selectedStartDate instanceof Date && !Number.isNaN(selectedStartDate.getTime())
           ? selectedStartDate
@@ -302,14 +303,14 @@ function DiscoverPageContent() {
     ],
   );
 
-  const loadFirstPage = useCallback(async () => {
+  const loadFirstPage = useCallback(async (queryOverride?: string) => {
     setIsLoadingInitial(true);
     setIsLoadingMore(false);
     setEventsError(null);
     setEventOffset(0);
     setHasMoreEvents(true);
     try {
-      const filters = buildEventFilters();
+      const filters = buildEventFilters(queryOverride);
       const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, 0);
 
       const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
@@ -412,17 +413,19 @@ function DiscoverPageContent() {
   }, [searchTerm]);
 
   const handleSearchSubmit = useCallback(() => {
-    setActiveTab(searchTarget);
-    if (searchTarget === 'organizations') {
+    if (activeTab === 'events') {
+      void loadFirstPage(searchTerm);
+    }
+    if (activeTab === 'organizations') {
       void loadOrganizations();
     }
-    if (searchTarget === 'rentals') {
+    if (activeTab === 'rentals') {
       void loadRentals();
     }
-    if (searchTarget === 'teams') {
+    if (activeTab === 'teams') {
       void loadTeams();
     }
-  }, [loadOrganizations, loadRentals, loadTeams, searchTarget]);
+  }, [activeTab, loadFirstPage, loadOrganizations, loadRentals, loadTeams, searchTerm]);
 
   /**
    * Effects
@@ -704,9 +707,8 @@ function DiscoverPageContent() {
         <Tabs
           value={activeTab}
           onChange={(value) => {
-            const next = (value as DiscoverSearchTarget) ?? 'events';
+            const next = (value as DiscoverTab) ?? 'events';
             setActiveTab(next);
-            setSearchTarget(next);
           }}
           variant="pills"
           radius="xl"
@@ -727,8 +729,6 @@ function DiscoverPageContent() {
               location={location}
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
-              searchTarget={searchTarget}
-              setSearchTarget={setSearchTarget}
               onSearchSubmit={handleSearchSubmit}
               onOpenMap={() => setMapOpened(true)}
               selectedEventTypes={selectedEventTypes}
@@ -762,8 +762,6 @@ function DiscoverPageContent() {
             <OrganizationsTabContent
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
-              searchTarget={searchTarget}
-              setSearchTarget={setSearchTarget}
               onSearchSubmit={handleSearchSubmit}
               onOpenMap={() => setMapOpened(true)}
               location={location}
@@ -786,8 +784,6 @@ function DiscoverPageContent() {
             <RentalsTabContent
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
-              searchTarget={searchTarget}
-              setSearchTarget={setSearchTarget}
               onSearchSubmit={handleSearchSubmit}
               onOpenMap={() => setMapOpened(true)}
               location={location}
@@ -813,8 +809,6 @@ function DiscoverPageContent() {
             <TeamsTabContent
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
-              searchTarget={searchTarget}
-              setSearchTarget={setSearchTarget}
               onSearchSubmit={handleSearchSubmit}
               onOpenMap={() => setMapOpened(true)}
               teams={teams}
@@ -847,8 +841,6 @@ function DiscoverPageContent() {
 function OrganizationsTabContent(props: {
   searchTerm: string;
   setSearchTerm: (value: string) => void;
-  searchTarget: DiscoverSearchTarget;
-  setSearchTarget: (target: DiscoverSearchTarget) => void;
   onSearchSubmit: () => void;
   onOpenMap: () => void;
   location: { lat: number; lng: number } | null;
@@ -868,8 +860,6 @@ function OrganizationsTabContent(props: {
   const {
     searchTerm,
     setSearchTerm,
-    searchTarget,
-    setSearchTarget,
     onSearchSubmit,
     onOpenMap,
     location,
@@ -1019,8 +1009,6 @@ function OrganizationsTabContent(props: {
     <div className="space-y-6 mb-8">
       <Group justify="space-between" align="center" gap="md" wrap="wrap">
         <DiscoverSearchControls
-          target={searchTarget}
-          onTargetChange={setSearchTarget}
           value={searchTerm}
           onValueChange={setSearchTerm}
           placeholder="Search by name or description"
@@ -1127,8 +1115,6 @@ function OrganizationsTabContent(props: {
 function TeamsTabContent(props: {
   searchTerm: string;
   setSearchTerm: (value: string) => void;
-  searchTarget: DiscoverSearchTarget;
-  setSearchTarget: (target: DiscoverSearchTarget) => void;
   onSearchSubmit: () => void;
   onOpenMap: () => void;
   teams: Team[];
@@ -1139,8 +1125,6 @@ function TeamsTabContent(props: {
   const {
     searchTerm,
     setSearchTerm,
-    searchTarget,
-    setSearchTarget,
     onSearchSubmit,
     onOpenMap,
     teams,
@@ -1154,11 +1138,9 @@ function TeamsTabContent(props: {
     <div className="space-y-6 mb-8">
       <Group justify="space-between" align="center" gap="md" wrap="wrap">
         <DiscoverSearchControls
-          target={searchTarget}
-          onTargetChange={setSearchTarget}
           value={searchTerm}
           onValueChange={setSearchTerm}
-          placeholder="Search open-registration teams..."
+          placeholder="Search teams with Open Registrations"
           onSearch={onSearchSubmit}
           onOpenMap={onOpenMap}
           searchLabel="Search teams"
@@ -1209,8 +1191,6 @@ function TeamsTabContent(props: {
 function RentalsTabContent(props: {
   searchTerm: string;
   setSearchTerm: (value: string) => void;
-  searchTarget: DiscoverSearchTarget;
-  setSearchTarget: (target: DiscoverSearchTarget) => void;
   onSearchSubmit: () => void;
   onOpenMap: () => void;
   location: { lat: number; lng: number } | null;
@@ -1233,8 +1213,6 @@ function RentalsTabContent(props: {
   const {
     searchTerm,
     setSearchTerm,
-    searchTarget,
-    setSearchTarget,
     onSearchSubmit,
     onOpenMap,
     location,
@@ -1454,8 +1432,6 @@ function RentalsTabContent(props: {
     <div className="space-y-6 mb-8">
       <Group justify="space-between" align="center" gap="md" wrap="wrap">
         <DiscoverSearchControls
-          target={searchTarget}
-          onTargetChange={setSearchTarget}
           value={searchTerm}
           onValueChange={setSearchTerm}
           placeholder="Search organizations and fields..."

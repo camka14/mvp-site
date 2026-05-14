@@ -29,7 +29,7 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import Loading from '@/components/ui/Loading';
 import { Event, getEventDivisionPriceRange } from '@/types';
 import { formatEnumDisplayLabel } from '@/lib/enumUtils';
-import DiscoverSearchControls, { type DiscoverSearchTarget } from './DiscoverSearchControls';
+import DiscoverSearchControls from './DiscoverSearchControls';
 
 const EVENT_SORT_OPTIONS = [
   { value: 'soonest', label: 'Soonest' },
@@ -59,8 +59,6 @@ type EventsTabContentProps<TEventType extends string = Event['eventType']> = {
   location: { lat: number; lng: number } | null;
   searchTerm: string;
   setSearchTerm: (value: string) => void;
-  searchTarget?: DiscoverSearchTarget;
-  setSearchTarget?: (target: DiscoverSearchTarget) => void;
   onSearchSubmit?: () => void;
   onOpenMap?: () => void;
   selectedEventTypes: TEventType[];
@@ -101,8 +99,6 @@ export default function EventsTabContent<TEventType extends string = Event['even
     location,
     searchTerm,
     setSearchTerm,
-    searchTarget = 'events',
-    setSearchTarget,
     onSearchSubmit = () => {},
     onOpenMap,
     selectedEventTypes,
@@ -473,15 +469,12 @@ export default function EventsTabContent<TEventType extends string = Event['even
       <div className="space-y-6 mb-8">
         <Group justify="space-between" align="center" gap="md" wrap="wrap">
           <DiscoverSearchControls
-            target={searchTarget}
-            onTargetChange={setSearchTarget ?? (() => {})}
             value={searchTerm}
             onValueChange={setSearchTerm}
-            placeholder="Search events, venues, teams..."
+            placeholder="Search events..."
             onSearch={onSearchSubmit}
             onOpenMap={onOpenMap}
             searchLabel="Search events"
-            showTargetSelect={Boolean(setSearchTarget)}
           />
           {showCreateEventButton && (
             <div style={{ minWidth: 260 }}>

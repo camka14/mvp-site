@@ -28,6 +28,7 @@ import { getNextRentalOccurrence } from '../utils/rentals';
 
 type MapCenter = { lat: number; lng: number };
 type MapSearchTarget = 'events' | 'organizations' | 'rentals';
+type MarkerType = 'event' | 'organization' | 'rental';
 
 type RentalMapListing = {
   organization: Organization;
@@ -68,6 +69,32 @@ const SEARCH_TARGETS: Array<{ value: MapSearchTarget; label: string }> = [
   { value: 'organizations', label: 'Organizations' },
   { value: 'rentals', label: 'Rentals' },
 ];
+
+const MARKER_STYLES: Record<MapSearchTarget, {
+  color: string;
+  shortLabel: string;
+  singular: string;
+  plural: string;
+}> = {
+  events: {
+    color: '#2563eb',
+    shortLabel: 'E',
+    singular: 'event',
+    plural: 'events',
+  },
+  organizations: {
+    color: '#16a34a',
+    shortLabel: 'O',
+    singular: 'org',
+    plural: 'orgs',
+  },
+  rentals: {
+    color: '#ea580c',
+    shortLabel: 'R',
+    singular: 'rental',
+    plural: 'rentals',
+  },
+};
 
 const getOrgCoordinates = (org: Organization): MapCenter | null => {
   if (Array.isArray(org.coordinates) && org.coordinates.length >= 2) {
@@ -135,6 +162,39 @@ export default function DiscoverMapModal({
   const [searchTarget, setSearchTarget] = useState<MapSearchTarget>('events');
   const [searchTerm, setSearchTerm] = useState('');
   const [selected, setSelected] = useState<MarkerSelection | null>(null);
+
+  const userLocationIcon = useMemo<google.maps.Symbol | undefined>(() => {
+    if (!isLoaded || typeof google === 'undefined') {
+      return undefined;
+    }
+    return {
+      path: google.maps.SymbolPath.CIRCLE,
+      fillColor: '#1c7ed6',
+      fillOpacity: 1,
+      scale: 8,
+      strokeColor: '#ffffff',
+      strokeWeight: 3,
+    };
+  }, [isLoaded]);
+
+  const markerIcons = useMemo<Record<MarkerType, google.maps.Symbol> | null>(() => {
+    if (!isLoaded || typeof google === 'undefined') {
+      return null;
+    }
+    const buildIcon = (fillColor: string): google.maps.Symbol => ({
+      path: google.maps.SymbolPath.CIRCLE,
+      fillColor,
+      fillOpacity: 1,
+      scale: 13,
+      strokeColor: '#ffffff',
+      strokeWeight: 2,
+    });
+    return {
+      event: buildIcon(MARKER_STYLES.events.color),
+      organization: buildIcon(MARKER_STYLES.organizations.color),
+      rental: buildIcon(MARKER_STYLES.rentals.color),
+    };
+  }, [isLoaded]);
 
   const loadMapData = useCallback(async (nextCenter: MapCenter) => {
     setLoading(true);
@@ -244,13 +304,30 @@ export default function DiscoverMapModal({
     return kmBetween(center, searchedCenter) >= SEARCH_AREA_THRESHOLD_KM;
   }, [center, kmBetween, searchedCenter]);
 
+  const visibleEvents = useMemo(() => (searchTarget === 'events' ? events : []), [events, searchTarget]);
+  const visibleOrganizations = useMemo(
+    () => (searchTarget === 'organizations' ? organizations : []),
+    [organizations, searchTarget],
+  );
+  const visibleRentals = useMemo(() => (searchTarget === 'rentals' ? rentals : []), [rentals, searchTarget]);
+
+  const activeResultCount = searchTarget === 'events'
+    ? visibleEvents.length
+    : searchTarget === 'organizations'
+      ? visibleOrganizations.length
+      : visibleRentals.length;
+  const activeMarkerStyle = MARKER_STYLES[searchTarget];
+  const activeMarkerLabel = `${activeResultCount} ${
+    activeResultCount === 1 ? activeMarkerStyle.singular : activeMarkerStyle.plural
+  } shown`;
+
   const searchResults = useMemo<SearchResult[]>(() => {
     const query = searchTerm.trim().toLowerCase();
     if (!query) return [];
     const results: SearchResult[] = [];
 
     if (searchTarget === 'events') {
-      events.forEach((event) => {
+      visibleEvents.forEach((event) => {
         const coordinates = getEventCoordinates(event);
         if (!coordinates) return;
         const text = `${event.name} ${event.location} ${event.description ?? ''}`.toLowerCase();
@@ -269,7 +346,7 @@ export default function DiscoverMapModal({
     }
 
     if (searchTarget === 'organizations') {
-      organizations.forEach((organization) => {
+      visibleOrganizations.forEach((organization) => {
         const coordinates = getOrgCoordinates(organization);
         if (!coordinates) return;
         const text = `${organization.name} ${organization.location ?? ''} ${organization.description ?? ''}`.toLowerCase();
@@ -287,7 +364,7 @@ export default function DiscoverMapModal({
       return results;
     }
 
-    rentals.forEach((rental) => {
+    visibleRentals.forEach((rental) => {
       const text = `${rental.organization.name} ${rental.field.name ?? ''} ${rental.field.location ?? ''}`.toLowerCase();
       if (text.includes(query)) {
         results.push({
@@ -301,7 +378,12 @@ export default function DiscoverMapModal({
       }
     });
     return results;
-  }, [events, organizations, rentals, searchTarget, searchTerm]);
+  }, [searchTarget, searchTerm, visibleEvents, visibleOrganizations, visibleRentals]);
+
+  const handleSearchTargetChange = useCallback((value: string | null) => {
+    setSearchTarget((value as MapSearchTarget) ?? 'events');
+    setSelected(null);
+  }, []);
 
   const focusResult = useCallback((result: SearchResult) => {
     map?.panTo(result.coordinates);
@@ -363,7 +445,7 @@ export default function DiscoverMapModal({
               aria-label="Map search category"
               data={SEARCH_TARGETS}
               value={searchTarget}
-              onChange={(value) => setSearchTarget((value as MapSearchTarget) ?? 'events')}
+              onChange={handleSearchTargetChange}
               allowDeselect={false}
               style={{ width: 150 }}
             />
@@ -463,7 +545,15 @@ export default function DiscoverMapModal({
               fullscreenControl: false,
             }}
           >
-            {events.map((event) => {
+            {location && (
+              <MarkerF
+                position={location}
+                title="Your location"
+                icon={userLocationIcon}
+                zIndex={1000}
+              />
+            )}
+            {visibleEvents.map((event) => {
               const coordinates = getEventCoordinates(event);
               if (!coordinates) return null;
               const markerId = event.$id;
@@ -472,12 +562,18 @@ export default function DiscoverMapModal({
                   key={`event-${markerId}`}
                   position={coordinates}
                   title={event.name}
-                  label="E"
+                  icon={markerIcons?.event}
+                  label={{
+                    text: MARKER_STYLES.events.shortLabel,
+                    color: '#ffffff',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                  }}
                   onClick={() => setSelected({ type: 'event', id: markerId })}
                 />
               );
             })}
-            {organizations.map((organization) => {
+            {visibleOrganizations.map((organization) => {
               const coordinates = getOrgCoordinates(organization);
               if (!coordinates) return null;
               return (
@@ -485,19 +581,31 @@ export default function DiscoverMapModal({
                   key={`org-${organization.$id}`}
                   position={coordinates}
                   title={organization.name}
-                  label="O"
+                  icon={markerIcons?.organization}
+                  label={{
+                    text: MARKER_STYLES.organizations.shortLabel,
+                    color: '#ffffff',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                  }}
                   onClick={() => setSelected({ type: 'organization', id: organization.$id })}
                 />
               );
             })}
-            {rentals.map((rental) => {
+            {visibleRentals.map((rental) => {
               const id = `${rental.organization.$id}:${rental.field.$id}:${rental.slot.$id}`;
               return (
                 <MarkerF
                   key={`rental-${id}`}
                   position={rental.coordinates}
                   title={rental.field.name || rental.organization.name}
-                  label="R"
+                  icon={markerIcons?.rental}
+                  label={{
+                    text: MARKER_STYLES.rentals.shortLabel,
+                    color: '#ffffff',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                  }}
                   onClick={() => setSelected({ type: 'rental', id })}
                 />
               );
@@ -579,10 +687,23 @@ export default function DiscoverMapModal({
           shadow="sm"
           style={{ position: 'absolute', zIndex: 4, right: 16, bottom: 16 }}
         >
-          <Group gap="sm">
-            <Text size="xs" c="dimmed">{events.length} events</Text>
-            <Text size="xs" c="dimmed">{organizations.length} orgs</Text>
-            <Text size="xs" c="dimmed">{rentals.length} rentals</Text>
+          <Group gap="sm" align="center">
+            <Group gap={4} align="center">
+              <span
+                aria-hidden="true"
+                style={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: 999,
+                  background: activeMarkerStyle.color,
+                  display: 'inline-block',
+                }}
+              />
+              <Text size="xs" c="dimmed">{activeMarkerLabel}</Text>
+            </Group>
+            <Text size="xs" c="dimmed">
+              Events {events.length} · Orgs {organizations.length} · Rentals {rentals.length}
+            </Text>
           </Group>
         </Paper>
       </div>
