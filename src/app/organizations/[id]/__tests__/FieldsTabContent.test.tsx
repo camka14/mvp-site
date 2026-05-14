@@ -426,6 +426,29 @@ describe('FieldsTabContent calendar navigation', () => {
     });
   });
 
+  it('can hide the discover back action for organization members', async () => {
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithRentalSlot()}
+          organizationId="org_test"
+          currentUser={{ $id: 'owner_1' } as any}
+          showBackButton={false}
+        />
+      </MantineProvider>,
+    );
+
+    expect(screen.queryByRole('button', { name: 'Back to Discover' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Add Rental Slot' })).toBeInTheDocument();
+  });
+
   it('allows managers to drag existing rental slots to a new time', async () => {
     const rentalDate = new Date('2026-03-10T10:00:00.000Z');
     getNextRentalOccurrenceMock.mockReturnValue(rentalDate);

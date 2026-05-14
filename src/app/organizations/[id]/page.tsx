@@ -3525,7 +3525,12 @@ function OrganizationDetailContent() {
             )}
 
             {activeTab === 'fields' && org && (
-              <FieldsTabContent organization={org} organizationId={id ?? ''} currentUser={user ?? null} />
+              <FieldsTabContent
+                organization={org}
+                organizationId={id ?? ''}
+                currentUser={user ?? null}
+                showBackButton={!isOrganizationRoleMember}
+              />
             )}
             </div>
           </>

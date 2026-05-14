@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { TextInput, Button, Paper } from '@mantine/core';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
-import { locationService } from '@/lib/locationService';
+import { locationService, type PlacePredictionOptions } from '@/lib/locationService';
 import { GOOGLE_MAP_OPTIONS_WITH_MAP_ID, GOOGLE_MAPS_LIBRARIES, GOOGLE_MAPS_MAP_ID, GOOGLE_MAPS_SCRIPT_ID } from '@/lib/googleMapsLoader';
 import { useDebounce } from '@/app/hooks/useDebounce';
 
@@ -17,6 +18,10 @@ interface LocationSelectorProps {
     showStreetViewControl?: boolean;
 }
 
+const MAP_SEARCH_PREDICTION_OPTIONS: PlacePredictionOptions = {
+    includeAllPlaceTypes: true,
+};
+
 const LocationSelector: React.FC<LocationSelectorProps> = ({
     value,
     coordinates,
@@ -26,7 +31,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     label = 'Location',
     required = false,
     errorMessage = 'Location is required',
-    showStreetViewControl = true,
+    showStreetViewControl = false,
 }) => {
     const [showMap, setShowMap] = useState(false);
     const [center, setCenter] = useState({ lat: 40.7128, lng: -74.0060 }); // NYC default
@@ -35,6 +40,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
     const [predictionSessionToken, setPredictionSessionToken] = useState<google.maps.places.AutocompleteSessionToken | null>(null);
     const [predictions, setPredictions] = useState<Array<{ description: string; placeId: string }>>([]);
     const [predictionsLoading, setPredictionsLoading] = useState(false);
+    const [mapSearchControlElement, setMapSearchControlElement] = useState<HTMLDivElement | null>(null);
     const geolocationRequestedRef = useRef(false);
     const advancedMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
     const legacyMarkerRef = useRef<google.maps.Marker | null>(null);
@@ -93,6 +99,37 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
             }
         };
     }, []);
+
+    useEffect(() => {
+        const maps = typeof google !== 'undefined' ? google.maps : null;
+        if (!isLoaded || !showMap || !mapInstance || !maps?.ControlPosition) {
+            setMapSearchControlElement(null);
+            return;
+        }
+
+        const controlElement = document.createElement('div');
+        controlElement.style.margin = '12px';
+        controlElement.style.width = 'min(360px, calc(100vw - 32px))';
+        controlElement.style.maxWidth = 'calc(100vw - 32px)';
+        controlElement.style.pointerEvents = 'auto';
+
+        const controls = mapInstance.controls[maps.ControlPosition.TOP_LEFT];
+        controls.push(controlElement);
+        setMapSearchControlElement(controlElement);
+
+        return () => {
+            setMapSearchControlElement(null);
+            let removeIndex = -1;
+            controls.forEach((element: Node, index: number) => {
+                if (element === controlElement) {
+                    removeIndex = index;
+                }
+            });
+            if (removeIndex >= 0) {
+                controls.removeAt(removeIndex);
+            }
+        };
+    }, [isLoaded, mapInstance, showMap]);
 
     useEffect(() => {
         let isCancelled = false;
@@ -175,6 +212,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                 const nextPredictions = await locationService.getPlacePredictions(
                     debouncedMapSearchQuery,
                     predictionSessionToken ?? undefined,
+                    MAP_SEARCH_PREDICTION_OPTIONS,
                 );
                 if (!cancelled) {
                     setPredictions(nextPredictions);
@@ -340,73 +378,73 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                     radius="md"
                     style={{ height: 256, overflow: 'hidden', position: 'relative' }}
                 >
-                    <div
-                        style={{
-                            position: 'absolute',
-                            zIndex: 2,
-                            left: 0,
-                            width: '50%',
-                            top: 0,
-                            padding: '12px',
-                            boxSizing: 'border-box',
-                        }}
-                    >
-                        <TextInput
-                            value={mapSearchQuery}
-                            onFocus={startPredictionSession}
-                            onChange={(e) => {
-                                const next = e.currentTarget.value;
-                                setMapSearchQuery(next);
-                            }}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    void searchLocation(mapSearchQuery);
-                                }
-                            }}
-                            placeholder="Search for an address or place"
-                            disabled={disabled}
-                            autoComplete="off"
-                        />
-                        {(predictionsLoading || predictions.length > 0) && (
-                            <div
-                                style={{
-                                    marginTop: '4px',
-                                    maxHeight: '200px',
-                                    overflowY: 'auto',
-                                    background: 'white',
-                                    borderRadius: '8px',
-                                    border: '1px solid #e5e7eb',
+                    {mapSearchControlElement && createPortal(
+                        <div style={{ width: '100%' }}>
+                            <TextInput
+                                value={mapSearchQuery}
+                                onFocus={startPredictionSession}
+                                onChange={(e) => {
+                                    const next = e.currentTarget.value;
+                                    setMapSearchQuery(next);
                                 }}
-                            >
-                                {predictionsLoading && (
-                                    <div style={{ padding: '8px 12px', fontSize: '12px', color: '#6b7280' }}>
-                                        Loading suggestions...
-                                    </div>
-                                )}
-                                {predictions.map((prediction) => (
-                                    <button
-                                        key={prediction.placeId}
-                                        type="button"
-                                        onClick={() => { void selectPrediction(prediction); }}
-                                        style={{
-                                            display: 'block',
-                                            width: '100%',
-                                            padding: '8px 12px',
-                                            textAlign: 'left',
-                                            border: 0,
-                                            borderBottom: '1px solid #f3f4f6',
-                                            background: 'white',
-                                            cursor: 'pointer',
-                                            fontSize: '14px',
-                                        }}
-                                    >
-                                        {prediction.description}
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        void searchLocation(mapSearchQuery);
+                                    }
+                                }}
+                                placeholder="Search for an address or place"
+                                disabled={disabled}
+                                autoComplete="off"
+                                styles={{
+                                    input: {
+                                        backgroundColor: 'white',
+                                        boxShadow: '0 2px 8px rgba(15, 23, 42, 0.18)',
+                                    },
+                                }}
+                            />
+                            {(predictionsLoading || predictions.length > 0) && (
+                                <div
+                                    style={{
+                                        marginTop: '4px',
+                                        maxHeight: '200px',
+                                        overflowY: 'auto',
+                                        background: 'white',
+                                        borderRadius: '8px',
+                                        border: '1px solid #e5e7eb',
+                                        boxShadow: '0 8px 20px rgba(15, 23, 42, 0.16)',
+                                    }}
+                                >
+                                    {predictionsLoading && (
+                                        <div style={{ padding: '8px 12px', fontSize: '12px', color: '#6b7280' }}>
+                                            Loading suggestions...
+                                        </div>
+                                    )}
+                                    {predictions.map((prediction) => (
+                                        <button
+                                            key={prediction.placeId}
+                                            type="button"
+                                            onClick={() => { void selectPrediction(prediction); }}
+                                            style={{
+                                                display: 'block',
+                                                width: '100%',
+                                                padding: '8px 12px',
+                                                textAlign: 'left',
+                                                border: 0,
+                                                borderBottom: '1px solid #f3f4f6',
+                                                background: 'white',
+                                                cursor: 'pointer',
+                                                fontSize: '14px',
+                                            }}
+                                        >
+                                            {prediction.description}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>,
+                        mapSearchControlElement,
+                    )}
                     <GoogleMap
                         mapContainerStyle={{ width: '100%', height: '100%' }}
                         center={mapCenter}
@@ -418,6 +456,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({
                             ...GOOGLE_MAP_OPTIONS_WITH_MAP_ID,
                             clickableIcons: true,
                             disableDefaultUI: false,
+                            fullscreenControl: true,
                             mapTypeControl: false,
                             streetViewControl: showStreetViewControl,
                         }}

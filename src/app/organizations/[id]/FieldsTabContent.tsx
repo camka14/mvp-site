@@ -482,6 +482,7 @@ type FieldsTabContentProps = {
   currentUser: UserData | null;
   backHref?: string;
   backLabel?: string;
+  showBackButton?: boolean;
   primaryActionLabel?: string;
   onRentalSelectionReady?: (payload: RentalSelectionCheckoutPayload) => void;
 };
@@ -492,6 +493,7 @@ export default function FieldsTabContent({
   currentUser,
   backHref = '/discover',
   backLabel = 'Back to Discover',
+  showBackButton = true,
   primaryActionLabel = 'Create Event',
   onRentalSelectionReady,
 }: FieldsTabContentProps) {
@@ -2353,9 +2355,11 @@ export default function FieldsTabContent({
           )}
 
           <Group justify="flex-end" mt="md">
-            <Button variant="default" onClick={() => router.push(backHref)}>
-              {backLabel}
-            </Button>
+            {showBackButton && (
+              <Button variant="default" onClick={() => router.push(backHref)}>
+                {backLabel}
+              </Button>
+            )}
             {canManage ? (
               <Button disabled={!selectedFieldIds.length || !selection} onClick={handleAddRentalSlotClick}>
                 Add Rental Slot

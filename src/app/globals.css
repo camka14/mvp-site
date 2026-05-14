@@ -323,20 +323,85 @@ svg {
   color: var(--discover-text-muted, #6b7280);
 }
 
+.discover-map-filter-shell {
+  position: absolute;
+  z-index: 3;
+  left: 1rem;
+  top: 6rem;
+  bottom: 1rem;
+  width: 18rem;
+  max-width: calc(100% - 2rem);
+  overflow: hidden;
+}
+
+.discover-map-filter-scroll {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.discover-map-marker {
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 3px solid;
+  border-radius: 999px;
+  box-shadow: 0 8px 18px -10px rgba(15, 23, 42, 0.8), 0 0 0 2px #ffffff;
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  overflow: hidden;
+  padding: 0;
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+.discover-map-marker:hover {
+  transform: translateY(-1px);
+}
+
+.discover-map-marker img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.discover-map-marker span {
+  padding-top: 1px;
+}
+
 .discover-map-info {
   display: grid;
-  gap: 0.375rem;
-  min-width: 11.25rem;
+  gap: 0.5rem;
+  min-width: 15rem;
+  max-width: 20rem;
 }
 
 .discover-map-info strong {
+  display: block;
   color: #111827;
   font-size: 0.875rem;
+  line-height: 1.2;
 }
 
 .discover-map-info span {
+  display: block;
   color: #4b5563;
   font-size: 0.75rem;
+  line-height: 1.25;
+}
+
+.discover-map-info p {
+  display: -webkit-box;
+  margin: 0;
+  color: #374151;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .discover-map-info button {
@@ -347,6 +412,28 @@ svg {
   cursor: pointer;
   font-weight: 600;
   padding: 0.375rem 0.625rem;
+}
+
+.discover-map-card-image {
+  width: 100%;
+  height: 6.5rem;
+  border-radius: 0.5rem;
+  object-fit: cover;
+}
+
+.discover-map-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.discover-map-card-avatar {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 999px;
+  object-fit: cover;
+  flex-shrink: 0;
 }
 
 .discover-map-placeholder {

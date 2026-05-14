@@ -81,6 +81,26 @@ describe('locationService Places autocomplete', () => {
     });
   });
 
+  it('can request unrestricted place autocomplete for map searches', async () => {
+    const fetchAutocompleteSuggestions = jest.fn().mockResolvedValue({
+      suggestions: [],
+    });
+
+    setGooglePlacesMock({
+      AutocompleteSuggestion: { fetchAutocompleteSuggestions },
+    });
+
+    await locationService.getPlacePredictions(
+      '2130 N Q St',
+      undefined,
+      { includeAllPlaceTypes: true },
+    );
+
+    expect(fetchAutocompleteSuggestions).toHaveBeenCalledWith({
+      input: '2130 N Q St',
+    });
+  });
+
   it('falls back to AutocompleteService when AutocompleteSuggestion is unavailable', async () => {
     const getPlacePredictions = jest.fn((request, callback) => {
       callback(
@@ -111,5 +131,31 @@ describe('locationService Places autocomplete', () => {
         placeId: 'place_austin',
       },
     ]);
+  });
+
+  it('omits legacy autocomplete type filters for unrestricted map searches', async () => {
+    const getPlacePredictions = jest.fn((request, callback) => {
+      callback([], 'ZERO_RESULTS');
+    });
+    const autocompleteServiceConstructor = jest.fn(() => ({ getPlacePredictions }));
+
+    setGooglePlacesMock({
+      AutocompleteService: autocompleteServiceConstructor,
+      PlacesServiceStatus: {
+        OK: 'OK',
+        ZERO_RESULTS: 'ZERO_RESULTS',
+      },
+    });
+
+    await locationService.getPlacePredictions(
+      'Whole Foods',
+      { token: 'places-session' },
+      { includeAllPlaceTypes: true },
+    );
+
+    expect(getPlacePredictions).toHaveBeenCalledWith(
+      { input: 'Whole Foods', sessionToken: { token: 'places-session' } },
+      expect.any(Function),
+    );
   });
 });

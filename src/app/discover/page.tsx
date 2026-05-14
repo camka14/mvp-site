@@ -39,6 +39,11 @@ import { formatDisplayTime } from '@/lib/dateUtils';
 import EventsTabContent from './components/EventsTabContent';
 import DiscoverSearchControls from './components/DiscoverSearchControls';
 import DiscoverMapModal from './components/DiscoverMapModal';
+import {
+  buildTeamDivisionFilterOptions,
+  filterOpenRegistrationTeams,
+  type TeamDivisionFilterOption,
+} from './utils/teamFilters';
 
 type RentalListing = {
   organization: Organization;
@@ -161,6 +166,8 @@ function DiscoverPageContent() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState<string | null>(null);
+  const [teamSelectedSports, setTeamSelectedSports] = useState<string[]>([]);
+  const [teamSelectedDivisionTypeValues, setTeamSelectedDivisionTypeValues] = useState<string[]>([]);
 
   /**
    * Map modal state
@@ -240,7 +247,22 @@ function DiscoverPageContent() {
     setSelectedSports((current) =>
       current.filter((sport) => sportOptions.includes(sport))
     );
+    setTeamSelectedSports((current) =>
+      current.filter((sport) => sportOptions.includes(sport))
+    );
   }, [sportOptions, sportsLoading]);
+
+  const teamDivisionTypeOptions = useMemo(
+    () => buildTeamDivisionFilterOptions(teamSelectedSports),
+    [teamSelectedSports],
+  );
+
+  useEffect(() => {
+    const availableValues = new Set(teamDivisionTypeOptions.map((option) => option.value));
+    setTeamSelectedDivisionTypeValues((current) =>
+      current.filter((value) => availableValues.has(value))
+    );
+  }, [teamDivisionTypeOptions]);
 
   const buildEventFilters = useCallback(
     (queryOverride?: string) => {
@@ -677,6 +699,15 @@ function DiscoverPageContent() {
     getOrgCoordinates,
   ]);
 
+  const filteredTeams = useMemo(
+    () => filterOpenRegistrationTeams(teams, {
+      selectedSports: teamSelectedSports,
+      selectedDivisionTypeValues: teamSelectedDivisionTypeValues,
+      divisionTypeOptions: teamDivisionTypeOptions,
+    }),
+    [teams, teamSelectedSports, teamSelectedDivisionTypeValues, teamDivisionTypeOptions],
+  );
+
   /**
    * Auth guard
    */
@@ -811,9 +842,18 @@ function DiscoverPageContent() {
               setSearchTerm={setSearchTerm}
               onSearchSubmit={handleSearchSubmit}
               onOpenMap={() => setMapOpened(true)}
-              teams={teams}
+              teams={filteredTeams}
+              totalTeams={teams.length}
               loading={teamsLoading}
               error={teamsError}
+              selectedSports={teamSelectedSports}
+              setSelectedSports={setTeamSelectedSports}
+              sports={sportOptions}
+              sportsLoading={sportsLoading}
+              sportsError={sportsError?.message ?? null}
+              selectedDivisionTypeValues={teamSelectedDivisionTypeValues}
+              setSelectedDivisionTypeValues={setTeamSelectedDivisionTypeValues}
+              divisionTypeOptions={teamDivisionTypeOptions}
               onSelectTeam={(team) => {
                 if (team.organizationId) {
                   router.push(`/organizations/${team.organizationId}?tab=teams`);
@@ -831,6 +871,21 @@ function DiscoverPageContent() {
         location={location}
         requestLocation={requestLocation}
         kmBetween={kmBetween}
+        selectedEventTypes={selectedEventTypes}
+        setSelectedEventTypes={setSelectedEventTypes}
+        eventTypeOptions={EVENT_TYPE_OPTIONS}
+        selectedSports={selectedSports}
+        setSelectedSports={setSelectedSports}
+        sports={sportOptions}
+        sportsLoading={sportsLoading}
+        sportsError={sportsError?.message ?? null}
+        maxDistance={maxDistance}
+        setMaxDistance={setMaxDistance}
+        selectedStartDate={selectedStartDate}
+        setSelectedStartDate={setSelectedStartDate}
+        selectedEndDate={selectedEndDate}
+        setSelectedEndDate={setSelectedEndDate}
+        defaultMaxDistance={DEFAULT_MAX_DISTANCE}
         onEventClick={handleSelectEvent}
         onOrganizationClick={handleSelectOrganization}
       />
@@ -1118,8 +1173,17 @@ function TeamsTabContent(props: {
   onSearchSubmit: () => void;
   onOpenMap: () => void;
   teams: Team[];
+  totalTeams: number;
   loading: boolean;
   error: string | null;
+  selectedSports: string[];
+  setSelectedSports: Dispatch<SetStateAction<string[]>>;
+  sports: string[];
+  sportsLoading: boolean;
+  sportsError: string | null;
+  selectedDivisionTypeValues: string[];
+  setSelectedDivisionTypeValues: Dispatch<SetStateAction<string[]>>;
+  divisionTypeOptions: TeamDivisionFilterOption[];
   onSelectTeam: (team: Team) => void;
 }) {
   const {
@@ -1128,11 +1192,197 @@ function TeamsTabContent(props: {
     onSearchSubmit,
     onOpenMap,
     teams,
+    totalTeams,
     loading,
     error,
+    selectedSports,
+    setSelectedSports,
+    sports,
+    sportsLoading,
+    sportsError,
+    selectedDivisionTypeValues,
+    setSelectedDivisionTypeValues,
+    divisionTypeOptions,
     onSelectTeam,
   } = props;
+  const [sportSearchTerm, setSportSearchTerm] = useState('');
+  const allSportsSelected = selectedSports.length === 0;
+  const sportsQuery = sportSearchTerm.trim().toLowerCase();
   const activeQuery = searchTerm.trim();
+  const visibleSports = useMemo(() => {
+    if (!sportsQuery) {
+      return sports;
+    }
+    return sports.filter((sport) => sport.toLowerCase().includes(sportsQuery));
+  }, [sports, sportsQuery]);
+
+  const divisionOptionsBySport = useMemo(() => {
+    const groups: Array<{ sport: string; options: TeamDivisionFilterOption[] }> = [];
+    const groupIndexes = new Map<string, number>();
+    divisionTypeOptions.forEach((option) => {
+      const existingIndex = groupIndexes.get(option.sport);
+      if (typeof existingIndex === 'number') {
+        groups[existingIndex].options.push(option);
+        return;
+      }
+      groupIndexes.set(option.sport, groups.length);
+      groups.push({ sport: option.sport, options: [option] });
+    });
+    return groups;
+  }, [divisionTypeOptions]);
+
+  const divisionOptionByValue = useMemo(
+    () => new Map(divisionTypeOptions.map((option) => [option.value, option])),
+    [divisionTypeOptions],
+  );
+
+  const activeFilters: Array<{ key: string; label: string; onRemove: () => void }> = [];
+
+  if (activeQuery) {
+    activeFilters.push({
+      key: 'query',
+      label: `Search: ${activeQuery}`,
+      onRemove: () => setSearchTerm(''),
+    });
+  }
+
+  selectedSports.forEach((sport) => {
+    activeFilters.push({
+      key: `sport-${sport}`,
+      label: sport,
+      onRemove: () => setSelectedSports((current) => current.filter((value) => value !== sport)),
+    });
+  });
+
+  selectedDivisionTypeValues.forEach((value) => {
+    const option = divisionOptionByValue.get(value);
+    if (!option) {
+      return;
+    }
+    activeFilters.push({
+      key: `division-${value}`,
+      label: option.label,
+      onRemove: () => setSelectedDivisionTypeValues((current) => current.filter((item) => item !== value)),
+    });
+  });
+
+  const resetFilters = useCallback(() => {
+    setSearchTerm('');
+    setSelectedSports([]);
+    setSelectedDivisionTypeValues([]);
+  }, [setSearchTerm, setSelectedSports, setSelectedDivisionTypeValues]);
+
+  const activeFilterCount = activeFilters.length;
+
+  const filterPanel = (
+    <div className="space-y-6">
+      <div>
+        <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
+          Sports
+        </Text>
+        <TextInput
+          value={sportSearchTerm}
+          onChange={(event) => setSportSearchTerm(event.currentTarget.value)}
+          placeholder="Search sport..."
+          mb="sm"
+        />
+        <Group gap="xs" align="center">
+          <Chip
+            radius="xl"
+            checked={allSportsSelected}
+            disabled={sportsLoading || !sports.length}
+            onChange={(checked) => {
+              if (checked) {
+                setSelectedSports([]);
+              }
+            }}
+          >
+            All
+          </Chip>
+          {sportsLoading ? (
+            <Loader size="sm" aria-label="Loading sports" />
+          ) : visibleSports.length ? (
+            visibleSports.map((sport) => (
+              <Chip
+                key={sport}
+                radius="xl"
+                checked={selectedSports.includes(sport)}
+                onChange={(checked) => {
+                  setSelectedSports((current) => {
+                    if (checked) {
+                      const next = new Set(current);
+                      next.add(sport);
+                      return Array.from(next);
+                    }
+                    return current.filter((value) => value !== sport);
+                  });
+                }}
+              >
+                {sport}
+              </Chip>
+            ))
+          ) : (
+            <Text size="sm" c="dimmed">
+              {sportsQuery ? 'No sports match this search.' : 'No sports available.'}
+            </Text>
+          )}
+        </Group>
+        {sportsError && (
+          <Alert color="red" radius="md" mt="sm">
+            {sportsError}
+          </Alert>
+        )}
+      </div>
+
+      <div>
+        <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
+          Division Types
+        </Text>
+        {!selectedSports.length ? (
+          <Text size="sm" c="dimmed">
+            Select one or more sports to choose division types.
+          </Text>
+        ) : !divisionOptionsBySport.length ? (
+          <Text size="sm" c="dimmed">
+            No division types are available for the selected sports.
+          </Text>
+        ) : (
+          <div className="space-y-3">
+            {divisionOptionsBySport.map((group) => (
+              <div key={group.sport}>
+                {selectedSports.length > 1 && (
+                  <Text size="xs" fw={600} c="dimmed" mb={6}>
+                    {group.sport}
+                  </Text>
+                )}
+                <Group gap="xs" align="center">
+                  {group.options.map((option) => (
+                    <Chip
+                      key={option.value}
+                      radius="xl"
+                      checked={selectedDivisionTypeValues.includes(option.value)}
+                      onChange={(checked) => {
+                        setSelectedDivisionTypeValues((current) => {
+                          if (checked) {
+                            const next = new Set(current);
+                            next.add(option.value);
+                            return Array.from(next);
+                          }
+                          return current.filter((value) => value !== option.value);
+                        });
+                      }}
+                    >
+                      {option.label}
+                    </Chip>
+                  ))}
+                </Group>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="space-y-6 mb-8">
@@ -1146,44 +1396,91 @@ function TeamsTabContent(props: {
           searchLabel="Search teams"
         />
         <Text size="sm" c="dimmed">
-          {teams.length} open team{teams.length === 1 ? '' : 's'}
+          {teams.length}
+          {totalTeams !== teams.length ? ` of ${totalTeams}` : ''} open team{teams.length === 1 ? '' : 's'}
           {activeQuery ? ` matching "${activeQuery}".` : '.'}
         </Text>
       </Group>
 
-      {error && (
-        <Alert color="red" radius="md">
-          {error}
-        </Alert>
-      )}
-
-      {loading ? (
-        <Loading text="Loading open teams..." />
-      ) : teams.length === 0 ? (
-        <Paper withBorder p="xl" radius="md">
-          <Text fw={600} mb={4}>
-            No open-registration teams found
-          </Text>
-          <Text size="sm" c="dimmed">
-            Try another team, sport, or division search.
-          </Text>
-        </Paper>
-      ) : (
-        <ResponsiveCardGrid>
-          {teams.map((team) => (
-            <TeamCard
-              key={team.$id}
-              team={team}
-              onClick={() => onSelectTeam(team)}
-              actions={
-                <Text size="xs" c="green" fw={600}>
-                  Open registration
+      <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <aside className="hidden lg:block lg:sticky lg:top-24 lg:h-[calc(100dvh-6.5rem)]">
+          <Paper withBorder p={0} radius="lg" className="h-full overflow-hidden">
+            <div className="discover-filter-panel h-full overflow-y-auto p-4">
+              <Group justify="space-between" align="center" mb="md">
+                <Text fw={700} size="sm">
+                  Filters
                 </Text>
-              }
-            />
-          ))}
-        </ResponsiveCardGrid>
-      )}
+                <Button variant="subtle" size="compact-sm" onClick={resetFilters} disabled={!activeFilterCount}>
+                  Reset
+                </Button>
+              </Group>
+              {filterPanel}
+            </div>
+          </Paper>
+        </aside>
+
+        <div className="space-y-4">
+          {activeFilters.length > 0 && (
+            <Paper withBorder p="sm" radius="lg" className="discover-active-filters">
+              <Group justify="space-between" align="flex-start" gap="xs" wrap="wrap">
+                <Group gap="xs" align="center">
+                  <Text fw={600} size="sm" c="dimmed">
+                    Active filters
+                  </Text>
+                  {activeFilters.map((filter) => (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      className="discover-active-filter-chip"
+                      onClick={filter.onRemove}
+                    >
+                      <span>{filter.label}</span>
+                      <X size={12} />
+                    </button>
+                  ))}
+                </Group>
+                <Button variant="subtle" size="compact-sm" onClick={resetFilters}>
+                  Clear all
+                </Button>
+              </Group>
+            </Paper>
+          )}
+
+          {error && (
+            <Alert color="red" radius="md">
+              {error}
+            </Alert>
+          )}
+
+          {loading ? (
+            <Loading text="Loading open teams..." />
+          ) : teams.length === 0 ? (
+            <Paper withBorder p="xl" radius="md">
+              <Text fw={600} mb={4}>
+                No open-registration teams found
+              </Text>
+              <Text size="sm" c="dimmed">
+                Try another team, sport, or division search.
+              </Text>
+            </Paper>
+          ) : (
+            <ResponsiveCardGrid>
+              {teams.map((team) => (
+                <TeamCard
+                  key={team.$id}
+                  team={team}
+                  onClick={() => onSelectTeam(team)}
+                  actions={
+                    <Text size="xs" c="green" fw={600}>
+                      Open registration
+                    </Text>
+                  }
+                />
+              ))}
+            </ResponsiveCardGrid>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

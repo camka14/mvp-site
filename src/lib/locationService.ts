@@ -20,7 +20,8 @@ export type PlacePrediction = {
 };
 
 export type PlacePredictionOptions = {
-  types?: string[];
+  types?: string[] | null;
+  includeAllPlaceTypes?: boolean;
   componentRestrictions?: {
     country?: string | string[];
   };
@@ -46,7 +47,9 @@ const LEGACY_AUTOCOMPLETE_TYPE_MAP: Record<string, string[]> = {
   address: ['street_address'],
 };
 
-const toAutocompletePrimaryTypes = (types?: string[]): string[] => {
+const toAutocompletePrimaryTypes = (options: PlacePredictionOptions = {}): string[] | undefined => {
+  if (options.includeAllPlaceTypes) return undefined;
+  const { types } = options;
   const sourceTypes = types?.length ? types : ['(cities)'];
   const primaryTypes = new Set<string>();
 
@@ -62,7 +65,8 @@ const toAutocompletePrimaryTypes = (types?: string[]): string[] => {
     }
   });
 
-  return Array.from(primaryTypes).slice(0, 5);
+  const values = Array.from(primaryTypes).slice(0, 5);
+  return values.length ? values : undefined;
 };
 
 const toIncludedRegionCodes = (componentRestrictions?: PlacePredictionOptions['componentRestrictions']): string[] | undefined => {
@@ -315,9 +319,10 @@ class LocationService {
     if (g.maps.places.AutocompleteSuggestion?.fetchAutocompleteSuggestions) {
       const request: any = {
         input: query,
-        includedPrimaryTypes: toAutocompletePrimaryTypes(options.types),
       };
+      const includedPrimaryTypes = toAutocompletePrimaryTypes(options);
       const includedRegionCodes = toIncludedRegionCodes(options.componentRestrictions);
+      if (includedPrimaryTypes) request.includedPrimaryTypes = includedPrimaryTypes;
       if (sessionToken) request.sessionToken = sessionToken;
       if (includedRegionCodes) request.includedRegionCodes = includedRegionCodes;
 
@@ -336,7 +341,8 @@ class LocationService {
     }
 
     const svc = new g.maps.places.AutocompleteService();
-    const request: any = { input: query, types: options.types ?? ['(cities)'] };
+    const request: any = { input: query };
+    if (!options.includeAllPlaceTypes) request.types = options.types ?? ['(cities)'];
     if (sessionToken) request.sessionToken = sessionToken;
     if (options.componentRestrictions) request.componentRestrictions = options.componentRestrictions;
     return new Promise((resolve, reject) => {
