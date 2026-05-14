@@ -16,6 +16,7 @@ import {
 } from '@/lib/divisionTypes';
 import { isAuthUserSuspended } from '@/server/authState';
 import { isSessionTokenCurrent } from '@/server/authSessions';
+import { DEFAULT_ORGANIZATION_STATUS } from '@/lib/organizationStatus';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +78,127 @@ const normalizeIds = (value: unknown): string[] => {
         .filter((entry) => entry.length > 0),
     ),
   );
+};
+
+const ACTIVE_TEAM_SEARCH_STATUSES = ['STARTED', 'ACTIVE', 'BLOCKED'] as const;
+const RELATED_EVENT_SEARCH_LIMIT = 500;
+
+const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
+  Array.from(
+    new Set(
+      values
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value.length > 0),
+    ),
+  )
+);
+
+const resolveRelatedEventSearchClauses = async (queryTerm: string): Promise<any[]> => {
+  const normalized = queryTerm.trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const containsQuery = { contains: normalized, mode: 'insensitive' as const };
+  const [organizations, fields, eventTeams, canonicalTeams] = await Promise.all([
+    prisma.organizations.findMany({
+      where: {
+        status: DEFAULT_ORGANIZATION_STATUS,
+        OR: [
+          { name: containsQuery },
+          { location: containsQuery },
+          { address: containsQuery },
+          { description: containsQuery },
+        ],
+      },
+      select: { id: true },
+      take: RELATED_EVENT_SEARCH_LIMIT,
+    }),
+    prisma.fields.findMany({
+      where: {
+        OR: [
+          { name: containsQuery },
+          { location: containsQuery },
+        ],
+      },
+      select: { id: true },
+      take: RELATED_EVENT_SEARCH_LIMIT,
+    }),
+    prisma.teams.findMany({
+      where: {
+        eventId: { not: null },
+        name: containsQuery,
+      },
+      select: { eventId: true },
+      take: RELATED_EVENT_SEARCH_LIMIT,
+    }),
+    prisma.canonicalTeams.findMany({
+      where: { name: containsQuery },
+      select: { id: true },
+      take: RELATED_EVENT_SEARCH_LIMIT,
+    }),
+  ]);
+
+  const organizationIds = uniqueStrings(organizations.map((organization) => organization.id));
+  const fieldIds = uniqueStrings(fields.map((field) => field.id));
+  const canonicalTeamIds = uniqueStrings(canonicalTeams.map((team) => team.id));
+  const eventTeamEventIds = uniqueStrings(eventTeams.map((team) => team.eventId));
+  const scheduledTimeSlotIds = fieldIds.length > 0
+    ? uniqueStrings(
+        (await prisma.timeSlots.findMany({
+          where: {
+            OR: [
+              { scheduledFieldId: { in: fieldIds } },
+              { scheduledFieldIds: { hasSome: fieldIds } },
+            ],
+          },
+          select: { id: true },
+          take: RELATED_EVENT_SEARCH_LIMIT,
+        })).map((timeSlot) => timeSlot.id),
+      )
+    : [];
+
+  let canonicalTeamEventIds: string[] = [];
+  if (canonicalTeamIds.length > 0) {
+    const [snapshotTeams, teamRegistrations] = await Promise.all([
+      prisma.teams.findMany({
+        where: {
+          eventId: { not: null },
+          parentTeamId: { in: canonicalTeamIds },
+        },
+        select: { eventId: true },
+        take: RELATED_EVENT_SEARCH_LIMIT,
+      }),
+      prisma.eventRegistrations.findMany({
+        where: {
+          registrantType: 'TEAM',
+          parentId: { in: canonicalTeamIds },
+          status: { in: [...ACTIVE_TEAM_SEARCH_STATUSES] },
+          slotId: null,
+          occurrenceDate: null,
+        },
+        select: { eventId: true },
+        take: RELATED_EVENT_SEARCH_LIMIT,
+      }),
+    ]);
+
+    canonicalTeamEventIds = uniqueStrings([
+      ...snapshotTeams.map((team) => team.eventId),
+      ...teamRegistrations.map((registration) => registration.eventId),
+    ]);
+  }
+
+  const teamEventIds = uniqueStrings([
+    ...eventTeamEventIds,
+    ...canonicalTeamEventIds,
+  ]);
+
+  return [
+    ...(organizationIds.length > 0 ? [{ organizationId: { in: organizationIds } }] : []),
+    ...(fieldIds.length > 0 ? [{ fieldIds: { hasSome: fieldIds } }] : []),
+    ...(scheduledTimeSlotIds.length > 0 ? [{ timeSlotIds: { hasSome: scheduledTimeSlotIds } }] : []),
+    ...(teamEventIds.length > 0 ? [{ id: { in: teamEventIds } }] : []),
+  ];
 };
 
 const getDivisionDetailsForEvents = async (
@@ -422,10 +544,12 @@ export async function POST(req: NextRequest) {
     });
   }
   if (hasQuery) {
+    const relatedSearchClauses = await resolveRelatedEventSearchClauses(queryTerm);
     where.OR = [
       { name: { contains: queryTerm, mode: 'insensitive' } },
       { description: { contains: queryTerm, mode: 'insensitive' } },
       { location: { contains: queryTerm, mode: 'insensitive' } },
+      ...relatedSearchClauses,
     ];
   }
   const organizationId = typeof filters.organizationId === 'string' ? filters.organizationId.trim() : '';

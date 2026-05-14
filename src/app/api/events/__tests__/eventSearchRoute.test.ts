@@ -1,0 +1,147 @@
+/** @jest-environment node */
+
+import { NextRequest } from 'next/server';
+
+const prismaMock = {
+  organizations: {
+    findMany: jest.fn(),
+  },
+  fields: {
+    findMany: jest.fn(),
+  },
+  teams: {
+    findMany: jest.fn(),
+  },
+  canonicalTeams: {
+    findMany: jest.fn(),
+  },
+  eventRegistrations: {
+    findMany: jest.fn(),
+  },
+  events: {
+    findMany: jest.fn(),
+  },
+  sports: {
+    findMany: jest.fn(),
+  },
+  divisions: {
+    findMany: jest.fn(),
+  },
+  timeSlots: {
+    findMany: jest.fn(),
+  },
+};
+
+const withEventAttendeeCountsMock = jest.fn(async (events: any[]) => events);
+const withDerivedEventParticipantIdsMock = jest.fn(async (events: any[]) => events);
+const getEventOfficialIdsByEventIdsMock = jest.fn(async () => new Map<string, string[]>());
+const getTokenFromRequestMock = jest.fn(() => null);
+
+jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+jest.mock('@/lib/authServer', () => ({
+  getTokenFromRequest: (...args: any[]) => getTokenFromRequestMock(...args),
+  verifySessionToken: jest.fn(),
+}));
+jest.mock('@/server/authState', () => ({ isAuthUserSuspended: jest.fn(() => false) }));
+jest.mock('@/server/authSessions', () => ({ isSessionTokenCurrent: jest.fn(() => true) }));
+jest.mock('@/app/api/events/participantCounts', () => ({
+  withEventAttendeeCounts: (...args: any[]) => withEventAttendeeCountsMock(...args),
+}));
+jest.mock('@/server/events/eventRegistrations', () => ({
+  withDerivedEventParticipantIds: (...args: any[]) => withDerivedEventParticipantIdsMock(...args),
+}));
+jest.mock('@/server/officials/eventOfficials', () => ({
+  getEventOfficialIdsByEventIds: (...args: any[]) => getEventOfficialIdsByEventIdsMock(...args),
+}));
+jest.mock('@/server/legacyFormat', () => ({
+  withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
+}));
+
+import { POST as searchEvents } from '@/app/api/events/search/route';
+
+const eventRow = (id: string, name = 'Unrelated event') => ({
+  id,
+  name,
+  description: null,
+  location: 'Court 1',
+  start: new Date('2026-06-01T18:00:00.000Z'),
+  end: new Date('2026-06-01T20:00:00.000Z'),
+  state: 'PUBLISHED',
+  eventType: 'EVENT',
+  parentEvent: null,
+  divisions: [],
+  teamSignup: true,
+  userIds: [],
+  teamIds: [],
+});
+
+describe('POST /api/events/search', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    prismaMock.organizations.findMany.mockResolvedValue([]);
+    prismaMock.fields.findMany.mockResolvedValue([]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.events.findMany.mockResolvedValue([]);
+    prismaMock.sports.findMany.mockResolvedValue([]);
+    prismaMock.divisions.findMany.mockResolvedValue([]);
+    prismaMock.timeSlots.findMany.mockResolvedValue([]);
+  });
+
+  it('expands event search queries across venues and team names', async () => {
+    prismaMock.organizations.findMany.mockResolvedValue([{ id: 'org_venue' }]);
+    prismaMock.fields.findMany.mockResolvedValue([{ id: 'field_venue' }]);
+    prismaMock.timeSlots.findMany.mockResolvedValue([{ id: 'slot_venue' }]);
+    prismaMock.teams.findMany
+      .mockResolvedValueOnce([{ eventId: 'event_team' }])
+      .mockResolvedValueOnce([{ eventId: 'event_canonical' }]);
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([{ id: 'canonical_team' }]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([{ eventId: 'event_registered_canonical' }]);
+    prismaMock.events.findMany.mockResolvedValue([
+      eventRow('event_team'),
+      eventRow('event_canonical'),
+      eventRow('event_registered_canonical'),
+    ]);
+
+    const response = await searchEvents(new NextRequest('http://localhost/api/events/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filters: { query: 'Aces' },
+        limit: 10,
+        offset: 0,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    const searchWhere = prismaMock.events.findMany.mock.calls[0][0].where;
+    expect(searchWhere.OR).toEqual(expect.arrayContaining([
+      { name: { contains: 'Aces', mode: 'insensitive' } },
+      { description: { contains: 'Aces', mode: 'insensitive' } },
+      { location: { contains: 'Aces', mode: 'insensitive' } },
+      { organizationId: { in: ['org_venue'] } },
+      { fieldIds: { hasSome: ['field_venue'] } },
+      { timeSlotIds: { hasSome: ['slot_venue'] } },
+      { id: { in: ['event_team', 'event_canonical', 'event_registered_canonical'] } },
+    ]));
+    expect(prismaMock.teams.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({ name: { contains: 'Aces', mode: 'insensitive' } }),
+    }));
+    expect(prismaMock.teams.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ parentTeamId: { in: ['canonical_team'] } }),
+    }));
+    expect(prismaMock.eventRegistrations.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        registrantType: 'TEAM',
+        parentId: { in: ['canonical_team'] },
+      }),
+    }));
+    expect(json.events.map((event: any) => event.$id)).toEqual([
+      'event_team',
+      'event_canonical',
+      'event_registered_canonical',
+    ]);
+  });
+});
