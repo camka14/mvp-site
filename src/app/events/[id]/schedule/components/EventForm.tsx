@@ -7315,7 +7315,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const isDivisionMaxParticipantsMissing = !eventData.singleDivision
             && typeof rawDivisionMaxParticipants !== 'number';
         const normalizedDivisionMaxParticipants = typeof rawDivisionMaxParticipants === 'number'
-            ? Math.max(2, Math.trunc(rawDivisionMaxParticipants))
+            ? Math.max(0, Math.trunc(rawDivisionMaxParticipants))
             : Math.max(2, Math.trunc(eventData.maxParticipants || 2));
         const rawDivisionPlayoffTeamCount = (() => {
             if (
@@ -7700,6 +7700,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         && divisionEditor.ageDivisionTypeId,
     );
     const divisionEditorReady = leagueDivisionEditorReady;
+    const divisionMaxParticipantsWarning = !eventData.singleDivision
+        && typeof divisionEditor.maxParticipants === 'number'
+        && divisionEditor.maxParticipants < 2
+        ? (eventData.teamSignup
+            ? 'Warning: make division max teams at least 2.'
+            : 'Warning: make division max participants at least 2.')
+        : null;
 
     useEffect(() => {
         if (sportsLoading) {
@@ -12192,7 +12199,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     <AnimatedLayoutSection in={!eventData.singleDivision} className="md:col-span-3">
                                         <NumberInput
                                             label={eventData.teamSignup ? 'Division Max Teams' : 'Division Max Participants'}
-                                            min={2}
+                                            min={0}
                                             max={MAX_STANDARD_NUMBER}
                                             value={divisionEditor.maxParticipants ?? ''}
                                             w="100%"
@@ -12203,16 +12210,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 if (isImmutableField('divisions') || !divisionEditorReady) {
                                                     return;
                                                 }
-                                                const numeric = typeof val === 'number' ? val : Number(val);
                                                 setDivisionEditor((prev) => ({
                                                     ...prev,
-                                                    maxParticipants: Number.isFinite(numeric)
-                                                        ? Math.max(2, Math.trunc(numeric))
-                                                        : null,
+                                                    maxParticipants: normalizePlayoffDivisionParticipantCount(val),
                                                     error: null,
                                                 }));
                                             }}
                                         />
+                                        {divisionMaxParticipantsWarning ? (
+                                            <Text size="xs" c="orange.7" mt={4}>
+                                                {divisionMaxParticipantsWarning}
+                                            </Text>
+                                        ) : null}
                                     </AnimatedLayoutSection>
                                     <AnimatedLayoutSection
                                         in={!eventData.singleDivision && !divisionEditor.allowPaymentPlans}

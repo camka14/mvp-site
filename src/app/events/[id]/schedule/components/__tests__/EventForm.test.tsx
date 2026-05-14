@@ -1734,6 +1734,59 @@ describe('EventForm dirty state', () => {
     expect(screen.getByLabelText('Division Max Participants')).toBeInTheDocument();
   });
 
+  it('warns for division max teams below two without coercing the input to two', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange, undefined, {
+      teamSignup: true,
+      singleDivision: false,
+      maxParticipants: null,
+    });
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const selectFirstAvailableOption = (label: string) => {
+      const select = screen.getByLabelText(label) as HTMLSelectElement;
+      const option = Array.from(select.options).find((candidate) => candidate.value.length > 0);
+      expect(option).toBeDefined();
+      fireEvent.change(select, {
+        target: { value: option!.value },
+      });
+    };
+
+    selectFirstAvailableOption('Gender');
+    selectFirstAvailableOption('Skill Division');
+    selectFirstAvailableOption('Age Division');
+
+    const maxTeamsInput = screen.getByLabelText('Division Max Teams') as HTMLInputElement;
+
+    await waitFor(() => {
+      expect(maxTeamsInput).toBeEnabled();
+    });
+
+    fireEvent.change(maxTeamsInput, {
+      target: { value: '1' },
+    });
+    fireEvent.blur(maxTeamsInput);
+
+    await waitFor(() => {
+      expect(maxTeamsInput.value).toBe('1');
+      expect(screen.getByText('Warning: make division max teams at least 2.')).toBeInTheDocument();
+    });
+
+    fireEvent.change(maxTeamsInput, {
+      target: { value: '0' },
+    });
+    fireEvent.blur(maxTeamsInput);
+
+    await waitFor(() => {
+      expect(maxTeamsInput.value).toBe('0');
+      expect(screen.getByText('Warning: make division max teams at least 2.')).toBeInTheDocument();
+    });
+  });
+
   it('uses division playoff team count as the multi-division league default source', async () => {
     const onDirtyStateChange = jest.fn();
 
