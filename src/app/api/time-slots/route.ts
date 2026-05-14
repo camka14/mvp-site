@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, withLegacyFields } from '@/server/legacyFormat';
+import { withLegacyFields } from '@/server/legacyFormat';
 import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
+import {
+  localDatePartsInTimeZone,
+  parseDateInputInTimeZone,
+  resolveTimeZone,
+  resolveTimeZoneFromFieldOrOrganization,
+} from '@/server/timeZones';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +32,7 @@ const createSchema = z.object({
   endTimeMinutes: z.number().nullable().optional(),
   startDate: z.string().optional(),
   endDate: z.string().nullable().optional(),
+  timeZone: z.string().optional(),
   repeating: z.boolean().optional(),
   scheduledFieldId: z.string().optional(),
   price: z.number().optional(),
@@ -88,16 +95,19 @@ const normalizeTemplateIds = (value: unknown): string[] => {
   );
 };
 
-const toDateOnlyValue = (value: Date): number => {
-  const copy = new Date(value.getTime());
-  copy.setHours(0, 0, 0, 0);
-  return copy.getTime();
+const toDateOnlyValue = (value: Date, timeZone: string): number => {
+  const parts = localDatePartsInTimeZone(value, timeZone);
+  if (!parts) {
+    return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+  }
+  return Date.UTC(parts.year, parts.month - 1, parts.day);
 };
 
 const normalizeRepeatingEndDate = (
   startDate: Date,
   endDate: Date | null,
   repeating: boolean,
+  timeZone: string,
 ): Date | null => {
   if (!repeating) {
     return endDate;
@@ -105,7 +115,34 @@ const normalizeRepeatingEndDate = (
   if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) {
     return null;
   }
-  return toDateOnlyValue(endDate) > toDateOnlyValue(startDate) ? endDate : null;
+  return toDateOnlyValue(endDate, timeZone) > toDateOnlyValue(startDate, timeZone) ? endDate : null;
+};
+
+const resolveSlotTimeZone = async (
+  scheduledFieldIds: string[],
+  explicitTimeZone?: string,
+): Promise<string> => {
+  if (!scheduledFieldIds.length) {
+    return resolveTimeZone(explicitTimeZone);
+  }
+
+  const fields = await prisma.fields.findMany({
+    where: { id: { in: scheduledFieldIds } },
+    select: { id: true, lat: true, long: true, organizationId: true },
+  });
+  const fieldById = new Map(fields.map((field) => [field.id, field]));
+  const primaryField = scheduledFieldIds.map((id) => fieldById.get(id)).find(Boolean) ?? fields[0] ?? null;
+  const organization = primaryField?.organizationId
+    ? await prisma.organizations.findUnique({
+      where: { id: primaryField.organizationId },
+      select: { coordinates: true },
+    })
+    : null;
+
+  return resolveTimeZone(
+    explicitTimeZone,
+    resolveTimeZoneFromFieldOrOrganization(primaryField as any, organization as any),
+  );
 };
 
 const isMissingTimeSlotDivisionsColumnError = (error: unknown): boolean => {
@@ -240,10 +277,7 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
-  const startDate = parseDateInput(data.startDate) ?? new Date();
-  const endDate = data.endDate === null ? null : parseDateInput(data.endDate);
   const repeating = data.repeating ?? false;
-  const normalizedEndDate = normalizeRepeatingEndDate(startDate, endDate, repeating);
   const normalizedDays = normalizeDaysOfWeek({
     dayOfWeek: data.dayOfWeek ?? undefined,
     daysOfWeek: data.daysOfWeek ?? undefined,
@@ -255,6 +289,10 @@ export async function POST(req: NextRequest) {
     ...(typeof data.scheduledFieldId === 'string' ? [data.scheduledFieldId] : []),
   ]);
   const scheduledFieldId = scheduledFieldIds[0] ?? data.scheduledFieldId ?? null;
+  const slotTimeZone = await resolveSlotTimeZone(scheduledFieldIds, data.timeZone);
+  const startDate = parseDateInputInTimeZone(data.startDate, slotTimeZone) ?? new Date();
+  const endDate = data.endDate === null ? null : parseDateInputInTimeZone(data.endDate, slotTimeZone);
+  const normalizedEndDate = normalizeRepeatingEndDate(startDate, endDate, repeating, slotTimeZone);
   const divisions = normalizeDivisionKeys(data.divisions);
   const now = new Date();
 
@@ -267,6 +305,7 @@ export async function POST(req: NextRequest) {
         startTimeMinutes: data.startTimeMinutes ?? null,
         endTimeMinutes: data.endTimeMinutes ?? null,
         startDate,
+        timeZone: slotTimeZone,
         endDate: normalizedEndDate,
         repeating,
         scheduledFieldId,
@@ -285,6 +324,7 @@ export async function POST(req: NextRequest) {
       ...slot,
       dayOfWeek: normalizedDays[0] ?? slot.dayOfWeek ?? null,
       daysOfWeek: normalizedDays,
+      timeZone: slotTimeZone,
       scheduledFieldId: scheduledFieldIds[0] ?? slot.scheduledFieldId ?? null,
       scheduledFieldIds,
       divisions,

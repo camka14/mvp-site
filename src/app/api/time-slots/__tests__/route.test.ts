@@ -7,6 +7,9 @@ const prismaMock = {
   fields: {
     findMany: jest.fn(),
   },
+  organizations: {
+    findUnique: jest.fn(),
+  },
   timeSlots: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
@@ -58,11 +61,16 @@ describe('time-slots routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    prismaMock.fields.findMany.mockResolvedValue([]);
+    prismaMock.organizations.findUnique.mockResolvedValue(null);
     prismaMock.timeSlots.findUnique.mockImplementation(async ({ where }: { where: { id: string } }) => ({
       id: where.id,
       startDate: new Date('2026-01-05T00:00:00.000Z'),
       endDate: null,
+      timeZone: 'UTC',
       repeating: true,
+      scheduledFieldId: null,
+      scheduledFieldIds: [],
     }));
   });
 
@@ -244,6 +252,53 @@ describe('time-slots routes', () => {
       requiredTemplateIds: ['tmpl_rental_doc'],
       hostRequiredTemplateIds: ['tmpl_host_contract'],
     }));
+  });
+
+  it('POST converts offset-less rental slot times using the selected field timezone', async () => {
+    prismaMock.fields.findMany.mockResolvedValueOnce([
+      { id: 'field_1', lat: 37.8, long: -122.4, organizationId: null },
+    ]);
+    prismaMock.timeSlots.create.mockResolvedValueOnce({
+      id: 'slot_timezone',
+      dayOfWeek: 4,
+      daysOfWeek: [4],
+      scheduledFieldId: 'field_1',
+      scheduledFieldIds: ['field_1'],
+      divisions: [],
+      startDate: new Date('2026-05-01T16:00:00.000Z'),
+      endDate: new Date('2026-05-02T04:00:00.000Z'),
+      timeZone: 'America/Los_Angeles',
+      repeating: false,
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 21 * 60,
+      price: null,
+      requiredTemplateIds: [],
+      hostRequiredTemplateIds: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await POST(jsonRequest('http://localhost/api/time-slots', {
+      id: 'slot_timezone',
+      dayOfWeek: 4,
+      scheduledFieldId: 'field_1',
+      startTimeMinutes: 9 * 60,
+      endTimeMinutes: 21 * 60,
+      repeating: false,
+      startDate: '2026-05-01T09:00:00',
+      endDate: '2026-05-01T21:00:00',
+    }));
+
+    expect(res.status).toBe(201);
+    expect(prismaMock.timeSlots.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          timeZone: 'America/Los_Angeles',
+          startDate: new Date('2026-05-01T16:00:00.000Z'),
+          endDate: new Date('2026-05-02T04:00:00.000Z'),
+        }),
+      }),
+    );
   });
 
   it('PATCH persists canonical arrays while preserving legacy aliases in the response', async () => {

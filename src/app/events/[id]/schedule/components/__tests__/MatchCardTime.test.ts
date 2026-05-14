@@ -17,13 +17,14 @@ const buildMatch = (overrides: Partial<Match> = {}): Match => ({
 });
 
 describe('MatchCard time display', () => {
-  it('displays serialized match times as wall-clock times', () => {
+  it('displays serialized match times in the event timezone', () => {
     renderWithMantine(
       createElement(MatchCard, {
         match: buildMatch({
           start: '2026-03-01T09:00:00.000+05:00',
           end: '2026-03-01T21:00:00.000+05:00',
         }),
+        timeZone: 'Asia/Karachi',
       }),
     );
 

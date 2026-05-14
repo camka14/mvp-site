@@ -206,6 +206,14 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
         id: 'event_1',
         imageId: 'file_logo_1',
         organizationId: 'org_1',
+        timeZone: 'America/Los_Angeles',
+      }),
+    }));
+    expect(txTimeSlotsCreateMock).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        timeZone: 'America/Los_Angeles',
+        startDate: new Date('2026-04-21T17:00:00.000Z'),
+        endDate: new Date('2026-04-21T18:00:00.000Z'),
       }),
     }));
   });

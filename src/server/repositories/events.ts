@@ -66,6 +66,16 @@ import {
   isTournamentPoolPlayEnabled,
   type GeneratedTournamentPool,
 } from '@/server/events/tournamentPools';
+import {
+  DEFAULT_EVENT_TIME_ZONE,
+  localDatePartsInTimeZone,
+  mondayDayInTimeZone,
+  minutesInTimeZone,
+  parseDateInputInTimeZone,
+  resolveTimeZone,
+  resolveTimeZoneFromCoordinates,
+  resolveTimeZoneFromFieldOrOrganization,
+} from '@/server/timeZones';
 
 type PrismaLike = PrismaClient | any;
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -1152,11 +1162,11 @@ const buildDivisionFieldMap = (
 };
 
 
-const coerceDate = (value: unknown): Date | null => {
+const coerceDate = (value: unknown, timeZone = DEFAULT_EVENT_TIME_ZONE): Date | null => {
   if (value instanceof Date) return value;
   if (typeof value === 'string' || typeof value === 'number') {
-    const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) return parsed;
+    const parsed = parseDateInputInTimeZone(value, timeZone);
+    if (parsed && !Number.isNaN(parsed.getTime())) return parsed;
   }
   return null;
 };
@@ -1486,14 +1496,15 @@ const buildTimeSlots = (
 ) => {
   return rows.map((row) => {
     const repeating = Boolean(row.repeating);
+    const slotTimeZone = resolveTimeZone(row.timeZone, DEFAULT_EVENT_TIME_ZONE);
     const startDate = row.startDate instanceof Date ? row.startDate : new Date(row.startDate);
     const endDate = row.endDate ? new Date(row.endDate) : null;
     const startTimeMinutes = typeof row.startTimeMinutes === 'number'
       ? row.startTimeMinutes
-      : (startDate.getHours() * 60 + startDate.getMinutes());
+      : minutesInTimeZone(startDate, slotTimeZone);
     const endTimeMinutes = typeof row.endTimeMinutes === 'number'
       ? row.endTimeMinutes
-      : (endDate ? endDate.getHours() * 60 + endDate.getMinutes() : 0);
+      : (endDate ? minutesInTimeZone(endDate, slotTimeZone) : 0);
     const normalizedDays = normalizeTimeSlotDays({
       dayOfWeek: row.dayOfWeek,
       daysOfWeek: (row as any).daysOfWeek,
@@ -1505,8 +1516,8 @@ const buildTimeSlots = (
       : fallbackDivisions;
     const daysOfWeek = normalizedDays.length
       ? normalizedDays
-      : [((startDate.getDay() + 6) % 7)];
-    const dayOfWeek = daysOfWeek[0] ?? ((startDate.getDay() + 6) % 7);
+      : [mondayDayInTimeZone(startDate, slotTimeZone)];
+    const dayOfWeek = daysOfWeek[0] ?? mondayDayInTimeZone(startDate, slotTimeZone);
     return new TimeSlot({
       id: row.id,
       dayOfWeek,
@@ -1520,6 +1531,7 @@ const buildTimeSlots = (
       field: normalizedFieldIds[0] ?? null,
       fieldIds: normalizedFieldIds,
       divisions: [...slotDivisions],
+      timeZone: slotTimeZone,
     });
   });
 };
@@ -1571,12 +1583,29 @@ const clearManagedFieldBlockingEvents = (fields: Record<string, PlayingField>): 
   }
 };
 
-const normalizeMondayIndex = (date: Date): number => (date.getDay() + 6) % 7;
+const mondayIndexFromUtcNoon = (date: Date): number => (date.getUTCDay() + 6) % 7;
 
-const setMinutesOnDay = (day: Date, minutes: number): Date => {
-  const next = new Date(day.getTime());
-  next.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
-  return next;
+const localNoonForDateInTimeZone = (date: Date, timeZone: string): Date => {
+  const parts = localDatePartsInTimeZone(date, timeZone);
+  if (!parts) {
+    return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 12));
+  }
+  return new Date(Date.UTC(parts.year, parts.month - 1, parts.day, 12));
+};
+
+const datePrefixFromUtcNoon = (date: Date): string =>
+  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+
+const instantFromUtcNoonAndMinutes = (date: Date, minutes: number, timeZone: string): Date | null => {
+  const dayOffset = Math.floor(minutes / (24 * 60));
+  const minuteOfDay = ((minutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+  const targetDay = new Date(date.getTime() + dayOffset * 24 * 60 * MINUTE_MS);
+  const hours = Math.floor(minuteOfDay / 60);
+  const minute = minuteOfDay % 60;
+  return parseDateInputInTimeZone(
+    `${datePrefixFromUtcNoon(targetDay)}T${String(hours).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`,
+    timeZone,
+  );
 };
 
 const rangesOverlap = (startA: Date, endA: Date, startB: Date, endB: Date): boolean =>
@@ -1625,19 +1654,24 @@ const appendBlockingEventsFromSlot = (params: {
   fallbackStart?: Date | null;
   fallbackEnd?: Date | null;
 }): void => {
-  const slotStart = toOptionalDate(params.slot?.startDate) ?? params.fallbackStart ?? null;
+  const slotTimeZone = resolveTimeZone(params.slot?.timeZone, DEFAULT_EVENT_TIME_ZONE);
+  const slotStart = parseDateInputInTimeZone(params.slot?.startDate, slotTimeZone)
+    ?? params.fallbackStart
+    ?? null;
   if (!slotStart) {
     return;
   }
   const repeating = params.slot?.repeating !== false;
   const startMinutes = typeof params.slot?.startTimeMinutes === 'number'
     ? params.slot.startTimeMinutes
-    : slotStart.getHours() * 60 + slotStart.getMinutes();
-  const explicitEnd = toOptionalDate(params.slot?.endDate) ?? params.fallbackEnd ?? null;
+    : minutesInTimeZone(slotStart, slotTimeZone);
+  const explicitEnd = parseDateInputInTimeZone(params.slot?.endDate, slotTimeZone)
+    ?? params.fallbackEnd
+    ?? null;
   const endMinutes = typeof params.slot?.endTimeMinutes === 'number'
     ? params.slot.endTimeMinutes
     : explicitEnd
-      ? explicitEnd.getHours() * 60 + explicitEnd.getMinutes()
+      ? minutesInTimeZone(explicitEnd, slotTimeZone)
       : null;
 
   if (!repeating) {
@@ -1672,17 +1706,14 @@ const appendBlockingEventsFromSlot = (params: {
   if (effectiveEnd.getTime() <= effectiveStart.getTime()) {
     return;
   }
-  const cursor = new Date(effectiveStart.getTime());
-  cursor.setHours(0, 0, 0, 0);
-  const lastDay = new Date(effectiveEnd.getTime());
-  lastDay.setHours(0, 0, 0, 0);
-  const durationMs = Math.max(MINUTE_MS, (endMinutes - startMinutes) * MINUTE_MS);
+  const cursor = localNoonForDateInTimeZone(effectiveStart, slotTimeZone);
+  const lastDay = localNoonForDateInTimeZone(effectiveEnd, slotTimeZone);
 
   while (cursor.getTime() <= lastDay.getTime()) {
-    if (days.includes(normalizeMondayIndex(cursor))) {
-      const occurrenceStart = setMinutesOnDay(cursor, startMinutes);
-      const occurrenceEnd = new Date(occurrenceStart.getTime() + durationMs);
-      if (rangesOverlap(occurrenceStart, occurrenceEnd, effectiveStart, effectiveEnd)) {
+    if (days.includes(mondayIndexFromUtcNoon(cursor))) {
+      const occurrenceStart = instantFromUtcNoonAndMinutes(cursor, startMinutes, slotTimeZone);
+      const occurrenceEnd = instantFromUtcNoonAndMinutes(cursor, endMinutes, slotTimeZone);
+      if (occurrenceStart && occurrenceEnd && rangesOverlap(occurrenceStart, occurrenceEnd, effectiveStart, effectiveEnd)) {
         appendBlockingEvent({
           field: params.field,
           id: `${params.blockPrefix}${params.fieldId}__${occurrenceStart.getTime()}`,
@@ -1692,7 +1723,7 @@ const appendBlockingEventsFromSlot = (params: {
         });
       }
     }
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 };
 
@@ -3864,6 +3895,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       matchRulesOverride: true as any,
       autoCreatePointMatchIncidents: true,
       sportId: true,
+      coordinates: true,
+      timeZone: true,
     },
   });
   const resolvedOrganizationId = normalizeEntityId(payload.organizationId) ?? normalizeEntityId(existingEvent?.organizationId);
@@ -3875,6 +3908,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         ownerId: true,
         hostIds: true,
         officialIds: true,
+        coordinates: true,
       } as any,
     })
     : null;
@@ -3962,9 +3996,54 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const eventLocation = payloadIncludesLocation
     ? payload.location ?? ''
     : (existingEvent as any)?.location ?? '';
+  const payloadCoordinates = Array.isArray(payload.coordinates)
+    ? payload.coordinates.filter((value: unknown): value is number => typeof value === 'number')
+    : null;
+  const existingEventTimeZone = resolveTimeZone((existingEvent as any)?.timeZone, DEFAULT_EVENT_TIME_ZONE);
+  const coordinateTimeZone = resolveTimeZoneFromCoordinates(
+    payloadCoordinates ?? (existingEvent as any)?.coordinates ?? (organizationAccess as any)?.coordinates,
+    existingEventTimeZone,
+  );
+  const eventTimeZone = payloadCoordinates
+    ? coordinateTimeZone
+    : resolveTimeZone(payload.timeZone, coordinateTimeZone);
   const defaultFieldLocation = normalizeOptionalText(eventLocation);
   const teams = Array.isArray(payload.teams) ? payload.teams : [];
   const timeSlots = Array.isArray(payload.timeSlots) ? payload.timeSlots : [];
+  const payloadFieldById = new Map<string, Record<string, unknown>>();
+  for (const field of fields) {
+    const fieldId = typeof field?.$id === 'string' && field.$id.trim().length > 0
+      ? field.$id.trim()
+      : typeof field?.id === 'string' && field.id.trim().length > 0
+        ? field.id.trim()
+        : '';
+    if (fieldId) {
+      payloadFieldById.set(fieldId, field);
+    }
+  }
+  const rawTimeSlotFieldIds = normalizeFieldIds(
+    timeSlots.flatMap((slot: Record<string, unknown>) => normalizeTimeSlotFieldIds(slot)),
+  );
+  const persistedSlotFields = rawTimeSlotFieldIds.length && typeof (client as any).fields?.findMany === 'function'
+    ? await (client as any).fields.findMany({
+      where: { id: { in: rawTimeSlotFieldIds } },
+      select: { id: true, lat: true, long: true, organizationId: true },
+    })
+    : [];
+  const persistedSlotFieldById = new Map<string, Record<string, unknown>>(
+    (persistedSlotFields as Array<Record<string, unknown>>).map((field) => [String(field.id), field]),
+  );
+  const timeSlotsWithResolvedTimeZones = timeSlots.map((slot: Record<string, unknown>) => {
+    const scheduledFieldIds = normalizeTimeSlotFieldIds(slot);
+    const primaryFieldId = scheduledFieldIds[0] ?? null;
+    const primaryField = primaryFieldId
+      ? payloadFieldById.get(primaryFieldId) ?? persistedSlotFieldById.get(primaryFieldId) ?? null
+      : null;
+    return {
+      ...slot,
+      timeZone: resolveTimeZoneFromFieldOrOrganization(primaryField, organizationAccess as any, eventTimeZone),
+    };
+  });
   const normalizeDivisionBilling = (detail: DivisionDetailPayload): DivisionDetailPayload => {
     if (billingOwnerHasStripeAccount) {
       return detail;
@@ -3992,11 +4071,12 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       ? divisionIdsFromDetails
       : fallbackDivisionIds;
   const singleDivisionEnabled = Boolean(payload.singleDivision);
-  const start = coerceDate(payload.start) ?? new Date();
+  const start = coerceDate(payload.start, eventTimeZone) ?? new Date();
   const canonicalTimeSlots = canonicalizeTimeSlots({
     eventId: id,
-    slots: timeSlots,
+    slots: timeSlotsWithResolvedTimeZones,
     fallbackStartDate: start,
+    timeZone: eventTimeZone,
     fallbackDivisionKeys: normalizedEventDivisionIds,
     enforceAllDivisions: singleDivisionEnabled,
     normalizeDivisions: (value) => normalizeDivisionIdentifierList(value, id),
@@ -4110,8 +4190,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const supportsNoFixedEndDateTime = isSchedulableEventType(nextEventType) || isWeeklyParent;
   const payloadIncludesEnd = Object.prototype.hasOwnProperty.call(payload, 'end');
   const payloadIncludesNoFixedEndDateTime = Object.prototype.hasOwnProperty.call(payload, 'noFixedEndDateTime');
-  const parsedPayloadEnd = payloadIncludesEnd ? coerceDate(payload.end) : null;
-  const parsedExistingEnd = coerceDate(existingEvent?.end);
+  const parsedPayloadEnd = payloadIncludesEnd ? coerceDate(payload.end, eventTimeZone) : null;
+  const parsedExistingEnd = coerceDate(existingEvent?.end, eventTimeZone);
   const candidateEnd = payloadIncludesEnd
     ? parsedPayloadEnd
     : parsedExistingEnd;
@@ -4205,7 +4285,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     ? (payload.installmentCount ?? null)
     : 0;
   const normalizedEventInstallmentDueDates = billingOwnerHasStripeAccount
-    ? (isWeeklyParent ? [] : (ensureArray(payload.installmentDueDates).map((value) => coerceDate(value)).filter(Boolean) as Date[]))
+    ? (isWeeklyParent ? [] : (ensureArray(payload.installmentDueDates).map((value) => coerceDate(value, eventTimeZone)).filter(Boolean) as Date[]))
     : [];
   const normalizedEventInstallmentDueRelativeDays = billingOwnerHasStripeAccount && isWeeklyParent
     ? normalizeInstallmentRelativeDayList(payload.installmentDueRelativeDays)
@@ -4263,6 +4343,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     name: payload.name ?? 'Untitled Event',
     start,
     end: normalizedEnd,
+    timeZone: eventTimeZone,
     description: payload.description ?? null,
     divisions: normalizedEventDivisionIds,
     winnerSetCount: payload.winnerSetCount ?? null,
@@ -4293,9 +4374,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     fieldCount: fieldIds.length > 0 ? fieldIds.length : null,
     winnerBracketPointsToVictory: ensureNumberArray(payload.winnerBracketPointsToVictory),
     loserBracketPointsToVictory: ensureNumberArray(payload.loserBracketPointsToVictory),
-    coordinates: Array.isArray(payload.coordinates)
-      ? payload.coordinates.filter((value: unknown): value is number => typeof value === 'number')
-      : null,
+    coordinates: payloadCoordinates,
     gamesPerOpponent: payload.gamesPerOpponent ?? null,
     includePlayoffs: includePlayoffsOrPools,
     playoffTeamCount: payload.playoffTeamCount ?? null,
@@ -4570,8 +4649,9 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   for (const slot of canonicalTimeSlots) {
     const slotId = slot.id;
     if (!slotId) continue;
-    const startDate = coerceDate(slot.startDate) ?? new Date();
-    const endDate = slot.endDate ? coerceDate(slot.endDate) : null;
+    const slotTimeZone = resolveTimeZone(slot.timeZone, eventTimeZone);
+    const startDate = coerceDate(slot.startDate, slotTimeZone) ?? new Date();
+    const endDate = slot.endDate ? coerceDate(slot.endDate, slotTimeZone) : null;
     const slotDivisionKeys = normalizeDivisionIdentifierList(slot.divisions, id);
     const slotDivisions = singleDivisionEnabled
       ? normalizedEventDivisionIds
@@ -4588,6 +4668,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         startTimeMinutes: slot.startTimeMinutes ?? null,
         endTimeMinutes: slot.endTimeMinutes ?? null,
         startDate,
+        timeZone: slotTimeZone,
         repeating: Boolean(slot.repeating),
         endDate,
         scheduledFieldId: slot.scheduledFieldId ?? null,
@@ -4603,6 +4684,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         startTimeMinutes: slot.startTimeMinutes ?? null,
         endTimeMinutes: slot.endTimeMinutes ?? null,
         startDate,
+        timeZone: slotTimeZone,
         repeating: Boolean(slot.repeating),
         endDate,
         scheduledFieldId: slot.scheduledFieldId ?? null,

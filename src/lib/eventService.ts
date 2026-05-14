@@ -1139,6 +1139,7 @@ class EventService {
       description: row.description,
       start: row.start,
       end: row.end,
+      timeZone: typeof row.timeZone === "string" && row.timeZone.trim().length > 0 ? row.timeZone : "UTC",
       location: row.location,
       address: row.address ?? undefined,
       coordinates: row.coordinates,
@@ -2705,6 +2706,7 @@ class EventService {
       daysOfWeek: normalizedDays,
       startTimeMinutes: startTime,
       endTimeMinutes: endTime,
+      timeZone: typeof row.timeZone === "string" && row.timeZone.trim().length > 0 ? row.timeZone : "UTC",
       repeating: row.repeating === undefined ? true : Boolean(row.repeating),
       event: row.event ?? row.eventId ?? row.event?.$id,
       scheduledFieldId: normalizedFieldIds[0] ?? row.scheduledFieldId,
@@ -2731,9 +2733,12 @@ class EventService {
       taxHandling: normalizeRentalTaxHandling(row.taxHandling),
     };
 
-    const normalizedStartDate = ensureLocalDateTimeString(
-      row.startDate ?? row.start ?? null,
-    );
+    const rawStartDate = row.startDate ?? row.start ?? null;
+    const normalizedStartDate = rawStartDate instanceof Date
+      ? rawStartDate.toISOString()
+      : typeof rawStartDate === "string" && rawStartDate.trim().length > 0
+        ? rawStartDate
+        : ensureLocalDateTimeString(rawStartDate);
     if (normalizedStartDate) {
       slot.startDate = normalizedStartDate;
     }
@@ -2741,7 +2746,12 @@ class EventService {
     if (row.endDate === null) {
       slot.endDate = null;
     } else {
-      const normalizedEndDate = ensureLocalDateTimeString(row.endDate ?? null);
+      const rawEndDate = row.endDate ?? null;
+      const normalizedEndDate = rawEndDate instanceof Date
+        ? rawEndDate.toISOString()
+        : typeof rawEndDate === "string" && rawEndDate.trim().length > 0
+          ? rawEndDate
+          : ensureLocalDateTimeString(rawEndDate);
       if (normalizedEndDate) {
         slot.endDate = normalizedEndDate;
       }

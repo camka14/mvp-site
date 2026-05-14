@@ -3,7 +3,7 @@
 import { memo } from 'react';
 import Image from 'next/image';
 import { getTeamAvatarUrl, getUserAvatarUrl, Match, UserData } from '@/types';
-import { formatDisplayDateTime, formatDisplayTime, parseLocalDateTime } from '@/lib/dateUtils';
+import { formatDisplayDateTime, formatDisplayTime, normalizeTimeZone } from '@/lib/dateUtils';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 
@@ -25,6 +25,7 @@ interface MatchCardProps {
     showEventOfficialNames?: boolean;
     showDivisionBadge?: boolean;
     highlightDivisionBadge?: boolean;
+    timeZone?: string;
 }
 
 type MatchDivisionInput = Match['division'] | string | null | undefined;
@@ -73,8 +74,10 @@ function MatchCard({
     showEventOfficialNames = true,
     showDivisionBadge = true,
     highlightDivisionBadge = false,
+    timeZone,
 }: MatchCardProps) {
     const isCompactHorizontal = layout === 'horizontal' && hideTimeBadge;
+    const resolvedTimeZone = normalizeTimeZone(timeZone);
 
     const toTitleCase = (value: string) =>
         value
@@ -181,11 +184,11 @@ function MatchCard({
 
     const formatTime = (timeString?: string | null) => {
         if (!timeString || typeof timeString !== 'string') return 'TBD';
-        const date = parseLocalDateTime(timeString);
-        if (!date) return 'TBD';
+        const date = new Date(timeString);
+        if (Number.isNaN(date.getTime())) return 'TBD';
         return showDate
-            ? formatDisplayDateTime(date)
-            : formatDisplayTime(date);
+            ? formatDisplayDateTime(date, { timeZone: resolvedTimeZone })
+            : formatDisplayTime(date, { timeZone: resolvedTimeZone });
     };
     const resolveOfficialLabel = (userId: string): string | null => {
         const normalizedUserId = userId.trim();

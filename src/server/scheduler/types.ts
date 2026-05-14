@@ -7,6 +7,11 @@ import type {
   MatchSegment,
   ResolvedMatchRules,
 } from '@/types';
+import {
+  getDateTimePartsInTimeZone,
+  normalizeTimeZone,
+  zonedTimeToUtcDate,
+} from '@/lib/dateUtils';
 
 export const MINUTE_MS = 60 * 1000;
 
@@ -217,6 +222,7 @@ export class TimeSlot {
   field?: string | null;
   fieldIds: string[];
   divisions: Division[];
+  timeZone: string;
 
   constructor(params: {
     id: string;
@@ -231,6 +237,7 @@ export class TimeSlot {
     field?: string | null;
     fieldIds?: string[];
     divisions?: Division[];
+    timeZone?: string | null;
   }) {
     const normalizedDays = Array.from(
       new Set(
@@ -267,18 +274,40 @@ export class TimeSlot {
     this.fieldIds = normalizedFieldIds;
     this.field = params.field ?? normalizedFieldIds[0] ?? null;
     this.divisions = params.divisions ?? [];
+    this.timeZone = normalizeTimeZone(params.timeZone, 'UTC');
   }
 
   asDateRange(reference: Date): [Date, Date] {
-    const referenceDate = new Date(reference);
-    // Slots store Monday-based indexes (0=Mon ... 6=Sun), while JS Date#getDay() is Sunday-based.
-    const referenceDay = (referenceDate.getDay() + 6) % 7;
+    const referenceParts = getDateTimePartsInTimeZone(reference, this.timeZone);
+    if (!referenceParts) {
+      const referenceDate = new Date(reference);
+      const referenceDay = (referenceDate.getDay() + 6) % 7;
+      const daysAhead = (this.dayOfWeek - referenceDay + 7) % 7;
+      const slotDate = new Date(referenceDate);
+      slotDate.setHours(0, 0, 0, 0);
+      slotDate.setDate(slotDate.getDate() + daysAhead);
+      const start = new Date(slotDate.getTime() + this.startTimeMinutes * MINUTE_MS);
+      const end = new Date(slotDate.getTime() + this.endTimeMinutes * MINUTE_MS);
+      return [start, end];
+    }
+    const referenceNoon = new Date(Date.UTC(referenceParts.year, referenceParts.month - 1, referenceParts.day, 12));
+    const referenceDay = (referenceNoon.getUTCDay() + 6) % 7;
     const daysAhead = (this.dayOfWeek - referenceDay + 7) % 7;
-    const slotDate = new Date(referenceDate);
-    slotDate.setHours(0, 0, 0, 0);
-    slotDate.setDate(slotDate.getDate() + daysAhead);
-    const start = new Date(slotDate.getTime() + this.startTimeMinutes * MINUTE_MS);
-    const end = new Date(slotDate.getTime() + this.endTimeMinutes * MINUTE_MS);
+    const slotNoon = new Date(referenceNoon.getTime() + daysAhead * 24 * 60 * MINUTE_MS);
+    const datePrefix = (date: Date): string =>
+      `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    const toWallClock = (minutes: number): string => {
+      const dayOffset = Math.floor(minutes / (24 * 60));
+      const minuteOfDay = ((minutes % (24 * 60)) + (24 * 60)) % (24 * 60);
+      const targetDay = new Date(slotNoon.getTime() + dayOffset * 24 * 60 * MINUTE_MS);
+      const hours = Math.floor(minuteOfDay / 60);
+      const minute = minuteOfDay % 60;
+      return `${datePrefix(targetDay)}T${String(hours).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`;
+    };
+    const start = zonedTimeToUtcDate(toWallClock(this.startTimeMinutes), this.timeZone)
+      ?? new Date(reference.getTime());
+    const end = zonedTimeToUtcDate(toWallClock(this.endTimeMinutes), this.timeZone)
+      ?? new Date(start.getTime() + Math.max(1, this.endTimeMinutes - this.startTimeMinutes) * MINUTE_MS);
     return [start, end];
   }
 }

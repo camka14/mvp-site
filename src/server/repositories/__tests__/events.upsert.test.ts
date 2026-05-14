@@ -172,6 +172,115 @@ describe('upsertEventFromPayload', () => {
     expect(eventUpsertArg.update.end).toEqual(new Date('2026-05-03T01:20:00.000Z'));
   });
 
+  it('converts offset-less event and slot wall-clock times with the event timezone before persisting', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      start: '2026-05-01T09:00:00',
+      end: '2026-05-01T21:00:00',
+      timeZone: 'America/Los_Angeles',
+      noFixedEndDateTime: false,
+      divisions: ['OPEN'],
+      fields: [
+        {
+          $id: 'field_1',
+          name: 'Court A',
+          location: 'Main Gym',
+          divisions: ['OPEN'],
+        },
+      ],
+      timeSlots: [
+        {
+          $id: 'slot_pacific',
+          dayOfWeek: 4,
+          daysOfWeek: [4],
+          divisions: ['OPEN'],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 21 * 60,
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          startDate: '2026-05-01T09:00:00',
+          endDate: '2026-05-01T21:00:00',
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.timeZone).toBe('America/Los_Angeles');
+    expect(eventUpsertArg.create.start).toEqual(new Date('2026-05-01T16:00:00.000Z'));
+    expect(eventUpsertArg.create.end).toEqual(new Date('2026-05-02T04:00:00.000Z'));
+
+    const persistedSlot = client.timeSlots.upsert.mock.calls[0][0].create;
+    expect(persistedSlot.timeZone).toBe('America/Los_Angeles');
+    expect(persistedSlot.startDate).toEqual(new Date('2026-05-01T16:00:00.000Z'));
+    expect(persistedSlot.endDate).toEqual(new Date('2026-05-02T04:00:00.000Z'));
+  });
+
+  it('uses event coordinates over the browser-provided timezone when coordinates are present', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      start: '2026-05-01T09:00:00',
+      end: '2026-05-01T21:00:00',
+      timeZone: 'America/New_York',
+      coordinates: [-122.4, 37.8],
+      noFixedEndDateTime: false,
+      divisions: ['OPEN'],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.timeZone).toBe('America/Los_Angeles');
+    expect(eventUpsertArg.create.start).toEqual(new Date('2026-05-01T16:00:00.000Z'));
+    expect(eventUpsertArg.create.end).toEqual(new Date('2026-05-02T04:00:00.000Z'));
+  });
+
+  it('uses the selected field location timezone for persisted rental slots', async () => {
+    const client = createMockClient();
+    const payload = {
+      ...baseEventPayload(),
+      start: '2026-05-01T09:00:00',
+      end: '2026-05-01T21:00:00',
+      timeZone: 'America/New_York',
+      noFixedEndDateTime: false,
+      divisions: ['OPEN'],
+      fields: [
+        {
+          $id: 'field_1',
+          name: 'Court A',
+          location: 'Main Gym',
+          lat: 37.8,
+          long: -122.4,
+          divisions: ['OPEN'],
+        },
+      ],
+      timeSlots: [
+        {
+          $id: 'slot_field_timezone',
+          dayOfWeek: 4,
+          daysOfWeek: [4],
+          divisions: ['OPEN'],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 21 * 60,
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          startDate: '2026-05-01T09:00:00',
+          endDate: '2026-05-01T21:00:00',
+        },
+      ],
+    };
+
+    await upsertEventFromPayload(payload, client as any);
+
+    const persistedSlot = client.timeSlots.upsert.mock.calls[0][0].create;
+    expect(persistedSlot.timeZone).toBe('America/Los_Angeles');
+    expect(persistedSlot.startDate).toEqual(new Date('2026-05-01T16:00:00.000Z'));
+    expect(persistedSlot.endDate).toEqual(new Date('2026-05-02T04:00:00.000Z'));
+  });
+
   it('persists multi-day slot payloads as one canonical row', async () => {
     const client = createMockClient();
     const payload = {

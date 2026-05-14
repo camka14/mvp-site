@@ -25,7 +25,15 @@ import {
     normalizeEntityId,
     sanitizeOrganizationEventAssignments,
 } from '@/lib/organizationEventAccess';
-import { formatLocalDateTime, nowLocalDateTimeString, parseLocalDateTime } from '@/lib/dateUtils';
+import {
+    formatDateTimeInTimeZone,
+    formatLocalDateTime,
+    getSystemTimeZone,
+    hasExplicitTimeZoneOffset,
+    normalizeTimeZone,
+    nowLocalDateTimeString,
+    parseLocalDateTime,
+} from '@/lib/dateUtils';
 import { createClientId } from '@/lib/clientId';
 import LeagueFields, { LeagueSlotForm } from '@/app/discover/components/LeagueFields';
 import { apiRequest } from '@/lib/apiClient';
@@ -213,6 +221,15 @@ const MAX_DESCRIPTION_LENGTH = 1000;
 const DEFAULT_DIVISION_KEY = 'open';
 const DEFAULT_AGE_DIVISION_FALLBACK = '18plus';
 const PREFERRED_AGE_DIVISION_IDS = ['18plus', '19plus', 'u18', '18u', 'u19', '19u'] as const;
+const formatEventDateTimeForForm = (
+    value: Date | string | null | undefined,
+    timeZone: string,
+): string => {
+    if (typeof value === 'string' && value.trim() && !hasExplicitTimeZoneOffset(value)) {
+        return formatLocalDateTime(value);
+    }
+    return formatDateTimeInTimeZone(value, timeZone) || formatLocalDateTime(value);
+};
 const DIVISION_GENDER_OPTIONS = [
     { value: 'M', label: 'Mens' },
     { value: 'F', label: 'Womens' },
@@ -1625,13 +1642,14 @@ const parseExplicitSlotRange = (
 const normalizeSlotBoundaryOverrideForForm = (
     slotValue: string | Date | null | undefined,
     eventBoundary: string | Date | null | undefined,
+    timeZone: string,
 ): string | undefined => {
-    const normalizedSlotValue = formatLocalDateTime(slotValue ?? null);
+    const normalizedSlotValue = formatEventDateTimeForForm(slotValue ?? null, timeZone);
     if (!normalizedSlotValue) {
         return undefined;
     }
 
-    const normalizedEventBoundary = formatLocalDateTime(eventBoundary ?? null);
+    const normalizedEventBoundary = formatEventDateTimeForForm(eventBoundary ?? null, timeZone);
     return normalizedEventBoundary && normalizedSlotValue === normalizedEventBoundary
         ? undefined
         : normalizedSlotValue;
@@ -2400,6 +2418,7 @@ type EventFormState = {
     coordinates: [number, number];
     start: string;
     end: string;
+    timeZone: string;
     state: EventState;
     eventType: EventType;
     parentEvent?: string;
@@ -2823,6 +2842,7 @@ const mapEventToFormState = (event: Event): EventFormState => {
         }
         return false;
     })();
+    const eventTimeZone = normalizeTimeZone(event.timeZone, getSystemTimeZone());
 
     const resolvedSportId = (() => {
         // `event.sport` is historically inconsistent: it may be a Sport object, a string id, or absent.
@@ -3150,8 +3170,9 @@ const mapEventToFormState = (event: Event): EventFormState => {
     location: event.location ?? '',
     address: event.address ?? '',
     coordinates: Array.isArray(event.coordinates) ? event.coordinates as [number, number] : [0, 0],
-    start: event.start,
-    end: event.end ?? '',
+    start: formatEventDateTimeForForm(event.start, eventTimeZone) || event.start,
+    end: event.end ? (formatEventDateTimeForForm(event.end, eventTimeZone) || event.end) : '',
+    timeZone: eventTimeZone,
     state: (event.state as EventState) ?? 'DRAFT',
     eventType: event.eventType,
     parentEvent: event.parentEvent || undefined,
@@ -3266,6 +3287,7 @@ const leagueSlotSchema: z.ZodType<LeagueSlotForm> = z.object({
     divisions: z.array(z.string()).default([]),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
+    timeZone: z.string().optional(),
     startTimeMinutes: z.number().int().nonnegative().optional(),
     endTimeMinutes: z.number().int().positive().optional(),
     repeating: z.boolean().optional(),
@@ -3327,6 +3349,7 @@ const eventFormSchema = z
             .nullable()
             .optional()
             .transform((value) => value ?? ''),
+        timeZone: z.string().trim().default('UTC'),
         state: z.string().default('DRAFT'),
         eventType: z.enum(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']),
         parentEvent: z.string().optional().nullable(),
@@ -3927,7 +3950,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         fallbackDivisions: string[] = [],
         fallbackEventStart?: string | Date | null,
         fallbackEventEnd?: string | Date | null,
+        fallbackTimeZone?: string | null,
     ): LeagueSlotForm => {
+        const slotTimeZone = normalizeTimeZone(slot?.timeZone, fallbackTimeZone || getSystemTimeZone());
         const normalizedDays = normalizeWeekdays({
             dayOfWeek: typeof slot?.dayOfWeek === 'number' ? slot.dayOfWeek : undefined,
             daysOfWeek: Array.isArray(slot?.daysOfWeek) ? slot.daysOfWeek : undefined,
@@ -3939,14 +3964,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         });
         const isRepeating = slot?.repeating ?? true;
         const normalizedStartDate = isRepeating
-            ? normalizeSlotBoundaryOverrideForForm(slot?.startDate ?? null, fallbackEventStart ?? null)
-            : formatLocalDateTime(slot?.startDate ?? null) || undefined;
+            ? normalizeSlotBoundaryOverrideForForm(slot?.startDate ?? null, fallbackEventStart ?? null, slotTimeZone)
+            : formatEventDateTimeForForm(slot?.startDate ?? null, slotTimeZone) || undefined;
         const normalizedEndDate = isRepeating
-            ? normalizeSlotBoundaryOverrideForForm(slot?.endDate ?? null, fallbackEventEnd ?? null)
-            : formatLocalDateTime(slot?.endDate ?? null) || undefined;
+            ? normalizeSlotBoundaryOverrideForForm(slot?.endDate ?? null, fallbackEventEnd ?? null, slotTimeZone)
+            : formatEventDateTimeForForm(slot?.endDate ?? null, slotTimeZone) || undefined;
         return {
             key: slot?.$id ?? createClientId(),
             $id: slot?.$id,
+            timeZone: slotTimeZone,
             scheduledFieldId: normalizedFieldIds[0],
             scheduledFieldIds: normalizedFieldIds,
             dayOfWeek: normalizedDays[0],
@@ -4054,8 +4080,12 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (Array.isArray(defaults.coordinates) && defaults.coordinates.length === 2) {
             next.coordinates = defaults.coordinates as [number, number];
         }
-        if (defaults.start !== undefined) next.start = formatLocalDateTime(defaults.start);
-        if (defaults.end !== undefined) next.end = formatLocalDateTime(defaults.end);
+        if (defaults.timeZone !== undefined) {
+            next.timeZone = normalizeTimeZone(defaults.timeZone, next.timeZone || getSystemTimeZone());
+        }
+        const defaultsTimeZone = normalizeTimeZone(next.timeZone, getSystemTimeZone());
+        if (defaults.start !== undefined) next.start = formatEventDateTimeForForm(defaults.start, defaultsTimeZone);
+        if (defaults.end !== undefined) next.end = formatEventDateTimeForForm(defaults.end, defaultsTimeZone);
         if (defaults.eventType !== undefined) next.eventType = defaults.eventType as EventFormState['eventType'];
         if (defaults.sport !== undefined) {
             if (typeof defaults.sport === 'string') {
@@ -4277,6 +4307,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return initial;
         })();
 
+        base.timeZone = normalizeTimeZone(base.timeZone, getSystemTimeZone());
         base.allowPaymentPlans = Boolean(base.allowPaymentPlans);
         base.installmentAmounts = Array.isArray(base.installmentAmounts) ? base.installmentAmounts : [];
         base.installmentDueDates = Array.isArray(base.installmentDueDates) ? base.installmentDueDates : [];
@@ -4405,7 +4436,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const defaultSlots = (() => {
             if (Array.isArray(defaults.timeSlots) && defaults.timeSlots.length > 0) {
                 return mergeSlotPayloadsForForm(defaults.timeSlots as TimeSlot[], defaultFieldId)
-                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end));
+                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end, base.timeZone));
             }
 
             if (
@@ -4414,9 +4445,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 && activeEditingEvent.timeSlots?.length
             ) {
                 return mergeSlotPayloadsForForm(activeEditingEvent.timeSlots || [])
-                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end));
+                    .map((slot) => createSlotForm(slot, defaultSlotDivisionKeys, base.start, base.end, base.timeZone));
             }
-            return [createSlotForm(undefined, defaultSlotDivisionKeys)];
+            return [createSlotForm(undefined, defaultSlotDivisionKeys, base.start, base.end, base.timeZone)];
         })();
 
         const defaultLeagueData: LeagueConfig = (() => {
@@ -9405,6 +9436,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             address: source.address?.trim() || undefined,
             start: source.start,
             end: normalizedEnd,
+            timeZone: normalizeTimeZone(source.timeZone, getSystemTimeZone()),
             eventType: source.eventType,
             parentEvent: source.parentEvent || undefined,
             noFixedEndDateTime: supportsScheduleSlotsForEvent(source.eventType, source.parentEvent)
@@ -9735,6 +9767,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 .map((slot) => {
                     const slotId = slot.$id || slot.key;
                     const repeating = slot.repeating !== false;
+                    const slotTimeZone = normalizeTimeZone(slot.timeZone, source.timeZone);
                     const slotFieldIds = normalizeSlotFieldIds(slot);
                     const slotDivisionKeys = normalizeSlotDivisionIdsWithLookup(
                         slot.divisions,
@@ -9770,6 +9803,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         divisions: singleDivisionEnabled
                             ? normalizedDivisionKeys
                             : slotDivisionKeys,
+                        timeZone: slotTimeZone,
                         startTimeMinutes,
                         endTimeMinutes,
                         repeating,
@@ -9786,6 +9820,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                         const slotStartDateOverride = normalizeSlotBoundaryOverrideForForm(
                             slot.startDate ?? null,
                             activeEditingEvent?.start ?? null,
+                            slotTimeZone,
                         );
                         if (slotStartDateOverride) {
                             serialized.startDate = slotStartDateOverride;

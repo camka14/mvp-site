@@ -14,7 +14,13 @@ import 'react-big-calendar/lib/css/react-big-calendar.css';
 import 'react-big-calendar/lib/addons/dragAndDrop/styles.css';
 
 import type { Field, Match, Team, UserData } from '@/types';
-import { formatDisplayDate, formatDisplayTime, parseLocalDateTime } from '@/lib/dateUtils';
+import {
+  calendarDateInTimeZoneToInstant,
+  formatDisplayDate,
+  formatDisplayTime,
+  instantToCalendarDateInTimeZone,
+  normalizeTimeZone,
+} from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { buildUniqueColorReferenceList } from '@/lib/calendarColorReferences';
 import {
@@ -32,6 +38,7 @@ interface LeagueCalendarViewProps {
   officials?: UserData[];
   eventStart?: string;
   eventEnd?: string;
+  eventTimeZone?: string;
   date?: Date;
   view?: View;
   onDateChange?: (date: Date) => void;
@@ -99,7 +106,8 @@ const ensureMinimumHourSpan = (range: [number, number]): [number, number] => {
   return [start, end];
 };
 
-const parseDateInput = (value?: string | Date | null): Date | null => parseLocalDateTime(value ?? null);
+const parseDateInput = (value: string | Date | null | undefined, timeZone: string): Date | null =>
+  instantToCalendarDateInTimeZone(value ?? null, timeZone);
 
 const resolveTeamLabel = (match: Match, key: 'team1' | 'team2') => {
   const relation = key === 'team1' ? match.team1 : match.team2;
@@ -238,6 +246,7 @@ export function LeagueCalendarView({
   officials = [],
   eventStart,
   eventEnd,
+  eventTimeZone,
   date,
   view,
   onDateChange,
@@ -256,6 +265,7 @@ export function LeagueCalendarView({
   showEventOfficialNames = true,
 }: LeagueCalendarViewProps) {
   const DnDCalendar: any = useMemo(() => withDragAndDrop(BigCalendar), []);
+  const resolvedEventTimeZone = useMemo(() => normalizeTimeZone(eventTimeZone), [eventTimeZone]);
   const userTeamIds = useMemo(() => {
     const ids = new Set<string>();
     (currentUser?.teamIds ?? []).forEach((teamId) => {
@@ -463,9 +473,9 @@ export function LeagueCalendarView({
               ? match.teamOfficial
               : (typeof match.teamOfficialId === 'string' ? teamLookup.get(match.teamOfficialId) : undefined),
         };
-        const start = parseLocalDateTime(match.start);
+        const start = instantToCalendarDateInTimeZone(match.start, resolvedEventTimeZone);
         if (!start) return null;
-        const end = parseLocalDateTime(match.end)
+        const end = instantToCalendarDateInTimeZone(match.end, resolvedEventTimeZone)
           ?? new Date(start.getTime() + 60 * 60 * 1000);
         const fieldId = resolveMatchFieldId(hydratedMatch);
         const fieldLabel = resolveMatchFieldLabel(hydratedMatch, fieldLookup);
@@ -493,7 +503,7 @@ export function LeagueCalendarView({
       })
       .filter((event): event is CalendarEvent => Boolean(event))
       .sort((a, b) => a.start.getTime() - b.start.getTime());
-  }, [conflictMatchIdSet, fieldLookup, matchesToDisplay, teamLookup, userInvolvedMatchIds]);
+  }, [conflictMatchIdSet, fieldLookup, matchesToDisplay, resolvedEventTimeZone, teamLookup, userInvolvedMatchIds]);
 
   const agendaCalendarEvents = useMemo<CalendarEvent[]>(() => {
     const grouped = new Map<string, CalendarEvent>();
@@ -552,14 +562,14 @@ export function LeagueCalendarView({
       return calendarEvents[0].start;
     }
 
-    const startDate = parseDateInput(eventStart);
+    const startDate = parseDateInput(eventStart, resolvedEventTimeZone);
     if (startDate) return startDate;
 
-    const endDate = parseDateInput(eventEnd);
+    const endDate = parseDateInput(eventEnd, resolvedEventTimeZone);
     if (endDate) return endDate;
 
     return new Date();
-  }, [calendarEvents, eventEnd, eventStart]);
+  }, [calendarEvents, eventEnd, eventStart, resolvedEventTimeZone]);
 
   const [calendarView, setCalendarView] = useState<View>('month');
   const [calendarDate, setCalendarDate] = useState<Date>(initialDate);
@@ -633,12 +643,14 @@ export function LeagueCalendarView({
         return;
       }
 
-      const nextStart = start instanceof Date ? start : new Date(start);
-      if (Number.isNaN(nextStart.getTime())) {
+      const nextStartCalendar = start instanceof Date ? start : new Date(start);
+      const nextStart = calendarDateInTimeZoneToInstant(nextStartCalendar, resolvedEventTimeZone);
+      if (!nextStart || Number.isNaN(nextStart.getTime())) {
         return;
       }
-      const rawEnd = end instanceof Date ? end : new Date(end);
-      const nextEnd = !Number.isNaN(rawEnd.getTime()) && rawEnd.getTime() > nextStart.getTime()
+      const rawEndCalendar = end instanceof Date ? end : new Date(end);
+      const rawEnd = calendarDateInTimeZoneToInstant(rawEndCalendar, resolvedEventTimeZone);
+      const nextEnd = rawEnd && !Number.isNaN(rawEnd.getTime()) && rawEnd.getTime() > nextStart.getTime()
         ? rawEnd
         : new Date(nextStart.getTime() + 60 * 60 * 1000);
       const dropResourceId =
@@ -657,7 +669,7 @@ export function LeagueCalendarView({
         fieldId,
       });
     },
-    [canManage, onMatchTimeChange],
+    [canManage, onMatchTimeChange, resolvedEventTimeZone],
   );
 
   const eventPropGetter = useCallback(
@@ -765,6 +777,7 @@ export function LeagueCalendarView({
       return (
         <MatchCard
           match={event.resource}
+          timeZone={resolvedEventTimeZone}
           canManage={canManage}
           onClick={onMatchClick ? () => onMatchClick(event.resource) : undefined}
           className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
@@ -780,7 +793,7 @@ export function LeagueCalendarView({
         />
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, matchHasHighlightedDivision, officialLookupById, onMatchClick, showEventOfficialNames, showMatchDivisionBadges],
+    [WeeklyOccurrenceEventCard, canManage, matchHasHighlightedDivision, officialLookupById, onMatchClick, resolvedEventTimeZone, showEventOfficialNames, showMatchDivisionBadges],
   );
 
   const AgendaEventComponent = useCallback(
@@ -821,6 +834,7 @@ export function LeagueCalendarView({
                     ) : (
                       <MatchCard
                         match={match}
+                        timeZone={resolvedEventTimeZone}
                         canManage={canManage}
                         onClick={onMatchClick ? () => onMatchClick(match) : undefined}
                         className={`h-full ${shouldHighlightUser ? 'border-green-200 hover:border-green-300' : ''}`}
@@ -843,7 +857,7 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, matchHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, matchHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, resolvedEventTimeZone, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
   );
 
   const components = useMemo(

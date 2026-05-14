@@ -11,13 +11,13 @@ Event creators enter event, match, rental, and time-slot times as local wall-clo
 ## Progress
 
 - [x] (2026-05-14 17:24Z) Read `PLANS.md`, inspected the web event form, event repository, canonical time-slot code, rental order route, and mobile event/time-slot DTOs.
-- [ ] Add persistent timezone fields and a migration for `Events` and `TimeSlots`.
-- [ ] Add shared server utilities that parse wall-clock strings in an IANA timezone and return UTC `Date` values.
-- [ ] Update event create/update and time-slot/rental creation paths to convert local wall-clock values using the event or slot timezone.
-- [ ] Update web display/calendar helpers so UTC instants render in the event timezone instead of the browser timezone.
-- [ ] Update mobile event/time-slot DTOs and event detail/create/edit display helpers to use the event timezone instead of `TimeZone.currentSystemDefault()` for event-specific times.
-- [ ] Add focused regression tests for UTC conversion, calendar display, event upsert, and mobile timezone mapping where the current test harness allows it.
-- [ ] Run targeted verification in both repositories and record the command results here.
+- [x] (2026-05-14 18:30Z) Added persistent timezone fields and a migration for `Events` and `TimeSlots`.
+- [x] (2026-05-14 18:30Z) Added shared server utilities that parse wall-clock strings in an IANA timezone and return UTC `Date` values.
+- [x] (2026-05-14 18:30Z) Updated event create/update and time-slot/rental creation paths to convert local wall-clock values using the event or slot timezone.
+- [x] (2026-05-14 18:30Z) Updated web display/calendar helpers so UTC instants render in the event timezone instead of the browser timezone.
+- [x] (2026-05-14 18:30Z) Updated mobile event/time-slot DTOs and event detail/create/edit display helpers to use the event timezone instead of `TimeZone.currentSystemDefault()` for event-specific times.
+- [x] (2026-05-14 18:30Z) Added focused regression tests for UTC conversion, calendar display, event upsert, and rental timezone handling.
+- [x] (2026-05-14 18:30Z) Ran targeted verification in both repositories and recorded the command results here.
 
 ## Surprises & Discoveries
 
@@ -27,6 +27,8 @@ Event creators enter event, match, rental, and time-slot times as local wall-clo
   Evidence: `composeApp/src/commonMain/kotlin/com/razumly/mvp/eventDetail/EventDetails.kt` formats `editEvent.start.toLocalDateTime(TimeZone.currentSystemDefault())`, and `LeagueScheduleFields.kt` derives slot days and minutes from the system timezone.
 - Observation: A prior display-only patch changed `parseLocalDateTime` to strip offset suffixes. That behavior is not correct for this plan because stored UTC strings must remain instants unless explicitly converted into an event-timezone wall-clock value.
   Evidence: `src/lib/dateUtils.ts` currently strips `Z` before milliseconds and falls back to a local `Date`.
+- Observation: Rental slots need to resolve timezone from the physical rental surface, not the viewer. Web now derives slot timezone from selected field coordinates first, then organization coordinates. Mobile uses the slot timezone returned by the API for rental availability and confirmation, with device timezone only as a fallback for older rows without `timeZone`.
+  Evidence: `src/app/api/public/organizations/[slug]/rental-orders/route.ts`, `src/app/api/time-slots/route.ts`, and `composeApp/src/commonMain/kotlin/com/razumly/mvp/eventSearch/tabs/rentals/RentalSchedulingUtils.kt`.
 
 ## Decision Log
 
@@ -39,10 +41,27 @@ Event creators enter event, match, rental, and time-slot times as local wall-clo
 - Decision: Keep `startTimeMinutes`, `endTimeMinutes`, `dayOfWeek`, and `daysOfWeek` as wall-clock scheduling fields in the event or slot timezone.
   Rationale: Those fields model recurring local schedule rules rather than absolute instants. UTC conversion applies to the date boundaries and generated event/match windows.
   Date/Author: 2026-05-14 / Codex
+- Decision: Rental slot timezone resolution should prefer scheduled field coordinates, then organization coordinates, then an existing/payload timezone fallback.
+  Rationale: Rental availability belongs to the field/location being rented. A viewer in a different timezone must not shift the rental grid or order windows.
+  Date/Author: 2026-05-14 / Codex
 
 ## Outcomes & Retrospective
 
-No implementation milestone has completed yet.
+Implemented UTC storage with persisted IANA timezone labels for web events and time slots, and updated web/mobile event scheduling surfaces to interpret wall-clock input in the event or slot timezone. Rental slots now resolve timezone from field coordinates first and organization coordinates second on the server; mobile rental selection uses the API-provided slot timezone for availability, busy-window comparison, and confirmation labels.
+
+Validation completed:
+
+    cd /Users/elesesy/StudioProjects/mvp-site
+    npm test -- --runTestsByPath src/lib/__tests__/dateUtils.test.ts src/server/repositories/__tests__/events.upsert.test.ts src/app/api/time-slots/__tests__/route.test.ts 'src/app/api/public/organizations/[slug]/rental-orders/__tests__/route.test.ts' 'src/app/events/[id]/schedule/components/__tests__/LeagueCalendarView.test.tsx' 'src/app/events/[id]/schedule/components/__tests__/MatchCardTime.test.ts'
+    # 6 test suites passed, 62 tests passed
+
+    cd /Users/elesesy/StudioProjects/mvp-site
+    npx tsc --noEmit
+    # passed
+
+    cd /Users/elesesy/StudioProjects/mvp-app
+    ./gradlew :composeApp:compileKotlinMetadata
+    # BUILD SUCCESSFUL
 
 ## Context and Orientation
 

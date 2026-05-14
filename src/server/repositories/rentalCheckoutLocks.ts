@@ -3,6 +3,10 @@ import {
   EventFieldConflictError,
   assertNoEventFieldSchedulingConflicts,
 } from '@/server/repositories/events';
+import {
+  parseDateInputInTimeZone,
+  resolveTimeZone,
+} from '@/server/timeZones';
 
 export const RENTAL_CHECKOUT_LOCK_TTL_MS = 10 * 60 * 1000;
 
@@ -13,6 +17,7 @@ export type RentalCheckoutWindow = {
   fieldIds: string[];
   start: Date;
   end: Date;
+  timeZone: string;
   noFixedEndDateTime: boolean;
   organizationId: string | null;
   eventType: string;
@@ -68,13 +73,12 @@ const toRecord = (value: unknown): Record<string, unknown> | null => (
   value && typeof value === 'object' ? (value as Record<string, unknown>) : null
 );
 
-const toDate = (value: unknown): Date | null => {
+const toDate = (value: unknown, timeZone: string): Date | null => {
   if (!value) return null;
   if (value instanceof Date) {
     return Number.isNaN(value.getTime()) ? null : value;
   }
-  const parsed = new Date(String(value));
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return parseDateInputInTimeZone(value, timeZone);
 };
 
 const extractFieldIds = (eventPayload: Record<string, unknown> | null, timeSlotPayload: Record<string, unknown> | null): string[] => {
@@ -119,8 +123,9 @@ export const extractRentalCheckoutWindow = ({
     return { ok: false, status: 400, error: 'Event id is required for rental checkout.' };
   }
 
-  const start = toDate(timeSlotPayload?.startDate ?? eventPayload.start);
-  const end = toDate(timeSlotPayload?.endDate ?? eventPayload.end);
+  const timeZone = resolveTimeZone(timeSlotPayload?.timeZone ?? eventPayload.timeZone);
+  const start = toDate(timeSlotPayload?.startDate ?? eventPayload.start, timeZone);
+  const end = toDate(timeSlotPayload?.endDate ?? eventPayload.end, timeZone);
   if (!start || !end || end.getTime() <= start.getTime()) {
     return { ok: false, status: 400, error: 'Rental checkout requires a valid start/end time window.' };
   }
@@ -145,6 +150,7 @@ export const extractRentalCheckoutWindow = ({
       fieldIds,
       start,
       end,
+      timeZone,
       noFixedEndDateTime,
       organizationId,
       eventType,

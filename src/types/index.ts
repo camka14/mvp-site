@@ -431,6 +431,7 @@ export interface TimeSlot {
   endTimeMinutes?: number;
   startDate?: string;
   endDate?: string | null;
+  timeZone?: string;
   repeating: boolean;
   price?: number;
   taxHandling?: RentalTaxHandling;
@@ -614,6 +615,7 @@ export interface Event {
   description: string;
   start: string;
   end: string | null;
+  timeZone?: string;
   location: string;
   address?: string;
   coordinates: [number, number];

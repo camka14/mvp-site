@@ -2,9 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { parseDateInput, stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
+import { stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { normalizeRentalTaxHandling } from '@/lib/taxPolicy';
+import {
+  localDatePartsInTimeZone,
+  parseDateInputInTimeZone,
+  resolveTimeZone,
+  resolveTimeZoneFromFieldOrOrganization,
+} from '@/server/timeZones';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,6 +24,7 @@ const TIME_SLOT_MUTABLE_FIELDS = new Set<string>([
   'endTimeMinutes',
   'startDate',
   'endDate',
+  'timeZone',
   'price',
   'taxHandling',
   'requiredTemplateIds',
@@ -48,16 +55,19 @@ const normalizeDaysOfWeek = (input: { dayOfWeek?: number | null; daysOfWeek?: nu
   ).sort((a, b) => a - b);
 };
 
-const toDateOnlyValue = (value: Date): number => {
-  const copy = new Date(value.getTime());
-  copy.setHours(0, 0, 0, 0);
-  return copy.getTime();
+const toDateOnlyValue = (value: Date, timeZone: string): number => {
+  const parts = localDatePartsInTimeZone(value, timeZone);
+  if (!parts) {
+    return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+  }
+  return Date.UTC(parts.year, parts.month - 1, parts.day);
 };
 
 const normalizeRepeatingEndDate = (
   startDate: Date,
   endDate: Date | null,
   repeating: boolean,
+  timeZone: string,
 ): Date | null => {
   if (!repeating) {
     return endDate;
@@ -65,7 +75,39 @@ const normalizeRepeatingEndDate = (
   if (!(endDate instanceof Date) || Number.isNaN(endDate.getTime())) {
     return null;
   }
-  return toDateOnlyValue(endDate) > toDateOnlyValue(startDate) ? endDate : null;
+  return toDateOnlyValue(endDate, timeZone) > toDateOnlyValue(startDate, timeZone) ? endDate : null;
+};
+
+const resolveSlotTimeZone = async (
+  scheduledFieldIds: string[],
+  explicitTimeZone?: unknown,
+  fallbackTimeZone?: unknown,
+): Promise<string> => {
+  if (!scheduledFieldIds.length) {
+    return resolveTimeZone(explicitTimeZone, resolveTimeZone(fallbackTimeZone));
+  }
+
+  const fields = await prisma.fields.findMany({
+    where: { id: { in: scheduledFieldIds } },
+    select: { id: true, lat: true, long: true, organizationId: true },
+  });
+  const fieldById = new Map(fields.map((field) => [field.id, field]));
+  const primaryField = scheduledFieldIds.map((id) => fieldById.get(id)).find(Boolean) ?? fields[0] ?? null;
+  const organization = primaryField?.organizationId
+    ? await prisma.organizations.findUnique({
+      where: { id: primaryField.organizationId },
+      select: { coordinates: true },
+    })
+    : null;
+
+  return resolveTimeZone(
+    explicitTimeZone,
+    resolveTimeZoneFromFieldOrOrganization(
+      primaryField as any,
+      organization as any,
+      resolveTimeZone(fallbackTimeZone),
+    ),
+  );
 };
 
 const normalizeDivisionKeys = (value: unknown): string[] => {
@@ -156,7 +198,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       id: true,
       startDate: true,
       endDate: true,
+      timeZone: true,
       repeating: true,
+      scheduledFieldId: true,
+      scheduledFieldIds: true,
     },
   });
   if (!existingSlot) {
@@ -184,18 +229,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   delete payload.id;
   delete payload.createdAt;
   delete payload.updatedAt;
-  if (payload.startDate) {
-    const parsedDate = parseDateInput(payload.startDate);
-    if (parsedDate) payload.startDate = parsedDate;
-  }
-  if (payload.endDate !== undefined) {
-    if (payload.endDate === null) {
-      payload.endDate = null;
-    } else {
-      const parsedDate = parseDateInput(payload.endDate);
-      if (parsedDate) payload.endDate = parsedDate;
-    }
-  }
   if (payload.requiredTemplateIds !== undefined) {
     payload.requiredTemplateIds = normalizeTemplateIds(payload.requiredTemplateIds);
   }
@@ -212,6 +245,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     ]);
     payload.scheduledFieldIds = normalized;
     payload.scheduledFieldId = normalized[0] ?? null;
+  }
+  const effectiveScheduledFieldIds = normalizeFieldIds(
+    payload.scheduledFieldIds !== undefined
+      ? payload.scheduledFieldIds
+      : ((existingSlot as any).scheduledFieldIds ?? ((existingSlot as any).scheduledFieldId ? [(existingSlot as any).scheduledFieldId] : [])),
+  );
+  const effectiveTimeZone = await resolveSlotTimeZone(
+    effectiveScheduledFieldIds,
+    payload.timeZone,
+    (existingSlot as any).timeZone,
+  );
+  if (payload.timeZone !== undefined || payload.scheduledFieldIds !== undefined || payload.scheduledFieldId !== undefined) {
+    payload.timeZone = effectiveTimeZone;
+  }
+  if (payload.startDate) {
+    const parsedDate = parseDateInputInTimeZone(payload.startDate, effectiveTimeZone);
+    if (parsedDate) payload.startDate = parsedDate;
+  }
+  if (payload.endDate !== undefined) {
+    if (payload.endDate === null) {
+      payload.endDate = null;
+    } else {
+      const parsedDate = parseDateInputInTimeZone(payload.endDate, effectiveTimeZone);
+      if (parsedDate) payload.endDate = parsedDate;
+    }
   }
   let payloadDivisions: string[] | null = null;
   if (payload.divisions !== undefined) {
@@ -247,6 +305,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       effectiveStartDate,
       endDateCandidate,
       true,
+      effectiveTimeZone,
     );
   }
 
@@ -262,6 +321,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'endTimeMinutes',
     'startDate',
     'endDate',
+    'timeZone',
     'price',
     'taxHandling',
     'requiredTemplateIds',

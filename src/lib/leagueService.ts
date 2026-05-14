@@ -98,6 +98,7 @@ class LeagueService {
               divisions: Array.isArray(slot.divisions) ? slot.divisions : [],
               startTimeMinutes: startTime,
               endTimeMinutes: endTime,
+              timeZone: slot.timeZone,
               repeating: typeof slot.repeating === 'boolean' ? slot.repeating : true,
             };
 
@@ -260,14 +261,19 @@ class LeagueService {
           : typeof row.scheduledFieldId === 'string'
           ? [row.scheduledFieldId]
           : undefined,
+      timeZone: typeof row.timeZone === 'string' && row.timeZone.trim().length > 0 ? row.timeZone : 'UTC',
     };
 
     if (row.startDate) {
-      schedule.startDate = typeof row.startDate === 'string' ? row.startDate : String(row.startDate);
+      schedule.startDate = row.startDate instanceof Date
+        ? row.startDate.toISOString()
+        : typeof row.startDate === 'string'
+          ? row.startDate
+          : String(row.startDate);
     }
 
     if (row.endDate !== undefined) {
-      schedule.endDate = row.endDate;
+      schedule.endDate = row.endDate instanceof Date ? row.endDate.toISOString() : row.endDate;
     }
 
     return schedule;

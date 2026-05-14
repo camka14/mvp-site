@@ -1,5 +1,11 @@
-import { parseDateInput } from '@/server/legacyFormat';
 import { normalizeRentalTaxHandling, type RentalTaxHandling } from '@/lib/taxPolicy';
+import {
+  DEFAULT_EVENT_TIME_ZONE,
+  mondayDayInTimeZone,
+  minutesInTimeZone,
+  parseDateInputInTimeZone,
+  resolveTimeZone,
+} from '@/server/timeZones';
 
 export type CanonicalTimeSlotInput = {
   id: string;
@@ -9,6 +15,7 @@ export type CanonicalTimeSlotInput = {
   endTimeMinutes: number | null;
   startDate: Date;
   endDate: Date | null;
+  timeZone: string;
   repeating: boolean;
   scheduledFieldId: string | null;
   scheduledFieldIds: string[];
@@ -113,6 +120,7 @@ type CanonicalizeSlotsParams = {
   eventId: string;
   slots: Array<Record<string, unknown>>;
   fallbackStartDate: Date;
+  timeZone?: string | null;
   fallbackDivisionKeys: string[];
   enforceAllDivisions: boolean;
   normalizeDivisions: (value: unknown) => string[];
@@ -122,20 +130,23 @@ export const canonicalizeTimeSlots = ({
   eventId,
   slots,
   fallbackStartDate,
+  timeZone,
   fallbackDivisionKeys,
   enforceAllDivisions,
   normalizeDivisions,
 }: CanonicalizeSlotsParams): CanonicalTimeSlotInput[] => {
   const seenSlotIds = new Map<string, number>();
-  const resolvedFallbackStartDate = parseDateInput(fallbackStartDate) ?? new Date(0);
+  const fallbackTimeZone = resolveTimeZone(timeZone, DEFAULT_EVENT_TIME_ZONE);
+  const resolvedFallbackStartDate = parseDateInputInTimeZone(fallbackStartDate, fallbackTimeZone) ?? new Date(0);
 
   return slots.flatMap((rawSlot, index) => {
     const slot = rawSlot ?? {};
     const slotId = ensureUniqueSlotId(normalizeSlotId(slot, eventId, index), seenSlotIds);
     const repeating = typeof slot.repeating === 'boolean' ? slot.repeating : true;
+    const slotTimeZone = resolveTimeZone(slot.timeZone, fallbackTimeZone);
 
-    const startDate = parseDateInput(slot.startDate) ?? resolvedFallbackStartDate;
-    const parsedEndDate = slot.endDate === null ? null : parseDateInput(slot.endDate);
+    const startDate = parseDateInputInTimeZone(slot.startDate, slotTimeZone) ?? resolvedFallbackStartDate;
+    const parsedEndDate = slot.endDate === null ? null : parseDateInputInTimeZone(slot.endDate, slotTimeZone);
 
     const normalizedDays = normalizeTimeSlotDays({
       dayOfWeek: slot.dayOfWeek,
@@ -150,9 +161,9 @@ export const canonicalizeTimeSlots = ({
     const slotStartMinutesRaw = normalizeMinuteValue(slot.startTimeMinutes);
     const slotEndMinutesRaw = normalizeMinuteValue(slot.endTimeMinutes);
 
-    const startMinutesFromDate = startDate.getHours() * 60 + startDate.getMinutes();
+    const startMinutesFromDate = minutesInTimeZone(startDate, slotTimeZone);
     const endMinutesFromDate = parsedEndDate
-      ? parsedEndDate.getHours() * 60 + parsedEndDate.getMinutes()
+      ? minutesInTimeZone(parsedEndDate, slotTimeZone)
       : null;
 
     const startTimeMinutes = repeating
@@ -171,15 +182,13 @@ export const canonicalizeTimeSlots = ({
     if (repeating) {
       daysOfWeek = normalizedDays.length > 0
         ? normalizedDays
-        : [((startDate.getDay() + 6) % 7)];
+        : [mondayDayInTimeZone(startDate, slotTimeZone)];
       endDate = parsedEndDate ?? null;
     } else {
       const inferredEndDate = parsedEndDate ?? (() => {
-        const startOfDay = new Date(startDate);
-        startOfDay.setHours(0, 0, 0, 0);
-        const candidate = new Date(startOfDay.getTime() + endTimeMinutes * MINUTE_MS);
+        const candidate = new Date(startDate.getTime() + (endTimeMinutes - startTimeMinutes) * MINUTE_MS);
         if (candidate.getTime() <= startDate.getTime()) {
-          candidate.setDate(candidate.getDate() + 1);
+          candidate.setTime(candidate.getTime() + 24 * 60 * MINUTE_MS);
         }
         return candidate;
       })();
@@ -189,7 +198,7 @@ export const canonicalizeTimeSlots = ({
       endDate = inferredEndDate;
       daysOfWeek = normalizedDays.length > 0
         ? [normalizedDays[0]]
-        : [((startDate.getDay() + 6) % 7)];
+        : [mondayDayInTimeZone(startDate, slotTimeZone)];
     }
 
     const normalizedSlotDivisions = normalizeDivisions(slot.divisions);
@@ -205,6 +214,7 @@ export const canonicalizeTimeSlots = ({
       endTimeMinutes,
       startDate,
       endDate,
+      timeZone: slotTimeZone,
       repeating,
       scheduledFieldId: normalizedFieldIds[0] ?? null,
       scheduledFieldIds: normalizedFieldIds,

@@ -8363,8 +8363,8 @@ function EventScheduleContent() {
         changed = true;
         return {
           ...match,
-          start: formatLocalDateTime(nextStart),
-          end: formatLocalDateTime(nextEnd),
+          start: nextStart.toISOString(),
+          end: nextEnd.toISOString(),
           fieldId: nextFieldId ?? null,
           ...(nextField ? { field: nextField } : { field: undefined }),
         } as Match;
@@ -9945,6 +9945,7 @@ function EventScheduleContent() {
                       officials={[]}
                       eventStart={activeEvent?.start}
                       eventEnd={activeEvent?.end ?? undefined}
+                      eventTimeZone={activeEvent?.timeZone}
                       date={weeklyScheduleCalendarDate}
                       view={weeklyScheduleCalendarView}
                       onDateChange={setWeeklyScheduleCalendarDate}
@@ -10032,6 +10033,7 @@ function EventScheduleContent() {
                       officials={Array.isArray(activeEvent.officials) ? activeEvent.officials : []}
                       eventStart={activeEvent.start}
                       eventEnd={activeEvent.end ?? undefined}
+                      eventTimeZone={activeEvent.timeZone}
                       onMatchClick={(match) => {
                         if (canEditMatches) {
                           handleMatchEditRequest(match, 'schedule');
@@ -10089,6 +10091,7 @@ function EventScheduleContent() {
                       onMatchClick={handleMatchClick}
                       canEditMatches={canEditMatches}
                       showEventOfficialNames={showEventOfficialNames}
+                      eventTimeZone={activeEvent.timeZone}
                       showDateOnMatches={showDateOnMatches}
                       conflictMatchIdsById={matchConflictsById}
                     />

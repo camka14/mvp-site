@@ -78,7 +78,7 @@ describe('LeagueCalendarView time handling', () => {
     mockCalendarProps.length = 0;
   });
 
-  it('passes serialized match times to the calendar as wall-clock local dates', () => {
+  it('passes serialized match times to the calendar as event-timezone wall-clock dates', () => {
     render(
       <LeagueCalendarView
         matches={[
@@ -96,6 +96,7 @@ describe('LeagueCalendarView time handling', () => {
         conflictMatchIdsById={emptyConflictMatchIdsById}
         date={new Date(2026, 2, 1)}
         view="day"
+        eventTimeZone="Asia/Karachi"
       />,
     );
 

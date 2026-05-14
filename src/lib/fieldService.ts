@@ -244,6 +244,7 @@ class FieldService {
       eventId: typeof row.eventId === 'string' ? row.eventId : undefined,
       requiredTemplateIds,
       hostRequiredTemplateIds,
+      timeZone: typeof row.timeZone === 'string' && row.timeZone.trim().length > 0 ? row.timeZone : 'UTC',
       taxHandling: normalizeRentalTaxHandling(row.taxHandling),
     };
 
@@ -259,7 +260,12 @@ class FieldService {
       slot.price = row.price;
     }
 
-    const normalizedStart = ensureLocalDateTimeString(row.startDate ?? row.start ?? null);
+    const rawStart = row.startDate ?? row.start ?? null;
+    const normalizedStart = rawStart instanceof Date
+      ? rawStart.toISOString()
+      : typeof rawStart === 'string' && rawStart.trim().length > 0
+        ? rawStart
+        : ensureLocalDateTimeString(rawStart);
     if (normalizedStart) {
       slot.startDate = normalizedStart;
     }
@@ -267,7 +273,12 @@ class FieldService {
     if (row.endDate === null) {
       slot.endDate = null;
     } else {
-      const normalizedEnd = ensureLocalDateTimeString(row.endDate ?? row.end ?? null);
+      const rawEnd = row.endDate ?? row.end ?? null;
+      const normalizedEnd = rawEnd instanceof Date
+        ? rawEnd.toISOString()
+        : typeof rawEnd === 'string' && rawEnd.trim().length > 0
+          ? rawEnd
+          : ensureLocalDateTimeString(rawEnd);
       if (normalizedEnd) {
         slot.endDate = normalizedEnd;
       }
@@ -358,6 +369,7 @@ class FieldService {
       endTimeMinutes: slot.endTimeMinutes ?? null,
       startDate: slot.startDate ?? null,
       endDate: slot.endDate ?? null,
+      timeZone: slot.timeZone,
       price: slot.price ?? null,
       taxHandling: normalizeRentalTaxHandling(slot.taxHandling),
       requiredTemplateIds: Array.isArray(slot.requiredTemplateIds)

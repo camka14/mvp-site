@@ -300,6 +300,7 @@ export interface LeagueSlotForm {
   divisions?: string[];
   startDate?: string;
   endDate?: string;
+  timeZone?: string;
   startTimeMinutes?: number;
   endTimeMinutes?: number;
   repeating?: boolean;

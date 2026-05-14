@@ -11,6 +11,14 @@ import {
   normalizePublicRentalOrderSports,
   resolvePublicRentalOrderSportId,
 } from '@/server/publicRentalOrders';
+import {
+  localDatePartsInTimeZone,
+  mondayDayInTimeZone,
+  minutesInTimeZone,
+  parseDateInputInTimeZone,
+  resolveTimeZone,
+  resolveTimeZoneFromFieldOrOrganization,
+} from '@/server/timeZones';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +31,7 @@ const selectionSchema = z.object({
   endTimeMinutes: z.number().int().min(0).max(24 * 60).optional(),
   startDate: z.string().min(1),
   endDate: z.string().min(1),
+  timeZone: z.string().optional(),
   repeating: z.boolean().optional(),
 }).passthrough();
 
@@ -39,6 +48,7 @@ type ValidatedRentalSelection = {
   selection: RentalOrderSelection;
   start: Date;
   end: Date;
+  timeZone: string;
   fieldIds: string[];
   totalCents: number;
   requiredTemplateIds: string[];
@@ -61,38 +71,30 @@ const normalizeStringArray = (value: unknown): string[] => (
     : []
 );
 
-const parseDateTime = (value: unknown): Date | null => {
-  if (value instanceof Date) {
-    return Number.isNaN(value.getTime()) ? null : value;
+const dateOnlyValueInTimeZone = (date: Date, timeZone: string): number => {
+  const parts = localDatePartsInTimeZone(date, timeZone);
+  if (!parts) {
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
   }
-  if (typeof value !== 'string' && typeof value !== 'number') {
-    return null;
-  }
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  return Date.UTC(parts.year, parts.month - 1, parts.day);
 };
 
-const mondayDayOf = (date: Date): number => ((date.getDay() + 6) % 7);
-
-const startOfLocalDay = (date: Date): Date => new Date(
-  date.getFullYear(),
-  date.getMonth(),
-  date.getDate(),
-  0,
-  0,
-  0,
-  0,
-);
-
-const minutesInDay = (date: Date): number => date.getHours() * 60 + date.getMinutes();
+const endMinutesInTimeZone = (start: Date, end: Date, timeZone: string): number => {
+  const endMinutes = minutesInTimeZone(end, timeZone);
+  return endMinutes === 0 && dateOnlyValueInTimeZone(end, timeZone) > dateOnlyValueInTimeZone(start, timeZone)
+    ? 24 * 60
+    : endMinutes;
+};
 
 const rentalSlotCoversSelection = (
   slot: Record<string, any>,
   selectionStart: Date,
   selectionEnd: Date,
+  selectionTimeZone: string,
 ): boolean => {
-  const slotStart = parseDateTime(slot.startDate);
-  const slotEnd = parseDateTime(slot.endDate);
+  const slotTimeZone = resolveTimeZone(slot.timeZone, selectionTimeZone);
+  const slotStart = parseDateInputInTimeZone(slot.startDate, slotTimeZone);
+  const slotEnd = parseDateInputInTimeZone(slot.endDate, slotTimeZone);
   if (slot.repeating === false) {
     return Boolean(
       slotStart
@@ -102,7 +104,7 @@ const rentalSlotCoversSelection = (
     );
   }
 
-  const selectionDay = mondayDayOf(selectionStart);
+  const selectionDay = mondayDayInTimeZone(selectionStart, slotTimeZone);
   const slotDays = Array.isArray(slot.daysOfWeek) && slot.daysOfWeek.length
     ? slot.daysOfWeek.map((entry: unknown) => Number(entry)).filter((entry: number) => Number.isInteger(entry))
     : typeof slot.dayOfWeek === 'number'
@@ -112,8 +114,8 @@ const rentalSlotCoversSelection = (
     return false;
   }
 
-  const selectionStartMinutes = minutesInDay(selectionStart);
-  const selectionEndMinutes = minutesInDay(selectionEnd);
+  const selectionStartMinutes = minutesInTimeZone(selectionStart, slotTimeZone);
+  const selectionEndMinutes = endMinutesInTimeZone(selectionStart, selectionEnd, slotTimeZone);
   if (
     typeof slot.startTimeMinutes === 'number'
     && selectionStartMinutes < slot.startTimeMinutes
@@ -127,13 +129,13 @@ const rentalSlotCoversSelection = (
     return false;
   }
 
-  if (slotStart && startOfLocalDay(selectionStart).getTime() < startOfLocalDay(slotStart).getTime()) {
+  if (slotStart && dateOnlyValueInTimeZone(selectionStart, slotTimeZone) < dateOnlyValueInTimeZone(slotStart, slotTimeZone)) {
     return false;
   }
-  if (slotEnd && startOfLocalDay(selectionStart).getTime() > startOfLocalDay(slotEnd).getTime()) {
+  if (slotEnd && dateOnlyValueInTimeZone(selectionStart, slotTimeZone) > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
     return false;
   }
-  if (slotEnd && startOfLocalDay(selectionEnd).getTime() > startOfLocalDay(slotEnd).getTime()) {
+  if (slotEnd && dateOnlyValueInTimeZone(selectionEnd, slotTimeZone) > dateOnlyValueInTimeZone(slotEnd, slotTimeZone)) {
     return false;
   }
   return true;
@@ -214,24 +216,31 @@ const validateRentalSelections = ({
   selections,
   fields,
   slots,
+  organization,
 }: {
   selections: RentalOrderSelection[];
   fields: Array<Record<string, any>>;
   slots: Array<Record<string, any>>;
+  organization: Record<string, any>;
 }): { ok: true; selections: ValidatedRentalSelection[] } | { ok: false; error: string } => {
   const fieldById = new Map(fields.map((field) => [String(field.id), field]));
   const slotById = new Map(slots.map((slot) => [String(slot.id), slot]));
   const validatedSelections: ValidatedRentalSelection[] = [];
 
   for (const selection of selections) {
-    const start = parseDateTime(selection.startDate);
-    const end = parseDateTime(selection.endDate);
-    if (!start || !end || end.getTime() <= start.getTime()) {
-      return { ok: false, error: 'Rental selections must include valid start and end times.' };
-    }
     const fieldIds = normalizeStringArray(selection.scheduledFieldIds);
     if (!fieldIds.length) {
       return { ok: false, error: 'Rental selections must include at least one field.' };
+    }
+    const primaryField = fieldById.get(fieldIds[0]) ?? null;
+    const selectionTimeZone = resolveTimeZone(
+      selection.timeZone,
+      resolveTimeZoneFromFieldOrOrganization(primaryField, organization),
+    );
+    const start = parseDateInputInTimeZone(selection.startDate, selectionTimeZone);
+    const end = parseDateInputInTimeZone(selection.endDate, selectionTimeZone);
+    if (!start || !end || end.getTime() <= start.getTime()) {
+      return { ok: false, error: 'Rental selections must include valid start and end times.' };
     }
     const durationMinutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / (60 * 1000)));
     const requiredTemplateIds = new Set<string>();
@@ -247,7 +256,7 @@ const validateRentalSelections = ({
       const matchedSlot = rentalSlotIds
         .map((slotId) => slotById.get(slotId))
         .find((slot): slot is Record<string, any> => (
-          slot ? rentalSlotCoversSelection(slot, start, end) : false
+          slot ? rentalSlotCoversSelection(slot, start, end, selectionTimeZone) : false
         ));
       if (!matchedSlot) {
         return { ok: false, error: `${field.name || 'Selected field'} is not available for the selected time.` };
@@ -263,6 +272,7 @@ const validateRentalSelections = ({
       selection,
       start,
       end,
+      timeZone: selectionTimeZone,
       fieldIds,
       totalCents,
       requiredTemplateIds: Array.from(requiredTemplateIds),
@@ -334,6 +344,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     selections: parsed.data.selections,
     fields,
     slots,
+    organization,
   });
   if (!validation.ok) {
     return NextResponse.json({ error: validation.error }, { status: 400 });
@@ -368,6 +379,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
     fields.map((field: Record<string, any>) => [String(field.id), field]),
   );
   const primaryField = fieldById.get(fieldIds[0]) ?? null;
+  const rentalTimeZone = validation.selections[0]?.timeZone
+    ?? resolveTimeZoneFromFieldOrOrganization(primaryField, organization);
   const timeSlotIds = validation.selections.map((selection, index) => `${parsed.data.eventId}-rental-${index + 1}`);
   const now = new Date();
   const sportId = resolvePublicRentalOrderSportId({
@@ -407,7 +420,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
 
       for (let index = 0; index < validation.selections.length; index += 1) {
         const validated = validation.selections[index];
-        const dayOfWeek = mondayDayOf(validated.start);
+        const dayOfWeek = mondayDayInTimeZone(validated.start, validated.timeZone);
         await tx.timeSlots.create({
           data: {
             id: timeSlotIds[index],
@@ -415,9 +428,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
             updatedAt: now,
             dayOfWeek,
             daysOfWeek: [dayOfWeek],
-            startTimeMinutes: minutesInDay(validated.start),
-            endTimeMinutes: minutesInDay(validated.end),
+            startTimeMinutes: minutesInTimeZone(validated.start, validated.timeZone),
+            endTimeMinutes: endMinutesInTimeZone(validated.start, validated.end, validated.timeZone),
             startDate: validated.start,
+            timeZone: validated.timeZone,
             endDate: validated.end,
             repeating: false,
             scheduledFieldId: validated.fieldIds[0] ?? null,
@@ -438,6 +452,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
           name: organization.name,
           start: earliestStart,
           end: latestEnd,
+          timeZone: rentalTimeZone,
           description: `Private rental order for ${organization.name}.`,
           divisions: [],
           winnerSetCount: null,

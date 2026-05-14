@@ -795,6 +795,7 @@ model Events {
   name                         String
   start                        DateTime
   end                          DateTime?
+  timeZone                     String               @default("UTC")
   description                  String?
   divisions                    String[]
   winnerSetCount               Int?
@@ -948,6 +949,7 @@ model TimeSlots {
   startTimeMinutes    Int?
   endTimeMinutes      Int?
   startDate           DateTime
+  timeZone            String    @default("UTC")
   repeating           Boolean
   endDate             DateTime?
   scheduledFieldId    String?
