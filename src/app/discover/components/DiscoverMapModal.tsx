@@ -108,6 +108,8 @@ const MAP_SEARCH_RADIUS_KM = 50;
 const MIN_MAP_SEARCH_RADIUS_KM = 1;
 const SEARCH_AREA_THRESHOLD_KM = 2;
 const SEARCH_AREA_RADIUS_THRESHOLD_RATIO = 0.15;
+const MAP_CENTER_EPSILON_DEGREES = 0.00001;
+const VIEWPORT_RADIUS_EPSILON_KM = 0.1;
 const KM_PER_MILE = 1.60934;
 const DISTANCE_SLIDER_MIN_MILES = 10;
 const DISTANCE_SLIDER_MAX_MILES = 100;
@@ -136,8 +138,9 @@ const normalizeMapRadiusKm = (value: number | null | undefined): number => {
 };
 const clampMiles = (value: number): number =>
   Math.min(DISTANCE_SLIDER_MAX_MILES, Math.max(DISTANCE_SLIDER_MIN_MILES, Math.round(value)));
-const mapCenterKey = (value: MapCenter): string => `${value.lat.toFixed(5)},${value.lng.toFixed(5)}`;
-const mapRadiusKey = (value: number): string => normalizeMapRadiusKm(value).toFixed(2);
+const mapCentersAreClose = (left: MapCenter, right: MapCenter): boolean =>
+  Math.abs(left.lat - right.lat) < MAP_CENTER_EPSILON_DEGREES &&
+  Math.abs(left.lng - right.lng) < MAP_CENTER_EPSILON_DEGREES;
 
 const SEARCH_TARGETS: Array<{ value: MapSearchTarget; label: string }> = [
   { value: 'events', label: 'Events' },
@@ -446,22 +449,10 @@ export default function DiscoverMapModal({
   const [selected, setSelected] = useState<MarkerSelection | null>(null);
   const [sportSearchTerm, setSportSearchTerm] = useState('');
   const latestLoadMapDataRef = useRef<(nextCenter: MapCenter, radiusKm?: number) => Promise<void>>(async () => {});
-  const lastMapLoadKeyRef = useRef<string | null>(null);
-  const initialViewportSearchDoneRef = useRef(false);
 
   const eventDateRange = useMemo(
     () => resolveEventDateRange(selectedStartDate, selectedEndDate),
     [selectedEndDate, selectedStartDate],
-  );
-  const eventFilterKey = useMemo(
-    () => JSON.stringify({
-      eventTypes: selectedEventTypes,
-      sports: selectedSports,
-      dateFrom: eventDateRange.dateFrom,
-      dateTo: eventDateRange.dateTo ?? null,
-      maxDistance: maxDistance ?? null,
-    }),
-    [eventDateRange.dateFrom, eventDateRange.dateTo, maxDistance, selectedEventTypes, selectedSports],
   );
 
   const userLocationIcon = useMemo<google.maps.Symbol | undefined>(() => {
@@ -512,8 +503,6 @@ export default function DiscoverMapModal({
     const effectiveEventRadiusKm = typeof maxDistance === 'number'
       ? Math.min(maxDistance, mapSearchRadiusKm)
       : mapSearchRadiusKm;
-    const loadKey = `${mapCenterKey(nextCenter)}|${mapRadiusKey(mapSearchRadiusKm)}|${eventFilterKey}`;
-    lastMapLoadKeyRef.current = loadKey;
     setLoading(true);
     setError(null);
     try {
@@ -581,7 +570,6 @@ export default function DiscoverMapModal({
   }, [
     eventDateRange.dateFrom,
     eventDateRange.dateTo,
-    eventFilterKey,
     eventTypeOptions.length,
     kmBetween,
     maxDistance,
@@ -595,7 +583,6 @@ export default function DiscoverMapModal({
 
   useEffect(() => {
     if (!opened) return;
-    initialViewportSearchDoneRef.current = false;
     if (location) {
       setCenter(location);
       void latestLoadMapDataRef.current(location, MAP_SEARCH_RADIUS_KM);
@@ -634,39 +621,23 @@ export default function DiscoverMapModal({
     };
   }, [location, opened, requestLocation]);
 
-  useEffect(() => {
-    if (!opened || !searchedCenter || initialViewportSearchDoneRef.current) {
-      return;
-    }
-    if (mapRadiusKey(viewportRadiusKm) === mapRadiusKey(searchedRadiusKm)) {
-      initialViewportSearchDoneRef.current = true;
-      return;
-    }
-    if (kmBetween(center, searchedCenter) >= SEARCH_AREA_THRESHOLD_KM) {
-      return;
-    }
-    initialViewportSearchDoneRef.current = true;
-    void loadMapData(center, viewportRadiusKm);
-  }, [
-    center,
-    kmBetween,
-    loadMapData,
-    opened,
-    searchedCenter,
-    searchedRadiusKm,
-    viewportRadiusKm,
-  ]);
+  const updateViewportRadius = useCallback((nextRadiusKm: number) => {
+    setViewportRadiusKm((current) => (
+      Math.abs(current - nextRadiusKm) < VIEWPORT_RADIUS_EPSILON_KM ? current : nextRadiusKm
+    ));
+  }, []);
 
-  useEffect(() => {
-    if (!opened || !searchedCenter) {
-      return;
-    }
-    const loadKey = `${mapCenterKey(searchedCenter)}|${mapRadiusKey(searchedRadiusKm)}|${eventFilterKey}`;
-    if (lastMapLoadKeyRef.current === loadKey) {
-      return;
-    }
-    void loadMapData(searchedCenter, searchedRadiusKm);
-  }, [eventFilterKey, loadMapData, opened, searchedCenter, searchedRadiusKm]);
+  const handleMapIdle = useCallback(() => {
+    const nextCenter = map?.getCenter();
+    if (!nextCenter) return;
+    const nextMapCenter = { lat: nextCenter.lat(), lng: nextCenter.lng() };
+    setCenter((current) => (mapCentersAreClose(current, nextMapCenter) ? current : nextMapCenter));
+    updateViewportRadius(resolveViewportRadiusKm(map, nextMapCenter));
+  }, [map, resolveViewportRadiusKm, updateViewportRadius]);
+
+  const handleSearchAreaClick = useCallback(() => {
+    void loadMapData(center, viewportRadiusKm);
+  }, [center, loadMapData, viewportRadiusKm]);
 
   const showSearchArea = useMemo(() => {
     if (!searchedCenter) return false;
@@ -983,7 +954,7 @@ export default function DiscoverMapModal({
 
         {showSearchArea && (
           <Button
-            onClick={() => loadMapData(center, viewportRadiusKm)}
+            onClick={handleSearchAreaClick}
             loading={loading}
             style={{
               position: 'absolute',
@@ -1229,16 +1200,10 @@ export default function DiscoverMapModal({
             zoom={DEFAULT_MAP_ZOOM}
             onLoad={(nextMap) => {
               setMap(nextMap);
-              setViewportRadiusKm(resolveViewportRadiusKm(nextMap, center));
+              updateViewportRadius(resolveViewportRadiusKm(nextMap, center));
             }}
             onUnmount={() => setMap(null)}
-            onIdle={() => {
-              const nextCenter = map?.getCenter();
-              if (!nextCenter) return;
-              const nextMapCenter = { lat: nextCenter.lat(), lng: nextCenter.lng() };
-              setCenter(nextMapCenter);
-              setViewportRadiusKm(resolveViewportRadiusKm(map, nextMapCenter));
-            }}
+            onIdle={handleMapIdle}
             options={{
               ...GOOGLE_MAP_OPTIONS_WITH_MAP_ID,
               clickableIcons: false,
