@@ -2,6 +2,7 @@ import { prisma } from '@/lib/prisma';
 import { buildInviteEmail } from '@/server/emailTemplates';
 import { isEmailEnabled, sendEmail } from '@/server/email';
 import { sendPushToUsers } from '@/server/pushNotifications';
+import { isUserNotificationChannelEnabled } from '@/server/notificationPreferences';
 
 interface InviteRecord {
   id: string;
@@ -80,9 +81,13 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
     });
 
     const inviteUserId = invite.userId?.trim();
-    if (inviteUserId) {
+    const pushEnabled = inviteUserId
+      ? await isUserNotificationChannelEnabled(inviteUserId, 'invitations', 'push')
+      : false;
+    if (inviteUserId && pushEnabled) {
       const pushResult = await sendPushToUsers({
         userIds: [inviteUserId],
+        notificationType: 'invitations',
         title: content.subject,
         body: 'You have a new invitation in BracketIQ. Open the app to review it.',
         data: {
@@ -113,7 +118,10 @@ export const sendInviteEmails = async (invites: InviteRecord[], baseUrl: string)
       }
     }
 
-    if (!emailEnabled || !hasValidEmail) {
+    const emailEnabledByPreference = inviteUserId
+      ? await isUserNotificationChannelEnabled(inviteUserId, 'invitations', 'email')
+      : true;
+    if (!emailEnabledByPreference || !emailEnabled || !hasValidEmail) {
       return { id: invite.id, status: null };
     }
 

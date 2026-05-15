@@ -1,5 +1,6 @@
 import { Invite, StaffMemberType, UserData, Subscription } from '@/types';
 import { normalizeOptionalName } from '@/lib/nameCase';
+import { normalizeNotificationSettings } from '@/lib/notificationSettings';
 
 const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(path, {
@@ -22,6 +23,7 @@ const normalizeUserDataNames = (user: UserData): UserData => ({
   hiddenEventIds: Array.isArray(user.hiddenEventIds) ? user.hiddenEventIds : [],
   chatTermsAcceptedAt: user.chatTermsAcceptedAt ?? null,
   chatTermsVersion: user.chatTermsVersion ?? null,
+  notificationSettings: normalizeNotificationSettings(user.notificationSettings),
 });
 
 const normalizeUserDataList = (users: UserData[]): UserData[] => users.map(normalizeUserDataNames);

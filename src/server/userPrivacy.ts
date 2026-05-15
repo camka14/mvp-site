@@ -33,6 +33,7 @@ export const currentUserSelect = {
   hiddenEventIds: true,
   chatTermsAcceptedAt: true,
   chatTermsVersion: true,
+  notificationSettings: true,
 } as const;
 
 export type CurrentUser = Prisma.UserDataGetPayload<{ select: typeof currentUserSelect }>;

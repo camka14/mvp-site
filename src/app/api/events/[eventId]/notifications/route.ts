@@ -8,6 +8,7 @@ import { isEmailEnabled, sendEmail } from '@/server/email';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 import { getEventOfficialIdsForEvent } from '@/server/officials/eventOfficials';
+import { filterUserIdsForNotificationChannel } from '@/server/notificationPreferences';
 
 export const dynamic = 'force-dynamic';
 
@@ -190,17 +191,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         };
       }
 
+      const [pushAllowedUserIds, emailAllowedUserIds] = await Promise.all([
+        filterUserIdsForNotificationChannel(selectedUserIds, 'eventAnnouncements', 'push', tx),
+        filterUserIdsForNotificationChannel(selectedUserIds, 'eventAnnouncements', 'email', tx),
+      ]);
+
       const pushRows = await tx.pushDeviceTarget.findMany({
-        where: { userId: { in: selectedUserIds } },
+        where: { userId: { in: pushAllowedUserIds } },
         select: { userId: true },
       });
       const pushRecipientIds = normalizeIds(pushRows.map((row) => row.userId));
-      const pushRecipientIdSet = new Set(pushRecipientIds);
+      const pushReachableUserIdSet = new Set(normalizeIds(pushRows.map((row) => row.userId)));
 
-      const fallbackEmailUserIds = selectedUserIds.filter((userId) => !pushRecipientIdSet.has(userId));
-      const sensitiveRows = fallbackEmailUserIds.length
+      const sensitiveRows = emailAllowedUserIds.length
         ? await tx.sensitiveUserData.findMany({
-          where: { userId: { in: fallbackEmailUserIds } },
+          where: { userId: { in: emailAllowedUserIds } },
           select: { userId: true, email: true },
         })
         : [];
@@ -213,7 +218,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         }
       });
 
-      const emailRecipientRows = fallbackEmailUserIds
+      const emailRecipientRows = emailAllowedUserIds
         .map((userId) => ({
           userId,
           email: emailByUserId.get(userId) ?? '',
@@ -221,7 +226,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         .filter((row) => row.email.length > 0);
 
       const emailRecipientIdSet = new Set(emailRecipientRows.map((row) => row.userId));
-      const noChannelUserIds = fallbackEmailUserIds.filter((userId) => !emailRecipientIdSet.has(userId));
+      const noChannelUserIds = selectedUserIds.filter((userId) => (
+        !pushReachableUserIdSet.has(userId) && !emailRecipientIdSet.has(userId)
+      ));
 
       return {
         eventName: eventAccess.name || 'Event',
@@ -252,6 +259,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       const settledPushResult = await settleWithTimeout(
         sendPushToUsers({
           userIds: resolved.pushRecipientIds,
+          notificationType: 'eventAnnouncements',
           title: pushTitle,
           body: pushBody,
           data: {

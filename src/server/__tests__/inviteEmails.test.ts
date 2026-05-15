@@ -4,6 +4,7 @@ const prismaMock = {
   events: { findMany: jest.fn() },
   organizations: { findMany: jest.fn() },
   teams: { findMany: jest.fn() },
+  userData: { findUnique: jest.fn() },
   invites: { update: jest.fn() },
 };
 
@@ -28,6 +29,7 @@ describe('sendInviteEmails', () => {
     prismaMock.events.findMany.mockResolvedValue([]);
     prismaMock.organizations.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.userData.findUnique.mockResolvedValue({ notificationSettings: {} });
     prismaMock.invites.update.mockResolvedValue({});
 
     buildInviteEmailMock.mockReturnValue({

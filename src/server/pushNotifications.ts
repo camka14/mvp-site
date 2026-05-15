@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { Prisma } from '@/generated/prisma/client';
 import { prisma } from '@/lib/prisma';
+import type { NotificationType } from '@/lib/notificationSettings';
+import { filterUserIdsForNotificationChannel } from '@/server/notificationPreferences';
 import { getFirebaseMessagingClient, isFirebaseMessagingEnabled } from '@/server/firebaseAdmin';
 
 interface PushDeviceTargetRow {
@@ -32,6 +34,7 @@ export interface SendPushToUsersInput {
   title: string;
   body: string;
   data?: Record<string, unknown>;
+  notificationType?: NotificationType;
 }
 
 export interface PushDispatchResult {
@@ -198,8 +201,11 @@ export const sendPushToUsers = async ({
   title,
   body,
   data,
+  notificationType,
 }: SendPushToUsersInput): Promise<PushDispatchResult> => {
-  const normalizedUserIds = normalizeUserIds(userIds);
+  const normalizedUserIds = notificationType
+    ? await filterUserIdsForNotificationChannel(userIds, notificationType, 'push')
+    : normalizeUserIds(userIds);
   if (!normalizedUserIds.length) {
     return {
       attempted: false,

@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { isEmailEnabled, sendEmail } from '@/server/email';
 import { sendPushToUsers } from '@/server/pushNotifications';
+import { filterUserIdsForNotificationChannel } from '@/server/notificationPreferences';
 
 interface EventCreationAudienceInput {
   eventId: string;
@@ -68,6 +69,7 @@ export const notifySocialAudienceOfEventCreation = async ({
 
     await sendPushToUsers({
       userIds: recipientIds,
+      notificationType: 'newEventsFromConnections',
       title: `${hostName} created a new event`,
       body: `${eventName} starts ${eventDate}${locationSuffix}`,
       data: {
@@ -83,8 +85,17 @@ export const notifySocialAudienceOfEventCreation = async ({
       return;
     }
 
+    const emailRecipientIds = await filterUserIdsForNotificationChannel(
+      recipientIds,
+      'newEventsFromConnections',
+      'email',
+    );
+    if (!emailRecipientIds.length) {
+      return;
+    }
+
     const recipients = await prisma.sensitiveUserData.findMany({
-      where: { userId: { in: recipientIds } },
+      where: { userId: { in: emailRecipientIds } },
       select: {
         userId: true,
         email: true,

@@ -19,6 +19,15 @@ import {
   normalizeBillingCountryCode,
   normalizeUsStateCode,
 } from "@/lib/billingAddressOptions";
+import {
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_SETTING_ROWS,
+  isNotificationChannelSupported,
+  normalizeNotificationSettings,
+  type NormalizedNotificationSettings,
+  type NotificationChannel,
+  type NotificationType,
+} from "@/lib/notificationSettings";
 import { userService, type UserSocialGraph } from "@/lib/userService";
 import {
   familyService,
@@ -90,6 +99,7 @@ import { resolveClientPublicOrigin } from "@/lib/clientPublicOrigin";
 import { withSelectedProfileImage } from "./profileImageSelection";
 import {
   Activity,
+  Bell,
   CreditCard,
   FileCheck2,
   FolderKanban,
@@ -177,6 +187,7 @@ const formatDateTimeLabel = (value?: string): string => {
 
 type ProfileViewTab =
   | "overview"
+  | "notifications"
   | "social"
   | "family"
   | "documents"
@@ -256,6 +267,14 @@ function ProfilePageContent() {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notificationSettings, setNotificationSettings] =
+    useState<NormalizedNotificationSettings>(() =>
+      normalizeNotificationSettings(null),
+    );
+  const [savingNotificationSettings, setSavingNotificationSettings] =
+    useState(false);
+  const [notificationSettingsError, setNotificationSettingsError] =
+    useState<string | null>(null);
 
   // Profile form data
   const [profileData, setProfileData] = useState({
@@ -422,6 +441,10 @@ function ProfilePageContent() {
         dateOfBirth: toDateInputValue(user.dateOfBirth),
         profileImageId: user.profileImageId || "",
       });
+      setNotificationSettings(
+        normalizeNotificationSettings(user.notificationSettings),
+      );
+      setNotificationSettingsError(null);
     }
   }, [user]);
 
@@ -639,6 +662,48 @@ function ProfilePageContent() {
       setError(error.message || "Failed to update profile");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleNotificationSettingChange = (
+    type: NotificationType,
+    channel: NotificationChannel,
+    checked: boolean,
+  ) => {
+    setNotificationSettings((previous) => ({
+      ...previous,
+      [type]: {
+        ...previous[type],
+        [channel]: checked,
+      },
+    }));
+  };
+
+  const handleSaveNotificationSettings = async () => {
+    if (!user) return;
+
+    setSavingNotificationSettings(true);
+    setNotificationSettingsError(null);
+    try {
+      const updated = await userService.updateUser(user.$id, {
+        notificationSettings,
+      });
+      setUser(updated);
+      setNotificationSettings(
+        normalizeNotificationSettings(updated.notificationSettings),
+      );
+      notifications.show({
+        color: "green",
+        message: "Notification settings saved.",
+      });
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error
+          ? saveError.message
+          : "Failed to save notification settings.";
+      setNotificationSettingsError(message);
+    } finally {
+      setSavingNotificationSettings(false);
     }
   };
 
@@ -2082,6 +2147,12 @@ function ProfilePageContent() {
       icon: Activity,
     },
     {
+      id: "notifications",
+      label: "Notifications",
+      description: "Choose email and push alerts.",
+      icon: Bell,
+    },
+    {
       id: "social",
       label: "Connections",
       description: "Friends, follows, and requests.",
@@ -2183,6 +2254,96 @@ function ProfilePageContent() {
         <Suspense fallback={<Loading text="Loading teams..." />}>
           <ManageTeams showNavigation={false} withContainer={false} />
         </Suspense>
+      </Paper>
+    </div>
+  );
+
+  const renderNotificationsTab = () => (
+    <div className="space-y-6">
+      <Paper withBorder radius="xl" p="lg" shadow="sm">
+        <Group justify="space-between" align="flex-start" gap="md" mb="md">
+          <div>
+            <Title order={4}>Notifications</Title>
+            <Text size="sm" c="dimmed" mt="xs">
+              Choose which optional updates you receive by email or push.
+            </Text>
+          </div>
+          <Button
+            onClick={handleSaveNotificationSettings}
+            loading={savingNotificationSettings}
+          >
+            Save settings
+          </Button>
+        </Group>
+
+        {notificationSettingsError ? (
+          <Alert color="red" mb="md">
+            {notificationSettingsError}
+          </Alert>
+        ) : null}
+
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-separate border-spacing-0 text-sm">
+            <thead>
+              <tr>
+                <th className="border-b border-slate-200 px-3 py-3 text-left font-semibold text-slate-700">
+                  Notification
+                </th>
+                {NOTIFICATION_CHANNELS.map((channel) => (
+                  <th
+                    key={channel}
+                    className="border-b border-slate-200 px-3 py-3 text-center font-semibold capitalize text-slate-700"
+                  >
+                    {channel}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {NOTIFICATION_SETTING_ROWS.map((row) => (
+                <tr key={row.id}>
+                  <td className="border-b border-slate-100 px-3 py-4 align-top">
+                    <Text fw={600}>{row.label}</Text>
+                    <Text size="xs" c="dimmed" mt={4}>
+                      {row.description}
+                    </Text>
+                  </td>
+                  {NOTIFICATION_CHANNELS.map((channel) => {
+                    const supported = isNotificationChannelSupported(
+                      row.id,
+                      channel,
+                    );
+                    return (
+                      <td
+                        key={`${row.id}-${channel}`}
+                        className="border-b border-slate-100 px-3 py-4 text-center align-middle"
+                      >
+                        {supported ? (
+                          <Checkbox
+                            aria-label={`${row.label} ${channel}`}
+                            checked={notificationSettings[row.id][channel]}
+                            onChange={(event) =>
+                              handleNotificationSettingChange(
+                                row.id,
+                                channel,
+                                event.currentTarget.checked,
+                              )
+                            }
+                            className="inline-flex"
+                          />
+                        ) : (
+                          <Text size="xs" c="dimmed">
+                            Not available
+                          </Text>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </Paper>
     </div>
   );
@@ -4170,6 +4331,8 @@ function ProfilePageContent() {
     }
 
     switch (activeTab) {
+      case "notifications":
+        return renderNotificationsTab();
       case "social":
         return renderSocialTab();
       case "family":

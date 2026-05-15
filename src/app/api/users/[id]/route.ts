@@ -10,6 +10,7 @@ import {
   normalizeUserName,
 } from '@/server/userNames';
 import { resolveRequiredProfileFieldsCompletedAt } from '@/server/profileCompletion';
+import { normalizeNotificationSettings } from '@/lib/notificationSettings';
 import { applyUserPrivacy, createVisibilityContext, currentUserSelect, publicUserSelect } from '@/server/userPrivacy';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
@@ -30,6 +31,7 @@ const USER_MUTABLE_FIELDS = new Set<string>([
   'uploadedImages',
   'profileImageId',
   'homePageOrganizationId',
+  'notificationSettings',
 ]);
 const USER_IMMUTABLE_FIELDS = new Set<string>([
   'id',
@@ -173,6 +175,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: 'Username already in use.' }, { status: 409 });
     }
     nextData.userName = normalizedUserName;
+  }
+  if (Object.prototype.hasOwnProperty.call(nextData, 'notificationSettings')) {
+    nextData.notificationSettings = normalizeNotificationSettings(nextData.notificationSettings);
   }
 
   if (Object.prototype.hasOwnProperty.call(nextData, 'homePageOrganizationId')) {

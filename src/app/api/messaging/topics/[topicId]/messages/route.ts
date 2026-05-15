@@ -46,6 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
   const recipients = recipientIds.filter((userId) => userId !== senderId && !mutedUserIds.has(userId));
   const delivery = await sendPushToUsers({
     userIds: recipients,
+    notificationType: 'chatMessages',
     title: parsed.data.title?.trim() || 'Notification',
     body: parsed.data.body.trim(),
     data: {

@@ -23,6 +23,7 @@ import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
 import { isEmailEnabled, sendEmail } from '@/server/email';
 import { sendPushToUsers } from '@/server/pushNotifications';
+import { isUserNotificationChannelEnabled } from '@/server/notificationPreferences';
 import {
   normalizeMatchOfficialAssignments,
 } from '@/server/officials/config';
@@ -871,25 +872,29 @@ const notifyHostOfAutoRescheduleFailure = async (
   const title = `Auto-reschedule failed for ${payload.eventName}`;
   const body = `A finalized match could not be auto-rescheduled before ${payload.eventEndIso}. Extend the event end date/time for auto-rescheduling or reschedule manually.`;
 
-  await sendPushToUsers({
-    userIds: [payload.hostId],
-    title,
-    body,
-    data: {
-      eventId: payload.eventId,
-      matchId: payload.matchId,
-      reason: 'fixed_end_limit',
-    },
-  }).catch((error) => {
-    console.warn('Failed to send auto-reschedule failure push notification', {
-      eventId: payload.eventId,
-      hostId: payload.hostId,
-      error,
+  if (await isUserNotificationChannelEnabled(payload.hostId, 'hostActionRequired', 'push')) {
+    await sendPushToUsers({
+      userIds: [payload.hostId],
+      notificationType: 'hostActionRequired',
+      title,
+      body,
+      data: {
+        eventId: payload.eventId,
+        matchId: payload.matchId,
+        reason: 'fixed_end_limit',
+      },
+    }).catch((error) => {
+      console.warn('Failed to send auto-reschedule failure push notification', {
+        eventId: payload.eventId,
+        hostId: payload.hostId,
+        error,
+      });
     });
-  });
+  }
 
   const hostEmail = sensitiveProfile?.email?.trim();
-  if (!hostEmail || !isEmailEnabled()) {
+  const emailAllowed = await isUserNotificationChannelEnabled(payload.hostId, 'hostActionRequired', 'email');
+  if (!emailAllowed || !hostEmail || !isEmailEnabled()) {
     return;
   }
   await sendEmail({

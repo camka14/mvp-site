@@ -293,7 +293,8 @@ export const UserDataScalarFieldEnum = {
   blockedUserIds: 'blockedUserIds',
   hiddenEventIds: 'hiddenEventIds',
   chatTermsAcceptedAt: 'chatTermsAcceptedAt',
-  chatTermsVersion: 'chatTermsVersion'
+  chatTermsVersion: 'chatTermsVersion',
+  notificationSettings: 'notificationSettings'
 } as const
 
 export type UserDataScalarFieldEnum = (typeof UserDataScalarFieldEnum)[keyof typeof UserDataScalarFieldEnum]

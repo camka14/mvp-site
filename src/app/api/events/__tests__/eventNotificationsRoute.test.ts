@@ -19,6 +19,9 @@ const prismaMock = {
   parentChildLinks: {
     findMany: jest.fn(),
   },
+  userData: {
+    findMany: jest.fn(),
+  },
   pushDeviceTarget: {
     findMany: jest.fn(),
   },
@@ -118,6 +121,9 @@ describe('POST /api/events/[eventId]/notifications', () => {
       { parentId: 'parent_1' },
       { parentId: 'parent_1' },
     ]);
+    prismaMock.userData.findMany.mockImplementation(async ({ where }: { where: { id: { in: string[] } } }) => (
+      where.id.in.map((id) => ({ id, notificationSettings: {} }))
+    ));
     prismaMock.pushDeviceTarget.findMany.mockResolvedValue([
       { userId: 'manager_1' },
       { userId: 'official_1' },

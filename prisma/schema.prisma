@@ -396,6 +396,7 @@ model UserData {
   hiddenEventIds          String[]  @default([])
   chatTermsAcceptedAt     DateTime?
   chatTermsVersion        String?
+  notificationSettings    Json      @default("{}")
 }
 
 model SensitiveUserData {

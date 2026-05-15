@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
+import { normalizeNotificationSettings } from '@/lib/notificationSettings';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import {
@@ -153,6 +154,9 @@ export async function POST(req: NextRequest) {
     if (!Number.isNaN(parsedDate.getTime())) {
       normalizedData.dateOfBirth = parsedDate;
     }
+  }
+  if (Object.prototype.hasOwnProperty.call(normalizedData, 'notificationSettings')) {
+    normalizedData.notificationSettings = normalizeNotificationSettings(normalizedData.notificationSettings);
   }
   const now = new Date();
   const existing = await prisma.userData.findUnique({ where: { id } });
