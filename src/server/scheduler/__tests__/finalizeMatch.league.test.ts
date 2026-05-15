@@ -115,6 +115,65 @@ describe('finalizeMatch (league)', () => {
     expect(second.start.getTime()).toBeGreaterThan(originalSecondStart);
   });
 
+  it('uses an unlocked finalized match actual window as the reschedule anchor', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(4, division);
+    const start = new Date(2026, 0, 1, 9, 0, 0);
+    const end = new Date(2026, 0, 1, 17, 0, 0);
+
+    const league = new League({
+      id: 'league_unlocked_actual_window',
+      name: 'Unlocked Actual Window League',
+      start,
+      end,
+      maxParticipants: 4,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      officials: [],
+      fields: { [field.id]: field },
+      timeSlots: [buildWeeklySlot(start.getDay())],
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      restTimeMinutes: 0,
+      usesSets: true,
+      setDurationMinutes: 20,
+      setsPerMatch: 3,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+    const ordered = [...scheduled.matches].sort((a, b) => (a.matchId ?? 0) - (b.matchId ?? 0));
+    const first = ordered[0];
+    const second = ordered[1];
+    expect(first.team1).not.toBeNull();
+    expect(first.team2).not.toBeNull();
+    expect(second).toBeTruthy();
+    if (!second) {
+      return;
+    }
+
+    const actualStart = new Date(first.start.getTime() + 10 * 60 * 1000);
+    const actualEnd = new Date(first.end.getTime() + 30 * 60 * 1000);
+    first.locked = false;
+    first.actualStart = actualStart;
+    first.setResults = [1, 1, 2];
+    first.team1Points = [21, 21, 15];
+    first.team2Points = [10, 18, 21];
+
+    finalizeMatch(league, first, context, actualEnd);
+
+    expect(first.locked).toBe(false);
+    expect(first.actualStart?.toISOString()).toBe(actualStart.toISOString());
+    expect(first.actualEnd?.toISOString()).toBe(actualEnd.toISOString());
+    expect(first.start.toISOString()).toBe(actualStart.toISOString());
+    expect(first.end.toISOString()).toBe(actualEnd.toISOString());
+    expect(second.start.getTime()).toBeGreaterThanOrEqual(actualEnd.getTime());
+  });
+
   it('preserves locked downstream regular-season matches when a prior league match runs long', () => {
     const division = buildDivision();
     const field = buildField(division);

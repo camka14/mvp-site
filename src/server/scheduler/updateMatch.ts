@@ -337,6 +337,27 @@ const isMatchOver = (match: Match | null): boolean => {
   return Boolean(resolveMatchWinner(match));
 };
 
+const isValidDate = (value: Date | null | undefined): value is Date => (
+  value instanceof Date && !Number.isNaN(value.getTime())
+);
+
+const syncUnlockedCompletedMatchScheduleWindow = (match: Match, actualEnd: Date): boolean => {
+  if (match.locked) {
+    return false;
+  }
+  const actualStart = isValidDate(match.actualStart) ? match.actualStart : match.start;
+  if (!isValidDate(actualStart) || !isValidDate(actualEnd) || actualEnd.getTime() <= actualStart.getTime()) {
+    return false;
+  }
+
+  if (!isValidDate(match.actualStart)) {
+    match.actualStart = actualStart;
+  }
+  match.start = actualStart;
+  match.end = actualEnd;
+  return true;
+};
+
 const teamsWaitingToStart = (teams: Team[], currentTime: Date): Team[] => {
   const waiting: Team[] = [];
   for (const team of teams) {
@@ -464,11 +485,19 @@ export const finalizeMatch = (
   updatedMatch.status = 'COMPLETE';
   updatedMatch.resultStatus = updatedMatch.resultStatus ?? 'OFFICIAL';
   updatedMatch.actualEnd = updatedMatch.actualEnd ?? currentTime;
+  const preserveCompletedWindow = syncUnlockedCompletedMatchScheduleWindow(updatedMatch, updatedMatch.actualEnd);
 
   updatedMatch.advanceTeams(winner, loser);
 
+  if (preserveCompletedWindow) {
+    updatedMatch.locked = true;
+  }
+
   if (event instanceof League) {
     rescheduleEventMatchesPreservingLocks(event);
+    if (preserveCompletedWindow) {
+      updatedMatch.locked = false;
+    }
     return { updatedMatch, seededTeamIds };
   }
 
@@ -484,6 +513,9 @@ export const finalizeMatch = (
 
   const orderedMatches = Object.values(event.matches);
   if (!orderedMatches.length) {
+    if (preserveCompletedWindow) {
+      updatedMatch.locked = false;
+    }
     return { updatedMatch, seededTeamIds };
   }
 
@@ -598,6 +630,9 @@ export const finalizeMatch = (
     }
   }
 
+  if (preserveCompletedWindow) {
+    updatedMatch.locked = false;
+  }
   return { updatedMatch, seededTeamIds };
 };
 
