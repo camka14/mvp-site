@@ -106,8 +106,6 @@ const DEFAULT_CENTER: MapCenter = { lat: 39.8283, lng: -98.5795 };
 const DEFAULT_MAP_ZOOM = 11;
 const MAP_SEARCH_RADIUS_KM = 50;
 const MIN_MAP_SEARCH_RADIUS_KM = 1;
-const SEARCH_AREA_THRESHOLD_KM = 2;
-const SEARCH_AREA_RADIUS_THRESHOLD_RATIO = 0.15;
 const MAP_CENTER_EPSILON_DEGREES = 0.00001;
 const VIEWPORT_RADIUS_EPSILON_KM = 0.1;
 const KM_PER_MILE = 1.60934;
@@ -438,7 +436,6 @@ export default function DiscoverMapModal({
   const [center, setCenter] = useState<MapCenter>(location ?? DEFAULT_CENTER);
   const [searchedCenter, setSearchedCenter] = useState<MapCenter | null>(null);
   const [viewportRadiusKm, setViewportRadiusKm] = useState(MAP_SEARCH_RADIUS_KM);
-  const [searchedRadiusKm, setSearchedRadiusKm] = useState(MAP_SEARCH_RADIUS_KM);
   const [events, setEvents] = useState<Event[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [rentals, setRentals] = useState<RentalMapListing[]>([]);
@@ -448,7 +445,10 @@ export default function DiscoverMapModal({
   const [searchTerm, setSearchTerm] = useState('');
   const [selected, setSelected] = useState<MarkerSelection | null>(null);
   const [sportSearchTerm, setSportSearchTerm] = useState('');
+  const [isSearchAreaDirty, setIsSearchAreaDirty] = useState(false);
   const latestLoadMapDataRef = useRef<(nextCenter: MapCenter, radiusKm?: number) => Promise<void>>(async () => {});
+  const initialMapLoadKeyRef = useRef<string | null>(null);
+  const mapSettledOnceRef = useRef(false);
 
   const eventDateRange = useMemo(
     () => resolveEventDateRange(selectedStartDate, selectedEndDate),
@@ -559,7 +559,7 @@ export default function DiscoverMapModal({
       setOrganizations(orgsWithDistance.map((entry) => entry.organization));
       setRentals(rentalRows.sort((left, right) => (left.distanceKm ?? 0) - (right.distanceKm ?? 0)));
       setSearchedCenter(nextCenter);
-      setSearchedRadiusKm(mapSearchRadiusKm);
+      setIsSearchAreaDirty(false);
       setSelected(null);
     } catch (loadError) {
       console.error('Failed to load discover map data:', loadError);
@@ -582,9 +582,29 @@ export default function DiscoverMapModal({
   }, [loadMapData]);
 
   useEffect(() => {
-    if (!opened) return;
+    if (!opened) {
+      initialMapLoadKeyRef.current = null;
+      mapSettledOnceRef.current = false;
+      setIsSearchAreaDirty(false);
+      return;
+    }
     if (location) {
+      const locationLoadKey = `location:${location.lat.toFixed(5)},${location.lng.toFixed(5)}`;
+      if (initialMapLoadKeyRef.current === locationLoadKey) {
+        return;
+      }
+      initialMapLoadKeyRef.current = locationLoadKey;
+      mapSettledOnceRef.current = false;
+      setIsSearchAreaDirty(false);
       setCenter(location);
+      setSearchedCenter(null);
+      setViewportRadiusKm(MAP_SEARCH_RADIUS_KM);
+      setSelected(null);
+      setEvents([]);
+      setOrganizations([]);
+      setRentals([]);
+      setError(null);
+      setLoading(false);
       void latestLoadMapDataRef.current(location, MAP_SEARCH_RADIUS_KM);
       return;
     }
@@ -596,18 +616,21 @@ export default function DiscoverMapModal({
         return;
       }
       fallbackStarted = true;
+      initialMapLoadKeyRef.current = 'fallback';
+      setIsSearchAreaDirty(false);
       void latestLoadMapDataRef.current(DEFAULT_CENTER, MAP_SEARCH_RADIUS_KM);
     };
     setCenter(DEFAULT_CENTER);
     setSearchedCenter(null);
     setViewportRadiusKm(MAP_SEARCH_RADIUS_KM);
-    setSearchedRadiusKm(MAP_SEARCH_RADIUS_KM);
+    setIsSearchAreaDirty(false);
+    mapSettledOnceRef.current = false;
     setSelected(null);
     setEvents([]);
     setOrganizations([]);
     setRentals([]);
     setError(null);
-    setLoading(true);
+    setLoading(false);
 
     void requestLocation().catch(loadFallback);
 
@@ -631,21 +654,36 @@ export default function DiscoverMapModal({
     const nextCenter = map?.getCenter();
     if (!nextCenter) return;
     const nextMapCenter = { lat: nextCenter.lat(), lng: nextCenter.lng() };
+    const nextRadiusKm = resolveViewportRadiusKm(map, nextMapCenter);
     setCenter((current) => (mapCentersAreClose(current, nextMapCenter) ? current : nextMapCenter));
-    updateViewportRadius(resolveViewportRadiusKm(map, nextMapCenter));
+    updateViewportRadius(nextRadiusKm);
+    mapSettledOnceRef.current = true;
   }, [map, resolveViewportRadiusKm, updateViewportRadius]);
+
+  const handleMapDragStart = useCallback(() => {
+    setIsSearchAreaDirty(true);
+  }, []);
+
+  const handleMapZoomChanged = useCallback(() => {
+    if (mapSettledOnceRef.current) {
+      setIsSearchAreaDirty(true);
+    }
+  }, []);
+
+  const handleMapLoad = useCallback((nextMap: google.maps.Map) => {
+    setMap(nextMap);
+    updateViewportRadius(resolveViewportRadiusKm(nextMap, center));
+  }, [center, resolveViewportRadiusKm, updateViewportRadius]);
+
+  const handleMapUnmount = useCallback(() => {
+    setMap(null);
+  }, []);
 
   const handleSearchAreaClick = useCallback(() => {
     void loadMapData(center, viewportRadiusKm);
   }, [center, loadMapData, viewportRadiusKm]);
 
-  const showSearchArea = useMemo(() => {
-    if (!searchedCenter) return false;
-    const movedFarEnough = kmBetween(center, searchedCenter) >= SEARCH_AREA_THRESHOLD_KM;
-    const radiusChangedEnough = Math.abs(viewportRadiusKm - searchedRadiusKm) >=
-      Math.max(MIN_MAP_SEARCH_RADIUS_KM, searchedRadiusKm * SEARCH_AREA_RADIUS_THRESHOLD_RATIO);
-    return movedFarEnough || radiusChangedEnough;
-  }, [center, kmBetween, searchedCenter, searchedRadiusKm, viewportRadiusKm]);
+  const showSearchArea = isSearchAreaDirty;
 
   const visibleEvents = useMemo(() => {
     if (searchTarget !== 'events') {
@@ -1198,12 +1236,11 @@ export default function DiscoverMapModal({
             mapContainerStyle={{ width: '100%', height: '100%' }}
             center={center}
             zoom={DEFAULT_MAP_ZOOM}
-            onLoad={(nextMap) => {
-              setMap(nextMap);
-              updateViewportRadius(resolveViewportRadiusKm(nextMap, center));
-            }}
-            onUnmount={() => setMap(null)}
+            onLoad={handleMapLoad}
+            onUnmount={handleMapUnmount}
+            onDragStart={handleMapDragStart}
             onIdle={handleMapIdle}
+            onZoomChanged={handleMapZoomChanged}
             options={{
               ...GOOGLE_MAP_OPTIONS_WITH_MAP_ID,
               clickableIcons: false,

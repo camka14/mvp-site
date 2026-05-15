@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import DiscoverMapModal from '../DiscoverMapModal';
@@ -5,7 +6,9 @@ import { eventService } from '@/lib/eventService';
 import { organizationService } from '@/lib/organizationService';
 import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
 
-let mockMapCenter = { lat: 45, lng: -122 };
+const VANCOUVER_WA_CENTER = { lat: 45.6387, lng: -122.6615 };
+
+let mockMapCenter = { ...VANCOUVER_WA_CENTER };
 
 const mockMap = {
   getCenter: jest.fn(() => ({
@@ -31,15 +34,16 @@ jest.mock('@react-google-maps/api', () => {
   const React = require('react');
 
   return {
-    GoogleMap: ({ children, onIdle, onLoad }: any) => {
+    GoogleMap: ({ children, onDragStart, onIdle, onLoad }: any) => {
       const loadedRef = React.useRef(false);
 
       React.useEffect(() => {
         if (!loadedRef.current) {
           loadedRef.current = true;
           onLoad?.(mockMap);
+          onIdle?.();
         }
-      }, [onLoad]);
+      }, [onIdle, onLoad]);
 
       return React.createElement(
         'div',
@@ -49,7 +53,8 @@ jest.mock('@react-google-maps/api', () => {
           {
             type: 'button',
             onClick: () => {
-              mockMapCenter = { lat: 45.05, lng: -122 };
+              mockMapCenter = { lat: VANCOUVER_WA_CENTER.lat + 0.05, lng: VANCOUVER_WA_CENTER.lng };
+              onDragStart?.();
               onIdle?.();
             },
           },
@@ -93,11 +98,11 @@ const kmBetween = (a: { lat: number; lng: number }, b: { lat: number; lng: numbe
   Math.hypot(a.lat - b.lat, a.lng - b.lng) * 111
 );
 
-const renderModal = () => renderWithMantine(
+const renderModal = (location = VANCOUVER_WA_CENTER) => renderWithMantine(
   <DiscoverMapModal
     opened
     onClose={jest.fn()}
-    location={{ lat: 45, lng: -122 }}
+    location={location}
     requestLocation={jest.fn()}
     kmBetween={kmBetween}
     selectedEventTypes={['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']}
@@ -120,15 +125,54 @@ const renderModal = () => renderWithMantine(
   />,
 );
 
+function CurrentLocationHarness() {
+  const [location, setLocation] = useState(VANCOUVER_WA_CENTER);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setLocation({ ...VANCOUVER_WA_CENTER })}
+      >
+        Re-emit Vancouver location
+      </button>
+      <DiscoverMapModal
+        opened
+        onClose={jest.fn()}
+        location={location}
+        requestLocation={jest.fn()}
+        kmBetween={kmBetween}
+        selectedEventTypes={['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']}
+        setSelectedEventTypes={jest.fn()}
+        eventTypeOptions={['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const}
+        selectedSports={[]}
+        setSelectedSports={jest.fn()}
+        sports={[]}
+        sportsLoading={false}
+        sportsError={null}
+        maxDistance={null}
+        setMaxDistance={jest.fn()}
+        selectedStartDate={null}
+        setSelectedStartDate={jest.fn()}
+        selectedEndDate={null}
+        setSelectedEndDate={jest.fn()}
+        defaultMaxDistance={50}
+        onEventClick={jest.fn()}
+        onOrganizationClick={jest.fn()}
+      />
+    </>
+  );
+}
+
 describe('DiscoverMapModal', () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY = 'test-key';
-    mockMapCenter = { lat: 45, lng: -122 };
+    mockMapCenter = { ...VANCOUVER_WA_CENTER };
     mockedEventService.getEventsPaginated.mockResolvedValue([]);
     mockedOrganizationService.listOrganizationsWithFields.mockResolvedValue([]);
   });
 
-  it('waits for the Search this area button before refreshing map results after map movement', async () => {
+  it('loads the Vancouver area on open, then waits for Search this area before refreshing after map movement', async () => {
     renderModal();
 
     await waitFor(() => {
@@ -145,5 +189,21 @@ describe('DiscoverMapModal', () => {
     await waitFor(() => {
       expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(2);
     });
+  });
+
+  it('does not repeat the initial Vancouver-area load when the same current location is re-emitted', async () => {
+    renderWithMantine(<CurrentLocationHarness />);
+
+    await waitFor(() => {
+      expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Re-emit Vancouver location' }));
+
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 0);
+    });
+
+    expect(mockedEventService.getEventsPaginated).toHaveBeenCalledTimes(1);
   });
 });
