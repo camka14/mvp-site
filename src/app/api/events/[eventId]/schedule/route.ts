@@ -22,6 +22,11 @@ import {
 } from '@/server/scheduler/standings';
 import { League, SchedulerContext, Tournament } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
+import {
+  collectMatchScheduleChanges,
+  notifyTeamsOfMatchScheduleUpdate,
+  snapshotMatchScheduleState,
+} from '@/server/matchScheduleNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -163,6 +168,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
 
       const includePlaceholderTeams = parsed.data.includePlaceholderTeams !== false;
       const existingMatches = Object.values(event.matches);
+      const existingMatchSnapshot = snapshotMatchScheduleState(existingMatches);
       const hasExistingMatches = existingMatches.length > 0;
       const scheduled = (() => {
         if (hasExistingMatches && includePlaceholderTeams) {
@@ -218,14 +224,36 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       }
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);
+      const matchScheduleNotification = hasExistingMatches
+        ? {
+          eventId,
+          eventName: String((scheduled.event as any).name ?? event.name ?? 'Event'),
+          forceBatch: true,
+          changes: collectMatchScheduleChanges({
+            before: existingMatchSnapshot,
+            after: snapshotMatchScheduleState(scheduled.matches),
+          }),
+        }
+        : null;
       return {
         preview: false,
         ...scheduled,
+        matchScheduleNotification,
         warnings: Array.isArray((scheduled as { warnings?: unknown[] }).warnings)
           ? (scheduled as { warnings: unknown[] }).warnings
           : [],
       };
     }, SCHEDULE_TRANSACTION_OPTIONS);
+
+    const matchScheduleNotification = 'matchScheduleNotification' in result
+      ? result.matchScheduleNotification
+      : null;
+    await notifyTeamsOfMatchScheduleUpdate(matchScheduleNotification).catch((error) => {
+      console.warn('Failed to send match schedule update notifications', {
+        eventId,
+        error,
+      });
+    });
 
     return NextResponse.json(
       {

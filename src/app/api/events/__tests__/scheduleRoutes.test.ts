@@ -11,6 +11,10 @@ const prismaMock = {
   teams: {
     create: jest.fn(),
     deleteMany: jest.fn(),
+    findMany: jest.fn(),
+  },
+  eventTeamStaffAssignments: {
+    findMany: jest.fn(),
   },
   divisions: {
     findMany: jest.fn(),
@@ -24,6 +28,9 @@ const prismaMock = {
     findMany: jest.fn(),
     deleteMany: jest.fn(),
     upsert: jest.fn(),
+  },
+  parentChildLinks: {
+    findMany: jest.fn(),
   },
   organizations: {
     findUnique: jest.fn(),
@@ -135,6 +142,10 @@ describe('schedule routes', () => {
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
     prismaMock.organizations.findUnique.mockResolvedValue(null);
     persistScheduledRosterTeamsMock.mockResolvedValue([]);
+    prismaMock.teams.findMany.mockResolvedValue([]);
+    prismaMock.eventTeamStaffAssignments.findMany.mockResolvedValue([]);
+    prismaMock.parentChildLinks.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     isEmailEnabledMock.mockReturnValue(false);
     sendPushToUsersMock.mockResolvedValue(undefined);
     sendEmailMock.mockResolvedValue(undefined);
@@ -632,6 +643,72 @@ describe('schedule routes', () => {
       prismaMock,
     );
     expect(json.warnings).toEqual([]);
+  });
+
+  it('notifies affected teams with a generic message after an existing event schedule is updated', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', name: 'Alpha', captainId: 'captain_1', playerIds: ['player_1'] };
+    const team2 = { id: 'team_2', name: 'Bravo', captainId: 'captain_2', playerIds: ['player_2'] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      name: 'Spring League',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          matchId: 1,
+          start: new Date('2026-05-01T10:00:00.000Z'),
+          end: new Date('2026-05-01T11:00:00.000Z'),
+          field: { id: 'field_1' },
+          team1,
+          team2,
+        },
+      },
+    });
+    rescheduleEventMatchesPreservingLocksMock.mockReturnValue({
+      event: { id: 'event_1', name: 'Spring League' },
+      matches: [{
+        id: 'match_1',
+        matchId: 1,
+        start: new Date('2026-05-01T12:00:00.000Z'),
+        end: new Date('2026-05-01T13:00:00.000Z'),
+        field: { id: 'field_1' },
+        team1,
+        team2,
+      }],
+      warnings: [],
+    });
+    prismaMock.teams.findMany.mockResolvedValue([
+      { id: 'team_1', captainId: 'captain_1', managerId: 'manager_1', headCoachId: null, coachIds: [], playerIds: ['player_1'] },
+      { id: 'team_2', captainId: 'captain_2', managerId: 'manager_2', headCoachId: null, coachIds: [], playerIds: ['player_2'] },
+    ]);
+    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await scheduleByIdPost(
+      jsonRequest('http://localhost/api/events/event_1/schedule', {}),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
+      userIds: ['captain_1', 'manager_1', 'player_1', 'captain_2', 'manager_2', 'player_2'],
+      title: 'Spring League schedule updated',
+      body: 'Spring League has updated the schedule. Please review the changes.',
+      data: expect.objectContaining({
+        type: 'match_schedule_update',
+        eventId: 'event_1',
+        updateScope: 'event',
+        matchIds: ['match_1'],
+      }),
+    }));
   });
 
   it('rebuilds without placeholders instead of preserving existing matches when requested', async () => {
@@ -1962,6 +2039,77 @@ describe('schedule routes', () => {
     expect(json.matches).toHaveLength(2);
   });
 
+  it('notifies match teams with the match label when a single bulk match update reschedules a match', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', name: 'Alpha', captainId: 'captain_1', playerIds: ['player_1'] };
+    const team2 = { id: 'team_2', name: 'Bravo', captainId: 'captain_2', playerIds: ['player_2'] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      name: 'Spring Tournament',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      matches: {
+        match_1: {
+          id: 'match_1',
+          matchId: 7,
+          start: new Date('2026-05-02T10:00:00.000Z'),
+          end: new Date('2026-05-02T11:00:00.000Z'),
+          field: { id: 'field_1' },
+          team1,
+          team2,
+        },
+      },
+      teams: {
+        team_1: team1,
+        team_2: team2,
+      },
+      officials: [],
+      divisions: [],
+      fields: {
+        field_1: { id: 'field_1' },
+      },
+      timeSlots: [],
+    });
+    prismaMock.teams.findMany.mockResolvedValue([
+      { id: 'team_1', captainId: 'captain_1', managerId: 'manager_1', headCoachId: null, coachIds: [], playerIds: ['player_1'] },
+      { id: 'team_2', captainId: 'captain_2', managerId: 'manager_2', headCoachId: null, coachIds: [], playerIds: ['player_2'] },
+    ]);
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await matchesPatch(
+      patchRequest('http://localhost/api/events/event_1/matches', {
+        matches: [
+          {
+            id: 'match_1',
+            start: '2026-05-02T12:00:00.000Z',
+            end: '2026-05-02T13:00:00.000Z',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
+      userIds: ['captain_1', 'manager_1', 'player_1', 'captain_2', 'manager_2', 'player_2'],
+      title: 'Spring Tournament match updated',
+      body: 'Spring Tournament has rescheduled Match 7: Alpha vs Bravo. Please review the changes.',
+      data: expect.objectContaining({
+        type: 'match_schedule_update',
+        eventId: 'event_1',
+        updateScope: 'match',
+        matchId: 'match_1',
+        matchIds: ['match_1'],
+      }),
+    }));
+  });
+
   it('locks bulk-updated matches immediately when official check-in is saved', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -2463,6 +2611,85 @@ describe('schedule routes', () => {
 
     expect(res.status).toBe(400);
     expect(saveMatchesMock).not.toHaveBeenCalled();
+  });
+
+  it('notifies teams when finalizing a bracket match adds a team to the next match', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', name: 'Alpha', captainId: 'captain_1', playerIds: ['player_1'] };
+    const team2 = { id: 'team_2', name: 'Bravo', captainId: 'captain_2', playerIds: ['player_2'] };
+    const team3 = { id: 'team_3', name: 'Charlie', captainId: 'captain_3', playerIds: ['player_3'] };
+    const nextMatch: any = {
+      id: 'match_2',
+      matchId: 2,
+      team1: null,
+      team2: team3,
+      start: new Date('2026-05-03T12:00:00.000Z'),
+      end: new Date('2026-05-03T13:00:00.000Z'),
+      field: { id: 'field_1' },
+    };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      name: 'Bracket Finals',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      noFixedEndDateTime: true,
+      matches: {
+        match_1: {
+          id: 'match_1',
+          matchId: 1,
+          team1,
+          team2,
+          winnerNextMatch: nextMatch,
+          teamOfficial: null,
+          official: null,
+        },
+        match_2: nextMatch,
+      },
+      teams: {
+        team_1: team1,
+        team_2: team2,
+        team_3: team3,
+      },
+      officials: [],
+      divisions: [],
+      fields: {
+        field_1: { id: 'field_1' },
+      },
+      timeSlots: [],
+    });
+    finalizeMatchMock.mockImplementation(() => {
+      nextMatch.team1 = team1;
+    });
+    prismaMock.teams.findMany.mockResolvedValue([
+      { id: 'team_1', captainId: 'captain_1', managerId: 'manager_1', headCoachId: null, coachIds: [], playerIds: ['player_1'] },
+      { id: 'team_3', captainId: 'captain_3', managerId: 'manager_3', headCoachId: null, coachIds: [], playerIds: ['player_3'] },
+    ]);
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', { finalize: true }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(sendPushToUsersMock).toHaveBeenCalledWith(expect.objectContaining({
+      userIds: ['captain_1', 'manager_1', 'player_1', 'captain_3', 'manager_3', 'player_3'],
+      title: 'Bracket Finals match updated',
+      body: 'Bracket Finals has updated Match 2: Alpha vs Charlie. Please review the changes.',
+      data: expect.objectContaining({
+        type: 'match_schedule_update',
+        eventId: 'event_1',
+        updateScope: 'match',
+        matchId: 'match_2',
+        matchIds: ['match_2'],
+      }),
+    }));
   });
 
   it('notifies the host when auto-reschedule fails because fixed end time was reached', async () => {

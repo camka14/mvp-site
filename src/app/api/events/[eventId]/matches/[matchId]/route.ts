@@ -14,6 +14,11 @@ import {
 } from '@/server/scheduler/updateMatch';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
+import {
+  collectMatchScheduleChanges,
+  notifyTeamsOfMatchScheduleUpdate,
+  snapshotMatchScheduleState,
+} from '@/server/matchScheduleNotifications';
 import { SchedulerContext } from '@/server/scheduler/types';
 import { canManageEvent } from '@/server/accessControl';
 import { isEmailEnabled, sendEmail } from '@/server/email';
@@ -942,6 +947,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
       const isHostOrAdmin = await canManageEvent(session, eventAccess, tx);
       const event = await loadEventForMatchMutation(eventId, matchId, tx);
+      const beforeMatchSnapshot = snapshotMatchScheduleState(Object.values(event.matches));
       const officialPositions = Array.isArray(event.officialPositions) ? event.officialPositions : [];
       const eventOfficials = Array.isArray(event.eventOfficials) ? event.eventOfficials : [];
       const positionCountsById = new Map(officialPositions.map((position) => [position.id, position.count]));
@@ -1203,13 +1209,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
 
       await saveMatches(eventId, Object.values(event.matches), tx);
 
-      return targetMatch;
+      return {
+        match: targetMatch,
+        matchScheduleNotification: {
+          eventId,
+          eventName: String((event as { name?: unknown }).name ?? 'Event'),
+          forceBatch: false,
+          changes: collectMatchScheduleChanges({
+            before: beforeMatchSnapshot,
+            after: snapshotMatchScheduleState(Object.values(event.matches)),
+          }),
+        },
+      };
     }, MATCH_UPDATE_TRANSACTION_OPTIONS);
 
-    const serializedMatch = serializeMatchesLegacy([result])[0];
+    const serializedMatch = serializeMatchesLegacy([result.match])[0];
     publishEventMatchChanges({
       eventId,
       matches: serializedMatch ? [serializedMatch] : [],
+    });
+    await notifyTeamsOfMatchScheduleUpdate(result.matchScheduleNotification).catch((error) => {
+      console.warn('Failed to send match schedule update notifications', {
+        eventId,
+        matchId,
+        error,
+      });
     });
     return NextResponse.json({ match: serializedMatch }, { status: 200 });
   } catch (error) {

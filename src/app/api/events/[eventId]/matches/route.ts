@@ -13,6 +13,11 @@ import { Division, Match as SchedulerMatch, MINUTE_MS, Team as SchedulerTeam, si
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { publishEventMatchChanges } from '@/server/realtime/matchRealtime';
 import {
+  collectMatchScheduleChanges,
+  notifyTeamsOfMatchScheduleUpdate,
+  snapshotMatchScheduleState,
+} from '@/server/matchScheduleNotifications';
+import {
   deriveLegacyOfficialIdFromAssignments,
   normalizeMatchOfficialAssignments,
 } from '@/server/officials/config';
@@ -267,6 +272,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       const event = await loadEventWithRelations(eventId, tx);
+      const beforeMatchSnapshot = snapshotMatchScheduleState(Object.values(event.matches));
       const officialPositions = Array.isArray(event.officialPositions) ? event.officialPositions : [];
       const eventOfficials = Array.isArray(event.eventOfficials) ? event.eventOfficials : [];
       const positionCountsById = new Map(officialPositions.map((position) => [position.id, position.count]));
@@ -736,8 +742,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       }
 
       await saveMatches(eventId, Object.values(event.matches), tx);
-
       const uniqueTouchedIds = Array.from(new Set(touchedIds));
+      const requestedMatchIds = uniqueTouchedIds.length || deletedMatchIdSet.size
+        ? Array.from(new Set([...uniqueTouchedIds, ...deletedMatchIdSet]))
+        : undefined;
+      const matchScheduleNotification = {
+        eventId,
+        eventName: String((event as { name?: unknown }).name ?? 'Event'),
+        forceBatch: updates.length + creates.length + deletes.length > 1,
+        changes: collectMatchScheduleChanges({
+          before: beforeMatchSnapshot,
+          after: snapshotMatchScheduleState(Object.values(event.matches)),
+          candidateMatchIds: requestedMatchIds,
+        }),
+      };
+
       const created: Record<string, string> = {};
       for (const entry of creates) {
         const canonicalNodeId = resolveCanonicalNodeId(entry);
@@ -753,6 +772,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           .filter((match): match is NonNullable<typeof match> => Boolean(match)),
         created,
         deleted: Array.from(deletedMatchIdSet),
+        matchScheduleNotification,
       };
     });
 
@@ -761,6 +781,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
       eventId,
       matches: serializedMatches,
       deleted: result.deleted,
+    });
+    await notifyTeamsOfMatchScheduleUpdate(result.matchScheduleNotification).catch((error) => {
+      console.warn('Failed to send match schedule update notifications', {
+        eventId,
+        error,
+      });
     });
 
     return NextResponse.json(
