@@ -268,6 +268,25 @@ const resolveDivisionAliases = (value: string | null): string[] => {
   return Array.from(new Set([normalized, token].filter((entry): entry is string => Boolean(entry))));
 };
 
+const registerUniqueDivisionReference = (
+  references: Map<string, string | null>,
+  value: unknown,
+  divisionId: string,
+) => {
+  const normalized = normalizeId(value)?.toLowerCase() ?? null;
+  if (!normalized) {
+    return;
+  }
+  const existing = references.get(normalized);
+  if (existing === undefined) {
+    references.set(normalized, divisionId);
+    return;
+  }
+  if (existing !== divisionId) {
+    references.set(normalized, null);
+  }
+};
+
 const eventCapacityForDivisions = async (
   params: {
     event: EventLike;
@@ -507,34 +526,115 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
   });
 
   const activeTeamIds = Array.from(new Set(activeTeamRows.map((row) => row.registrantId).filter(Boolean)));
-  const teamIdsByDivisionAlias = new Map<string, string[]>();
-  activeTeamRows.forEach((row) => {
-    const aliases = resolveDivisionAliases(row.divisionId);
-    aliases.forEach((alias) => {
-      const existing = teamIdsByDivisionAlias.get(alias) ?? [];
-      if (!existing.includes(row.registrantId)) {
-        existing.push(row.registrantId);
-      }
-      teamIdsByDivisionAlias.set(alias, existing);
+  const currentTeamIdsByDivisionId = new Map<string, string[]>();
+  leagueRows.forEach((row) => {
+    currentTeamIdsByDivisionId.set(row.id, normalizeIdList(row.teamIds));
+  });
+  const currentDivisionTeamIds = Array.from(new Set(
+    Array.from(currentTeamIdsByDivisionId.values()).flat(),
+  ));
+  const placeholderTeamIds = new Set<string>();
+  const teamsDelegate = (client as any).teams;
+  if (currentDivisionTeamIds.length > 0 && teamsDelegate?.findMany) {
+    const teamRows = await teamsDelegate.findMany({
+      where: {
+        id: { in: currentDivisionTeamIds },
+      },
+      select: {
+        id: true,
+        kind: true,
+        captainId: true,
+        parentTeamId: true,
+      },
     });
+    teamRows.forEach((row: { id?: unknown; kind?: unknown; captainId?: unknown; parentTeamId?: unknown }) => {
+      const teamId = normalizeId(row.id);
+      if (!teamId) {
+        return;
+      }
+      const kind = String(row.kind ?? '').trim().toUpperCase();
+      const captainId = normalizeId(row.captainId);
+      const parentTeamId = normalizeId(row.parentTeamId);
+      if (kind === 'PLACEHOLDER' || (!captainId && !parentTeamId)) {
+        placeholderTeamIds.add(teamId);
+      }
+    });
+  }
+
+  const divisionIdByExactId = new Map<string, string>();
+  const divisionIdByUniqueKey = new Map<string, string | null>();
+  const divisionIdByUniqueToken = new Map<string, string | null>();
+  leagueRows.forEach((row) => {
+    const rowId = normalizeId(row.id);
+    if (!rowId) {
+      return;
+    }
+    divisionIdByExactId.set(rowId.toLowerCase(), row.id);
+    registerUniqueDivisionReference(divisionIdByUniqueKey, row.key, row.id);
+    registerUniqueDivisionReference(divisionIdByUniqueToken, extractDivisionTokenFromId(row.id), row.id);
+    registerUniqueDivisionReference(divisionIdByUniqueToken, extractDivisionTokenFromId(row.key), row.id);
+  });
+
+  const resolveDivisionReference = (value: unknown): string | null => {
+    const normalized = normalizeId(value)?.toLowerCase() ?? null;
+    if (!normalized) {
+      return null;
+    }
+
+    const exactIdMatch = divisionIdByExactId.get(normalized);
+    if (exactIdMatch) {
+      return exactIdMatch;
+    }
+
+    const keyMatch = divisionIdByUniqueKey.get(normalized);
+    if (keyMatch) {
+      return keyMatch;
+    }
+    if (keyMatch === null) {
+      return null;
+    }
+
+    const token = extractDivisionTokenFromId(normalized);
+    const tokenMatch = token ? divisionIdByUniqueToken.get(token) : undefined;
+    return tokenMatch ?? null;
+  };
+
+  const teamIdsByDivisionId = new Map<string, string[]>();
+  activeTeamRows.forEach((row) => {
+    const divisionId = resolveDivisionReference(row.divisionId);
+    if (!divisionId) {
+      return;
+    }
+    const existing = teamIdsByDivisionId.get(divisionId) ?? [];
+    if (!existing.includes(row.registrantId)) {
+      existing.push(row.registrantId);
+    }
+    teamIdsByDivisionId.set(divisionId, existing);
   });
 
   const now = new Date();
   const eventDivisionIds = normalizeIdList(event.divisions).map((divisionId) => divisionId.toLowerCase());
-  const primaryDivision = leagueRows.find((row) => {
-    const aliases = resolveDivisionAliases(row.id).concat(resolveDivisionAliases(row.key));
-    return aliases.some((alias) => eventDivisionIds.includes(alias));
-  }) ?? leagueRows[0];
+  const primaryDivisionId = eventDivisionIds
+    .map((divisionId) => resolveDivisionReference(divisionId))
+    .find((divisionId): divisionId is string => Boolean(divisionId));
+  const primaryDivision = leagueRows.find((row) => row.id === primaryDivisionId) ?? leagueRows[0];
+  const buildNextTeamIds = (divisionId: string, assignedTeamIds: string[]): string[] => {
+    const assigned = new Set(assignedTeamIds);
+    const nextTeamIds = (currentTeamIdsByDivisionId.get(divisionId) ?? [])
+      .filter((teamId) => assigned.has(teamId) || placeholderTeamIds.has(teamId));
+    assignedTeamIds.forEach((teamId) => {
+      if (!nextTeamIds.includes(teamId)) {
+        nextTeamIds.push(teamId);
+      }
+    });
+    return Array.from(new Set(nextTeamIds));
+  };
 
   await Promise.all(
     leagueRows.map((row) => {
       const nextTeamIds = Boolean(event.singleDivision)
-        ? (row.id === primaryDivision.id ? activeTeamIds : [])
-        : (() => {
-          const aliases = resolveDivisionAliases(row.id).concat(resolveDivisionAliases(row.key));
-          const combined = aliases.flatMap((alias) => teamIdsByDivisionAlias.get(alias) ?? []);
-          return Array.from(new Set(combined));
-        })();
+        ? (row.id === primaryDivision.id ? buildNextTeamIds(row.id, activeTeamIds) : buildNextTeamIds(row.id, []))
+        : buildNextTeamIds(row.id, teamIdsByDivisionId.get(row.id) ?? []);
       return client.divisions.update({
         where: { id: row.id },
         data: {

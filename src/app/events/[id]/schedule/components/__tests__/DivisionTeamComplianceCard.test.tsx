@@ -128,4 +128,46 @@ describe('DivisionTeamComplianceCard', () => {
     expect(screen.queryByText(/players/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/rostered user/i)).not.toBeInTheDocument();
   });
+
+  it('renders actions after all team compliance text', () => {
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam()}
+        summary={{
+          ...createSummary(),
+          payment: {
+            ...createSummary().payment,
+            hasBill: false,
+            billId: null,
+            totalAmountCents: 0,
+            paidAmountCents: 0,
+            status: null,
+            isPaidInFull: false,
+          },
+          documents: {
+            signedCount: 0,
+            requiredCount: 0,
+          },
+          users: [
+            {
+              userId: 'user_1',
+              fullName: 'Casey Rivers',
+              userName: 'crivers',
+              isMinorAtEvent: false,
+              registrationType: 'ADULT',
+              payment: createSummary().payment,
+              documents: createSummary().documents,
+              requiredDocuments: [],
+            },
+          ],
+        }}
+        actions={<button type="button">Manage billing</button>}
+      />,
+    );
+
+    const rosteredText = screen.getByText('1 rostered user');
+    const actionButton = screen.getByRole('button', { name: /manage billing/i });
+
+    expect(rosteredText.compareDocumentPosition(actionButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });

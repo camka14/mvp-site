@@ -3816,10 +3816,14 @@ function EventScheduleContent() {
   ]);
 
   const refreshParticipantTeamsFromServer = useCallback(
-    async (targetEventId: string, occurrence?: { slotId?: string | null; occurrenceDate?: string | null }) => {
+    async (
+      targetEventId: string,
+      occurrence?: { slotId?: string | null; occurrenceDate?: string | null },
+      hydratedEvent?: Event | null,
+    ) => {
       const snapshotKey = buildParticipantSnapshotKey(targetEventId, occurrence);
       const snapshot = await eventService.getEventParticipants(targetEventId, occurrence);
-      const refreshedEvent = snapshot.event ?? await eventService.getEventById(targetEventId);
+      const refreshedEvent = hydratedEvent ?? snapshot.event ?? await eventService.getEventById(targetEventId);
       if (!refreshedEvent) {
         throw new Error('Failed to refresh event participants.');
       }
@@ -3867,6 +3871,9 @@ function EventScheduleContent() {
             freeAgentIds,
             participantCount: snapshot.participantCount,
             participantCapacity: snapshot.participantCapacity,
+            ...(Array.isArray(refreshedEvent.divisions) ? { divisions: refreshedEvent.divisions } : {}),
+            ...(Array.isArray(refreshedEvent.divisionDetails) ? { divisionDetails: refreshedEvent.divisionDetails } : {}),
+            ...(Array.isArray(refreshedEvent.playoffDivisionDetails) ? { playoffDivisionDetails: refreshedEvent.playoffDivisionDetails } : {}),
           }
         : prev));
       setChangesEvent((prev) => (prev
@@ -3880,6 +3887,9 @@ function EventScheduleContent() {
             freeAgentIds,
             participantCount: snapshot.participantCount,
             participantCapacity: snapshot.participantCapacity,
+            ...(Array.isArray(refreshedEvent.divisions) ? { divisions: refreshedEvent.divisions } : {}),
+            ...(Array.isArray(refreshedEvent.divisionDetails) ? { divisionDetails: refreshedEvent.divisionDetails } : {}),
+            ...(Array.isArray(refreshedEvent.playoffDivisionDetails) ? { playoffDivisionDetails: refreshedEvent.playoffDivisionDetails } : {}),
           }
         : prev));
       loadedParticipantSnapshotKeyRef.current = snapshotKey;
@@ -4001,19 +4011,19 @@ function EventScheduleContent() {
       setActionError(null);
       try {
         if (params.mode === 'remove') {
-          await eventService.removeTeamParticipant(targetEventId, params.team.$id, selectedOccurrence ?? undefined);
-          await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
+          const hydratedEvent = await eventService.removeTeamParticipant(targetEventId, params.team.$id, selectedOccurrence ?? undefined);
+          await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined, hydratedEvent);
           setInfoMessage(`${params.team.name || 'Team'} removed from participants. A refund has been queued.`);
           return;
         }
 
-        await eventService.addTeamParticipant(targetEventId, {
+        const hydratedEvent = await eventService.addTeamParticipant(targetEventId, {
           teamId: params.team.$id,
           divisionId: params.divisionId ?? undefined,
           slotId: selectedOccurrence?.slotId,
           occurrenceDate: selectedOccurrence?.occurrenceDate,
         });
-        await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined);
+        await refreshParticipantTeamsFromServer(targetEventId, selectedOccurrence ?? undefined, hydratedEvent);
         if (params.mode === 'move') {
           setInfoMessage(`${params.team.name || 'Team'} moved to a new division.`);
         } else {

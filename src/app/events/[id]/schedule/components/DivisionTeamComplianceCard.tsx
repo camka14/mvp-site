@@ -80,8 +80,8 @@ export default function DivisionTeamComplianceCard({
       onClick={onClick}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
     >
-      <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Stack gap={6} style={{ flex: 1, minWidth: 0 }}>
+      <Stack gap="sm">
+        <Stack gap={6}>
           <Text fw={600} size="md" truncate>{team.name || (cardKind === 'participant' ? 'Unnamed Participant' : 'Unnamed Team')}</Text>
           <Group gap={6}>
             {cardKind === 'team' ? (
@@ -104,6 +104,7 @@ export default function DivisionTeamComplianceCard({
         </Stack>
         {actions ? (
           <div
+            style={{ width: '100%' }}
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}
@@ -111,7 +112,7 @@ export default function DivisionTeamComplianceCard({
             {actions}
           </div>
         ) : null}
-      </Group>
+      </Stack>
     </Paper>
   );
 }
