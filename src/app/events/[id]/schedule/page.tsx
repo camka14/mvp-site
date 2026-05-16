@@ -185,6 +185,7 @@ type StagedMatchCreateMeta = {
 const CLIENT_MATCH_PREFIX = 'client:';
 const LOCAL_PLACEHOLDER_PREFIX = 'placeholder-local:';
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_TEAM_SEARCH_QUERY_LENGTH = 2;
 
 const collectTeamRosterUserIds = (team: Team): string[] => {
   const assistantCoachIds = Array.isArray(team.assistantCoachIds)
@@ -205,6 +206,22 @@ const collectTeamRosterUserIds = (team: Team): string[] => {
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
         .filter((value) => value.length > 0),
     ),
+  );
+};
+
+const teamMatchesSearchQuery = (team: Team, normalizedQuery: string): boolean => {
+  const teamName = (team.name ?? '').toLowerCase();
+  const sportName = (team.sport ?? '').toLowerCase();
+  const divisionName = (
+    typeof team.division === 'string'
+      ? team.division
+      : team.division?.name ?? team.division?.id ?? ''
+  ).toLowerCase();
+
+  return (
+    teamName.includes(normalizedQuery) ||
+    sportName.includes(normalizedQuery) ||
+    divisionName.includes(normalizedQuery)
   );
 };
 
@@ -3318,6 +3335,9 @@ function EventScheduleContent() {
   }, [activeEvent?.organization, activeEvent?.organizationId]);
 
   const normalizedTeamSearchQuery = teamSearchQuery.trim().toLowerCase();
+  const hasTeamSearchInput = normalizedTeamSearchQuery.length > 0;
+  const teamSearchMeetsMinimum = normalizedTeamSearchQuery.length >= MIN_TEAM_SEARCH_QUERY_LENGTH;
+  const currentUserId = normalizeIdToken(user?.$id);
 
   const availableOrganizationTeams = useMemo(
     () => organizationTeamsForPicker.filter((team) => Boolean(team?.$id) && !participantTeamIdSet.has(team.$id)),
@@ -3329,48 +3349,49 @@ function EventScheduleContent() {
     [organizationTeamsForPicker],
   );
 
-  const availableOrganizationTeamIdSet = useMemo(
-    () => new Set(availableOrganizationTeams.map((team) => team.$id)),
-    [availableOrganizationTeams],
-  );
+  const displayedOrganizationTeams = useMemo(() => {
+    if (!hasTeamSearchInput) {
+      return availableOrganizationTeams;
+    }
+    if (!teamSearchMeetsMinimum) {
+      return [];
+    }
+    return availableOrganizationTeams
+      .filter((team) => teamMatchesSearchQuery(team, normalizedTeamSearchQuery))
+      .slice(0, 24);
+  }, [
+    availableOrganizationTeams,
+    hasTeamSearchInput,
+    normalizedTeamSearchQuery,
+    teamSearchMeetsMinimum,
+  ]);
 
   const searchResultTeams = useMemo(() => {
+    if (organizationIdForParticipants || !teamSearchMeetsMinimum) {
+      return [];
+    }
+
     const source = searchTeamPool.filter((team) => {
       if (!team?.$id || participantTeamIdSet.has(team.$id)) {
         return false;
       }
 
-      if (organizationIdForParticipants && availableOrganizationTeamIdSet.has(team.$id)) {
+      if (normalizeIdToken(team.organizationId)) {
         return false;
       }
 
       return true;
     });
 
-    const filtered = normalizedTeamSearchQuery
-      ? source.filter((team) => {
-        const teamName = (team.name ?? '').toLowerCase();
-        const sportName = (team.sport ?? '').toLowerCase();
-        const divisionName = (
-          typeof team.division === 'string'
-            ? team.division
-            : team.division?.name ?? team.division?.id ?? ''
-        ).toLowerCase();
-        return (
-          teamName.includes(normalizedTeamSearchQuery) ||
-          sportName.includes(normalizedTeamSearchQuery) ||
-          divisionName.includes(normalizedTeamSearchQuery)
-        );
-      })
-      : source;
+    const filtered = source.filter((team) => teamMatchesSearchQuery(team, normalizedTeamSearchQuery));
 
     return filtered.slice(0, 24);
   }, [
-    availableOrganizationTeamIdSet,
     normalizedTeamSearchQuery,
     organizationIdForParticipants,
     participantTeamIdSet,
     searchTeamPool,
+    teamSearchMeetsMinimum,
   ]);
 
   useEffect(() => {
@@ -3705,7 +3726,16 @@ function EventScheduleContent() {
     const shouldLoadOrganizationTeams =
       isAddTeamModalOpen
       || (isAddParticipantModalOpen && participantInviteMode === 'team');
-    const shouldLoadSearchPool = isAddTeamModalOpen;
+    const shouldLoadSearchPool =
+      isAddTeamModalOpen
+      && !organizationIdForParticipants
+      && teamSearchMeetsMinimum
+      && Boolean(currentUserId);
+
+    if (!shouldLoadSearchPool) {
+      setSearchTeamPool([]);
+      setSearchTeamsLoading(false);
+    }
 
     if (!shouldLoadOrganizationTeams && !shouldLoadSearchPool) {
       return;
@@ -3758,14 +3788,18 @@ function EventScheduleContent() {
     };
 
     const loadSearchPool = async () => {
+      if (!currentUserId) {
+        setSearchTeamPool([]);
+        setSearchTeamsLoading(false);
+        return;
+      }
+
       setSearchTeamsLoading(true);
       try {
-        const response = await apiRequest<{ teams?: Array<Record<string, unknown>> }>('/api/teams?limit=200');
-        const rawRows = Array.isArray(response?.teams) ? response.teams : [];
         const allTeamIds = Array.from(
           new Set(
-            rawRows
-              .map((row) => normalizeIdToken((row.$id ?? row.id) as unknown))
+            (await teamService.getTeamsByUserId(currentUserId))
+              .map((team) => normalizeIdToken(team.$id))
               .filter((teamId): teamId is string => Boolean(teamId)),
           ),
         );
@@ -3777,7 +3811,7 @@ function EventScheduleContent() {
           )
           : [];
         if (!cancelled) {
-          setSearchTeamPool(hydrated);
+          setSearchTeamPool(hydrated.filter((team) => !normalizeIdToken(team.organizationId)));
         }
       } catch (searchError) {
         if (cancelled) {
@@ -3808,11 +3842,13 @@ function EventScheduleContent() {
   }, [
     activeEvent?.$id,
     activeEvent?.organization,
+    currentUserId,
     eventId,
     isAddParticipantModalOpen,
     isAddTeamModalOpen,
     organizationIdForParticipants,
     participantInviteMode,
+    teamSearchMeetsMinimum,
   ]);
 
   const refreshParticipantTeamsFromServer = useCallback(
@@ -10627,7 +10663,7 @@ function EventScheduleContent() {
         <Stack gap="md">
           <TextInput
             label="Search teams"
-            placeholder="Search by team name, sport, or division"
+            placeholder="Type at least 2 characters"
             value={teamSearchQuery}
             onChange={(event) => setTeamSearchQuery(event.currentTarget.value)}
           />
@@ -10652,15 +10688,19 @@ function EventScheduleContent() {
                     <Text size="sm" c="dimmed">Loading organization teams...</Text>
                   </Group>
                 </Paper>
-              ) : availableOrganizationTeams.length === 0 ? (
+              ) : displayedOrganizationTeams.length === 0 ? (
                 <Paper withBorder radius="md" p="md">
                   <Text size="sm" c="dimmed" ta="center">
-                    No organization teams available to add.
+                    {hasTeamSearchInput && !teamSearchMeetsMinimum
+                      ? 'Enter at least 2 characters to search organization teams.'
+                      : hasTeamSearchInput
+                      ? 'No organization teams match your search.'
+                      : 'No organization teams available to add.'}
                   </Text>
                 </Paper>
               ) : (
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                  {availableOrganizationTeams.map((team) => renderParticipantTeamCard({
+                  {displayedOrganizationTeams.map((team) => renderParticipantTeamCard({
                     cardKey: `org-team-${team.$id}`,
                     team,
                     showComplianceDetails: false,
@@ -10684,45 +10724,53 @@ function EventScheduleContent() {
             </Stack>
           )}
 
-          <Stack gap="sm">
-            <Text fw={600} size="sm">Search Results</Text>
-            {searchTeamsLoading ? (
-              <Paper withBorder radius="md" p="md">
-                <Group justify="center" gap="sm">
-                  <Loader size="sm" />
-                  <Text size="sm" c="dimmed">Loading searchable teams...</Text>
-                </Group>
-              </Paper>
-            ) : searchResultTeams.length === 0 ? (
-              <Paper withBorder radius="md" p="md">
-                <Text size="sm" c="dimmed" ta="center">
-                  No teams match your search.
-                </Text>
-              </Paper>
-            ) : (
-              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                {searchResultTeams.map((team) => renderParticipantTeamCard({
-                  cardKey: `search-team-${team.$id}`,
-                  team,
-                  showComplianceDetails: false,
-                  enableDetailsView: false,
-                  actions: participantsUpdatingTeamId === team.$id
-                    ? <Text size="xs" c="dimmed">Adding...</Text>
-                    : (
-                      <Button
-                        size="xs"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void handleAddTeamToParticipants(team);
-                        }}
-                      >
-                        Add
-                      </Button>
-                    ),
-                }))}
-              </SimpleGrid>
-            )}
-          </Stack>
+          {!organizationIdForParticipants && (
+            <Stack gap="sm">
+              <Text fw={600} size="sm">Search Results</Text>
+              {!teamSearchMeetsMinimum ? (
+                <Paper withBorder radius="md" p="md">
+                  <Text size="sm" c="dimmed" ta="center">
+                    Enter at least 2 characters to search your teams.
+                  </Text>
+                </Paper>
+              ) : searchTeamsLoading ? (
+                <Paper withBorder radius="md" p="md">
+                  <Group justify="center" gap="sm">
+                    <Loader size="sm" />
+                    <Text size="sm" c="dimmed">Loading your teams...</Text>
+                  </Group>
+                </Paper>
+              ) : searchResultTeams.length === 0 ? (
+                <Paper withBorder radius="md" p="md">
+                  <Text size="sm" c="dimmed" ta="center">
+                    No personal teams match your search.
+                  </Text>
+                </Paper>
+              ) : (
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
+                  {searchResultTeams.map((team) => renderParticipantTeamCard({
+                    cardKey: `search-team-${team.$id}`,
+                    team,
+                    showComplianceDetails: false,
+                    enableDetailsView: false,
+                    actions: participantsUpdatingTeamId === team.$id
+                      ? <Text size="xs" c="dimmed">Adding...</Text>
+                      : (
+                        <Button
+                          size="xs"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void handleAddTeamToParticipants(team);
+                          }}
+                        >
+                          Add
+                        </Button>
+                      ),
+                  }))}
+                </SimpleGrid>
+              )}
+            </Stack>
+          )}
         </Stack>
       </Modal>
       {selectedParticipantTeam && (

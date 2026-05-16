@@ -2873,6 +2873,241 @@ describe('League schedule page', () => {
     });
   });
 
+  it('requires two characters and scopes non-org add-team search to the current user personal teams', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'tab') return 'participants';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit&tab=participants',
+    });
+
+    const event = buildApiEvent({
+      hostId: 'host_1',
+      organizationId: null,
+      eventType: 'TOURNAMENT',
+      singleDivision: true,
+      teamSignup: true,
+      teams: [],
+      teamIds: [],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      const requestPath = String(path);
+      if (requestPath === '/api/chat/terms-consent') {
+        return Promise.resolve({
+          version: '2026-04-14',
+          url: '/terms',
+          summary: [],
+          accepted: true,
+          acceptedAt: '2026-04-14T12:00:00.000Z',
+        });
+      }
+      if (requestPath === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (requestPath === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (requestPath === '/api/events/event_1/teams/compliance') {
+        return Promise.resolve({ teams: [] });
+      }
+      if (requestPath === '/api/teams?playerId=host_1&managerId=host_1&limit=100') {
+        return Promise.resolve({
+          teams: [
+            { $id: 'team_personal', id: 'team_personal', name: 'Personal Aces', organizationId: null },
+            { $id: 'team_org', id: 'team_org', name: 'Org Aces', organizationId: 'org_1' },
+          ],
+        });
+      }
+      if (requestPath.startsWith('/api/teams?ids=')) {
+        return Promise.resolve({
+          teams: [
+            {
+              $id: 'team_personal',
+              id: 'team_personal',
+              name: 'Personal Aces',
+              division: 'Open',
+              sport: 'Volleyball',
+              playerIds: [],
+              captainId: 'host_1',
+              managerId: 'host_1',
+              pending: [],
+              teamSize: 2,
+              organizationId: null,
+            },
+            {
+              $id: 'team_org',
+              id: 'team_org',
+              name: 'Org Aces',
+              division: 'Open',
+              sport: 'Volleyball',
+              playerIds: [],
+              captainId: 'host_1',
+              managerId: 'host_1',
+              pending: [],
+              teamSize: 2,
+              organizationId: 'org_1',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams: [],
+      users: [],
+      participantCount: 0,
+      participantCapacity: null,
+      occurrence: null,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const addTeamButton = await screen.findByRole('button', { name: /add team/i });
+    fireEvent.click(addTeamButton);
+
+    const searchInput = await screen.findByLabelText(/search teams/i);
+    expect(await screen.findByText('Enter at least 2 characters to search your teams.')).toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'A' } });
+    await waitFor(() => {
+      expect(screen.getByText('Enter at least 2 characters to search your teams.')).toBeInTheDocument();
+    });
+    expect(apiRequestMock.mock.calls.some(([requestPath]) => (
+      String(requestPath) === '/api/teams?playerId=host_1&managerId=host_1&limit=100'
+    ))).toBe(false);
+
+    fireEvent.change(searchInput, { target: { value: 'Ac' } });
+
+    expect(await screen.findByText('Personal Aces')).toBeInTheDocument();
+    expect(screen.queryByText('Org Aces')).not.toBeInTheDocument();
+    expect(apiRequestMock.mock.calls.some(([requestPath]) => String(requestPath) === '/api/teams?limit=200')).toBe(false);
+  });
+
+  it('uses organization teams only for add-team search on organization events', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'tab') return 'participants';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit&tab=participants',
+    });
+
+    const event = buildApiEvent({
+      hostId: 'host_1',
+      organizationId: 'org_1',
+      eventType: 'TOURNAMENT',
+      singleDivision: true,
+      teamSignup: true,
+      teams: [],
+      teamIds: [],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      const requestPath = String(path);
+      if (requestPath === '/api/chat/terms-consent') {
+        return Promise.resolve({
+          version: '2026-04-14',
+          url: '/terms',
+          summary: [],
+          accepted: true,
+          acceptedAt: '2026-04-14T12:00:00.000Z',
+        });
+      }
+      if (requestPath === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (requestPath === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (requestPath === '/api/events/event_1/teams/compliance') {
+        return Promise.resolve({ teams: [] });
+      }
+      if (requestPath === '/api/teams?organizationId=org_1&limit=200') {
+        return Promise.resolve({
+          teams: [
+            {
+              $id: 'team_org',
+              id: 'team_org',
+              name: 'Org Aces',
+              division: 'Open',
+              sport: 'Volleyball',
+              playerIds: [],
+              captainId: '',
+              pending: [],
+              teamSize: 2,
+              organizationId: 'org_1',
+            },
+            {
+              $id: 'team_other',
+              id: 'team_other',
+              name: 'Sidewinders',
+              division: 'Open',
+              sport: 'Volleyball',
+              playerIds: [],
+              captainId: '',
+              pending: [],
+              teamSize: 2,
+              organizationId: 'org_1',
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams: [],
+      users: [],
+      participantCount: 0,
+      participantCapacity: null,
+      occurrence: null,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const addTeamButton = await screen.findByRole('button', { name: /add team/i });
+    fireEvent.click(addTeamButton);
+
+    const searchInput = await screen.findByLabelText(/search teams/i);
+    expect(await screen.findByText('Org Aces')).toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'A' } });
+    await waitFor(() => {
+      expect(screen.getByText('Enter at least 2 characters to search organization teams.')).toBeInTheDocument();
+    });
+    expect(screen.queryByText('Org Aces')).not.toBeInTheDocument();
+
+    fireEvent.change(searchInput, { target: { value: 'Ac' } });
+    expect(await screen.findByText('Org Aces')).toBeInTheDocument();
+    expect(screen.queryByText('Sidewinders')).not.toBeInTheDocument();
+    expect(screen.queryByText('Search Results')).not.toBeInTheDocument();
+    expect(apiRequestMock.mock.calls.some(([requestPath]) => String(requestPath) === '/api/teams?limit=200')).toBe(false);
+    expect(apiRequestMock.mock.calls.some(([requestPath]) => String(requestPath).includes('playerId=host_1'))).toBe(false);
+  });
+
   it('filters tournament pool standings rows to the selected pool', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
