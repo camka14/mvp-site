@@ -106,6 +106,16 @@ const entityId = (value: unknown): string | null => {
   return raw.trim() || null;
 };
 
+const userDisplayName = (user?: (Partial<UserData> & { id?: string; name?: string }) | null): string | null => {
+  if (!user) return null;
+  const fullName = typeof user.fullName === 'string' ? user.fullName.trim() : '';
+  const firstLast = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const displayName = typeof user.displayName === 'string' ? user.displayName.trim() : '';
+  const userName = typeof user.userName === 'string' ? user.userName.trim() : '';
+  const name = typeof user.name === 'string' ? user.name.trim() : '';
+  return fullName || firstLast || displayName || userName || name || null;
+};
+
 const MATCH_TIME_PICKER_PROPS = {
   format: '12h' as const,
   withDropdown: false,
@@ -258,14 +268,29 @@ const teamPlayerRegistrations = (team: Team | null | undefined) => (
   Array.isArray(team?.playerRegistrations) ? team.playerRegistrations : []
 );
 
+const mergeTeamRosterData = (existing: Team | undefined, next: Team): Team => {
+  if (!existing) return next;
+  const existingPlayers = teamPlayers(existing);
+  const nextPlayers = teamPlayers(next);
+  const existingRegistrations = teamPlayerRegistrations(existing);
+  const nextRegistrations = teamPlayerRegistrations(next);
+  const existingPlayerIds = Array.isArray(existing.playerIds) ? existing.playerIds : [];
+  const nextPlayerIds = Array.isArray(next.playerIds) ? next.playerIds : [];
+
+  return {
+    ...existing,
+    ...next,
+    players: nextPlayers.length ? nextPlayers : existingPlayers,
+    playerRegistrations: nextRegistrations.length ? nextRegistrations : existingRegistrations,
+    playerIds: nextPlayerIds.length ? nextPlayerIds : existingPlayerIds,
+  };
+};
+
 const participantLabel = (
   player?: UserData | null,
   registration?: TeamPlayerRegistration | null,
 ): string => {
-  const fullName = [player?.firstName, player?.lastName].filter(Boolean).join(' ').trim()
-    || player?.userName?.trim()
-    || registration?.userId
-    || 'Participant';
+  const fullName = userDisplayName(player) ?? 'Participant';
   const details = [registration?.jerseyNumber ? `#${registration.jerseyNumber}` : null, registration?.position ?? null]
     .filter(Boolean)
     .join(' ');
@@ -276,9 +301,7 @@ const scoringParticipantLabel = (
   player?: UserData | null,
   registration?: TeamPlayerRegistration | null,
 ): string => {
-  const fullName = [player?.firstName, player?.lastName].filter(Boolean).join(' ').trim()
-    || player?.userName?.trim()
-    || 'Player';
+  const fullName = userDisplayName(player) ?? 'Player';
   return registration?.jerseyNumber ? `${fullName} #${registration.jerseyNumber}` : fullName;
 };
 
@@ -424,16 +447,6 @@ const titleCaseValue = (value?: string | null): string => {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ');
-};
-
-const userDisplayName = (user?: (Partial<UserData> & { id?: string; name?: string }) | null): string | null => {
-  if (!user) return null;
-  const fullName = typeof user.fullName === 'string' ? user.fullName.trim() : '';
-  const firstLast = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
-  const displayName = typeof user.displayName === 'string' ? user.displayName.trim() : '';
-  const userName = typeof user.userName === 'string' ? user.userName.trim() : '';
-  const name = typeof user.name === 'string' ? user.name.trim() : '';
-  return fullName || firstLast || displayName || userName || name || null;
 };
 
 const userEntityId = (user?: (Partial<UserData> & { id?: string }) | null): string | null => (
@@ -788,12 +801,15 @@ export default function ScoreUpdateModal({
     const map = new Map<string, Team>();
     const addTeam = (team: Team) => {
       const id = entityId(team);
-      if (id) map.set(id, team);
+      if (id) map.set(id, mergeTeamRosterData(map.get(id), team));
     };
+    if (match.team1) addTeam(match.team1 as Team);
+    if (match.team2) addTeam(match.team2 as Team);
+    if (match.teamOfficial) addTeam(match.teamOfficial as Team);
     (Array.isArray(tournament.teams) ? tournament.teams : []).forEach(addTeam);
     participantTeams.forEach(addTeam);
     return map;
-  }, [participantTeams, tournament.teams]);
+  }, [match.team1, match.team2, match.teamOfficial, participantTeams, tournament.teams]);
   const team1 = team1Id ? eventTeamsById.get(team1Id) ?? match.team1 : match.team1;
   const team2 = team2Id ? eventTeamsById.get(team2Id) ?? match.team2 : match.team2;
   const team1Label = bracketTeamLabel(match, team1, match.previousLeftMatch, team1Placeholder, 'team1');

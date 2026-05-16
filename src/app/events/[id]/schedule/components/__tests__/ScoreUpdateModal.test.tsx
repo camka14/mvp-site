@@ -403,6 +403,104 @@ describe('ScoreUpdateModal', () => {
     expect(onScoreChange.mock.calls[0][0].team1Points).toEqual([1, 0]);
   });
 
+  it('keeps participant names when a stale roster snapshot is missing hydrated players', () => {
+    const userId = '011831b7-03fc-486e-b475-7112cb931fb7';
+    const registration = {
+      id: 'registration_uuid',
+      teamId: 'team_a',
+      userId,
+      status: 'ACTIVE',
+      jerseyNumber: '12',
+    };
+    const hydratedMatchTeam = {
+      ...teamWithPlayer,
+      players: [{
+        $id: userId,
+        firstName: 'Jordan',
+        lastName: 'Lee',
+        userName: 'jordanlee',
+        fullName: 'Jordan Lee',
+      }],
+      playerIds: [userId],
+      playerRegistrations: [registration],
+    } as Team;
+    const staleParticipantTeam = {
+      ...hydratedMatchTeam,
+      players: undefined,
+      playerRegistrations: [registration],
+    } as Team;
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: hydratedMatchTeam,
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          segments: buildSegments(),
+          incidents: [],
+        })}
+        tournament={buildEvent()}
+        participantTeams={[staleParticipantTeam]}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+        defaultShowDetails
+      />,
+    );
+
+    expect(screen.getAllByLabelText('Player (optional)')[0]).toHaveValue('Jordan Lee (#12)');
+    expect(screen.queryByDisplayValue(userId)).not.toBeInTheDocument();
+    expect(screen.queryByText(userId)).not.toBeInTheDocument();
+  });
+
+  it('does not expose raw participant ids when a player cannot be hydrated', () => {
+    const userId = '011831b7-03fc-486e-b475-7112cb931fb7';
+    const registration = {
+      id: 'registration_uuid',
+      teamId: 'team_a',
+      userId,
+      status: 'ACTIVE',
+      jerseyNumber: '12',
+    };
+    const teamWithoutPlayers = {
+      $id: 'team_a',
+      name: 'Aces',
+      division: 'Open',
+      sport: 'Soccer',
+      playerIds: [userId],
+      captainId: userId,
+      pending: [],
+      teamSize: 1,
+      currentSize: 1,
+      isFull: true,
+      avatarUrl: '',
+      playerRegistrations: [registration],
+    } as Team;
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: teamWithoutPlayers,
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          segments: buildSegments(),
+          incidents: [],
+        })}
+        tournament={buildEvent()}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+        defaultShowDetails
+      />,
+    );
+
+    expect(screen.getAllByLabelText('Player (optional)')[0]).toHaveValue('Participant (#12)');
+    expect(screen.queryByDisplayValue(userId)).not.toBeInTheDocument();
+    expect(screen.queryByText(userId)).not.toBeInTheDocument();
+  });
+
   it('honors event-level record-player scoring when a match snapshot is stale', () => {
     const staleMatchRules = buildRules({ pointIncidentRequiresParticipant: false });
     const eventRules = buildRules({ pointIncidentRequiresParticipant: true });

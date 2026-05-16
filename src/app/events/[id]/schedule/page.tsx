@@ -3935,9 +3935,30 @@ function EventScheduleContent() {
       ));
 
       const teamsById = new Map((snapshot.teams ?? []).map((team) => [team.$id, team]));
-      const orderedTeams = refreshedTeamIds
+      const snapshotOrderedTeams = refreshedTeamIds
         .map((teamId) => teamsById.get(teamId))
         .filter((team): team is Team => Boolean(team));
+      let orderedTeams = snapshotOrderedTeams;
+      const needsRosterHydration = snapshotOrderedTeams.some((team) => (
+        Array.isArray(team.playerIds)
+        && team.playerIds.length > 0
+        && (!Array.isArray(team.players) || team.players.length === 0)
+      ));
+      if (needsRosterHydration) {
+        try {
+          const hydratedTeams = await teamService.getTeamsByIds(
+            refreshedTeamIds,
+            true,
+            { eventId: targetEventId ?? undefined },
+          );
+          const hydratedTeamsById = new Map(hydratedTeams.map((team) => [team.$id, team]));
+          orderedTeams = refreshedTeamIds
+            .map((teamId) => hydratedTeamsById.get(teamId) ?? teamsById.get(teamId))
+            .filter((team): team is Team => Boolean(team));
+        } catch (hydrationError) {
+          console.error('Failed to hydrate participant rosters:', hydrationError);
+        }
+      }
       const usersById = new Map((snapshot.users ?? []).map((participant) => [participant.$id, participant]));
       const orderedUsers = participantUserIds
         .map((userId) => usersById.get(userId))
