@@ -326,6 +326,31 @@ describe('ScoreUpdateModal', () => {
     expect(screen.getByTitle('Match field location preview')).toBeInTheDocument();
   });
 
+  it('can render inline with match details expanded for the edit modal', () => {
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          segments: buildSegments(),
+          incidents: [],
+        })}
+        tournament={buildEvent()}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+        embedded
+        defaultShowDetails
+      />,
+    );
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+    expect(screen.getByText('Match Log')).toBeInTheDocument();
+  });
+
   it('uses an add-incident button with player details when scoring incidents require a player', async () => {
     const onScoreChange = jest.fn().mockResolvedValue(undefined);
     const rules = buildRules({ pointIncidentRequiresParticipant: true });
@@ -410,6 +435,56 @@ describe('ScoreUpdateModal', () => {
     expect(screen.getAllByRole('button', { name: 'Add Incident' }).length).toBe(2);
   });
 
+  it('uses incident controls when event-level incident scoring is enabled with stale non-player rules', async () => {
+    const onScoreChange = jest.fn().mockResolvedValue(undefined);
+    const staleRules = buildRules({ pointIncidentRequiresParticipant: false });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [0, 0],
+          team2Points: [0, 0],
+          setResults: [0, 0],
+          matchRulesSnapshot: staleRules,
+          segments: buildSegments(),
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          autoCreatePointMatchIncidents: true,
+          resolvedMatchRules: staleRules,
+        })}
+        canManage
+        onScoreChange={onScoreChange}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    expect(screen.queryByRole('button', { name: '+' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Incident' })[0]);
+    expect(await screen.findByText('Record Incident')).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Player (optional)')[0]).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Incident' }));
+
+    await waitFor(() => {
+      expect(onScoreChange).toHaveBeenCalledTimes(1);
+    });
+    expect(onScoreChange.mock.calls[0][0].incidentOperations[0]).toEqual(expect.objectContaining({
+      action: 'CREATE',
+      eventTeamId: 'team_a',
+      eventRegistrationId: null,
+      participantUserId: null,
+      incidentType: 'GOAL',
+      linkedPointDelta: 1,
+    }));
+    expect(onScoreChange.mock.calls[0][0].team1Points).toEqual([1, 0]);
+  });
+
   it('uses score set writes instead of scoring incidents for non-player scoring', async () => {
     jest.useFakeTimers();
     const onScoreChange = jest.fn().mockResolvedValue(undefined);
@@ -439,7 +514,7 @@ describe('ScoreUpdateModal', () => {
           }],
         })}
         tournament={buildEvent({
-          autoCreatePointMatchIncidents: true,
+          autoCreatePointMatchIncidents: false,
           resolvedMatchRules: rules,
         })}
         canManage
@@ -496,7 +571,7 @@ describe('ScoreUpdateModal', () => {
           }],
         })}
         tournament={buildEvent({
-          autoCreatePointMatchIncidents: true,
+          autoCreatePointMatchIncidents: false,
           resolvedMatchRules: rules,
         })}
         canManage
@@ -531,7 +606,7 @@ describe('ScoreUpdateModal', () => {
           incidents: [],
         })}
         tournament={buildEvent({
-          autoCreatePointMatchIncidents: true,
+          autoCreatePointMatchIncidents: false,
           resolvedMatchRules: rules,
         })}
         canManage
@@ -856,7 +931,7 @@ describe('ScoreUpdateModal', () => {
       incidents: [],
     });
     const tournament = buildEvent({
-      autoCreatePointMatchIncidents: true,
+      autoCreatePointMatchIncidents: false,
       resolvedMatchRules: rules,
     });
 
@@ -894,7 +969,7 @@ describe('ScoreUpdateModal', () => {
       .mockImplementationOnce(() => secondSync.promise);
     const rules = buildRules();
     const tournament = buildEvent({
-      autoCreatePointMatchIncidents: true,
+      autoCreatePointMatchIncidents: false,
       resolvedMatchRules: rules,
     });
 
@@ -978,7 +1053,7 @@ describe('ScoreUpdateModal', () => {
           incidents: [],
         })}
         tournament={buildEvent({
-          autoCreatePointMatchIncidents: true,
+          autoCreatePointMatchIncidents: false,
           resolvedMatchRules: rules,
         })}
         canManage
@@ -1007,7 +1082,7 @@ describe('ScoreUpdateModal', () => {
     const onSetComplete = jest.fn().mockResolvedValue(undefined);
     const rules = buildRules();
     const tournament = buildEvent({
-      autoCreatePointMatchIncidents: true,
+      autoCreatePointMatchIncidents: false,
       resolvedMatchRules: rules,
     });
     const staleMatch = buildMatch({

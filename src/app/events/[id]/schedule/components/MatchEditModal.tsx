@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
 import { Modal, Stack, Group, Text, Button, Alert, Select, Divider, Checkbox, Switch } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 
@@ -8,22 +8,42 @@ import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
-import type { EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, Team, UserData } from '@/types';
+import type { Event, EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, Team, UserData } from '@/types';
+
+import ScoreUpdateModal from './ScoreUpdateModal';
+
+type ScoreUpdateModalComponentProps = ComponentProps<typeof ScoreUpdateModal>;
+
+const EMPTY_MATCHES: Match[] = [];
+const EMPTY_FIELDS: Field[] = [];
+const EMPTY_TEAMS: Team[] = [];
+const EMPTY_USERS: UserData[] = [];
+const EMPTY_OFFICIAL_POSITIONS: EventOfficialPosition[] = [];
+const EMPTY_EVENT_OFFICIALS: EventOfficial[] = [];
 
 interface MatchEditModalProps {
   opened: boolean;
   match: Match | null;
+  tournament?: Event | null;
   allMatches?: Match[];
   fields?: Field[];
   teams?: Team[];
+  participantTeams?: Team[];
   officials?: UserData[];
   officialPositions?: EventOfficialPosition[];
   eventOfficials?: EventOfficial[];
   doTeamsOfficiate?: boolean;
+  canManageOperations?: boolean;
   isCreateMode?: boolean;
   creationContext?: 'schedule' | 'bracket';
   eventType?: string | null;
   enforceScheduleFields?: boolean;
+  onScoreChange?: ScoreUpdateModalComponentProps['onScoreChange'];
+  onSetComplete?: ScoreUpdateModalComponentProps['onSetComplete'];
+  onScoreSubmit?: ScoreUpdateModalComponentProps['onSubmit'];
+  onMatchComplete?: ScoreUpdateModalComponentProps['onMatchComplete'];
+  team1Placeholder?: string;
+  team2Placeholder?: string;
   onClose: () => void;
   onSave: (updated: Match) => void;
   onDelete?: (target: Match) => void;
@@ -209,17 +229,26 @@ const findTeamById = (id: string | null, allTeams: Team[], fallback?: Match['tea
 export default function MatchEditModal({
   opened,
   match,
-  allMatches = [],
-  fields = [],
-  teams = [],
-  officials = [],
-  officialPositions = [],
-  eventOfficials = [],
+  tournament = null,
+  allMatches = EMPTY_MATCHES,
+  fields = EMPTY_FIELDS,
+  teams = EMPTY_TEAMS,
+  participantTeams = EMPTY_TEAMS,
+  officials = EMPTY_USERS,
+  officialPositions = EMPTY_OFFICIAL_POSITIONS,
+  eventOfficials = EMPTY_EVENT_OFFICIALS,
   doTeamsOfficiate = false,
+  canManageOperations = false,
   isCreateMode = false,
   creationContext = 'bracket',
   eventType = null,
   enforceScheduleFields = false,
+  onScoreChange,
+  onSetComplete,
+  onScoreSubmit,
+  onMatchComplete,
+  team1Placeholder,
+  team2Placeholder,
   onClose,
   onSave,
   onDelete,
@@ -240,6 +269,7 @@ export default function MatchEditModal({
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
+  const editableMatchId = useMemo(() => normalizeOptionalId(match?.$id), [match?.$id]);
 
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
@@ -305,7 +335,7 @@ export default function MatchEditModal({
     setLosersBracket(Boolean(match.losersBracket));
     setLocked(Boolean(match.locked));
     setError(null);
-  }, [eventOfficials, match, officialPositions, opened]);
+  }, [editableMatchId, eventOfficials, officialPositions, opened]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const allMatchOptions = useMemo(() => {
@@ -746,6 +776,68 @@ export default function MatchEditModal({
     }
     return undefined;
   };
+  const selectedField = findFieldById(fieldId);
+
+  const operationsMatch = useMemo<Match | null>(() => {
+    if (!match || isCreateMode) {
+      return null;
+    }
+
+    const next: Match = {
+      ...match,
+      fieldId: fieldId ?? null,
+      team1Id: team1Id ?? null,
+      team2Id: team2Id ?? null,
+      teamOfficialId: teamOfficialId ?? null,
+      officialId: userOfficialId ?? null,
+      officialIds: normalizeAssignments(officialAssignments),
+      ...actualMatchTimePayload(actualStartValue, actualEndValue),
+    };
+
+    if (selectedField) {
+      next.field = { ...selectedField };
+    } else {
+      delete (next as any).field;
+    }
+    if (selectedTeam1) {
+      next.team1 = { ...selectedTeam1 };
+    } else {
+      delete (next as any).team1;
+    }
+    if (selectedTeam2) {
+      next.team2 = { ...selectedTeam2 };
+    } else {
+      delete (next as any).team2;
+    }
+    if (selectedTeamOfficial) {
+      next.teamOfficial = { ...selectedTeamOfficial };
+    } else {
+      delete (next as any).teamOfficial;
+    }
+    if (selectedUserOfficial) {
+      next.official = { ...selectedUserOfficial };
+    } else {
+      delete (next as any).official;
+    }
+
+    return next;
+  }, [
+    actualEndValue,
+    actualStartValue,
+    fieldId,
+    isCreateMode,
+    match,
+    officialAssignments,
+    selectedField,
+    selectedTeam1,
+    selectedTeam2,
+    selectedTeamOfficial,
+    selectedUserOfficial,
+    team1Id,
+    team2Id,
+    teamOfficialId,
+    userOfficialId,
+  ]);
 
   const handleSave = () => {
     if (!match) {
@@ -831,7 +923,7 @@ export default function MatchEditModal({
     }
     const primaryOfficialAssignment = sanitizedAssignments.find((assignment) => assignment.holderType === 'OFFICIAL');
 
-    const nextField = findFieldById(fieldId);
+    const nextField = selectedField;
     updated.fieldId = fieldId ?? null;
     if (nextField) {
       updated.field = { ...nextField };
@@ -904,7 +996,13 @@ export default function MatchEditModal({
   };
 
   return (
-    <Modal opened={opened} onClose={handleClose} title={isCreateMode ? 'Add Match' : 'Edit Match'} centered size="lg">
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      title={isCreateMode ? 'Add Match' : 'Edit Match'}
+      centered
+      size={operationsMatch && tournament ? 'xl' : 'lg'}
+    >
       <Stack gap="md">
         {error && (
           <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
@@ -1090,9 +1188,28 @@ export default function MatchEditModal({
         />
 
         <Divider label="Match Operations" />
-        <Text size="sm" c="dimmed">
-          Scores, segment winners, official check-in, and the match log are handled from Match Details.
-        </Text>
+        {operationsMatch && tournament ? (
+          <ScoreUpdateModal
+            match={operationsMatch}
+            tournament={tournament}
+            participantTeams={participantTeams}
+            canManage={canManageOperations}
+            onScoreChange={onScoreChange}
+            onSetComplete={onSetComplete}
+            onSubmit={onScoreSubmit}
+            onMatchComplete={onMatchComplete}
+            onClose={() => undefined}
+            isOpen={opened}
+            team1Placeholder={team1Placeholder}
+            team2Placeholder={team2Placeholder}
+            embedded
+            defaultShowDetails
+          />
+        ) : (
+          <Text size="sm" c="dimmed">
+            Save the match before managing scores, segment winners, official check-in, and the match log.
+          </Text>
+        )}
 
         <Group justify="space-between" mt="md">
           <Group>

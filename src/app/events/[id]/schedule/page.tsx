@@ -11254,17 +11254,25 @@ function EventScheduleContent() {
       <MatchEditModal
         opened={isMatchEditorOpen}
         match={matchBeingEdited}
+        tournament={activeEvent}
         allMatches={activeMatches}
         fields={Array.isArray(activeEvent.fields) ? activeEvent.fields : []}
         teams={matchEditorTeams}
+        participantTeams={participantTeams}
         officials={matchEditorOfficials}
         officialPositions={Array.isArray(activeEvent.officialPositions) ? activeEvent.officialPositions : []}
         eventOfficials={Array.isArray(activeEvent.eventOfficials) ? activeEvent.eventOfficials : []}
         doTeamsOfficiate={Boolean(activeEvent.doTeamsOfficiate)}
+        canManageOperations={canEditMatches}
         isCreateMode={Boolean(matchBeingEdited && isClientMatchId(matchBeingEdited.$id))}
         creationContext={matchEditorContext}
         eventType={activeEvent.eventType}
         enforceScheduleFields={matchEditorContext === 'schedule'}
+        onScoreChange={handleScoreChange}
+        onSetComplete={handleSetComplete}
+        onScoreSubmit={handleScoreSubmit}
+        team1Placeholder={matchBeingEdited ? scheduleBracketPlaceholderAssignments[`${matchBeingEdited.$id}:team1`] : undefined}
+        team2Placeholder={matchBeingEdited ? scheduleBracketPlaceholderAssignments[`${matchBeingEdited.$id}:team2`] : undefined}
         onClose={handleMatchEditClose}
         onSave={handleMatchEditSave}
         onDelete={handleMatchDelete}

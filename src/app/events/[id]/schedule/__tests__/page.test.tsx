@@ -763,8 +763,8 @@ describe('League schedule page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Match Details' }));
 
-    expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
-    expect(screen.queryByText("Aces | 5'")).not.toBeInTheDocument();
+    expect(await screen.findByText("Aces | 5'")).toBeInTheDocument();
+    expect(screen.queryByText('No match details recorded.')).not.toBeInTheDocument();
   });
 
   it('updates the open score modal when a scoring incident is saved', async () => {
@@ -872,7 +872,7 @@ describe('League schedule page', () => {
       if (path === '/api/events/event_1/matches') {
         return Promise.resolve({ matches: [baseMatch] });
       }
-      if (path === '/api/events/event_1/matches/match_1/score' && options?.method === 'POST') {
+      if (path === '/api/events/event_1/matches/match_1/incidents' && options?.method === 'POST') {
         return Promise.resolve({ match: updatedMatch });
       }
       return Promise.resolve({});
@@ -894,22 +894,17 @@ describe('League schedule page', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Match Details' }));
     expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
 
-    jest.useFakeTimers();
-    const plusButton = screen.getAllByRole('button', { name: '+' })[0];
-    fireEvent.click(plusButton);
-
-    await act(async () => {
-      jest.advanceTimersByTime(500);
-    });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Incident' })[0]);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save Incident' }));
 
     await waitFor(() => {
       expect(apiRequestMock).toHaveBeenCalledWith(
-        '/api/events/event_1/matches/match_1/score',
+        '/api/events/event_1/matches/match_1/incidents',
         expect.objectContaining({ method: 'POST' }),
       );
     });
-    expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
-    expect(screen.queryByText("Aces | 5'")).not.toBeInTheDocument();
+    expect(await screen.findByText("Aces | 5'")).toBeInTheDocument();
+    expect(screen.queryByText('No match details recorded.')).not.toBeInTheDocument();
   });
 
   it('keeps the create button enabled in create mode when a seeded draft has no pending changes', async () => {

@@ -35,7 +35,7 @@ import {
   UserData,
 } from '@/types';
 
-type ScorePayload = {
+export type ScorePayload = {
   matchId: string;
   segments: MatchSegment[];
   finalize?: boolean;
@@ -78,6 +78,8 @@ interface ScoreUpdateModalProps {
   isOpen: boolean;
   team1Placeholder?: string;
   team2Placeholder?: string;
+  embedded?: boolean;
+  defaultShowDetails?: boolean;
 }
 
 type PendingDirectScoreSync = {
@@ -346,13 +348,9 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, configuredSe
     : scoringModel === 'POINTS_ONLY'
       ? 1
       : Math.max(sourceSegmentCount ?? 0, fallbackSegmentCount, 1);
-  const usesPlayerRecordedScoring = typeof matchResolvedRules.pointIncidentRequiresParticipant === 'boolean'
-    ? matchResolvedRules.pointIncidentRequiresParticipant === true
-    : typeof eventRules.pointIncidentRequiresParticipant === 'boolean'
-      ? eventRules.pointIncidentRequiresParticipant === true
-      : typeof matchSnapshotRules.pointIncidentRequiresParticipant === 'boolean'
-        ? matchSnapshotRules.pointIncidentRequiresParticipant === true
-        : event.autoCreatePointMatchIncidents === true;
+  const usesPlayerRecordedScoring = matchResolvedRules.pointIncidentRequiresParticipant === true
+    || eventRules.pointIncidentRequiresParticipant === true
+    || matchSnapshotRules.pointIncidentRequiresParticipant === true;
   return {
     scoringModel,
     segmentCount,
@@ -751,6 +749,8 @@ export default function ScoreUpdateModal({
   isOpen,
   team1Placeholder,
   team2Placeholder,
+  embedded = false,
+  defaultShowDetails = false,
 }: ScoreUpdateModalProps) {
   const [segments, setSegments] = useState<MatchSegment[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -758,7 +758,7 @@ export default function ScoreUpdateModal({
   const [actualTimesSaving, setActualTimesSaving] = useState(false);
   const [segmentConfirming, setSegmentConfirming] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(defaultShowDetails);
   const [editingActualTimes, setEditingActualTimes] = useState(false);
   const [actualStartValue, setActualStartValue] = useState<Date | null>(null);
   const [actualEndValue, setActualEndValue] = useState<Date | null>(null);
@@ -835,15 +835,6 @@ export default function ScoreUpdateModal({
   const scoringIncidentType = rules.autoCreatePointIncidentType ?? 'POINT';
   const scoringIncidentLabel = matchLogTypeLabel(scoringIncidentType);
   const scoringActionLabel = normalizedIncidentType(scoringIncidentType) === 'POINT' ? 'Point' : scoringIncidentLabel;
-  const scoringRequiresParticipant = rules.pointIncidentRequiresParticipant === true;
-  const manualIncidentTypes = useMemo(() => (
-    scoringRequiresParticipant
-      ? rules.supportedIncidentTypes
-      : rules.supportedIncidentTypes.filter((type) => !isScoringIncidentType(type, rules))
-  ), [rules, scoringRequiresParticipant]);
-  const defaultIncidentType = manualIncidentTypes.includes('NOTE')
-    ? 'NOTE'
-    : manualIncidentTypes[0] ?? scoringIncidentType;
   const activeSegment = segments[activeIndex] ?? segments[0];
   const team1Score = scoreForSegment(activeSegment, activeIndex, team1Id, match.team1Points);
   const team2Score = scoreForSegment(activeSegment, activeIndex, team2Id, match.team2Points);
@@ -859,7 +850,24 @@ export default function ScoreUpdateModal({
     () => hasPersistedScoreData(matchSegmentSnapshot, team1Id, team2Id),
     [matchSegmentSnapshot, team1Id, team2Id],
   );
+  const scoringRequiresParticipant = rules.pointIncidentRequiresParticipant === true;
   const useScoringIncidentsForScore = !scoringRequiresParticipant && !persistedScoreDataAvailable;
+  const scoringUsesIncidentWorkflow = tournament.autoCreatePointMatchIncidents === true
+    || scoringRequiresParticipant
+    || useScoringIncidentsForScore;
+  const supportedIncidentTypes = useMemo(() => (
+    rules.supportedIncidentTypes.some((type) => isScoringIncidentType(type, rules))
+      ? rules.supportedIncidentTypes
+      : [scoringIncidentType, ...rules.supportedIncidentTypes]
+  ), [rules, scoringIncidentType]);
+  const manualIncidentTypes = useMemo(() => (
+    scoringUsesIncidentWorkflow
+      ? supportedIncidentTypes
+      : supportedIncidentTypes.filter((type) => !isScoringIncidentType(type, rules))
+  ), [rules, scoringUsesIncidentWorkflow, supportedIncidentTypes]);
+  const defaultIncidentType = manualIncidentTypes.includes('NOTE')
+    ? 'NOTE'
+    : manualIncidentTypes[0] ?? scoringIncidentType;
   const incidentRetryStorageKey = pendingIncidentStorageKey(tournament.$id ?? match.eventId, match.$id);
   const teamOptions = [
     ...(team1Id ? [{ value: team1Id, label: team1Label }] : []),
@@ -895,11 +903,10 @@ export default function ScoreUpdateModal({
   }, [deletedIncidentIds, match.incidents, optimisticIncidents]);
   const incidentsForDisplay = useMemo(() => (
     allIncidents.filter((incident) => (
-      scoringRequiresParticipant
-      || useScoringIncidentsForScore
+      scoringUsesIncidentWorkflow
       || !isScoringIncidentType(incident.incidentType, rules)
     ))
-  ), [allIncidents, rules, scoringRequiresParticipant, useScoringIncidentsForScore]);
+  ), [allIncidents, rules, scoringUsesIncidentWorkflow]);
   const officialUsersById = useMemo(() => {
     const map = new Map<string, Partial<UserData> & { id?: string; name?: string }>();
     ((tournament.officials ?? []) as Array<Partial<UserData> & { id?: string; name?: string }>).forEach((official) => {
@@ -1116,7 +1123,7 @@ export default function ScoreUpdateModal({
   useEffect(() => {
     if (!isOpen) {
       setShowFieldMap(false);
-      setShowDetails(false);
+      setShowDetails(defaultShowDetails);
       setPendingPoint(null);
       setEditingActualTimes(false);
       localSegmentOverrideRef.current = null;
@@ -1125,7 +1132,13 @@ export default function ScoreUpdateModal({
       directScoreInvalidatedThroughVersionRef.current = 0;
       clearDirectScoreSyncTimer();
     }
-  }, [isOpen, match.$id]);
+  }, [defaultShowDetails, isOpen, match.$id]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setShowDetails(defaultShowDetails);
+    }
+  }, [defaultShowDetails, isOpen, match.$id]);
 
   useEffect(() => {
     segmentsRef.current = segments;
@@ -1555,7 +1568,7 @@ export default function ScoreUpdateModal({
   const requestScore = (eventTeamId: string | null, delta: number) => {
     if (!eventTeamId) return;
     if (delta > 0 && !canIncreaseTeamScore(eventTeamId)) return;
-    if (delta > 0 && scoringRequiresParticipant) {
+    if (delta > 0 && scoringUsesIncidentWorkflow) {
       setPendingPoint({ teamId: eventTeamId, delta });
       setIncidentType(scoringIncidentType);
       setIncidentTeamId(eventTeamId);
@@ -1783,8 +1796,7 @@ export default function ScoreUpdateModal({
   const googleMapsLink = mapQuery ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}` : null;
   const canScore = canManage && activeSegment?.status !== 'COMPLETE' && !matchComplete();
 
-  return (
-    <Modal opened={isOpen} onClose={onClose} title={<Text fw={600}>Match Operations</Text>} centered size="lg">
+  const content = (
       <Stack gap="md">
         <Group justify="space-between" align="flex-start">
           <div>
@@ -2140,7 +2152,7 @@ export default function ScoreUpdateModal({
                       {displayName}
                     </Text>
                   </Group>
-                  {canScore && !scoringRequiresParticipant && (
+                  {canScore && !scoringUsesIncidentWorkflow && (
                     <Group gap="xs" wrap="nowrap" style={{ flex: '0 0 auto' }}>
                       <ActionIcon variant="light" color="red" onClick={() => requestScore(teamId, -1)} disabled={current === 0}>-</ActionIcon>
                       <ActionIcon variant="light" color="green" onClick={() => requestScore(teamId, 1)} disabled={!canIncreaseTeamScore(teamId)}>+</ActionIcon>
@@ -2148,7 +2160,7 @@ export default function ScoreUpdateModal({
                   )}
                 </Group>
                 <Text ta="center" fw={700} size="xl">{current}</Text>
-                {canScore && scoringRequiresParticipant && teamId && (
+                {canScore && scoringUsesIncidentWorkflow && teamId && (
                   <Group justify="center" mt="xs">
                     <Button size="xs" onClick={() => requestScore(teamId, 1)} disabled={!canIncreaseTeamScore(teamId)}>
                       Add Incident
@@ -2167,8 +2179,8 @@ export default function ScoreUpdateModal({
           })}
         </Group>
 
-        <Group justify="space-between">
-          <Button variant="default" onClick={onClose}>Close</Button>
+        <Group justify={embedded ? 'flex-end' : 'space-between'}>
+          {!embedded && <Button variant="default" onClick={onClose}>Close</Button>}
           <Group>
             {canManage && !actualStartValue && (
               <Button onClick={startMatch} loading={actualTimesSaving}>
@@ -2192,6 +2204,15 @@ export default function ScoreUpdateModal({
           </Group>
         </Group>
       </Stack>
+  );
+
+  if (embedded) {
+    return isOpen ? content : null;
+  }
+
+  return (
+    <Modal opened={isOpen} onClose={onClose} title={<Text fw={600}>Match Operations</Text>} centered size="lg">
+      {content}
     </Modal>
   );
 }
