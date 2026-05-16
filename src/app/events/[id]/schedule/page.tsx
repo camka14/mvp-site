@@ -35,6 +35,7 @@ import { hasStaffMemberType } from '@/lib/staff';
 import { normalizeApiEvent, normalizeApiMatch } from '@/lib/apiMappers';
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { calculateMvpAndStripeFees } from '@/lib/billingFees';
+import { buildLeaguePlayoffPlaceholderAssignmentsForMatches } from '@/lib/bracketEntrantPlaceholders';
 import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
@@ -1781,6 +1782,16 @@ function EventScheduleContent() {
   const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
   const isEditingEvent = isTemplateEvent || ((isPreview || isEditParam) && canManageEvent);
   const activeMatches = usingChangeCopies ? changesMatches : matches;
+  const activeMatchesById = useMemo<Record<string, Match>>(() => {
+    const map: Record<string, Match> = {};
+    activeMatches.forEach((match) => {
+      const matchId = normalizeIdToken(match.$id);
+      if (matchId) {
+        map[matchId] = match;
+      }
+    });
+    return map;
+  }, [activeMatches]);
   const matchConflictsById = useMemo<Record<string, string[]>>(
     () => detectMatchConflictsById(activeMatches),
     [activeMatches],
@@ -2286,6 +2297,44 @@ function EventScheduleContent() {
     selectedSchedulePool,
     tournamentPoolPlayEnabled,
   ]);
+
+  const scheduleBracketPlaceholderAssignments = useMemo<Record<string, string>>(() => {
+    if (!activeEvent) {
+      return {};
+    }
+    return buildLeaguePlayoffPlaceholderAssignmentsForMatches({
+      tournament: activeEvent,
+      matchesById: activeMatchesById,
+    });
+  }, [activeEvent, activeMatchesById]);
+
+  const scheduleMatchesForDisplay = useMemo<Match[]>(() => {
+    const resolveLinkedMatch = (idValue: unknown, relationValue: unknown): Match | undefined => {
+      const linkedId = normalizeIdToken(idValue);
+      if (linkedId && activeMatchesById[linkedId]) {
+        return activeMatchesById[linkedId];
+      }
+      if (idValue === null || (typeof idValue === 'string' && idValue.trim().length === 0)) {
+        return undefined;
+      }
+      const relationId = normalizeIdToken((relationValue as { $id?: unknown; id?: unknown } | null | undefined)?.$id)
+        ?? normalizeIdToken((relationValue as { id?: unknown } | null | undefined)?.id);
+      if (relationId && activeMatchesById[relationId]) {
+        return activeMatchesById[relationId];
+      }
+      return relationValue && typeof relationValue === 'object'
+        ? relationValue as Match
+        : undefined;
+    };
+
+    return scheduleMatches.map((match) => ({
+      ...match,
+      previousLeftMatch: resolveLinkedMatch(match.previousLeftId, match.previousLeftMatch),
+      previousRightMatch: resolveLinkedMatch(match.previousRightId, match.previousRightMatch),
+      winnerNextMatch: resolveLinkedMatch(match.winnerNextMatchId, match.winnerNextMatch),
+      loserNextMatch: resolveLinkedMatch(match.loserNextMatchId, match.loserNextMatch),
+    }));
+  }, [activeMatchesById, scheduleMatches]);
 
   const preferredStandingsDivisionId = useMemo(() => {
     if (tournamentPoolPlayEnabled) {
@@ -10064,7 +10113,7 @@ function EventScheduleContent() {
                     </Paper>
                   ) : (
                     <LeagueCalendarView
-                      matches={scheduleMatches}
+                      matches={scheduleMatchesForDisplay}
                       teams={
                         participantTeams.length > 0
                           ? participantTeams
@@ -10091,6 +10140,7 @@ function EventScheduleContent() {
                       highlightDivisionKeys={viewerDivisionHighlightKeys}
                       onToggleLockAllMatches={handleToggleLockAllMatches}
                       conflictMatchIdsById={matchConflictsById}
+                      matchSlotPlaceholderLabels={scheduleBracketPlaceholderAssignments}
                     />
                   )}
                 </Stack>

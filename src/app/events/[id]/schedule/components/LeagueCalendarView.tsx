@@ -55,6 +55,7 @@ interface LeagueCalendarViewProps {
   lockingAllMatches?: boolean;
   conflictMatchIdsById?: Record<string, string[]>;
   showEventOfficialNames?: boolean;
+  matchSlotPlaceholderLabels?: Record<string, string>;
 }
 
 type CalendarLayoutMode = 'calendar' | 'resource';
@@ -263,6 +264,7 @@ export function LeagueCalendarView({
   lockingAllMatches = false,
   conflictMatchIdsById = {},
   showEventOfficialNames = true,
+  matchSlotPlaceholderLabels = {},
 }: LeagueCalendarViewProps) {
   const DnDCalendar: any = useMemo(() => withDragAndDrop(BigCalendar), []);
   const resolvedEventTimeZone = useMemo(() => normalizeTimeZone(eventTimeZone), [eventTimeZone]);
@@ -442,6 +444,16 @@ export function LeagueCalendarView({
   const conflictMatchIdSet = useMemo(
     () => new Set(Object.keys(conflictMatchIdsById).filter((matchId) => conflictMatchIdsById[matchId]?.length)),
     [conflictMatchIdsById],
+  );
+  const getMatchSlotPlaceholder = useCallback(
+    (match: Match, slot: 'team1' | 'team2'): string | undefined => {
+      const matchId = typeof match.$id === 'string' ? match.$id.trim() : '';
+      if (!matchId) {
+        return undefined;
+      }
+      return matchSlotPlaceholderLabels[`${matchId}:${slot}`];
+    },
+    [matchSlotPlaceholderLabels],
   );
   const allDisplayedLocked = matchesToDisplay.length > 0 && matchesToDisplay.every((match) => Boolean(match.locked));
   const displayedMatchIds = useMemo(
@@ -785,6 +797,8 @@ export function LeagueCalendarView({
           hideTimeBadge
           showOfficialInHeader
           fieldLabel={event.fieldLabel}
+          team1Placeholder={getMatchSlotPlaceholder(event.resource, 'team1')}
+          team2Placeholder={getMatchSlotPlaceholder(event.resource, 'team2')}
           hasConflict={hasConflict}
           officialUsersById={officialLookupById}
           showEventOfficialNames={showEventOfficialNames}
@@ -793,7 +807,7 @@ export function LeagueCalendarView({
         />
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, matchHasHighlightedDivision, officialLookupById, onMatchClick, resolvedEventTimeZone, showEventOfficialNames, showMatchDivisionBadges],
+    [WeeklyOccurrenceEventCard, canManage, getMatchSlotPlaceholder, matchHasHighlightedDivision, officialLookupById, onMatchClick, resolvedEventTimeZone, showEventOfficialNames, showMatchDivisionBadges],
   );
 
   const AgendaEventComponent = useCallback(
@@ -842,6 +856,8 @@ export function LeagueCalendarView({
                         hideTimeBadge
                         showOfficialInHeader
                         fieldLabel={fieldLabel}
+                        team1Placeholder={getMatchSlotPlaceholder(match, 'team1')}
+                        team2Placeholder={getMatchSlotPlaceholder(match, 'team2')}
                         hasConflict={hasConflict}
                         officialUsersById={officialLookupById}
                         showEventOfficialNames={showEventOfficialNames}
@@ -857,7 +873,7 @@ export function LeagueCalendarView({
         </div>
       );
     },
-    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, matchHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, resolvedEventTimeZone, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
+    [WeeklyOccurrenceEventCard, canManage, conflictMatchIdSet, fieldLookup, getMatchSlotPlaceholder, matchHasHighlightedDivision, officialLookupById, onMatchClick, matchCardPaddingY, resolvedEventTimeZone, showEventOfficialNames, showMatchDivisionBadges, userInvolvedMatchIds],
   );
 
   const components = useMemo(

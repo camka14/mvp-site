@@ -108,4 +108,44 @@ describe('LeagueCalendarView time handling', () => {
     expect(event.end.getHours()).toBe(21);
     expect(screen.getByTestId('calendar-event-match_1')).toHaveTextContent('9:0-21:0');
   });
+
+  it('renders bracket mapping and previous-match labels on schedule match cards', () => {
+    const previousMatch = buildMatch({
+      $id: 'match_previous',
+      matchId: 11,
+      winnerNextMatchId: 'match_current',
+    });
+    const currentMatch = buildMatch({
+      $id: 'match_current',
+      matchId: 12,
+      previousLeftId: 'match_previous',
+      previousLeftMatch: previousMatch,
+    });
+
+    render(
+      <LeagueCalendarView
+        matches={[currentMatch]}
+        teams={emptyTeams}
+        fields={emptyFields}
+        officials={emptyOfficials}
+        childUserIds={emptyChildUserIds}
+        viewerTeamIds={emptyViewerTeamIds}
+        highlightDivisionKeys={emptyHighlightDivisionKeys}
+        conflictMatchIdsById={emptyConflictMatchIdsById}
+        matchSlotPlaceholderLabels={{
+          'match_current:team2': '2nd place (Open)',
+        }}
+        date={new Date(2026, 2, 1)}
+        view="day"
+        eventTimeZone="UTC"
+      />,
+    );
+
+    const lastProps = mockCalendarProps[mockCalendarProps.length - 1];
+    const EventComponent = lastProps.components.event;
+    render(<EventComponent event={lastProps.events[0]} />);
+
+    expect(screen.getByText('Winner of match #11')).toBeInTheDocument();
+    expect(screen.getByText('2nd place (Open)')).toBeInTheDocument();
+  });
 });
