@@ -4,17 +4,25 @@ import { NextRequest } from 'next/server';
 
 const findManyMock = jest.fn();
 const createMock = jest.fn();
+const canonicalTeamsFindManyMock = jest.fn();
+const teamRegistrationsFindManyMock = jest.fn();
+const teamStaffAssignmentsFindManyMock = jest.fn();
+const organizationFindUniqueMock = jest.fn();
 
-const prismaMock = {
+const prismaMock: any = {
   teams: {
     findMany: (...args: any[]) => findManyMock(...args),
     create: (...args: any[]) => createMock(...args),
+  },
+  organizations: {
+    findUnique: (...args: any[]) => organizationFindUniqueMock(...args),
   },
 };
 
 const requireSessionMock = jest.fn();
 const getOptionalSessionMock = jest.fn();
 const syncTeamChatByTeamIdMock = jest.fn();
+const canManageOrganizationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({
@@ -28,6 +36,9 @@ jest.mock('@/server/legacyFormat', () => ({
 jest.mock('@/server/teamChatSync', () => ({
   syncTeamChatByTeamId: (...args: any[]) => syncTeamChatByTeamIdMock(...args),
 }));
+jest.mock('@/server/accessControl', () => ({
+  canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
+}));
 
 import { GET, POST } from '@/app/api/teams/route';
 
@@ -40,9 +51,14 @@ const postJson = (body: unknown) => new NextRequest('http://localhost/api/teams'
 describe('/api/teams route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    delete prismaMock.canonicalTeams;
+    delete prismaMock.teamRegistrations;
+    delete prismaMock.teamStaffAssignments;
     getOptionalSessionMock.mockResolvedValue(null);
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     syncTeamChatByTeamIdMock.mockResolvedValue(undefined);
+    canManageOrganizationMock.mockResolvedValue(false);
+    organizationFindUniqueMock.mockResolvedValue(null);
   });
 
   it('filters by player OR manager when both query params are supplied', async () => {
@@ -92,6 +108,82 @@ describe('/api/teams route', () => {
       },
       take: 25,
       orderBy: { name: 'asc' },
+    }));
+  });
+
+  it('includes admin-only organization teams for users who can manage that organization', async () => {
+    const session = { userId: 'owner_1', isAdmin: false };
+    const organization = {
+      id: 'org_1',
+      ownerId: 'owner_1',
+      hostIds: [],
+      officialIds: [],
+    };
+    getOptionalSessionMock.mockResolvedValue(session);
+    organizationFindUniqueMock.mockResolvedValue(organization);
+    canManageOrganizationMock.mockResolvedValue(true);
+    prismaMock.canonicalTeams = {
+      findMany: (...args: any[]) => canonicalTeamsFindManyMock(...args),
+    };
+    prismaMock.teamRegistrations = {
+      findMany: (...args: any[]) => teamRegistrationsFindManyMock(...args),
+    };
+    prismaMock.teamStaffAssignments = {
+      findMany: (...args: any[]) => teamStaffAssignmentsFindManyMock(...args),
+    };
+    canonicalTeamsFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(new NextRequest('http://localhost/api/teams?organizationId=org_1&limit=200'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.teams).toEqual([]);
+    expect(organizationFindUniqueMock).toHaveBeenCalledWith({
+      where: { id: 'org_1' },
+      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    });
+    expect(canManageOrganizationMock).toHaveBeenCalledWith(session, organization);
+    expect(canonicalTeamsFindManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org_1' },
+      take: 200,
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+    }));
+  });
+
+  it('keeps admin-only organization teams hidden from users who cannot manage that organization', async () => {
+    const session = { userId: 'user_2', isAdmin: false };
+    const organization = {
+      id: 'org_1',
+      ownerId: 'owner_1',
+      hostIds: [],
+      officialIds: [],
+    };
+    getOptionalSessionMock.mockResolvedValue(session);
+    organizationFindUniqueMock.mockResolvedValue(organization);
+    canManageOrganizationMock.mockResolvedValue(false);
+    prismaMock.canonicalTeams = {
+      findMany: (...args: any[]) => canonicalTeamsFindManyMock(...args),
+    };
+    prismaMock.teamRegistrations = {
+      findMany: (...args: any[]) => teamRegistrationsFindManyMock(...args),
+    };
+    prismaMock.teamStaffAssignments = {
+      findMany: (...args: any[]) => teamStaffAssignmentsFindManyMock(...args),
+    };
+    canonicalTeamsFindManyMock.mockResolvedValue([]);
+
+    const response = await GET(new NextRequest('http://localhost/api/teams?organizationId=org_1&limit=200'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.teams).toEqual([]);
+    expect(canonicalTeamsFindManyMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        visibility: 'PUBLIC',
+        organizationId: 'org_1',
+      },
+      take: 200,
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
     }));
   });
 

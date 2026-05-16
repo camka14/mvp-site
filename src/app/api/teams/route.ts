@@ -172,10 +172,29 @@ const createTeamWithCompatibility = async (
   throw lastError instanceof Error ? lastError : new Error('Failed to create team with compatible schema.');
 };
 
+const canIncludeAdminOnlyTeams = async (
+  session: { userId: string; isAdmin: boolean } | null,
+  organizationId: string | null,
+): Promise<boolean> => {
+  if (session?.isAdmin) {
+    return true;
+  }
+  if (!session || !organizationId) {
+    return false;
+  }
+
+  const organization = await prisma.organizations.findUnique({
+    where: { id: organizationId },
+    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+  });
+
+  return canManageOrganization(session, organization);
+};
+
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
-  const organizationId = params.get('organizationId');
+  const organizationId = normalizeId(params.get('organizationId'));
   const playerId = params.get('playerId');
   const managerId = params.get('managerId');
   const query = params.get('query');
@@ -184,16 +203,17 @@ export async function GET(req: NextRequest) {
   );
   const limit = Number(params.get('limit') || '100');
   const session = await getOptionalSession(req);
+  const includeAdminOnly = await canIncludeAdminOnlyTeams(session, organizationId);
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   const teams = await listCanonicalTeamsForUser({
     ids,
-    organizationId: normalizeId(organizationId),
+    organizationId,
     playerId: normalizeId(playerId),
     managerId: normalizeId(managerId),
     query: normalizeId(query),
     openRegistrationOnly,
-    includeAdminOnly: session?.isAdmin === true,
+    includeAdminOnly,
     limit: Number.isFinite(limit) ? limit : 100,
   }, prisma);
   return NextResponse.json({ teams: withTeamRoleAliasesList(teams as Record<string, any>[]) }, { status: 200 });
