@@ -3982,7 +3982,8 @@ export const CanonicalTeamsScalarFieldEnum = {
   createdBy: 'createdBy',
   openRegistration: 'openRegistration',
   registrationPriceCents: 'registrationPriceCents',
-  requiredTemplateIds: 'requiredTemplateIds'
+  requiredTemplateIds: 'requiredTemplateIds',
+  visibility: 'visibility'
 } as const
 
 export type CanonicalTeamsScalarFieldEnum = (typeof CanonicalTeamsScalarFieldEnum)[keyof typeof CanonicalTeamsScalarFieldEnum]
@@ -4845,6 +4846,20 @@ export type EnumEventTeamsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputTyp
  * Reference to a field of type 'EventTeamsKindEnum[]'
  */
 export type ListEnumEventTeamsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventTeamsKindEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'TeamsVisibilityEnum'
+ */
+export type EnumTeamsVisibilityEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamsVisibilityEnum'>
+
+
+
+/**
+ * Reference to a field of type 'TeamsVisibilityEnum[]'
+ */
+export type ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamsVisibilityEnum[]'>
 
 
 

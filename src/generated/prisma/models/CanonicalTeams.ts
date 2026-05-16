@@ -56,6 +56,7 @@ export type CanonicalTeamsMinAggregateOutputType = {
   createdBy: string | null
   openRegistration: boolean | null
   registrationPriceCents: number | null
+  visibility: $Enums.TeamsVisibilityEnum | null
 }
 
 export type CanonicalTeamsMaxAggregateOutputType = {
@@ -74,6 +75,7 @@ export type CanonicalTeamsMaxAggregateOutputType = {
   createdBy: string | null
   openRegistration: boolean | null
   registrationPriceCents: number | null
+  visibility: $Enums.TeamsVisibilityEnum | null
 }
 
 export type CanonicalTeamsCountAggregateOutputType = {
@@ -93,6 +95,7 @@ export type CanonicalTeamsCountAggregateOutputType = {
   openRegistration: number
   registrationPriceCents: number
   requiredTemplateIds: number
+  visibility: number
   _all: number
 }
 
@@ -127,6 +130,7 @@ export type CanonicalTeamsMinAggregateInputType = {
   createdBy?: true
   openRegistration?: true
   registrationPriceCents?: true
+  visibility?: true
 }
 
 export type CanonicalTeamsMaxAggregateInputType = {
@@ -145,6 +149,7 @@ export type CanonicalTeamsMaxAggregateInputType = {
   createdBy?: true
   openRegistration?: true
   registrationPriceCents?: true
+  visibility?: true
 }
 
 export type CanonicalTeamsCountAggregateInputType = {
@@ -164,6 +169,7 @@ export type CanonicalTeamsCountAggregateInputType = {
   openRegistration?: true
   registrationPriceCents?: true
   requiredTemplateIds?: true
+  visibility?: true
   _all?: true
 }
 
@@ -270,6 +276,7 @@ export type CanonicalTeamsGroupByOutputType = {
   openRegistration: boolean
   registrationPriceCents: number
   requiredTemplateIds: string[]
+  visibility: $Enums.TeamsVisibilityEnum
   _count: CanonicalTeamsCountAggregateOutputType | null
   _avg: CanonicalTeamsAvgAggregateOutputType | null
   _sum: CanonicalTeamsSumAggregateOutputType | null
@@ -312,6 +319,7 @@ export type CanonicalTeamsWhereInput = {
   openRegistration?: Prisma.BoolFilter<"CanonicalTeams"> | boolean
   registrationPriceCents?: Prisma.IntFilter<"CanonicalTeams"> | number
   requiredTemplateIds?: Prisma.StringNullableListFilter<"CanonicalTeams">
+  visibility?: Prisma.EnumTeamsVisibilityEnumFilter<"CanonicalTeams"> | $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsOrderByWithRelationInput = {
@@ -331,6 +339,7 @@ export type CanonicalTeamsOrderByWithRelationInput = {
   openRegistration?: Prisma.SortOrder
   registrationPriceCents?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
+  visibility?: Prisma.SortOrder
 }
 
 export type CanonicalTeamsWhereUniqueInput = Prisma.AtLeast<{
@@ -353,6 +362,7 @@ export type CanonicalTeamsWhereUniqueInput = Prisma.AtLeast<{
   openRegistration?: Prisma.BoolFilter<"CanonicalTeams"> | boolean
   registrationPriceCents?: Prisma.IntFilter<"CanonicalTeams"> | number
   requiredTemplateIds?: Prisma.StringNullableListFilter<"CanonicalTeams">
+  visibility?: Prisma.EnumTeamsVisibilityEnumFilter<"CanonicalTeams"> | $Enums.TeamsVisibilityEnum
 }, "id">
 
 export type CanonicalTeamsOrderByWithAggregationInput = {
@@ -372,6 +382,7 @@ export type CanonicalTeamsOrderByWithAggregationInput = {
   openRegistration?: Prisma.SortOrder
   registrationPriceCents?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
+  visibility?: Prisma.SortOrder
   _count?: Prisma.CanonicalTeamsCountOrderByAggregateInput
   _avg?: Prisma.CanonicalTeamsAvgOrderByAggregateInput
   _max?: Prisma.CanonicalTeamsMaxOrderByAggregateInput
@@ -399,6 +410,7 @@ export type CanonicalTeamsScalarWhereWithAggregatesInput = {
   openRegistration?: Prisma.BoolWithAggregatesFilter<"CanonicalTeams"> | boolean
   registrationPriceCents?: Prisma.IntWithAggregatesFilter<"CanonicalTeams"> | number
   requiredTemplateIds?: Prisma.StringNullableListFilter<"CanonicalTeams">
+  visibility?: Prisma.EnumTeamsVisibilityEnumWithAggregatesFilter<"CanonicalTeams"> | $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsCreateInput = {
@@ -418,6 +430,7 @@ export type CanonicalTeamsCreateInput = {
   openRegistration?: boolean
   registrationPriceCents?: number
   requiredTemplateIds?: Prisma.CanonicalTeamsCreaterequiredTemplateIdsInput | string[]
+  visibility?: $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsUncheckedCreateInput = {
@@ -437,6 +450,7 @@ export type CanonicalTeamsUncheckedCreateInput = {
   openRegistration?: boolean
   registrationPriceCents?: number
   requiredTemplateIds?: Prisma.CanonicalTeamsCreaterequiredTemplateIdsInput | string[]
+  visibility?: $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsUpdateInput = {
@@ -456,6 +470,7 @@ export type CanonicalTeamsUpdateInput = {
   openRegistration?: Prisma.BoolFieldUpdateOperationsInput | boolean
   registrationPriceCents?: Prisma.IntFieldUpdateOperationsInput | number
   requiredTemplateIds?: Prisma.CanonicalTeamsUpdaterequiredTemplateIdsInput | string[]
+  visibility?: Prisma.EnumTeamsVisibilityEnumFieldUpdateOperationsInput | $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsUncheckedUpdateInput = {
@@ -475,6 +490,7 @@ export type CanonicalTeamsUncheckedUpdateInput = {
   openRegistration?: Prisma.BoolFieldUpdateOperationsInput | boolean
   registrationPriceCents?: Prisma.IntFieldUpdateOperationsInput | number
   requiredTemplateIds?: Prisma.CanonicalTeamsUpdaterequiredTemplateIdsInput | string[]
+  visibility?: Prisma.EnumTeamsVisibilityEnumFieldUpdateOperationsInput | $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsCreateManyInput = {
@@ -494,6 +510,7 @@ export type CanonicalTeamsCreateManyInput = {
   openRegistration?: boolean
   registrationPriceCents?: number
   requiredTemplateIds?: Prisma.CanonicalTeamsCreaterequiredTemplateIdsInput | string[]
+  visibility?: $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsUpdateManyMutationInput = {
@@ -513,6 +530,7 @@ export type CanonicalTeamsUpdateManyMutationInput = {
   openRegistration?: Prisma.BoolFieldUpdateOperationsInput | boolean
   registrationPriceCents?: Prisma.IntFieldUpdateOperationsInput | number
   requiredTemplateIds?: Prisma.CanonicalTeamsUpdaterequiredTemplateIdsInput | string[]
+  visibility?: Prisma.EnumTeamsVisibilityEnumFieldUpdateOperationsInput | $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsUncheckedUpdateManyInput = {
@@ -532,6 +550,7 @@ export type CanonicalTeamsUncheckedUpdateManyInput = {
   openRegistration?: Prisma.BoolFieldUpdateOperationsInput | boolean
   registrationPriceCents?: Prisma.IntFieldUpdateOperationsInput | number
   requiredTemplateIds?: Prisma.CanonicalTeamsUpdaterequiredTemplateIdsInput | string[]
+  visibility?: Prisma.EnumTeamsVisibilityEnumFieldUpdateOperationsInput | $Enums.TeamsVisibilityEnum
 }
 
 export type CanonicalTeamsCountOrderByAggregateInput = {
@@ -551,6 +570,7 @@ export type CanonicalTeamsCountOrderByAggregateInput = {
   openRegistration?: Prisma.SortOrder
   registrationPriceCents?: Prisma.SortOrder
   requiredTemplateIds?: Prisma.SortOrder
+  visibility?: Prisma.SortOrder
 }
 
 export type CanonicalTeamsAvgOrderByAggregateInput = {
@@ -576,6 +596,7 @@ export type CanonicalTeamsMaxOrderByAggregateInput = {
   createdBy?: Prisma.SortOrder
   openRegistration?: Prisma.SortOrder
   registrationPriceCents?: Prisma.SortOrder
+  visibility?: Prisma.SortOrder
 }
 
 export type CanonicalTeamsMinOrderByAggregateInput = {
@@ -594,6 +615,7 @@ export type CanonicalTeamsMinOrderByAggregateInput = {
   createdBy?: Prisma.SortOrder
   openRegistration?: Prisma.SortOrder
   registrationPriceCents?: Prisma.SortOrder
+  visibility?: Prisma.SortOrder
 }
 
 export type CanonicalTeamsSumOrderByAggregateInput = {
@@ -610,6 +632,10 @@ export type CanonicalTeamsCreaterequiredTemplateIdsInput = {
 export type CanonicalTeamsUpdaterequiredTemplateIdsInput = {
   set?: string[]
   push?: string | string[]
+}
+
+export type EnumTeamsVisibilityEnumFieldUpdateOperationsInput = {
+  set?: $Enums.TeamsVisibilityEnum
 }
 
 
@@ -631,6 +657,7 @@ export type CanonicalTeamsSelect<ExtArgs extends runtime.Types.Extensions.Intern
   openRegistration?: boolean
   registrationPriceCents?: boolean
   requiredTemplateIds?: boolean
+  visibility?: boolean
 }, ExtArgs["result"]["canonicalTeams"]>
 
 export type CanonicalTeamsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -650,6 +677,7 @@ export type CanonicalTeamsSelectCreateManyAndReturn<ExtArgs extends runtime.Type
   openRegistration?: boolean
   registrationPriceCents?: boolean
   requiredTemplateIds?: boolean
+  visibility?: boolean
 }, ExtArgs["result"]["canonicalTeams"]>
 
 export type CanonicalTeamsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -669,6 +697,7 @@ export type CanonicalTeamsSelectUpdateManyAndReturn<ExtArgs extends runtime.Type
   openRegistration?: boolean
   registrationPriceCents?: boolean
   requiredTemplateIds?: boolean
+  visibility?: boolean
 }, ExtArgs["result"]["canonicalTeams"]>
 
 export type CanonicalTeamsSelectScalar = {
@@ -688,9 +717,10 @@ export type CanonicalTeamsSelectScalar = {
   openRegistration?: boolean
   registrationPriceCents?: boolean
   requiredTemplateIds?: boolean
+  visibility?: boolean
 }
 
-export type CanonicalTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "division" | "divisionTypeId" | "wins" | "losses" | "teamSize" | "profileImageId" | "sport" | "organizationId" | "createdBy" | "openRegistration" | "registrationPriceCents" | "requiredTemplateIds", ExtArgs["result"]["canonicalTeams"]>
+export type CanonicalTeamsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "division" | "divisionTypeId" | "wins" | "losses" | "teamSize" | "profileImageId" | "sport" | "organizationId" | "createdBy" | "openRegistration" | "registrationPriceCents" | "requiredTemplateIds" | "visibility", ExtArgs["result"]["canonicalTeams"]>
 
 export type $CanonicalTeamsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "CanonicalTeams"
@@ -712,6 +742,7 @@ export type $CanonicalTeamsPayload<ExtArgs extends runtime.Types.Extensions.Inte
     openRegistration: boolean
     registrationPriceCents: number
     requiredTemplateIds: string[]
+    visibility: $Enums.TeamsVisibilityEnum
   }, ExtArgs["result"]["canonicalTeams"]>
   composites: {}
 }
@@ -1151,6 +1182,7 @@ export interface CanonicalTeamsFieldRefs {
   readonly openRegistration: Prisma.FieldRef<"CanonicalTeams", 'Boolean'>
   readonly registrationPriceCents: Prisma.FieldRef<"CanonicalTeams", 'Int'>
   readonly requiredTemplateIds: Prisma.FieldRef<"CanonicalTeams", 'String[]'>
+  readonly visibility: Prisma.FieldRef<"CanonicalTeams", 'TeamsVisibilityEnum'>
 }
     
 

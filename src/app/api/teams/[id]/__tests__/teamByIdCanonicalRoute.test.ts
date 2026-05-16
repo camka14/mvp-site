@@ -37,7 +37,9 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
 const canManageCanonicalTeamMock = jest.fn();
+const isAdminOnlyCanonicalTeamMock = jest.fn();
 const loadCanonicalTeamByIdMock = jest.fn();
 const syncCanonicalTeamRosterMock = jest.fn();
 const applyCanonicalTeamRegistrationMetadataMock = jest.fn();
@@ -45,13 +47,17 @@ const syncTeamChatInTxMock = jest.fn();
 const getTeamChatBaseMemberIdsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
+jest.mock('@/lib/permissions', () => ({
+  getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
+  requireSession: (...args: any[]) => requireSessionMock(...args),
+}));
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
 }));
 jest.mock('@/server/teams/teamMembership', () => ({
   applyCanonicalTeamRegistrationMetadata: (...args: any[]) => applyCanonicalTeamRegistrationMetadataMock(...args),
   canManageCanonicalTeam: (...args: any[]) => canManageCanonicalTeamMock(...args),
+  isAdminOnlyCanonicalTeam: (...args: any[]) => isAdminOnlyCanonicalTeamMock(...args),
   loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
   syncCanonicalTeamRoster: (...args: any[]) => syncCanonicalTeamRosterMock(...args),
 }));
@@ -61,7 +67,7 @@ jest.mock('@/server/teamChatSync', () => ({
   deleteTeamChatInTx: jest.fn(),
 }));
 
-import { PATCH } from '@/app/api/teams/[id]/route';
+import { GET, PATCH } from '@/app/api/teams/[id]/route';
 
 const patchJson = (body: unknown) => new NextRequest('http://localhost/api/teams/team_1', {
   method: 'PATCH',
@@ -72,8 +78,10 @@ const patchJson = (body: unknown) => new NextRequest('http://localhost/api/teams
 describe('/api/teams/[id] PATCH canonical team sync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getOptionalSessionMock.mockResolvedValue(null);
     requireSessionMock.mockResolvedValue({ userId: 'manager_1', isAdmin: false });
     canManageCanonicalTeamMock.mockResolvedValue(true);
+    isAdminOnlyCanonicalTeamMock.mockReturnValue(false);
     organizationFindFirstMock.mockResolvedValue(null);
     syncCanonicalTeamRosterMock.mockResolvedValue(undefined);
     applyCanonicalTeamRegistrationMetadataMock.mockResolvedValue(undefined);
@@ -128,6 +136,47 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
         teamSize: 2,
         profileImageId: null,
       });
+  });
+
+  it('hides admin-only canonical teams from non-admin direct reads', async () => {
+    loadCanonicalTeamByIdMock.mockReset();
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Admin Only Team',
+      visibility: 'ADMIN_ONLY',
+    });
+    isAdminOnlyCanonicalTeamMock.mockReturnValue(true);
+    getOptionalSessionMock.mockResolvedValue(null);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/teams/team_1'),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+
+    expect(response.status).toBe(404);
+  });
+
+  it('allows admins to directly read admin-only canonical teams', async () => {
+    loadCanonicalTeamByIdMock.mockReset();
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Admin Only Team',
+      visibility: 'ADMIN_ONLY',
+    });
+    isAdminOnlyCanonicalTeamMock.mockReturnValue(true);
+    getOptionalSessionMock.mockResolvedValue({ userId: 'admin_1', isAdmin: true });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/teams/team_1'),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      id: 'team_1',
+      visibility: 'ADMIN_ONLY',
+    });
   });
 
   it('propagates versioned changes to future derived event teams', async () => {

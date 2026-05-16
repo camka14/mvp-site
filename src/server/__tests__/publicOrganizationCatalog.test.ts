@@ -508,7 +508,7 @@ describe('publicOrganizationCatalog', () => {
       {
         id: 'team_open',
         name: 'Fusion Volleyball Club',
-        division: 'CoEd Open',
+        division: 'Open',
         divisionTypeName: 'Open',
         sport: 'Indoor Volleyball',
         profileImageId: null,
@@ -539,7 +539,7 @@ describe('publicOrganizationCatalog', () => {
     const teams = await listPublicOrganizationTeams(publicOrganization, { limit: 6 });
 
     expect(prismaMock.canonicalTeams.findMany).toHaveBeenCalledWith({
-      where: { organizationId: 'org_1' },
+      where: { organizationId: 'org_1', visibility: 'PUBLIC' },
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
       take: 6,
     });
@@ -611,7 +611,7 @@ describe('publicOrganizationCatalog', () => {
     });
 
     expect(prismaMock.canonicalTeams.findMany).toHaveBeenCalledWith({
-      where: { organizationId: 'org_1', openRegistration: true },
+      where: { organizationId: 'org_1', visibility: 'PUBLIC', openRegistration: true },
       orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
       take: 6,
     });
@@ -846,6 +846,7 @@ describe('publicOrganizationCatalog', () => {
       id: 'team_open',
       name: 'Fusion Volleyball Club',
       divisionTypeName: 'Open',
+      division: 'Open',
       sport: 'Indoor Volleyball',
       profileImageId: null,
       teamSize: 10,
@@ -866,6 +867,7 @@ describe('publicOrganizationCatalog', () => {
         id: 'team_open',
         organizationId: 'org_1',
         openRegistration: true,
+        visibility: 'PUBLIC',
       },
     });
     expect(result).toEqual({

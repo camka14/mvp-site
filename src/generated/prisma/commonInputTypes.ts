@@ -395,6 +395,23 @@ export type EnumEventTeamsKindEnumNullableWithAggregatesFilter<$PrismaModel = ne
   _max?: Prisma.NestedEnumEventTeamsKindEnumNullableFilter<$PrismaModel>
 }
 
+export type EnumTeamsVisibilityEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamsVisibilityEnum | Prisma.EnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamsVisibilityEnumFilter<$PrismaModel> | $Enums.TeamsVisibilityEnum
+}
+
+export type EnumTeamsVisibilityEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamsVisibilityEnum | Prisma.EnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamsVisibilityEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamsVisibilityEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamsVisibilityEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamsVisibilityEnumFilter<$PrismaModel>
+}
+
 export type EnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.EventRegistrationsRegistrantTypeEnum | Prisma.EnumEventRegistrationsRegistrantTypeEnumFieldRefInput<$PrismaModel>
   in?: $Enums.EventRegistrationsRegistrantTypeEnum[] | Prisma.ListEnumEventRegistrationsRegistrantTypeEnumFieldRefInput<$PrismaModel>
@@ -1181,6 +1198,23 @@ export type NestedEnumEventTeamsKindEnumNullableWithAggregatesFilter<$PrismaMode
   _count?: Prisma.NestedIntNullableFilter<$PrismaModel>
   _min?: Prisma.NestedEnumEventTeamsKindEnumNullableFilter<$PrismaModel>
   _max?: Prisma.NestedEnumEventTeamsKindEnumNullableFilter<$PrismaModel>
+}
+
+export type NestedEnumTeamsVisibilityEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamsVisibilityEnum | Prisma.EnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamsVisibilityEnumFilter<$PrismaModel> | $Enums.TeamsVisibilityEnum
+}
+
+export type NestedEnumTeamsVisibilityEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamsVisibilityEnum | Prisma.EnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamsVisibilityEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamsVisibilityEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamsVisibilityEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamsVisibilityEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumEventRegistrationsRegistrantTypeEnumFilter<$PrismaModel = never> = {

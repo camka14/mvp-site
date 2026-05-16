@@ -587,6 +587,7 @@ export interface Team {
   openRegistration?: boolean;
   registrationPriceCents?: number;
   requiredTemplateIds?: string[];
+  visibility?: 'PUBLIC' | 'ADMIN_ONLY' | string;
   $createdAt?: string;
   $updatedAt?: string;
   // Expanded relationships

@@ -29,6 +29,7 @@ const prismaMock = {
     findFirst: jest.fn(),
   },
   organizations: {
+    findMany: jest.fn(),
     findUnique: jest.fn(),
   },
   staffMembers: {
@@ -80,6 +81,7 @@ describe('event template privacy routes', () => {
     prismaMock.matches.findMany.mockReset();
     prismaMock.timeSlots.findMany.mockReset();
     prismaMock.fields.findFirst.mockReset();
+    prismaMock.organizations.findMany.mockReset();
     prismaMock.organizations.findUnique.mockReset();
     prismaMock.staffMembers.findUnique.mockReset();
     prismaMock.invites.findMany.mockReset();
@@ -92,6 +94,7 @@ describe('event template privacy routes', () => {
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.fields.findFirst.mockResolvedValue(null);
+    prismaMock.organizations.findMany.mockResolvedValue([]);
     getTokenFromRequestMock.mockReturnValue(null);
     verifySessionTokenMock.mockReturnValue(null);
   });
@@ -746,7 +749,7 @@ describe('event template privacy routes', () => {
     }
   });
 
-  it('treats query search as a separate mode without default date floor and returns relevance-ranked names', async () => {
+  it('applies the default date floor for query search and returns relevance-ranked names', async () => {
     prismaMock.events.findMany.mockResolvedValueOnce([
       { id: 'event_4', name: 'The Indoor Finals', location: '', description: '', state: 'PUBLISHED' },
       { id: 'event_3', name: 'Playindoor Open', location: '', description: '', state: 'PUBLISHED' },
@@ -774,7 +777,17 @@ describe('event template privacy routes', () => {
 
     const findManyCalls = prismaMock.events.findMany.mock.calls;
     const callArgs = findManyCalls.length > 0 ? findManyCalls[findManyCalls.length - 1]?.[0] : undefined;
-    expect(callArgs?.where?.start).toBeUndefined();
+    const andClauses = Array.isArray(callArgs?.where?.AND) ? callArgs.where.AND : [];
+    const dateFloorClause = andClauses.find((clause: any) =>
+      Array.isArray(clause?.OR)
+      && clause.OR.some((entry: any) => entry?.start?.gte instanceof Date),
+    );
+    const startGte = dateFloorClause?.OR?.find((entry: any) => entry?.eventType?.not === 'WEEKLY_EVENT')?.start?.gte;
+    expect(startGte).toBeInstanceOf(Date);
+    expect(startGte.getHours()).toBe(0);
+    expect(startGte.getMinutes()).toBe(0);
+    expect(startGte.getSeconds()).toBe(0);
+    expect(startGte.getMilliseconds()).toBe(0);
     expect(json.events.map((event: any) => event.name)).toEqual([
       'Indoor',
       'Indoor Soccer Arena League',

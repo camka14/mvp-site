@@ -160,6 +160,14 @@ export const OrganizationsStatusEnum = {
 export type OrganizationsStatusEnum = (typeof OrganizationsStatusEnum)[keyof typeof OrganizationsStatusEnum]
 
 
+export const TeamsVisibilityEnum = {
+  PUBLIC: 'PUBLIC',
+  ADMIN_ONLY: 'ADMIN_ONLY'
+} as const
+
+export type TeamsVisibilityEnum = (typeof TeamsVisibilityEnum)[keyof typeof TeamsVisibilityEnum]
+
+
 export const StripeAccountsAccountOriginEnum = {
   LEGACY_OAUTH: 'LEGACY_OAUTH',
   PLATFORM_ONBOARDING: 'PLATFORM_ONBOARDING'

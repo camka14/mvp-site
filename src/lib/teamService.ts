@@ -393,6 +393,9 @@ class TeamService {
               requiredTemplateIds: Array.isArray(row.requiredTemplateIds)
                   ? row.requiredTemplateIds.filter((value: any): value is string => typeof value === 'string' && value.trim().length > 0)
                   : [],
+              visibility: typeof row.visibility === 'string' && row.visibility.trim().length > 0
+                  ? row.visibility
+                  : 'PUBLIC',
               $createdAt: row.$createdAt,
               $updatedAt: row.$updatedAt,
             currentSize: playerIds.length,

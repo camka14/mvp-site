@@ -64,6 +64,7 @@ type CanonicalTeamRow = {
   openRegistration?: boolean | null;
   registrationPriceCents?: number | null;
   requiredTemplateIds?: string[] | null;
+  visibility?: string | null;
 };
 
 type EventTeamRow = {
@@ -118,6 +119,9 @@ export const normalizeIdList = (value: unknown): string[] => (
 const ACTIVE_TEAM_MEMBER_STATUSES = new Set(['ACTIVE']);
 const INVITED_TEAM_MEMBER_STATUSES = new Set(['INVITED']);
 const ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE'];
+export const TEAM_VISIBILITY_PUBLIC = 'PUBLIC';
+export const TEAM_VISIBILITY_ADMIN_ONLY = 'ADMIN_ONLY';
+export type TeamVisibility = typeof TEAM_VISIBILITY_PUBLIC | typeof TEAM_VISIBILITY_ADMIN_ONLY;
 
 const getCanonicalTeamsDelegate = (client: PrismaLike) => client?.canonicalTeams ?? null;
 export const getEventTeamsDelegate = (client: PrismaLike) => client?.teams ?? client?.volleyBallTeams ?? null;
@@ -136,6 +140,16 @@ const uniqueStrings = (values: Array<string | null | undefined>): string[] => Ar
 
 const hasOwn = (value: object, key: string): boolean => (
   Object.prototype.hasOwnProperty.call(value, key)
+);
+
+export const normalizeTeamVisibility = (value: unknown): TeamVisibility => (
+  String(value ?? '').trim().toUpperCase() === TEAM_VISIBILITY_ADMIN_ONLY
+    ? TEAM_VISIBILITY_ADMIN_ONLY
+    : TEAM_VISIBILITY_PUBLIC
+);
+
+export const isAdminOnlyCanonicalTeam = (team: Record<string, unknown> | null | undefined): boolean => (
+  normalizeTeamVisibility(team?.visibility) === TEAM_VISIBILITY_ADMIN_ONLY
 );
 
 export const applyCanonicalTeamRegistrationMetadata = async (params: {
@@ -223,6 +237,7 @@ export const serializeCanonicalTeam = (params: {
 
   return withLegacyFields({
     ...params.team,
+    visibility: normalizeTeamVisibility(params.team.visibility),
     openRegistration: Boolean(params.team.openRegistration),
     registrationPriceCents: Math.max(0, Math.round(params.team.registrationPriceCents ?? 0)),
     requiredTemplateIds: normalizeIdList(params.team.requiredTemplateIds),
@@ -506,10 +521,14 @@ export const listCanonicalTeamsForUser = async (params: {
   managerId?: string | null;
   query?: string | null;
   openRegistrationOnly?: boolean;
+  includeAdminOnly?: boolean;
   limit?: number;
 }, client: PrismaLike = prisma) => {
   if (params.ids?.length) {
-    return listTeamsByIds(params.ids, client);
+    const teams = await listTeamsByIds(params.ids, client);
+    return params.includeAdminOnly
+      ? teams
+      : teams.filter((team) => !isAdminOnlyCanonicalTeam(team as Record<string, unknown>));
   }
 
   const canonicalTeamsDelegate = getCanonicalTeamsDelegate(client);
@@ -585,7 +604,9 @@ export const listCanonicalTeamsForUser = async (params: {
     teamIds = teamIds.concat(rows.map((row: { teamId: string }) => row.teamId));
   }
   if (!params.playerId && !params.managerId) {
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = params.includeAdminOnly
+      ? {}
+      : { visibility: TEAM_VISIBILITY_PUBLIC };
     if (params.organizationId) {
       where.organizationId = params.organizationId;
     }
@@ -615,6 +636,7 @@ export const listCanonicalTeamsForUser = async (params: {
       && (!params.organizationId || normalizeId((team as Record<string, unknown>).organizationId as string | null | undefined) === params.organizationId)
       && (!params.openRegistrationOnly || (team as Record<string, unknown>).openRegistration === true)
       && teamMatchesQuery(team as Record<string, unknown>)
+      && (params.includeAdminOnly || !isAdminOnlyCanonicalTeam(team as Record<string, unknown>))
     ))
     .slice(0, params.limit ?? 100);
 };

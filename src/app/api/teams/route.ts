@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/permissions';
+import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
@@ -13,6 +13,7 @@ import {
   applyCanonicalTeamRegistrationMetadata,
   listCanonicalTeamsForUser,
   loadCanonicalTeamById,
+  normalizeTeamVisibility,
   normalizeId,
   normalizeIdList,
   syncCanonicalTeamRoster,
@@ -63,6 +64,7 @@ const createSchema = z.object({
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
+  visibility: z.enum(['PUBLIC', 'ADMIN_ONLY']).optional(),
   playerRegistrations: z.array(playerRegistrationInputSchema).optional(),
 }).passthrough();
 
@@ -181,6 +183,7 @@ export async function GET(req: NextRequest) {
     String(params.get('openRegistration') ?? '').trim().toLowerCase(),
   );
   const limit = Number(params.get('limit') || '100');
+  const session = await getOptionalSession(req);
 
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   const teams = await listCanonicalTeamsForUser({
@@ -190,6 +193,7 @@ export async function GET(req: NextRequest) {
     managerId: normalizeId(managerId),
     query: normalizeId(query),
     openRegistrationOnly,
+    includeAdminOnly: session?.isAdmin === true,
     limit: Number.isFinite(limit) ? limit : 100,
   }, prisma);
   return NextResponse.json({ teams: withTeamRoleAliasesList(teams as Record<string, any>[]) }, { status: 200 });
@@ -224,6 +228,10 @@ export async function POST(req: NextRequest) {
   });
   const divisionTypeId = normalizedDivisionTypeId ?? inferredDivision.divisionTypeId;
   const organizationId = normalizeText(data.organizationId);
+  const visibility = normalizeTeamVisibility(data.visibility);
+  if (visibility === 'ADMIN_ONLY' && !session.isAdmin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
   const requestedRequiredTemplateIds = normalizeTemplateIds(data.requiredTemplateIds);
   if (organizationId) {
     const organization = await prisma.organizations.findUnique({
@@ -281,6 +289,7 @@ export async function POST(req: NextRequest) {
           openRegistration: registrationSettings.openRegistration,
           registrationPriceCents: registrationSettings.registrationPriceCents,
           requiredTemplateIds,
+          visibility,
           createdAt: now,
           updatedAt: now,
         },

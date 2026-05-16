@@ -427,7 +427,8 @@ export const CanonicalTeamsScalarFieldEnum = {
   createdBy: 'createdBy',
   openRegistration: 'openRegistration',
   registrationPriceCents: 'registrationPriceCents',
-  requiredTemplateIds: 'requiredTemplateIds'
+  requiredTemplateIds: 'requiredTemplateIds',
+  visibility: 'visibility'
 } as const
 
 export type CanonicalTeamsScalarFieldEnum = (typeof CanonicalTeamsScalarFieldEnum)[keyof typeof CanonicalTeamsScalarFieldEnum]

@@ -251,6 +251,7 @@ describe('listCanonicalTeamsForUser', () => {
 
     expect(canonicalFindManyMock).toHaveBeenCalledWith({
       where: {
+        visibility: 'PUBLIC',
         openRegistration: true,
         OR: [
           { name: { contains: 'aces', mode: 'insensitive' } },
@@ -270,6 +271,83 @@ describe('listCanonicalTeamsForUser', () => {
       name: 'Open Aces',
       openRegistration: true,
     });
+  });
+
+  it('does not constrain canonical team discovery by visibility for admins', async () => {
+    const canonicalFindManyMock = jest.fn().mockResolvedValue([]);
+    const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([]);
+    const teamStaffAssignmentsFindManyMock = jest.fn().mockResolvedValue([]);
+
+    await listCanonicalTeamsForUser({
+      organizationId: 'org_1',
+      includeAdminOnly: true,
+      limit: 50,
+    }, {
+      canonicalTeams: {
+        findMany: canonicalFindManyMock,
+      },
+      teamRegistrations: {
+        findMany: teamRegistrationsFindManyMock,
+      },
+      teamStaffAssignments: {
+        findMany: teamStaffAssignmentsFindManyMock,
+      },
+    });
+
+    expect(canonicalFindManyMock).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org_1',
+      },
+      take: 50,
+      orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
+    });
+  });
+
+  it('filters admin-only canonical teams from id lookups for non-admin team lists', async () => {
+    const publicTeam = {
+      id: 'team_public',
+      name: 'Public Team',
+      division: 'Open',
+      divisionTypeId: 'open',
+      wins: null,
+      losses: null,
+      teamSize: 6,
+      profileImageId: null,
+      sport: 'Volleyball',
+      organizationId: null,
+      createdBy: 'user_1',
+      openRegistration: false,
+      registrationPriceCents: 0,
+      requiredTemplateIds: [],
+      visibility: 'PUBLIC',
+      createdAt: new Date('2026-05-14T00:00:00.000Z'),
+      updatedAt: new Date('2026-05-14T01:00:00.000Z'),
+    };
+    const adminOnlyTeam = {
+      ...publicTeam,
+      id: 'team_admin_only',
+      name: 'Admin Only Team',
+      visibility: 'ADMIN_ONLY',
+    };
+
+    const teams = await listCanonicalTeamsForUser({
+      ids: ['team_public', 'team_admin_only'],
+    }, {
+      canonicalTeams: {
+        findMany: jest.fn().mockResolvedValue([publicTeam, adminOnlyTeam]),
+      },
+      teamRegistrations: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      teamStaffAssignments: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    });
+
+    expect(teams.map((team) => team.id)).toEqual(['team_public']);
   });
 });
 

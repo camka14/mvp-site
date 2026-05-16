@@ -13,10 +13,14 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
 const syncTeamChatByTeamIdMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
-jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
+jest.mock('@/lib/permissions', () => ({
+  getOptionalSession: (...args: any[]) => getOptionalSessionMock(...args),
+  requireSession: (...args: any[]) => requireSessionMock(...args),
+}));
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
   withLegacyList: (rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })),
@@ -36,6 +40,7 @@ const postJson = (body: unknown) => new NextRequest('http://localhost/api/teams'
 describe('/api/teams route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    getOptionalSessionMock.mockResolvedValue(null);
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     syncTeamChatByTeamIdMock.mockResolvedValue(undefined);
   });
@@ -50,9 +55,13 @@ describe('/api/teams route', () => {
     expect(payload.teams).toEqual([]);
     expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
       where: {
-        OR: [
-          { playerIds: { has: 'user_1' } },
-          { managerId: 'user_1' },
+        AND: [
+          {
+            OR: [
+              { playerIds: { has: 'user_1' } },
+              { managerId: 'user_1' },
+            ],
+          },
         ],
       },
       take: 25,
@@ -72,9 +81,13 @@ describe('/api/teams route', () => {
     expect(payload.teams).toEqual([]);
     expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
       where: {
-        OR: [
-          { playerIds: { has: 'user_1' } },
-          { managerId: 'user_1' },
+        AND: [
+          {
+            OR: [
+              { playerIds: { has: 'user_1' } },
+              { managerId: 'user_1' },
+            ],
+          },
         ],
       },
       take: 25,

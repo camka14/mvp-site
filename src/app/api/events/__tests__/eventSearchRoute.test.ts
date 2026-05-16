@@ -89,7 +89,7 @@ describe('POST /api/events/search', () => {
     prismaMock.timeSlots.findMany.mockResolvedValue([]);
   });
 
-  it('expands event search queries across venues and team names', async () => {
+  it('expands event search queries across listed organizations without searching teams', async () => {
     prismaMock.organizations.findMany.mockResolvedValue([{ id: 'org_venue' }]);
     prismaMock.fields.findMany.mockResolvedValue([{ id: 'field_venue' }]);
     prismaMock.timeSlots.findMany.mockResolvedValue([{ id: 'slot_venue' }]);
@@ -122,22 +122,17 @@ describe('POST /api/events/search', () => {
       { description: { contains: 'Aces', mode: 'insensitive' } },
       { location: { contains: 'Aces', mode: 'insensitive' } },
       { organizationId: { in: ['org_venue'] } },
+    ]));
+    expect(searchWhere.OR).not.toEqual(expect.arrayContaining([
       { fieldIds: { hasSome: ['field_venue'] } },
       { timeSlotIds: { hasSome: ['slot_venue'] } },
       { id: { in: ['event_team', 'event_canonical', 'event_registered_canonical'] } },
     ]));
-    expect(prismaMock.teams.findMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      where: expect.objectContaining({ name: { contains: 'Aces', mode: 'insensitive' } }),
-    }));
-    expect(prismaMock.teams.findMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      where: expect.objectContaining({ parentTeamId: { in: ['canonical_team'] } }),
-    }));
-    expect(prismaMock.eventRegistrations.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        registrantType: 'TEAM',
-        parentId: { in: ['canonical_team'] },
-      }),
-    }));
+    expect(prismaMock.fields.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.timeSlots.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.teams.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.canonicalTeams.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.findMany).not.toHaveBeenCalled();
     expect(json.events.map((event: any) => event.$id)).toEqual([
       'event_team',
       'event_canonical',

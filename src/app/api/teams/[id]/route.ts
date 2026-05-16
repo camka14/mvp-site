@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { requireSession } from '@/lib/permissions';
+import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import {
   inferDivisionDetails,
@@ -13,6 +13,7 @@ import { asRecord, findPresentKeys } from '@/server/http/strictPatch';
 import {
   applyCanonicalTeamRegistrationMetadata,
   canManageCanonicalTeam,
+  isAdminOnlyCanonicalTeam,
   loadCanonicalTeamById,
   syncCanonicalTeamRoster,
 } from '@/server/teams/teamMembership';
@@ -493,11 +494,17 @@ const hasOrganizationTeamManagementAccess = async (
   return canManageOrganization(session, organization);
 };
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const team = await loadCanonicalTeamById(id, prisma);
   if (!team) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+  if (isAdminOnlyCanonicalTeam(team as Record<string, unknown>)) {
+    const session = await getOptionalSession(req);
+    if (session?.isAdmin !== true) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
   }
   return NextResponse.json(withTeamRoleAliases(team as any), { status: 200 });
 }

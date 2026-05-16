@@ -158,6 +158,7 @@ const FALLBACK_IMAGE_URL = '/bracketiq-shield.svg';
 const PUBLIC_EVENT_STATES = ['PUBLISHED', null] as const;
 const PUBLIC_TEAM_ACTIVE_STATUS = 'ACTIVE';
 const PUBLIC_TEAM_STARTED_STATUS = 'STARTED';
+const PUBLIC_TEAM_VISIBILITY = 'PUBLIC';
 const DEFAULT_LIMIT = 8;
 const PUBLIC_EVENT_QUERY_CAP = 300;
 const DEFAULT_WEEKLY_OCCURRENCE_WEEKS = 12;
@@ -1033,6 +1034,7 @@ export const listPublicOrganizationTeams = async (
   const rows = await (prisma as any).canonicalTeams.findMany({
     where: {
       organizationId: organization.id,
+      visibility: PUBLIC_TEAM_VISIBILITY,
       ...(options.openRegistrationOnly ? { openRegistration: true } : {}),
     },
     orderBy: [{ openRegistration: 'desc' }, { name: 'asc' }],
@@ -1583,6 +1585,7 @@ export const getPublicOrganizationTeamForRegistration = async (
       id: teamId,
       organizationId: organization.id,
       openRegistration: true,
+      visibility: PUBLIC_TEAM_VISIBILITY,
     },
   });
   if (!team) {
@@ -1679,4 +1682,3 @@ export const getPublicOrganizationEventForRegistration = async (
     },
   };
 };
-

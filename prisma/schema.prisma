@@ -110,6 +110,11 @@ enum OrganizationsStatusEnum {
   UNLISTED
 }
 
+enum TeamsVisibilityEnum {
+  PUBLIC
+  ADMIN_ONLY
+}
+
 enum StripeAccountsAccountOriginEnum {
   LEGACY_OAUTH
   PLATFORM_ONBOARDING
@@ -532,9 +537,11 @@ model CanonicalTeams {
   openRegistration Boolean   @default(false)
   registrationPriceCents Int @default(0)
   requiredTemplateIds String[] @default([])
+  visibility       TeamsVisibilityEnum @default(PUBLIC)
 
   @@index([organizationId])
   @@index([createdBy])
+  @@index([visibility])
   @@map("Teams")
 }
 
