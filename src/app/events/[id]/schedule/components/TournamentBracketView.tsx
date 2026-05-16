@@ -630,6 +630,8 @@ export default function TournamentBracketView({
                         setSelectedMatch(null);
                     }}
                     isOpen={showScoreModal && selectedMatch !== null}
+                    team1Placeholder={leaguePlayoffPlaceholderAssignments[`${selectedMatch.$id}:team1`]}
+                    team2Placeholder={leaguePlayoffPlaceholderAssignments[`${selectedMatch.$id}:team2`]}
                 />
             )}
         </div>

@@ -76,6 +76,8 @@ interface ScoreUpdateModalProps {
   onMatchComplete?: (payload: ScorePayload & { eventId: string }) => Promise<void>;
   onClose: () => void;
   isOpen: boolean;
+  team1Placeholder?: string;
+  team2Placeholder?: string;
 }
 
 type PendingDirectScoreSync = {
@@ -166,6 +168,84 @@ const teamName = (team: any): string => {
     return team.players.map((player: any) => [player.firstName, player.lastName].filter(Boolean).join(' ')).join(' & ');
   }
   return 'TBD';
+};
+
+const resolvedTeamName = (team: any): string | null => {
+  const name = teamName(team);
+  return name === 'TBD' ? null : name;
+};
+
+const matchRefId = (value: unknown): string => (
+  typeof value === 'string' ? value.trim() : ''
+);
+
+const bracketPlaceholder = (
+  match: Match,
+  previousMatch?: Match | null,
+  slot?: 'team1' | 'team2',
+): string => {
+  if (!previousMatch || typeof previousMatch.matchId !== 'number') {
+    return 'TBD';
+  }
+
+  const currentMatchId = matchRefId(match.$id);
+  const winnerNextId = matchRefId(previousMatch.winnerNextMatchId);
+  const loserNextId = matchRefId(previousMatch.loserNextMatchId);
+
+  let prefix: 'Winner' | 'Loser';
+  if (currentMatchId.length > 0) {
+    const winnerFeedsCurrent = winnerNextId === currentMatchId;
+    const loserFeedsCurrent = loserNextId === currentMatchId;
+    if (winnerFeedsCurrent && loserFeedsCurrent) {
+      prefix = slot === 'team2' ? 'Loser' : 'Winner';
+    } else if (loserFeedsCurrent) {
+      prefix = 'Loser';
+    } else if (winnerFeedsCurrent) {
+      prefix = 'Winner';
+    } else {
+      const isCrossBracketLoser = Boolean(match.losersBracket && previousMatch.losersBracket === false);
+      prefix = isCrossBracketLoser ? 'Loser' : 'Winner';
+    }
+  } else {
+    const isCrossBracketLoser = Boolean(match.losersBracket && previousMatch.losersBracket === false);
+    prefix = isCrossBracketLoser ? 'Loser' : 'Winner';
+  }
+
+  return `${prefix} of match #${previousMatch.matchId}`;
+};
+
+const bracketTeamLabel = (
+  match: Match,
+  team: Match['team1'],
+  previousMatch?: Match | null,
+  placeholder?: string,
+  slot?: 'team1' | 'team2',
+): string => {
+  const explicitName = resolvedTeamName(team);
+  if (explicitName) {
+    return explicitName;
+  }
+  const mappedPlaceholder = placeholder?.trim();
+  if (mappedPlaceholder) {
+    return mappedPlaceholder;
+  }
+  if (!previousMatch && slot) {
+    const siblingPreviousMatch = slot === 'team1'
+      ? match.previousRightMatch
+      : match.previousLeftMatch;
+    if (siblingPreviousMatch && typeof siblingPreviousMatch.matchId === 'number') {
+      const currentMatchId = matchRefId(match.$id);
+      const siblingWinnerNextId = matchRefId(siblingPreviousMatch.winnerNextMatchId);
+      const siblingLoserNextId = matchRefId(siblingPreviousMatch.loserNextMatchId);
+      const siblingFeedsBothOutcomes = currentMatchId.length > 0
+        && siblingWinnerNextId === currentMatchId
+        && siblingLoserNextId === currentMatchId;
+      if (siblingFeedsBothOutcomes) {
+        return `${slot === 'team2' ? 'Loser' : 'Winner'} of match #${siblingPreviousMatch.matchId}`;
+      }
+    }
+  }
+  return bracketPlaceholder(match, previousMatch, slot);
 };
 
 const teamPlayers = (team: Team | null | undefined) => (
@@ -669,6 +749,8 @@ export default function ScoreUpdateModal({
   onMatchComplete,
   onClose,
   isOpen,
+  team1Placeholder,
+  team2Placeholder,
 }: ScoreUpdateModalProps) {
   const [segments, setSegments] = useState<MatchSegment[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -714,6 +796,8 @@ export default function ScoreUpdateModal({
   }, [participantTeams, tournament.teams]);
   const team1 = team1Id ? eventTeamsById.get(team1Id) ?? match.team1 : match.team1;
   const team2 = team2Id ? eventTeamsById.get(team2Id) ?? match.team2 : match.team2;
+  const team1Label = bracketTeamLabel(match, team1, match.previousLeftMatch, team1Placeholder, 'team1');
+  const team2Label = bracketTeamLabel(match, team2, match.previousRightMatch, team2Placeholder, 'team2');
   const teamOfficialId = match.teamOfficialId ?? entityId(match.teamOfficial);
   const teamOfficial = teamOfficialId ? eventTeamsById.get(teamOfficialId) ?? match.teamOfficial : match.teamOfficial;
   const usesSets = typeof tournament.usesSets === 'boolean' ? tournament.usesSets : Boolean(tournament.leagueConfig?.usesSets);
@@ -778,8 +862,8 @@ export default function ScoreUpdateModal({
   const useScoringIncidentsForScore = !scoringRequiresParticipant && !persistedScoreDataAvailable;
   const incidentRetryStorageKey = pendingIncidentStorageKey(tournament.$id ?? match.eventId, match.$id);
   const teamOptions = [
-    ...(team1Id ? [{ value: team1Id, label: teamName(team1) }] : []),
-    ...(team2Id ? [{ value: team2Id, label: teamName(team2) }] : []),
+    ...(team1Id ? [{ value: team1Id, label: team1Label }] : []),
+    ...(team2Id ? [{ value: team2Id, label: team2Label }] : []),
   ];
   const participantOptionsByTeam = useMemo(() => ({
     ...(team1Id ? { [team1Id]: buildParticipantOptions(team1 as Team | null | undefined, team1Id) } : {}),
@@ -832,7 +916,7 @@ export default function ScoreUpdateModal({
     new Map((tournament.eventOfficials ?? []).map((official) => [official.id, official.userId]))
   ), [tournament.eventOfficials]);
   const teamLabelForId = (eventTeamId?: string | null): string => (
-    eventTeamId === team1Id ? teamName(team1) : eventTeamId === team2Id ? teamName(team2) : 'Match'
+    eventTeamId === team1Id ? team1Label : eventTeamId === team2Id ? team2Label : 'Match'
   );
   const participantLabelForIncident = (incident: { eventRegistrationId?: string | null; participantUserId?: string | null }): string | null => {
     if (incident.eventRegistrationId) {
@@ -1705,7 +1789,7 @@ export default function ScoreUpdateModal({
         <Group justify="space-between" align="flex-start">
           <div>
             <Text c="dimmed" size="sm">Match {match.matchId ?? match.$id}</Text>
-            <Text fw={700}>{teamName(team1)} vs {teamName(team2)}</Text>
+            <Text fw={700}>{team1Label} vs {team2Label}</Text>
             <Text c="dimmed" size="sm">{rulesSummary(rules)}</Text>
           </div>
           <Badge color={match.status === 'COMPLETE' ? 'green' : match.status === 'IN_PROGRESS' ? 'blue' : 'gray'}>
@@ -2035,7 +2119,7 @@ export default function ScoreUpdateModal({
 
         <Group grow align="stretch">
           {[{ team: team1, teamId: team1Id, current: team1Score }, { team: team2, teamId: team2Id, current: team2Score }].map(({ team, teamId, current }, index) => {
-            const displayName = teamName(team);
+            const displayName = index === 0 ? team1Label : team2Label;
 
             return (
               <Paper key={teamId ?? index} withBorder p="md" radius="md">

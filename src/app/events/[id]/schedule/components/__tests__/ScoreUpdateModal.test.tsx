@@ -173,6 +173,36 @@ describe('ScoreUpdateModal', () => {
     });
   });
 
+  it('uses bracket placeholder labels in the modal header and score cards', () => {
+    const previousMatch = buildMatch({
+      $id: 'match_60',
+      matchId: 60,
+      loserNextMatchId: 'match_1',
+    });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          matchId: 61,
+          previousLeftId: undefined,
+          previousRightId: 'match_60',
+          previousRightMatch: previousMatch,
+          team1: undefined,
+          team2: undefined,
+        })}
+        tournament={buildEvent()}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+        team1Placeholder="1st place (Open)"
+      />,
+    );
+
+    expect(screen.getByText('1st place (Open) vs Loser of match #60')).toBeInTheDocument();
+    expect(screen.getAllByText('1st place (Open)').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Loser of match #60').length).toBeGreaterThan(0);
+  });
+
   it('writes a single-set winner when finishing a timed match score', async () => {
     const onSubmit = jest.fn().mockResolvedValue(undefined);
 

@@ -11247,6 +11247,8 @@ function EventScheduleContent() {
             setScoreUpdateMatch(null);
           }}
           isOpen={isScoreModalOpen}
+          team1Placeholder={scheduleBracketPlaceholderAssignments[`${scoreUpdateMatch.$id}:team1`]}
+          team2Placeholder={scheduleBracketPlaceholderAssignments[`${scoreUpdateMatch.$id}:team2`]}
         />
       )}
       <MatchEditModal
