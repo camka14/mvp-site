@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import Image from 'next/image';
 import {
   Event,
@@ -18,6 +18,7 @@ interface EventCardProps {
   showDistance?: boolean;
   userLocation?: LocationCoordinates | null;
   onClick?: () => void;
+  actions?: ReactNode;
   hostOptions?: Array<{ value: string; label: string }>;
   selectedHostId?: string;
   onHostChange?: (hostId: string) => void;
@@ -29,6 +30,7 @@ export default function EventCard({
   showDistance = false,
   userLocation,
   onClick,
+  actions,
   hostOptions,
   selectedHostId,
   onHostChange,
@@ -199,6 +201,11 @@ export default function EventCard({
       onClick={onClick}
     >
       <div className="relative h-44 overflow-hidden border-b border-slate-200">
+        {actions && (
+          <div className="absolute right-3 top-3 z-10">
+            {actions}
+          </div>
+        )}
         <Image
           src={imageUrl}
           alt={event.name}

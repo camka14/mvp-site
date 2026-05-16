@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { Team, UserData, Invite } from '@/types';
@@ -49,7 +49,7 @@ export function ManageTeams({ showNavigation = true, withContainer = true }: Man
 }
 
 function TeamsPageContent() {
-  const { user, loading: authLoading, isAuthenticated } = useApp();
+  const { user, authUser, loading: authLoading, isAuthenticated } = useApp();
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamInvitations, setTeamInvitations] = useState<Array<{ invite: Invite; team: Team | null }>>([]);
   const [loading, setLoading] = useState(true);
@@ -57,6 +57,7 @@ function TeamsPageContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedTeamForDetails, setSelectedTeamForDetails] = useState<Team | null>(null);
   const [showTeamDetailModal, setShowTeamDetailModal] = useState(false);
+  const handledTeamDeepLinkRef = useRef<string | null>(null);
 
   const searchParams = useSearchParams();
   const [selectedFreeAgentId, setSelectedFreeAgentId] = useState<string | null>(null);
@@ -130,6 +131,40 @@ function TeamsPageContent() {
       void loadTeamsData();
     }
   }, [user, authLoading, isAuthenticated, router, loadTeamsData]);
+
+  useEffect(() => {
+    const teamIdParam = searchParams?.get('teamId')?.trim();
+    if (!teamIdParam || loading) {
+      if (!teamIdParam) {
+        handledTeamDeepLinkRef.current = null;
+      }
+      return;
+    }
+    if (handledTeamDeepLinkRef.current === teamIdParam) {
+      return;
+    }
+
+    const existingTeam = teams.find((team) => team.$id === teamIdParam);
+    if (existingTeam) {
+      handledTeamDeepLinkRef.current = teamIdParam;
+      setSelectedTeamForDetails(existingTeam);
+      setShowTeamDetailModal(true);
+      return;
+    }
+
+    handledTeamDeepLinkRef.current = teamIdParam;
+    void (async () => {
+      const team = await teamService.getTeamById(teamIdParam, true);
+      if (!team) {
+        return;
+      }
+      setTeams((previous) => (
+        previous.some((entry) => entry.$id === team.$id) ? previous : [team, ...previous]
+      ));
+      setSelectedTeamForDetails(team);
+      setShowTeamDetailModal(true);
+    })();
+  }, [loading, searchParams, teams]);
 
   // Preserve optional selected free-agent focus from navigation while free agents are loaded server-side per team.
   useEffect(() => {
@@ -350,6 +385,7 @@ function TeamsPageContent() {
         <TeamDetailModal
           currentTeam={selectedTeamForDetails}
           isOpen={showTeamDetailModal}
+          canManage={authUser?.isAdmin === true ? true : undefined}
           onClose={() => {
             setShowTeamDetailModal(false);
             setSelectedTeamForDetails(null);

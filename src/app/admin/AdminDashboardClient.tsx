@@ -2,6 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
@@ -11,7 +12,7 @@ import {
   organizationVerificationStatusLabel,
   resolveOrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
-import type { Event, Field, Organization, UserData } from '@/types';
+import type { Event, Field, Organization, Team, UserData } from '@/types';
 import {
   Alert,
   Badge,
@@ -28,9 +29,9 @@ import {
   Textarea,
   Title,
 } from '@mantine/core';
-import { Search } from 'lucide-react';
+import { ExternalLink, Search, Trash2 } from 'lucide-react';
 
-type AdminTab = 'events' | 'organizations' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation';
+type AdminTab = 'events' | 'organizations' | 'teams' | 'verification' | 'fields' | 'users' | 'chats' | 'moderation';
 
 type PageState<T> = {
   items: T[];
@@ -44,7 +45,14 @@ type PageState<T> = {
 };
 
 type AdminFieldRow = Field & {
+  organizationId?: string | null;
   organization?: Pick<Organization, '$id' | 'name'> | null;
+};
+
+type AdminTeamRow = Team & {
+  organizationId?: string | null;
+  organization?: Pick<Organization, '$id' | 'name'> | null;
+  visibility?: string | null;
 };
 
 type AdminUserRow = UserData & {
@@ -130,11 +138,13 @@ type AdminDashboardClientProps = {
 };
 
 export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboardClientProps) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminTab>('events');
 
   const [eventsState, setEventsState] = useState<PageState<Event>>(() => initialPageState<Event>());
   const [organizationsState, setOrganizationsState] =
     useState<PageState<Organization>>(() => initialPageState<Organization>());
+  const [teamsState, setTeamsState] = useState<PageState<AdminTeamRow>>(() => initialPageState<AdminTeamRow>());
   const [verificationState, setVerificationState] =
     useState<PageState<Organization>>(() => initialPageState<Organization>());
   const [fieldsState, setFieldsState] = useState<PageState<AdminFieldRow>>(() => initialPageState<AdminFieldRow>());
@@ -150,6 +160,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const [selectedChatMessages, setSelectedChatMessages] = useState<AdminChatMessageRow[]>([]);
   const [selectedChatLoading, setSelectedChatLoading] = useState(false);
   const [selectedChatError, setSelectedChatError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const loadEvents = useCallback(async (offset = 0, query = eventsState.query) => {
     setEventsState((previous) => ({ ...previous, loading: true, error: null }));
@@ -222,6 +233,42 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
       }));
     }
   }, [organizationsState.query]);
+
+  const loadTeams = useCallback(async (offset = 0, query = teamsState.query) => {
+    setTeamsState((previous) => ({ ...previous, loading: true, error: null }));
+    try {
+      const params = new URLSearchParams({
+        limit: String(DEFAULT_LIMIT),
+        offset: String(offset),
+      });
+      const normalizedQuery = query.trim();
+      if (normalizedQuery.length > 0) {
+        params.set('query', normalizedQuery);
+      }
+      const res = await fetch(`/api/admin/teams?${params.toString()}`, { credentials: 'include' });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(payload?.error || 'Failed to load teams.');
+      }
+      setTeamsState({
+        items: Array.isArray(payload.teams) ? payload.teams : [],
+        total: Number(payload.total ?? 0),
+        limit: Number(payload.limit ?? DEFAULT_LIMIT),
+        offset: Number(payload.offset ?? 0),
+        loading: false,
+        loaded: true,
+        error: null,
+        query: normalizedQuery,
+      });
+    } catch (error) {
+      setTeamsState((previous) => ({
+        ...previous,
+        loading: false,
+        loaded: true,
+        error: error instanceof Error ? error.message : 'Failed to load teams.',
+      }));
+    }
+  }, [teamsState.query]);
 
   const loadVerifications = useCallback(async (offset = 0, query = verificationState.query) => {
     setVerificationState((previous) => ({ ...previous, loading: true, error: null }));
@@ -540,12 +587,86 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     }
   }, []);
 
+  const confirmAndDelete = useCallback(async ({
+    entityKey,
+    entityLabel,
+    endpoint,
+    reload,
+  }: {
+    entityKey: string;
+    entityLabel: string;
+    endpoint: string;
+    reload: () => Promise<void>;
+  }) => {
+    const confirmed = window.confirm(`Delete ${entityLabel}? This cannot be undone.`);
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingId(entityKey);
+    try {
+      const res = await fetch(endpoint, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const blockerSummary = payload?.blockers
+          ? `\n\nBlockers: ${Object.entries(payload.blockers)
+              .filter(([, value]) => Number(value) > 0)
+              .map(([key, value]) => `${key}: ${value}`)
+              .join(', ')}`
+          : '';
+        throw new Error(`${payload?.error || `Failed to delete ${entityLabel}.`}${blockerSummary}`);
+      }
+      await reload();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : `Unable to delete ${entityLabel}.`);
+    } finally {
+      setDeletingId(null);
+    }
+  }, []);
+
+  const openEvent = useCallback((eventId: string) => {
+    router.push(`/events/${encodeURIComponent(eventId)}?tab=details&mode=edit`);
+  }, [router]);
+
+  const openOrganization = useCallback((organizationId: string) => {
+    router.push(`/organizations/${encodeURIComponent(organizationId)}`);
+  }, [router]);
+
+  const openTeam = useCallback((team: AdminTeamRow) => {
+    const teamId = team.$id;
+    const organizationId = team.organizationId?.trim();
+    if (organizationId) {
+      router.push(`/organizations/${encodeURIComponent(organizationId)}?tab=teams&teamId=${encodeURIComponent(teamId)}`);
+      return;
+    }
+    router.push(`/teams?teamId=${encodeURIComponent(teamId)}`);
+  }, [router]);
+
+  const openField = useCallback((field: AdminFieldRow) => {
+    const organizationId = field.organization?.$id ?? field.organizationId;
+    if (organizationId) {
+      router.push(`/organizations/${encodeURIComponent(organizationId)}?tab=fields`);
+      return;
+    }
+    window.alert('This field is not attached to an organization.');
+  }, [router]);
+
+  const openUser = useCallback((userId: string) => {
+    router.push(`/admin/users/${encodeURIComponent(userId)}`);
+  }, [router]);
+
   useEffect(() => {
     if (activeTab === 'events' && !eventsState.loaded) {
       void loadEvents(0);
     }
     if (activeTab === 'organizations' && !organizationsState.loaded) {
       void loadOrganizations(0);
+    }
+    if (activeTab === 'teams' && !teamsState.loaded) {
+      void loadTeams(0);
     }
     if (activeTab === 'verification' && !verificationState.loaded) {
       void loadVerifications(0);
@@ -569,10 +690,12 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     eventsState.loaded,
     fieldsState.loaded,
     loadChats,
+    loadTeams,
     organizationsState.loaded,
     loadModeration,
     moderationState.loaded,
     moderationState.query,
+    teamsState.loaded,
     verificationState.loaded,
     usersState.loaded,
     usersState.query,
@@ -586,18 +709,21 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   const activeState = useMemo(() => {
     if (activeTab === 'events') return eventsState;
     if (activeTab === 'organizations') return organizationsState;
+    if (activeTab === 'teams') return teamsState;
     if (activeTab === 'verification') return verificationState;
     if (activeTab === 'fields') return fieldsState;
     if (activeTab === 'chats') return chatsState;
     if (activeTab === 'moderation') return moderationState;
     return usersState;
-  }, [activeTab, chatsState, eventsState, fieldsState, moderationState, organizationsState, verificationState, usersState]);
+  }, [activeTab, chatsState, eventsState, fieldsState, moderationState, organizationsState, teamsState, verificationState, usersState]);
 
   const onRefreshActiveTab = useCallback(() => {
     if (activeTab === 'events') {
       void loadEvents(eventsState.offset, eventsState.query);
     } else if (activeTab === 'organizations') {
       void loadOrganizations(organizationsState.offset, organizationsState.query);
+    } else if (activeTab === 'teams') {
+      void loadTeams(teamsState.offset, teamsState.query);
     } else if (activeTab === 'verification') {
       void loadVerifications(verificationState.offset, verificationState.query);
     } else if (activeTab === 'fields') {
@@ -622,11 +748,14 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
     loadFields,
     loadModeration,
     loadOrganizations,
+    loadTeams,
     loadUsers,
     moderationState.offset,
     moderationState.query,
     organizationsState.offset,
     organizationsState.query,
+    teamsState.offset,
+    teamsState.query,
     usersState.offset,
     usersState.query,
     verificationState.offset,
@@ -712,7 +841,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
               <div>
                 <Title order={2}>Admin Dashboard</Title>
                 <Text size="sm" c="dimmed">
-                  Internal data explorer with 50-item pages for events, organizations, fields, and users.
+                  Internal data explorer with 50-item pages for events, organizations, teams, fields, and users.
                 </Text>
               </div>
               <Group gap="xs">
@@ -734,6 +863,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
               <Tabs.List mb="md">
                 <Tabs.Tab value="events">Events ({eventsState.total})</Tabs.Tab>
                 <Tabs.Tab value="organizations">Organizations ({organizationsState.total})</Tabs.Tab>
+                <Tabs.Tab value="teams">Teams ({teamsState.total})</Tabs.Tab>
                 <Tabs.Tab value="verification">Verification ({verificationState.total})</Tabs.Tab>
                 <Tabs.Tab value="fields">Fields ({fieldsState.total})</Tabs.Tab>
                 <Tabs.Tab value="users">Users ({usersState.total})</Tabs.Tab>
@@ -750,7 +880,40 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                 >
                   <ResponsiveCardGrid>
                     {eventsState.items.map((event) => (
-                      <EventCard key={event.$id} event={event} />
+                      <EventCard
+                        key={event.$id}
+                        event={event}
+                        onClick={() => openEvent(event.$id)}
+                        actions={
+                          <Group gap={4} onClick={(clickEvent) => clickEvent.stopPropagation()}>
+                            <Button
+                              size="compact-xs"
+                              variant="white"
+                              leftSection={<ExternalLink size={14} />}
+                              onClick={() => openEvent(event.$id)}
+                            >
+                              Open
+                            </Button>
+                            <Button
+                              size="compact-xs"
+                              color="red"
+                              variant="filled"
+                              leftSection={<Trash2 size={14} />}
+                              loading={deletingId === `event:${event.$id}`}
+                              onClick={() => {
+                                void confirmAndDelete({
+                                  entityKey: `event:${event.$id}`,
+                                  entityLabel: event.name || event.$id,
+                                  endpoint: `/api/events/${encodeURIComponent(event.$id)}`,
+                                  reload: () => loadEvents(eventsState.offset, eventsState.query),
+                                });
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </Group>
+                        }
+                      />
                     ))}
                   </ResponsiveCardGrid>
                   <PaginationControls
@@ -774,7 +937,43 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                 >
                   <ResponsiveCardGrid>
                     {organizationsState.items.map((organization) => (
-                      <OrganizationCard key={organization.$id} organization={organization} />
+                      <OrganizationCard
+                        key={organization.$id}
+                        organization={organization}
+                        onClick={() => openOrganization(organization.$id)}
+                        actions={
+                          <Group gap={4} onClick={(clickEvent) => clickEvent.stopPropagation()}>
+                            <Button
+                              size="compact-xs"
+                              variant="default"
+                              leftSection={<ExternalLink size={14} />}
+                              onClick={() => openOrganization(organization.$id)}
+                            >
+                              Open
+                            </Button>
+                            <Button
+                              size="compact-xs"
+                              color="red"
+                              variant="light"
+                              leftSection={<Trash2 size={14} />}
+                              loading={deletingId === `organization:${organization.$id}`}
+                              onClick={() => {
+                                void confirmAndDelete({
+                                  entityKey: `organization:${organization.$id}`,
+                                  entityLabel: organization.name || organization.$id,
+                                  endpoint: `/api/admin/organizations/${encodeURIComponent(organization.$id)}`,
+                                  reload: () => Promise.all([
+                                    loadOrganizations(organizationsState.offset, organizationsState.query),
+                                    loadVerifications(verificationState.offset, verificationState.query),
+                                  ]).then(() => undefined),
+                                });
+                              }}
+                            >
+                              Delete
+                            </Button>
+                          </Group>
+                        }
+                      />
                     ))}
                   </ResponsiveCardGrid>
                   <PaginationControls
@@ -784,6 +983,96 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                     loading={organizationsState.loading}
                     onChange={(nextOffset) => {
                       void loadOrganizations(nextOffset, organizationsState.query);
+                    }}
+                  />
+                </AdminPanelState>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="teams">
+                <AdminPanelState
+                  loading={teamsState.loading}
+                  error={teamsState.error}
+                  emptyMessage="No teams found."
+                  itemCount={teamsState.items.length}
+                >
+                  <Table striped highlightOnHover withTableBorder withColumnBorders>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Team</Table.Th>
+                        <Table.Th>Organization</Table.Th>
+                        <Table.Th>Sport</Table.Th>
+                        <Table.Th>Size</Table.Th>
+                        <Table.Th>Status</Table.Th>
+                        <Table.Th>ID</Table.Th>
+                        <Table.Th>Actions</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {teamsState.items.map((team) => (
+                        <Table.Tr
+                          key={team.$id}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => openTeam(team)}
+                        >
+                          <Table.Td>
+                            <div>
+                              <Text fw={600}>{team.name || 'Unnamed team'}</Text>
+                              <Text size="xs" c="dimmed">{formatAdminTeamDivision(team.division)}</Text>
+                            </div>
+                          </Table.Td>
+                          <Table.Td>{team.organization?.name ?? 'Unassigned'}</Table.Td>
+                          <Table.Td>{team.sport || '—'}</Table.Td>
+                          <Table.Td>{team.teamSize ?? '—'}</Table.Td>
+                          <Table.Td>
+                            <Group gap={4}>
+                              {team.openRegistration ? <Badge color="teal" variant="light">Open</Badge> : null}
+                              {team.visibility === 'ADMIN_ONLY' ? <Badge color="gray" variant="light">Admin only</Badge> : null}
+                              {!team.openRegistration && team.visibility !== 'ADMIN_ONLY' ? (
+                                <Badge color="blue" variant="light">Public</Badge>
+                              ) : null}
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>{team.$id}</Table.Td>
+                          <Table.Td>
+                            <Group gap="xs" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+                              <Button
+                                size="xs"
+                                variant="default"
+                                leftSection={<ExternalLink size={14} />}
+                                onClick={() => openTeam(team)}
+                              >
+                                Open
+                              </Button>
+                              <Button
+                                size="xs"
+                                color="red"
+                                variant="light"
+                                leftSection={<Trash2 size={14} />}
+                                loading={deletingId === `team:${team.$id}`}
+                                onClick={() => {
+                                  void confirmAndDelete({
+                                    entityKey: `team:${team.$id}`,
+                                    entityLabel: team.name || team.$id,
+                                    endpoint: `/api/teams/${encodeURIComponent(team.$id)}`,
+                                    reload: () => loadTeams(teamsState.offset, teamsState.query),
+                                  });
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                  <PaginationControls
+                    total={teamsState.total}
+                    limit={teamsState.limit}
+                    offset={teamsState.offset}
+                    loading={teamsState.loading}
+                    onChange={(nextOffset) => {
+                      void loadTeams(nextOffset, teamsState.query);
                     }}
                   />
                 </AdminPanelState>
@@ -897,17 +1186,51 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                         <Table.Th>Organization</Table.Th>
                         <Table.Th>Location</Table.Th>
                         <Table.Th>ID</Table.Th>
+                        <Table.Th>Actions</Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
                       {fieldsState.items.map((field) => (
-                        <Table.Tr key={field.$id}>
+                        <Table.Tr
+                          key={field.$id}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => openField(field)}
+                        >
                           <Table.Td>
                             {getFieldDisplayName(field)}
                           </Table.Td>
                           <Table.Td>{field.organization?.name ?? 'Unassigned'}</Table.Td>
                           <Table.Td>{field.location || '—'}</Table.Td>
                           <Table.Td>{field.$id}</Table.Td>
+                          <Table.Td>
+                            <Group gap="xs" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+                              <Button
+                                size="xs"
+                                variant="default"
+                                leftSection={<ExternalLink size={14} />}
+                                onClick={() => openField(field)}
+                              >
+                                Open
+                              </Button>
+                              <Button
+                                size="xs"
+                                color="red"
+                                variant="light"
+                                leftSection={<Trash2 size={14} />}
+                                loading={deletingId === `field:${field.$id}`}
+                                onClick={() => {
+                                  void confirmAndDelete({
+                                    entityKey: `field:${field.$id}`,
+                                    entityLabel: getFieldDisplayName(field),
+                                    endpoint: `/api/fields/${encodeURIComponent(field.$id)}`,
+                                    reload: () => loadFields(fieldsState.offset, fieldsState.query),
+                                  });
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </Group>
+                          </Table.Td>
                         </Table.Tr>
                       ))}
                     </Table.Tbody>
@@ -970,7 +1293,11 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                     </Table.Thead>
                     <Table.Tbody>
                       {usersState.items.map((user) => (
-                        <Table.Tr key={user.$id}>
+                        <Table.Tr
+                          key={user.$id}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => openUser(user.$id)}
+                        >
                           <Table.Td>{[user.firstName, user.lastName].filter(Boolean).join(' ').trim() || '—'}</Table.Td>
                           <Table.Td>{user.userName || '—'}</Table.Td>
                           <Table.Td>{user.email || '—'}</Table.Td>
@@ -983,23 +1310,50 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
                           </Table.Td>
                           <Table.Td>{user.$id}</Table.Td>
                           <Table.Td>
-                            <Button
-                              size="xs"
-                              variant={user.disabledAt ? 'default' : 'light'}
-                              color={user.disabledAt ? 'gray' : 'red'}
-                              onClick={() => {
-                                void (async () => {
-                                  try {
-                                    await setUserSuspension(user.$id, !user.disabledAt);
-                                    await loadUsers(usersState.offset, usersState.query);
-                                  } catch (error) {
-                                    window.alert(error instanceof Error ? error.message : 'Unable to update user status.');
-                                  }
-                                })();
-                              }}
-                            >
-                              {user.disabledAt ? 'Restore' : 'Suspend'}
-                            </Button>
+                            <Group gap="xs" onClick={(clickEvent) => clickEvent.stopPropagation()}>
+                              <Button
+                                size="xs"
+                                variant="default"
+                                leftSection={<ExternalLink size={14} />}
+                                onClick={() => openUser(user.$id)}
+                              >
+                                Open
+                              </Button>
+                              <Button
+                                size="xs"
+                                variant={user.disabledAt ? 'default' : 'light'}
+                                color={user.disabledAt ? 'gray' : 'red'}
+                                onClick={() => {
+                                  void (async () => {
+                                    try {
+                                      await setUserSuspension(user.$id, !user.disabledAt);
+                                      await loadUsers(usersState.offset, usersState.query);
+                                    } catch (error) {
+                                      window.alert(error instanceof Error ? error.message : 'Unable to update user status.');
+                                    }
+                                  })();
+                                }}
+                              >
+                                {user.disabledAt ? 'Restore' : 'Suspend'}
+                              </Button>
+                              <Button
+                                size="xs"
+                                color="red"
+                                variant="light"
+                                leftSection={<Trash2 size={14} />}
+                                loading={deletingId === `user:${user.$id}`}
+                                onClick={() => {
+                                  void confirmAndDelete({
+                                    entityKey: `user:${user.$id}`,
+                                    entityLabel: [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.userName || user.$id,
+                                    endpoint: `/api/admin/users/${encodeURIComponent(user.$id)}`,
+                                    reload: () => loadUsers(usersState.offset, usersState.query),
+                                  });
+                                }}
+                              >
+                                Delete
+                              </Button>
+                            </Group>
                           </Table.Td>
                         </Table.Tr>
                       ))}
@@ -1533,4 +1887,19 @@ function formatAdminDateTime(value?: string | null): string {
     return value;
   }
   return parsed.toLocaleString();
+}
+
+function formatAdminTeamDivision(value: AdminTeamRow['division']): string {
+  if (!value) {
+    return 'Division not set';
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const name = 'name' in value && typeof value.name === 'string' ? value.name : null;
+    const skillLevel = 'skillLevel' in value && typeof value.skillLevel === 'string' ? value.skillLevel : null;
+    return name || skillLevel || 'Division';
+  }
+  return 'Division';
 }

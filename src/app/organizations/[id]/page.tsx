@@ -543,6 +543,7 @@ function OrganizationDetailContent() {
   const eventsTabSentinelRef = useRef<HTMLDivElement | null>(null);
   const locationRequestAttemptedRef = useRef(false);
   const handledStripeStateRef = useRef<string | null>(null);
+  const handledTeamDeepLinkRef = useRef<string | null>(null);
   const [updatingEventHostId, setUpdatingEventHostId] = useState<string | null>(null);
   const [staffSearch, setStaffSearch] = useState('');
   const [staffResults, setStaffResults] = useState<UserData[]>([]);
@@ -1650,6 +1651,26 @@ function OrganizationDetailContent() {
       setActiveTab(tabParam as typeof activeTab);
     }
   }, [availableTabs, searchParams]);
+
+  useEffect(() => {
+    const teamIdParam = searchParams?.get('teamId')?.trim();
+    if (!teamIdParam) {
+      handledTeamDeepLinkRef.current = null;
+      return;
+    }
+    const team = (org?.teams ?? []).find((entry) => entry.$id === teamIdParam);
+    if (!team) {
+      return;
+    }
+    const handledKey = `${id}:${teamIdParam}`;
+    if (handledTeamDeepLinkRef.current === handledKey) {
+      return;
+    }
+    handledTeamDeepLinkRef.current = handledKey;
+    setActiveTab('teams');
+    setSelectedTeam(team);
+    setShowTeamDetailModal(true);
+  }, [id, org?.teams, searchParams]);
 
   const eventTemplateOptions = useMemo(
     () => eventTemplates

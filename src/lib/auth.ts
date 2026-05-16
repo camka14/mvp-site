@@ -5,6 +5,7 @@ interface UserAccount {
   $id: string;
   email: string;
   name?: string;
+  isAdmin?: boolean;
 }
 
 export type RequiredProfileField = 'firstName' | 'lastName' | 'dateOfBirth';
@@ -195,7 +196,12 @@ export const authService = {
         missingProfileFields: [],
       };
     }
-    const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
+    const mapped: UserAccount = {
+      $id: data.user.id,
+      email: data.user.email,
+      name: data.user.name ?? undefined,
+      isAdmin: data.session?.isAdmin === true,
+    };
     this.setCurrentAuthUser(mapped);
     if (data.profile) this.setCurrentUserData(data.profile as UserData);
     return {
