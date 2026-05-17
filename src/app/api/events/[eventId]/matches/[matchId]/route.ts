@@ -308,6 +308,110 @@ const ensureCanonicalSegmentForIncident = (match: any, segmentId: string | null)
 const eventRegistrationLookupKey = (eventTeamId: string, registrantId: string): string =>
   `${eventTeamId}\u0000${registrantId}`;
 
+const collectMatchParticipantTeams = (match: any): Array<{ eventTeamId: string; playerIds: string[] }> => {
+  const entries: Array<{ eventTeamId: string; playerIds: string[] }> = [];
+  const addTeam = (team: any) => {
+    const eventTeamId = normalizeIdToken(team?.id ?? team?.$id);
+    if (!eventTeamId || entries.some((entry) => entry.eventTeamId === eventTeamId)) {
+      return;
+    }
+    const playerIds = Array.isArray(team?.playerIds)
+      ? team.playerIds
+          .map((playerId: unknown) => normalizeIdToken(playerId))
+          .filter((playerId: string | null): playerId is string => Boolean(playerId))
+      : [];
+    entries.push({ eventTeamId, playerIds });
+  };
+
+  addTeam(match.team1);
+  addTeam(match.team2);
+  return entries;
+};
+
+const loadMatchParticipantRegistrationRows = async (
+  client: any,
+  eventId: string,
+  match: any,
+): Promise<EventRegistrationLookupRow[]> => {
+  const participantTeams = collectMatchParticipantTeams(match);
+  const participantTeamIds = participantTeams.map((team) => team.eventTeamId);
+  if (!participantTeamIds.length || typeof client.eventRegistrations?.findMany !== 'function') {
+    return [];
+  }
+
+  const teamIdsByParticipantUserId = new Map<string, Set<string>>();
+  participantTeams.forEach((team) => {
+    team.playerIds.forEach((playerId) => {
+      const teamIds = teamIdsByParticipantUserId.get(playerId) ?? new Set<string>();
+      teamIds.add(team.eventTeamId);
+      teamIdsByParticipantUserId.set(playerId, teamIds);
+    });
+  });
+  const participantUserIds = Array.from(teamIdsByParticipantUserId.keys());
+  const lookupFilters: Record<string, unknown>[] = [
+    { eventTeamId: { in: participantTeamIds } },
+  ];
+  if (participantUserIds.length) {
+    lookupFilters.push({ registrantId: { in: participantUserIds } });
+  }
+
+  const rows = await client.eventRegistrations.findMany({
+    where: {
+      eventId,
+      rosterRole: 'PARTICIPANT',
+      status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
+      registrantType: { not: 'TEAM' },
+      OR: lookupFilters,
+    },
+    select: {
+      id: true,
+      eventTeamId: true,
+      registrantId: true,
+      sourceTeamRegistrationId: true,
+    },
+  }) as Array<{
+    id?: string | null;
+    eventTeamId?: string | null;
+    registrantId?: string | null;
+    sourceTeamRegistrationId?: string | null;
+  }>;
+
+  const normalizedRows: EventRegistrationLookupRow[] = [];
+  const seen = new Set<string>();
+  rows.forEach((row) => {
+    const registrationId = normalizeIdToken(row.id);
+    const registrantId = normalizeIdToken(row.registrantId);
+    if (!registrationId || !registrantId) {
+      return;
+    }
+
+    const rowEventTeamId = normalizeIdToken(row.eventTeamId);
+    const eventTeamId = rowEventTeamId && participantTeamIds.includes(rowEventTeamId)
+      ? rowEventTeamId
+      : (() => {
+          const matchingTeamIds = Array.from(teamIdsByParticipantUserId.get(registrantId) ?? []);
+          return matchingTeamIds.length === 1 ? matchingTeamIds[0] : null;
+        })();
+    if (!eventTeamId) {
+      return;
+    }
+
+    const key = `${registrationId}:${eventTeamId}`;
+    if (seen.has(key)) {
+      return;
+    }
+    seen.add(key);
+    normalizedRows.push({
+      id: registrationId,
+      eventTeamId,
+      registrantId,
+      sourceTeamRegistrationId: normalizeIdToken(row.sourceTeamRegistrationId),
+    });
+  });
+
+  return normalizedRows;
+};
+
 const buildIncidentValidationState = (params: {
   matchId: string;
   match: any;
@@ -968,27 +1072,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         throw new Response('Match not found', { status: 404 });
       }
 
-      const participantTeamIds = Array.from(new Set([
-        normalizeIdToken((targetMatch as any).team1?.id ?? (targetMatch as any).team1?.$id),
-        normalizeIdToken((targetMatch as any).team2?.id ?? (targetMatch as any).team2?.$id),
-      ].filter((value): value is string => Boolean(value))));
-      const participantRegistrationRows: EventRegistrationLookupRow[] =
-        participantTeamIds.length && typeof (tx as any).eventRegistrations?.findMany === 'function'
-          ? await (tx as any).eventRegistrations.findMany({
-              where: {
-                eventId,
-                eventTeamId: { in: participantTeamIds },
-                rosterRole: 'PARTICIPANT',
-                status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
-              },
-              select: {
-                id: true,
-                eventTeamId: true,
-                registrantId: true,
-                sourceTeamRegistrationId: true,
-              },
-            })
-          : [];
+      const participantRegistrationRows = await loadMatchParticipantRegistrationRows(
+        tx,
+        eventId,
+        targetMatch,
+      );
 
       const eventTeams = Array.isArray((event as any).teams)
         ? ((event as any).teams as unknown[])

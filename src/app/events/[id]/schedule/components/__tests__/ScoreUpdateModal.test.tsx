@@ -1,4 +1,4 @@
-import { useState, type ComponentProps } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import type { Event, Match, Team } from '@/types';
@@ -107,7 +107,14 @@ const renderMutableMatchModal = (
 
   function Wrapper() {
     const [currentMatch, setCurrentMatchState] = useState(initialMatch);
-    setCurrentMatch = setCurrentMatchState;
+    useEffect(() => {
+      setCurrentMatch = setCurrentMatchState;
+      return () => {
+        if (setCurrentMatch === setCurrentMatchState) {
+          setCurrentMatch = null;
+        }
+      };
+    }, [setCurrentMatchState]);
     return <ScoreUpdateModal match={currentMatch} {...props} />;
   }
 
@@ -348,6 +355,7 @@ describe('ScoreUpdateModal', () => {
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Match Details' })).not.toBeInTheDocument();
     expect(screen.getByText('Match Log')).toBeInTheDocument();
   });
 
@@ -383,7 +391,8 @@ describe('ScoreUpdateModal', () => {
 
     expect(screen.queryByRole('button', { name: '+' })).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Add Incident' })[0]);
-    expect(await screen.findByText('Record Incident')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Record Incident' })).toBeInTheDocument();
+    expect(screen.getAllByRole('dialog')).toHaveLength(2);
     expect(screen.getAllByLabelText('Log type')[0]).toBeEnabled();
     expect(screen.getAllByLabelText('Player')[0]).toBeEnabled();
 
@@ -501,6 +510,68 @@ describe('ScoreUpdateModal', () => {
     expect(screen.queryByText(userId)).not.toBeInTheDocument();
   });
 
+  it('uses roster players when the team-level event registration is present', () => {
+    const teamLevelRegistration = {
+      id: 'event_1__team__team_a',
+      teamId: 'team_a',
+      userId: 'team_a',
+      registrantType: 'TEAM',
+      rosterRole: 'PARTICIPANT',
+      status: 'ACTIVE',
+    };
+    const teamWithTeamRegistration = {
+      $id: 'team_a',
+      name: 'Aces',
+      division: 'Open',
+      sport: 'Soccer',
+      playerIds: ['player_1', 'player_2'],
+      captainId: 'player_1',
+      pending: [],
+      teamSize: 2,
+      currentSize: 2,
+      isFull: true,
+      avatarUrl: '',
+      players: [
+        {
+          $id: 'player_1',
+          firstName: 'Alex',
+          lastName: 'Morgan',
+          userName: 'alexm',
+          fullName: 'Alex Morgan',
+        },
+        {
+          $id: 'player_2',
+          firstName: 'Jordan',
+          lastName: 'Lee',
+          userName: 'jordanlee',
+          fullName: 'Jordan Lee',
+        },
+      ],
+      playerRegistrations: [teamLevelRegistration],
+    } as Team;
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: teamWithTeamRegistration,
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          segments: buildSegments(),
+          incidents: [],
+        })}
+        tournament={buildEvent()}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+        defaultShowDetails
+      />,
+    );
+
+    expect(screen.getAllByLabelText('Player (optional)')[0]).toHaveValue('Alex Morgan');
+    expect(screen.queryByDisplayValue('Participant')).not.toBeInTheDocument();
+  });
+
   it('honors event-level record-player scoring when a match snapshot is stale', () => {
     const staleMatchRules = buildRules({ pointIncidentRequiresParticipant: false });
     const eventRules = buildRules({ pointIncidentRequiresParticipant: true });
@@ -564,7 +635,7 @@ describe('ScoreUpdateModal', () => {
 
     expect(screen.queryByRole('button', { name: '+' })).not.toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Add Incident' })[0]);
-    expect(await screen.findByText('Record Incident')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog', { name: 'Record Incident' })).toBeInTheDocument();
     expect(screen.getAllByLabelText('Player (optional)')[0]).toBeDisabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Save Incident' }));
@@ -677,8 +748,6 @@ describe('ScoreUpdateModal', () => {
         isOpen
       />,
     );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Match Details' }));
 
     expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
     expect(screen.queryByText("Aces | 5'")).not.toBeInTheDocument();
@@ -1296,8 +1365,6 @@ describe('ScoreUpdateModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Match Details' }));
-
     expect(await screen.findByText('Referee: Samuel Razumovskiy (checked in)')).toBeInTheDocument();
     expect(screen.getByText('Team official: New test team (checked in)')).toBeInTheDocument();
     expect(screen.getByText("Aces | Alex Morgan #9 | 12'")).toBeInTheDocument();
@@ -1333,8 +1400,6 @@ describe('ScoreUpdateModal', () => {
         isOpen
       />,
     );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Match Details' }));
 
     expect(screen.queryByText('Lifecycle')).not.toBeInTheDocument();
     expect(screen.queryByText('No status reason')).not.toBeInTheDocument();
@@ -1379,7 +1444,6 @@ describe('ScoreUpdateModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Match Details' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Times' }));
 
     expect(screen.getByLabelText('Actual start')).toBeInTheDocument();
@@ -1427,7 +1491,6 @@ describe('ScoreUpdateModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Match Details' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Match note' }));
     expect(screen.getByText('Edit Match Log')).toBeInTheDocument();
 
@@ -1492,7 +1555,6 @@ describe('ScoreUpdateModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: 'Match Details' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Goal' }));
     fireEvent.change(screen.getByLabelText('Minute'), { target: { value: '6' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Match Log' }));
