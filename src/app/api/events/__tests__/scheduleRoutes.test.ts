@@ -1125,6 +1125,88 @@ describe('schedule routes', () => {
     expect(savedMatch.actualEnd).toEqual(new Date('2026-04-19T11:00:00.000Z'));
   });
 
+  it('does not resolve a period match winner before all configured segments are complete', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: [] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: [] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'LEAGUE',
+      hostId: 'host_1',
+      resolvedMatchRules: {
+        scoringModel: 'PERIODS',
+        segmentCount: 2,
+        pointIncidentRequiresParticipant: false,
+      },
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          team1,
+          team2,
+          team1Points: [2],
+          team2Points: [1],
+          setResults: [0],
+          status: 'IN_PROGRESS',
+          winnerEventTeamId: null,
+          segments: [
+            {
+              id: 'match_1_segment_1',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 1,
+              status: 'IN_PROGRESS',
+              scores: { team_1: 2, team_2: 1 },
+              winnerEventTeamId: null,
+            },
+          ],
+          incidents: [],
+          matchRulesSnapshot: null,
+          resolvedMatchRules: {
+            scoringModel: 'PERIODS',
+            segmentCount: 2,
+            pointIncidentRequiresParticipant: false,
+          },
+        },
+      },
+      teams: { team_1: team1, team_2: team2 },
+      officials: [],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        segmentOperations: [
+          {
+            id: 'match_1_segment_1',
+            sequence: 1,
+            status: 'COMPLETE',
+            scores: { team_1: 2, team_2: 1 },
+            winnerEventTeamId: 'team_1',
+            endedAt: '2026-04-19T10:30:00.000Z',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const savedMatch = saveMatchesMock.mock.calls[0][1][0];
+    expect(savedMatch.winnerEventTeamId).toBeNull();
+    expect(finalizeMatchMock).not.toHaveBeenCalled();
+  });
+
   it('rejects set completion when the submitted score passed the first valid win-by-two score', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'official_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({
@@ -2111,7 +2193,21 @@ describe('schedule routes', () => {
     const res = await matchesPatch(
       patchRequest('http://localhost/api/events/event_1/matches', {
         matches: [
-          { id: 'match_1', teamOfficialId: 'team_1', locked: true },
+          {
+            id: 'match_1',
+            teamOfficialId: 'team_1',
+            locked: true,
+            status: 'IN_PROGRESS',
+            actualStart: '2026-05-01T10:00:00.000Z',
+            winnerEventTeamId: null,
+            segments: [{
+              id: 'match_1_segment_1',
+              sequence: 1,
+              status: 'COMPLETE',
+              scores: { team_1: 1, team_2: 0 },
+              winnerEventTeamId: 'team_1',
+            }],
+          },
           { id: 'match_2', fieldId: 'field_2' },
         ],
       }),
@@ -2123,6 +2219,18 @@ describe('schedule routes', () => {
     expect(applyMatchUpdatesMock).toHaveBeenCalledTimes(2);
     expect(applyMatchUpdatesMock.mock.calls.some((call) => call[2]?.locked === true)).toBe(true);
     expect(saveMatchesMock).toHaveBeenCalledTimes(1);
+    const savedMatch = saveMatchesMock.mock.calls[0][1].find((entry: any) => entry.id === 'match_1');
+    expect(savedMatch.status).toBe('IN_PROGRESS');
+    expect(savedMatch.actualStart).toEqual(new Date('2026-05-01T10:00:00.000Z'));
+    expect(savedMatch.segments).toEqual([
+      expect.objectContaining({
+        id: 'match_1_segment_1',
+        sequence: 1,
+        status: 'COMPLETE',
+        scores: { team_1: 1, team_2: 0 },
+        winnerEventTeamId: 'team_1',
+      }),
+    ]);
     expect(json.matches).toHaveLength(2);
   });
 

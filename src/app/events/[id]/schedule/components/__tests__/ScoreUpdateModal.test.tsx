@@ -753,6 +753,49 @@ describe('ScoreUpdateModal', () => {
     expect(screen.queryByText("Aces | 5'")).not.toBeInTheDocument();
   });
 
+  it('makes the match log scrollable after five entries', () => {
+    const rules = buildRules();
+    const incidents = Array.from({ length: 6 }, (_, index) => ({
+      id: `incident_${index + 1}`,
+      eventId: 'event_1',
+      matchId: 'match_1',
+      segmentId: 'match_1_segment_1',
+      eventTeamId: 'team_a',
+      incidentType: 'NOTE',
+      sequence: index + 1,
+      minute: index + 1,
+      linkedPointDelta: null,
+      note: `Log entry ${index + 1}`,
+    }));
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: { $id: 'team_a', name: 'Aces' } as Match['team1'],
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [0, 0],
+          team2Points: [0, 0],
+          setResults: [0, 0],
+          matchRulesSnapshot: rules,
+          segments: buildSegments(),
+          incidents,
+        })}
+        tournament={buildEvent({
+          resolvedMatchRules: rules,
+        })}
+        canManage={false}
+        onClose={jest.fn()}
+        isOpen
+        defaultShowDetails
+      />,
+    );
+
+    expect(screen.getByTestId('match-log-scroll-area')).toBeInTheDocument();
+    expect(screen.getByText('Log entry 6')).toBeInTheDocument();
+  });
+
   it('uses score set writes for non-player plus and minus while the modal is open', async () => {
     jest.useFakeTimers();
     const onScoreChange = jest.fn().mockResolvedValue(undefined);
@@ -1017,7 +1060,7 @@ describe('ScoreUpdateModal', () => {
     expect(onScoreChange.mock.calls[0][0].team2Points).toEqual([10, 0, 0]);
   });
 
-  it('confirms a division-derived segment through legacy score arrays when the segment is not persisted', async () => {
+  it('confirms a division-derived segment through segment operations when the segment is not persisted', async () => {
     const onSetComplete = jest.fn().mockResolvedValue(undefined);
     const staleRules = buildRules({ scoringModel: 'SETS', segmentCount: 1, segmentLabel: 'Set' });
 
@@ -1075,7 +1118,15 @@ describe('ScoreUpdateModal', () => {
     await waitFor(() => {
       expect(onSetComplete).toHaveBeenCalledTimes(1);
     });
-    expect(onSetComplete.mock.calls[0][0].segmentOperations).toBeUndefined();
+    expect(onSetComplete.mock.calls[0][0].segmentOperations).toEqual([
+      expect.objectContaining({
+        id: 'match_1_segment_2',
+        sequence: 2,
+        status: 'COMPLETE',
+        scores: { team_a: 21, team_b: 10 },
+        winnerEventTeamId: 'team_a',
+      }),
+    ]);
     expect(onSetComplete.mock.calls[0][0].team1Points).toEqual([10, 21, 0]);
     expect(onSetComplete.mock.calls[0][0].team2Points).toEqual([21, 10, 0]);
     expect(onSetComplete.mock.calls[0][0].setResults).toEqual([2, 1, 0]);
@@ -1663,6 +1714,74 @@ describe('ScoreUpdateModal', () => {
       scores: { team_a: 1, team_b: 0 },
       winnerEventTeamId: 'team_a',
     }));
+  });
+
+  it('confirms a generated second half with segment operations instead of legacy scores', async () => {
+    const onSetComplete = jest.fn().mockResolvedValue(undefined);
+    const rules = {
+      scoringModel: 'PERIODS',
+      segmentCount: 2,
+      segmentLabel: 'Half',
+      supportedIncidentTypes: ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+      autoCreatePointIncidentType: 'GOAL',
+      pointIncidentRequiresParticipant: true,
+    };
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: teamWithPlayer,
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [2],
+          team2Points: [1],
+          setResults: [1],
+          matchRulesSnapshot: rules,
+          segments: [
+            {
+              id: 'match_1_segment_1',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 1,
+              status: 'COMPLETE',
+              scores: { team_a: 2, team_b: 1 },
+              winnerEventTeamId: 'team_a',
+            },
+          ],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          autoCreatePointMatchIncidents: true,
+          resolvedMatchRules: rules,
+        })}
+        canManage
+        onSetComplete={onSetComplete}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm Half 2' }));
+
+    await waitFor(() => {
+      expect(onSetComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(onSetComplete.mock.calls[0][0]).toEqual(expect.objectContaining({
+      finalize: true,
+      team1Points: [2, 0],
+      team2Points: [1, 0],
+      setResults: [1, 0],
+    }));
+    expect(onSetComplete.mock.calls[0][0].segmentOperations).toEqual([
+      expect.objectContaining({
+        id: 'match_1_segment_2',
+        sequence: 2,
+        status: 'COMPLETE',
+        scores: { team_a: 0, team_b: 0 },
+        winnerEventTeamId: null,
+      }),
+    ]);
   });
 
   it('keeps failed scoring incident creates available after closing and reopening the modal', async () => {

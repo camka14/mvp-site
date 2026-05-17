@@ -1,18 +1,21 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type ComponentProps } from 'react';
-import { Modal, Stack, Group, Text, Button, Alert, Select, Divider, Checkbox, Switch } from '@mantine/core';
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react';
+import { ActionIcon, Alert, Badge, Button, Checkbox, Group, Modal, Paper, Select, SimpleGrid, Stack, Switch, Text } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
+import { Trash2, X } from 'lucide-react';
 
 import { formatLocalDateTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { getSetScoreState, resolveSetVictoryTarget } from '@/lib/matchSetScoring';
 import { filterValidNextMatchCandidates, validateAndNormalizeBracketGraph, type BracketNode } from '@/server/matches/bracketGraph';
 
-import type { Event, EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, Team, UserData } from '@/types';
+import type { Event, EventOfficial, EventOfficialPosition, Field, Match, MatchOfficialAssignment, MatchSegment, ResolvedMatchRules, Team, UserData } from '@/types';
 
 import ScoreUpdateModal from './ScoreUpdateModal';
 
 type ScoreUpdateModalComponentProps = ComponentProps<typeof ScoreUpdateModal>;
+type MatchStatusRules = Pick<ResolvedMatchRules, 'scoringModel' | 'segmentCount' | 'segmentLabel'>;
 
 const EMPTY_MATCHES: Match[] = [];
 const EMPTY_FIELDS: Field[] = [];
@@ -61,6 +64,219 @@ const coerceInstantDate = (value?: string | Date | null): Date | null => {
   if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const positiveIntOrNull = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.trunc(numeric) : null;
+};
+
+const nonNegativeScore = (value: unknown): number => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : 0;
+};
+
+const pointsList = (value: unknown): number[] | null => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const normalized = value
+    .map((entry) => positiveIntOrNull(entry))
+    .filter((entry): entry is number => entry !== null);
+  return normalized.length ? normalized : null;
+};
+
+const statusExistingSegmentCount = (match: Match): number => Math.max(
+  Array.isArray(match.segments) ? match.segments.length : 0,
+  Array.isArray(match.team1Points) ? match.team1Points.length : 0,
+  Array.isArray(match.team2Points) ? match.team2Points.length : 0,
+  Array.isArray(match.setResults) ? match.setResults.length : 0,
+  0,
+);
+
+const resolveStatusRules = (match: Match, event: Event | null | undefined): MatchStatusRules => {
+  const usesSets = typeof event?.usesSets === 'boolean' ? event.usesSets : Boolean(event?.leagueConfig?.usesSets);
+  const eventRules = (event?.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
+  const matchResolvedRules = (match.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
+  const matchSnapshotRules = (match.matchRulesSnapshot || {}) as Partial<ResolvedMatchRules>;
+  const source = { ...eventRules, ...matchResolvedRules, ...matchSnapshotRules };
+  const scoringModel = source.scoringModel ?? (usesSets ? 'SETS' : 'POINTS_ONLY');
+  const sourceSegmentCount = positiveIntOrNull(source.segmentCount);
+  const configuredSegmentCount = scoringModel === 'SETS'
+    ? positiveIntOrNull((event as any)?.setsPerMatch)
+      ?? positiveIntOrNull(event?.leagueConfig?.setsPerMatch)
+      ?? positiveIntOrNull((event as any)?.winnerSetCount)
+      ?? 1
+    : 1;
+  const segmentCount = scoringModel === 'POINTS_ONLY'
+    ? 1
+    : Math.max(sourceSegmentCount ?? 0, configuredSegmentCount, statusExistingSegmentCount(match), 1);
+  const segmentLabel = source.segmentLabel
+    || (scoringModel === 'SETS' ? 'Set' : scoringModel === 'INNINGS' ? 'Inning' : scoringModel === 'POINTS_ONLY' ? 'Match' : 'Half');
+  return { scoringModel, segmentCount, segmentLabel };
+};
+
+const statusLabelForSegment = (rules: MatchStatusRules, sequence: number): string => (
+  rules.scoringModel === 'POINTS_ONLY' ? 'Match' : `${rules.segmentLabel} ${sequence}`
+);
+
+const segmentScoreForTeam = (
+  segment: MatchSegment | undefined,
+  index: number,
+  eventTeamId: string | null,
+  fallbackScores: number[] | undefined,
+): number => (
+  eventTeamId
+    ? nonNegativeScore(segment?.scores?.[eventTeamId] ?? fallbackScores?.[index])
+    : nonNegativeScore(fallbackScores?.[index])
+);
+
+const buildStatusSegments = (
+  match: Match,
+  rules: MatchStatusRules,
+  team1Id: string | null,
+  team2Id: string | null,
+): MatchSegment[] => {
+  const sortedSegments = Array.isArray(match.segments)
+    ? [...match.segments].sort((left, right) => left.sequence - right.sequence)
+    : [];
+  const segmentBySequence = new Map(sortedSegments.map((segment) => [segment.sequence, segment]));
+  const matchId = normalizeOptionalId(match.$id) ?? normalizeOptionalId((match as any).id) ?? 'match';
+
+  return Array.from({ length: rules.segmentCount }, (_, index) => {
+    const sequence = index + 1;
+    const existing = segmentBySequence.get(sequence);
+    const team1Score = segmentScoreForTeam(existing, index, team1Id, match.team1Points);
+    const team2Score = segmentScoreForTeam(existing, index, team2Id, match.team2Points);
+    const scores: Record<string, number> = {};
+    if (team1Id) scores[team1Id] = team1Score;
+    if (team2Id) scores[team2Id] = team2Score;
+    const legacyResult = nonNegativeScore(match.setResults?.[index]);
+    const winnerEventTeamId = existing?.winnerEventTeamId
+      ?? (legacyResult === 1 ? team1Id : legacyResult === 2 ? team2Id : null);
+
+    return {
+      id: existing?.id ?? existing?.$id ?? `${matchId}_segment_${sequence}`,
+      $id: existing?.$id ?? existing?.id ?? `${matchId}_segment_${sequence}`,
+      eventId: existing?.eventId ?? match.eventId ?? null,
+      matchId,
+      sequence,
+      status: existing?.status ?? (winnerEventTeamId ? 'COMPLETE' : team1Score > 0 || team2Score > 0 ? 'IN_PROGRESS' : 'NOT_STARTED'),
+      scores: existing?.scores ? { ...existing.scores } : scores,
+      winnerEventTeamId,
+      startedAt: existing?.startedAt ?? null,
+      endedAt: existing?.endedAt ?? null,
+      resultType: existing?.resultType ?? null,
+      statusReason: existing?.statusReason ?? null,
+      metadata: existing?.metadata ?? null,
+    };
+  });
+};
+
+const statusLegacyFromSegments = (
+  segments: MatchSegment[],
+  team1Id: string | null,
+  team2Id: string | null,
+) => {
+  const team1Points = segments.map((segment) => team1Id ? nonNegativeScore(segment.scores?.[team1Id]) : 0);
+  const team2Points = segments.map((segment) => team2Id ? nonNegativeScore(segment.scores?.[team2Id]) : 0);
+  return {
+    team1Points,
+    team2Points,
+    setResults: segments.map((segment, index) => {
+      if (segment.winnerEventTeamId === team1Id) return 1;
+      if (segment.winnerEventTeamId === team2Id) return 2;
+      if (segment.status === 'COMPLETE' && team1Points[index] !== team2Points[index]) {
+        return team1Points[index] > team2Points[index] ? 1 : 2;
+      }
+      return 0;
+    }),
+  };
+};
+
+const segmentWinnerEventTeamId = (segment: MatchSegment, team1Id: string | null, team2Id: string | null): string | null => {
+  const team1Score = team1Id ? nonNegativeScore(segment.scores?.[team1Id]) : 0;
+  const team2Score = team2Id ? nonNegativeScore(segment.scores?.[team2Id]) : 0;
+  if (team1Score > team2Score) return team1Id;
+  if (team2Score > team1Score) return team2Id;
+  return null;
+};
+
+const hasAnySegmentScore = (segment: MatchSegment): boolean => (
+  Object.values(segment.scores ?? {}).some((value) => nonNegativeScore(value) > 0)
+);
+
+const resetSegmentConfirmation = (segment: MatchSegment): MatchSegment => ({
+  ...segment,
+  status: hasAnySegmentScore(segment) ? 'IN_PROGRESS' : 'NOT_STARTED',
+  winnerEventTeamId: null,
+  endedAt: null,
+  resultType: null,
+  statusReason: null,
+});
+
+const statusMatchComplete = (
+  segments: MatchSegment[],
+  rules: MatchStatusRules,
+  team1Id: string | null,
+  team2Id: string | null,
+): boolean => {
+  if (!team1Id || !team2Id) return false;
+  if (rules.scoringModel === 'SETS') {
+    const winsNeeded = Math.max(1, Math.ceil(rules.segmentCount / 2));
+    const team1Wins = segments.filter((segment) => segment.winnerEventTeamId === team1Id).length;
+    const team2Wins = segments.filter((segment) => segment.winnerEventTeamId === team2Id).length;
+    return team1Wins >= winsNeeded || team2Wins >= winsNeeded;
+  }
+  return segments.every((segment) => segment.status === 'COMPLETE');
+};
+
+const resolveCompletedMatchWinner = (
+  segments: MatchSegment[],
+  rules: MatchStatusRules,
+  team1Id: string | null,
+  team2Id: string | null,
+): string | null => {
+  if (!statusMatchComplete(segments, rules, team1Id, team2Id)) {
+    return null;
+  }
+  if (!team1Id || !team2Id) {
+    return null;
+  }
+  if (rules.scoringModel === 'SETS') {
+    const team1Wins = segments.filter((segment) => segment.winnerEventTeamId === team1Id).length;
+    const team2Wins = segments.filter((segment) => segment.winnerEventTeamId === team2Id).length;
+    if (team1Wins === team2Wins) return null;
+    return team1Wins > team2Wins ? team1Id : team2Id;
+  }
+  const totals = statusLegacyFromSegments(segments, team1Id, team2Id);
+  const team1Total = totals.team1Points.reduce((total, score) => total + score, 0);
+  const team2Total = totals.team2Points.reduce((total, score) => total + score, 0);
+  if (team1Total === team2Total) return null;
+  return team1Total > team2Total ? team1Id : team2Id;
+};
+
+const resolveStatusPointTargets = (match: Match, event: Event | null | undefined): number[] | null => {
+  const matchDivisionId = typeof match.division === 'string'
+    ? normalizeOptionalId(match.division)
+    : normalizeOptionalId((match.division as any)?.id) ?? normalizeOptionalId((match.division as any)?.$id);
+  const divisionSources = [
+    event?.divisionDetails,
+    event?.playoffDivisionDetails,
+    event?.divisions,
+  ];
+  for (const source of divisionSources) {
+    if (!Array.isArray(source)) continue;
+    const division = source.find((entry) => {
+      if (!entry || typeof entry !== 'object') return false;
+      const id = normalizeOptionalId((entry as any).id) ?? normalizeOptionalId((entry as any).$id);
+      return id && matchDivisionId && id.toLowerCase() === matchDivisionId.toLowerCase();
+    }) as any;
+    const divisionTargets = pointsList(division?.pointsToVictory) ?? pointsList(division?.leagueConfig?.pointsToVictory);
+    if (divisionTargets) return divisionTargets;
+  }
+
+  return pointsList((event as any)?.pointsToVictory)
+    ?? pointsList(event?.leagueConfig?.pointsToVictory)
+    ?? pointsList((event as any)?.winnerBracketPointsToVictory);
 };
 
 export const actualMatchTimePayload = (
@@ -268,6 +484,8 @@ export default function MatchEditModal({
   const [losersBracket, setLosersBracket] = useState(false);
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [matchStartedValue, setMatchStartedValue] = useState(false);
+  const [statusSegmentsValue, setStatusSegmentsValue] = useState<MatchSegment[]>([]);
   const requiresScheduleFields = enforceScheduleFields || creationContext === 'schedule';
   const editableMatchId = useMemo(() => normalizeOptionalId(match?.$id), [match?.$id]);
 
@@ -289,6 +507,8 @@ export default function MatchEditModal({
       setLosersBracket(false);
       setLocked(false);
       setError(null);
+      setMatchStartedValue(false);
+      setStatusSegmentsValue([]);
       return;
     }
 
@@ -297,8 +517,10 @@ export default function MatchEditModal({
     setActualStartValue(coerceInstantDate(match.actualStart));
     setActualEndValue(coerceInstantDate(match.actualEnd));
     setFieldId(getEntityId(match.field));
-    setTeam1Id(resolveMatchTeamId(match, 'team1'));
-    setTeam2Id(resolveMatchTeamId(match, 'team2'));
+    const initialTeam1Id = resolveMatchTeamId(match, 'team1');
+    const initialTeam2Id = resolveMatchTeamId(match, 'team2');
+    setTeam1Id(initialTeam1Id);
+    setTeam2Id(initialTeam2Id);
     const initialTeamOfficialId =
       normalizeOptionalId(match.teamOfficialId) ??
       getTeamId(match.teamOfficial) ??
@@ -335,7 +557,14 @@ export default function MatchEditModal({
     setLosersBracket(Boolean(match.losersBracket));
     setLocked(Boolean(match.locked));
     setError(null);
-  }, [editableMatchId, eventOfficials, officialPositions, opened]);
+    const initialStatusRules = resolveStatusRules(match, tournament);
+    const initialStatusSegments = buildStatusSegments(match, initialStatusRules, initialTeam1Id, initialTeam2Id);
+    setStatusSegmentsValue(initialStatusSegments);
+    setMatchStartedValue(Boolean(
+      ['IN_PROGRESS', 'COMPLETE'].includes(String(match.status ?? '').toUpperCase())
+      || initialStatusSegments.some((segment) => segment.status === 'IN_PROGRESS' || segment.status === 'COMPLETE'),
+    ));
+  }, [editableMatchId, eventOfficials, officialPositions, opened, tournament]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const allMatchOptions = useMemo(() => {
@@ -839,6 +1068,80 @@ export default function MatchEditModal({
     userOfficialId,
   ]);
 
+  const statusRules = useMemo(
+    () => (operationsMatch ? resolveStatusRules(operationsMatch, tournament) : null),
+    [operationsMatch, tournament],
+  );
+  const statusTeam1Id = useMemo(() => resolveMatchTeamId(operationsMatch, 'team1'), [operationsMatch]);
+  const statusTeam2Id = useMemo(() => resolveMatchTeamId(operationsMatch, 'team2'), [operationsMatch]);
+  const statusSegments = statusSegmentsValue;
+  const statusPointTargets = useMemo(
+    () => (operationsMatch ? resolveStatusPointTargets(operationsMatch, tournament) : null),
+    [operationsMatch, tournament],
+  );
+  const matchStartedChecked = matchStartedValue;
+
+  const handleMatchStartedChange = useCallback((checked: boolean) => {
+    setMatchStartedValue(checked);
+    if (!checked) {
+      setStatusSegmentsValue((current) => current.map(resetSegmentConfirmation));
+    }
+    setError(null);
+  }, []);
+
+  const segmentHasValidFinalScore = useCallback((segment: MatchSegment, index: number): boolean => {
+    if (!statusRules || statusRules.scoringModel !== 'SETS') {
+      return true;
+    }
+    const target = resolveSetVictoryTarget(statusPointTargets, index);
+    if (!target) {
+      return true;
+    }
+    const team1Score = statusTeam1Id ? nonNegativeScore(segment.scores?.[statusTeam1Id]) : 0;
+    const team2Score = statusTeam2Id ? nonNegativeScore(segment.scores?.[statusTeam2Id]) : 0;
+    return getSetScoreState(team1Score, team2Score, target).isValidFinalScore;
+  }, [statusPointTargets, statusRules, statusTeam1Id, statusTeam2Id]);
+
+  const handleSegmentConfirmedChange = useCallback((sequence: number, checked: boolean) => {
+    if (!statusRules) {
+      return;
+    }
+    const targetSegment = statusSegments.find((segment) => segment.sequence === sequence);
+    if (!targetSegment) {
+      return;
+    }
+    if (checked && !segmentHasValidFinalScore(targetSegment, sequence - 1)) {
+      setError('A set can only be confirmed at the victory target, or above it when the winner leads by 2.');
+      return;
+    }
+    setStatusSegmentsValue((current) => current.map((segment) => {
+      if (!checked && segment.sequence >= sequence) {
+        return resetSegmentConfirmation(segment);
+      }
+      if (segment.sequence !== sequence) {
+        return segment;
+      }
+      const winnerEventTeamId = checked
+        ? segmentWinnerEventTeamId(segment, statusTeam1Id, statusTeam2Id)
+        : null;
+      return {
+        ...segment,
+        status: checked ? 'COMPLETE' : resetSegmentConfirmation(segment).status,
+        winnerEventTeamId,
+        endedAt: checked ? segment.endedAt ?? null : null,
+        resultType: checked ? segment.resultType ?? null : null,
+        statusReason: checked ? segment.statusReason ?? null : null,
+      } satisfies MatchSegment;
+    }));
+    setError(null);
+  }, [
+    segmentHasValidFinalScore,
+    statusRules,
+    statusSegments,
+    statusTeam1Id,
+    statusTeam2Id,
+  ]);
+
   const handleSave = () => {
     if (!match) {
       handleClose();
@@ -908,6 +1211,27 @@ export default function MatchEditModal({
       winnerNextMatchId: selectedWinnerNextMatchId ?? undefined,
       loserNextMatchId: selectedLoserNextMatchId ?? undefined,
     };
+    if (statusRules) {
+      const statusSegmentsForSave = (
+        matchStartedValue ? statusSegments : statusSegments.map(resetSegmentConfirmation)
+      ).map((segment) => ({ ...segment, scores: { ...(segment.scores ?? {}) } }));
+      const legacyStatus = statusLegacyFromSegments(statusSegmentsForSave, statusTeam1Id, statusTeam2Id);
+      const isMatchComplete = matchStartedValue
+        && statusMatchComplete(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id);
+      updated.status = matchStartedValue
+        ? isMatchComplete ? 'COMPLETE' : 'IN_PROGRESS'
+        : 'SCHEDULED';
+      updated.segments = statusSegmentsForSave;
+      updated.team1Points = legacyStatus.team1Points;
+      updated.team2Points = legacyStatus.team2Points;
+      updated.setResults = legacyStatus.setResults;
+      updated.winnerEventTeamId = isMatchComplete
+        ? resolveCompletedMatchWinner(statusSegmentsForSave, statusRules, statusTeam1Id, statusTeam2Id)
+        : null;
+      updated.resultStatus = isMatchComplete ? updated.resultStatus ?? null : null;
+      updated.resultType = isMatchComplete ? updated.resultType ?? null : null;
+      updated.statusReason = isMatchComplete ? updated.statusReason ?? null : null;
+    }
     const sanitizedAssignments = assignmentSlots
       .map(({ position, slotIndex }) => assignmentBySlotKey.get(`${position.id}:${slotIndex}`) ?? null)
       .filter((assignment): assignment is MatchOfficialAssignment => Boolean(assignment));
@@ -995,228 +1319,378 @@ export default function MatchEditModal({
     onDelete(match);
   };
 
-  return (
-    <Modal
-      opened={opened}
-      onClose={handleClose}
-      title={isCreateMode ? 'Add Match' : 'Edit Match'}
-      centered
-      size={operationsMatch && tournament ? 'xl' : 'lg'}
-    >
-      <Stack gap="md">
-        {error && (
-          <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
-            {error}
-          </Alert>
-        )}
+  const modalTitle = isCreateMode ? 'Add Match' : 'Edit Match';
+  const bracketLaneLabel = losersBracket ? 'Losers bracket' : 'Winners bracket';
+  const saveDisabled = requiresScheduleFields && (!startValue || !endValue || !fieldId);
+  const renderMatchStatusPanel = () => {
+    if (!operationsMatch || !statusRules) {
+      return null;
+    }
+    const matchStartedDisabled = !canManageOperations;
 
-        <Group justify="space-between" align="flex-start">
-          <div>
-            <Text size="sm" c="dimmed">Match</Text>
-            <Text fw={600}>{match?.matchId ?? match?.$id}</Text>
-          </div>
-          <div className="text-right">
-            <Text size="sm" c="dimmed">Bracket</Text>
-            <Text fw={600}>
-              {losersBracket ? 'Losers Bracket' : 'Winners Bracket'}
-            </Text>
-          </div>
-        </Group>
-
-        <Switch
-          label="Place match in losers bracket"
-          checked={losersBracket}
-          onChange={(event) => setLosersBracket(event.currentTarget.checked)}
-        />
-
-        <Checkbox
-          label="Lock match (prevent auto-rescheduling)"
-          checked={locked}
-          onChange={(event) => setLocked(event.currentTarget.checked)}
-        />
-
-        <Select
-          label="Team 1"
-          data={team1Options}
-          value={team1Id}
-          onChange={setTeam1Id}
-          placeholder="Select team"
-          clearable
-        />
-        <Select
-          label="Team 2"
-          data={team2Options}
-          value={team2Id}
-          onChange={setTeam2Id}
-          placeholder="Select team"
-          clearable
-        />
-        <Select
-          label="Team Official"
-          description={doTeamsOfficiate ? undefined : 'Optional when teams are not providing officials.'}
-          data={teamOptions}
-          value={teamOfficialId}
-          onChange={setTeamOfficialId}
-          placeholder="Select official team"
-          clearable
-        />
-        {officialPositions.length > 0 ? (
-          <Stack gap="sm">
-            <Divider label="Official Assignments" />
-            {assignmentSlots.map(({ position, slotIndex }) => {
-              const assignment = assignmentBySlotKey.get(`${position.id}:${slotIndex}`);
-              const currentValue = assignment && (
-                assignment.holderType === 'PLAYER'
-                || assignment.holderType === 'OFFICIAL'
-              )
-                ? encodeAssignmentValue(
-                    assignment.holderType,
-                    assignment.holderType === 'OFFICIAL'
-                      ? (
-                        (
-                          normalizeOptionalId(assignment.eventOfficialId)
-                          && eventOfficialById.has(normalizeOptionalId(assignment.eventOfficialId) as string)
-                        )
-                          ? (normalizeOptionalId(assignment.eventOfficialId) as string)
-                          : (eventOfficialByUserId.get(assignment.userId)?.id ?? assignment.userId)
-                      )
-                      : assignment.userId,
-                  )
-                : null;
-              const options = getAssignmentOptions(position, assignment);
+    return (
+      <SectionPanel title="Match Status">
+        <Stack gap="xs">
+          <Checkbox
+            label="Match started"
+            checked={matchStartedChecked}
+            disabled={matchStartedDisabled}
+            onChange={(event) => {
+              void handleMatchStartedChange(event.currentTarget.checked);
+            }}
+          />
+          <Stack gap={6} pl="lg">
+            {statusSegments.map((segment, index) => {
+              const checked = segment.status === 'COMPLETE';
+              const previousComplete = statusSegments
+                .slice(0, index)
+                .every((entry) => entry.status === 'COMPLETE');
+              const validFinalScore = segmentHasValidFinalScore(segment, index);
+              const disabled =
+                !canManageOperations
+                || (!checked && (!matchStartedChecked || !previousComplete || !validFinalScore));
               return (
-                <Select
-                  key={`${position.id}:${slotIndex}`}
-                  label={position.count > 1 ? `${position.name} ${slotIndex + 1}` : position.name}
-                  data={options}
-                  value={currentValue}
-                  onChange={(value) => handleOfficialAssignmentChange(position.id, slotIndex, value)}
-                  placeholder="Unassigned"
-                  clearable
-                  searchable
-                  nothingFoundMessage={options.length ? 'No matches' : 'No eligible officials or players'}
+                <Checkbox
+                  key={segment.id ?? segment.sequence}
+                  label={`${statusLabelForSegment(statusRules, segment.sequence)} confirmed`}
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={(event) => {
+                    void handleSegmentConfirmedChange(segment.sequence, event.currentTarget.checked);
+                  }}
                 />
               );
             })}
           </Stack>
-        ) : (
-          <Select
-            label="Official"
-            data={officialOptions}
-            value={userOfficialId}
-            onChange={setUserOfficialId}
-            placeholder="Select official"
-            clearable
-            searchable
-            nothingFoundMessage={officialOptions.length ? 'No matches' : 'No officials available'}
-          />
-        )}
+        </Stack>
+      </SectionPanel>
+    );
+  };
 
-        {fieldOptions.length > 0 && (
-          <Select
-            label="Field"
-            data={fieldOptions}
-            value={fieldId}
-            onChange={setFieldId}
-            placeholder="Select field"
-            clearable
-          />
-        )}
+  return (
+    <Modal
+      opened={opened}
+      onClose={handleClose}
+      aria-label={modalTitle}
+      centered
+      size={operationsMatch && tournament ? 1120 : 940}
+      padding={0}
+      radius="md"
+      withCloseButton={false}
+      styles={{
+        content: {
+          maxHeight: 'calc(100dvh - 32px)',
+          overflow: 'hidden',
+        },
+        body: {
+          height: '100%',
+        },
+      }}
+    >
+      <div className="flex flex-col overflow-hidden" style={{ maxHeight: 'calc(100dvh - 32px)' }}>
+        <div className="border-b border-gray-200 px-5 py-4 sm:px-6">
+          <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap">
+            <Stack gap={4} style={{ minWidth: 0 }}>
+              <Text c="blue" fw={700} size="sm">
+                {isCreateMode ? 'New match' : 'Match'}
+              </Text>
+              <Text component="h2" fw={800} size="1.65rem" lh={1.15}>
+                {modalTitle}
+              </Text>
+              <Group gap="xs" wrap="wrap">
+                <Text size="sm" c="dimmed">Bracket lane:</Text>
+                <Text size="sm" fw={600}>{bracketLaneLabel}</Text>
+                <Badge color={isCreateMode ? 'gray' : 'green'} variant="light" radius="sm">
+                  {isCreateMode ? 'Draft match' : 'Saved match'}
+                </Badge>
+              </Group>
+            </Stack>
+            <ActionIcon
+              aria-label="Close match editor"
+              variant="subtle"
+              color="gray"
+              onClick={handleClose}
+            >
+              <X size={18} />
+            </ActionIcon>
+          </Group>
+        </div>
 
-        <DateTimePicker
-          label={requiresScheduleFields ? 'Start time' : 'Start time (optional)'}
-          value={startValue}
-          onChange={handleStartDateChange}
-          withSeconds
-          valueFormat="MM/DD/YYYY hh:mm:ss A"
-          timePickerProps={MATCH_TIME_PICKER_PROPS}
-          required={requiresScheduleFields}
-        />
-        <DateTimePicker
-          label={requiresScheduleFields ? 'End time' : 'End time (optional)'}
-          value={endValue}
-          onChange={handleEndDateChange}
-          withSeconds
-          valueFormat="MM/DD/YYYY hh:mm:ss A"
-          timePickerProps={MATCH_TIME_PICKER_PROPS}
-          required={requiresScheduleFields}
-          minDate={startValue ?? undefined}
-        />
+        <div className="flex-1 overflow-y-auto px-5 py-3 sm:px-6">
+          <Stack gap="sm">
+            {error && (
+              <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
+                {error}
+              </Alert>
+            )}
 
-        <Divider label="Actual Times" />
-        <DateTimePicker
-          label="Actual start time"
-          value={actualStartValue}
-          onChange={handleActualStartDateChange}
-          withSeconds
-          valueFormat="MM/DD/YYYY hh:mm:ss A"
-          timePickerProps={MATCH_TIME_PICKER_PROPS}
-          clearable
-        />
-        <DateTimePicker
-          label="Actual end time"
-          value={actualEndValue}
-          onChange={handleActualEndDateChange}
-          withSeconds
-          valueFormat="MM/DD/YYYY hh:mm:ss A"
-          timePickerProps={MATCH_TIME_PICKER_PROPS}
-          minDate={actualStartValue ?? undefined}
-          clearable
-        />
+            <Group
+              justify="space-between"
+              align="center"
+              gap="md"
+              className="rounded-md border border-gray-200 bg-white px-4 py-2"
+            >
+              <Switch
+                label="Place match in losers bracket"
+                checked={losersBracket}
+                onChange={(event) => setLosersBracket(event.currentTarget.checked)}
+              />
 
-        <Divider label="Bracket Links" />
+              <Checkbox
+                label="Lock match (prevent auto-rescheduling)"
+                checked={locked}
+                onChange={(event) => setLocked(event.currentTarget.checked)}
+              />
+            </Group>
 
-        <Select
-          label="Winner advances to"
-          data={winnerNextOptions}
-          value={selectedWinnerNextMatchId}
-          onChange={setWinnerNextMatchId}
-          placeholder="No next winner match"
-          clearable
-          searchable
-          nothingFoundMessage={winnerNextOptions.length ? 'No matches' : 'No valid matches'}
-        />
-        <Select
-          label="Loser advances to"
-          data={loserNextOptions}
-          value={selectedLoserNextMatchId}
-          onChange={setLoserNextMatchId}
-          placeholder="No next loser match"
-          clearable
-          searchable
-          nothingFoundMessage={loserNextOptions.length ? 'No matches' : 'No valid matches'}
-        />
+            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm" verticalSpacing="sm">
+              <Stack gap="sm">
+                <SectionPanel title="Match Setup">
+                  <Stack gap="sm">
+                    <FieldRow label="Team 1">
+                      <Select
+                        aria-label="Team 1"
+                        data={team1Options}
+                        value={team1Id}
+                        onChange={setTeam1Id}
+                        placeholder="Select team"
+                        clearable
+                        size="sm"
+                      />
+                    </FieldRow>
+                    <FieldRow label="Team 2">
+                      <Select
+                        aria-label="Team 2"
+                        data={team2Options}
+                        value={team2Id}
+                        onChange={setTeam2Id}
+                        placeholder="Select team"
+                        clearable
+                        size="sm"
+                      />
+                    </FieldRow>
+                    <FieldRow label="Team Official">
+                      <Select
+                        aria-label="Team Official"
+                        description={doTeamsOfficiate ? undefined : 'Optional when teams are not providing officials.'}
+                        data={teamOptions}
+                        value={teamOfficialId}
+                        onChange={setTeamOfficialId}
+                        placeholder="Select official team"
+                        clearable
+                        size="sm"
+                      />
+                    </FieldRow>
+                  </Stack>
+                </SectionPanel>
 
-        <Divider label="Match Operations" />
-        {operationsMatch && tournament ? (
-          <ScoreUpdateModal
-            match={operationsMatch}
-            tournament={tournament}
-            participantTeams={participantTeams}
-            canManage={canManageOperations}
-            onScoreChange={onScoreChange}
-            onSetComplete={onSetComplete}
-            onSubmit={onScoreSubmit}
-            onMatchComplete={onMatchComplete}
-            onClose={() => undefined}
-            isOpen={opened}
-            team1Placeholder={team1Placeholder}
-            team2Placeholder={team2Placeholder}
-            embedded
-            defaultShowDetails
-          />
-        ) : (
-          <Text size="sm" c="dimmed">
-            Save the match before managing scores, segment winners, official check-in, and the match log.
-          </Text>
-        )}
+                <SectionPanel title="Schedule">
+                  <Stack gap="sm">
+                    {fieldOptions.length > 0 && (
+                      <FieldRow label="Field" required={requiresScheduleFields}>
+                        <Select
+                          aria-label="Field"
+                          data={fieldOptions}
+                          value={fieldId}
+                          onChange={setFieldId}
+                          placeholder="Select field"
+                          clearable
+                          size="sm"
+                        />
+                      </FieldRow>
+                    )}
+                    <FieldRow label="Start time" required={requiresScheduleFields}>
+                      <DateTimePicker
+                        aria-label={requiresScheduleFields ? 'Start time' : 'Start time (optional)'}
+                        value={startValue}
+                        onChange={handleStartDateChange}
+                        withSeconds
+                        valueFormat="MM/DD/YYYY hh:mm:ss A"
+                        timePickerProps={MATCH_TIME_PICKER_PROPS}
+                        required={requiresScheduleFields}
+                        size="sm"
+                      />
+                    </FieldRow>
+                    <FieldRow label="End time" required={requiresScheduleFields}>
+                      <DateTimePicker
+                        aria-label={requiresScheduleFields ? 'End time' : 'End time (optional)'}
+                        value={endValue}
+                        onChange={handleEndDateChange}
+                        withSeconds
+                        valueFormat="MM/DD/YYYY hh:mm:ss A"
+                        timePickerProps={MATCH_TIME_PICKER_PROPS}
+                        required={requiresScheduleFields}
+                        minDate={startValue ?? undefined}
+                        size="sm"
+                      />
+                    </FieldRow>
 
-        <Group justify="space-between" mt="md">
+                    <div className="rounded-md border border-gray-200 bg-gray-50 p-3">
+                      <Stack gap="sm">
+                        <Text fw={700} size="sm">Actual Times</Text>
+                        <FieldRow label="Actual start time">
+                          <DateTimePicker
+                            aria-label="Actual start time"
+                            value={actualStartValue}
+                            onChange={handleActualStartDateChange}
+                            withSeconds
+                            valueFormat="MM/DD/YYYY hh:mm:ss A"
+                            timePickerProps={MATCH_TIME_PICKER_PROPS}
+                            clearable
+                            size="sm"
+                          />
+                        </FieldRow>
+                        <FieldRow label="Actual end time">
+                          <DateTimePicker
+                            aria-label="Actual end time"
+                            value={actualEndValue}
+                            onChange={handleActualEndDateChange}
+                            withSeconds
+                            valueFormat="MM/DD/YYYY hh:mm:ss A"
+                            timePickerProps={MATCH_TIME_PICKER_PROPS}
+                            minDate={actualStartValue ?? undefined}
+                            clearable
+                            size="sm"
+                          />
+                        </FieldRow>
+                      </Stack>
+                    </div>
+                  </Stack>
+                </SectionPanel>
+              </Stack>
+
+              <Stack gap="sm">
+                <SectionPanel title="Official Assignments">
+                  {officialPositions.length > 0 ? (
+                    <Stack gap="sm">
+                      {assignmentSlots.map(({ position, slotIndex }) => {
+                        const assignment = assignmentBySlotKey.get(`${position.id}:${slotIndex}`);
+                        const currentValue = assignment && (
+                          assignment.holderType === 'PLAYER'
+                          || assignment.holderType === 'OFFICIAL'
+                        )
+                          ? encodeAssignmentValue(
+                              assignment.holderType,
+                              assignment.holderType === 'OFFICIAL'
+                                ? (
+                                  (
+                                    normalizeOptionalId(assignment.eventOfficialId)
+                                    && eventOfficialById.has(normalizeOptionalId(assignment.eventOfficialId) as string)
+                                  )
+                                    ? (normalizeOptionalId(assignment.eventOfficialId) as string)
+                                    : (eventOfficialByUserId.get(assignment.userId)?.id ?? assignment.userId)
+                                )
+                                : assignment.userId,
+                            )
+                          : null;
+                        const options = getAssignmentOptions(position, assignment);
+                        const label = position.count > 1 ? `${position.name} ${slotIndex + 1}` : position.name;
+                        return (
+                          <FieldRow key={`${position.id}:${slotIndex}`} label={label}>
+                            <Select
+                              aria-label={label}
+                              data={options}
+                              value={currentValue}
+                              onChange={(value) => handleOfficialAssignmentChange(position.id, slotIndex, value)}
+                              placeholder="Unassigned"
+                              clearable
+                              searchable
+                              size="sm"
+                              nothingFoundMessage={options.length ? 'No matches' : 'No eligible officials or players'}
+                            />
+                          </FieldRow>
+                        );
+                      })}
+                      <Text size="xs" c="dimmed">Official assignments must be unique.</Text>
+                    </Stack>
+                  ) : (
+                    <FieldRow label="Official">
+                      <Select
+                        aria-label="Official"
+                        data={officialOptions}
+                        value={userOfficialId}
+                        onChange={setUserOfficialId}
+                        placeholder="Select official"
+                        clearable
+                        searchable
+                        size="sm"
+                        nothingFoundMessage={officialOptions.length ? 'No matches' : 'No officials available'}
+                      />
+                    </FieldRow>
+                  )}
+                </SectionPanel>
+
+                <SectionPanel title="Bracket Links">
+                  <Stack gap="sm">
+                    <FieldRow label="Winner advances to">
+                      <Select
+                        aria-label="Winner advances to"
+                        data={winnerNextOptions}
+                        value={selectedWinnerNextMatchId}
+                        onChange={setWinnerNextMatchId}
+                        placeholder="No next winner match"
+                        clearable
+                        searchable
+                        size="sm"
+                        nothingFoundMessage={winnerNextOptions.length ? 'No matches' : 'No valid matches'}
+                      />
+                    </FieldRow>
+                    <FieldRow label="Loser advances to">
+                      <Select
+                        aria-label="Loser advances to"
+                        data={loserNextOptions}
+                        value={selectedLoserNextMatchId}
+                        onChange={setLoserNextMatchId}
+                        placeholder="No next loser match"
+                        clearable
+                        searchable
+                        size="sm"
+                        nothingFoundMessage={loserNextOptions.length ? 'No matches' : 'No valid matches'}
+                      />
+                    </FieldRow>
+                    <Text size="xs" c="dimmed">Links must form a valid bracket graph.</Text>
+                  </Stack>
+                </SectionPanel>
+
+                {renderMatchStatusPanel()}
+              </Stack>
+            </SimpleGrid>
+
+            <SectionPanel title="Match Operations">
+              {operationsMatch && tournament ? (
+                <ScoreUpdateModal
+                  match={operationsMatch}
+                  tournament={tournament}
+                  participantTeams={participantTeams}
+                  canManage={canManageOperations}
+                  onScoreChange={onScoreChange}
+                  onSetComplete={onSetComplete}
+                  onSubmit={onScoreSubmit}
+                  onMatchComplete={onMatchComplete}
+                  onClose={() => undefined}
+                  isOpen={opened}
+                  team1Placeholder={team1Placeholder}
+                  team2Placeholder={team2Placeholder}
+                  embedded
+                  defaultShowDetails
+                  hideStatusControls
+                />
+              ) : (
+                <Text size="sm" c="dimmed">
+                  Save the match before managing scores, segment winners, official check-in, and the match log.
+                </Text>
+              )}
+            </SectionPanel>
+          </Stack>
+        </div>
+
+        <Group justify="space-between" className="border-t border-gray-200 px-5 py-3 sm:px-6">
           <Group>
             {onDelete && (
               <Button
                 variant="light"
                 color="red"
+                leftSection={<Trash2 size={16} />}
                 onClick={handleDelete}
               >
                 {isCreateMode ? 'Discard match' : 'Delete match'}
@@ -1225,12 +1699,38 @@ export default function MatchEditModal({
           </Group>
           <Group>
             <Button variant="default" onClick={handleClose}>Cancel</Button>
-            <Button onClick={handleSave} disabled={requiresScheduleFields && (!startValue || !endValue || !fieldId)}>
+            <Button onClick={handleSave} disabled={saveDisabled}>
               {isCreateMode ? 'Create match' : 'Save changes'}
             </Button>
           </Group>
         </Group>
-      </Stack>
+      </div>
     </Modal>
+  );
+}
+
+function SectionPanel({ title, titleAction = null, children }: { title: string; titleAction?: ReactNode; children: ReactNode }) {
+  return (
+    <Paper withBorder radius="md" p="sm" shadow="none" role="region" aria-label={title}>
+      <Stack gap="sm">
+        <Group justify="space-between" align="center" gap="sm">
+          <Text fw={800} size="sm">{title}</Text>
+          {titleAction}
+        </Group>
+        {children}
+      </Stack>
+    </Paper>
+  );
+}
+
+function FieldRow({ label, required = false, children }: { label: string; required?: boolean; children: ReactNode }) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-start">
+      <Text size="sm" fw={500} pt={6}>
+        {label}
+        {required && <Text span inherit c="red"> *</Text>}
+      </Text>
+      <div className="min-w-0">{children}</div>
+    </div>
   );
 }

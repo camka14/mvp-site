@@ -660,6 +660,25 @@ const resolveWinnerEventTeamIdFromSegments = (match: any): string | null => {
   if (!segments.every((segment) => segment.status === 'COMPLETE')) {
     return null;
   }
+  const configuredSegmentCount = Number(rules.segmentCount);
+  const hasConfiguredMultiSegmentMatch =
+    scoringModel
+    && scoringModel !== 'POINTS_ONLY'
+    && Number.isFinite(configuredSegmentCount)
+    && configuredSegmentCount > 0;
+  const requiredSegmentCount = hasConfiguredMultiSegmentMatch
+    ? Math.trunc(configuredSegmentCount)
+    : segments.length;
+  const completedSequences = new Set(
+    segments
+      .filter((segment) => segment.status === 'COMPLETE')
+      .map((segment) => segment.sequence),
+  );
+  for (let sequence = 1; sequence <= requiredSegmentCount; sequence += 1) {
+    if (!completedSequences.has(sequence)) {
+      return null;
+    }
+  }
   const team1Total = segments.reduce((total, segment) => total + Number(segment.scores?.[team1Id] ?? 0), 0);
   const team2Total = segments.reduce((total, segment) => total + Number(segment.scores?.[team2Id] ?? 0), 0);
   if (team1Total === team2Total) {

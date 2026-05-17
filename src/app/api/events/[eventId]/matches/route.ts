@@ -28,11 +28,36 @@ export const dynamic = 'force-dynamic';
 type BulkMatchUpdateInput = z.infer<typeof bulkMatchUpdateSchema>;
 type BulkMatchCreateInput = z.infer<typeof bulkMatchCreateSchema>;
 
+const scoreMapSchema = z.record(z.string(), z.number());
+const bulkMatchSegmentSchema = z.object({
+  id: z.string().optional(),
+  $id: z.string().optional(),
+  eventId: z.string().nullable().optional(),
+  matchId: z.string().nullable().optional(),
+  sequence: z.number().int().positive(),
+  status: z.string().nullable().optional(),
+  scores: scoreMapSchema.optional(),
+  winnerEventTeamId: z.string().nullable().optional(),
+  startedAt: z.string().nullable().optional(),
+  endedAt: z.string().nullable().optional(),
+  resultType: z.string().nullable().optional(),
+  statusReason: z.string().nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+}).passthrough();
+
 const bulkMatchUpdateSchema = z.object({
   id: z.string().optional(),
   $id: z.string().optional(),
   locked: z.boolean().optional(),
   matchId: z.number().int().nullable().optional(),
+  status: z.string().nullable().optional(),
+  resultStatus: z.string().nullable().optional(),
+  resultType: z.string().nullable().optional(),
+  actualStart: z.string().nullable().optional(),
+  actualEnd: z.string().nullable().optional(),
+  statusReason: z.string().nullable().optional(),
+  winnerEventTeamId: z.string().nullable().optional(),
+  segments: z.array(bulkMatchSegmentSchema).optional(),
   team1Points: z.array(z.number()).optional(),
   team2Points: z.array(z.number()).optional(),
   setResults: z.array(z.number()).optional(),
@@ -61,6 +86,14 @@ const bulkMatchCreateSchema = z.object({
   matchId: z.number().int().nullable().optional(),
   locked: z.boolean().optional(),
   losersBracket: z.boolean().optional(),
+  status: z.string().nullable().optional(),
+  resultStatus: z.string().nullable().optional(),
+  resultType: z.string().nullable().optional(),
+  actualStart: z.string().nullable().optional(),
+  actualEnd: z.string().nullable().optional(),
+  statusReason: z.string().nullable().optional(),
+  winnerEventTeamId: z.string().nullable().optional(),
+  segments: z.array(bulkMatchSegmentSchema).optional(),
   team1Points: z.array(z.number()).optional(),
   team2Points: z.array(z.number()).optional(),
   setResults: z.array(z.number()).optional(),
@@ -99,6 +132,63 @@ const bulkUpdateSchema = z.object({
 });
 
 const hasOwn = (value: object, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
+
+const parseNullableDateInput = (value: unknown, label: string): Date | null => {
+  if (value == null) {
+    return null;
+  }
+  const parsed = parseDateInput(value);
+  if (!parsed) {
+    throw new Response(`Invalid ${label} value.`, { status: 400 });
+  }
+  return parsed;
+};
+
+const normalizeBulkMatchSegments = (
+  segments: Array<z.infer<typeof bulkMatchSegmentSchema>> | undefined,
+  eventId: string,
+  matchId: string,
+): SchedulerMatch['segments'] | undefined => {
+  if (!Array.isArray(segments)) {
+    return undefined;
+  }
+  return [...segments]
+    .sort((left, right) => left.sequence - right.sequence)
+    .map((segment) => ({
+      id: segment.id ?? segment.$id ?? `${matchId}_segment_${segment.sequence}`,
+      $id: segment.$id ?? segment.id ?? `${matchId}_segment_${segment.sequence}`,
+      eventId,
+      matchId,
+      sequence: segment.sequence,
+      status: (segment.status ?? 'NOT_STARTED') as SchedulerMatch['segments'][number]['status'],
+      scores: segment.scores ?? {},
+      winnerEventTeamId: segment.winnerEventTeamId ?? null,
+      startedAt: segment.startedAt ?? null,
+      endedAt: segment.endedAt ?? null,
+      resultType: segment.resultType ?? null,
+      statusReason: segment.statusReason ?? null,
+      metadata: segment.metadata ?? null,
+    }));
+};
+
+const applyBulkStatusSnapshot = (
+  target: SchedulerMatch,
+  entry: BulkMatchUpdateInput | BulkMatchCreateInput,
+  eventId: string,
+  matchId: string,
+  label: string,
+) => {
+  if (hasOwn(entry, 'status')) target.status = entry.status ?? null;
+  if (hasOwn(entry, 'resultStatus')) target.resultStatus = entry.resultStatus ?? null;
+  if (hasOwn(entry, 'resultType')) target.resultType = entry.resultType ?? null;
+  if (hasOwn(entry, 'actualStart')) target.actualStart = parseNullableDateInput(entry.actualStart, `actualStart for ${label}`);
+  if (hasOwn(entry, 'actualEnd')) target.actualEnd = parseNullableDateInput(entry.actualEnd, `actualEnd for ${label}`);
+  if (hasOwn(entry, 'statusReason')) target.statusReason = entry.statusReason ?? null;
+  if (hasOwn(entry, 'winnerEventTeamId')) target.winnerEventTeamId = entry.winnerEventTeamId ?? null;
+  if (hasOwn(entry, 'segments')) {
+    target.segments = normalizeBulkMatchSegments(entry.segments, eventId, matchId) ?? [];
+  }
+};
 
 const matchStartTime = (match: SchedulerMatch): number => {
   const start = (match as { start?: unknown }).start;
@@ -562,6 +652,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         if (!parsedEnd) {
           (createdMatch as unknown as { end: Date | null }).end = null;
         }
+        applyBulkStatusSnapshot(createdMatch, entry, eventId, persistedMatchId, `create ${entry.clientId}`);
 
         event.matches[persistedMatchId] = createdMatch;
         matchByCanonicalId.set(canonicalNodeId, createdMatch);
@@ -637,6 +728,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         if (hasOwn(entry, 'losersBracket')) {
           target.losersBracket = Boolean(entry.losersBracket);
         }
+
+        applyBulkStatusSnapshot(target, entry, eventId, matchId, `match ${matchId}`);
 
         applyPersistentAutoLock(target, {
           now: lockEvaluationTime,

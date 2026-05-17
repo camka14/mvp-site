@@ -11,6 +11,7 @@ import {
   Group,
   Modal,
   Paper,
+  ScrollArea,
   Select,
   SimpleGrid,
   Stack,
@@ -97,6 +98,7 @@ interface ScoreUpdateModalProps {
   team2Placeholder?: string;
   embedded?: boolean;
   defaultShowDetails?: boolean;
+  hideStatusControls?: boolean;
 }
 
 type PendingDirectScoreSync = {
@@ -138,6 +140,12 @@ const MATCH_TIME_PICKER_PROPS = {
   withDropdown: false,
   amPmLabels: { am: 'AM', pm: 'PM' },
 };
+const MATCH_LOG_VISIBLE_ITEM_COUNT = 5;
+const MATCH_LOG_ITEM_HEIGHT_PX = 92;
+const MATCH_LOG_ITEM_GAP_PX = 8;
+const MATCH_LOG_LIST_MAX_HEIGHT =
+  MATCH_LOG_VISIBLE_ITEM_COUNT * MATCH_LOG_ITEM_HEIGHT_PX
+  + (MATCH_LOG_VISIBLE_ITEM_COUNT - 1) * MATCH_LOG_ITEM_GAP_PX;
 
 const coerceActualDate = (value?: string | Date | null): Date | null => {
   if (!value) return null;
@@ -789,6 +797,7 @@ export default function ScoreUpdateModal({
   team2Placeholder,
   embedded = false,
   defaultShowDetails = false,
+  hideStatusControls = false,
 }: ScoreUpdateModalProps) {
   const [segments, setSegments] = useState<MatchSegment[]>([]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -1656,18 +1665,14 @@ export default function ScoreUpdateModal({
     const shouldFinalize = matchComplete(next);
     const nextPayload = payload(next, {
       ...(shouldFinalize ? { finalize: true, time: endedAt } : {}),
-      ...(hasPersistedSegment(match, activeSegment)
-        ? {
-            segmentOperations: [{
-              id: confirmedSegment.id,
-              sequence: confirmedSegment.sequence,
-              status: 'COMPLETE',
-              scores: confirmedSegment.scores,
-              winnerEventTeamId,
-              endedAt,
-            }],
-          }
-        : {}),
+      segmentOperations: [{
+        id: confirmedSegment.id ?? confirmedSegment.$id,
+        sequence: confirmedSegment.sequence,
+        status: 'COMPLETE',
+        scores: confirmedSegment.scores,
+        winnerEventTeamId,
+        endedAt,
+      }],
     });
     try {
       if (onSetComplete) await onSetComplete(nextPayload);
@@ -2027,93 +2032,106 @@ export default function ScoreUpdateModal({
     </Stack>
   );
 
-  const renderMatchLogList = () => (
-    <Stack gap="xs">
-      {incidentsForDisplay.length ? (
-        incidentsForDisplay.map((incident) => {
-          const isScoringIncident = isScoringIncidentType(
-            incident.incidentType,
-            rules,
-          );
-          const incidentLabel = isScoringIncident
-            ? scoringIncidentLabel
-            : matchLogTypeLabel(incident.incidentType);
-          return (
-            <Paper key={incident.id} withBorder p="sm" radius="sm">
-              <Group
-                justify="space-between"
-                align="flex-start"
-                gap="sm"
-                wrap="nowrap"
-              >
-                <Group gap="sm" align="flex-start" style={{ minWidth: 0 }}>
-                  <Badge
-                    variant="light"
-                    color={isScoringIncident ? "blue" : "gray"}
-                  >
-                    {incidentLabel}
-                  </Badge>
-                  <div style={{ minWidth: 0 }}>
-                    {isScoringIncident ? (
-                      <Text fw={600} size="sm">
-                        {scoringIncidentDescription(incident)}
-                      </Text>
-                    ) : (
-                      <>
+  const renderMatchLogList = () => {
+    const list = (
+      <Stack gap="xs">
+        {incidentsForDisplay.length ? (
+          incidentsForDisplay.map((incident) => {
+            const isScoringIncident = isScoringIncidentType(
+              incident.incidentType,
+              rules,
+            );
+            const incidentLabel = isScoringIncident
+              ? scoringIncidentLabel
+              : matchLogTypeLabel(incident.incidentType);
+            return (
+              <Paper key={incident.id} withBorder p="sm" radius="sm">
+                <Group
+                  justify="space-between"
+                  align="flex-start"
+                  gap="sm"
+                  wrap="nowrap"
+                >
+                  <Group gap="sm" align="flex-start" style={{ minWidth: 0 }}>
+                    <Badge
+                      variant="light"
+                      color={isScoringIncident ? "blue" : "gray"}
+                    >
+                      {incidentLabel}
+                    </Badge>
+                    <div style={{ minWidth: 0 }}>
+                      {isScoringIncident ? (
                         <Text fw={600} size="sm">
-                          {matchLogTypeLabel(incident.incidentType)}
+                          {scoringIncidentDescription(incident)}
                         </Text>
-                        <Text size="sm" c="dimmed">
-                          {[
-                            teamLabelForId(incident.eventTeamId),
-                            typeof incident.minute === "number"
-                              ? `${incident.minute}'`
-                              : null,
-                          ]
-                            .filter(Boolean)
-                            .join(" | ")}
-                        </Text>
-                      </>
-                    )}
-                    {!isScoringIncident && incident.note && (
-                      <Text size="sm">{incident.note}</Text>
-                    )}
-                  </div>
-                </Group>
-                {canManage && (
-                  <Group gap={4} wrap="nowrap">
-                    <Button
-                      aria-label={`Edit ${incidentLabel}`}
-                      variant="subtle"
-                      size="xs"
-                      leftSection={<SquarePen size={14} />}
-                      onClick={() => editIncident(incident)}
-                      style={{ height: 28, paddingInline: 8 }}
-                    >
-                      Edit
-                    </Button>
-                    <ActionIcon
-                      aria-label={`Remove ${incidentLabel}`}
-                      variant="subtle"
-                      color="red"
-                      size="sm"
-                      onClick={() => removeIncident(incident)}
-                    >
-                      -
-                    </ActionIcon>
+                      ) : (
+                        <>
+                          <Text fw={600} size="sm">
+                            {matchLogTypeLabel(incident.incidentType)}
+                          </Text>
+                          <Text size="sm" c="dimmed">
+                            {[
+                              teamLabelForId(incident.eventTeamId),
+                              typeof incident.minute === "number"
+                                ? `${incident.minute}'`
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" | ")}
+                          </Text>
+                        </>
+                      )}
+                      {!isScoringIncident && incident.note && (
+                        <Text size="sm">{incident.note}</Text>
+                      )}
+                    </div>
                   </Group>
-                )}
-              </Group>
-            </Paper>
-          );
-        })
-      ) : (
-        <Text size="sm" c="dimmed">
-          No match details recorded.
-        </Text>
-      )}
-    </Stack>
-  );
+                  {canManage && (
+                    <Group gap={4} wrap="nowrap">
+                      <Button
+                        aria-label={`Edit ${incidentLabel}`}
+                        variant="subtle"
+                        size="xs"
+                        leftSection={<SquarePen size={14} />}
+                        onClick={() => editIncident(incident)}
+                        style={{ height: 28, paddingInline: 8 }}
+                      >
+                        Edit
+                      </Button>
+                      <ActionIcon
+                        aria-label={`Remove ${incidentLabel}`}
+                        variant="subtle"
+                        color="red"
+                        size="sm"
+                        onClick={() => removeIncident(incident)}
+                      >
+                        -
+                      </ActionIcon>
+                    </Group>
+                  )}
+                </Group>
+              </Paper>
+            );
+          })
+        ) : (
+          <Text size="sm" c="dimmed">
+            No match details recorded.
+          </Text>
+        )}
+      </Stack>
+    );
+
+    return incidentsForDisplay.length > MATCH_LOG_VISIBLE_ITEM_COUNT ? (
+      <ScrollArea.Autosize
+        mah={MATCH_LOG_LIST_MAX_HEIGHT}
+        type="auto"
+        offsetScrollbars
+        data-testid="match-log-scroll-area"
+      >
+        {list}
+      </ScrollArea.Autosize>
+    ) : list;
+  };
 
   const renderIncidentForm = () =>
     canManage && manualIncidentTypes.length > 0 ? (
@@ -2742,42 +2760,48 @@ export default function ScoreUpdateModal({
         </Stack>
       )}
 
-      <Divider />
-      <Group justify={embedded ? "flex-end" : "space-between"}>
-        {!embedded && (
-          <Button variant="default" onClick={handleClose}>
-            Close
-          </Button>
-        )}
-        <Group>
-          {canManage && !actualStartValue && (
-            <Button onClick={startMatch} loading={actualTimesSaving}>
-              Start Match
-            </Button>
-          )}
-          {canManage &&
-            activeSegment?.status !== "COMPLETE" &&
-            (!isTimedMatch || rules.scoringModel !== "POINTS_ONLY") && (
-              <Button
-                onClick={confirmSegment}
-                loading={segmentConfirming}
-                disabled={
-                  segmentConfirming ||
-                  (rules.scoringModel === "SETS" && !setWinConditionMet())
-                }
-              >
-                Confirm {labelForSegment(rules, activeSegment?.sequence ?? 1)}
+      {(!embedded || (canManage && !hideStatusControls)) && (
+        <>
+          <Divider />
+          <Group justify={embedded ? "flex-end" : "space-between"}>
+            {!embedded && (
+              <Button variant="default" onClick={handleClose}>
+                Close
               </Button>
             )}
-          {canManage &&
-            isTimedMatch &&
-            rules.scoringModel === "POINTS_ONLY" && (
-              <Button onClick={saveMatch} loading={loading}>
-                Finish Match
-              </Button>
+            {!hideStatusControls && (
+              <Group>
+                {canManage && !actualStartValue && (
+                  <Button onClick={startMatch} loading={actualTimesSaving}>
+                    Start Match
+                  </Button>
+                )}
+                {canManage &&
+                  activeSegment?.status !== "COMPLETE" &&
+                  (!isTimedMatch || rules.scoringModel !== "POINTS_ONLY") && (
+                    <Button
+                      onClick={confirmSegment}
+                      loading={segmentConfirming}
+                      disabled={
+                        segmentConfirming ||
+                        (rules.scoringModel === "SETS" && !setWinConditionMet())
+                      }
+                    >
+                      Confirm {labelForSegment(rules, activeSegment?.sequence ?? 1)}
+                    </Button>
+                  )}
+                {canManage &&
+                  isTimedMatch &&
+                  rules.scoringModel === "POINTS_ONLY" && (
+                    <Button onClick={saveMatch} loading={loading}>
+                      Finish Match
+                    </Button>
+                  )}
+              </Group>
             )}
-        </Group>
-      </Group>
+          </Group>
+        </>
+      )}
     </Stack>
   );
 
