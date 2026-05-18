@@ -21,12 +21,18 @@ jest.mock('@mantine/core', () => {
       children,
       in: opened = true,
       transitionTimingFunction,
+      className,
     }: {
       children: React.ReactNode;
       in?: boolean;
       transitionTimingFunction?: string;
+      className?: string;
     }) => (
-      transitionTimingFunction === 'ease' && !opened ? null : <>{children}</>
+      transitionTimingFunction === 'ease' && !opened
+        ? null
+        : className
+          ? <div className={className}>{children}</div>
+          : <>{children}</>
     ),
     Select: ({ label, data = [], value = '', onChange, placeholder, disabled }: any) => (
       <label>
@@ -1688,6 +1694,32 @@ describe('EventForm dirty state', () => {
     expect(teamSizeControl).toContainElement(teamSignupSwitch);
     expect(teamSizeInput.compareDocumentPosition(teamSignupSwitch) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(teamSignupSwitch).toBeInTheDocument();
+  });
+
+  it('keeps Event Details datetime controls compact so cutoff fields fit in the first row', async () => {
+    const onDirtyStateChange = jest.fn();
+
+    renderForm(onDirtyStateChange);
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    const eventDetailsGrid = document.getElementById('section-event-details-content');
+    const startControl = screen.getByRole('button', { name: 'Start Date & Time' }).closest('.md\\:col-span-2');
+    const endControl = screen.getByRole('button', { name: 'End Date & Time' }).closest('.md\\:col-span-2');
+    const registrationCutoffControl = screen.getByLabelText('Registration Cutoff (Hours)').closest('.md\\:col-span-2');
+    const refundCutoffControl = screen.getByLabelText('Refund Cutoff (Hours)').closest('.md\\:col-span-2');
+
+    expect(eventDetailsGrid).not.toBeNull();
+    expect(startControl).not.toBeNull();
+    expect(endControl).not.toBeNull();
+    expect(registrationCutoffControl).not.toBeNull();
+    expect(refundCutoffControl).not.toBeNull();
+    expect(eventDetailsGrid).toContainElement(startControl as HTMLElement);
+    expect(eventDetailsGrid).toContainElement(endControl as HTMLElement);
+    expect(eventDetailsGrid).toContainElement(registrationCutoffControl as HTMLElement);
+    expect(eventDetailsGrid).toContainElement(refundCutoffControl as HTMLElement);
   });
 
   it('renders fixed team event checkbox under Team Size and division mode switches before division fields', async () => {

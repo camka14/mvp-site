@@ -10720,7 +10720,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                         />
                                     </AnimatedSection>
                                 </div>
-                                <div className="md:col-span-3">
+                                <div className="md:col-span-2">
                                     <Controller
                                         name="start"
                                         control={control}
@@ -10750,14 +10750,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                                 <AnimatedSection
                                     in={eventData.eventType === 'EVENT' || supportsNoFixedEndDateTime}
-                                    collapseClassName="md:col-span-3"
+                                    collapseClassName="md:col-span-2"
                                 >
                                     <Controller
                                         name="end"
                                         control={control}
                                         render={({ field, fieldState }) => (
                                             <div className="space-y-2">
-                                                    <DateTimePicker
+                                                <DateTimePicker
                                                     label="End Date & Time"
                                                     valueFormat="MM/DD/YYYY hh:mm A"
                                                     value={parseLocalDateTime(field.value)}

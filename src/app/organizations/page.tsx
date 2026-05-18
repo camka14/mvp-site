@@ -22,7 +22,13 @@ export default function OrganizationsPage() {
 }
 
 function OrganizationsPageContent() {
-  const { user, loading: authLoading, isAuthenticated } = useApp();
+  const {
+    user,
+    authUser,
+    loading: authLoading,
+    isAuthenticated,
+    requiresEmailVerification,
+  } = useApp();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [pendingOrgInvites, setPendingOrgInvites] = useState<Invite[]>([]);
   const [loading, setLoading] = useState(true);
@@ -74,6 +80,16 @@ function OrganizationsPageContent() {
       .filter((invite) => typeof invite.organizationId === 'string')
       .map((invite) => [invite.organizationId as string, invite] as const),
   );
+  const createOrganizationBlocked = requiresEmailVerification
+    || authUser?.emailVerified === false
+    || authUser?.emailVerifiedAt === null;
+  const createOrganizationBlockedReason = createOrganizationBlocked
+    ? 'Verify your email before creating an organization.'
+    : undefined;
+  const handleCreateOrganizationClick = () => {
+    if (createOrganizationBlocked) return;
+    setShowCreate(true);
+  };
 
   return (
     <>
@@ -84,7 +100,13 @@ function OrganizationsPageContent() {
             <Title order={2} mb={4}>Organizations</Title>
             <Text c="dimmed">Manage your organizations and dashboards</Text>
           </div>
-          <Button onClick={() => setShowCreate(true)}>+ Create Organization</Button>
+          <Button
+            onClick={handleCreateOrganizationClick}
+            disabled={createOrganizationBlocked}
+            title={createOrganizationBlockedReason}
+          >
+            + Create Organization
+          </Button>
         </Group>
 
         {loading ? (
@@ -148,12 +170,18 @@ function OrganizationsPageContent() {
             </div>
             <Title order={3} mb={6}>No organizations yet</Title>
             <Text c="dimmed" mb="md" ta="center" className="w-full max-w-sm">Create your first organization to host events and manage fields in one place.</Text>
-            <Button onClick={() => setShowCreate(true)}>Create Organization</Button>
+            <Button
+              onClick={handleCreateOrganizationClick}
+              disabled={createOrganizationBlocked}
+              title={createOrganizationBlockedReason}
+            >
+              Create Organization
+            </Button>
           </div>
         )}
 
         <CreateOrganizationModal
-          isOpen={showCreate}
+          isOpen={showCreate && !createOrganizationBlocked}
           onClose={() => setShowCreate(false)}
           currentUser={user as UserData}
           onCreated={(org) => setOrgs((prev) => [org, ...prev])}

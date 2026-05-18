@@ -186,10 +186,7 @@ export default function OnboardingPage() {
                         </Stack>
                       </Stack>
 
-                      <Group justify="space-between" wrap="nowrap">
-                        <Text fw={700} size="sm" c="blue">
-                          Continue
-                        </Text>
+                      <Group justify="flex-end" wrap="nowrap">
                         <Button
                           component="span"
                           variant="subtle"
