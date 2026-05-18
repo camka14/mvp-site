@@ -17,10 +17,18 @@ const loginSchema = z.object({
   password: z.string().min(8),
 });
 
-const toPublicUser = (user: { id: string; email: string; name: string | null; createdAt: Date | null; updatedAt: Date | null }) => ({
+const toPublicUser = (user: {
+  id: string;
+  email: string;
+  name: string | null;
+  emailVerifiedAt: Date | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}) => ({
   id: user.id,
   email: user.email,
   name: user.name,
+  emailVerifiedAt: user.emailVerifiedAt,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
@@ -51,38 +59,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }
 
-  if (!authUser.emailVerifiedAt) {
-    if (!isInitialEmailVerificationAvailable()) {
-      return NextResponse.json(
-        { error: 'Email verification is unavailable because SMTP is not configured.', code: 'EMAIL_VERIFICATION_UNAVAILABLE' },
-        { status: 503 },
-      );
-    }
-
+  const requiresEmailVerification = !authUser.emailVerifiedAt;
+  let verificationEmailSent = false;
+  if (requiresEmailVerification && isInitialEmailVerificationAvailable()) {
     try {
       await sendInitialEmailVerification({
         userId: authUser.id,
         email: authUser.email,
         origin: getRequestOrigin(req),
       });
+      verificationEmailSent = true;
     } catch (error) {
       console.error('Failed to send verification email during login', error);
-      return NextResponse.json(
-        { error: 'Failed to send verification email. Please try again.', code: 'EMAIL_VERIFICATION_SEND_FAILED' },
-        { status: 500 },
-      );
     }
-
-    return NextResponse.json(
-      {
-        error: 'Email not verified. We sent a verification link to your email.',
-        code: 'EMAIL_NOT_VERIFIED',
-        email: authUser.email,
-        requiresEmailVerification: true,
-        verificationEmailSent: true,
-      },
-      { status: 403 },
-    );
   }
 
   const now = new Date();
@@ -105,6 +94,17 @@ export async function POST(req: NextRequest) {
       token,
       profile: profileWithDerivedTeamIds ? applyNameCaseToUserFields(profileWithDerivedTeamIds) : null,
       ...buildProfileCompletionState({ authUser, profile }),
+      ...(requiresEmailVerification
+        ? {
+            code: 'EMAIL_NOT_VERIFIED',
+            email: authUser.email,
+            requiresEmailVerification: true,
+            verificationEmailSent,
+          }
+        : {
+            requiresEmailVerification: false,
+            verificationEmailSent: false,
+          }),
     },
     { status: 200 },
   );

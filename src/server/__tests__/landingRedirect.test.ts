@@ -52,17 +52,21 @@ describe('resolveLandingRedirectPathFromToken', () => {
     expect(client.userData.findUnique).not.toHaveBeenCalled();
   });
 
-  it('returns null when the auth user is unverified', async () => {
+  it('routes unverified authenticated users normally', async () => {
     const client = buildClient();
     verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0, issuedAtSeconds: 1 });
     client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: null, sessionVersion: 0 });
+    client.userData.findUnique.mockResolvedValue({ homePageOrganizationId: null, onboardingIntent: 'DISCOVER_EVENTS' });
 
-    await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBeNull();
+    await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBe('/discover');
 
-    expect(client.userData.findUnique).not.toHaveBeenCalled();
+    expect(client.userData.findUnique).toHaveBeenCalledWith({
+      where: { id: 'user_1' },
+      select: { homePageOrganizationId: true, onboardingIntent: true },
+    });
   });
 
-  it('falls back to discover for verified users without a saved home page', async () => {
+  it('falls back to discover when the user profile is missing', async () => {
     const client = buildClient();
     verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0, issuedAtSeconds: 1 });
     client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'), sessionVersion: 0 });
@@ -71,11 +75,29 @@ describe('resolveLandingRedirectPathFromToken', () => {
     await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBe('/discover');
   });
 
+  it('routes verified users with no saved onboarding intent to onboarding', async () => {
+    const client = buildClient();
+    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0, issuedAtSeconds: 1 });
+    client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'), sessionVersion: 0 });
+    client.userData.findUnique.mockResolvedValue({ homePageOrganizationId: null, onboardingIntent: null });
+
+    await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBe('/onboarding');
+  });
+
+  it('falls back to discover after onboarding is complete and no saved home page exists', async () => {
+    const client = buildClient();
+    verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0, issuedAtSeconds: 1 });
+    client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'), sessionVersion: 0 });
+    client.userData.findUnique.mockResolvedValue({ homePageOrganizationId: null, onboardingIntent: 'DISCOVER_EVENTS' });
+
+    await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBe('/discover');
+  });
+
   it('returns the configured organization home path for verified users', async () => {
     const client = buildClient();
     verifySessionTokenMock.mockReturnValue({ userId: 'user_1', isAdmin: false, sessionVersion: 0, issuedAtSeconds: 1 });
     client.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'), sessionVersion: 0 });
-    client.userData.findUnique.mockResolvedValue({ homePageOrganizationId: 'org_42' });
+    client.userData.findUnique.mockResolvedValue({ homePageOrganizationId: 'org_42', onboardingIntent: 'ORGANIZATION' });
 
     await expect(resolveLandingRedirectPathFromToken('auth-token', client)).resolves.toBe('/organizations/org_42');
   });

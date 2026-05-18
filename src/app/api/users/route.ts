@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { normalizeNotificationSettings } from '@/lib/notificationSettings';
+import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
 import { withLegacyFields, withLegacyList } from '@/server/legacyFormat';
 import {
@@ -157,6 +158,18 @@ export async function POST(req: NextRequest) {
   }
   if (Object.prototype.hasOwnProperty.call(normalizedData, 'notificationSettings')) {
     normalizedData.notificationSettings = normalizeNotificationSettings(normalizedData.notificationSettings);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalizedData, 'onboardingIntent')) {
+    const rawOnboardingIntent = normalizedData.onboardingIntent;
+    if (rawOnboardingIntent == null || rawOnboardingIntent === '') {
+      normalizedData.onboardingIntent = null;
+    } else {
+      const onboardingIntent = normalizeOnboardingIntent(rawOnboardingIntent);
+      if (!onboardingIntent) {
+        return NextResponse.json({ error: 'onboardingIntent is invalid.' }, { status: 400 });
+      }
+      normalizedData.onboardingIntent = onboardingIntent;
+    }
   }
   const now = new Date();
   const existing = await prisma.userData.findUnique({ where: { id } });

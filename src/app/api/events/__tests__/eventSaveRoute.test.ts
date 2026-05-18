@@ -3,6 +3,9 @@
 import { NextRequest } from 'next/server';
 
 const prismaMock = {
+  authUser: {
+    findUnique: jest.fn(),
+  },
   events: {
     findUnique: jest.fn(),
   },
@@ -60,6 +63,32 @@ describe('event save route', () => {
     notifySocialAudienceOfEventCreationMock.mockResolvedValue(undefined);
     isEventFieldConflictErrorMock.mockReturnValue(false);
     isLeaguePlayoffTeamCountValidationErrorMock.mockReturnValue(false);
+    prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+  });
+
+  it('blocks event creation when the session user has not verified email', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValueOnce({ emailVerifiedAt: null });
+
+    const res = await eventsPost(
+      postRequest('http://localhost/api/events', {
+        id: 'event_1',
+        event: {
+          name: 'Saved Event',
+          eventType: 'EVENT',
+          start: '2026-01-01T00:00:00.000Z',
+          end: '2026-02-01T00:00:00.000Z',
+        },
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before creating an event.',
+    }));
+    expect(upsertEventFromPayloadMock).not.toHaveBeenCalled();
   });
 
   it('creates an event and returns divisionFieldIds for the saved response', async () => {

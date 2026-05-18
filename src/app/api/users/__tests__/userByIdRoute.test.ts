@@ -196,6 +196,36 @@ describe('PATCH /api/users/[id]', () => {
     }));
   });
 
+  it('updates onboardingIntent when the selection is valid', async () => {
+    prismaMock.userData.update.mockResolvedValue({
+      id: 'user_1',
+      onboardingIntent: 'INDIVIDUAL_EVENTS',
+    });
+
+    const response = await patchUserById(
+      buildJsonRequest('http://localhost/api/users/user_1', { data: { onboardingIntent: 'individual_events' } }),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.userData.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'user_1' },
+      data: expect.objectContaining({ onboardingIntent: 'INDIVIDUAL_EVENTS' }),
+    }));
+  });
+
+  it('rejects invalid onboardingIntent values', async () => {
+    const response = await patchUserById(
+      buildJsonRequest('http://localhost/api/users/user_1', { data: { onboardingIntent: 'something_else' } }),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBe('onboardingIntent is invalid.');
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
+  });
+
   it('returns 403 when a non-admin attempts to update another user', async () => {
     await expect(
       patchUserById(

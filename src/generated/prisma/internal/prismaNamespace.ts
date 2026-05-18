@@ -3849,6 +3849,7 @@ export const UserDataScalarFieldEnum = {
   hiddenEventIds: 'hiddenEventIds',
   chatTermsAcceptedAt: 'chatTermsAcceptedAt',
   chatTermsVersion: 'chatTermsVersion',
+  onboardingIntent: 'onboardingIntent',
   notificationSettings: 'notificationSettings'
 } as const
 

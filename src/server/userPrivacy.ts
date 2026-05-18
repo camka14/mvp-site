@@ -33,6 +33,7 @@ export const currentUserSelect = {
   hiddenEventIds: true,
   chatTermsAcceptedAt: true,
   chatTermsVersion: true,
+  onboardingIntent: true,
   notificationSettings: true,
 } as const;
 

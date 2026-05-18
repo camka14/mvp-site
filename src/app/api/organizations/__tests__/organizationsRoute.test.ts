@@ -4,7 +4,11 @@ import { NextRequest } from 'next/server';
 
 const findManyMock = jest.fn();
 const createMock = jest.fn();
+const authUserFindUniqueMock = jest.fn();
 const prismaMock = {
+  authUser: {
+    findUnique: (...args: any[]) => authUserFindUniqueMock(...args),
+  },
   organizations: {
     findMany: (...args: any[]) => findManyMock(...args),
     create: (...args: any[]) => createMock(...args),
@@ -26,6 +30,7 @@ import { GET as organizationsGet, POST as organizationsPost } from '@/app/api/or
 describe('/api/organizations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    authUserFindUniqueMock.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
   });
 
   it('supports query mode with relevance-ranked results', async () => {
@@ -130,6 +135,30 @@ describe('/api/organizations', () => {
       }),
     });
     expect(payload.hasStripeAccount).toBe(false);
+  });
+
+  it('blocks organization creation when the session user has not verified email', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    authUserFindUniqueMock.mockResolvedValueOnce({ emailVerifiedAt: null });
+
+    const response = await organizationsPost(new NextRequest('http://localhost/api/organizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'org_1',
+        name: 'New Org',
+        ownerId: 'user_1',
+        taxResponsibilityAgreementAccepted: true,
+      }),
+      headers: { 'content-type': 'application/json' },
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload).toEqual(expect.objectContaining({
+      code: 'EMAIL_VERIFICATION_REQUIRED',
+      error: 'Verify your email before creating an organization.',
+    }));
+    expect(createMock).not.toHaveBeenCalled();
   });
 
   it('requires the organization tax responsibility agreement on create', async () => {

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useApp } from '@/app/providers';
 import { ApiError, authService } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
+import { ONBOARDING_PATH } from '@/lib/onboardingIntent';
 import Loading from '@/components/ui/Loading';
 
 interface FormData {
@@ -151,13 +152,12 @@ function LoginPageContent() {
     try {
       // If already in guest mode, skip creating a new session
       if (authService.isGuest()) {
-        router.push('/discover');
+        router.push(ONBOARDING_PATH);
         return;
       }
 
       await authService.guestLogin();
-      // Guest sessions don't have extended user data; go straight to events
-      router.push('/discover');
+      router.push(ONBOARDING_PATH);
     } catch (e: any) {
       setError(e?.message || 'Failed to start guest session');
     } finally {

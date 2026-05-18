@@ -1372,7 +1372,7 @@ describe('League schedule page', () => {
 
   it('redirects to the user home page after deleting a future event', async () => {
     useAppMock.mockReturnValue({
-      user: { $id: 'host_1', homePageOrganizationId: 'org_42' },
+      user: { $id: 'host_1', homePageOrganizationId: 'org_42', onboardingIntent: 'ORGANIZATION' },
       isAuthenticated: true,
       isGuest: false,
       loading: false,

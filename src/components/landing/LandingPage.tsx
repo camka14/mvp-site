@@ -38,6 +38,7 @@ import type { LucideIcon } from 'lucide-react';
 import { useApp } from '@/app/providers';
 import { authService } from '@/lib/auth';
 import { getHomePathForUser } from '@/lib/homePage';
+import { ONBOARDING_PATH } from '@/lib/onboardingIntent';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
 
 type FeatureSection = {
@@ -887,7 +888,7 @@ export default function LandingPage({
     setStartingGuestSession(true);
     try {
       await authService.guestLogin();
-      router.push('/discover');
+      router.push(ONBOARDING_PATH);
     } catch (error: unknown) {
       setGuestError(error instanceof Error ? error.message : 'Unable to start guest session right now.');
     } finally {
@@ -943,7 +944,7 @@ export default function LandingPage({
                     disabled={startingGuestSession}
                     className="landing-btn-outline landing-btn-large disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {startingGuestSession ? 'Opening discover...' : 'Continue as guest'}
+                    {startingGuestSession ? 'Opening options...' : 'Continue as guest'}
                   </button>
                 </>
               )}
@@ -1390,7 +1391,7 @@ export default function LandingPage({
                   disabled={startingGuestSession}
                   className="inline-flex min-h-12 items-center rounded-full border border-white/15 px-7 py-4 text-sm font-black text-white transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {startingGuestSession ? 'Opening discover...' : 'Continue as guest'}
+                  {startingGuestSession ? 'Opening options...' : 'Continue as guest'}
                 </button>
               </>
             )}

@@ -1,11 +1,14 @@
 import type { UserData } from '@/types';
 import { normalizeOptionalName } from '@/lib/nameCase';
+import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
 
 interface UserAccount {
   $id: string;
   email: string;
   name?: string;
   isAdmin?: boolean;
+  emailVerifiedAt?: string | null;
+  emailVerified?: boolean;
 }
 
 export type RequiredProfileField = 'firstName' | 'lastName' | 'dateOfBirth';
@@ -17,6 +20,8 @@ export interface AuthSessionResult {
   token: string | null;
   requiresProfileCompletion: boolean;
   missingProfileFields: RequiredProfileField[];
+  requiresEmailVerification: boolean;
+  verificationEmailSent: boolean;
 }
 
 const normalizeUserData = (user: UserData | null): UserData | null => {
@@ -25,6 +30,7 @@ const normalizeUserData = (user: UserData | null): UserData | null => {
     ...user,
     firstName: normalizeOptionalName(user.firstName) ?? '',
     lastName: normalizeOptionalName(user.lastName) ?? '',
+    onboardingIntent: normalizeOnboardingIntent(user.onboardingIntent),
   };
   if (normalizedUser.$id) return normalizedUser;
   const raw = user as UserData & { id?: string };
@@ -37,12 +43,15 @@ const normalizeUserData = (user: UserData | null): UserData | null => {
 type ExistingUserLookup = { userId: string; sensitiveUserId?: string };
 
 type AuthPayload = {
-  user: { id: string; email: string; name?: string | null } | null;
+  user: { id: string; email: string; name?: string | null; emailVerifiedAt?: string | null } | null;
   session?: { userId: string; isAdmin: boolean; sessionVersion?: number } | null;
   token?: string | null;
   profile?: UserData | null;
   requiresProfileCompletion?: boolean;
   missingProfileFields?: RequiredProfileField[];
+  requiresEmailVerification?: boolean;
+  verificationEmailSent?: boolean;
+  code?: string;
 };
 
 type VerificationRequiredPayload = {
@@ -51,8 +60,12 @@ type VerificationRequiredPayload = {
   email: string;
   requiresEmailVerification?: boolean;
   verificationEmailSent?: boolean;
-  user?: { id: string; email: string; name?: string | null } | null;
+  user?: { id: string; email: string; name?: string | null; emailVerifiedAt?: string | null } | null;
+  session?: AuthPayload['session'] | null;
+  token?: string | null;
   profile?: UserData | null;
+  requiresProfileCompletion?: boolean;
+  missingProfileFields?: RequiredProfileField[];
 };
 
 type ApiErrorData = {
@@ -96,6 +109,18 @@ const normalizeRequiredProfileFields = (value: unknown): RequiredProfileField[] 
       : []
   ));
 };
+
+const mapAuthUser = (
+  user: NonNullable<AuthPayload['user']>,
+  session?: AuthPayload['session'] | null,
+): UserAccount => ({
+  $id: user.id,
+  email: user.email,
+  name: user.name ?? undefined,
+  emailVerifiedAt: user.emailVerifiedAt ?? null,
+  emailVerified: Boolean(user.emailVerifiedAt),
+  isAdmin: session?.isAdmin === true,
+});
 
 const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(path, {
@@ -194,14 +219,11 @@ export const authService = {
         token: null,
         requiresProfileCompletion: false,
         missingProfileFields: [],
+        requiresEmailVerification: false,
+        verificationEmailSent: false,
       };
     }
-    const mapped: UserAccount = {
-      $id: data.user.id,
-      email: data.user.email,
-      name: data.user.name ?? undefined,
-      isAdmin: data.session?.isAdmin === true,
-    };
+    const mapped = mapAuthUser(data.user, data.session);
     this.setCurrentAuthUser(mapped);
     if (data.profile) this.setCurrentUserData(data.profile as UserData);
     return {
@@ -211,6 +233,8 @@ export const authService = {
       token: data.token ?? null,
       requiresProfileCompletion,
       missingProfileFields,
+      requiresEmailVerification: data.requiresEmailVerification === true,
+      verificationEmailSent: data.verificationEmailSent === true,
     };
   },
 
@@ -236,12 +260,12 @@ export const authService = {
         dateOfBirth,
       }),
     });
-    if (isVerificationRequiredPayload(data)) {
+    if (isVerificationRequiredPayload(data) && (!data.user || !data.session)) {
       throw new ApiError(data.error || 'Email verification required', 403, data);
     }
     if (!data.user) throw new Error('Authentication failed');
     const missingProfileFields = normalizeRequiredProfileFields(data.missingProfileFields);
-    const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
+    const mapped = mapAuthUser(data.user, data.session);
     this.setCurrentAuthUser(mapped);
     if (data.profile) this.setCurrentUserData(data.profile as UserData);
     this.setGuest(false);
@@ -252,6 +276,8 @@ export const authService = {
       token: data.token ?? null,
       requiresProfileCompletion: data.requiresProfileCompletion === true || missingProfileFields.length > 0,
       missingProfileFields,
+      requiresEmailVerification: data.requiresEmailVerification === true,
+      verificationEmailSent: data.verificationEmailSent === true,
     };
   },
 
@@ -260,12 +286,12 @@ export const authService = {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    if (isVerificationRequiredPayload(data)) {
+    if (isVerificationRequiredPayload(data) && (!data.user || !data.session)) {
       throw new ApiError(data.error || 'Email verification required', 403, data);
     }
     if (!data.user) throw new Error('Authentication failed');
     const missingProfileFields = normalizeRequiredProfileFields(data.missingProfileFields);
-    const mapped: UserAccount = { $id: data.user.id, email: data.user.email, name: data.user.name ?? undefined };
+    const mapped = mapAuthUser(data.user, data.session);
     this.setCurrentAuthUser(mapped);
     if (data.profile) this.setCurrentUserData(data.profile as UserData);
     this.setGuest(false);
@@ -276,6 +302,8 @@ export const authService = {
       token: data.token ?? null,
       requiresProfileCompletion: data.requiresProfileCompletion === true || missingProfileFields.length > 0,
       missingProfileFields,
+      requiresEmailVerification: data.requiresEmailVerification === true,
+      verificationEmailSent: data.verificationEmailSent === true,
     };
   },
 

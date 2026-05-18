@@ -419,6 +419,7 @@ export async function DELETE(req: NextRequest) {
         uploadedImages: [],
         profileImageId: null,
         homePageOrganizationId: null,
+        onboardingIntent: null,
         hasStripeAccount: false,
         updatedAt: now,
       },

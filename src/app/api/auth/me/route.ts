@@ -8,10 +8,18 @@ import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState'
 import { isSessionTokenCurrent } from '@/server/authSessions';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 
-const toPublicUser = (user: { id: string; email: string; name: string | null; createdAt: Date | null; updatedAt: Date | null }) => ({
+const toPublicUser = (user: {
+  id: string;
+  email: string;
+  name: string | null;
+  emailVerifiedAt: Date | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
+}) => ({
   id: user.id,
   email: user.email,
   name: user.name,
+  emailVerifiedAt: user.emailVerifiedAt,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
@@ -48,12 +56,6 @@ export async function GET(req: NextRequest) {
     return res;
   }
 
-  if (!user.emailVerifiedAt) {
-    const res = NextResponse.json({ user: null, session: null, code: 'EMAIL_NOT_VERIFIED' }, { status: 200 });
-    setAuthCookie(res, '');
-    return res;
-  }
-
   const profile = await prisma.userData.findUnique({ where: { id: user.id } });
   const [profileWithDerivedTeamIds] = profile
     ? await withDerivedCanonicalTeamIds([profile], prisma)
@@ -74,6 +76,8 @@ export async function GET(req: NextRequest) {
       token: refreshed,
       profile: profileWithDerivedTeamIds ? withLegacyFields(applyNameCaseToUserFields(profileWithDerivedTeamIds)) : null,
       ...buildProfileCompletionState({ authUser: user, profile }),
+      requiresEmailVerification: !user.emailVerifiedAt,
+      verificationEmailSent: false,
     },
     { status: 200 },
   );

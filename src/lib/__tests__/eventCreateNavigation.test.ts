@@ -1,4 +1,4 @@
-import { buildOrganizationEventCreateUrl } from '@/lib/eventCreateNavigation';
+import { buildIndividualEventCreateUrl, buildOrganizationEventCreateUrl } from '@/lib/eventCreateNavigation';
 
 describe('buildOrganizationEventCreateUrl', () => {
   it('builds a create-event URL with organization context', () => {
@@ -22,6 +22,12 @@ describe('buildOrganizationEventCreateUrl', () => {
 
     expect(result).toBe(
       '/events/event_2/schedule?create=1&mode=edit&tab=details&orgId=org_2&hostOrgId=org_2&templateId=template_9&skipTemplatePrompt=1',
+    );
+  });
+
+  it('builds an individual create-event URL', () => {
+    expect(buildIndividualEventCreateUrl(' event_3 ')).toBe(
+      '/events/event_3/schedule?create=1&mode=edit&tab=details',
     );
   });
 });

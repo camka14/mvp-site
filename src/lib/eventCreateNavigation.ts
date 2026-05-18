@@ -32,3 +32,13 @@ export const buildOrganizationEventCreateUrl = (
 
   return `/events/${eventId}/schedule?${query.toString()}`;
 };
+
+export const buildIndividualEventCreateUrl = (eventId: string): string => {
+  const query = new URLSearchParams({
+    create: '1',
+    mode: 'edit',
+    tab: 'details',
+  });
+
+  return `/events/${eventId.trim()}/schedule?${query.toString()}`;
+};

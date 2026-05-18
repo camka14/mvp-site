@@ -122,7 +122,12 @@ describe('auth routes', () => {
       expect(res.status).toBe(202);
       expect(json.user.id).toBe('user_1');
       expect(json.code).toBe('EMAIL_NOT_VERIFIED');
-      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+      expect(json.session).toEqual({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
+      expect(json.token).toBe('signed-token');
+      expect(json.requiresEmailVerification).toBe(true);
+      expect(json.verificationEmailSent).toBe(true);
+      expect(authServerMock.signSessionToken).toHaveBeenCalledWith({ userId: 'user_1', isAdmin: false, sessionVersion: 0 });
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
       expect(prismaMock.authUser.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -407,7 +412,7 @@ describe('auth routes', () => {
       expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
     });
 
-    it('blocks login for unverified users and sends verification email', async () => {
+    it('allows login for unverified users and sends verification email', async () => {
       prismaMock.authUser.findUnique.mockResolvedValue({
         id: 'user_1',
         email: 'test@example.com',
@@ -417,6 +422,7 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+      prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
 
       const req = buildJsonRequest('http://localhost/api/auth/login', {
         email: 'test@example.com',
@@ -426,15 +432,18 @@ describe('auth routes', () => {
       const res = await LOGIN_POST(req);
       const json = await res.json();
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(200);
+      expect(json.user.id).toBe('user_1');
       expect(json.code).toBe('EMAIL_NOT_VERIFIED');
+      expect(json.requiresEmailVerification).toBe(true);
+      expect(json.verificationEmailSent).toBe(true);
       expect(authEmailVerificationMock.sendInitialEmailVerification).toHaveBeenCalledWith({
         userId: 'user_1',
         email: 'test@example.com',
         origin: 'http://localhost',
       });
-      expect(prismaMock.authUser.update).not.toHaveBeenCalled();
-      expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+      expect(prismaMock.authUser.update).toHaveBeenCalled();
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
     });
   });
 
@@ -493,7 +502,7 @@ describe('auth routes', () => {
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'refreshed-token');
     });
 
-    it('clears cookies when session user email is not verified', async () => {
+    it('returns session when session user email is not verified', async () => {
       authServerMock.getTokenFromRequest.mockReturnValue('token');
       authServerMock.verifySessionToken.mockReturnValue({
         userId: 'user_1',
@@ -501,6 +510,7 @@ describe('auth routes', () => {
         sessionVersion: 0,
         issuedAtSeconds: 1,
       });
+      authServerMock.signSessionToken.mockReturnValue('refreshed-token');
 
       prismaMock.authUser.findUnique.mockResolvedValue({
         id: 'user_1',
@@ -510,15 +520,16 @@ describe('auth routes', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       });
+      prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
 
       const req = new NextRequest('http://localhost/api/auth/me');
       const res = await ME_GET(req);
       const json = await res.json();
 
       expect(res.status).toBe(200);
-      expect(json.user).toBeNull();
-      expect(json.code).toBe('EMAIL_NOT_VERIFIED');
-      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
+      expect(json.user.id).toBe('user_1');
+      expect(json.requiresEmailVerification).toBe(true);
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'refreshed-token');
     });
 
     it('clears cookies when the session user has been suspended', async () => {

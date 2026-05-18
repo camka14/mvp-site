@@ -2,6 +2,7 @@ import { formatDisplayDate, formatDisplayTime, parseLocalDateTime } from '@/lib/
 import { normalizeEnumValue } from '@/lib/enumUtils';
 import { formatNameParts } from '@/lib/nameCase';
 import type { NotificationSettings } from '@/lib/notificationSettings';
+import type { OnboardingIntent } from '@/lib/onboardingIntent';
 import type {
   OrganizationVerificationReviewStatus,
   OrganizationVerificationStatus,
@@ -474,6 +475,7 @@ export interface UserData {
   homePageOrganizationId?: string | null;
   chatTermsAcceptedAt?: string | null;
   chatTermsVersion?: string | null;
+  onboardingIntent?: OnboardingIntent | null;
   notificationSettings?: NotificationSettings | null;
   stripeAccountId?: string | null;
   $createdAt?: string;

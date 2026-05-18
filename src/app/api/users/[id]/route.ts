@@ -11,6 +11,7 @@ import {
 } from '@/server/userNames';
 import { resolveRequiredProfileFieldsCompletedAt } from '@/server/profileCompletion';
 import { normalizeNotificationSettings } from '@/lib/notificationSettings';
+import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
 import { applyUserPrivacy, createVisibilityContext, currentUserSelect, publicUserSelect } from '@/server/userPrivacy';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
@@ -31,6 +32,7 @@ const USER_MUTABLE_FIELDS = new Set<string>([
   'uploadedImages',
   'profileImageId',
   'homePageOrganizationId',
+  'onboardingIntent',
   'notificationSettings',
 ]);
 const USER_IMMUTABLE_FIELDS = new Set<string>([
@@ -178,6 +180,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
   if (Object.prototype.hasOwnProperty.call(nextData, 'notificationSettings')) {
     nextData.notificationSettings = normalizeNotificationSettings(nextData.notificationSettings);
+  }
+  if (Object.prototype.hasOwnProperty.call(nextData, 'onboardingIntent')) {
+    const rawOnboardingIntent = nextData.onboardingIntent;
+    if (rawOnboardingIntent == null || rawOnboardingIntent === '') {
+      nextData.onboardingIntent = null;
+    } else {
+      const onboardingIntent = normalizeOnboardingIntent(rawOnboardingIntent);
+      if (!onboardingIntent) {
+        return NextResponse.json({ error: 'onboardingIntent is invalid.' }, { status: 400 });
+      }
+      nextData.onboardingIntent = onboardingIntent;
+    }
   }
 
   if (Object.prototype.hasOwnProperty.call(nextData, 'homePageOrganizationId')) {

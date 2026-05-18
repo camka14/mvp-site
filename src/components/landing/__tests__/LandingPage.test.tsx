@@ -79,7 +79,7 @@ describe('LandingPage', () => {
 
   it('renders a single app CTA for signed-in users on the landing page', () => {
     useAppMock.mockReturnValue({
-      user: { homePageOrganizationId: 'org_42' },
+      user: { homePageOrganizationId: 'org_42', onboardingIntent: 'ORGANIZATION' },
       loading: false,
       isGuest: false,
       isAuthenticated: true,
@@ -112,7 +112,7 @@ describe('LandingPage', () => {
     expect(pushMock).not.toHaveBeenCalled();
   });
 
-  it('starts a guest session and routes to discover when continue as guest is clicked', async () => {
+  it('starts a guest session and routes to onboarding when continue as guest is clicked', async () => {
     guestLoginMock.mockResolvedValue(undefined);
 
     render(<LandingPage />);
@@ -122,7 +122,7 @@ describe('LandingPage', () => {
     await waitFor(() => {
       expect(guestLoginMock).toHaveBeenCalledTimes(1);
     });
-    expect(pushMock).toHaveBeenCalledWith('/discover');
+    expect(pushMock).toHaveBeenCalledWith('/onboarding');
   });
 
   it('keeps the brand link on the info route when configured', () => {

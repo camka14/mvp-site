@@ -41,6 +41,7 @@ export type UserDataMinAggregateOutputType = {
   homePageOrganizationId: string | null
   chatTermsAcceptedAt: Date | null
   chatTermsVersion: string | null
+  onboardingIntent: string | null
 }
 
 export type UserDataMaxAggregateOutputType = {
@@ -60,6 +61,7 @@ export type UserDataMaxAggregateOutputType = {
   homePageOrganizationId: string | null
   chatTermsAcceptedAt: Date | null
   chatTermsVersion: string | null
+  onboardingIntent: string | null
 }
 
 export type UserDataCountAggregateOutputType = {
@@ -87,6 +89,7 @@ export type UserDataCountAggregateOutputType = {
   hiddenEventIds: number
   chatTermsAcceptedAt: number
   chatTermsVersion: number
+  onboardingIntent: number
   notificationSettings: number
   _all: number
 }
@@ -109,6 +112,7 @@ export type UserDataMinAggregateInputType = {
   homePageOrganizationId?: true
   chatTermsAcceptedAt?: true
   chatTermsVersion?: true
+  onboardingIntent?: true
 }
 
 export type UserDataMaxAggregateInputType = {
@@ -128,6 +132,7 @@ export type UserDataMaxAggregateInputType = {
   homePageOrganizationId?: true
   chatTermsAcceptedAt?: true
   chatTermsVersion?: true
+  onboardingIntent?: true
 }
 
 export type UserDataCountAggregateInputType = {
@@ -155,6 +160,7 @@ export type UserDataCountAggregateInputType = {
   hiddenEventIds?: true
   chatTermsAcceptedAt?: true
   chatTermsVersion?: true
+  onboardingIntent?: true
   notificationSettings?: true
   _all?: true
 }
@@ -256,6 +262,7 @@ export type UserDataGroupByOutputType = {
   hiddenEventIds: string[]
   chatTermsAcceptedAt: Date | null
   chatTermsVersion: string | null
+  onboardingIntent: string | null
   notificationSettings: runtime.JsonValue
   _count: UserDataCountAggregateOutputType | null
   _min: UserDataMinAggregateOutputType | null
@@ -305,6 +312,7 @@ export type UserDataWhereInput = {
   hiddenEventIds?: Prisma.StringNullableListFilter<"UserData">
   chatTermsAcceptedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   chatTermsVersion?: Prisma.StringNullableFilter<"UserData"> | string | null
+  onboardingIntent?: Prisma.StringNullableFilter<"UserData"> | string | null
   notificationSettings?: Prisma.JsonFilter<"UserData">
 }
 
@@ -333,6 +341,7 @@ export type UserDataOrderByWithRelationInput = {
   hiddenEventIds?: Prisma.SortOrder
   chatTermsAcceptedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   chatTermsVersion?: Prisma.SortOrderInput | Prisma.SortOrder
+  onboardingIntent?: Prisma.SortOrderInput | Prisma.SortOrder
   notificationSettings?: Prisma.SortOrder
 }
 
@@ -364,6 +373,7 @@ export type UserDataWhereUniqueInput = Prisma.AtLeast<{
   hiddenEventIds?: Prisma.StringNullableListFilter<"UserData">
   chatTermsAcceptedAt?: Prisma.DateTimeNullableFilter<"UserData"> | Date | string | null
   chatTermsVersion?: Prisma.StringNullableFilter<"UserData"> | string | null
+  onboardingIntent?: Prisma.StringNullableFilter<"UserData"> | string | null
   notificationSettings?: Prisma.JsonFilter<"UserData">
 }, "id">
 
@@ -392,6 +402,7 @@ export type UserDataOrderByWithAggregationInput = {
   hiddenEventIds?: Prisma.SortOrder
   chatTermsAcceptedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   chatTermsVersion?: Prisma.SortOrderInput | Prisma.SortOrder
+  onboardingIntent?: Prisma.SortOrderInput | Prisma.SortOrder
   notificationSettings?: Prisma.SortOrder
   _count?: Prisma.UserDataCountOrderByAggregateInput
   _max?: Prisma.UserDataMaxOrderByAggregateInput
@@ -426,6 +437,7 @@ export type UserDataScalarWhereWithAggregatesInput = {
   hiddenEventIds?: Prisma.StringNullableListFilter<"UserData">
   chatTermsAcceptedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"UserData"> | Date | string | null
   chatTermsVersion?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
+  onboardingIntent?: Prisma.StringNullableWithAggregatesFilter<"UserData"> | string | null
   notificationSettings?: Prisma.JsonWithAggregatesFilter<"UserData">
 }
 
@@ -454,6 +466,7 @@ export type UserDataCreateInput = {
   hiddenEventIds?: Prisma.UserDataCreatehiddenEventIdsInput | string[]
   chatTermsAcceptedAt?: Date | string | null
   chatTermsVersion?: string | null
+  onboardingIntent?: string | null
   notificationSettings?: Prisma.JsonNullValueInput | runtime.InputJsonValue
 }
 
@@ -482,6 +495,7 @@ export type UserDataUncheckedCreateInput = {
   hiddenEventIds?: Prisma.UserDataCreatehiddenEventIdsInput | string[]
   chatTermsAcceptedAt?: Date | string | null
   chatTermsVersion?: string | null
+  onboardingIntent?: string | null
   notificationSettings?: Prisma.JsonNullValueInput | runtime.InputJsonValue
 }
 
@@ -510,6 +524,7 @@ export type UserDataUpdateInput = {
   hiddenEventIds?: Prisma.UserDataUpdatehiddenEventIdsInput | string[]
   chatTermsAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   chatTermsVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  onboardingIntent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   notificationSettings?: Prisma.JsonNullValueInput | runtime.InputJsonValue
 }
 
@@ -538,6 +553,7 @@ export type UserDataUncheckedUpdateInput = {
   hiddenEventIds?: Prisma.UserDataUpdatehiddenEventIdsInput | string[]
   chatTermsAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   chatTermsVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  onboardingIntent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   notificationSettings?: Prisma.JsonNullValueInput | runtime.InputJsonValue
 }
 
@@ -566,6 +582,7 @@ export type UserDataCreateManyInput = {
   hiddenEventIds?: Prisma.UserDataCreatehiddenEventIdsInput | string[]
   chatTermsAcceptedAt?: Date | string | null
   chatTermsVersion?: string | null
+  onboardingIntent?: string | null
   notificationSettings?: Prisma.JsonNullValueInput | runtime.InputJsonValue
 }
 
@@ -594,6 +611,7 @@ export type UserDataUpdateManyMutationInput = {
   hiddenEventIds?: Prisma.UserDataUpdatehiddenEventIdsInput | string[]
   chatTermsAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   chatTermsVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  onboardingIntent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   notificationSettings?: Prisma.JsonNullValueInput | runtime.InputJsonValue
 }
 
@@ -622,6 +640,7 @@ export type UserDataUncheckedUpdateManyInput = {
   hiddenEventIds?: Prisma.UserDataUpdatehiddenEventIdsInput | string[]
   chatTermsAcceptedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   chatTermsVersion?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  onboardingIntent?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   notificationSettings?: Prisma.JsonNullValueInput | runtime.InputJsonValue
 }
 
@@ -650,6 +669,7 @@ export type UserDataCountOrderByAggregateInput = {
   hiddenEventIds?: Prisma.SortOrder
   chatTermsAcceptedAt?: Prisma.SortOrder
   chatTermsVersion?: Prisma.SortOrder
+  onboardingIntent?: Prisma.SortOrder
   notificationSettings?: Prisma.SortOrder
 }
 
@@ -670,6 +690,7 @@ export type UserDataMaxOrderByAggregateInput = {
   homePageOrganizationId?: Prisma.SortOrder
   chatTermsAcceptedAt?: Prisma.SortOrder
   chatTermsVersion?: Prisma.SortOrder
+  onboardingIntent?: Prisma.SortOrder
 }
 
 export type UserDataMinOrderByAggregateInput = {
@@ -689,6 +710,7 @@ export type UserDataMinOrderByAggregateInput = {
   homePageOrganizationId?: Prisma.SortOrder
   chatTermsAcceptedAt?: Prisma.SortOrder
   chatTermsVersion?: Prisma.SortOrder
+  onboardingIntent?: Prisma.SortOrder
 }
 
 export type UserDataCreateteamIdsInput = {
@@ -794,6 +816,7 @@ export type UserDataSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs
   hiddenEventIds?: boolean
   chatTermsAcceptedAt?: boolean
   chatTermsVersion?: boolean
+  onboardingIntent?: boolean
   notificationSettings?: boolean
 }, ExtArgs["result"]["userData"]>
 
@@ -822,6 +845,7 @@ export type UserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Exte
   hiddenEventIds?: boolean
   chatTermsAcceptedAt?: boolean
   chatTermsVersion?: boolean
+  onboardingIntent?: boolean
   notificationSettings?: boolean
 }, ExtArgs["result"]["userData"]>
 
@@ -850,6 +874,7 @@ export type UserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Exte
   hiddenEventIds?: boolean
   chatTermsAcceptedAt?: boolean
   chatTermsVersion?: boolean
+  onboardingIntent?: boolean
   notificationSettings?: boolean
 }, ExtArgs["result"]["userData"]>
 
@@ -878,10 +903,11 @@ export type UserDataSelectScalar = {
   hiddenEventIds?: boolean
   chatTermsAcceptedAt?: boolean
   chatTermsVersion?: boolean
+  onboardingIntent?: boolean
   notificationSettings?: boolean
 }
 
-export type UserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "firstName" | "lastName" | "dateOfBirth" | "requiredProfileFieldsCompletedAt" | "dobVerified" | "dobVerifiedAt" | "ageVerificationProvider" | "teamIds" | "friendIds" | "userName" | "hasStripeAccount" | "followingIds" | "friendRequestIds" | "friendRequestSentIds" | "uploadedImages" | "profileImageId" | "homePageOrganizationId" | "blockedUserIds" | "hiddenEventIds" | "chatTermsAcceptedAt" | "chatTermsVersion" | "notificationSettings", ExtArgs["result"]["userData"]>
+export type UserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "firstName" | "lastName" | "dateOfBirth" | "requiredProfileFieldsCompletedAt" | "dobVerified" | "dobVerifiedAt" | "ageVerificationProvider" | "teamIds" | "friendIds" | "userName" | "hasStripeAccount" | "followingIds" | "friendRequestIds" | "friendRequestSentIds" | "uploadedImages" | "profileImageId" | "homePageOrganizationId" | "blockedUserIds" | "hiddenEventIds" | "chatTermsAcceptedAt" | "chatTermsVersion" | "onboardingIntent" | "notificationSettings", ExtArgs["result"]["userData"]>
 
 export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "UserData"
@@ -911,6 +937,7 @@ export type $UserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalAr
     hiddenEventIds: string[]
     chatTermsAcceptedAt: Date | null
     chatTermsVersion: string | null
+    onboardingIntent: string | null
     notificationSettings: runtime.JsonValue
   }, ExtArgs["result"]["userData"]>
   composites: {}
@@ -1359,6 +1386,7 @@ export interface UserDataFieldRefs {
   readonly hiddenEventIds: Prisma.FieldRef<"UserData", 'String[]'>
   readonly chatTermsAcceptedAt: Prisma.FieldRef<"UserData", 'DateTime'>
   readonly chatTermsVersion: Prisma.FieldRef<"UserData", 'String'>
+  readonly onboardingIntent: Prisma.FieldRef<"UserData", 'String'>
   readonly notificationSettings: Prisma.FieldRef<"UserData", 'Json'>
 }
     

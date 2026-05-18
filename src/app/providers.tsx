@@ -11,6 +11,8 @@ interface UserAccount {
   email: string;
   name?: string;
   isAdmin?: boolean;
+  emailVerifiedAt?: string | null;
+  emailVerified?: boolean;
 }
 
 interface AppContextType {
@@ -26,6 +28,7 @@ interface AppContextType {
   isAuthenticated: boolean;
   requiresProfileCompletion: boolean;
   missingProfileFields: RequiredProfileField[];
+  requiresEmailVerification: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -51,6 +54,7 @@ export function Providers({ children }: ProvidersProps) {
   const [isGuest, setIsGuest] = useState<boolean>(false);
   const [requiresProfileCompletion, setRequiresProfileCompletion] = useState<boolean>(false);
   const [missingProfileFields, setMissingProfileFields] = useState<RequiredProfileField[]>([]);
+  const [requiresEmailVerification, setRequiresEmailVerification] = useState<boolean>(false);
 
   const setUser = useCallback((value: UserData | null) => {
     setUserState(value);
@@ -65,6 +69,13 @@ export function Providers({ children }: ProvidersProps) {
     authService.setCurrentAuthUser(value);
     if (value) {
       setIsGuest(false);
+      if (value.emailVerified === false || value.emailVerifiedAt === null) {
+        setRequiresEmailVerification(true);
+      } else if (value.emailVerified === true || value.emailVerifiedAt) {
+        setRequiresEmailVerification(false);
+      }
+    } else {
+      setRequiresEmailVerification(false);
     }
   }, []);
 
@@ -78,6 +89,7 @@ export function Providers({ children }: ProvidersProps) {
       setIsGuest(guest);
       setRequiresProfileCompletion(session.requiresProfileCompletion);
       setMissingProfileFields(session.missingProfileFields);
+      setRequiresEmailVerification(session.requiresEmailVerification);
 
       if (guest) {
         setUser(null);
@@ -104,6 +116,7 @@ export function Providers({ children }: ProvidersProps) {
       setUser(null);
       setRequiresProfileCompletion(false);
       setMissingProfileFields([]);
+      setRequiresEmailVerification(false);
       authService.setCurrentUserData(null);
     } finally {
       setLoading(false);
@@ -179,6 +192,7 @@ export function Providers({ children }: ProvidersProps) {
       isAuthenticated,
       requiresProfileCompletion,
       missingProfileFields,
+      requiresEmailVerification,
     }}>
       {children}
     </AppContext.Provider>

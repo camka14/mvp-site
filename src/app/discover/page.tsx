@@ -35,6 +35,7 @@ import { teamService } from '@/lib/teamService';
 import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
 import { useSports } from '@/app/hooks/useSports';
 import { createId } from '@/lib/id';
+import { buildIndividualEventCreateUrl } from '@/lib/eventCreateNavigation';
 import { formatDisplayTime } from '@/lib/dateUtils';
 import EventsTabContent from './components/EventsTabContent';
 import DiscoverSearchControls from './components/DiscoverSearchControls';
@@ -507,13 +508,7 @@ function DiscoverPageContent() {
       router.push('/login');
       return;
     }
-    const newId = createId();
-    const params = new URLSearchParams({
-      create: '1',
-      mode: 'edit',
-      tab: 'details',
-    });
-    router.push(`/events/${newId}/schedule?${params.toString()}`);
+    router.push(buildIndividualEventCreateUrl(createId()));
   }, [router, user]);
 
   const handleSelectRentalOrganization = useCallback(

@@ -55,6 +55,7 @@ describe('Navigation', () => {
         lastName: 'Name',
         userName: 'profile_name',
         homePageOrganizationId: 'org_42',
+        onboardingIntent: 'ORGANIZATION',
       },
       authUser: { $id: 'user_1', email: 'user@example.com', name: 'Taylor' },
       setUser: jest.fn(),

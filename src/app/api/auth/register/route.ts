@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import crypto from 'crypto';
-import { hashPassword } from '@/lib/authServer';
+import { hashPassword, setAuthCookie, signSessionToken, type SessionToken } from '@/lib/authServer';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { getRequestOrigin } from '@/lib/requestOrigin';
@@ -60,6 +60,7 @@ const toPublicUser = (user: { id: string; email: string; name: string | null; cr
   id: user.id,
   email: user.email,
   name: user.name,
+  emailVerifiedAt: null,
   createdAt: user.createdAt,
   updatedAt: user.updatedAt,
 });
@@ -387,7 +388,13 @@ export async function POST(req: NextRequest) {
 
   const [profileWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([profile], prisma);
 
-  return NextResponse.json(
+  const session: SessionToken = {
+    userId: authUser.id,
+    isAdmin: false,
+    sessionVersion: authUser.sessionVersion ?? 0,
+  };
+  const token = signSessionToken(session);
+  const response = NextResponse.json(
     {
       error: 'Email not verified. We sent a verification link to your email.',
       code: 'EMAIL_NOT_VERIFIED',
@@ -395,9 +402,13 @@ export async function POST(req: NextRequest) {
       requiresEmailVerification: true,
       verificationEmailSent: true,
       user: toPublicUser(authUser),
+      session,
+      token,
       profile: applyNameCaseToUserFields(profileWithDerivedTeamIds),
       ...buildProfileCompletionState({ authUser, profile }),
     },
     { status: 202 },
   );
+  setAuthCookie(response, token);
+  return response;
 }

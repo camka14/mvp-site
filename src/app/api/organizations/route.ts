@@ -13,6 +13,7 @@ import {
   DEFAULT_ORGANIZATION_STATUS,
   normalizeOrganizationStatus,
 } from '@/lib/organizationStatus';
+import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -204,6 +205,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
+  if (!await isUserEmailVerified(session.userId)) {
+    return buildEmailVerificationRequiredResponse('create_organization');
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body ?? {});
   if (!parsed.success) {

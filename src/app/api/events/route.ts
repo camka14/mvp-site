@@ -39,6 +39,7 @@ import {
   normalizeOfficialSchedulingMode,
   normalizeSportOfficialPositionTemplates,
 } from '@/server/officials/config';
+import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
 
 export const dynamic = 'force-dynamic';
 
@@ -862,6 +863,10 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
+  if (!await isUserEmailVerified(session.userId)) {
+    return buildEmailVerificationRequiredResponse('create_event');
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = createSchema.safeParse(body ?? {});
   if (!parsed.success) {

@@ -13,8 +13,8 @@ type LandingRedirectClient = {
   userData: {
     findUnique: (args: {
       where: { id: string };
-      select: { homePageOrganizationId: true };
-    }) => Promise<{ homePageOrganizationId: string | null } | null>;
+      select: { homePageOrganizationId: true; onboardingIntent: true };
+    }) => Promise<{ homePageOrganizationId: string | null; onboardingIntent: string | null } | null>;
   };
 };
 
@@ -35,13 +35,13 @@ export const resolveLandingRedirectPathFromToken = async (
     where: { id: session.userId },
     select: { emailVerifiedAt: true, sessionVersion: true },
   });
-  if (!authUser?.emailVerifiedAt || !isSessionTokenCurrent(session, authUser.sessionVersion)) {
+  if (!authUser || !isSessionTokenCurrent(session, authUser.sessionVersion)) {
     return null;
   }
 
   const profile = await client.userData.findUnique({
     where: { id: session.userId },
-    select: { homePageOrganizationId: true },
+    select: { homePageOrganizationId: true, onboardingIntent: true },
   });
 
   return getHomePathForUser(profile);

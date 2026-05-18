@@ -305,6 +305,7 @@ model UserData {
   hiddenEventIds          String[]  @default([])
   chatTermsAcceptedAt     DateTime?
   chatTermsVersion        String?
+  onboardingIntent        String?
   notificationSettings    Json      @default("{}")
 }
 
