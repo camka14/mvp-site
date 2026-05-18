@@ -113,7 +113,7 @@ const refreshEventTeamRegistrationReferences = async (
     where: {
       eventTeamId,
       registrantType: { not: 'TEAM' },
-      status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
     },
     select: { id: true },
     orderBy: [
@@ -236,7 +236,7 @@ export const loadEventRegistrationSnapshot = async (
       slotId: null,
       occurrenceDate: null,
       rosterRole: { in: ['FREE_AGENT', 'PARTICIPANT'] },
-      status: { in: ['STARTED', 'ACTIVE', 'BLOCKED'] },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] },
     },
     select: registrationSnapshotSelect,
     orderBy: [

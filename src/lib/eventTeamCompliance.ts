@@ -37,6 +37,7 @@ export type TeamCompliancePaymentSummary = {
   paidAmountCents: number;
   status: string | null;
   isPaidInFull: boolean;
+  paymentPending?: boolean;
   inheritedFromTeamBill?: boolean;
 };
 

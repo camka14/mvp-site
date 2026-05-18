@@ -53,6 +53,7 @@ export type TeamRegistrationFlowRenderState = {
   registrationError: string | null;
   currentUserActiveMember: boolean;
   currentUserPendingRegistration: boolean;
+  currentUserPaymentPending: boolean;
   shouldOfferDocumentReview: boolean;
   hasActiveChildren: boolean;
   openFlow: () => void;
@@ -228,9 +229,10 @@ export default function TeamRegistrationFlow({
     return undefined;
   }, [onTeamUpdated, resolvedTeam.$id]);
 
-  const registrations = Array.isArray(resolvedTeam.playerRegistrations)
-    ? resolvedTeam.playerRegistrations
-    : [];
+  const registrations = useMemo(
+    () => (Array.isArray(resolvedTeam.playerRegistrations) ? resolvedTeam.playerRegistrations : []),
+    [resolvedTeam.playerRegistrations],
+  );
   const currentUserRegistration = useMemo(() => {
     if (!user?.$id) {
       return null;
@@ -238,13 +240,16 @@ export default function TeamRegistrationFlow({
     return registrations.find((registration) => registration.userId === user.$id) ?? null;
   }, [registrations, user?.$id]);
   const currentUserRegistrationStatus = normalizeText(currentUserRegistration?.status).toUpperCase();
-  const currentUserActiveMember = currentUserRegistrationStatus === 'ACTIVE' || resolvedTeam.playerIds.includes(user?.$id ?? '');
+  const currentUserPaymentPending = currentUserRegistrationStatus === 'PENDING';
+  const currentUserActiveMember = currentUserRegistrationStatus === 'ACTIVE'
+    || currentUserPaymentPending
+    || resolvedTeam.playerIds.includes(user?.$id ?? '');
   const currentUserPendingRegistration = currentUserRegistrationStatus === 'STARTED';
   const reservedOrActiveRegistrationCount = useMemo(() => (
     Math.max(
       registrations.filter((registration) => {
         const status = normalizeText(registration.status).toUpperCase();
-        return status === 'ACTIVE' || status === 'INVITED' || status === 'STARTED';
+        return status === 'ACTIVE' || status === 'INVITED' || status === 'STARTED' || status === 'PENDING';
       }).length,
       new Set([...resolvedTeam.playerIds, ...resolvedTeam.pending]).size,
     )
@@ -261,10 +266,17 @@ export default function TeamRegistrationFlow({
   const hasActiveChildren = activeChildren.length > 0;
   const selectedChild = activeChildren.find((child) => child.userId === selectedChildId) ?? null;
 
-  const actionVisible = currentUserPendingRegistration || shouldOfferDocumentReview || Boolean(resolvedTeam.openRegistration);
+  const actionVisible = currentUserPaymentPending
+    || currentUserPendingRegistration
+    || shouldOfferDocumentReview
+    || Boolean(resolvedTeam.openRegistration);
   const actionDisabled = actionLoading
+    || currentUserPaymentPending
     || (!currentUserPendingRegistration && !shouldOfferDocumentReview && (!resolvedTeam.openRegistration || (!teamHasCapacity && !hasActiveChildren)));
   const actionLabel = (() => {
+    if (currentUserPaymentPending) {
+      return 'Payment Pending';
+    }
     if (currentUserPendingRegistration) {
       return isConsentIncomplete(currentUserRegistration?.consentStatus)
         ? 'Complete Documents'
@@ -503,6 +515,9 @@ export default function TeamRegistrationFlow({
         return;
       }
 
+      if (currentUserPaymentPending) {
+        throw new Error('Payment is pending for this team registration.');
+      }
       if (!resolvedTeam.openRegistration && !currentUserPendingRegistration) {
         throw new Error('Registration is not open for this team.');
       }
@@ -523,6 +538,7 @@ export default function TeamRegistrationFlow({
   }, [
     continueIntent,
     currentUserPendingRegistration,
+    currentUserPaymentPending,
     hasActiveChildren,
     onRequireAuth,
     refreshTeam,
@@ -887,6 +903,7 @@ export default function TeamRegistrationFlow({
     registrationError,
     currentUserActiveMember,
     currentUserPendingRegistration,
+    currentUserPaymentPending,
     shouldOfferDocumentReview,
     hasActiveChildren,
     openFlow: () => {
@@ -1135,6 +1152,15 @@ export default function TeamRegistrationFlow({
               message: `Payment completed for ${resolvedTeam.name}.`,
             });
           }
+        }}
+        onPaymentPending={async () => {
+          setShowPaymentModal(false);
+          setPaymentData(null);
+          const refreshed = await refreshTeam();
+          notifications.show({
+            color: 'yellow',
+            message: `Payment submitted for ${refreshed?.name ?? resolvedTeam.name}. Registration is pending until the bank payment clears.`,
+          });
         }}
       />
     </>

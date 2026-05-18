@@ -1867,6 +1867,8 @@ export interface FeeBreakdown {
   totalCharge: number;
   hostReceives: number;
   feePercentage: number;
+  paymentMethodType?: string;
+  paymentMethodLabel?: string;
   purchaseType?: string;
 }
 

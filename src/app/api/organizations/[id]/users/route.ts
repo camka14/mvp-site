@@ -398,7 +398,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    ? await teamRegistrationsDelegate.findMany({
 	      where: {
 	        teamId: { in: canonicalTeamIds },
-	        status: { in: ['ACTIVE', 'STARTED'] },
+	        status: { in: ['ACTIVE', 'PENDING', 'STARTED'] },
 	      },
 	      select: {
 	        teamId: true,

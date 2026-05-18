@@ -61,7 +61,16 @@ describe('GET /api/events/[eventId]/users/compliance', () => {
         dateOfBirth: new Date('2000-01-01T00:00:00.000Z'),
       },
     ]);
-    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([
+      {
+        registrantId: 'user_1',
+        registrantType: 'SELF',
+        parentId: null,
+        status: 'ACTIVE',
+        createdAt: new Date('2026-03-01T10:00:00.000Z'),
+        updatedAt: new Date('2026-03-01T10:00:00.000Z'),
+      },
+    ]);
     prismaMock.bills.findMany.mockResolvedValue([
       {
         id: 'bill_1',

@@ -3599,7 +3599,18 @@ function EventScheduleContent() {
     setTeamComplianceLoading(true);
     setTeamComplianceError(null);
 
-    void apiRequest<EventTeamComplianceResponse>(`/api/events/${targetEventId}/teams/compliance`)
+    const complianceParams = new URLSearchParams();
+    if (selectedOccurrence?.slotId) {
+      complianceParams.set('slotId', selectedOccurrence.slotId);
+    }
+    if (selectedOccurrence?.occurrenceDate) {
+      complianceParams.set('occurrenceDate', selectedOccurrence.occurrenceDate);
+    }
+    const complianceQuery = complianceParams.toString();
+
+    void apiRequest<EventTeamComplianceResponse>(
+      `/api/events/${targetEventId}/teams/compliance${complianceQuery ? `?${complianceQuery}` : ''}`,
+    )
       .then((payload) => {
         if (cancelled) {
           return;
@@ -3633,7 +3644,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIdsKey, teamComplianceRefreshKey]);
+  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIdsKey, selectedOccurrence, teamComplianceRefreshKey]);
 
   useEffect(() => {
     if (!canUseUserCompliance) {
@@ -3656,7 +3667,18 @@ function EventScheduleContent() {
     setUserComplianceLoading(true);
     setUserComplianceError(null);
 
-    void apiRequest<EventUserComplianceResponse>(`/api/events/${targetEventId}/users/compliance`)
+    const complianceParams = new URLSearchParams();
+    if (selectedOccurrence?.slotId) {
+      complianceParams.set('slotId', selectedOccurrence.slotId);
+    }
+    if (selectedOccurrence?.occurrenceDate) {
+      complianceParams.set('occurrenceDate', selectedOccurrence.occurrenceDate);
+    }
+    const complianceQuery = complianceParams.toString();
+
+    void apiRequest<EventUserComplianceResponse>(
+      `/api/events/${targetEventId}/users/compliance${complianceQuery ? `?${complianceQuery}` : ''}`,
+    )
       .then((payload) => {
         if (cancelled) {
           return;
@@ -3690,7 +3712,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, canUseUserCompliance, eventId, participantUserIdsKey, teamComplianceRefreshKey]);
+  }, [activeEvent?.$id, canUseUserCompliance, eventId, participantUserIdsKey, selectedOccurrence, teamComplianceRefreshKey]);
 
   useEffect(() => {
     if (!selectedComplianceTeamId) {

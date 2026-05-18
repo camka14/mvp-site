@@ -116,9 +116,9 @@ export const normalizeIdList = (value: unknown): string[] => (
   ))
 );
 
-const ACTIVE_TEAM_MEMBER_STATUSES = new Set(['ACTIVE']);
+const ACTIVE_TEAM_MEMBER_STATUSES = new Set(['ACTIVE', 'PENDING']);
 const INVITED_TEAM_MEMBER_STATUSES = new Set(['INVITED']);
-const ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE'];
+const ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE'];
 export const TEAM_VISIBILITY_PUBLIC = 'PUBLIC';
 export const TEAM_VISIBILITY_ADMIN_ONLY = 'ADMIN_ONLY';
 export type TeamVisibility = typeof TEAM_VISIBILITY_PUBLIC | typeof TEAM_VISIBILITY_ADMIN_ONLY;
@@ -994,7 +994,7 @@ const updateEventTeamSnapshotReferences = async (params: {
     where: {
       eventTeamId: params.eventTeamId,
       registrantType: { not: 'TEAM' },
-      status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
     },
     select: { id: true },
     orderBy: [
@@ -1045,7 +1045,7 @@ export const claimOrCreateEventTeamSnapshot = async (params: {
 
   const playerRegistrations = Array.isArray((canonicalTeam as any).playerRegistrations) ? (canonicalTeam as any).playerRegistrations : [];
   const staffAssignments = Array.isArray((canonicalTeam as any).staffAssignments) ? (canonicalTeam as any).staffAssignments : [];
-  const activePlayerRegistrations = playerRegistrations.filter((row: any) => row.status === 'ACTIVE');
+  const activePlayerRegistrations = playerRegistrations.filter((row: any) => ACTIVE_TEAM_MEMBER_STATUSES.has(String(row.status ?? '').toUpperCase()));
   const activeStaffAssignments = staffAssignments.filter((row: any) => row.status === 'ACTIVE');
   const now = new Date();
   const eventTeamsDelegate = getEventTeamsDelegate(params.tx);

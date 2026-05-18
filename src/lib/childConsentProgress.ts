@@ -30,7 +30,7 @@ export const syncChildRegistrationConsentStatus = async (params: {
       eventId,
       registrantId: childUserId,
       registrantType: 'CHILD',
-      status: { in: ['STARTED', 'ACTIVE'] },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE'] },
       ...(normalizeText(params.parentUserId) ? { parentId: normalizeText(params.parentUserId) } : {}),
     },
     orderBy: { updatedAt: 'desc' },

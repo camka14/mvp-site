@@ -8,7 +8,7 @@ import { getCanonicalTeamIdsByUserIds } from '@/server/teams/teamMembership';
 
 export const dynamic = 'force-dynamic';
 
-const SCHEDULE_REGISTRATION_STATUSES = ['ACTIVE', 'STARTED', 'BLOCKED'] as const;
+const SCHEDULE_REGISTRATION_STATUSES = ['ACTIVE', 'PENDING', 'STARTED', 'BLOCKED'] as const;
 
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
   Array.from(

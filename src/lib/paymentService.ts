@@ -28,6 +28,28 @@ type LeaveEventOptions = {
 };
 
 class PaymentService {
+  async updatePaymentIntentFeeForMethod(
+    paymentIntent: string,
+    paymentMethodType: string,
+  ): Promise<Pick<PaymentIntent, 'feeBreakdown'>> {
+    const result = await apiRequest<Pick<PaymentIntent, 'feeBreakdown'> & { error?: string }>(
+      '/api/billing/payment-intent-fee',
+      {
+        method: 'POST',
+        body: {
+          paymentIntent,
+          paymentMethodType,
+        },
+      },
+    );
+
+    if (result && 'error' in result && result.error) {
+      throw new Error(result.error);
+    }
+
+    return result;
+  }
+
   async reserveRentalCheckoutLock(
     event: Event,
     timeSlot: TimeSlot,

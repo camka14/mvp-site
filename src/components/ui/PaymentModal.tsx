@@ -28,6 +28,7 @@ interface PaymentModalProps {
     event: PaymentEventSummary;
     paymentData: PaymentIntent | null;
     onPaymentSuccess: () => Promise<void> | void;
+    onPaymentPending?: () => Promise<void> | void;
 }
 
 export default function PaymentModal({
@@ -35,16 +36,18 @@ export default function PaymentModal({
     onClose,
     event,
     paymentData,
-    onPaymentSuccess
+    onPaymentSuccess,
+    onPaymentPending,
 }: PaymentModalProps) {
     const [error, setError] = useState<string | null>(null);
-    const [view, setView] = useState<'confirm' | 'payment' | 'success'>('confirm');
+    const [view, setView] = useState<'confirm' | 'payment' | 'success' | 'pending'>('confirm');
     const [reloadingEvent, setReloadingEvent] = useState(false);
     const [billingAddress, setBillingAddress] = useState<BillingAddress | null>(null);
     const [billingEmail, setBillingEmail] = useState<string | null>(null);
+    const [activePaymentData, setActivePaymentData] = useState<PaymentIntent | null>(paymentData);
     const isMountedRef = useRef(true);
 
-    const purchaseType = paymentData?.feeBreakdown?.purchaseType;
+    const purchaseType = activePaymentData?.feeBreakdown?.purchaseType;
     const copy = getPaymentModalCopy(purchaseType);
     const eventName = event.name ?? 'Event';
     const eventLocation = event.location ?? '';
@@ -75,11 +78,30 @@ export default function PaymentModal({
         }
     };
 
+    const handlePaymentPending = async () => {
+        setError(null);
+        setView('pending');
+        setReloadingEvent(true);
+        try {
+            await (onPaymentPending ?? onPaymentSuccess)();
+        } catch (error) {
+            if (isMountedRef.current) {
+                setError(copy.refreshFailureMessage);
+            }
+        } finally {
+            if (isMountedRef.current) {
+                setReloadingEvent(false);
+            }
+        }
+    };
+
     const modalTitle = view === 'confirm'
         ? 'Confirm Payment'
         : view === 'payment'
             ? 'Payment'
-            : 'Payment Complete';
+            : view === 'pending'
+                ? 'Payment Pending'
+                : 'Payment Complete';
 
     useEffect(() => {
         isMountedRef.current = true;
@@ -87,6 +109,12 @@ export default function PaymentModal({
             isMountedRef.current = false;
         };
     }, []);
+
+    useEffect(() => {
+        if (isOpen) {
+            setActivePaymentData(paymentData);
+        }
+    }, [isOpen, paymentData]);
 
     useEffect(() => {
         if (!isOpen) {
@@ -115,10 +143,14 @@ export default function PaymentModal({
     // Early return if modal shouldn't be shown
     if (!isOpen) return null;
 
-    const clientSecret = paymentData?.paymentIntent;
+    const clientSecret = activePaymentData?.paymentIntent;
     const hasValidClientSecret = isStripePaymentIntentClientSecret(clientSecret);
-    const publishableKey = paymentData?.publishableKey || envPublishableKey;
-    const feeBreakdown = paymentData?.feeBreakdown ?? null;
+    const publishableKey = activePaymentData?.publishableKey || envPublishableKey;
+    const feeBreakdown = activePaymentData?.feeBreakdown ?? null;
+    const totalBeforeStripeFees = feeBreakdown
+        ? feeBreakdown.eventPrice + feeBreakdown.processingFee + (feeBreakdown.taxAmount ?? 0)
+        : 0;
+    const totalWithVariableStripeFees = `${formatPrice(totalBeforeStripeFees)} + Stripe fees`;
 
     const stripePromise = publishableKey
         ? loadStripe(publishableKey, {
@@ -192,8 +224,8 @@ export default function PaymentModal({
                                     <span className="font-medium">{formatPrice(feeBreakdown.processingFee)}</span>
                                 </div>
                                 <div className="flex justify-between">
-                                    <span className="text-gray-600">Stripe Fee:</span>
-                                    <span className="font-medium">{formatPrice(feeBreakdown.stripeFee)}</span>
+                                    <span className="text-gray-600">Stripe Fees:</span>
+                                    <span className="font-medium">Vary by payment method</span>
                                 </div>
                                 {typeof feeBreakdown.taxAmount === 'number' ? (
                                     <div className="flex justify-between">
@@ -203,8 +235,11 @@ export default function PaymentModal({
                                 ) : null}
                                 <div className="border-t pt-2 flex justify-between font-semibold text-base">
                                     <span>Total:</span>
-                                    <span>${(feeBreakdown.totalCharge / 100).toFixed(2)}</span>
+                                    <span>{totalWithVariableStripeFees}</span>
                                 </div>
+                                <p className="pt-2 text-xs text-gray-500">
+                                    The exact Stripe fees and total update after you choose a payment method.
+                                </p>
                             </div>
                         </div>
                     ) : (
@@ -225,7 +260,7 @@ export default function PaymentModal({
                 </div>
             ) : view === 'payment' ? (
                 /* Payment Form - Only show when we have payment intent */
-                hasValidClientSecret ? (
+                hasValidClientSecret && feeBreakdown ? (
                     <Elements
                         key={clientSecret}
                         stripe={stripePromise}
@@ -241,11 +276,18 @@ export default function PaymentModal({
                     >
                         <PaymentForm
                             onSuccess={handlePaymentSuccess}
+                            onPending={handlePaymentPending}
                             onError={setError}
-                            amount={paymentData?.feeBreakdown?.totalCharge ?? 0}
                             eventName={eventName}
+                            feeBreakdown={feeBreakdown}
+                            paymentIntent={clientSecret}
                             billingAddress={billingAddress}
                             billingEmail={billingEmail}
+                            onFeeBreakdownChange={(nextFeeBreakdown) => {
+                                setActivePaymentData((current) => current
+                                    ? { ...current, feeBreakdown: nextFeeBreakdown }
+                                    : current);
+                            }}
                         />
                     </Elements>
                 ) : (
@@ -253,6 +295,40 @@ export default function PaymentModal({
                         Checkout could not be initialized. Please close this dialog and try again.
                     </Alert>
                 )
+            ) : view === 'pending' ? (
+                <div className="space-y-4 text-center">
+                    <div className="mx-auto h-14 w-14 rounded-full bg-yellow-50 text-yellow-600 flex items-center justify-center">
+                        <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-8 w-8"
+                            aria-hidden="true"
+                        >
+                            <path d="M12 6v6l4 2" />
+                            <circle cx="12" cy="12" r="10" />
+                        </svg>
+                    </div>
+                    <h4 className="font-semibold text-lg">Payment pending</h4>
+                    <p className="text-sm text-gray-600">
+                        Your bank payment is processing. You are marked as pending until Stripe confirms the payment.
+                    </p>
+                    {reloadingEvent ? (
+                        <div className="flex items-center justify-center gap-2 text-sm text-gray-700">
+                            <Loader size="sm" />
+                            <span>{copy.reloadingMessage}</span>
+                        </div>
+                    ) : (
+                        <Text size="sm" c="dimmed">{copy.refreshedMessage}</Text>
+                    )}
+                    <Group justify="center" mt="md">
+                        <Button onClick={() => { onClose(); resetModal(); }}>Close</Button>
+                    </Group>
+                </div>
             ) : (
                 <div className="space-y-4 text-center">
                     <div className="mx-auto h-14 w-14 rounded-full bg-green-50 text-green-600 flex items-center justify-center">

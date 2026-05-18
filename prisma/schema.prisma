@@ -134,6 +134,7 @@ enum EventRegistrationsRosterRoleEnum {
 
 enum EventRegistrationsStatusEnum {
   STARTED
+  PENDING
   ACTIVE
   BLOCKED
   CANCELLED
@@ -143,6 +144,7 @@ enum EventRegistrationsStatusEnum {
 enum TeamMembershipStatusEnum {
   INVITED
   STARTED
+  PENDING
   ACTIVE
   LEFT
   REMOVED

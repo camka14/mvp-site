@@ -145,5 +145,34 @@ describe('GET /api/events/[eventId]/teams/compliance', () => {
       inheritedFromTeamBill: false,
     });
   });
-});
 
+  it('marks team payment pending when the event registration is pending and no bill exists yet', async () => {
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      {
+        id: 'event_1__team__slot_1',
+        eventId: 'event_1',
+        registrantId: 'slot_1',
+        registrantType: 'TEAM',
+        rosterRole: 'PARTICIPANT',
+        status: 'PENDING',
+        createdAt: new Date('2026-07-01T12:00:00.000Z'),
+        updatedAt: new Date('2026-07-02T12:00:00.000Z'),
+      },
+    ]);
+    prismaMock.bills.findMany.mockResolvedValueOnce([]);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/events/event_1/teams/compliance'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.teams).toHaveLength(1);
+    expect(payload.teams[0].payment).toMatchObject({
+      hasBill: false,
+      billId: null,
+      paymentPending: true,
+    });
+  });
+});

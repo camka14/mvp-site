@@ -77,18 +77,20 @@ const jsonPost = (body: unknown) =>
     body: JSON.stringify(body),
   });
 
-const buildPaymentIntentSucceededEvent = ({
+const buildPaymentIntentEvent = ({
+  type = 'payment_intent.succeeded',
   intentId,
   metadata,
   amount = 5000,
   amountReceived = amount,
 }: {
+  type?: string;
   intentId: string;
   metadata: Record<string, string>;
   amount?: number;
   amountReceived?: number;
 }) => ({
-  type: 'payment_intent.succeeded',
+  type,
   data: {
     object: {
       id: intentId,
@@ -98,6 +100,13 @@ const buildPaymentIntentSucceededEvent = ({
     },
   },
 });
+
+const buildPaymentIntentSucceededEvent = (params: {
+  intentId: string;
+  metadata: Record<string, string>;
+  amount?: number;
+  amountReceived?: number;
+}) => buildPaymentIntentEvent({ ...params, type: 'payment_intent.succeeded' });
 
 describe('POST /api/billing/webhook', () => {
   const originalStripeSecret = process.env.STRIPE_SECRET_KEY;
@@ -462,7 +471,7 @@ describe('POST /api/billing/webhook', () => {
         freeAgentIds: [],
       },
     ]);
-    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({ status: 'STARTED' });
+    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({ status: 'PENDING' });
 
     const response = await POST(
       jsonPost(buildPaymentIntentSucceededEvent({
@@ -493,6 +502,87 @@ describe('POST /api/billing/webhook', () => {
       }),
     );
     expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks an async event registration payment as pending when the payment intent is processing', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        eventType: 'EVENT',
+        teamSignup: false,
+      },
+    ]);
+    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({ status: 'STARTED' });
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentEvent({
+        type: 'payment_intent.processing',
+        intentId: 'pi_event_processing_1',
+        metadata: {
+          purchase_type: 'event',
+          user_id: 'user_1',
+          event_id: 'event_1',
+          registration_id: 'event_1__self__user_1',
+          amount_cents: '4500',
+        },
+        amount: 4700,
+        amountReceived: 0,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.bills.create).not.toHaveBeenCalled();
+    expect(prismaMock.billPayments.create).not.toHaveBeenCalled();
+    expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'event_1__self__user_1' },
+        data: expect.objectContaining({
+          status: 'PENDING',
+        }),
+      }),
+    );
+    expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending event registration when the payment intent fails', async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'event_1',
+        eventType: 'EVENT',
+        teamSignup: false,
+      },
+    ]);
+    prismaMock.eventRegistrations.updateMany.mockResolvedValueOnce({ count: 1 });
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentEvent({
+        type: 'payment_intent.payment_failed',
+        intentId: 'pi_event_failed_1',
+        metadata: {
+          purchase_type: 'event',
+          user_id: 'user_1',
+          event_id: 'event_1',
+          registration_id: 'event_1__self__user_1',
+          amount_cents: '4500',
+        },
+        amount: 4700,
+        amountReceived: 0,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.eventRegistrations.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: 'event_1__self__user_1',
+          status: { in: ['STARTED', 'PENDING'] },
+        }),
+        data: expect.objectContaining({
+          status: 'CANCELLED',
+        }),
+      }),
+    );
+    expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
   });
 
   it('is idempotent for repeated instant webhook events by payment intent id', async () => {

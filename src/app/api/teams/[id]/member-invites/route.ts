@@ -40,7 +40,7 @@ const emailSchema = z.string().email();
 const uniqueStrings = (values: Array<string | null | undefined>): string[] => (
   Array.from(new Set(values.filter((value): value is string => Boolean(value))))
 );
-const PLAYER_CAPACITY_STATUSES = new Set(['ACTIVE', 'INVITED', 'STARTED']);
+const PLAYER_CAPACITY_STATUSES = new Set(['ACTIVE', 'INVITED', 'STARTED', 'PENDING']);
 
 const roleToStaffType = (role: InviteRole): string | null => {
   switch (role) {

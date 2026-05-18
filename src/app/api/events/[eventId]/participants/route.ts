@@ -1106,7 +1106,7 @@ async function updateParticipants(
     if (
       mode === 'add'
       && existingRegistration
-      && ['STARTED', 'ACTIVE'].includes(String(existingRegistration.status ?? ''))
+      && ['STARTED', 'PENDING', 'ACTIVE'].includes(String(existingRegistration.status ?? ''))
       && !canManageCurrentEvent
     ) {
       return NextResponse.json({ error: 'Team is already registered for this event.' }, { status: 409 });
@@ -1258,7 +1258,7 @@ async function updateParticipants(
           where: {
             eventTeamId: existingEventTeamId,
             registrantType: { not: 'TEAM' },
-            status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+            status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
           },
           data: {
             status: 'CANCELLED',
@@ -1386,7 +1386,7 @@ async function updateParticipants(
       occurrence: resolvedOccurrence,
     });
     const activeExisting = [existingSelf, existingChild].find((row) => (
-      Boolean(row) && ['STARTED', 'ACTIVE'].includes(String(row?.status ?? ''))
+      Boolean(row) && ['STARTED', 'PENDING', 'ACTIVE'].includes(String(row?.status ?? ''))
     ));
     if (activeExisting) {
       return NextResponse.json({ error: 'User is already registered for this event.' }, { status: 409 });

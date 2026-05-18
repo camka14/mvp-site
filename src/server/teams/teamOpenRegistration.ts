@@ -10,9 +10,10 @@ type PrismaLike = any;
 
 export const TEAM_REGISTRATION_STARTED_TTL_MS = 5 * 60 * 1000;
 
-const ACTIVE_CAPACITY_STATUSES = ['ACTIVE', 'INVITED', 'STARTED'] as const;
+const ACTIVE_CAPACITY_STATUSES = ['ACTIVE', 'INVITED', 'STARTED', 'PENDING'] as const;
 const ACTIVE_MEMBER_STATUS = 'ACTIVE';
 const STARTED_MEMBER_STATUS = 'STARTED';
+const PENDING_MEMBER_STATUS = 'PENDING';
 const LEFT_MEMBER_STATUS = 'LEFT';
 
 type LockedTeamRow = {
@@ -35,7 +36,7 @@ export type TeamRegistrationRegistrantType = 'SELF' | 'CHILD';
 export type TeamRegistrationRosterRole = 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGENT';
 
 type RegistrationResult =
-  | { ok: true; registrationId: string; status: 'ACTIVE' | 'STARTED' }
+  | { ok: true; registrationId: string; status: 'ACTIVE' | 'STARTED' | 'PENDING' }
   | { ok: false; status: number; error: string };
 
 const normalizeCents = (value: unknown): number => {
@@ -274,7 +275,7 @@ export const reserveTeamRegistrationSlot = async ({
   teamId: string | null;
   userId: string | null;
   actorUserId: string;
-  status: 'ACTIVE' | 'STARTED';
+  status: 'ACTIVE' | 'STARTED' | 'PENDING';
   registrantType?: TeamRegistrationRegistrantType;
   parentId?: string | null;
   rosterRole?: TeamRegistrationRosterRole;
@@ -371,6 +372,9 @@ export const reserveTeamRegistrationSlot = async ({
     if (existingStatus === ACTIVE_MEMBER_STATUS) {
       return { ok: false, status: 409, error: 'You are already registered for this team.' };
     }
+    if (existingStatus === PENDING_MEMBER_STATUS) {
+      return { ok: false, status: 409, error: 'Payment is pending for this team registration.' };
+    }
     if (existing && existingStatus === STARTED_MEMBER_STATUS && status === STARTED_MEMBER_STATUS) {
       await tx.teamRegistrations.update({
         where: { id: existing.id },
@@ -391,7 +395,7 @@ export const reserveTeamRegistrationSlot = async ({
       return { ok: false, status: 409, error: 'You are already registered for this team.' };
     }
 
-    const previousMemberIds = status === ACTIVE_MEMBER_STATUS
+    const previousMemberIds = status === ACTIVE_MEMBER_STATUS || status === PENDING_MEMBER_STATUS
       ? await readTeamBeforeChatSync(tx, normalizedTeamId)
       : [];
 
@@ -478,11 +482,120 @@ export const reserveTeamRegistrationSlot = async ({
       }
     }
 
-    if (status === ACTIVE_MEMBER_STATUS) {
+    if (status === ACTIVE_MEMBER_STATUS || status === PENDING_MEMBER_STATUS) {
       await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     }
 
     return { ok: true, registrationId: existing?.id ?? registrationId, status };
+  });
+};
+
+export const markTeamRegistrationPaymentPending = async ({
+  teamId,
+  userId,
+  registrationId,
+  now,
+}: {
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => {
+  const normalizedTeamId = normalizeId(teamId);
+  const normalizedUserId = normalizeId(userId);
+  const normalizedRegistrationId = normalizeId(registrationId);
+  if (!normalizedTeamId) return { applied: false, reason: 'missing_team_id' };
+  if (!normalizedUserId) return { applied: false, reason: 'missing_user_id' };
+  if (!normalizedRegistrationId) return { applied: false, reason: 'missing_registration_id' };
+
+  return prisma.$transaction(async (tx) => {
+    const registration = await tx.teamRegistrations.findUnique({
+      where: { id: normalizedRegistrationId },
+      select: {
+        id: true,
+        teamId: true,
+        userId: true,
+        status: true,
+      },
+    });
+    if (!registration) return { applied: false, reason: 'reservation_missing' };
+    if (registration.teamId !== normalizedTeamId || registration.userId !== normalizedUserId) {
+      return { applied: false, reason: 'reservation_mismatch' };
+    }
+    if (registration.status === ACTIVE_MEMBER_STATUS) {
+      return { applied: true, reason: 'already_active' };
+    }
+    if (registration.status === PENDING_MEMBER_STATUS) {
+      return { applied: true, reason: 'already_pending' };
+    }
+    if (registration.status !== STARTED_MEMBER_STATUS) {
+      return { applied: false, reason: 'reservation_not_started' };
+    }
+
+    const previousMemberIds = await readTeamBeforeChatSync(tx, normalizedTeamId);
+    await tx.teamRegistrations.update({
+      where: { id: normalizedRegistrationId },
+      data: {
+        status: PENDING_MEMBER_STATUS as any,
+        updatedAt: now,
+      },
+    });
+    await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
+    return { applied: true };
+  });
+};
+
+export const cancelPendingTeamRegistration = async ({
+  teamId,
+  userId,
+  registrationId,
+  now,
+}: {
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => {
+  const normalizedTeamId = normalizeId(teamId);
+  const normalizedUserId = normalizeId(userId);
+  const normalizedRegistrationId = normalizeId(registrationId);
+  if (!normalizedTeamId) return { applied: false, reason: 'missing_team_id' };
+  if (!normalizedUserId) return { applied: false, reason: 'missing_user_id' };
+  if (!normalizedRegistrationId) return { applied: false, reason: 'missing_registration_id' };
+
+  return prisma.$transaction(async (tx) => {
+    const registration = await tx.teamRegistrations.findUnique({
+      where: { id: normalizedRegistrationId },
+      select: {
+        id: true,
+        teamId: true,
+        userId: true,
+        status: true,
+      },
+    });
+    if (!registration) return { applied: false, reason: 'reservation_missing' };
+    if (registration.teamId !== normalizedTeamId || registration.userId !== normalizedUserId) {
+      return { applied: false, reason: 'reservation_mismatch' };
+    }
+    if (registration.status !== STARTED_MEMBER_STATUS && registration.status !== PENDING_MEMBER_STATUS) {
+      return { applied: false, reason: 'reservation_not_pending' };
+    }
+
+    const previousMemberIds = registration.status === PENDING_MEMBER_STATUS
+      ? await readTeamBeforeChatSync(tx, normalizedTeamId)
+      : [];
+    await tx.teamRegistrations.update({
+      where: { id: normalizedRegistrationId },
+      data: {
+        status: LEFT_MEMBER_STATUS as any,
+        isCaptain: false,
+        updatedAt: now,
+      },
+    });
+    if (registration.status === PENDING_MEMBER_STATUS) {
+      await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
+    }
+    return { applied: true };
   });
 };
 
@@ -590,7 +703,7 @@ export const activateStartedTeamRegistration = async ({
     if (registration.status === ACTIVE_MEMBER_STATUS) {
       return { applied: true, reason: 'already_active' };
     }
-    if (registration.status !== STARTED_MEMBER_STATUS) {
+    if (registration.status !== STARTED_MEMBER_STATUS && registration.status !== PENDING_MEMBER_STATUS) {
       return { applied: false, reason: 'reservation_not_started' };
     }
 
@@ -607,12 +720,25 @@ export const activateStartedTeamRegistration = async ({
       if (ordered.length > teamSize) {
         const position = ordered.findIndex((row) => row.id === normalizedRegistrationId);
         if (position < 0 || position >= teamSize) {
-          await tx.teamRegistrations.deleteMany({
-            where: {
-              id: normalizedRegistrationId,
-              status: STARTED_MEMBER_STATUS as any,
-            },
-          });
+          if (registration.status === PENDING_MEMBER_STATUS) {
+            const previousMemberIds = await readTeamBeforeChatSync(tx, normalizedTeamId);
+            await tx.teamRegistrations.update({
+              where: { id: normalizedRegistrationId },
+              data: {
+                status: LEFT_MEMBER_STATUS as any,
+                isCaptain: false,
+                updatedAt: now,
+              },
+            });
+            await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
+          } else {
+            await tx.teamRegistrations.deleteMany({
+              where: {
+                id: normalizedRegistrationId,
+                status: STARTED_MEMBER_STATUS as any,
+              },
+            });
+          }
           return { applied: false, reason: 'team_full' };
         }
       }

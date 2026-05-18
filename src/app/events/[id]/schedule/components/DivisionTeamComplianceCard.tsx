@@ -22,6 +22,10 @@ const getPaymentLabel = (
     return { label: 'Payment details unavailable', color: 'gray' };
   }
 
+  if (summary.payment.paymentPending) {
+    return { label: 'Payment pending', color: 'yellow' };
+  }
+
   if (!summary.payment.hasBill) {
     return { label: cardKind === 'participant' ? 'No bill yet' : 'No team bill yet', color: 'gray' };
   }

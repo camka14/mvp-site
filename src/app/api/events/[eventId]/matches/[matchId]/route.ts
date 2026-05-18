@@ -194,7 +194,7 @@ const parseNullableDate = (value: string | null | undefined): Date | null | unde
   return parsed;
 };
 
-const ACTIVE_EVENT_REGISTRATION_STATUSES = ['ACTIVE', 'STARTED'] as const;
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['ACTIVE', 'PENDING', 'STARTED'] as const;
 
 type EventRegistrationLookupRow = {
   id: string;

@@ -3454,7 +3454,7 @@ export default function EventDetailSheet({
     }, []);
 
     // After successful payment, poll for up to 30s until the webhook-backed registration is reflected
-    const confirmRegistrationAfterPayment = async () => {
+    const confirmRegistrationAfterPayment = async ({ pendingPayment = false }: { pendingPayment?: boolean } = {}) => {
         if (!user || !currentEvent) return;
         setConfirmingPurchase(true);
         setJoinError(null);
@@ -3507,6 +3507,10 @@ export default function EventDetailSheet({
                     if (registered) {
                         await loadEventDetails();
                         setConfirmingPurchase(false);
+                        if (pendingPayment) {
+                            setJoinNotice('Payment submitted. Your registration is pending until the bank payment clears.');
+                            return;
+                        }
                         navigateToPublicEventCompletion();
                         return;
                     }
@@ -3522,6 +3526,10 @@ export default function EventDetailSheet({
                         if (registered) {
                             await loadEventDetails();
                             setConfirmingPurchase(false);
+                            if (pendingPayment) {
+                                setJoinNotice('Payment submitted. Your registration is pending until the bank payment clears.');
+                                return;
+                            }
                             navigateToPublicEventCompletion();
                             return;
                         }
@@ -3531,8 +3539,12 @@ export default function EventDetailSheet({
                 await new Promise(res => setTimeout(res, pollIntervalMs));
             }
 
-            // Timed out
-            setJoinError('Timed out');
+            if (pendingPayment) {
+                await loadEventDetails();
+                setJoinNotice('Payment submitted. Your registration is pending until the bank payment clears.');
+            } else {
+                setJoinError('Timed out');
+            }
         } catch (e) {
             setJoinError(e instanceof Error ? e.message : 'Error confirming purchase.');
         } finally {
@@ -5682,6 +5694,10 @@ export default function EventDetailSheet({
                 onPaymentSuccess={async () => {
                     setPaymentData(null);
                     await confirmRegistrationAfterPayment();
+                }}
+                onPaymentPending={async () => {
+                    setPaymentData(null);
+                    await confirmRegistrationAfterPayment({ pendingPayment: true });
                 }}
             />
         </>

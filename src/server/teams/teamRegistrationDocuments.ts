@@ -820,7 +820,7 @@ export const syncTeamRegistrationConsentStatus = async (params: {
     where: {
       teamId,
       userId: registrantId,
-      status: { in: ['STARTED', 'ACTIVE'] },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE'] },
       ...(normalizeText(params.parentUserId) ? { parentId: normalizeText(params.parentUserId) } : {}),
     },
     orderBy: { updatedAt: 'desc' },
@@ -873,7 +873,7 @@ export const syncAllTeamRegistrationConsentStatusesForRegistrant = async (params
   const registrations = await client.teamRegistrations.findMany({
     where: {
       userId: registrantId,
-      status: { in: ['STARTED', 'ACTIVE'] },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE'] },
     },
     select: {
       teamId: true,

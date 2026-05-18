@@ -71,7 +71,7 @@ const isRevokedStatus = (value: unknown): boolean => {
   return status === 'revoked';
 };
 
-const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE', 'BLOCKED'] as const;
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] as const;
 
 const toTimestamp = (value?: string | Date | null): number => {
   if (!value) return 0;
@@ -299,7 +299,7 @@ export async function GET(_req: NextRequest) {
   ));
   const teamRegistrations = await prisma.teamRegistrations.findMany({
     where: {
-      status: { in: ['STARTED', 'ACTIVE'] },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE'] },
       OR: [
         { userId: { in: relevantProfileUserIds } },
         { parentId: userId },

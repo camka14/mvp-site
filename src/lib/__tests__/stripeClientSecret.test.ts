@@ -1,4 +1,4 @@
-import { isStripePaymentIntentClientSecret } from '@/lib/stripeClientSecret';
+import { extractStripePaymentIntentId, isStripePaymentIntentClientSecret } from '@/lib/stripeClientSecret';
 
 describe('isStripePaymentIntentClientSecret', () => {
   it('accepts a Stripe payment intent client secret', () => {
@@ -15,5 +15,15 @@ describe('isStripePaymentIntentClientSecret', () => {
 
   it('rejects non-string values', () => {
     expect(isStripePaymentIntentClientSecret(null)).toBe(false);
+  });
+});
+
+describe('extractStripePaymentIntentId', () => {
+  it('extracts a payment intent id from a client secret', () => {
+    expect(extractStripePaymentIntentId('pi_123_secret_456')).toBe('pi_123');
+  });
+
+  it('does not extract setup intent ids', () => {
+    expect(extractStripePaymentIntentId('seti_123_secret_456')).toBeNull();
   });
 });

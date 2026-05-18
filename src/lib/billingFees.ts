@@ -3,6 +3,18 @@ export const LEAGUE_OR_TOURNAMENT_MVP_FEE_PERCENTAGE = 0.03;
 export const STRIPE_FIXED_FEE_CENTS = 30;
 export const STRIPE_PERCENT_FEE = 0.029;
 export const DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS = 50;
+export const ACH_DIRECT_DEBIT_PERCENT_FEE = 0.008;
+export const ACH_DIRECT_DEBIT_FEE_CAP_CENTS = 500;
+export const USD_BANK_TRANSFER_PERCENT_FEE = 0.005;
+export const USD_BANK_TRANSFER_FEE_CAP_CENTS = 500;
+export const PAY_BY_BANK_PERCENT_FEE = 0.015;
+export const PAY_BY_BANK_FIXED_FEE_CENTS = 30;
+
+export type PaymentMethodFeeType =
+  | 'card'
+  | 'us_bank_account'
+  | 'customer_balance'
+  | 'pay_by_bank';
 
 const normalizeEventType = (eventType: unknown): string => {
   if (typeof eventType !== 'string') {
@@ -27,6 +39,88 @@ export const calculateChargeAmount = (
   const numerator = goalAmountCents + fixedFeeCents;
   const denominator = 1 - percentFee;
   return Math.round(numerator / denominator);
+};
+
+const calculatePercentOnlyChargeAmount = (
+  goalAmountCents: number,
+  percentFee: number,
+  feeCapCents: number,
+): number => {
+  if (goalAmountCents <= 0) return 0;
+  const uncappedTotal = Math.round(goalAmountCents / (1 - percentFee));
+  const uncappedFee = Math.max(0, uncappedTotal - goalAmountCents);
+  if (uncappedFee > feeCapCents) {
+    return goalAmountCents + feeCapCents;
+  }
+  return uncappedTotal;
+};
+
+export const normalizePaymentMethodFeeType = (value: unknown): PaymentMethodFeeType => {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'us_bank_account' || normalized === 'ach' || normalized === 'ach_direct_debit') {
+    return 'us_bank_account';
+  }
+  if (normalized === 'customer_balance' || normalized === 'bank_transfer' || normalized === 'us_bank_transfer') {
+    return 'customer_balance';
+  }
+  if (normalized === 'pay_by_bank') {
+    return 'pay_by_bank';
+  }
+  return 'card';
+};
+
+export const getPaymentMethodFeeLabel = (paymentMethodType: unknown): string => {
+  const normalized = normalizePaymentMethodFeeType(paymentMethodType);
+  if (normalized === 'us_bank_account') return 'Bank account';
+  if (normalized === 'customer_balance') return 'Bank transfer';
+  if (normalized === 'pay_by_bank') return 'Pay by bank';
+  return 'Card';
+};
+
+export const calculateChargeAmountForPaymentMethod = ({
+  goalAmountCents,
+  paymentMethodType,
+}: {
+  goalAmountCents: number;
+  paymentMethodType?: unknown;
+}): {
+  paymentMethodType: PaymentMethodFeeType;
+  stripeProcessingFeeCents: number;
+  totalChargeCents: number;
+} => {
+  const normalizedGoalAmount = Number.isFinite(Number(goalAmountCents))
+    ? Math.max(0, Math.round(Number(goalAmountCents)))
+    : 0;
+  const normalizedPaymentMethodType = normalizePaymentMethodFeeType(paymentMethodType);
+
+  let totalChargeCents = 0;
+  if (normalizedPaymentMethodType === 'us_bank_account') {
+    totalChargeCents = calculatePercentOnlyChargeAmount(
+      normalizedGoalAmount,
+      ACH_DIRECT_DEBIT_PERCENT_FEE,
+      ACH_DIRECT_DEBIT_FEE_CAP_CENTS,
+    );
+  } else if (normalizedPaymentMethodType === 'customer_balance') {
+    totalChargeCents = calculatePercentOnlyChargeAmount(
+      normalizedGoalAmount,
+      USD_BANK_TRANSFER_PERCENT_FEE,
+      USD_BANK_TRANSFER_FEE_CAP_CENTS,
+    );
+  } else if (normalizedPaymentMethodType === 'pay_by_bank') {
+    totalChargeCents = calculateChargeAmount(
+      normalizedGoalAmount,
+      PAY_BY_BANK_FIXED_FEE_CENTS,
+      PAY_BY_BANK_PERCENT_FEE,
+    );
+  } else {
+    totalChargeCents = calculateChargeAmount(normalizedGoalAmount);
+  }
+
+  return {
+    paymentMethodType: normalizedPaymentMethodType,
+    stripeProcessingFeeCents: Math.max(0, totalChargeCents - normalizedGoalAmount),
+    totalChargeCents,
+  };
 };
 
 export const calculateMvpAndStripeFees = ({
@@ -68,11 +162,13 @@ export const calculateMvpAndStripeFees = ({
 export const calculateMvpAndStripeFeesWithTax = ({
   eventAmountCents,
   eventType,
+  paymentMethodType,
   taxAmountCents,
   stripeTaxServiceFeeCents,
 }: {
   eventAmountCents: number;
   eventType?: unknown;
+  paymentMethodType?: unknown;
   taxAmountCents?: number;
   stripeTaxServiceFeeCents?: number;
 }): {
@@ -83,6 +179,7 @@ export const calculateMvpAndStripeFeesWithTax = ({
   taxAmountCents: number;
   totalChargeCents: number;
   mvpFeePercentage: number;
+  paymentMethodType: PaymentMethodFeeType;
 } => {
   const normalizedEventAmount = Number.isFinite(Number(eventAmountCents))
     ? Math.max(0, Math.round(Number(eventAmountCents)))
@@ -104,6 +201,7 @@ export const calculateMvpAndStripeFeesWithTax = ({
       taxAmountCents: normalizedTaxAmount,
       totalChargeCents: normalizedTaxAmount + normalizedStripeTaxServiceFee,
       mvpFeePercentage,
+      paymentMethodType: normalizePaymentMethodFeeType(paymentMethodType),
     };
   }
 
@@ -112,8 +210,11 @@ export const calculateMvpAndStripeFeesWithTax = ({
     + mvpFeeCents
     + normalizedTaxAmount
     + normalizedStripeTaxServiceFee;
-  const totalChargeCents = calculateChargeAmount(goalAmountCents);
-  const stripeProcessingFeeCents = Math.max(0, totalChargeCents - goalAmountCents);
+  const paymentMethodFees = calculateChargeAmountForPaymentMethod({
+    goalAmountCents,
+    paymentMethodType,
+  });
+  const { totalChargeCents, stripeProcessingFeeCents } = paymentMethodFees;
 
   return {
     mvpFeeCents,
@@ -123,5 +224,6 @@ export const calculateMvpAndStripeFeesWithTax = ({
     taxAmountCents: normalizedTaxAmount,
     totalChargeCents,
     mvpFeePercentage,
+    paymentMethodType: paymentMethodFees.paymentMethodType,
   };
 };

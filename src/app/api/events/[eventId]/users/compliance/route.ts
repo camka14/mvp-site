@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
 import { calculateAgeOnDate } from '@/lib/age';
-import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 import {
   buildRequiredSignatureTasks,
   buildSignatureCompletionKey,
@@ -73,7 +72,7 @@ const toPaymentSummary = (bill: {
   totalAmountCents: number | null;
   paidAmountCents: number | null;
   status: string | null;
-} | null): TeamCompliancePaymentSummary => {
+} | null, paymentPending = false): TeamCompliancePaymentSummary => {
   if (!bill) {
     return {
       hasBill: false,
@@ -82,6 +81,7 @@ const toPaymentSummary = (bill: {
       paidAmountCents: 0,
       status: null,
       isPaidInFull: false,
+      paymentPending,
     };
   }
   const totalAmountCents = Number.isFinite(bill.totalAmountCents)
@@ -97,7 +97,19 @@ const toPaymentSummary = (bill: {
     paidAmountCents,
     status: bill.status ? String(bill.status) : null,
     isPaidInFull: totalAmountCents > 0 && paidAmountCents >= totalAmountCents,
+    paymentPending,
   };
+};
+
+const ACTIVE_EVENT_USER_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] as const;
+
+const buildOccurrenceWhere = (req: NextRequest) => {
+  const slotId = normalizeId(req.nextUrl.searchParams.get('slotId'));
+  const occurrenceDate = normalizeId(req.nextUrl.searchParams.get('occurrenceDate'));
+  if (slotId && occurrenceDate) {
+    return { slotId, occurrenceDate };
+  }
+  return { slotId: null, occurrenceDate: null };
 };
 
 export async function GET(
@@ -140,14 +152,41 @@ export async function GET(
     return NextResponse.json(payload, { status: 200 });
   }
 
-  const participantIds = await getEventParticipantIdsForEvent(event.id);
-  const participantUserIds = participantIds.userIds;
+  const occurrenceWhere = buildOccurrenceWhere(req);
+  const registrations = await prisma.eventRegistrations.findMany({
+    where: {
+      eventId,
+      registrantType: { in: ['SELF', 'CHILD'] },
+      rosterRole: 'PARTICIPANT',
+      status: { in: [...ACTIVE_EVENT_USER_REGISTRATION_STATUSES] },
+      ...occurrenceWhere,
+    },
+    select: {
+      registrantId: true,
+      registrantType: true,
+      parentId: true,
+      status: true,
+      updatedAt: true,
+      createdAt: true,
+    },
+    orderBy: [
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ],
+  });
+  const participantUserIds = Array.from(
+    new Set(
+      registrations
+        .map((row) => normalizeId(row.registrantId))
+        .filter((userId): userId is string => Boolean(userId)),
+    ),
+  );
   if (!participantUserIds.length) {
     const payload: EventUserComplianceResponse = { users: [] };
     return NextResponse.json(payload, { status: 200 });
   }
 
-  const [users, registrations, templates, userBills] = await Promise.all([
+  const [users, templates, userBills] = await Promise.all([
     prisma.userData.findMany({
       where: { id: { in: participantUserIds } },
       select: {
@@ -156,18 +195,6 @@ export async function GET(
         lastName: true,
         userName: true,
         dateOfBirth: true,
-      },
-    }),
-    prisma.eventRegistrations.findMany({
-      where: {
-        eventId,
-        registrantId: { in: participantUserIds },
-      },
-      select: {
-        registrantId: true,
-        registrantType: true,
-        parentId: true,
-        updatedAt: true,
       },
     }),
     (() => {
@@ -210,6 +237,7 @@ export async function GET(
     {
       registrantType: string;
       parentId: string | null;
+      status: string | null;
       updatedAt: Date;
     }
   >();
@@ -226,6 +254,7 @@ export async function GET(
     latestRegistrationByUserId.set(userId, {
       registrantType: registration.registrantType,
       parentId: normalizeId(registration.parentId),
+      status: registration.status ? String(registration.status) : null,
       updatedAt: registrationUpdatedAt,
     });
   });
@@ -375,13 +404,14 @@ export async function GET(
       const requiredCount = requiredDocuments.length;
 
       const bill = pickPrimaryBill(userBillsByOwnerId.get(participantUserId) ?? []);
+      const paymentPending = String(registration?.status ?? '').toUpperCase() === 'PENDING';
       const userSummary: TeamComplianceUserSummary = {
         userId: user.id,
         fullName: toDisplayName(user),
         userName: normalizeId(user.userName) ?? undefined,
         isMinorAtEvent,
         registrationType: isChildRegistration ? 'CHILD' : 'ADULT',
-        payment: toPaymentSummary(bill),
+        payment: toPaymentSummary(bill, paymentPending),
         documents: {
           signedCount,
           requiredCount,

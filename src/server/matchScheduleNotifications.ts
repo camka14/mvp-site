@@ -30,7 +30,7 @@ export type MatchScheduleNotificationPlan = {
   changes: MatchScheduleChange[];
 };
 
-const ACTIVE_EVENT_REGISTRATION_STATUSES = ['ACTIVE', 'STARTED'] as const;
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['ACTIVE', 'PENDING', 'STARTED'] as const;
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {

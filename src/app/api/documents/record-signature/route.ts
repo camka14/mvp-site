@@ -332,7 +332,7 @@ export async function POST(request: NextRequest) {
       where: {
         registrantId: scopedChildUserId,
         registrantType: 'CHILD',
-        status: { in: ['STARTED', 'ACTIVE'] },
+        status: { in: ['STARTED', 'PENDING', 'ACTIVE'] },
       },
       select: {
         eventId: true,

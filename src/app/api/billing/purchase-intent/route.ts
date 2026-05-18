@@ -3,7 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { calculateMvpAndStripeFeesWithTax } from '@/lib/billingFees';
+import { calculateMvpAndStripeFeesWithTax, getPaymentMethodFeeLabel } from '@/lib/billingFees';
 import {
   type BillingAddress,
   loadUserBillingProfile,
@@ -196,6 +196,8 @@ const buildFeeBreakdown = (taxQuote: TaxQuote) => ({
   totalCharge: taxQuote.totalChargeCents,
   hostReceives: taxQuote.hostReceivesCents,
   feePercentage: taxQuote.feePercentage,
+  paymentMethodType: taxQuote.paymentMethodType,
+  paymentMethodLabel: taxQuote.paymentMethodLabel,
   purchaseType: taxQuote.purchaseType,
 });
 
@@ -437,8 +439,14 @@ const reserveEventRegistrationSlot = async ({
         divisionTypeKey: true,
       },
     });
-    if (existing && (existing.status === 'ACTIVE' || existing.status === 'STARTED')) {
-      return { ok: false, status: 409, error: 'Participant is already registered for this event.' };
+    if (existing && (existing.status === 'ACTIVE' || existing.status === 'STARTED' || existing.status === 'PENDING')) {
+      return {
+        ok: false,
+        status: 409,
+        error: existing.status === 'PENDING'
+          ? 'Payment is pending for this event registration.'
+          : 'Participant is already registered for this event.',
+      };
     }
 
     const eventDivisionIds = normalizeStringList(event.divisions);
@@ -533,7 +541,7 @@ const reserveEventRegistrationSlot = async ({
       const divisionRegistrations = await tx.eventRegistrations.findMany({
         where: {
           eventId,
-          status: { in: ['STARTED', 'ACTIVE'] as any[] },
+          status: { in: ['STARTED', 'PENDING', 'ACTIVE'] as any[] },
           rosterRole: 'PARTICIPANT' as any,
           ...registrantScope,
           ...(occurrence
@@ -564,7 +572,7 @@ const reserveEventRegistrationSlot = async ({
       const cappedRegistrations = await tx.eventRegistrations.findMany({
         where: {
           eventId,
-          status: { in: ['STARTED', 'ACTIVE'] as any[] },
+          status: { in: ['STARTED', 'PENDING', 'ACTIVE'] as any[] },
           rosterRole: 'PARTICIPANT' as any,
           ...registrantScope,
           ...(occurrence
@@ -920,6 +928,8 @@ export async function POST(req: NextRequest) {
         totalCharge: fallbackFees.totalChargeCents,
         hostReceives: resolvedPurchase.amountCents,
         feePercentage: fallbackFees.mvpFeePercentage * 100,
+        paymentMethodType: fallbackFees.paymentMethodType,
+        paymentMethodLabel: getPaymentMethodFeeLabel(fallbackFees.paymentMethodType),
         purchaseType: resolvedPurchase.purchaseType,
       },
     }, { status: 200 });
@@ -1177,6 +1187,8 @@ export async function POST(req: NextRequest) {
     appendMetadata(metadata, 'stripe_fee_cents', taxQuote.stripeFeeCents);
     appendMetadata(metadata, 'stripe_processing_fee_cents', taxQuote.stripeProcessingFeeCents);
     appendMetadata(metadata, 'stripe_tax_service_fee_cents', taxQuote.stripeTaxServiceFeeCents);
+    appendMetadata(metadata, 'payment_method_fee_type', taxQuote.paymentMethodType);
+    appendMetadata(metadata, 'payment_method_fee_label', taxQuote.paymentMethodLabel);
     appendMetadata(metadata, 'tax_cents', taxQuote.taxAmountCents);
     appendMetadata(metadata, 'fee_percentage', taxQuote.feePercentage.toFixed(4));
     appendMetadata(metadata, 'tax_calculation_id', taxQuote.calculationId);

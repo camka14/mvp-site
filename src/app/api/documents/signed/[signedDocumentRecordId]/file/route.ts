@@ -45,7 +45,7 @@ const hasOrganizationDocumentAccess = async (params: {
       where: {
         eventId,
         registrantId: params.sessionUserId,
-        status: { in: ['STARTED', 'ACTIVE', 'BLOCKED'] },
+        status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] },
       },
       select: { id: true },
     });
@@ -111,7 +111,7 @@ const hasOrganizationDocumentAccess = async (params: {
     const registration = await prisma.teamRegistrations.findFirst({
       where: {
         teamId,
-        status: { in: ['STARTED', 'ACTIVE'] },
+        status: { in: ['STARTED', 'PENDING', 'ACTIVE'] },
         OR: [
           { userId: params.sessionUserId },
           { parentId: params.sessionUserId },

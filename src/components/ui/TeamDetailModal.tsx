@@ -115,7 +115,7 @@ const getPendingInviteRole = (
     return 'team_assistant_coach';
 };
 
-const ACTIVE_PLAYER_REGISTRATION_STATUSES = new Set(['ACTIVE', 'STARTED']);
+const ACTIVE_PLAYER_REGISTRATION_STATUSES = new Set(['ACTIVE', 'PENDING', 'STARTED']);
 const isActivePlayerRegistration = (registration: TeamPlayerRegistration): boolean => (
     ACTIVE_PLAYER_REGISTRATION_STATUSES.has(String(registration.status ?? '').trim().toUpperCase())
 );
@@ -238,7 +238,7 @@ export default function TeamDetailModal({
             currentTeam.playerRegistrations.forEach((registration) => {
                 const userId = registration.userId?.trim();
                 const status = String(registration.status ?? '').trim().toUpperCase();
-                if (userId && status === 'STARTED') {
+                if (userId && (status === 'STARTED' || status === 'PENDING')) {
                     userIds.add(userId);
                 }
             });
@@ -1981,10 +1981,12 @@ export default function TeamDetailModal({
                                                         ? `Registration is ${formatPrice(Math.max(0, Math.round(flow.team.registrationPriceCents ?? 0)))}.`
                                                         : 'Registration is not open for this team.'}
                                                 </Text>
-                                                {flow.currentUserPendingRegistration && (
+                                                {flow.currentUserPaymentPending ? (
+                                                    <Text size="xs" c="dimmed">Your bank payment is processing. Registration is pending until it clears.</Text>
+                                                ) : flow.currentUserPendingRegistration ? (
                                                     <Text size="xs" c="dimmed">Your registration is waiting for payment confirmation.</Text>
-                                                )}
-                                                {flow.team.openRegistration && !flow.teamHasCapacity && !flow.currentUserPendingRegistration && (
+                                                ) : null}
+                                                {flow.team.openRegistration && !flow.teamHasCapacity && !flow.currentUserPendingRegistration && !flow.currentUserPaymentPending && (
                                                     <Text size="xs" c="red">This team is full.</Text>
                                                 )}
                                             </div>

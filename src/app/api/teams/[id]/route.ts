@@ -353,7 +353,7 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
 };
 
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
-const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE', 'BLOCKED'] as const;
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] as const;
 
 const findFutureRegisteredTeamIds = async (
   client: any,

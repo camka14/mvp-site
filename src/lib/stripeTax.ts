@@ -3,6 +3,8 @@ import type { BillingAddress } from '@/lib/billingAddress';
 import {
   calculateMvpAndStripeFeesWithTax,
   DEFAULT_STRIPE_TAX_SERVICE_FEE_CENTS,
+  getPaymentMethodFeeLabel,
+  type PaymentMethodFeeType,
 } from '@/lib/billingFees';
 import { ensurePlatformStripeCustomer } from '@/lib/stripeCustomer';
 
@@ -45,6 +47,8 @@ export type TaxQuote = {
   totalChargeCents: number;
   hostReceivesCents: number;
   feePercentage: number;
+  paymentMethodType: PaymentMethodFeeType;
+  paymentMethodLabel: string;
   purchaseType: string;
   taxCategory: InternalTaxCategory;
   customerId: string;
@@ -80,6 +84,8 @@ export const buildZeroTaxQuote = ({
     totalChargeCents: fees.totalChargeCents,
     hostReceivesCents: normalizedSubtotal,
     feePercentage: fees.mvpFeePercentage * 100,
+    paymentMethodType: fees.paymentMethodType,
+    paymentMethodLabel: getPaymentMethodFeeLabel(fees.paymentMethodType),
     purchaseType,
     taxCategory,
     customerId: '',
@@ -122,6 +128,8 @@ export const buildOrganizerManualTaxQuote = ({
     totalChargeCents: fees.totalChargeCents,
     hostReceivesCents: normalizedSubtotal + fees.taxAmountCents,
     feePercentage: fees.mvpFeePercentage * 100,
+    paymentMethodType: fees.paymentMethodType,
+    paymentMethodLabel: getPaymentMethodFeeLabel(fees.paymentMethodType),
     purchaseType,
     taxCategory,
     customerId: '',
@@ -256,6 +264,8 @@ export const calculateTaxQuote = async ({
     totalChargeCents: fees.totalChargeCents,
     hostReceivesCents: normalizedSubtotal,
     feePercentage: fees.mvpFeePercentage * 100,
+    paymentMethodType: fees.paymentMethodType,
+    paymentMethodLabel: getPaymentMethodFeeLabel(fees.paymentMethodType),
     purchaseType,
     taxCategory,
     customerId,

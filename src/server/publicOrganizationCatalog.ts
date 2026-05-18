@@ -157,6 +157,7 @@ const DEFAULT_ACCENT_COLOR = '#f59e0b';
 const FALLBACK_IMAGE_URL = '/bracketiq-shield.svg';
 const PUBLIC_EVENT_STATES = ['PUBLISHED', null] as const;
 const PUBLIC_TEAM_ACTIVE_STATUS = 'ACTIVE';
+const PUBLIC_TEAM_PENDING_STATUS = 'PENDING';
 const PUBLIC_TEAM_STARTED_STATUS = 'STARTED';
 const PUBLIC_TEAM_VISIBILITY = 'PUBLIC';
 const DEFAULT_LIMIT = 8;
@@ -526,6 +527,7 @@ const getPublicTeamOccupancyByTeamId = async (teamIds: string[]): Promise<Map<st
       teamId: { in: normalizedIds },
       OR: [
         { status: PUBLIC_TEAM_ACTIVE_STATUS },
+        { status: PUBLIC_TEAM_PENDING_STATUS },
         {
           status: PUBLIC_TEAM_STARTED_STATUS,
           createdAt: { gte: startedCutoff },

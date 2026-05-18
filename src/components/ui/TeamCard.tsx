@@ -11,7 +11,7 @@ interface TeamCardProps {
   className?: string;
 }
 
-const ACTIVE_PLAYER_REGISTRATION_STATUSES = new Set(['ACTIVE', 'STARTED']);
+const ACTIVE_PLAYER_REGISTRATION_STATUSES = new Set(['ACTIVE', 'PENDING', 'STARTED']);
 
 const isActivePlayerRegistration = (registration: TeamPlayerRegistration): boolean => (
   ACTIVE_PLAYER_REGISTRATION_STATUSES.has(String(registration.status ?? '').trim().toUpperCase())

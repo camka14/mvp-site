@@ -10,7 +10,11 @@ import { syncManagedOrganizationStripeAccount } from '@/server/organizationStrip
 import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
-import { activateStartedTeamRegistration } from '@/server/teams/teamOpenRegistration';
+import {
+  activateStartedTeamRegistration,
+  cancelPendingTeamRegistration,
+  markTeamRegistrationPaymentPending,
+} from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,7 +66,9 @@ const toIntOrNull = (value: unknown): number | null => {
 
 const SUPPORTED_EVENT_TYPES = new Set([
   'account.updated',
+  'payment_intent.processing',
   'payment_intent.succeeded',
+  'payment_intent.payment_failed',
   'invoice.created',
   'invoice.paid',
   'customer.subscription.created',
@@ -162,6 +168,7 @@ const ensureEventRegistrationFromPurchase = async ({
   occurrenceSlotId,
   occurrenceDate,
   now,
+  targetStatus = 'ACTIVE',
 }: {
   purchaseType: string | null;
   eventId: string | null;
@@ -171,6 +178,7 @@ const ensureEventRegistrationFromPurchase = async ({
   occurrenceSlotId: string | null;
   occurrenceDate: string | null;
   now: Date;
+  targetStatus?: 'ACTIVE' | 'PENDING';
 }): Promise<{ applied: boolean; reason?: string }> => {
   const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
   if (normalizedPurchaseType !== 'event') {
@@ -240,7 +248,7 @@ const ensureEventRegistrationFromPurchase = async ({
               registrantId: teamId,
               registrantType: 'TEAM',
               rosterRole: 'PARTICIPANT',
-              status: 'ACTIVE',
+              status: targetStatus,
               slotId: occurrenceSlotId,
               occurrenceDate,
               ageAtEvent: null,
@@ -252,11 +260,14 @@ const ensureEventRegistrationFromPurchase = async ({
               updatedAt: now,
             },
           });
-        } else if (existingRegistration.status !== 'ACTIVE') {
+        } else if (
+          existingRegistration.status !== targetStatus
+          && !(targetStatus === 'PENDING' && existingRegistration.status === 'ACTIVE')
+        ) {
           await tx.eventRegistrations.update({
             where: { id: effectiveRegistrationId },
             data: {
-              status: 'ACTIVE',
+              status: targetStatus,
               updatedAt: now,
             },
           });
@@ -267,7 +278,7 @@ const ensureEventRegistrationFromPurchase = async ({
             registrantId: teamId,
             registrantType: 'TEAM',
             rosterRole: 'WAITLIST',
-            status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+            status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
             slotId: occurrenceSlotId,
             occurrenceDate,
           },
@@ -312,7 +323,7 @@ const ensureEventRegistrationFromPurchase = async ({
             registrantId: participantUserId,
             registrantType: 'SELF',
             rosterRole: 'PARTICIPANT',
-            status: 'ACTIVE',
+            status: targetStatus,
             slotId: occurrenceSlotId,
             occurrenceDate,
             ageAtEvent: null,
@@ -324,11 +335,14 @@ const ensureEventRegistrationFromPurchase = async ({
             updatedAt: now,
           },
         });
-      } else if (existingRegistration.status !== 'ACTIVE') {
+      } else if (
+        existingRegistration.status !== targetStatus
+        && !(targetStatus === 'PENDING' && existingRegistration.status === 'ACTIVE')
+      ) {
         await tx.eventRegistrations.update({
           where: { id: effectiveRegistrationId },
           data: {
-            status: 'ACTIVE',
+            status: targetStatus,
             updatedAt: now,
           },
         });
@@ -339,7 +353,7 @@ const ensureEventRegistrationFromPurchase = async ({
           registrantId: participantUserId,
           registrantType: { in: ['SELF', 'CHILD'] },
           rosterRole: { in: ['WAITLIST', 'FREE_AGENT'] },
-          status: { in: ['STARTED', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
+          status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
           slotId: occurrenceSlotId,
           occurrenceDate,
         },
@@ -381,6 +395,174 @@ const ensureTeamRegistrationFromPurchase = async ({
     return { applied: false, reason: 'not_team_registration_purchase' };
   }
   return activateStartedTeamRegistration({
+    teamId,
+    userId,
+    registrationId,
+    now,
+  });
+};
+
+const markEventRegistrationPaymentPendingFromPurchase = (params: {
+  purchaseType: string | null;
+  eventId: string | null;
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  occurrenceSlotId: string | null;
+  occurrenceDate: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => (
+  ensureEventRegistrationFromPurchase({
+    ...params,
+    targetStatus: 'PENDING',
+  })
+);
+
+const markTeamRegistrationPaymentPendingFromPurchase = async ({
+  purchaseType,
+  teamId,
+  userId,
+  registrationId,
+  now,
+}: {
+  purchaseType: string | null;
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => {
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  if (normalizedPurchaseType !== 'team_registration') {
+    return { applied: false, reason: 'not_team_registration_purchase' };
+  }
+  return markTeamRegistrationPaymentPending({
+    teamId,
+    userId,
+    registrationId,
+    now,
+  });
+};
+
+const cancelEventRegistrationFromFailedPayment = async ({
+  purchaseType,
+  eventId,
+  teamId,
+  userId,
+  registrationId,
+  occurrenceSlotId,
+  occurrenceDate,
+  now,
+}: {
+  purchaseType: string | null;
+  eventId: string | null;
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  occurrenceSlotId: string | null;
+  occurrenceDate: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => {
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  if (normalizedPurchaseType !== 'event') {
+    return { applied: false, reason: 'not_event_purchase' };
+  }
+  if (!eventId) {
+    return { applied: false, reason: 'missing_event_id' };
+  }
+  if (!teamId && !userId) {
+    return { applied: false, reason: 'missing_participant' };
+  }
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const lockedEvents = await tx.$queryRaw<Array<{
+        id: string;
+        eventType: string | null;
+        teamSignup: boolean | null;
+      }>>`
+        SELECT
+          "id",
+          "eventType",
+          "teamSignup"
+        FROM "Events"
+        WHERE "id" = ${eventId}
+        FOR UPDATE
+      `;
+      const event = lockedEvents[0] ?? null;
+      if (!event) {
+        return { applied: false, reason: 'event_not_found' };
+      }
+
+      const registrantType = teamId ? 'TEAM' : 'SELF';
+      const registrantId = teamId ?? userId as string;
+      if (registrantType === 'TEAM') {
+        if (!event.teamSignup) {
+          return { applied: false, reason: 'team_signup_disabled' };
+        }
+        const normalizedEventType = String(event.eventType ?? '').toUpperCase();
+        if (normalizedEventType === 'LEAGUE' || normalizedEventType === 'TOURNAMENT') {
+          return { applied: false, reason: 'schedulable_team_event_requires_participant_route' };
+        }
+      } else if (event.teamSignup) {
+        return { applied: false, reason: 'team_signup_event_requires_team' };
+      }
+
+      const expectedRegistrationId = buildEventRegistrationId({
+        eventId,
+        registrantType,
+        registrantId,
+        slotId: occurrenceSlotId,
+        occurrenceDate,
+      });
+      const normalizedRegistrationId = toStringOrNull(registrationId);
+      if (normalizedRegistrationId && normalizedRegistrationId !== expectedRegistrationId) {
+        return { applied: false, reason: 'registration_id_mismatch' };
+      }
+
+      const result = await tx.eventRegistrations.updateMany({
+        where: {
+          id: normalizedRegistrationId ?? expectedRegistrationId,
+          status: { in: ['STARTED', 'PENDING'] },
+        },
+        data: {
+          status: 'CANCELLED',
+          updatedAt: now,
+        },
+      });
+      return result.count > 0
+        ? { applied: true }
+        : { applied: false, reason: 'reservation_not_pending' };
+    });
+  } catch (error) {
+    console.error('Failed to cancel webhook event registration after payment failure', {
+      purchaseType,
+      eventId,
+      teamId,
+      userId,
+      error,
+    });
+    return { applied: false, reason: 'error' };
+  }
+};
+
+const cancelTeamRegistrationFromFailedPayment = async ({
+  purchaseType,
+  teamId,
+  userId,
+  registrationId,
+  now,
+}: {
+  purchaseType: string | null;
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => {
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  if (normalizedPurchaseType !== 'team_registration') {
+    return { applied: false, reason: 'not_team_registration_purchase' };
+  }
+  return cancelPendingTeamRegistration({
     teamId,
     userId,
     registrationId,
@@ -1020,6 +1202,116 @@ export async function POST(req: NextRequest) {
     let resolvedBillId = billId;
     let resolvedBillPaymentId = billPaymentId;
     let shouldSendReceipt = false;
+
+    if (eventType === 'payment_intent.processing') {
+      const registrationResult = await markEventRegistrationPaymentPendingFromPurchase({
+        purchaseType,
+        eventId,
+        teamId,
+        userId,
+        registrationId,
+        occurrenceSlotId,
+        occurrenceDate,
+        now,
+      });
+      if (
+        !registrationResult.applied &&
+        registrationResult.reason &&
+        registrationResult.reason !== 'not_event_purchase' &&
+        registrationResult.reason !== 'missing_event_id' &&
+        registrationResult.reason !== 'missing_participant'
+      ) {
+        console.warn('Stripe webhook skipped pending event registration sync.', {
+          paymentIntentId,
+          purchaseType,
+          userId,
+          teamId,
+          eventId,
+          registrationId,
+          reason: registrationResult.reason,
+        });
+      }
+
+      const teamRegistrationResult = await markTeamRegistrationPaymentPendingFromPurchase({
+        purchaseType,
+        teamId,
+        userId,
+        registrationId,
+        now,
+      });
+      if (
+        !teamRegistrationResult.applied &&
+        teamRegistrationResult.reason &&
+        teamRegistrationResult.reason !== 'not_team_registration_purchase'
+      ) {
+        console.warn('Stripe webhook skipped pending team registration sync.', {
+          paymentIntentId,
+          purchaseType,
+          userId,
+          teamId,
+          registrationId,
+          reason: teamRegistrationResult.reason,
+        });
+      }
+
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    if (eventType === 'payment_intent.payment_failed') {
+      const registrationResult = await cancelEventRegistrationFromFailedPayment({
+        purchaseType,
+        eventId,
+        teamId,
+        userId,
+        registrationId,
+        occurrenceSlotId,
+        occurrenceDate,
+        now,
+      });
+      if (
+        !registrationResult.applied &&
+        registrationResult.reason &&
+        registrationResult.reason !== 'not_event_purchase' &&
+        registrationResult.reason !== 'missing_event_id' &&
+        registrationResult.reason !== 'missing_participant' &&
+        registrationResult.reason !== 'reservation_not_pending'
+      ) {
+        console.warn('Stripe webhook skipped failed event registration cleanup.', {
+          paymentIntentId,
+          purchaseType,
+          userId,
+          teamId,
+          eventId,
+          registrationId,
+          reason: registrationResult.reason,
+        });
+      }
+
+      const teamRegistrationResult = await cancelTeamRegistrationFromFailedPayment({
+        purchaseType,
+        teamId,
+        userId,
+        registrationId,
+        now,
+      });
+      if (
+        !teamRegistrationResult.applied &&
+        teamRegistrationResult.reason &&
+        teamRegistrationResult.reason !== 'not_team_registration_purchase' &&
+        teamRegistrationResult.reason !== 'reservation_not_pending'
+      ) {
+        console.warn('Stripe webhook skipped failed team registration cleanup.', {
+          paymentIntentId,
+          purchaseType,
+          userId,
+          teamId,
+          registrationId,
+          reason: teamRegistrationResult.reason,
+        });
+      }
+
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
 
     if (billId || billPaymentId) {
       if (!billId || !billPaymentId) {

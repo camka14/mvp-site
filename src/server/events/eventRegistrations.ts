@@ -14,6 +14,7 @@ export type RegistrationRegistrantType = 'SELF' | 'CHILD' | 'TEAM';
 export type RegistrationRosterRole = 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGENT';
 export type RegistrationLifecycleStatus =
   | 'STARTED'
+  | 'PENDING'
   | 'ACTIVE'
   | 'BLOCKED'
   | 'CANCELLED'
@@ -119,7 +120,7 @@ export type EventParticipantSnapshot = {
   occurrence: { slotId: string; occurrenceDate: string } | null;
 };
 
-const REGISTERED_MEMBER_STATUSES = new Set<RegistrationLifecycleStatus>(['STARTED', 'ACTIVE', 'BLOCKED']);
+const REGISTERED_MEMBER_STATUSES = new Set<RegistrationLifecycleStatus>(['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED']);
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -165,7 +166,13 @@ const normalizeRosterRole = (value: unknown): RegistrationRosterRole => {
 
 const normalizeLifecycleStatus = (value: unknown): RegistrationLifecycleStatus => {
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
-  if (normalized === 'ACTIVE' || normalized === 'BLOCKED' || normalized === 'CANCELLED' || normalized === 'CONSENTFAILED') {
+  if (
+    normalized === 'PENDING'
+    || normalized === 'ACTIVE'
+    || normalized === 'BLOCKED'
+    || normalized === 'CANCELLED'
+    || normalized === 'CONSENTFAILED'
+  ) {
     return normalized;
   }
   return 'STARTED';

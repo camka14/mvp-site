@@ -22,7 +22,11 @@ jest.mock('@/server/teams/teamMembership', () => {
   };
 });
 
-import { reserveTeamRegistrationSlot } from '@/server/teams/teamOpenRegistration';
+import {
+  activateStartedTeamRegistration,
+  markTeamRegistrationPaymentPending,
+  reserveTeamRegistrationSlot,
+} from '@/server/teams/teamOpenRegistration';
 
 describe('reserveTeamRegistrationSlot', () => {
   beforeEach(() => {
@@ -76,12 +80,102 @@ describe('reserveTeamRegistrationSlot', () => {
       status: 'STARTED',
     });
     expect(teamRegistrationsCreateMock).not.toHaveBeenCalled();
-    expect(teamRegistrationsUpdateMock).not.toHaveBeenCalled();
+    expect(teamRegistrationsUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'team_1__user_1' },
+        data: expect.objectContaining({
+          updatedAt: new Date('2026-04-21T18:02:00.000Z'),
+        }),
+      }),
+    );
     expect(teamRegistrationsDeleteManyMock).not.toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ id: 'team_1__user_1' }),
       }),
     );
     expect(syncTeamChatInTxMock).not.toHaveBeenCalled();
+  });
+
+  it('marks a started team registration as pending when async payment is processing', async () => {
+    const teamRegistrationsFindUniqueMock = jest.fn().mockResolvedValue({
+      id: 'team_1__user_1',
+      teamId: 'team_1',
+      userId: 'user_1',
+      status: 'STARTED',
+    });
+    const teamRegistrationsUpdateMock = jest.fn();
+    const tx = {
+      teamRegistrations: {
+        findUnique: teamRegistrationsFindUniqueMock,
+        update: teamRegistrationsUpdateMock,
+      },
+    };
+    prismaMock.$transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const result = await markTeamRegistrationPaymentPending({
+      teamId: 'team_1',
+      userId: 'user_1',
+      registrationId: 'team_1__user_1',
+      now: new Date('2026-04-21T18:03:00.000Z'),
+    });
+
+    expect(result).toEqual({ applied: true });
+    expect(teamRegistrationsUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'team_1__user_1' },
+        data: expect.objectContaining({
+          status: 'PENDING',
+          updatedAt: new Date('2026-04-21T18:03:00.000Z'),
+        }),
+      }),
+    );
+    expect(syncTeamChatInTxMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('activates a pending team registration when async payment succeeds', async () => {
+    const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([
+      { id: 'team_1__user_1', createdAt: new Date('2026-04-21T18:00:00.000Z') },
+    ]);
+    const teamRegistrationsFindUniqueMock = jest.fn().mockResolvedValue({
+      id: 'team_1__user_1',
+      teamId: 'team_1',
+      userId: 'user_1',
+      status: 'PENDING',
+    });
+    const teamRegistrationsUpdateMock = jest.fn();
+    const teamRegistrationsDeleteManyMock = jest.fn();
+    const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{
+        id: 'team_1',
+        teamSize: 1,
+      }]),
+      teamRegistrations: {
+        findMany: teamRegistrationsFindManyMock,
+        findUnique: teamRegistrationsFindUniqueMock,
+        update: teamRegistrationsUpdateMock,
+        deleteMany: teamRegistrationsDeleteManyMock,
+      },
+    };
+    prismaMock.$transaction.mockImplementation(async (callback: (client: typeof tx) => Promise<unknown>) => callback(tx));
+
+    const result = await activateStartedTeamRegistration({
+      teamId: 'team_1',
+      userId: 'user_1',
+      registrationId: 'team_1__user_1',
+      now: new Date('2026-04-21T18:04:00.000Z'),
+    });
+
+    expect(result).toEqual({ applied: true });
+    expect(teamRegistrationsUpdateMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'team_1__user_1' },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+          updatedAt: new Date('2026-04-21T18:04:00.000Z'),
+        }),
+      }),
+    );
+    expect(teamRegistrationsDeleteManyMock).not.toHaveBeenCalled();
+    expect(syncTeamChatInTxMock).toHaveBeenCalledTimes(1);
   });
 });

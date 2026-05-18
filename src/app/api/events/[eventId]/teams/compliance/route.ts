@@ -3,7 +3,6 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageEvent } from '@/server/accessControl';
 import { calculateAgeOnDate } from '@/lib/age';
-import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
 import {
   buildRequiredSignatureTasks,
   buildSignatureCompletionKey,
@@ -73,7 +72,7 @@ const toPaymentSummary = (bill: {
   totalAmountCents: number | null;
   paidAmountCents: number | null;
   status: string | null;
-} | null, inheritedFromTeamBill = false): TeamCompliancePaymentSummary => {
+} | null, inheritedFromTeamBill = false, paymentPending = false): TeamCompliancePaymentSummary => {
   if (!bill) {
     return {
       hasBill: false,
@@ -82,6 +81,7 @@ const toPaymentSummary = (bill: {
       paidAmountCents: 0,
       status: null,
       isPaidInFull: false,
+      paymentPending,
       inheritedFromTeamBill,
     };
   }
@@ -98,8 +98,20 @@ const toPaymentSummary = (bill: {
     paidAmountCents,
     status: bill.status ? String(bill.status) : null,
     isPaidInFull: totalAmountCents > 0 && paidAmountCents >= totalAmountCents,
+    paymentPending,
     inheritedFromTeamBill,
   };
+};
+
+const ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] as const;
+
+const buildOccurrenceWhere = (req: NextRequest) => {
+  const slotId = normalizeId(req.nextUrl.searchParams.get('slotId'));
+  const occurrenceDate = normalizeId(req.nextUrl.searchParams.get('occurrenceDate'));
+  if (slotId && occurrenceDate) {
+    return { slotId, occurrenceDate };
+  }
+  return { slotId: null, occurrenceDate: null };
 };
 
 export async function GET(
@@ -143,12 +155,55 @@ export async function GET(
     return NextResponse.json(payload, { status: 200 });
   }
 
-  const participantIds = await getEventParticipantIdsForEvent(event.id);
-  const teamIds = participantIds.teamIds;
+  const occurrenceWhere = buildOccurrenceWhere(req);
+  const teamRegistrationRows = await prisma.eventRegistrations.findMany({
+    where: {
+      eventId: event.id,
+      registrantType: 'TEAM',
+      rosterRole: 'PARTICIPANT',
+      status: { in: [...ACTIVE_EVENT_TEAM_REGISTRATION_STATUSES] },
+      ...occurrenceWhere,
+    },
+    select: {
+      registrantId: true,
+      status: true,
+      updatedAt: true,
+      createdAt: true,
+    },
+    orderBy: [
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ],
+  });
+  const teamIds = Array.from(
+    new Set(
+      teamRegistrationRows
+        .map((row) => normalizeId(row.registrantId))
+        .filter((teamId): teamId is string => Boolean(teamId)),
+    ),
+  );
   if (!teamIds.length) {
     const payload: EventTeamComplianceResponse = { teams: [] };
     return NextResponse.json(payload, { status: 200 });
   }
+
+  const registrationByTeamId = new Map<string, { status: string | null; updatedAt: Date | null; createdAt: Date | null }>();
+  teamRegistrationRows.forEach((registration) => {
+    const teamId = normalizeId(registration.registrantId);
+    if (!teamId) {
+      return;
+    }
+    const existing = registrationByTeamId.get(teamId);
+    const existingTs = Math.max(toTimestamp(existing?.updatedAt), toTimestamp(existing?.createdAt));
+    const nextTs = Math.max(toTimestamp(registration.updatedAt), toTimestamp(registration.createdAt));
+    if (!existing || nextTs >= existingTs) {
+      registrationByTeamId.set(teamId, {
+        status: registration.status ? String(registration.status) : null,
+        updatedAt: registration.updatedAt ?? null,
+        createdAt: registration.createdAt ?? null,
+      });
+    }
+  });
 
   const [teams, templates] = await Promise.all([
     prisma.teams.findMany({
@@ -429,7 +484,12 @@ export async function GET(
       const slotTeamBills = teamBillsByOwnerId.get(teamId) ?? [];
       const selectedTeamBills = parentTeamBills.length > 0 ? parentTeamBills : slotTeamBills;
       const teamBill = pickPrimaryBill(selectedTeamBills);
-      const teamPayment = toPaymentSummary(teamBill, Boolean(teamBill && parentTeamId && parentTeamBills.length > 0));
+      const teamPaymentPending = String(registrationByTeamId.get(teamId)?.status ?? '').toUpperCase() === 'PENDING';
+      const teamPayment = toPaymentSummary(
+        teamBill,
+        Boolean(teamBill && parentTeamId && parentTeamBills.length > 0),
+        teamPaymentPending,
+      );
       const orderedPlayerIds = normalizeIdList(team.playerIds);
 
       const usersForTeam: TeamComplianceUserSummary[] = orderedPlayerIds
@@ -484,7 +544,7 @@ export async function GET(
             : null;
           const userPayment = userBillForTeam
             ? toPaymentSummary(userBillForTeam)
-            : toPaymentSummary(teamBill, Boolean(teamBill));
+            : toPaymentSummary(teamBill, Boolean(teamBill), teamPayment.paymentPending === true);
 
           const userSummary: TeamComplianceUserSummary = {
             userId: user.id,

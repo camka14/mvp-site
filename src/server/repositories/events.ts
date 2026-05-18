@@ -215,7 +215,7 @@ const normalizeOptionalText = (value: unknown): string | null => {
   return trimmed.length ? trimmed : null;
 };
 
-const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'ACTIVE', 'BLOCKED'] as const;
+const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] as const;
 
 export const syncEventParticipantRegistrationsFromCompatibilityIds = async (
   client: PrismaLike,
@@ -2444,7 +2444,7 @@ export const loadEventWithRelations = async (
             eventId: event.id,
             eventTeamId: { in: teamIdsToLoad },
             rosterRole: 'PARTICIPANT',
-            status: { in: ['ACTIVE', 'STARTED'] },
+            status: { in: ['ACTIVE', 'PENDING', 'STARTED'] },
           },
           select: {
             id: true,

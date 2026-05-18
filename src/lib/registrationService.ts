@@ -2,6 +2,7 @@ import { apiRequest } from '@/lib/apiClient';
 
 export type RegistrationStatus =
   | 'pendingConsent'
+  | 'pending'
   | 'active'
   | 'blocked'
   | 'cancelled'

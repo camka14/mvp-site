@@ -1,0 +1,2 @@
+ALTER TYPE "EventRegistrationsStatusEnum" ADD VALUE IF NOT EXISTS 'PENDING';
+ALTER TYPE "TeamMembershipStatusEnum" ADD VALUE IF NOT EXISTS 'PENDING';

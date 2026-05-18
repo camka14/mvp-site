@@ -93,7 +93,7 @@ const resolveLinkedParentUserId = async (params: {
       teamId: params.teamId,
       userId: params.childId,
       registrantType: 'CHILD',
-      status: { in: ['STARTED', 'ACTIVE'] },
+      status: { in: ['STARTED', 'PENDING', 'ACTIVE'] },
       parentId: { not: null },
     },
     orderBy: { updatedAt: 'desc' },

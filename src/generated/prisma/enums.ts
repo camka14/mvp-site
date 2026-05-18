@@ -196,6 +196,7 @@ export type EventRegistrationsRosterRoleEnum = (typeof EventRegistrationsRosterR
 
 export const EventRegistrationsStatusEnum = {
   STARTED: 'STARTED',
+  PENDING: 'PENDING',
   ACTIVE: 'ACTIVE',
   BLOCKED: 'BLOCKED',
   CANCELLED: 'CANCELLED',
@@ -208,6 +209,7 @@ export type EventRegistrationsStatusEnum = (typeof EventRegistrationsStatusEnum)
 export const TeamMembershipStatusEnum = {
   INVITED: 'INVITED',
   STARTED: 'STARTED',
+  PENDING: 'PENDING',
   ACTIVE: 'ACTIVE',
   LEFT: 'LEFT',
   REMOVED: 'REMOVED'

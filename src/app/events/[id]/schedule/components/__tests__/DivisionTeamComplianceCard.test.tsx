@@ -129,6 +129,29 @@ describe('DivisionTeamComplianceCard', () => {
     expect(screen.queryByText(/rostered user/i)).not.toBeInTheDocument();
   });
 
+  it('shows pending payment before bill details when registration payment is processing', () => {
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam()}
+        summary={{
+          ...createSummary(),
+          payment: {
+            hasBill: false,
+            billId: null,
+            totalAmountCents: 0,
+            paidAmountCents: 0,
+            status: null,
+            isPaidInFull: false,
+            paymentPending: true,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Payment pending')).toBeInTheDocument();
+    expect(screen.queryByText('No team bill yet')).not.toBeInTheDocument();
+  });
+
   it('renders actions after all team compliance text', () => {
     renderWithMantine(
       <DivisionTeamComplianceCard

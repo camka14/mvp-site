@@ -785,7 +785,7 @@ const getEventScheduleContext = async (
       orderBy: { name: 'asc' },
     }),
     prisma.eventRegistrations.findMany({
-      where: { eventId, status: { in: ['ACTIVE', 'STARTED'] } },
+      where: { eventId, status: { in: ['ACTIVE', 'PENDING', 'STARTED'] } },
       select: {
         id: true,
         registrantType: true,

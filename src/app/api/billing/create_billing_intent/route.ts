@@ -3,6 +3,7 @@ import { z } from 'zod';
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
+import { calculateChargeAmountForPaymentMethod, getPaymentMethodFeeLabel } from '@/lib/billingFees';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,12 +12,6 @@ const schema = z.object({
   billPaymentId: z.string(),
   user: z.record(z.string(), z.any()).optional(),
 }).passthrough();
-
-const calculateChargeAmount = (goalAmountCents: number, fixedFeeCents = 30, percentFee = 0.029) => {
-  const numerator = goalAmountCents + fixedFeeCents;
-  const denominator = 1 - percentFee;
-  return Math.round(numerator / denominator);
-};
 
 export async function POST(req: NextRequest) {
   await requireSession(req);
@@ -54,16 +49,24 @@ export async function POST(req: NextRequest) {
   });
   const appFeePercentage = billIncludesFeeLineItems ? 0 : 0.01;
   const applicationFee = Math.round(amountCents * appFeePercentage);
-  const totalCharge = calculateChargeAmount(amountCents + applicationFee);
-  const stripeFee = totalCharge - amountCents - applicationFee;
+  const paymentMethodFees = calculateChargeAmountForPaymentMethod({
+    goalAmountCents: amountCents + applicationFee,
+  });
+  const totalCharge = paymentMethodFees.totalChargeCents;
+  const stripeFee = paymentMethodFees.stripeProcessingFeeCents;
 
   const feeBreakdown = {
     eventPrice: amountCents,
     stripeFee,
+    stripeProcessingFee: stripeFee,
+    stripeTaxServiceFee: 0,
     processingFee: applicationFee,
+    mvpFee: applicationFee,
     totalCharge,
     hostReceives: amountCents,
     feePercentage: appFeePercentage * 100,
+    paymentMethodType: paymentMethodFees.paymentMethodType,
+    paymentMethodLabel: getPaymentMethodFeeLabel(paymentMethodFees.paymentMethodType),
     purchaseType: 'bill',
   };
 
@@ -94,7 +97,12 @@ export async function POST(req: NextRequest) {
         amount_cents: String(amountCents),
         total_charge_cents: String(totalCharge),
         processing_fee_cents: String(applicationFee),
+        mvp_fee_cents: String(applicationFee),
         stripe_fee_cents: String(stripeFee),
+        stripe_processing_fee_cents: String(stripeFee),
+        stripe_tax_service_fee_cents: '0',
+        payment_method_fee_type: paymentMethodFees.paymentMethodType,
+        payment_method_fee_label: getPaymentMethodFeeLabel(paymentMethodFees.paymentMethodType),
         ...(bill.eventId ? { event_id: bill.eventId } : {}),
         ...(bill.organizationId ? { organization_id: bill.organizationId } : {}),
         ...(userId ? { user_id: String(userId) } : {}),

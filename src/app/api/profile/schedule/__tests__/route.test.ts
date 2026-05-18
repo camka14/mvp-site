@@ -257,7 +257,7 @@ describe('GET /api/profile/schedule', () => {
     expect(prismaMock.eventRegistrations.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
-          status: { in: ['ACTIVE', 'STARTED', 'BLOCKED'] },
+          status: { in: ['ACTIVE', 'PENDING', 'STARTED', 'BLOCKED'] },
           OR: [
             {
               registrantId: 'user_1',

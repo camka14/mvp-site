@@ -304,7 +304,7 @@ export const createVisibilityContext = async (
       ? await client.eventRegistrations.findMany({
         where: {
           eventId: contextEventId,
-          status: { in: ['STARTED', 'ACTIVE', 'BLOCKED'] },
+          status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] },
           slotId: null,
           occurrenceDate: null,
         },
