@@ -46,7 +46,7 @@ import { resolveDraftSportForScoring } from './eventDraftSport';
 import { resolveTournamentSetMode } from './tournamentSetMode';
 import { applyEventDefaultsToDivisionDetails } from './divisionDefaults';
 import { mergeSlotPayloadsForForm } from './slotPayloadMerge';
-import { hasExternalRentalFieldForEvent } from './externalRentalField';
+import { getFieldOrganizationId, hasExternalRentalFieldForEvent } from './externalRentalField';
 import MatchRulesSection from './MatchRulesSection';
 import CentsInput from '@/components/ui/CentsInput';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
@@ -731,6 +731,12 @@ const supportsScheduleSlotsForEvent = (eventType: EventType, parentEvent?: strin
     && !(eventType === 'WEEKLY_EVENT' && hasParentEventRef(parentEvent))
 );
 
+const supportsFieldCountForEvent = (eventType: EventType): boolean =>
+    eventType === 'LEAGUE' || eventType === 'TOURNAMENT';
+
+const supportsOrganizationFieldSelectionForEvent = (eventType: EventType, parentEvent?: string | null): boolean =>
+    eventType === 'EVENT' || (eventType === 'WEEKLY_EVENT' && !hasParentEventRef(parentEvent));
+
 const isTournamentPoolPlayFormEnabled = (eventType: EventType, includePlayoffs: boolean): boolean => (
     eventType === 'TOURNAMENT' && includePlayoffs
 );
@@ -1099,6 +1105,44 @@ const toFieldIdList = (fields: Field[]): string[] => {
         ),
     );
 };
+
+const fieldHasOrganization = (field?: Field | null): boolean => Boolean(getFieldOrganizationId(field));
+
+const isEventLocalField = (field?: Field | null): boolean => !fieldHasOrganization(field);
+
+const withOrganizationFieldOwner = (field: Field, organizationId: string): Field => {
+    if (!organizationId || getFieldOrganizationId(field)) {
+        return field;
+    }
+    return {
+        ...field,
+        organization: organizationId as unknown as Organization,
+    };
+};
+
+const mergeOrganizationFieldsIntoPool = (
+    currentFields: Field[],
+    organizationFields: Field[],
+    organizationId: string,
+): Field[] => {
+    const normalizedOrganizationFields = sortFieldsByCreatedAt(
+        organizationFields.map((field) => withOrganizationFieldOwner(field, organizationId)),
+    );
+    const organizationFieldIds = new Set(toFieldIdList(normalizedOrganizationFields));
+    const retainedFields = currentFields.filter((field) => {
+        const fieldId = typeof field?.$id === 'string' ? field.$id : '';
+        if (organizationFieldIds.has(fieldId)) {
+            return false;
+        }
+        return getFieldOrganizationId(field) !== organizationId;
+    });
+    return [...normalizedOrganizationFields, ...retainedFields];
+};
+
+const removeOrganizationFieldsFromPool = (
+    currentFields: Field[],
+    organizationId: string,
+): Field[] => currentFields.filter((field) => getFieldOrganizationId(field) !== organizationId);
 
 const normalizeDivisionFieldIds = (
     value: unknown,
@@ -3328,7 +3372,7 @@ const tournamentConfigSchema = z.object({
     winnerBracketPointsToVictory: z.array(z.number()),
     loserBracketPointsToVictory: z.array(z.number()),
     prize: z.string(),
-    fieldCount: z.number().min(1),
+    fieldCount: z.number().min(0),
     restTimeMinutes: z.number().min(0),
     usesSets: z.boolean().optional(),
     matchDurationMinutes: z.number().optional(),
@@ -3492,7 +3536,7 @@ const eventFormSchema = z
         playoffData: tournamentConfigSchema,
         tournamentData: tournamentConfigSchema,
         fields: z.array(z.any()),
-        fieldCount: z.number().min(1),
+        fieldCount: z.number().min(0),
         joinAsParticipant: z.boolean(),
     })
     .superRefine((values, ctx) => {
@@ -3565,6 +3609,22 @@ const eventFormSchema = z
                 code: "custom",
                 message: 'Select at least one organization field for this event.',
                 path: ['selectedFieldIds'],
+            });
+        }
+        const localFieldCount = values.fields.filter((field) => isEventLocalField(field as Field)).length;
+        const selectedOrganizationFieldCount = values.selectedFieldIds.length;
+        const scheduledFieldCount = Array.from(
+            new Set(values.leagueSlots.flatMap((slot) => normalizeSlotFieldIds(slot))),
+        ).length;
+        const hasAtLeastOneField = selectedOrganizationFieldCount > 0
+            || localFieldCount > 0
+            || scheduledFieldCount > 0
+            || values.fieldCount > 0;
+        if ((values.eventType === 'EVENT' || values.eventType === 'WEEKLY_EVENT') && !hasAtLeastOneField) {
+            ctx.addIssue({
+                code: "custom",
+                message: 'Select or create at least one field for this event.',
+                path: ['fieldCount'],
             });
         }
 
@@ -3942,6 +4002,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const buildDraftForDirtyTrackingRef = useRef<(values: EventFormValues) => Partial<Event>>(
         () => ({}),
     );
+    const previousEventTypeRef = useRef<EventType | null>(null);
     const previousEventFieldLocationRef = useRef<string>('');
     const slotConflictRequestRef = useRef(0);
     // Builds the mutable slot model consumed by LeagueFields whenever we add or hydrate time slots.
@@ -4331,29 +4392,73 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             || ''
         ).trim();
 
-        const defaultFieldCount = (() => {
-            if (activeEditingEvent?.fields?.length) {
-                return activeEditingEvent.fields.length;
-            }
-            if (activeEditingEvent && typeof (activeEditingEvent as any)?.fieldCount === 'number') {
-                const parsed = Number((activeEditingEvent as any).fieldCount);
-                return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-            }
-            return 1;
-        })();
         const defaultFieldLocation = defaultFieldLocationForEvent(base.location);
+        const defaultOrganizationFields = hostedOrganizationId && Array.isArray(resolvedOrganizationFields)
+            ? sortFieldsByCreatedAt(
+                sanitizeFieldsForForm(resolvedOrganizationFields as Field[])
+                    .map((field) => withOrganizationFieldOwner(field, hostedOrganizationId)),
+            )
+            : [];
+        const activeEventFields = Array.isArray(activeEditingEvent?.fields)
+            ? sortFieldsByCreatedAt(sanitizeFieldsForForm(activeEditingEvent.fields))
+            : [];
+        const activeEventLocalFields = activeEventFields.filter(isEventLocalField);
+        const supportsOrganizationFieldSelectionForDefault = supportsOrganizationFieldSelectionForEvent(
+            base.eventType,
+            base.parentEvent,
+        );
+        const supportsFieldCountForDefault = supportsFieldCountForEvent(base.eventType);
+        const hasReusableOrganizationFieldsForDefaultCount = Boolean(
+            hostedOrganizationId
+            && supportsOrganizationFieldSelectionForDefault
+            && (
+                defaultOrganizationFields.length > 0
+                || activeEventFields.some((field) => getFieldOrganizationId(field) === hostedOrganizationId)
+            ),
+        );
+        const allowsDefaultLocalFields = supportsFieldCountForDefault
+            || supportsOrganizationFieldSelectionForDefault;
+
+        const defaultFieldCount = (() => {
+            if (activeEventLocalFields.length) {
+                return activeEventLocalFields.length;
+            }
+            if (hostedOrganizationId && isCreateMode) {
+                return 0;
+            }
+            if (
+                activeEditingEvent
+                && !hasReusableOrganizationFieldsForDefaultCount
+                && typeof (activeEditingEvent as any)?.fieldCount === 'number'
+            ) {
+                const parsed = Number((activeEditingEvent as any).fieldCount);
+                return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+            }
+            if (hasReusableOrganizationFieldsForDefaultCount) {
+                return 0;
+            }
+            return allowsDefaultLocalFields || !hostedOrganizationId ? 1 : 0;
+        })();
 
         const defaultFields: Field[] = (() => {
             if (hasImmutableFields) {
                 return sanitizeFieldsForForm(immutableFields);
             }
-            if (hostedOrganizationId && Array.isArray(resolvedOrganizationFields) && resolvedOrganizationFields.length) {
-                return sortFieldsByCreatedAt(sanitizeFieldsForForm(resolvedOrganizationFields as Field[]));
+            if (hostedOrganizationId && defaultOrganizationFields.length) {
+                const retainedActiveFields = activeEventFields.filter((field) => {
+                    const fieldOrganizationId = getFieldOrganizationId(field);
+                    return !fieldOrganizationId || fieldOrganizationId !== hostedOrganizationId;
+                });
+                return mergeOrganizationFieldsIntoPool(
+                    retainedActiveFields,
+                    defaultOrganizationFields,
+                    hostedOrganizationId,
+                );
             }
-            if (activeEditingEvent?.fields?.length) {
-                return sortFieldsByCreatedAt(sanitizeFieldsForForm(activeEditingEvent.fields));
+            if (activeEventFields.length) {
+                return activeEventFields;
             }
-            if (!hostedOrganizationId) {
+            if ((allowsDefaultLocalFields || !hostedOrganizationId) && defaultFieldCount > 0) {
                 return Array.from({ length: defaultFieldCount }, (_, idx) => ({
                     $id: createClientId(),
                     name: `Field ${idx + 1}`,
@@ -4363,16 +4468,22 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return [];
         })();
         const allDefaultFieldIds = toFieldIdList(defaultFields);
+        const defaultOrganizationFieldIds = hostedOrganizationId
+            ? toFieldIdList(defaultFields.filter((field) => getFieldOrganizationId(field) === hostedOrganizationId))
+            : [];
         const defaultSelectedFieldIds = (() => {
+            const selectableFieldIds = hostedOrganizationId && supportsOrganizationFieldSelectionForDefault
+                ? defaultOrganizationFieldIds
+                : allDefaultFieldIds;
             if (Array.isArray(base.selectedFieldIds)) {
-                return Array.from(new Set(base.selectedFieldIds.filter((fieldId) => allDefaultFieldIds.includes(fieldId))));
+                return Array.from(new Set(base.selectedFieldIds.filter((fieldId) => selectableFieldIds.includes(fieldId))));
             }
             if (Array.isArray(activeEditingEvent?.fieldIds)) {
                 return Array.from(
                     new Set(
                         activeEditingEvent.fieldIds
                             .map((fieldId) => String(fieldId))
-                            .filter((fieldId) => allDefaultFieldIds.includes(fieldId)),
+                            .filter((fieldId) => selectableFieldIds.includes(fieldId)),
                     ),
                 );
             }
@@ -4552,6 +4663,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         hasImmutableFields,
         immutableDefaults,
         immutableFields,
+        isCreateMode,
         resolvedOrganizationFields,
         resolvedOrganizationId,
         sportsById,
@@ -4590,6 +4702,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!open) {
             setIsDirtyTrackingReady(false);
             lastResetSourceRef.current = null;
+            previousEventTypeRef.current = null;
             previousEventFieldLocationRef.current = '';
             dirtyBaselineValuesRef.current = null;
             pendingInitialDirtyRebaseRef.current = false;
@@ -4620,6 +4733,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
         onDirtyStateChange?.(false);
         const nextDefaults = buildDefaultFormValues();
+        previousEventTypeRef.current = nextDefaults.eventType;
         previousEventFieldLocationRef.current = defaultFieldLocationForEvent(nextDefaults.location);
         dirtyBaselineValuesRef.current = null;
         reset(nextDefaults);
@@ -5270,13 +5384,40 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         || ''
     );
     const isOrganizationHostedEvent = organizationHostedEventId.length > 0;
-    const shouldProvisionFields = !isOrganizationHostedEvent && !hasImmutableFields;
-    const shouldManageLocalFields = shouldProvisionFields
-        && supportsScheduleSlotsForEvent(eventData.eventType, eventData.parentEvent);
+    const supportsOrganizationFieldSelection = supportsOrganizationFieldSelectionForEvent(
+        eventData.eventType,
+        eventData.parentEvent,
+    );
+    const shouldManageLocalFields = !hasImmutableFields && supportsFieldCountForEvent(eventData.eventType);
+    const shouldProvisionFields = shouldManageLocalFields;
     const isOrganizationManagedEvent = isOrganizationHostedEvent && !shouldManageLocalFields;
     const organizationDefaultEventTaxHandling = normalizeOrganizationDefaultEventTaxHandling(
         resolvedOrganization?.defaultEventTaxHandling,
     );
+
+    useEffect(() => {
+        const previousEventType = previousEventTypeRef.current;
+        previousEventTypeRef.current = eventData.eventType;
+
+        if (!previousEventType || previousEventType === eventData.eventType) {
+            return;
+        }
+        if (!isCreateMode || !isOrganizationHostedEvent || hasImmutableFields) {
+            return;
+        }
+        if (!supportsFieldCountForEvent(eventData.eventType) || supportsFieldCountForEvent(previousEventType)) {
+            return;
+        }
+
+        setFieldCount(0);
+    }, [
+        eventData.eventType,
+        hasImmutableFields,
+        isCreateMode,
+        isOrganizationHostedEvent,
+        setFieldCount,
+    ]);
+
     const eventTaxPolicyForPreview = resolvePurchaseTaxPolicy({
         purchaseType: 'event',
         taxCategory: 'EVENT_PARTICIPANT',
@@ -5730,8 +5871,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }));
     }, [setEventData]);
     const fieldCountOptions = useMemo(
-        () => Array.from({ length: 12 }, (_, idx) => ({ value: String(idx + 1), label: String(idx + 1) })),
-        []
+        () => {
+            const start = isOrganizationHostedEvent ? 0 : 1;
+            return Array.from({ length: 13 - start }, (_, idx) => {
+                const value = start + idx;
+                return { value: String(value), label: String(value) };
+            });
+        },
+        [isOrganizationHostedEvent],
     );
     const slotDivisionLookup = useMemo(
         () => buildSlotDivisionLookup(
@@ -6178,7 +6325,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [selectedSportForOfficials],
     );
     const availableOfficialFieldOptions = useMemo(() => {
-        const allowedFieldIdSet = selectedFieldIds.length > 0 ? new Set(selectedFieldIds) : null;
+        const localFieldIds = toFieldIdList(fields.filter(isEventLocalField));
+        const allowedFieldIdSet = selectedFieldIds.length > 0
+            ? new Set([...selectedFieldIds, ...localFieldIds])
+            : null;
         return fields
             .filter((field) => {
                 const fieldId = String(field?.$id ?? '').trim();
@@ -8117,7 +8267,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             return;
         }
         setFields(prev => {
-            const normalized: Field[] = prev
+            const retainedFields = prev.filter((field) => !isEventLocalField(field));
+            const normalizedLocalFields: Field[] = prev
+                .filter(isEventLocalField)
                 .slice(0, fieldCount)
                 .map((field) => withEventFieldLocationDefault(
                     field,
@@ -8125,9 +8277,9 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     previousEventLocation,
                 ));
 
-            if (normalized.length < fieldCount) {
-                for (let index = normalized.length; index < fieldCount; index += 1) {
-                    normalized.push({
+            if (normalizedLocalFields.length < fieldCount) {
+                for (let index = normalizedLocalFields.length; index < fieldCount; index += 1) {
+                    normalizedLocalFields.push({
                         $id: createClientId(),
                         name: `Field ${index + 1}`,
                         location: eventFieldLocation,
@@ -8137,7 +8289,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 }
             }
 
-            return normalized;
+            return [...retainedFields, ...normalizedLocalFields];
         }, { shouldDirty: false });
     }, [eventData.location, fieldCount, shouldManageLocalFields, setFields]);
 
@@ -8151,7 +8303,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [activeEditingEvent?.fields, isOrganizationManagedEvent, setFields, shouldManageLocalFields]);
 
     useEffect(() => {
-        const availableFieldIds = toFieldIdList(fields);
+        const availableFields = isOrganizationHostedEvent && supportsOrganizationFieldSelection
+            ? fields.filter((field) => getFieldOrganizationId(field) === organizationHostedEventId)
+            : fields;
+        const availableFieldIds = toFieldIdList(availableFields);
         const allowed = new Set(availableFieldIds);
         const normalizedSelected = Array.from(
             new Set(
@@ -8163,7 +8318,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (!stringArraysEqual(selectedFieldIds, normalizedSelected)) {
             setValue('selectedFieldIds', normalizedSelected, { shouldDirty: false, shouldValidate: true });
         }
-    }, [fields, selectedFieldIds, setValue]);
+    }, [fields, isOrganizationHostedEvent, organizationHostedEventId, selectedFieldIds, setValue, supportsOrganizationFieldSelection]);
 
     useEffect(() => {
         const divisionKeys = normalizeDivisionKeys(eventData.divisions);
@@ -8525,17 +8680,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         handleUpdateSlot(index, updates);
     };
 
-    // Updates locally managed fields when the org lacks saved fields (new event + provisioning).
-    const handleLocalFieldNameChange = useCallback((index: number, name: string) => {
+    // Updates locally managed event fields without mutating reusable organization fields.
+    const handleLocalFieldNameChange = useCallback((fieldId: string, name: string) => {
         if (!shouldManageLocalFields || hasImmutableFields) {
             return;
         }
         setFields(prev => {
-            const next = [...prev];
-            if (next[index]) {
-                next[index] = { ...next[index], name };
-            }
-            return next;
+            return prev.map((field) => (
+                field.$id === fieldId && isEventLocalField(field)
+                    ? { ...field, name }
+                    : field
+            ));
         });
     }, [hasImmutableFields, setFields, shouldManageLocalFields]);
 
@@ -8651,7 +8806,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             };
         }
 
-        if (hasImmutableFields || shouldManageLocalFields) {
+        if (hasImmutableFields) {
             return () => {
                 cancelled = true;
             };
@@ -8668,11 +8823,13 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 ? sortFieldsByCreatedAt(sanitizeFieldsForForm(resolvedOrganization.fields as Field[]))
                 : [];
             if (seededFields.length) {
-                setFields(seededFields, { shouldDirty: false, shouldValidate: false });
+                setFields(
+                    (prev) => mergeOrganizationFieldsIntoPool(prev, seededFields, organizationHostedEventId),
+                    { shouldDirty: false, shouldValidate: false },
+                );
                 setFieldsLoading(false);
                 return;
             }
-            setFields([], { shouldDirty: false, shouldValidate: false });
 
             try {
                 setFieldsLoading(true);
@@ -8700,9 +8857,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                     }
                 }
                 if (resolvedFields.length) {
-                    setFields(resolvedFields, { shouldDirty: false, shouldValidate: false });
+                    setFields(
+                        (prev) => mergeOrganizationFieldsIntoPool(prev, resolvedFields, organizationHostedEventId),
+                        { shouldDirty: false, shouldValidate: false },
+                    );
                 } else {
-                    setFields([], { shouldDirty: false, shouldValidate: false });
+                    setFields(
+                        (prev) => removeOrganizationFieldsFromPool(prev, organizationHostedEventId),
+                        { shouldDirty: false, shouldValidate: false },
+                    );
                 }
             } catch (error) {
                 console.warn('Failed to hydrate organization fields for event form:', error);
@@ -8724,7 +8887,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         isEditMode,
         organizationHostedEventId,
         setFields,
-        shouldManageLocalFields,
     ]);
 
     // Merge any newly loaded fields from the event into local state without losing existing edits.
@@ -8758,6 +8920,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const selectedFields = useMemo(() => {
         return fields;
     }, [fields]);
+    const organizationFieldPool = useMemo(
+        () => organizationHostedEventId
+            ? fields.filter((field) => getFieldOrganizationId(field) === organizationHostedEventId)
+            : [],
+        [fields, organizationHostedEventId],
+    );
+    const eventLocalFields = useMemo(
+        () => fields.filter(isEventLocalField),
+        [fields],
+    );
     const leagueFieldOptions = useMemo(() => {
         return selectedFields
             .filter((field): field is Field & { $id: string } => typeof field.$id === 'string' && field.$id.length > 0)
@@ -8766,6 +8938,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 label: getFieldDisplayName(field),
             }));
     }, [selectedFields]);
+    const organizationFieldOptions = useMemo(() => {
+        return organizationFieldPool
+            .filter((field): field is Field & { $id: string } => typeof field.$id === 'string' && field.$id.length > 0)
+            .map((field) => ({
+                value: field.$id,
+                label: getFieldDisplayName(field),
+            }));
+    }, [organizationFieldPool]);
 
     const eventOrganizationId = organizationHostedEventId;
 
@@ -8844,7 +9024,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     }, [eventData.singleDivision, eventData.splitLeaguePlayoffDivisions, hasExternalRentalField, setValue]);
 
     const fieldsReferencedInSlots = useMemo(() => {
-        const availableFields = isOrganizationManagedEvent ? selectedFields : fields;
+        const availableFields = selectedFields;
         if (!leagueSlots.length) {
             if (availableFields.length) {
                 return availableFields;
@@ -8885,7 +9065,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         }
 
         return picked;
-    }, [fields, hasImmutableFields, immutableFields, isOrganizationManagedEvent, leagueSlots, selectedFields]);
+    }, [hasImmutableFields, immutableFields, leagueSlots, selectedFields]);
 
     const selectedImageId = eventData.imageId;
     const selectedImageUrl = useMemo(
@@ -9564,6 +9744,16 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         };
 
         const organizationId = source.organizationId || organizationHostedEventId || undefined;
+        const sourceFields = hasImmutableFields ? immutableFields : fields;
+        const organizationFieldIds = organizationHostedEventId
+            ? toFieldIdList(sourceFields.filter((field) => getFieldOrganizationId(field) === organizationHostedEventId))
+            : [];
+        const selectedOrganizationFieldIds = isOrganizationHostedEvent && supportsOrganizationFieldSelectionForEvent(
+            source.eventType,
+            source.parentEvent,
+        )
+            ? resolveOrganizationEventFieldIds(source.selectedFieldIds, organizationFieldIds)
+            : [];
 
         if (!shouldManageLocalFields) {
             let fieldsToInclude = fieldsReferencedInSlots;
@@ -9572,7 +9762,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }
             if (isOrganizationManagedEvent) {
                 const defaultOrganizationFieldIds = toIdList(fields.length ? fields : fieldsToInclude);
-                const fieldIds = source.eventType === 'EVENT'
+                const fieldIds = supportsOrganizationFieldSelectionForEvent(source.eventType, source.parentEvent)
                     ? resolveOrganizationEventFieldIds(source.selectedFieldIds, defaultOrganizationFieldIds)
                     : toIdList(fieldsToInclude);
                 if (fieldIds.length) {
@@ -9593,17 +9783,20 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 draft.fieldIds = [rentalPurchase.fieldId];
             }
         } else {
-            const localFields = hasImmutableFields ? immutableFields : fields;
+            const localFields = sourceFields.filter(isEventLocalField);
             if (localFields.length) {
                 draft.fields = localFields.map((field) => withEventFieldLocationDefault(
                     { ...field },
                     eventFieldLocation,
                     previousEventFieldLocation,
                 ));
-                const fieldIds = toIdList(localFields);
-                if (fieldIds.length) {
-                    draft.fieldIds = fieldIds;
-                }
+            }
+            const fieldIds = Array.from(new Set([
+                ...selectedOrganizationFieldIds,
+                ...toIdList(localFields),
+            ]));
+            if (fieldIds.length) {
+                draft.fieldIds = fieldIds;
             }
         }
 
@@ -9740,7 +9933,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             draft.winnerBracketPointsToVictory = normalizedTournamentConfig.winnerBracketPointsToVictory;
             draft.loserBracketPointsToVictory = normalizedTournamentConfig.loserBracketPointsToVictory;
             draft.prize = normalizedTournamentConfig.prize;
-            draft.fieldCount = normalizedTournamentConfig.fieldCount;
+            draft.fieldCount = fieldCount;
             draft.restTimeMinutes = normalizeNumber(normalizedTournamentConfig.restTimeMinutes, 0) ?? 0;
             if (tournamentRequiresSets) {
                 draft.usesSets = true;
@@ -10035,7 +10228,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const showsFixedTeamEventToggle = eventData.eventType === 'LEAGUE' || eventData.eventType === 'TOURNAMENT';
     const usesRentalSlots = hasExternalRentalField || hasImmutableTimeSlots || Boolean(rentalPurchase?.fieldId);
     const showScheduleConfig = isSchedulableEventType || usesRentalSlots || isWeeklyChildEvent;
-    const showOrganizationFieldsInEventDetails = isOrganizationManagedEvent && eventData.eventType === 'EVENT';
+    const showOrganizationFieldsInEventDetails = isOrganizationHostedEvent && supportsOrganizationFieldSelection;
     const showMatchRulesSection = eventData.eventType !== 'EVENT' && eventData.eventType !== 'WEEKLY_EVENT';
     const showScoringConfigSection = eventData.eventType === 'LEAGUE'
         || isTournamentPoolPlayFormEnabled(eventData.eventType, leagueData.includePlayoffs);
@@ -10823,7 +11016,10 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     value={String(fieldCount)}
                                                     w="100%"
                                                     styles={alignedDetailsFieldStyles}
-                                                    onChange={(val) => setFieldCount(Number(val) || 1)}
+                                                    onChange={(val) => {
+                                                        const parsed = Number(val);
+                                                        setFieldCount(Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0);
+                                                    }}
                                                     error={errors.fieldCount?.message as string | undefined}
                                                     comboboxProps={sharedComboboxProps}
                                                 />
@@ -10874,7 +11070,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                     label="Organization Fields"
                                                     description="Choose which organization fields this event can use."
                                                     placeholder={fieldsLoading ? 'Loading organization fields...' : 'Select one or more fields'}
-                                                    data={leagueFieldOptions}
+                                                    data={organizationFieldOptions}
                                                     value={Array.isArray(field.value) ? field.value : []}
                                                     comboboxProps={sharedComboboxProps}
                                                     w="100%"
@@ -10893,7 +11089,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                 </div>
                             ) : null}
 
-                            {shouldManageLocalFields && !hasExternalRentalField && (
+                            {shouldManageLocalFields && !hasExternalRentalField && eventLocalFields.length > 0 && (
                                 <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4">
                                     <Group justify="space-between" align="flex-start" gap="md" wrap="nowrap">
                                         <div>
@@ -10918,14 +11114,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             id="event-local-field-names"
                                             className="mt-4 grid max-h-[22rem] grid-cols-1 gap-3 overflow-y-auto pr-2 md:grid-cols-2"
                                         >
-                                            {fields.map((field, index) => (
+                                            {eventLocalFields.map((field) => (
                                                 <TextInput
                                                     key={field.$id}
                                                     label={`${getFieldDisplayName(field, 'Field')} Name`}
                                                     value={field.name ?? ''}
                                                     w="100%"
                                                     maxLength={MAX_MEDIUM_TEXT_LENGTH}
-                                                    onChange={(event) => handleLocalFieldNameChange(index, event.currentTarget.value)}
+                                                    onChange={(event) => handleLocalFieldNameChange(field.$id, event.currentTarget.value)}
                                                 />
                                             ))}
                                         </div>
@@ -12998,7 +13194,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             <div className="space-y-3 rounded-lg border border-gray-200 bg-white p-4">
                                                 <Text fw={600} size="sm">Weekly Session Schedule</Text>
                                                 <Text size="sm" c="dimmed">
-                                                    Weekly child sessions use fixed start/end times from the selected session. Timeslots are hidden for child sessions.
+                                                    Older parent-linked weekly rows use fixed start/end times from the selected session. New weekly registrations use the parent event slot and occurrence date.
                                                 </Text>
                                                 <Controller
                                                     name="selectedFieldIds"

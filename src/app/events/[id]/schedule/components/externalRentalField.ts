@@ -80,12 +80,17 @@ export const hasExternalRentalFieldForEvent = (params: {
       .map((value) => normalizeId(value))
       .filter((value): value is string => Boolean(value)),
   );
+  const localFieldIdSet = new Set<string>();
   params.sourceFields.forEach((field) => {
     const fieldOrgId = getFieldOrganizationId(field);
+    const fieldId = normalizeFieldId(field);
+    if (!fieldOrgId && fieldId) {
+      localFieldIdSet.add(fieldId);
+      return;
+    }
     if (fieldOrgId !== normalizedEventOrganizationId) {
       return;
     }
-    const fieldId = normalizeFieldId(field);
     if (fieldId) {
       organizationFieldIdSet.add(fieldId);
     }
@@ -97,6 +102,9 @@ export const hasExternalRentalFieldForEvent = (params: {
   for (const fieldIdValue of params.referencedFieldIds) {
     const fieldId = normalizeId(fieldIdValue);
     if (!fieldId) {
+      continue;
+    }
+    if (localFieldIdSet.has(fieldId)) {
       continue;
     }
     if (!organizationFieldIdSet.has(fieldId)) {

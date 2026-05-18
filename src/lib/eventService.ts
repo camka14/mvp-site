@@ -411,30 +411,6 @@ class EventService {
     }
   }
 
-  async createWeeklySession(
-    parentEventId: string,
-    params: {
-      sessionStart: string;
-      sessionEnd: string;
-      slotId?: string;
-      divisionId?: string;
-      divisionTypeId?: string;
-      divisionTypeKey?: string;
-    },
-  ): Promise<Event> {
-    const response = await apiRequest<{ event?: any }>(
-      `/api/events/${parentEventId}/weekly-sessions`,
-      {
-        method: "POST",
-        body: params,
-      },
-    );
-    const payload = response?.event ?? response;
-    await this.ensureSportRelationship(payload);
-    await this.ensureLeagueScoringConfig(payload);
-    return this.mapRowToEvent(payload);
-  }
-
   async removeTeamParticipant(
     eventId: string,
     teamId: string,

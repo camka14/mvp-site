@@ -133,6 +133,68 @@ describe('eventTemplates', () => {
     expect(template.hostId).toBe('');
   });
 
+  it('clones local fields from organization templates while reusing organization field ids', () => {
+    const source = buildBaseEvent({
+      organizationId: 'org_1',
+      fields: [
+        {
+          $id: 'org_field_1',
+          name: 'Main Court',
+          location: 'Facility',
+          lat: 0,
+          long: 0,
+          organization: 'org_1' as any,
+        },
+        {
+          $id: 'local_field_1',
+          name: 'Pop-up Court',
+          location: 'Park',
+          lat: 0,
+          long: 0,
+        },
+      ],
+      fieldIds: ['org_field_1', 'local_field_1'],
+      timeSlots: [
+        {
+          $id: 'slot_mixed',
+          dayOfWeek: 2,
+          startTimeMinutes: 18 * 60,
+          endTimeMinutes: 20 * 60,
+          startDate: '2026-01-05T10:30:00',
+          endDate: '2026-01-12T10:30:00',
+          repeating: true,
+          scheduledFieldId: 'local_field_1',
+          scheduledFieldIds: ['org_field_1', 'local_field_1'],
+        } as any,
+      ],
+      timeSlotIds: ['slot_mixed'],
+    });
+
+    const template = cloneEventAsTemplate(source, {
+      templateId: 'tmpl_mixed_fields',
+      idFactory: makeIdFactory('tmpl_field'),
+    });
+
+    expect(template.fieldIds).toEqual(['org_field_1', 'tmpl_field_1']);
+    expect(template.fields?.map((field) => field.$id)).toEqual(['tmpl_field_1']);
+    expect((template.fields?.[0] as any)?.organization).toBeUndefined();
+    expect((template.fields?.[0] as any)?.organizationId).toBeUndefined();
+    expect(template.timeSlots?.[0]?.scheduledFieldId).toBe('tmpl_field_1');
+    expect(template.timeSlots?.[0]?.scheduledFieldIds).toEqual(['org_field_1', 'tmpl_field_1']);
+
+    const seeded = seedEventFromTemplate(template, {
+      newEventId: 'evt_mixed_fields',
+      newStartDate: new Date('2026-02-01T00:00:00'),
+      hostId: 'host_2',
+      idFactory: makeIdFactory('seed_field'),
+    });
+
+    expect(seeded.fieldIds).toEqual(['org_field_1', 'seed_field_1']);
+    expect(seeded.fields?.map((field) => field.$id)).toEqual(['seed_field_1']);
+    expect(seeded.timeSlots?.[0]?.scheduledFieldId).toBe('seed_field_1');
+    expect(seeded.timeSlots?.[0]?.scheduledFieldIds).toEqual(['org_field_1', 'seed_field_1']);
+  });
+
   it('remaps division identifiers to the new template id for complex division payloads without dropping metadata', () => {
     const openSourceId = buildEventDivisionId('event_source', 'open');
     const advancedSourceId = buildEventDivisionId('event_source', 'advanced');

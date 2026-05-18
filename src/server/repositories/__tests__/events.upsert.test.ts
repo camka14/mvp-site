@@ -1431,14 +1431,13 @@ describe('upsertEventFromPayload', () => {
     expect(eventUpsertArgs.update.price).toBe(0);
   });
 
-  it('rejects new organization events when the organization has no saved fields', async () => {
+  it('creates event-local fields for organization events without assigning field ownership to the organization', async () => {
     const client = createMockClient();
-    client.organizations.findUnique.mockResolvedValueOnce({
+    client.organizations.findUnique.mockResolvedValue({
       ownerId: 'owner_1',
       hostIds: ['owner_1'],
       officialIds: [],
     });
-    client.fields.count.mockResolvedValueOnce(0);
 
     const payload = {
       ...baseEventPayload(),
@@ -1448,8 +1447,29 @@ describe('upsertEventFromPayload', () => {
       timeSlots: [],
     };
 
+    await upsertEventFromPayload(payload, client as any);
+
+    expect(client.fields.count).not.toHaveBeenCalled();
+    const fieldUpsertArg = client.fields.upsert.mock.calls[0][0];
+    expect(fieldUpsertArg.create.organizationId).toBeNull();
+    const eventUpsertArg = client.events.upsert.mock.calls[0][0];
+    expect(eventUpsertArg.create.fieldIds).toEqual(['field_1']);
+  });
+
+  it('rejects new events when no fields are selected or created', async () => {
+    const client = createMockClient();
+
+    const payload = {
+      ...baseEventPayload(),
+      eventType: 'EVENT',
+      fields: [],
+      fieldIds: [],
+      timeSlots: [],
+      end: '2026-01-05T11:00:00.000Z',
+    };
+
     await expect(upsertEventFromPayload(payload, client as any)).rejects.toThrow(
-      'Organization events require at least one saved field. Create a field for this organization before creating an event.',
+      'Select or create at least one field for this event.',
     );
     expect(client.events.upsert).not.toHaveBeenCalled();
   });

@@ -183,11 +183,11 @@ describe('event save route', () => {
     expect(notifySocialAudienceOfEventCreationMock).not.toHaveBeenCalled();
   });
 
-  it('returns 400 when an organization has no saved fields for a new event', async () => {
+  it('returns 400 when a new event has no selected or created fields', async () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValueOnce(null);
     upsertEventFromPayloadMock.mockRejectedValueOnce(
-      new Error('Organization events require at least one saved field. Create a field for this organization before creating an event.'),
+      new Error('Select or create at least one field for this event.'),
     );
 
     const res = await eventsPost(
@@ -206,7 +206,7 @@ describe('event save route', () => {
 
     expect(res.status).toBe(400);
     expect(json).toEqual(expect.objectContaining({
-      error: 'Organization events require at least one saved field. Create a field for this organization before creating an event.',
+      error: 'Select or create at least one field for this event.',
     }));
     expect(loadEventWithRelationsMock).not.toHaveBeenCalled();
     expect(notifySocialAudienceOfEventCreationMock).not.toHaveBeenCalled();

@@ -627,7 +627,7 @@ const isDivisionAssignmentValidationError = (error: unknown): boolean => {
 
 const isOrganizationFieldRequirementError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message : String(error ?? '');
-  return message.includes('Organization events require at least one saved field');
+  return message.includes('Select or create at least one field for this event');
 };
 
 const resolveSessionContext = async (

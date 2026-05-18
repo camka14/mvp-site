@@ -43,10 +43,75 @@ const cloneLocalFields = (
       matches: undefined,
       events: undefined,
       organization: undefined,
+      organizationId: undefined,
       rentalSlots: undefined,
     } as Field;
   });
   return { fields, idMap };
+};
+
+const normalizeId = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+};
+
+const getTemplateFieldOrganizationId = (field?: Field | null): string | null => {
+  if (!field) {
+    return null;
+  }
+  const organization = (field as any).organization;
+  const organizationIdFromString = normalizeId(organization);
+  if (organizationIdFromString) {
+    return organizationIdFromString;
+  }
+  if (organization && typeof organization === 'object') {
+    const organizationIdFromObject = normalizeId((organization as { $id?: unknown }).$id)
+      ?? normalizeId((organization as { id?: unknown }).id);
+    if (organizationIdFromObject) {
+      return organizationIdFromObject;
+    }
+  }
+  return normalizeId((field as any).organizationId);
+};
+
+const splitTemplateFields = (
+  sourceFields: Field[],
+  idFactory: () => string,
+): { clonedFields: Field[]; fieldIdMap: Map<string, string> } => {
+  const localFields = sourceFields.filter((field) => !getTemplateFieldOrganizationId(field));
+  const localFieldsClone = localFields.length ? cloneLocalFields(localFields, idFactory) : null;
+  return {
+    clonedFields: localFieldsClone?.fields ?? [],
+    fieldIdMap: localFieldsClone?.idMap ?? new Map<string, string>(),
+  };
+};
+
+const normalizeFieldIds = (values: unknown): string[] => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value).trim())
+        .filter((value) => value.length > 0),
+    ),
+  );
+};
+
+const resolveTemplateFieldIds = (
+  source: Event,
+  fieldIdMap: Map<string, string>,
+): string[] => {
+  const sourceFieldIds = normalizeFieldIds(source.fieldIds);
+  const fallbackFieldIds = Array.isArray(source.fields)
+    ? normalizeFieldIds((source.fields as Field[]).map((field) => field.$id))
+    : [];
+  return (sourceFieldIds.length ? sourceFieldIds : fallbackFieldIds)
+    .map((fieldId) => fieldIdMap.get(fieldId) ?? fieldId);
 };
 
 const cloneTimeSlots = (
@@ -66,7 +131,9 @@ const cloneTimeSlots = (
       : slot.scheduledFieldId
       ? [scheduledFieldIdMap?.get(slot.scheduledFieldId) ?? slot.scheduledFieldId]
       : [];
-    const scheduledFieldId = scheduledFieldIds[0] ?? slot.scheduledFieldId;
+    const scheduledFieldId = slot.scheduledFieldId
+      ? scheduledFieldIdMap?.get(slot.scheduledFieldId) ?? slot.scheduledFieldId
+      : scheduledFieldIds[0];
 
     return {
       ...slot,
@@ -384,23 +451,15 @@ export const cloneEventAsTemplate = (
   const idFactory = options?.idFactory ?? createId;
 
   const isOrganizationEvent = Boolean(source.organizationId);
-  const hasLocalFields = !isOrganizationEvent && Array.isArray(source.fields) && source.fields.length > 0;
-  const localFieldsClone = hasLocalFields ? cloneLocalFields(source.fields as Field[], idFactory) : null;
-  const clonedFields = localFieldsClone?.fields ?? [];
-  const fieldIdMap = localFieldsClone?.idMap ?? new Map<string, string>();
-
-  const fieldIds = hasLocalFields
-    ? clonedFields.map((field) => field.$id)
-    : Array.isArray(source.fieldIds)
-      ? source.fieldIds
-      : Array.isArray(source.fields)
-        ? (source.fields as Field[]).map((field) => field.$id)
-        : [];
+  const sourceFields = Array.isArray(source.fields) ? source.fields as Field[] : [];
+  const { clonedFields, fieldIdMap } = splitTemplateFields(sourceFields, idFactory);
+  const hasLocalFields = clonedFields.length > 0;
+  const fieldIds = resolveTemplateFieldIds(source, fieldIdMap);
 
   const timeSlots = Array.isArray(source.timeSlots) && source.timeSlots.length > 0
     ? cloneTimeSlots(source.timeSlots as TimeSlot[], {
       idFactory,
-      scheduledFieldIdMap: hasLocalFields ? fieldIdMap : undefined,
+      scheduledFieldIdMap: fieldIdMap,
       start: source.start,
       end: source.end ?? source.start,
     })
@@ -409,7 +468,7 @@ export const cloneEventAsTemplate = (
   const divisionRemapParams: DivisionRemapParams = {
     divisionIdMap: buildDivisionIdMap(source, templateId),
     targetEventId: templateId,
-    fieldIdMap: hasLocalFields ? fieldIdMap : undefined,
+    fieldIdMap,
   };
   const remappedDivisionDetails = remapDivisionDetails(source.divisionDetails, divisionRemapParams);
   const remappedPlayoffDivisionDetails = remapDivisionDetails(source.playoffDivisionDetails, divisionRemapParams);
@@ -465,24 +524,15 @@ export const seedEventFromTemplate = (
   const nextStartStr = formatLocalDateTime(nextStart);
   const nextEndStr = formatLocalDateTime(nextEnd);
 
-  const isOrganizationTemplate = Boolean(template.organizationId);
-  const hasLocalFields = !isOrganizationTemplate && Array.isArray(template.fields) && template.fields.length > 0;
-  const localFieldsClone = hasLocalFields ? cloneLocalFields(template.fields as Field[], idFactory) : null;
-  const clonedFields = localFieldsClone?.fields ?? [];
-  const fieldIdMap = localFieldsClone?.idMap ?? new Map<string, string>();
-
-  const fieldIds = hasLocalFields
-    ? clonedFields.map((field) => field.$id)
-    : Array.isArray(template.fieldIds)
-      ? template.fieldIds
-      : Array.isArray(template.fields)
-        ? (template.fields as Field[]).map((field) => field.$id)
-        : [];
+  const templateFields = Array.isArray(template.fields) ? template.fields as Field[] : [];
+  const { clonedFields, fieldIdMap } = splitTemplateFields(templateFields, idFactory);
+  const hasLocalFields = clonedFields.length > 0;
+  const fieldIds = resolveTemplateFieldIds(template, fieldIdMap);
 
   const timeSlots = Array.isArray(template.timeSlots) && template.timeSlots.length > 0
     ? cloneTimeSlots(template.timeSlots as TimeSlot[], {
       idFactory,
-      scheduledFieldIdMap: hasLocalFields ? fieldIdMap : undefined,
+      scheduledFieldIdMap: fieldIdMap,
       start: nextStartStr,
       end: nextEndStr,
     })
@@ -491,7 +541,7 @@ export const seedEventFromTemplate = (
   const divisionRemapParams: DivisionRemapParams = {
     divisionIdMap: buildDivisionIdMap(template, params.newEventId),
     targetEventId: params.newEventId,
-    fieldIdMap: hasLocalFields ? fieldIdMap : undefined,
+    fieldIdMap,
   };
   const remappedDivisionDetails = remapDivisionDetails(template.divisionDetails, divisionRemapParams);
   const remappedPlayoffDivisionDetails = remapDivisionDetails(template.playoffDivisionDetails, divisionRemapParams);

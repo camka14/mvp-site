@@ -98,5 +98,20 @@ describe('externalRentalField', () => {
 
       expect(result).toBe(true);
     });
+
+    it('does not mark event-local fields on organization events as external rentals', () => {
+      const result = hasExternalRentalFieldForEvent({
+        eventOrganizationId: 'org_host',
+        sourceFields: [
+          makeField({ $id: 'field_host', organization: 'org_host' as any }),
+          makeField({ $id: 'field_local' }),
+        ],
+        organizationFieldIds: ['field_host'],
+        referencedFieldIds: ['field_host', 'field_local'],
+        isEditMode: true,
+      });
+
+      expect(result).toBe(false);
+    });
   });
 });

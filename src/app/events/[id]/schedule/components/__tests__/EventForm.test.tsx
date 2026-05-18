@@ -2806,7 +2806,90 @@ describe('EventForm dirty state', () => {
     expect(divisionSettingsSection?.textContent).not.toContain('Organization Fields');
   });
 
-  it('hides organization fields for weekly events', async () => {
+  it('shows organization field selection without field-count controls for organization events', async () => {
+    const onDirtyStateChange = jest.fn();
+    const organization = {
+      ...buildOrganization(),
+      fields: [
+        {
+          $id: 'org_field_1',
+          name: 'Court 1',
+          location: 'Main Gym',
+          lat: 0,
+          long: 0,
+          organization: 'org_1',
+        },
+      ],
+    };
+
+    renderForm(
+      onDirtyStateChange,
+      undefined,
+      {
+        eventType: 'EVENT',
+        organizationId: 'org_1',
+        fieldCount: 0,
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+    });
+
+    expect(screen.getByLabelText('Organization Fields')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Number of Fields')).not.toBeInTheDocument();
+    expect(screen.queryByText('Field Names')).not.toBeInTheDocument();
+  });
+
+  it('builds organization event drafts by reusing selected org fields for event types', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    const organization = {
+      ...buildOrganization(),
+      fields: [
+        {
+          $id: 'org_field_1',
+          name: 'Court 1',
+          location: 'Main Gym',
+          lat: 0,
+          long: 0,
+          organization: 'org_1',
+        },
+      ],
+    };
+
+    renderForm(
+      onDirtyStateChange,
+      formRef,
+      {
+        eventType: 'EVENT',
+        organizationId: 'org_1',
+        fieldIds: ['org_field_1', 'local_field_1'],
+        fields: [
+          {
+            $id: 'local_field_1',
+            name: 'Pop-up Court',
+            location: 'Park',
+            lat: 0,
+            long: 0,
+          },
+        ],
+        fieldCount: 1,
+      },
+      organization,
+      { isCreateMode: true },
+    );
+
+    await waitFor(() => {
+      const draft = formRef.current?.getDraft();
+      expect(draft?.fieldIds).toEqual(['org_field_1']);
+      expect(draft?.fields).toBeUndefined();
+    });
+  });
+
+  it('shows organization fields without field-count controls for weekly events', async () => {
     const onDirtyStateChange = jest.fn();
 
     renderForm(
@@ -2824,9 +2907,101 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    expect(screen.queryByLabelText('Organization Fields')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Organization Fields')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Number of Fields')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Required Documents')).toBeInTheDocument();
   });
+
+  it.each(['LEAGUE', 'TOURNAMENT'] as const)(
+    'shows field-count controls for non-organization %s creation',
+    async (eventType) => {
+      const onDirtyStateChange = jest.fn();
+
+      renderForm(
+        onDirtyStateChange,
+        undefined,
+        { eventType },
+        null,
+        { isCreateMode: true },
+      );
+
+      await waitFor(() => {
+        expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+      });
+
+      expect(screen.getByLabelText('Number of Fields')).toHaveValue('1');
+    },
+  );
+
+  it.each(['LEAGUE', 'TOURNAMENT'] as const)(
+    'defaults organization %s creation to zero local fields while keeping the count control',
+    async (eventType) => {
+      const onDirtyStateChange = jest.fn();
+
+      renderForm(
+        onDirtyStateChange,
+        undefined,
+        {
+          eventType,
+          organizationId: 'org_1',
+        },
+        buildOrganization(),
+        { isCreateMode: true },
+      );
+
+      await waitFor(() => {
+        expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+      });
+
+      expect(screen.getByLabelText('Number of Fields')).toHaveValue('0');
+    },
+  );
+
+  it.each(['LEAGUE', 'TOURNAMENT'] as const)(
+    'resets organization create field count to zero when switching from event to %s',
+    async (eventType) => {
+      const onDirtyStateChange = jest.fn();
+      const formRef = React.createRef<EventFormHandle>();
+
+      renderForm(
+        onDirtyStateChange,
+        formRef,
+        {
+          eventType: 'EVENT',
+          organizationId: 'org_1',
+          fieldCount: 1,
+          fields: [
+            {
+              $id: 'local_field_1',
+              name: 'Field 1',
+              location: 'Test Gym',
+              lat: 0,
+              long: 0,
+            },
+          ],
+        },
+        buildOrganization(),
+        { isCreateMode: true },
+      );
+
+      await waitFor(() => {
+        expect(onDirtyStateChange).toHaveBeenCalledWith(false);
+      });
+
+      expect(screen.queryByLabelText('Number of Fields')).not.toBeInTheDocument();
+
+      fireEvent.change(screen.getByLabelText('Event Type'), {
+        target: { value: eventType },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText('Event Type')).toHaveValue(eventType);
+        expect(screen.getByLabelText('Number of Fields')).toHaveValue('0');
+        expect(formRef.current?.getDraft().fields).toBeUndefined();
+      });
+      expect(formRef.current?.getDraft().fieldCount).toBe(0);
+    },
+  );
 
   it('hydrates organization fields once during create mode without refetch looping', async () => {
     const onDirtyStateChange = jest.fn();

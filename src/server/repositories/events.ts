@@ -112,8 +112,8 @@ export class LeaguePlayoffTeamCountValidationError extends Error {
 export const isLeaguePlayoffTeamCountValidationError = (
   error: unknown,
 ): error is LeaguePlayoffTeamCountValidationError => error instanceof LeaguePlayoffTeamCountValidationError;
-const ORGANIZATION_EVENT_FIELDS_REQUIRED_MESSAGE =
-  'Organization events require at least one saved field. Create a field for this organization before creating an event.';
+const EVENT_FIELDS_REQUIRED_MESSAGE =
+  'Select or create at least one field for this event.';
 
 const extractUnknownPrismaArgument = (error: unknown): string | null => {
   const message = error instanceof Error ? error.message : String(error ?? '');
@@ -3912,14 +3912,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       } as any,
     })
     : null;
-  const organizationFieldCount = resolvedOrganizationId
-    ? await client.fields.count({
-      where: { organizationId: resolvedOrganizationId },
-    } as any)
-    : null;
-  if (!existingEvent && resolvedOrganizationId && organizationFieldCount === 0) {
-    throw new Error(ORGANIZATION_EVENT_FIELDS_REQUIRED_MESSAGE);
-  }
   const organizationStaffMembers = resolvedOrganizationId && client.staffMembers?.findMany
     ? await client.staffMembers.findMany({
       where: { organizationId: resolvedOrganizationId },
@@ -4085,11 +4077,18 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
   const slotFieldIds = normalizeFieldIds(
     canonicalTimeSlots.flatMap((slot) => slot.scheduledFieldIds),
   );
+  const hasPayloadFieldIds = Array.isArray(payload.fieldIds);
+  const payloadLocalFieldIds = fields.map((field: any) => field.$id || field.id).filter(Boolean);
   const fieldIds = slotFieldIds.length
     ? slotFieldIds
-    : Array.isArray(payload.fieldIds) && payload.fieldIds.length
+    : hasPayloadFieldIds
       ? normalizeFieldIds(payload.fieldIds)
-      : fields.map((field: any) => field.$id || field.id).filter(Boolean);
+      : payloadLocalFieldIds.length
+        ? normalizeFieldIds(payloadLocalFieldIds)
+        : existingFieldIds;
+  if (fieldIds.length === 0) {
+    throw new Error(EVENT_FIELDS_REQUIRED_MESSAGE);
+  }
   const hasExplicitOfficialPositions = Object.prototype.hasOwnProperty.call(payload, 'officialPositions');
   const sportTemplatePositions = buildEventOfficialPositionsFromTemplates(
     id,
@@ -4536,7 +4535,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     const persistedFieldOrganizationId = existingFieldOwnership?.organizationId ?? null;
     const persistedFieldCreatedBy = existingFieldOwnership?.createdBy ?? null;
     const hasPersistedFieldOwnership = Boolean(existingFieldOwnership);
-    const createFieldOrganizationId = incomingFieldOrganizationId ?? normalizeEntityId(payload.organizationId) ?? null;
+    const createFieldOrganizationId = null;
     if (
       hasPersistedFieldOwnership
       && incomingFieldOrganizationId !== null

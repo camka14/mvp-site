@@ -50,6 +50,7 @@ export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
 const warnedMissingEventArguments = new Set<string>();
 const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'PRIVATE', 'DRAFT']);
+const EVENT_FIELDS_REQUIRED_MESSAGE = 'Select or create at least one field for this event.';
 
 const EVENT_UPDATE_FIELDS = new Set([
   'name',
@@ -2042,6 +2043,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         return existingFieldIds;
       })();
       if (
+        nextFieldIds.length === 0
+        && (
+          hasTimeSlotPayload
+          || Object.prototype.hasOwnProperty.call(payload, 'fieldIds')
+          || incomingFields.length > 0
+        )
+      ) {
+        throw new Response(EVENT_FIELDS_REQUIRED_MESSAGE, { status: 400 });
+      }
+      if (
         hasTimeSlotPayload
         || Object.prototype.hasOwnProperty.call(payload, 'fieldIds')
         || incomingFields.length > 0
@@ -2302,10 +2313,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         }
       }
 
-      const resolvedNextOrganizationId = (data.organizationId ?? existing.organizationId ?? null) as string | null;
       const shouldPersistLocalFields = incomingFieldsById.size > 0;
       if (shouldPersistLocalFields && typeof (tx as any).fields?.upsert === 'function') {
-        for (const [index, fieldId] of nextFieldIds.entries()) {
+        for (const fieldId of nextFieldIds) {
           const field = incomingFieldsById.get(fieldId);
           if (!field) continue;
           const now = new Date();
@@ -2313,7 +2323,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           const incomingFieldOrganizationId = normalizeNullableString(field.organizationId);
           const persistedFieldOrganizationId = existingFieldOwnership?.organizationId ?? null;
           const persistedFieldCreatedBy = existingFieldOwnership?.createdBy ?? null;
-          const createFieldOrganizationId = incomingFieldOrganizationId ?? resolvedNextOrganizationId;
+          const createFieldOrganizationId = null;
           if (
             Boolean(existingFieldOwnership)
             && incomingFieldOrganizationId !== null
