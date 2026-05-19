@@ -9886,7 +9886,7 @@ function EventScheduleContent() {
                                 participantsUpdatingTeamId === participant.$id
                                   ? <Text size="xs" c="dimmed">Updating...</Text>
                                   : (
-                                    <Stack gap={6}>
+                                    <Stack gap={6} align="flex-start">
                                       {renderEditBillingActions(pseudoTeam)}
                                       <Button
                                         size="xs"
@@ -9938,7 +9938,7 @@ function EventScheduleContent() {
                                           participantsUpdatingTeamId === team.$id
                                             ? <Text size="xs" c="dimmed">Updating...</Text>
                                             : (
-                                              <Stack gap={6}>
+                                              <Stack gap={6} align="flex-start">
                                                 {canMoveTeamBetweenDivisions ? (
                                                   <Select
                                                     size="xs"
@@ -10003,7 +10003,7 @@ function EventScheduleContent() {
                                       participantsUpdatingTeamId === team.$id
                                         ? <Text size="xs" c="dimmed">Updating...</Text>
                                         : (
-                                          <Stack gap={6}>
+                                          <Stack gap={6} align="flex-start">
                                             {canMoveTeamBetweenDivisions ? (
                                               <Select
                                                 size="xs"
@@ -10063,7 +10063,7 @@ function EventScheduleContent() {
                               participantsUpdatingTeamId === team.$id
                                 ? <Text size="xs" c="dimmed">Updating...</Text>
                                 : (
-                                  <Stack gap={6}>
+                                  <Stack gap={6} align="flex-start">
                                     {renderEditBillingActions(team)}
                                     <Button
                                       size="xs"

@@ -81,8 +81,9 @@ export default function DivisionTeamComplianceCard({
       radius="md"
       p="md"
       className={className}
+      data-testid="division-team-compliance-card"
       onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default' }}
+      style={{ cursor: onClick ? 'pointer' : 'default', width: 'fit-content', maxWidth: '100%' }}
     >
       <Stack gap="sm">
         <Stack gap={6}>
@@ -108,7 +109,8 @@ export default function DivisionTeamComplianceCard({
         </Stack>
         {actions ? (
           <div
-            style={{ width: '100%' }}
+            data-testid="division-team-compliance-actions"
+            style={{ alignSelf: 'flex-start', display: 'inline-flex', maxWidth: '100%' }}
             onClick={(event) => event.stopPropagation()}
             onMouseDown={(event) => event.stopPropagation()}
             onPointerDown={(event) => event.stopPropagation()}

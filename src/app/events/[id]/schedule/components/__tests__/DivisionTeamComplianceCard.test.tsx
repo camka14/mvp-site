@@ -193,4 +193,24 @@ describe('DivisionTeamComplianceCard', () => {
 
     expect(rosteredText.compareDocumentPosition(actionButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
+
+  it('keeps action sizing from stretching the card', () => {
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam()}
+        summary={createSummary()}
+        actions={<button type="button">Remove</button>}
+      />,
+    );
+
+    expect(screen.getByTestId('division-team-compliance-card')).toHaveStyle({
+      width: 'fit-content',
+      maxWidth: '100%',
+    });
+    expect(screen.getByTestId('division-team-compliance-actions')).toHaveStyle({
+      alignSelf: 'flex-start',
+      display: 'inline-flex',
+      maxWidth: '100%',
+    });
+  });
 });
