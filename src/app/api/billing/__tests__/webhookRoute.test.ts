@@ -531,8 +531,26 @@ describe('POST /api/billing/webhook', () => {
     );
 
     expect(response.status).toBe(200);
-    expect(prismaMock.bills.create).not.toHaveBeenCalled();
-    expect(prismaMock.billPayments.create).not.toHaveBeenCalled();
+    expect(prismaMock.bills.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          ownerType: 'USER',
+          ownerId: 'user_1',
+          eventId: 'event_1',
+          paidAmountCents: 0,
+          status: 'PENDING',
+        }),
+      }),
+    );
+    expect(prismaMock.billPayments.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: 'PROCESSING',
+          paymentIntentId: 'pi_event_processing_1',
+          payerUserId: 'user_1',
+        }),
+      }),
+    );
     expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'event_1__self__user_1' },
@@ -583,12 +601,13 @@ describe('POST /api/billing/webhook', () => {
       }),
     );
     expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
-  });
+    });
 
   it('is idempotent for repeated instant webhook events by payment intent id', async () => {
     prismaMock.billPayments.findFirst.mockResolvedValueOnce({
       id: 'bill_payment_existing_1',
       billId: 'bill_existing_1',
+      status: 'PAID',
     });
 
     const response = await POST(

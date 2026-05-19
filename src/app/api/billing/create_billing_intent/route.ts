@@ -32,6 +32,9 @@ export async function POST(req: NextRequest) {
   if (payment.billId !== bill.id) {
     return NextResponse.json({ error: 'Bill payment does not belong to the bill' }, { status: 400 });
   }
+  if (payment.status === 'PROCESSING') {
+    return NextResponse.json({ error: 'This bill payment is already pending with Stripe.' }, { status: 409 });
+  }
   if (payment.status && payment.status !== 'PENDING') {
     return NextResponse.json({ error: 'Bill payment is not pending' }, { status: 400 });
   }

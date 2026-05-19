@@ -19,6 +19,7 @@ export type BillsOwnerTypeEnum = (typeof BillsOwnerTypeEnum)[keyof typeof BillsO
 
 export const BillsStatusEnum = {
   OPEN: 'OPEN',
+  PENDING: 'PENDING',
   PAID: 'PAID',
   OVERDUE: 'OVERDUE',
   CANCELLED: 'CANCELLED'
@@ -29,6 +30,7 @@ export type BillsStatusEnum = (typeof BillsStatusEnum)[keyof typeof BillsStatusE
 
 export const BillPaymentsStatusEnum = {
   PENDING: 'PENDING',
+  PROCESSING: 'PROCESSING',
   PAID: 'PAID',
   VOID: 'VOID'
 } as const

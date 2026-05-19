@@ -371,6 +371,7 @@ function ProfilePageContent() {
   );
   const [payingBill, setPayingBill] = useState<OwnedBill | null>(null);
   const [splittingBillId, setSplittingBillId] = useState<string | null>(null);
+  const [cancellingBillPaymentId, setCancellingBillPaymentId] = useState<string | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [productsById, setProductsById] = useState<Record<string, Product>>({});
   const [organizationsById, setOrganizationsById] = useState<
@@ -1267,6 +1268,52 @@ function ProfilePageContent() {
       }
     },
     [user],
+  );
+
+  const handleBillPaymentPending = useCallback(async () => {
+    if (!billPaymentData?.billId || !billPaymentData.billPaymentId || !billPaymentData.paymentIntent) {
+      await loadBills();
+      return;
+    }
+
+    await billService.markPaymentProcessing({
+      billId: billPaymentData.billId,
+      billPaymentId: billPaymentData.billPaymentId,
+      paymentIntent: billPaymentData.paymentIntent,
+    });
+    await loadBills();
+  }, [billPaymentData, loadBills]);
+
+  const handleCancelPendingBillPayment = useCallback(
+    async (bill: Bill) => {
+      const processingPayment = (bill.payments ?? [])
+        .slice()
+        .sort((a, b) => a.sequence - b.sequence)
+        .find((payment) => payment.status === "PROCESSING");
+      if (!processingPayment) return;
+
+      try {
+        setCancellingBillPaymentId(processingPayment.$id);
+        setBillError(null);
+        await billService.cancelPayment({
+          billId: bill.$id,
+          billPaymentId: processingPayment.$id,
+        });
+        notifications.show({
+          color: "green",
+          message: "Pending bill payment cancelled.",
+        });
+        await loadBills();
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to cancel pending payment";
+        setBillError(message);
+        notifications.show({ color: "red", message });
+      } finally {
+        setCancellingBillPaymentId(null);
+      }
+    },
+    [loadBills],
   );
 
   const handleSplitBill = useCallback(
@@ -3840,15 +3887,24 @@ function ProfilePageContent() {
           ) : (
             <div className="space-y-3">
               {bills.map((bill) => {
+                const billPayments = (bill.payments ?? [])
+                  .slice()
+                  .sort((a, b) => a.sequence - b.sequence);
+                const processingPayment = billPayments.find(
+                  (payment) => payment.status === "PROCESSING",
+                );
+                const isPaymentProcessing =
+                  bill.status === "PENDING" || Boolean(processingPayment);
                 const remaining = Math.max(
                   bill.totalAmountCents - bill.paidAmountCents,
                   0,
                 );
                 const nextAmount =
-                  bill.nextPaymentAmountCents !== null &&
+                  processingPayment?.amountCents ??
+                  (bill.nextPaymentAmountCents !== null &&
                   bill.nextPaymentAmountCents !== undefined
                     ? bill.nextPaymentAmountCents
-                    : remaining;
+                    : remaining);
                 const nextDue = bill.nextPaymentDue
                   ? formatDisplayDate(bill.nextPaymentDue)
                   : "TBD";
@@ -3877,13 +3933,28 @@ function ProfilePageContent() {
                         </Text>
                       </div>
                       <Badge
-                        color={nextAmount > 0 ? "yellow" : "green"}
+                        color={
+                          isPaymentProcessing
+                            ? "yellow"
+                            : nextAmount > 0
+                              ? "yellow"
+                              : "green"
+                        }
                         variant="light"
                         radius="xl"
                       >
-                        {nextAmount > 0 ? "Payment due" : "Paid up"}
+                        {isPaymentProcessing
+                          ? "Pending"
+                          : nextAmount > 0
+                            ? "Payment due"
+                            : "Paid up"}
                       </Badge>
                     </Group>
+                    {isPaymentProcessing && (
+                      <Alert color="yellow" variant="light" mt="md">
+                        A bank payment is pending with Stripe. You can cancel it before Stripe completes it.
+                      </Alert>
+                    )}
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
                       <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
                         <Text size="xs" tt="uppercase" fw={700} c="dimmed">
@@ -3924,10 +3995,21 @@ function ProfilePageContent() {
                       <Button
                         size="xs"
                         onClick={() => handlePayBill(bill)}
-                        disabled={nextAmount <= 0}
+                        disabled={nextAmount <= 0 || isPaymentProcessing || bill.status === "CANCELLED"}
                       >
                         Pay next installment
                       </Button>
+                      {processingPayment && (
+                        <Button
+                          size="xs"
+                          variant="light"
+                          color="red"
+                          loading={cancellingBillPaymentId === processingPayment.$id}
+                          onClick={() => handleCancelPendingBillPayment(bill)}
+                        >
+                          Cancel pending payment
+                        </Button>
+                      )}
                     </Group>
                   </Paper>
                 );
@@ -4671,6 +4753,7 @@ function ProfilePageContent() {
             await loadBills();
             closeBillPaymentModal();
           }}
+          onPaymentPending={handleBillPaymentPending}
         />
       </div>
     </>

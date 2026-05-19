@@ -84,7 +84,14 @@ class BillService {
         if (!payments.length) {
             payments = await this.fetchBillPayments(bill.$id);
         }
-        const nextPayment = payments.sort((a, b) => a.sequence - b.sequence).find((p) => p.status === 'PENDING');
+        const openPayments = payments
+            .filter((payment) => payment.status !== 'PAID' && payment.status !== 'VOID')
+            .sort((a, b) => a.sequence - b.sequence);
+        if (openPayments.some((payment) => payment.status === 'PROCESSING')) {
+            throw new Error('This bill payment is pending with Stripe.');
+        }
+
+        const nextPayment = openPayments.find((p) => p.status === 'PENDING');
         if (!nextPayment) {
             throw new Error('Bill has no pending installments');
         }
@@ -97,6 +104,44 @@ class BillService {
             throw new Error(result.error);
         }
         return result as PaymentIntent;
+    }
+
+    async markPaymentProcessing(params: {
+        billId: string;
+        billPaymentId: string;
+        paymentIntent: string;
+    }): Promise<Bill> {
+        const result = await apiRequest<{ bill?: Bill; error?: string }>(
+            `/api/billing/bills/${encodeURIComponent(params.billId)}/payments/${encodeURIComponent(params.billPaymentId)}/processing`,
+            {
+                method: 'POST',
+                body: { paymentIntent: params.paymentIntent },
+            },
+        );
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        if (!result.bill) {
+            throw new Error('Failed to mark bill payment pending');
+        }
+        return result.bill;
+    }
+
+    async cancelPayment(params: {
+        billId: string;
+        billPaymentId: string;
+    }): Promise<Bill> {
+        const result = await apiRequest<{ bill?: Bill; error?: string }>(
+            `/api/billing/bills/${encodeURIComponent(params.billId)}/payments/${encodeURIComponent(params.billPaymentId)}/cancel`,
+            { method: 'POST' },
+        );
+        if (result.error) {
+            throw new Error(result.error);
+        }
+        if (!result.bill) {
+            throw new Error('Failed to cancel bill payment');
+        }
+        return result.bill;
     }
 
     async splitBill(billId: string, playerIds: string[]): Promise<Bill[]> {

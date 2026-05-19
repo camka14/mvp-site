@@ -1262,6 +1262,7 @@ function EventScheduleContent() {
   const [refundError, setRefundError] = useState<string | null>(null);
   const [refundAmountDraftByPaymentId, setRefundAmountDraftByPaymentId] = useState<Record<string, number>>({});
   const [refundingPaymentId, setRefundingPaymentId] = useState<string | null>(null);
+  const [cancellingPendingBillPaymentId, setCancellingPendingBillPaymentId] = useState<string | null>(null);
   const [createBillTeam, setCreateBillTeam] = useState<Team | null>(null);
   const [createBillError, setCreateBillError] = useState<string | null>(null);
   const [creatingBill, setCreatingBill] = useState(false);
@@ -4508,6 +4509,7 @@ function EventScheduleContent() {
     setRefundLoading(false);
     setRefundAmountDraftByPaymentId({});
     setRefundingPaymentId(null);
+    setCancellingPendingBillPaymentId(null);
   }, []);
 
   const openRefundModal = useCallback(
@@ -4599,6 +4601,32 @@ function EventScheduleContent() {
       refundSnapshot?.bills,
       selectedRefundTeam,
     ],
+  );
+
+  const cancelPendingBillPayment = useCallback(
+    async (billId: string, paymentId: string) => {
+      const team = selectedRefundTeam;
+      if (!team?.$id) {
+        return;
+      }
+      setCancellingPendingBillPaymentId(paymentId);
+      setRefundError(null);
+      try {
+        await apiRequest(`/api/billing/bills/${billId}/payments/${paymentId}/cancel`, {
+          method: 'POST',
+        });
+        const snapshot = await loadTeamBillingSnapshot(team.$id);
+        setRefundSnapshot(snapshot);
+        setInfoMessage('Pending payment cancelled.');
+        refreshTeamCompliance();
+      } catch (error) {
+        console.error('Failed to cancel pending bill payment:', error);
+        setRefundError(error instanceof Error ? error.message : 'Failed to cancel pending payment.');
+      } finally {
+        setCancellingPendingBillPaymentId(null);
+      }
+    },
+    [loadTeamBillingSnapshot, refreshTeamCompliance, selectedRefundTeam],
   );
 
   const closeCreateBillModal = useCallback(() => {
@@ -10963,11 +10991,17 @@ function EventScheduleContent() {
                             const draftAmount = refundAmountDraftByPaymentId[payment.$id] ?? (payment.refundableAmountCents / 100);
                             const maxDollars = payment.refundableAmountCents / 100;
                             const canRefundPayment = payment.isRefundable && Boolean(payment.paymentIntentId);
+                            const canCancelPendingPayment = payment.status === 'PROCESSING';
                             return (
                               <Paper key={payment.$id} withBorder radius="sm" p="sm">
                                 <Stack gap="xs">
                                   <Group justify="space-between" align="center" wrap="wrap">
-                                    <Text size="sm" fw={500}>Payment #{payment.sequence}</Text>
+                                    <Group gap="xs">
+                                      <Text size="sm" fw={500}>Payment #{payment.sequence}</Text>
+                                      {canCancelPendingPayment ? (
+                                        <Badge size="xs" color="yellow" variant="light">Pending</Badge>
+                                      ) : null}
+                                    </Group>
                                     <Text size="xs" c="dimmed">
                                       Amount {formatBillAmount(payment.amountCents)} {'\u2022'} Refunded {formatBillAmount(payment.refundedAmountCents)}
                                     </Text>
@@ -11007,10 +11041,27 @@ function EventScheduleContent() {
                                   ) : (
                                     <Text size="xs" c="dimmed">
                                       {payment.paymentIntentId
-                                        ? 'This payment has no refundable balance.'
+                                        ? canCancelPendingPayment
+                                          ? 'This bank payment is pending with Stripe.'
+                                          : 'This payment has no refundable balance.'
                                         : 'This payment cannot be refunded because it is not linked to Stripe.'}
                                     </Text>
                                   )}
+                                  {canCancelPendingPayment ? (
+                                    <Group>
+                                      <Button
+                                        size="xs"
+                                        variant="light"
+                                        color="red"
+                                        loading={cancellingPendingBillPaymentId === payment.$id}
+                                        onClick={() => {
+                                          void cancelPendingBillPayment(bill.$id, payment.$id);
+                                        }}
+                                      >
+                                        Cancel pending payment
+                                      </Button>
+                                    </Group>
+                                  ) : null}
                                 </Stack>
                               </Paper>
                             );

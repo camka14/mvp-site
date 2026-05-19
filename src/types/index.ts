@@ -1886,7 +1886,7 @@ export interface BillPayment {
   sequence: number;
   dueDate: string;
   amountCents: number;
-  status: 'PENDING' | 'PAID' | 'VOID';
+  status: 'PENDING' | 'PROCESSING' | 'PAID' | 'VOID';
   paidAt?: string;
   paymentIntentId?: string;
   payerUserId?: string;
@@ -1915,7 +1915,7 @@ export interface Bill {
   nextPaymentAmountCents?: number | null;
   parentBillId?: string | null;
   allowSplit?: boolean;
-  status: 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+  status: 'OPEN' | 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
   paymentPlanEnabled?: boolean;
   createdBy?: string | null;
   lineItems?: BillLineItem[];

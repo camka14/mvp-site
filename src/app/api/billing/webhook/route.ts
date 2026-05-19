@@ -582,9 +582,11 @@ const resolveBillStatus = (
   currentStatus: string | null,
   paidAmountCents: number,
   totalAmountCents: number,
-): 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED' => {
+  hasProcessingPayment = false,
+): 'OPEN' | 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED' => {
   if (paidAmountCents >= totalAmountCents) return 'PAID';
   if (currentStatus === 'CANCELLED') return 'CANCELLED';
+  if (hasProcessingPayment) return 'PENDING';
   if (currentStatus === 'OVERDUE') return 'OVERDUE';
   return 'OPEN';
 };
@@ -677,12 +679,16 @@ const reconcileBill = async ({
     ownPaidAmountCents + childrenPaidAmountCents,
   );
   const remainingAmountCents = Math.max(bill.totalAmountCents - paidAmountCents, 0);
+  const processingPayment = payments.find((entry) => entry.status === 'PROCESSING') ?? null;
   const pendingPayment = payments.find((entry) => entry.status === 'PENDING' || entry.status === null) ?? null;
 
   let nextPaymentDue: Date | null = null;
   let nextPaymentAmountCents: number | null = null;
 
-  if (pendingPayment) {
+  if (processingPayment) {
+    nextPaymentDue = processingPayment.dueDate;
+    nextPaymentAmountCents = processingPayment.amountCents;
+  } else if (pendingPayment) {
     if (remainingAmountCents <= 0) {
       const syncedIntentId = await syncPendingPaymentIntent({
         stripe,
@@ -731,7 +737,12 @@ const reconcileBill = async ({
     }
   }
 
-  const status = resolveBillStatus(bill.status, paidAmountCents, bill.totalAmountCents);
+  const status = resolveBillStatus(
+    bill.status,
+    paidAmountCents,
+    bill.totalAmountCents,
+    Boolean(processingPayment),
+  );
   await prisma.bills.update({
     where: { id: bill.id },
     data: {
@@ -913,6 +924,146 @@ const buildInstantLineItems = ({
   return { lineItems, effectiveAmountCents };
 };
 
+const markBillPaymentProcessing = async ({
+  billId,
+  billPaymentId,
+  paymentIntentId,
+  userId,
+  metadata,
+  now,
+  stripe,
+}: {
+  billId: string | null;
+  billPaymentId: string | null;
+  paymentIntentId: string | null;
+  userId: string | null;
+  metadata: Record<string, unknown>;
+  now: Date;
+  stripe: Stripe | null;
+}): Promise<{ billId: string | null; billPaymentId: string | null; updated: boolean }> => {
+  if (!billId || !billPaymentId) {
+    return { billId, billPaymentId, updated: false };
+  }
+
+  const payment = await prisma.billPayments.findUnique({
+    where: { id: billPaymentId },
+    select: { id: true, billId: true, status: true },
+  });
+
+  if (!payment || payment.billId !== billId) {
+    console.warn(
+      `Stripe webhook bill metadata mismatch while marking payment processing (billId=${billId}, billPaymentId=${billPaymentId}).`,
+    );
+    return { billId, billPaymentId, updated: false };
+  }
+
+  if (payment.status === 'PAID') {
+    return { billId, billPaymentId, updated: false };
+  }
+
+  await prisma.billPayments.update({
+    where: { id: billPaymentId },
+    data: {
+      status: 'PROCESSING',
+      paidAt: null,
+      paymentIntentId: paymentIntentId ?? undefined,
+      payerUserId: userId ?? undefined,
+      taxCalculationId: toStringOrNull(metadata.tax_calculation_id ?? metadata.taxCalculationId ?? null),
+      taxAmountCents: toIntOrNull(metadata.tax_cents ?? metadata.taxCents) ?? 0,
+      stripeProcessingFeeCents: toIntOrNull(
+        metadata.stripe_processing_fee_cents ?? metadata.stripeProcessingFeeCents ?? null,
+      ) ?? 0,
+      stripeTaxServiceFeeCents: toIntOrNull(
+        metadata.stripe_tax_service_fee_cents ?? metadata.stripeTaxServiceFeeCents ?? null,
+      ) ?? 0,
+      updatedAt: now,
+    },
+  });
+
+  const reconciledBill = await reconcileBill({ billId, now, stripe });
+  if (reconciledBill?.parentBillId) {
+    await reconcileBill({ billId: reconciledBill.parentBillId, now, stripe });
+  }
+
+  return { billId, billPaymentId, updated: payment.status !== 'PROCESSING' };
+};
+
+const releaseBillPaymentProcessing = async ({
+  billId,
+  billPaymentId,
+  paymentIntentId,
+  now,
+  stripe,
+}: {
+  billId: string | null;
+  billPaymentId: string | null;
+  paymentIntentId: string | null;
+  now: Date;
+  stripe: Stripe | null;
+}): Promise<{ billId: string | null; billPaymentId: string | null; updated: boolean }> => {
+  const payment = billPaymentId
+    ? await prisma.billPayments.findUnique({
+        where: { id: billPaymentId },
+        select: { id: true, billId: true, status: true },
+      })
+    : paymentIntentId
+      ? await prisma.billPayments.findFirst({
+          where: { paymentIntentId },
+          select: { id: true, billId: true, status: true },
+        })
+      : null;
+
+  if (!payment) {
+    return { billId, billPaymentId, updated: false };
+  }
+  if (billId && payment.billId !== billId) {
+    console.warn(
+      `Stripe webhook bill metadata mismatch while releasing payment processing (billId=${billId}, billPaymentId=${payment.id}).`,
+    );
+    return { billId, billPaymentId: payment.id, updated: false };
+  }
+  if (payment.status === 'PAID') {
+    return { billId: payment.billId, billPaymentId: payment.id, updated: false };
+  }
+
+  const bill = await prisma.bills.findUnique({
+    where: { id: payment.billId },
+    select: { id: true, paymentPlanEnabled: true },
+  });
+  if (!bill) {
+    return { billId: payment.billId, billPaymentId: payment.id, updated: false };
+  }
+
+  const nextPaymentStatus = bill.paymentPlanEnabled ? 'PENDING' : 'VOID';
+  await prisma.billPayments.update({
+    where: { id: payment.id },
+    data: {
+      status: nextPaymentStatus,
+      paidAt: null,
+      paymentIntentId: null,
+      payerUserId: null,
+      updatedAt: now,
+    },
+  });
+
+  if (bill.paymentPlanEnabled) {
+    await reconcileBill({ billId: bill.id, now, stripe });
+  } else {
+    await prisma.bills.update({
+      where: { id: bill.id },
+      data: {
+        paidAmountCents: 0,
+        status: 'CANCELLED',
+        nextPaymentDue: null,
+        nextPaymentAmountCents: null,
+        updatedAt: now,
+      },
+    });
+  }
+
+  return { billId: bill.id, billPaymentId: payment.id, updated: true };
+};
+
 const createInstantBillAndPayment = async ({
   purchaseType,
   paymentIntentId,
@@ -920,10 +1071,13 @@ const createInstantBillAndPayment = async ({
   teamId,
   eventId,
   organizationId,
+  registrationId,
   amountCents,
   totalChargeCents,
   metadata,
   now,
+  targetPaymentStatus = 'PAID',
+  stripe,
 }: {
   purchaseType: string | null;
   paymentIntentId: string | null;
@@ -931,20 +1085,28 @@ const createInstantBillAndPayment = async ({
   teamId: string | null;
   eventId: string | null;
   organizationId: string | null;
+  registrationId: string | null;
   amountCents: number | null;
   totalChargeCents: number | null;
   metadata: Record<string, unknown>;
   now: Date;
-}): Promise<{ billId: string | null; billPaymentId: string | null; created: boolean }> => {
+  targetPaymentStatus?: 'PAID' | 'PROCESSING';
+  stripe: Stripe | null;
+}): Promise<{
+  billId: string | null;
+  billPaymentId: string | null;
+  created: boolean;
+  transitionedToPaid: boolean;
+}> => {
   const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
   if (!paymentIntentId || !amountCents || amountCents <= 0 || normalizedPurchaseType === 'bill') {
-    return { billId: null, billPaymentId: null, created: false };
+    return { billId: null, billPaymentId: null, created: false, transitionedToPaid: false };
   }
 
   const ownerId = teamId ?? userId;
   const ownerType: 'TEAM' | 'USER' = teamId ? 'TEAM' : 'USER';
   if (!ownerId) {
-    return { billId: null, billPaymentId: null, created: false };
+    return { billId: null, billPaymentId: null, created: false, transitionedToPaid: false };
   }
 
   const instantBreakdown = buildInstantLineItems({
@@ -963,25 +1125,91 @@ const createInstantBillAndPayment = async ({
   ) ?? 0;
   const effectiveAmountCents = instantBreakdown.effectiveAmountCents;
   if (effectiveAmountCents <= 0) {
-    return { billId: null, billPaymentId: null, created: false };
+    return { billId: null, billPaymentId: null, created: false, transitionedToPaid: false };
   }
 
   const existingPayment = await prisma.billPayments.findFirst({
     where: { paymentIntentId },
-    select: { id: true, billId: true },
+    select: { id: true, billId: true, status: true },
   });
   if (existingPayment) {
-    return { billId: existingPayment.billId, billPaymentId: existingPayment.id, created: false };
+    if (targetPaymentStatus === 'PAID' && existingPayment.status !== 'PAID') {
+      await prisma.billPayments.update({
+        where: { id: existingPayment.id },
+        data: {
+          status: 'PAID',
+          paidAt: now,
+          payerUserId: userId ?? undefined,
+          taxCalculationId,
+          taxAmountCents,
+          stripeProcessingFeeCents,
+          stripeTaxServiceFeeCents,
+          updatedAt: now,
+        },
+      });
+      await reconcileBill({ billId: existingPayment.billId, now, stripe });
+      return {
+        billId: existingPayment.billId,
+        billPaymentId: existingPayment.id,
+        created: false,
+        transitionedToPaid: true,
+      };
+    }
+    if (targetPaymentStatus === 'PROCESSING' && existingPayment.status !== 'PAID' && existingPayment.status !== 'PROCESSING') {
+      await markBillPaymentProcessing({
+        billId: existingPayment.billId,
+        billPaymentId: existingPayment.id,
+        paymentIntentId,
+        userId,
+        metadata,
+        now,
+        stripe,
+      });
+    }
+    return {
+      billId: existingPayment.billId,
+      billPaymentId: existingPayment.id,
+      created: false,
+      transitionedToPaid: false,
+    };
   }
 
   return prisma.$transaction(async (tx) => {
     const duplicatePayment = await tx.billPayments.findFirst({
       where: { paymentIntentId },
-      select: { id: true, billId: true },
+      select: { id: true, billId: true, status: true },
     });
     if (duplicatePayment) {
-      return { billId: duplicatePayment.billId, billPaymentId: duplicatePayment.id, created: false };
+      return {
+        billId: duplicatePayment.billId,
+        billPaymentId: duplicatePayment.id,
+        created: false,
+        transitionedToPaid: false,
+      };
     }
+
+    const isPaid = targetPaymentStatus === 'PAID';
+    const purchaseMetadata = {
+      purchaseType: normalizedPurchaseType || null,
+      userId,
+      teamId,
+      eventId,
+      organizationId,
+      registrationId,
+      occurrenceSlotId: toStringOrNull(metadata.occurrence_slot_id ?? metadata.occurrenceSlotId ?? null),
+      occurrenceDate: toStringOrNull(metadata.occurrence_date ?? metadata.occurrenceDate ?? null),
+      productId: toStringOrNull(metadata.product_id ?? metadata.productId ?? null),
+    };
+    const lineItems = instantBreakdown.lineItems.map((item, index) => (
+      !isPaid && index === 0
+        ? {
+            ...item,
+            ...Object.fromEntries(
+              Object.entries(purchaseMetadata).filter(([, value]) => value !== null && value !== undefined),
+            ),
+          }
+        : item
+    ));
 
     const bill = await tx.bills.create({
       data: {
@@ -991,15 +1219,15 @@ const createInstantBillAndPayment = async ({
         organizationId: organizationId ?? null,
         eventId: eventId ?? null,
         totalAmountCents: effectiveAmountCents,
-        paidAmountCents: effectiveAmountCents,
-        nextPaymentDue: null,
-        nextPaymentAmountCents: null,
+        paidAmountCents: isPaid ? effectiveAmountCents : 0,
+        nextPaymentDue: isPaid ? null : now,
+        nextPaymentAmountCents: isPaid ? null : effectiveAmountCents,
         parentBillId: null,
         allowSplit: false,
-        status: 'PAID',
+        status: isPaid ? 'PAID' : 'PENDING',
         paymentPlanEnabled: false,
         createdBy: userId ?? null,
-        lineItems: instantBreakdown.lineItems,
+        lineItems,
         createdAt: now,
         updatedAt: now,
       },
@@ -1013,8 +1241,8 @@ const createInstantBillAndPayment = async ({
         sequence: 1,
         dueDate: now,
         amountCents: effectiveAmountCents,
-        status: 'PAID',
-        paidAt: now,
+        status: targetPaymentStatus,
+        paidAt: isPaid ? now : null,
         paymentIntentId,
         payerUserId: userId ?? null,
         taxCalculationId,
@@ -1027,7 +1255,12 @@ const createInstantBillAndPayment = async ({
       select: { id: true },
     });
 
-    return { billId: bill.id, billPaymentId: payment.id, created: true };
+    return {
+      billId: bill.id,
+      billPaymentId: payment.id,
+      created: true,
+      transitionedToPaid: isPaid,
+    };
   });
 };
 
@@ -1204,6 +1437,38 @@ export async function POST(req: NextRequest) {
     let shouldSendReceipt = false;
 
     if (eventType === 'payment_intent.processing') {
+      if (billId || billPaymentId) {
+        const pendingBill = await markBillPaymentProcessing({
+          billId,
+          billPaymentId,
+          paymentIntentId,
+          userId,
+          metadata,
+          now,
+          stripe: stripeForPaymentIntentSync,
+        });
+        resolvedBillId = pendingBill.billId;
+        resolvedBillPaymentId = pendingBill.billPaymentId;
+      } else {
+        const instantBill = await createInstantBillAndPayment({
+          purchaseType,
+          paymentIntentId,
+          userId,
+          teamId,
+          eventId,
+          organizationId,
+          registrationId,
+          amountCents,
+          totalChargeCents,
+          metadata,
+          now,
+          targetPaymentStatus: 'PROCESSING',
+          stripe: stripeForPaymentIntentSync,
+        });
+        resolvedBillId = instantBill.billId ?? resolvedBillId;
+        resolvedBillPaymentId = instantBill.billPaymentId ?? resolvedBillPaymentId;
+      }
+
       const registrationResult = await markEventRegistrationPaymentPendingFromPurchase({
         purchaseType,
         eventId,
@@ -1258,6 +1523,16 @@ export async function POST(req: NextRequest) {
     }
 
     if (eventType === 'payment_intent.payment_failed') {
+      const releasedBill = await releaseBillPaymentProcessing({
+        billId,
+        billPaymentId,
+        paymentIntentId,
+        now,
+        stripe: stripeForPaymentIntentSync,
+      });
+      resolvedBillId = releasedBill.billId ?? resolvedBillId;
+      resolvedBillPaymentId = releasedBill.billPaymentId ?? resolvedBillPaymentId;
+
       const registrationResult = await cancelEventRegistrationFromFailedPayment({
         purchaseType,
         eventId,
@@ -1372,10 +1647,13 @@ export async function POST(req: NextRequest) {
         teamId,
         eventId,
         organizationId,
+        registrationId,
         amountCents,
         totalChargeCents,
         metadata,
         now,
+        targetPaymentStatus: 'PAID',
+        stripe: stripeForPaymentIntentSync,
       });
       if (instantBill.billId) {
         resolvedBillId = instantBill.billId;
@@ -1383,7 +1661,7 @@ export async function POST(req: NextRequest) {
       if (instantBill.billPaymentId) {
         resolvedBillPaymentId = instantBill.billPaymentId;
       }
-      shouldSendReceipt = instantBill.created;
+      shouldSendReceipt = instantBill.transitionedToPaid;
     }
 
     const receiptLogContext = {
