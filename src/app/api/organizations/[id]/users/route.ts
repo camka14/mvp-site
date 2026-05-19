@@ -79,6 +79,45 @@ type DocumentSummary = {
   content?: string;
 };
 
+type TeamMembershipSummary = {
+  teamId: string;
+  teamName: string;
+  division?: string;
+  sport?: string;
+  status?: string;
+  rosterRole?: string;
+  jerseyNumber?: string | null;
+  position?: string | null;
+  isCaptain: boolean;
+};
+
+type TeamMemberSummary = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  userName?: string;
+  profileImageId?: string | null;
+  status?: string;
+  rosterRole?: string;
+  jerseyNumber?: string | null;
+  position?: string | null;
+  isCaptain: boolean;
+  bills: BillSummary[];
+  documents: DocumentSummary[];
+};
+
+type TeamStaffSummary = {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  userName?: string;
+  profileImageId?: string | null;
+  role: 'MANAGER' | 'HEAD_COACH' | 'ASSISTANT_COACH';
+  status?: string;
+};
+
 type UserSummaryInternal = {
   userId: string;
   firstName: string;
@@ -89,6 +128,7 @@ type UserSummaryInternal = {
   eventsById: Map<string, EventSummary>;
   documents: DocumentSummary[];
   bills: BillSummary[];
+  teamMembershipsByTeamId: Map<string, TeamMembershipSummary>;
 };
 
 type TeamSummaryInternal = {
@@ -99,9 +139,30 @@ type TeamSummaryInternal = {
   profileImageId?: string | null;
   memberCount: number;
   teamSize?: number;
+  captainId?: string;
+  managerId?: string;
+  headCoachId?: string;
+  assistantCoachIds: string[];
   registrationsByEventTeamId: Map<string, TeamRegistrationSummary>;
   documents: DocumentSummary[];
   bills: BillSummary[];
+};
+
+type CanonicalTeamRegistrationRow = {
+  teamId?: string | null;
+  userId?: string | null;
+  status?: string | null;
+  rosterRole?: string | null;
+  jerseyNumber?: string | null;
+  position?: string | null;
+  isCaptain?: boolean | null;
+};
+
+type TeamStaffAssignmentRow = {
+  teamId?: string | null;
+  userId?: string | null;
+  role?: string | null;
+  status?: string | null;
 };
 
 const toDisplayName = (user: {
@@ -413,7 +474,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    })
 	    : [];
 	  const teamRegistrationsDelegate = (prisma as any).teamRegistrations;
-	  const canonicalTeamRegistrationRows = canonicalTeamIds.length && typeof teamRegistrationsDelegate?.findMany === 'function'
+	  const canonicalTeamRegistrationRows: CanonicalTeamRegistrationRow[] = canonicalTeamIds.length && typeof teamRegistrationsDelegate?.findMany === 'function'
 	    ? await teamRegistrationsDelegate.findMany({
 	      where: {
 	        teamId: { in: canonicalTeamIds },
@@ -422,6 +483,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	      select: {
 	        teamId: true,
 	        userId: true,
+	        status: true,
+	        rosterRole: true,
+	        jerseyNumber: true,
+	        position: true,
+	        isCaptain: true,
+	      },
+	    })
+	    : [];
+	  const teamStaffAssignmentsDelegate = (prisma as any).teamStaffAssignments;
+	  const canonicalTeamStaffRows: TeamStaffAssignmentRow[] = canonicalTeamIds.length && typeof teamStaffAssignmentsDelegate?.findMany === 'function'
+	    ? await teamStaffAssignmentsDelegate.findMany({
+	      where: {
+	        teamId: { in: canonicalTeamIds },
+	        status: { in: ['ACTIVE', 'PENDING', 'STARTED'] },
+	      },
+	      select: {
+	        teamId: true,
+	        userId: true,
+	        role: true,
+	        status: true,
 	      },
 	    })
 	    : [];
@@ -522,6 +603,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	      profileImageId: typeof team.profileImageId === 'string' && team.profileImageId.trim() ? team.profileImageId : null,
 	      memberCount: memberCountByCanonicalTeamId.get(canonicalTeamId) ?? 0,
 	      teamSize: typeof team.teamSize === 'number' ? team.teamSize : undefined,
+	      assistantCoachIds: [],
 	      registrationsByEventTeamId: new Map<string, TeamRegistrationSummary>(),
 	      documents: [],
 	      bills: [],
@@ -543,6 +625,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	      profileImageId: typeof eventTeam.profileImageId === 'string' && eventTeam.profileImageId.trim() ? eventTeam.profileImageId : null,
 	      memberCount: memberCountByCanonicalTeamId.get(canonicalTeamId) ?? teamMemberIdsByTeamId.get(eventTeamId)?.length ?? 0,
 	      teamSize: typeof eventTeam.teamSize === 'number' ? eventTeam.teamSize : undefined,
+	      captainId: normalizeId(eventTeam.captainId) ?? undefined,
+	      managerId: normalizeId(eventTeam.managerId) ?? undefined,
+	      headCoachId: normalizeId(eventTeam.headCoachId) ?? undefined,
+	      assistantCoachIds: normalizeIdList(eventTeam.coachIds),
 	      registrationsByEventTeamId: new Map<string, TeamRegistrationSummary>(),
 	      documents: [],
 	      bills: [],
@@ -598,14 +684,38 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     memberIds.forEach((memberId) => participantUserIds.add(memberId));
   });
   const organizationTeamMemberUserIds = new Set<string>();
-  canonicalTeamRegistrationRows.forEach((row: { userId?: string | null }) => {
-    const userId = normalizeId(row.userId);
-    if (!userId) {
-      return;
-    }
-    organizationTeamMemberUserIds.add(userId);
-    participantUserIds.add(userId);
-  });
+	  canonicalTeamRegistrationRows.forEach((row: { userId?: string | null }) => {
+	    const userId = normalizeId(row.userId);
+	    if (!userId) {
+	      return;
+	    }
+	    const teamId = normalizeId((row as CanonicalTeamRegistrationRow).teamId);
+	    const teamSummary = teamId ? teamSummariesByCanonicalTeamId.get(teamId) : undefined;
+	    if (teamSummary && (row as CanonicalTeamRegistrationRow).isCaptain) {
+	      teamSummary.captainId = userId;
+	    }
+	    organizationTeamMemberUserIds.add(userId);
+	    participantUserIds.add(userId);
+	  });
+	  canonicalTeamStaffRows.forEach((row) => {
+	    const teamId = normalizeId(row.teamId);
+	    const userId = normalizeId(row.userId);
+	    if (!teamId || !userId) {
+	      return;
+	    }
+	    const teamSummary = teamSummariesByCanonicalTeamId.get(teamId);
+	    const role = normalizeStatus(row.role);
+	    if (teamSummary) {
+	      if (role === 'MANAGER') {
+	        teamSummary.managerId = userId;
+	      } else if (role === 'HEAD_COACH') {
+	        teamSummary.headCoachId = userId;
+	      } else if (role === 'ASSISTANT_COACH' && !teamSummary.assistantCoachIds.includes(userId)) {
+	        teamSummary.assistantCoachIds.push(userId);
+	      }
+	    }
+	    participantUserIds.add(userId);
+	  });
 
   const userIds = Array.from(participantUserIds);
   if (!userIds.length && activeEventTeamIds.length === 0) {
@@ -689,9 +799,72 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       eventsById: new Map<string, EventSummary>(),
 	      documents: [],
 	      bills: [],
+	      teamMembershipsByTeamId: new Map<string, TeamMembershipSummary>(),
 	    });
 	  });
 	  const usersById = new Map(users.map((user) => [user.id, user] as const));
+
+	  const teamPlayerRowsByCanonicalTeamId = new Map<string, CanonicalTeamRegistrationRow[]>();
+	  const teamPlayerRowKeys = new Set<string>();
+	  const addTeamPlayerRow = (row: CanonicalTeamRegistrationRow) => {
+	    const teamId = normalizeId(row.teamId);
+	    const userId = normalizeId(row.userId);
+	    if (!teamId || !userId) {
+	      return;
+	    }
+	    const key = `${teamId}::${userId}`;
+	    if (teamPlayerRowKeys.has(key)) {
+	      return;
+	    }
+	    teamPlayerRowKeys.add(key);
+	    const existingRows = teamPlayerRowsByCanonicalTeamId.get(teamId);
+	    if (existingRows) {
+	      existingRows.push(row);
+	      return;
+	    }
+	    teamPlayerRowsByCanonicalTeamId.set(teamId, [row]);
+	  };
+	  canonicalTeamRegistrationRows.forEach((row) => {
+	    const teamId = normalizeId(row.teamId);
+	    const userId = normalizeId(row.userId);
+	    if (!teamId || !userId) {
+	      return;
+	    }
+	    addTeamPlayerRow(row);
+	    const userSummary = summariesByUserId.get(userId);
+	    const teamSummary = teamSummariesByCanonicalTeamId.get(teamId);
+	    if (!userSummary || !teamSummary) {
+	      return;
+	    }
+	    userSummary.teamMembershipsByTeamId.set(teamId, {
+	      teamId,
+	      teamName: teamSummary.name,
+	      division: teamSummary.division,
+	      sport: teamSummary.sport,
+	      status: normalizeStatus(row.status),
+	      rosterRole: normalizeStatus(row.rosterRole),
+	      jerseyNumber: row.jerseyNumber ?? null,
+	      position: row.position ?? null,
+	      isCaptain: Boolean(row.isCaptain),
+	    });
+	  });
+	  eventTeams.forEach((team) => {
+	    const canonicalTeamId = canonicalTeamIdByEventTeamId.get(team.id);
+	    if (!canonicalTeamId) {
+	      return;
+	    }
+	    normalizeIdList(team.playerIds).forEach((userId) => {
+	      addTeamPlayerRow({
+	        teamId: canonicalTeamId,
+	        userId,
+	        status: 'ACTIVE',
+	        rosterRole: 'PARTICIPANT',
+	        jerseyNumber: null,
+	        position: null,
+	        isCaptain: normalizeId(team.captainId) === userId,
+	      });
+	    });
+	  });
 
 		  const teamBillOwnerIds = Array.from(new Set([...canonicalTeamIds, ...activeEventTeamIds]));
 	  const teamBills = eventIds.length && teamBillOwnerIds.length
@@ -1061,6 +1234,45 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    }
   });
 
+  const buildPersonFields = (userId: string) => {
+    const user = usersById.get(userId);
+    const fullName = user ? toDisplayName(user) : userId;
+    return {
+      userId,
+      firstName: user?.firstName ?? '',
+      lastName: user?.lastName ?? '',
+      fullName,
+      userName: user?.userName ?? undefined,
+      profileImageId: user?.profileImageId ?? null,
+    };
+  };
+
+  const staffStatusByTeamRoleUser = new Map<string, string | undefined>();
+  canonicalTeamStaffRows.forEach((row) => {
+    const teamId = normalizeId(row.teamId);
+    const userId = normalizeId(row.userId);
+    const role = normalizeStatus(row.role);
+    if (!teamId || !userId || !role) {
+      return;
+    }
+    staffStatusByTeamRoleUser.set(`${teamId}::${role}::${userId}`, normalizeStatus(row.status));
+  });
+
+  const buildStaffSummary = (
+    teamId: string,
+    userId: string | undefined,
+    role: TeamStaffSummary['role'],
+  ): TeamStaffSummary | null => {
+    if (!userId) {
+      return null;
+    }
+    return {
+      ...buildPersonFields(userId),
+      role,
+      status: staffStatusByTeamRoleUser.get(`${teamId}::${role}::${userId}`),
+    };
+  };
+
   const usersPayload = Array.from(summariesByUserId.values())
     .map((summary) => {
       const eventsList = Array.from(summary.eventsById.values())
@@ -1069,6 +1281,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .sort((a, b) => getSortTimestamp(b.signedAt) - getSortTimestamp(a.signedAt));
       const billsList = [...summary.bills]
         .sort((a, b) => getSortTimestamp(b.createdAt) - getSortTimestamp(a.createdAt));
+      const teamsList = Array.from(summary.teamMembershipsByTeamId.values())
+        .sort((a, b) => a.teamName.localeCompare(b.teamName, undefined, { sensitivity: 'base' }));
 
       return {
         userId: summary.userId,
@@ -1080,12 +1294,14 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         events: eventsList,
         documents: documentsList,
         bills: billsList,
+        teams: teamsList,
       };
     })
     .filter((summary) => (
       summary.events.length > 0
       || summary.documents.length > 0
       || summary.bills.length > 0
+      || summary.teams.length > 0
       || organizationTeamMemberUserIds.has(summary.userId)
     ))
     .sort((a, b) => a.fullName.localeCompare(b.fullName, undefined, { sensitivity: 'base' }));
@@ -1098,6 +1314,58 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	        .sort((a, b) => getSortTimestamp(b.signedAt) - getSortTimestamp(a.signedAt));
 	      const billsList = [...summary.bills]
 	        .sort((a, b) => getSortTimestamp(b.createdAt) - getSortTimestamp(a.createdAt));
+	      const teamEventIds = new Set(registrationsList.map((registration) => registration.eventId));
+	      const teamRelatedTeamIds = new Set<string>([
+	        summary.canonicalTeamId,
+	        ...registrationsList.map((registration) => registration.eventTeamId),
+	      ]);
+	      const parentTeamBillIds = new Set(
+	        billsList
+	          .filter((bill) => bill.ownerType === 'TEAM')
+	          .map((bill) => bill.billId),
+	      );
+	      const members = (teamPlayerRowsByCanonicalTeamId.get(summary.canonicalTeamId) ?? [])
+	        .map((row): TeamMemberSummary | null => {
+	          const userId = normalizeId(row.userId);
+	          if (!userId) {
+	            return null;
+	          }
+	          const userSummary = summariesByUserId.get(userId);
+	          const memberBills = (userSummary?.bills ?? [])
+	            .filter((bill) => (
+	              (bill.parentBillId ? parentTeamBillIds.has(bill.parentBillId) : false)
+	              || (bill.eventId ? teamEventIds.has(bill.eventId) : false)
+	            ))
+	            .sort((a, b) => getSortTimestamp(b.createdAt) - getSortTimestamp(a.createdAt));
+	          const memberDocuments = (userSummary?.documents ?? [])
+	            .filter((document) => (
+	              (document.teamId ? teamRelatedTeamIds.has(document.teamId) : false)
+	              || (document.eventId ? teamEventIds.has(document.eventId) : false)
+	            ))
+	            .sort((a, b) => getSortTimestamp(b.signedAt) - getSortTimestamp(a.signedAt));
+	          return {
+	            ...buildPersonFields(userId),
+	            status: normalizeStatus(row.status),
+	            rosterRole: normalizeStatus(row.rosterRole),
+	            jerseyNumber: row.jerseyNumber ?? null,
+	            position: row.position ?? null,
+	            isCaptain: Boolean(row.isCaptain) || summary.captainId === userId,
+	            bills: memberBills,
+	            documents: memberDocuments,
+	          };
+	        })
+	        .filter((member): member is TeamMemberSummary => Boolean(member))
+	        .sort((a, b) => {
+	          if (a.isCaptain !== b.isCaptain) {
+	            return a.isCaptain ? -1 : 1;
+	          }
+	          return a.fullName.localeCompare(b.fullName, undefined, { sensitivity: 'base' });
+	        });
+	      const manager = buildStaffSummary(summary.canonicalTeamId, summary.managerId, 'MANAGER');
+	      const headCoach = buildStaffSummary(summary.canonicalTeamId, summary.headCoachId, 'HEAD_COACH');
+	      const assistantCoaches = summary.assistantCoachIds
+	        .map((userId) => buildStaffSummary(summary.canonicalTeamId, userId, 'ASSISTANT_COACH'))
+	        .filter((staff): staff is TeamStaffSummary => Boolean(staff));
 	      const totals = billsList.reduce(
 	        (aggregate, bill) => ({
 	          totalAmountCents: aggregate.totalAmountCents + bill.totalAmountCents,
@@ -1121,6 +1389,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	        profileImageId: summary.profileImageId,
 	        memberCount: summary.memberCount,
 	        teamSize: summary.teamSize,
+	        captainId: summary.captainId,
+	        manager,
+	        headCoach,
+	        assistantCoaches,
+	        members,
 	        registrations: registrationsList,
 	        documents: documentsList,
 	        bills: billsList,

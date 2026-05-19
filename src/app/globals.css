@@ -552,6 +552,14 @@ svg {
   background: var(--ocean-surface-muted);
 }
 
+.org-page-shell .org-customer-list-row {
+  cursor: pointer;
+}
+
+.org-page-shell .org-customer-list-row[data-selected="true"] {
+  background: var(--ocean-surface-muted);
+}
+
 .shared-calendar-layout {
   display: grid;
   grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);

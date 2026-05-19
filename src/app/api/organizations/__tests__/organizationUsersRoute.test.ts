@@ -31,6 +31,9 @@ const prismaMock = {
   teamRegistrations: {
     findMany: jest.fn(),
   },
+  teamStaffAssignments: {
+    findMany: jest.fn(),
+  },
   divisions: {
     findMany: jest.fn(),
   },
@@ -82,6 +85,7 @@ describe('GET /api/organizations/[id]/users', () => {
     prismaMock.eventOfficials.findMany.mockResolvedValue([]);
     prismaMock.canonicalTeams.findMany.mockResolvedValue([]);
     prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([]);
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.bills.findMany.mockResolvedValue([]);
     prismaMock.billPayments.findMany.mockResolvedValue([]);
@@ -424,8 +428,32 @@ describe('GET /api/organizations/[id]/users', () => {
       },
     ]);
     prismaMock.teamRegistrations.findMany.mockResolvedValue([
-      { teamId: 'canonical_team_1', userId: 'player_1' },
-      { teamId: 'canonical_team_1', userId: 'manager_1' },
+      {
+        teamId: 'canonical_team_1',
+        userId: 'player_1',
+        status: 'ACTIVE',
+        rosterRole: 'PARTICIPANT',
+        jerseyNumber: '12',
+        position: 'Setter',
+        isCaptain: true,
+      },
+      {
+        teamId: 'canonical_team_1',
+        userId: 'manager_1',
+        status: 'ACTIVE',
+        rosterRole: 'PARTICIPANT',
+        jerseyNumber: null,
+        position: null,
+        isCaptain: false,
+      },
+    ]);
+    prismaMock.teamStaffAssignments.findMany.mockResolvedValue([
+      {
+        teamId: 'canonical_team_1',
+        userId: 'manager_1',
+        role: 'MANAGER',
+        status: 'ACTIVE',
+      },
     ]);
     prismaMock.userData.findMany.mockResolvedValue([
       { id: 'player_1', firstName: 'Alex', lastName: 'Brown', userName: 'abrown' },
@@ -542,6 +570,30 @@ describe('GET /api/organizations/[id]/users', () => {
         ownerId: 'player_1',
       }),
     ]));
+    expect(payload.teams[0].manager).toEqual(expect.objectContaining({
+      userId: 'manager_1',
+      fullName: 'Morgan Diaz',
+      role: 'MANAGER',
+    }));
+    expect(payload.teams[0].members).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        userId: 'player_1',
+        fullName: 'Alex Brown',
+        isCaptain: true,
+        jerseyNumber: '12',
+        position: 'Setter',
+        bills: expect.arrayContaining([
+          expect.objectContaining({ billId: 'bill_user_1' }),
+        ]),
+      }),
+    ]));
+    expect(payload.users.find((row: { userId: string }) => row.userId === 'player_1')?.teams).toEqual([
+      expect.objectContaining({
+        teamId: 'canonical_team_1',
+        teamName: 'Aces',
+        isCaptain: true,
+      }),
+    ]);
   });
 
   it('excludes placeholder event teams from organization customers', async () => {
