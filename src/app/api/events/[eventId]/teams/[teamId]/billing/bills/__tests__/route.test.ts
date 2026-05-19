@@ -28,8 +28,8 @@ jest.mock('@/server/events/eventRegistrations', () => ({
 
 import { POST } from '@/app/api/events/[eventId]/teams/[teamId]/billing/bills/route';
 
-const requestFor = (body: unknown) =>
-  new NextRequest('http://localhost/api/events/event_1/teams/team_1/billing/bills', {
+const requestFor = (body: unknown, query = '') =>
+  new NextRequest(`http://localhost/api/events/event_1/teams/team_1/billing/bills${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -227,5 +227,47 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/bills', () => {
     expect(response.status).toBe(400);
     expect(payload.error).toBe('User bill owner must be on the selected team.');
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('scopes participant validation to the selected weekly occurrence', async () => {
+    txBillsCreateMock.mockResolvedValue({
+      id: 'bill_new_1',
+      ownerType: 'TEAM',
+      ownerId: 'team_1',
+      eventId: 'event_1',
+      organizationId: 'org_1',
+      totalAmountCents: 5332,
+      paidAmountCents: 0,
+      nextPaymentAmountCents: 5332,
+      nextPaymentDue: new Date('2026-03-04T20:00:00.000Z'),
+      parentBillId: null,
+      allowSplit: true,
+      status: 'OPEN',
+      paymentPlanEnabled: false,
+      createdBy: 'host_1',
+      lineItems: [],
+      createdAt: new Date('2026-03-04T20:00:00.000Z'),
+      updatedAt: new Date('2026-03-04T20:00:00.000Z'),
+    });
+    txBillPaymentsCreateMock.mockResolvedValue({ id: 'payment_new_1' });
+
+    const response = await POST(
+      requestFor({
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        eventAmountCents: 5000,
+        allowSplit: true,
+      }, '?slotId=slot_1&occurrenceDate=2026-05-19'),
+      {
+        params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+      },
+    );
+
+    expect(response.status).toBe(201);
+    expect(getEventParticipantIdsForEventMock).toHaveBeenCalledWith(
+      'event_1',
+      prismaMock,
+      { slotId: 'slot_1', occurrenceDate: '2026-05-19' },
+    );
   });
 });

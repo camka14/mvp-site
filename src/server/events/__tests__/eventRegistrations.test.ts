@@ -5,6 +5,7 @@ jest.mock('@/lib/prisma', () => ({ prisma: {} }));
 import { buildEventDivisionId } from '@/lib/divisionTypes';
 import {
   buildEventParticipantSnapshot,
+  getEventParticipantIdsForEvent,
   syncDivisionTeamMembershipFromRegistrations,
 } from '@/server/events/eventRegistrations';
 
@@ -51,7 +52,7 @@ describe('buildEventParticipantSnapshot', () => {
             parentId: null,
             registrantType: 'TEAM',
             rosterRole: 'PARTICIPANT',
-            status: 'STARTED',
+            status: 'ACTIVE',
             ageAtEvent: null,
             divisionId: 'div_a',
             divisionTypeId: null,
@@ -91,6 +92,73 @@ describe('buildEventParticipantSnapshot', () => {
     });
   });
 
+  it('does not expose started weekly checkout reservations as registered participants', async () => {
+    const snapshot = await buildEventParticipantSnapshot({
+      event: {
+        id: 'weekly_parent',
+        eventType: 'WEEKLY_EVENT',
+        parentEvent: null,
+        teamSignup: true,
+        timeSlotIds: ['slot_1'],
+        divisions: ['div_a'],
+        maxParticipants: 12,
+      },
+      occurrence: {
+        slotId: 'slot_1',
+        occurrenceDate: '2026-04-14',
+      },
+    }, {
+      eventRegistrations: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'weekly_parent__team__team_1__slot_1__2026-04-14',
+            eventId: 'weekly_parent',
+            registrantId: 'team_1',
+            parentId: null,
+            registrantType: 'TEAM',
+            rosterRole: 'PARTICIPANT',
+            status: 'STARTED',
+            eventTeamId: 'team_1',
+            ageAtEvent: null,
+            divisionId: 'div_a',
+            divisionTypeId: null,
+            divisionTypeKey: null,
+            consentDocumentId: null,
+            consentStatus: null,
+            createdBy: 'user_1',
+            slotId: 'slot_1',
+            occurrenceDate: '2026-04-14',
+            createdAt: new Date('2026-04-01T00:00:00.000Z'),
+            updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+          },
+        ]),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'team_1', name: 'Team One' },
+        ]),
+      },
+      userData: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      timeSlots: {
+        findUnique: jest.fn().mockResolvedValue(weeklySlot),
+      },
+      divisions: {
+        findMany: jest.fn().mockResolvedValue(divisions),
+      },
+    } as any);
+
+    expect(snapshot.participants.teamIds).toEqual([]);
+    expect(snapshot.teams).toEqual([]);
+    expect(snapshot.participantCount).toBe(0);
+    expect(snapshot.registrations).toBeUndefined();
+    expect(snapshot.occurrence).toEqual({
+      slotId: 'slot_1',
+      occurrenceDate: '2026-04-14',
+    });
+  });
+
   it('returns a registered weekly self participant for the selected occurrence', async () => {
     const snapshot = await buildEventParticipantSnapshot({
       event: {
@@ -116,7 +184,7 @@ describe('buildEventParticipantSnapshot', () => {
             parentId: null,
             registrantType: 'SELF',
             rosterRole: 'PARTICIPANT',
-            status: 'STARTED',
+            status: 'ACTIVE',
             ageAtEvent: null,
             divisionId: 'div_a',
             divisionTypeId: null,
@@ -154,6 +222,251 @@ describe('buildEventParticipantSnapshot', () => {
       slotId: 'slot_1',
       occurrenceDate: '2026-04-14',
     });
+  });
+
+  it('excludes placeholder slot registrations from registered team participants', async () => {
+    const snapshot = await buildEventParticipantSnapshot({
+      event: {
+        id: 'event_1',
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        divisions: ['div_a'],
+        maxParticipants: 12,
+      },
+    }, {
+      eventRegistrations: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'event_1__team__registered_slot_1',
+            eventId: 'event_1',
+            registrantId: 'registered_slot_1',
+            parentId: 'canonical_team_1',
+            registrantType: 'TEAM',
+            rosterRole: 'PARTICIPANT',
+            status: 'ACTIVE',
+            eventTeamId: 'registered_slot_1',
+            ageAtEvent: null,
+            divisionId: 'div_a',
+            divisionTypeId: null,
+            divisionTypeKey: null,
+            consentDocumentId: null,
+            consentStatus: null,
+            createdBy: 'user_1',
+            slotId: null,
+            occurrenceDate: null,
+            createdAt: new Date('2026-04-01T00:00:00.000Z'),
+            updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+          },
+          {
+            id: 'event_1__team__placeholder_slot_1',
+            eventId: 'event_1',
+            registrantId: 'placeholder_slot_1',
+            parentId: null,
+            registrantType: 'TEAM',
+            rosterRole: 'PARTICIPANT',
+            status: 'ACTIVE',
+            eventTeamId: 'placeholder_slot_1',
+            ageAtEvent: null,
+            divisionId: 'div_a',
+            divisionTypeId: null,
+            divisionTypeKey: null,
+            consentDocumentId: null,
+            consentStatus: null,
+            createdBy: 'user_1',
+            slotId: null,
+            occurrenceDate: null,
+            createdAt: new Date('2026-04-01T00:00:00.000Z'),
+            updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+          },
+        ]),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'registered_slot_1',
+            name: 'Registered Team',
+            kind: 'REGISTERED',
+            captainId: 'captain_1',
+            parentTeamId: 'canonical_team_1',
+          },
+          {
+            id: 'placeholder_slot_1',
+            name: 'Place Holder 1',
+            kind: 'PLACEHOLDER',
+            captainId: '',
+            parentTeamId: null,
+          },
+        ]),
+      },
+      userData: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      divisions: {
+        findMany: jest.fn().mockResolvedValue(divisions),
+      },
+    } as any);
+
+    expect(snapshot.participants.teamIds).toEqual(['registered_slot_1']);
+    expect(snapshot.teams).toEqual([
+      expect.objectContaining({ id: 'registered_slot_1', name: 'Registered Team' }),
+    ]);
+    expect(snapshot.participantCount).toBe(1);
+  });
+
+  it('uses canonical event division metadata for participant division groups', async () => {
+    const openDivisionId = buildEventDivisionId('event_1', 'c_skill_open_age_18plus');
+    const snapshot = await buildEventParticipantSnapshot({
+      event: {
+        id: 'event_1',
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        divisions: [openDivisionId],
+        maxParticipants: 12,
+      },
+    }, {
+      eventRegistrations: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'event_1__team__team_1',
+            eventId: 'event_1',
+            registrantId: 'team_1',
+            parentId: 'canonical_team_1',
+            registrantType: 'TEAM',
+            rosterRole: 'PARTICIPANT',
+            status: 'ACTIVE',
+            eventTeamId: 'team_1',
+            ageAtEvent: null,
+            divisionId: openDivisionId,
+            divisionTypeId: 'open',
+            divisionTypeKey: 'c_skill_open',
+            consentDocumentId: null,
+            consentStatus: null,
+            createdBy: 'user_1',
+            slotId: null,
+            occurrenceDate: null,
+            createdAt: new Date('2026-04-01T00:00:00.000Z'),
+            updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+          },
+        ]),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'team_1',
+            name: 'Registered Team',
+            kind: 'REGISTERED',
+            captainId: 'captain_1',
+            parentTeamId: 'canonical_team_1',
+          },
+        ]),
+      },
+      userData: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      divisions: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: openDivisionId,
+            key: 'c_skill_open_age_18plus',
+            kind: 'LEAGUE',
+            maxParticipants: 12,
+            divisionTypeId: 'skill_open_age_18plus',
+          },
+        ]),
+      },
+    } as any);
+
+    expect(snapshot.participants.divisions).toEqual([
+      expect.objectContaining({
+        divisionId: openDivisionId,
+        divisionTypeId: 'skill_open_age_18plus',
+        divisionTypeKey: 'c_skill_open_age_18plus',
+        teamIds: ['team_1'],
+      }),
+    ]);
+  });
+});
+
+describe('getEventParticipantIdsForEvent', () => {
+  it('excludes active placeholder slot registrations from derived team ids', async () => {
+    const ids = await getEventParticipantIdsForEvent('event_1', {
+      eventRegistrations: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            eventId: 'event_1',
+            registrantId: 'team_1',
+            eventTeamId: 'team_1',
+            registrantType: 'TEAM',
+            rosterRole: 'PARTICIPANT',
+            createdAt: new Date('2026-04-01T00:00:00.000Z'),
+            id: 'event_1__team__team_1',
+          },
+          {
+            eventId: 'event_1',
+            registrantId: 'slot_1',
+            eventTeamId: 'slot_1',
+            registrantType: 'TEAM',
+            rosterRole: 'PARTICIPANT',
+            createdAt: new Date('2026-04-01T00:00:00.000Z'),
+            id: 'event_1__team__slot_1',
+          },
+        ]),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'team_1',
+            kind: 'REGISTERED',
+            captainId: 'captain_1',
+            parentTeamId: 'canonical_team_1',
+          },
+          {
+            id: 'slot_1',
+            kind: 'PLACEHOLDER',
+            captainId: '',
+            parentTeamId: null,
+          },
+        ]),
+      },
+    } as any);
+
+    expect(ids.teamIds).toEqual(['team_1']);
+  });
+
+  it('derives ids for the selected weekly occurrence when occurrence context is provided', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        eventId: 'weekly_parent',
+        registrantId: 'user_1',
+        eventTeamId: null,
+        registrantType: 'SELF',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-04-01T00:00:00.000Z'),
+        id: 'weekly_parent__self__user_1__slot_1__2026-08-05',
+      },
+    ]);
+
+    const ids = await getEventParticipantIdsForEvent('weekly_parent', {
+      eventRegistrations: {
+        findMany,
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    } as any, {
+      slotId: 'slot_1',
+      occurrenceDate: '2026-08-05',
+    });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventId: { in: ['weekly_parent'] },
+        status: { in: ['PENDING', 'ACTIVE', 'BLOCKED'] },
+        slotId: 'slot_1',
+        occurrenceDate: '2026-08-05',
+      }),
+    }));
+    expect(ids.userIds).toEqual(['user_1']);
   });
 });
 
@@ -217,7 +530,7 @@ describe('syncDivisionTeamMembershipFromRegistrations', () => {
     const secondDivisionId = buildEventDivisionId('event_1', 'c_skill_advanced');
     const updateMock = jest.fn().mockResolvedValue({});
 
-    await syncDivisionTeamMembershipFromRegistrations({
+    const activeTeamIds = await syncDivisionTeamMembershipFromRegistrations({
       id: 'event_1',
       eventType: 'LEAGUE',
       teamSignup: true,
@@ -245,6 +558,10 @@ describe('syncDivisionTeamMembershipFromRegistrations', () => {
         findMany: jest.fn().mockResolvedValue([
           {
             registrantId: 'slot_1',
+            divisionId: firstDivisionId,
+          },
+          {
+            registrantId: 'slot_2',
             divisionId: firstDivisionId,
           },
         ]),
@@ -279,6 +596,7 @@ describe('syncDivisionTeamMembershipFromRegistrations', () => {
       },
     } as any);
 
+    expect(activeTeamIds).toEqual(['slot_1']);
     expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: firstDivisionId },
       data: expect.objectContaining({

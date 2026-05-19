@@ -152,6 +152,26 @@ describe('DivisionTeamComplianceCard', () => {
     expect(screen.queryByText('No team bill yet')).not.toBeInTheDocument();
   });
 
+  it('shows pending bill status instead of unpaid progress copy', () => {
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam()}
+        summary={{
+          ...createSummary(),
+          payment: {
+            ...createSummary().payment,
+            paidAmountCents: 0,
+            status: 'PENDING',
+            isPaidInFull: false,
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Bill pending ($50.00)')).toBeInTheDocument();
+    expect(screen.queryByText('$0.00 of $50.00 paid')).not.toBeInTheDocument();
+  });
+
   it('renders actions after all team compliance text', () => {
     renderWithMantine(
       <DivisionTeamComplianceCard

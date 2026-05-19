@@ -12,6 +12,11 @@ import {
   type StripeRefundAttempt,
 } from '@/server/refunds/refundExecution';
 import { getEventParticipantIdsForEvent } from '@/server/events/eventRegistrations';
+import {
+  isWeeklyParentEvent,
+  resolveWeeklyOccurrence,
+  resolveWeeklyOccurrenceStartAt,
+} from '@/server/events/weeklyOccurrences';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,6 +25,8 @@ const schema = z.object({
   user: z.record(z.string(), z.any()).optional(),
   userId: z.string().optional(),
   reason: z.string().optional(),
+  slotId: z.string().optional(),
+  occurrenceDate: z.string().optional(),
 }).passthrough();
 
 const normalizeId = (value: unknown): string | null => {
@@ -81,13 +88,50 @@ export async function POST(req: NextRequest) {
       cancellationRefundHours: true,
       hostId: true,
       organizationId: true,
+      eventType: true,
+      parentEvent: true,
+      timeSlotIds: true,
+      divisions: true,
     },
   });
   if (!event) {
     return NextResponse.json({ error: 'Event not found' }, { status: 404 });
   }
 
-  const participantIds = await getEventParticipantIdsForEvent(eventId);
+  const hasOccurrenceInput = Boolean(parsed.data.slotId || parsed.data.occurrenceDate);
+  const weeklyOccurrence = isWeeklyParentEvent(event)
+    ? await resolveWeeklyOccurrence({
+      event,
+      occurrence: parsed.data,
+    })
+    : null;
+  if (weeklyOccurrence && !weeklyOccurrence.ok) {
+    return NextResponse.json({ error: weeklyOccurrence.error }, { status: 400 });
+  }
+  if (isWeeklyParentEvent(event) && (!parsed.data.slotId || !parsed.data.occurrenceDate)) {
+    return NextResponse.json(
+      { error: 'Weekly event refunds require slotId and occurrenceDate.' },
+      { status: 400 },
+    );
+  }
+  if (!isWeeklyParentEvent(event) && hasOccurrenceInput) {
+    return NextResponse.json(
+      { error: 'Weekly occurrence selection is only valid for weekly events.' },
+      { status: 400 },
+    );
+  }
+  const resolvedOccurrence = weeklyOccurrence?.ok ? weeklyOccurrence.value : null;
+  const occurrenceWhere = resolvedOccurrence
+    ? {
+      slotId: resolvedOccurrence.slotId,
+      occurrenceDate: resolvedOccurrence.occurrenceDate,
+    }
+    : {
+      slotId: null,
+      occurrenceDate: null,
+    };
+
+  const participantIds = await getEventParticipantIdsForEvent(eventId, prisma, resolvedOccurrence);
   const registeredTeam = participantIds.teamIds.length > 0
     ? await prisma.teams.findFirst({
       where: {
@@ -118,7 +162,13 @@ export async function POST(req: NextRequest) {
   const now = new Date();
   const reason = normalizeId(parsed.data.reason) ?? 'requested_by_customer';
   const refundTeamId = registeredTeam?.id ?? null;
-  const { canAutoRefund } = getRefundPolicy(event, now);
+  const effectiveStart = resolvedOccurrence
+    ? resolveWeeklyOccurrenceStartAt(resolvedOccurrence.slot, resolvedOccurrence.occurrenceDate) ?? event.start
+    : event.start;
+  const { canAutoRefund } = getRefundPolicy({
+    start: effectiveStart,
+    cancellationRefundHours: event.cancellationRefundHours,
+  }, now);
 
   const requestSelect = {
     id: true,
@@ -140,6 +190,8 @@ export async function POST(req: NextRequest) {
     organizationId: event.organizationId ?? parsed.data.payloadEvent?.organizationId ?? null,
     reason,
     status,
+    slotId: resolvedOccurrence?.slotId ?? null,
+    occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
   });
 
   if (canAutoRefund) {
@@ -157,7 +209,12 @@ export async function POST(req: NextRequest) {
     });
 
     const refundRequest = existingAutoRefund
-      ? { ...existingAutoRefund, reason } as RefundRequestRow
+      ? {
+        ...existingAutoRefund,
+        reason,
+        slotId: resolvedOccurrence?.slotId ?? null,
+        occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
+      } as RefundRequestRow
       : buildRefundRequestRow(crypto.randomUUID(), 'APPROVED');
 
     let stripeRefundAttempts: StripeRefundAttempt[] = [];
@@ -191,8 +248,7 @@ export async function POST(req: NextRequest) {
           registrantType: { in: ['SELF', 'CHILD'] },
           rosterRole: { in: ['PARTICIPANT', 'WAITLIST', 'FREE_AGENT'] },
           status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
-          slotId: null,
-          occurrenceDate: null,
+          ...occurrenceWhere,
         },
         data: {
           status: 'CANCELLED',
@@ -269,8 +325,7 @@ export async function POST(req: NextRequest) {
         registrantType: { in: ['SELF', 'CHILD'] },
         rosterRole: { in: ['PARTICIPANT', 'WAITLIST', 'FREE_AGENT'] },
         status: { in: ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED', 'CONSENTFAILED'] },
-        slotId: null,
-        occurrenceDate: null,
+        ...occurrenceWhere,
       },
       data: {
         status: 'CANCELLED',

@@ -88,13 +88,14 @@ const paymentSummaryFromPayments = (
       : current
   ), payments[0]);
 
+  const isPaidInFull = totalAmountCents > 0 && paidAmountCents >= totalAmountCents;
   return {
     hasBill: true,
     billId: latest.billId,
     totalAmountCents,
     paidAmountCents,
-    status: paidAmountCents >= totalAmountCents && totalAmountCents > 0 ? 'PAID' : latest.status,
-    isPaidInFull: totalAmountCents > 0 && paidAmountCents >= totalAmountCents,
+    status: isPaidInFull ? 'PAID' : latest.status,
+    isPaidInFull,
     paymentPending,
   };
 };

@@ -15,6 +15,8 @@ jest.mock('@/lib/eventService', () => ({
   eventService: {
     getEventById: jest.fn(),
     updateEventParticipants: jest.fn(),
+    removeFreeAgent: jest.fn(),
+    removeFromWaitlist: jest.fn(),
   },
 }));
 
@@ -26,6 +28,8 @@ const { eventService: eventServiceMock } = jest.requireMock('@/lib/eventService'
   eventService: {
     getEventById: jest.Mock;
     updateEventParticipants: jest.Mock;
+    removeFreeAgent: jest.Mock;
+    removeFromWaitlist: jest.Mock;
   };
 };
 
@@ -186,6 +190,90 @@ describe('RefundSection', () => {
         user,
         'Needs late refund',
         user.$id,
+      ),
+    );
+    await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
+  });
+
+  it('uses the selected weekly session start when allowing a free registration to leave', async () => {
+    const user = { $id: 'user_1' };
+    useAppMock.mockReturnValue({ user });
+    const occurrence = { slotId: 'slot_1', occurrenceDate: '2026-08-05' };
+    const event = buildEvent({
+      $id: 'weekly_parent',
+      hostId: 'host_2',
+      price: 0,
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: '',
+      start: formatLocalDateTime(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+    });
+
+    paymentServiceMock.leaveEvent.mockResolvedValue(undefined);
+    const onRefundSuccess = jest.fn();
+
+    renderWithMantine(
+      <RefundSection
+        event={event}
+        userRegistered
+        selectedOccurrence={occurrence}
+        effectiveStart={new Date(Date.now() + 48 * 60 * 60 * 1000)}
+        onRefundSuccess={onRefundSuccess}
+      />,
+    );
+
+    expect(screen.queryByText(/Event has already started\. Leaving is no longer available/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Leave Event/i }));
+
+    await waitFor(() =>
+      expect(paymentServiceMock.leaveEvent).toHaveBeenCalledWith(
+        user,
+        event,
+        undefined,
+        user.$id,
+        undefined,
+        undefined,
+        occurrence,
+      ),
+    );
+    await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());
+  });
+
+  it('uses the selected weekly session start when choosing automatic refund eligibility', async () => {
+    const user = { $id: 'user_1' };
+    useAppMock.mockReturnValue({ user });
+    const occurrence = { slotId: 'slot_1', occurrenceDate: '2026-08-05' };
+    const event = buildEvent({
+      $id: 'weekly_paid_parent',
+      hostId: 'host_2',
+      price: 20,
+      cancellationRefundHours: 24,
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: '',
+      start: formatLocalDateTime(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)),
+    });
+
+    paymentServiceMock.requestRefund.mockResolvedValue({ success: true });
+    const onRefundSuccess = jest.fn();
+
+    renderWithMantine(
+      <RefundSection
+        event={event}
+        userRegistered
+        selectedOccurrence={occurrence}
+        effectiveStart={new Date(Date.now() + 48 * 60 * 60 * 1000)}
+        onRefundSuccess={onRefundSuccess}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Get Refund/i }));
+
+    await waitFor(() =>
+      expect(paymentServiceMock.requestRefund).toHaveBeenCalledWith(
+        event,
+        user,
+        undefined,
+        user.$id,
+        occurrence,
       ),
     );
     await waitFor(() => expect(onRefundSuccess).toHaveBeenCalled());

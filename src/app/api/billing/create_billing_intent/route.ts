@@ -35,7 +35,12 @@ export async function POST(req: NextRequest) {
   if (payment.status === 'PROCESSING') {
     return NextResponse.json({ error: 'This bill payment is already pending with Stripe.' }, { status: 409 });
   }
-  if (payment.status && payment.status !== 'PENDING') {
+  if (
+    payment.status
+    && payment.status !== 'PENDING'
+    && payment.status !== 'FAILED'
+    && payment.status !== 'DISPUTED'
+  ) {
     return NextResponse.json({ error: 'Bill payment is not pending' }, { status: 400 });
   }
 

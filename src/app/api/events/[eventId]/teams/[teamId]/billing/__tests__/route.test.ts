@@ -33,7 +33,7 @@ jest.mock('@/server/events/eventRegistrations', () => ({
 
 import { GET } from '@/app/api/events/[eventId]/teams/[teamId]/billing/route';
 
-const requestFor = () => new NextRequest('http://localhost/api/events/event_1/teams/team_1/billing');
+const requestFor = (query = '') => new NextRequest(`http://localhost/api/events/event_1/teams/team_1/billing${query}`);
 
 describe('GET /api/events/[eventId]/teams/[teamId]/billing', () => {
   beforeEach(() => {
@@ -221,6 +221,19 @@ describe('GET /api/events/[eventId]/teams/[teamId]/billing', () => {
         ownerId: 'team_parent',
         ownerName: 'Beach Aces',
       }),
+    );
+  });
+
+  it('scopes participant validation to the selected weekly occurrence', async () => {
+    const response = await GET(requestFor('?slotId=slot_1&occurrenceDate=2026-05-19'), {
+      params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(getEventParticipantIdsForEventMock).toHaveBeenCalledWith(
+      'event_1',
+      prismaMock,
+      { slotId: 'slot_1', occurrenceDate: '2026-05-19' },
     );
   });
 });

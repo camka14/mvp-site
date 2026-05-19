@@ -1886,7 +1886,7 @@ export interface BillPayment {
   sequence: number;
   dueDate: string;
   amountCents: number;
-  status: 'PENDING' | 'PROCESSING' | 'PAID' | 'VOID';
+  status: 'PENDING' | 'PROCESSING' | 'FAILED' | 'DISPUTED' | 'PAID' | 'VOID';
   paidAt?: string;
   paymentIntentId?: string;
   payerUserId?: string;

@@ -24,6 +24,9 @@ const prismaMock = {
   teams: {
     findFirst: jest.fn(),
   },
+  timeSlots: {
+    findUnique: jest.fn(),
+  },
   refundRequests: {
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -80,6 +83,7 @@ describe('POST /api/billing/refund', () => {
       freeAgentIds: [],
     });
     prismaMock.teams.findFirst.mockResolvedValue(null);
+    prismaMock.timeSlots.findUnique.mockResolvedValue(null);
     prismaMock.refundRequests.findFirst.mockResolvedValue(null);
     prismaMock.refundRequests.create.mockResolvedValue({ id: 'refund_1' });
     prismaMock.refundRequests.update.mockResolvedValue({ id: 'refund_1', status: 'APPROVED' });
@@ -239,6 +243,96 @@ describe('POST /api/billing/refund', () => {
         refundedPaymentIds: ['payment_1'],
       }),
     );
+  });
+
+  it('uses the weekly occurrence start and bill scope for automatic session refunds', async () => {
+    const futureOccurrence = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    const occurrenceDate = futureOccurrence.toISOString().slice(0, 10);
+    const occurrenceDay = (futureOccurrence.getUTCDay() + 6) % 7;
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'weekly_parent',
+      start: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      cancellationRefundHours: 24,
+      hostId: 'host_1',
+      organizationId: 'org_1',
+      eventType: 'WEEKLY_EVENT',
+      parentEvent: null,
+      timeSlotIds: ['slot_1'],
+      divisions: [],
+    });
+    prismaMock.timeSlots.findUnique.mockResolvedValueOnce({
+      id: 'slot_1',
+      startTimeMinutes: 12 * 60,
+      daysOfWeek: [occurrenceDay],
+      startDate: occurrenceDate,
+      endDate: occurrenceDate,
+      divisions: [],
+    });
+    prismaMock.eventRegistrations.findMany.mockResolvedValueOnce([
+      {
+        id: `weekly_parent__self__user_1__slot_1__${occurrenceDate}`,
+        eventId: 'weekly_parent',
+        registrantId: 'user_1',
+        registrantType: 'SELF',
+        rosterRole: 'PARTICIPANT',
+        createdAt: new Date('2026-06-01T00:00:00.000Z'),
+      },
+    ]);
+    prismaMock.bills.findMany.mockResolvedValueOnce([{ id: 'bill_1' }]);
+    prismaMock.billPayments.findMany.mockResolvedValueOnce([
+      {
+        id: 'payment_1',
+        billId: 'bill_1',
+        amountCents: 5000,
+        refundedAmountCents: 0,
+        paymentIntentId: 'pi_1',
+      },
+    ]);
+    mockStripeRefundCreate.mockResolvedValueOnce({ id: 're_1' });
+    prismaMock.billPayments.findUnique.mockResolvedValueOnce({
+      id: 'payment_1',
+      amountCents: 5000,
+      refundedAmountCents: 0,
+    });
+    prismaMock.billPayments.update.mockResolvedValueOnce({
+      id: 'payment_1',
+      refundedAmountCents: 5000,
+    });
+    prismaMock.refundRequests.create.mockResolvedValueOnce({
+      id: 'refund_1',
+      status: 'APPROVED',
+    });
+
+    const response = await POST(
+      jsonPost('http://localhost/api/billing/refund', {
+        payloadEvent: { id: 'weekly_parent' },
+        reason: 'Need to cancel this session',
+        slotId: 'slot_1',
+        occurrenceDate,
+      }),
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.refundStatus).toBe('APPROVED');
+    expect(prismaMock.bills.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventId: 'weekly_parent',
+        ownerType: 'USER',
+        ownerId: 'user_1',
+        slotId: 'slot_1',
+        occurrenceDate,
+      }),
+    }));
+    expect(prismaMock.eventRegistrations.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        eventId: 'weekly_parent',
+        registrantId: 'user_1',
+        slotId: 'slot_1',
+        occurrenceDate,
+      }),
+    }));
+    expect(mockStripeRefundCreate).toHaveBeenCalledTimes(1);
   });
 
   it('allows a parent to request refund for a linked child target', async () => {

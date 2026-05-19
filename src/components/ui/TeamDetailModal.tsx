@@ -131,6 +131,19 @@ const formatCompliancePaymentLabel = (payment?: TeamComplianceUserSummary['payme
     if (!payment.hasBill) {
         return 'No bill yet';
     }
+    const status = String(payment.status ?? '').toUpperCase();
+    if (status === 'DISPUTED') {
+        return 'Payment disputed';
+    }
+    if (status === 'FAILED') {
+        return 'Payment failed';
+    }
+    if (status === 'PENDING') {
+        return `Bill pending (${formatBillAmount(payment.totalAmountCents)})`;
+    }
+    if (status === 'PROCESSING') {
+        return `Payment processing (${formatBillAmount(payment.totalAmountCents)})`;
+    }
     if (payment.isPaidInFull) {
         return `Paid in full (${formatBillAmount(payment.totalAmountCents)})`;
     }

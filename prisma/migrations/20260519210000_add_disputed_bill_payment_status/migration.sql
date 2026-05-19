@@ -1,0 +1,1 @@
+ALTER TYPE "BillPaymentsStatusEnum" ADD VALUE IF NOT EXISTS 'DISPUTED';

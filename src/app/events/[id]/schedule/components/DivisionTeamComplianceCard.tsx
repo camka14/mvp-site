@@ -30,6 +30,20 @@ const getPaymentLabel = (
     return { label: cardKind === 'participant' ? 'No bill yet' : 'No team bill yet', color: 'gray' };
   }
 
+  const paymentStatus = String(summary.payment.status ?? '').toUpperCase();
+  if (paymentStatus === 'DISPUTED') {
+    return { label: 'Payment disputed', color: 'red' };
+  }
+  if (paymentStatus === 'FAILED') {
+    return { label: 'Payment failed', color: 'red' };
+  }
+  if (paymentStatus === 'PENDING') {
+    return { label: `Bill pending (${formatBillAmount(summary.payment.totalAmountCents)})`, color: 'yellow' };
+  }
+  if (paymentStatus === 'PROCESSING') {
+    return { label: `Payment processing (${formatBillAmount(summary.payment.totalAmountCents)})`, color: 'yellow' };
+  }
+
   if (summary.payment.isPaidInFull) {
     return { label: `Paid in full (${formatBillAmount(summary.payment.totalAmountCents)})`, color: 'green' };
   }

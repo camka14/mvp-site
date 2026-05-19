@@ -90,13 +90,17 @@ const toPaymentSummary = (bill: {
   const paidAmountCents = Number.isFinite(bill.paidAmountCents)
     ? Number(bill.paidAmountCents)
     : Number(bill.paidAmountCents ?? 0);
+  const normalizedStatus = bill.status ? String(bill.status).toUpperCase() : null;
+  const isPaidInFull = totalAmountCents > 0
+    && paidAmountCents >= totalAmountCents
+    && (!normalizedStatus || normalizedStatus === 'PAID');
   return {
     hasBill: true,
     billId: bill.id,
     totalAmountCents,
     paidAmountCents,
-    status: bill.status ? String(bill.status) : null,
-    isPaidInFull: totalAmountCents > 0 && paidAmountCents >= totalAmountCents,
+    status: normalizedStatus,
+    isPaidInFull,
     paymentPending,
   };
 };

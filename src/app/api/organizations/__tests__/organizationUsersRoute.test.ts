@@ -594,6 +594,14 @@ describe('GET /api/organizations/[id]/users', () => {
         isCaptain: true,
       }),
     ]);
+    expect(payload.users.find((row: { userId: string }) => row.userId === 'manager_1')?.bills).toEqual([
+      expect.objectContaining({
+        billId: 'bill_team_1',
+        ownerType: 'TEAM',
+        ownerId: 'canonical_team_1',
+        paidAmountCents: 12000,
+      }),
+    ]);
   });
 
   it('excludes placeholder event teams from organization customers', async () => {

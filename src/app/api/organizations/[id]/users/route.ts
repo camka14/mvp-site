@@ -1039,19 +1039,33 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    }
 	    summary.bills.push(billSummary);
 	  });
+	  const appendUserBillSummary = (userId: unknown, billSummary: BillSummary | undefined) => {
+	    const normalizedUserId = normalizeId(userId);
+	    if (!normalizedUserId || !billSummary) {
+	      return;
+	    }
+	    const userSummary = summariesByUserId.get(normalizedUserId);
+	    if (!userSummary) {
+	      return;
+	    }
+	    if (userSummary.bills.some((candidate) => candidate.billId === billSummary.billId)) {
+	      return;
+	    }
+	    userSummary.bills.push(billSummary);
+	  };
 	  userBills.forEach((bill) => {
 	    const parentBillId = normalizeId(bill.parentBillId);
 	    const canonicalTeamId = parentBillId ? teamBillCanonicalTeamIdByBillId.get(parentBillId) : undefined;
 	    const summary = canonicalTeamId ? teamSummariesByCanonicalTeamId.get(canonicalTeamId) : undefined;
 	    const billSummary = billSummariesById.get(bill.id);
-	    const userSummary = summariesByUserId.get(bill.ownerId);
-	    if (userSummary && billSummary) {
-	      userSummary.bills.push(billSummary);
-	    }
+	    appendUserBillSummary(bill.ownerId, billSummary);
 	    if (!summary || !billSummary) {
 	      return;
 	    }
 	    summary.bills.push(billSummary);
+	  });
+	  billPayments.forEach((payment) => {
+	    appendUserBillSummary(payment.payerUserId, billSummariesById.get(payment.billId));
 	  });
 
   eventRows.forEach((event) => {

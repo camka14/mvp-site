@@ -27,6 +27,23 @@ type LeaveEventOptions = {
   refundReason?: string;
 };
 
+const isTeamRegistrationCheckoutTarget = (value: unknown): value is TeamRegistrationCheckoutTarget => {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const row = value as Record<string, unknown>;
+  return [
+    'teamId',
+    'registrantId',
+    'userId',
+    'parentId',
+    'registrantType',
+    'rosterRole',
+    'consentDocumentId',
+    'consentStatus',
+  ].some((key) => Object.prototype.hasOwnProperty.call(row, key));
+};
+
 class PaymentService {
   async updatePaymentIntentFeeForMethod(
     paymentIntent: string,
@@ -181,14 +198,38 @@ class PaymentService {
   async createTeamRegistrationPaymentIntent(
     user: UserData,
     team: Team,
+    organization?: PaymentOrganizationContext,
+    billingAddress?: BillingAddress,
+  ): Promise<PaymentIntent>;
+
+  async createTeamRegistrationPaymentIntent(
+    user: UserData,
+    team: Team,
     teamRegistration?: TeamRegistrationCheckoutTarget,
     organization?: PaymentOrganizationContext,
+    billingAddress?: BillingAddress,
+  ): Promise<PaymentIntent>;
+
+  async createTeamRegistrationPaymentIntent(
+    user: UserData,
+    team: Team,
+    teamRegistrationOrOrganization?: TeamRegistrationCheckoutTarget | PaymentOrganizationContext,
+    organizationOrBillingAddress?: PaymentOrganizationContext | BillingAddress,
     billingAddress?: BillingAddress,
   ): Promise<PaymentIntent> {
     try {
       if (!team?.$id) {
         throw new Error('Team is required to create a registration payment intent.');
       }
+      const teamRegistration = isTeamRegistrationCheckoutTarget(teamRegistrationOrOrganization)
+        ? teamRegistrationOrOrganization
+        : undefined;
+      const organization = isTeamRegistrationCheckoutTarget(teamRegistrationOrOrganization)
+        ? organizationOrBillingAddress as PaymentOrganizationContext | undefined
+        : teamRegistrationOrOrganization as PaymentOrganizationContext | undefined;
+      const resolvedBillingAddress = isTeamRegistrationCheckoutTarget(teamRegistrationOrOrganization)
+        ? billingAddress
+        : organizationOrBillingAddress as BillingAddress | undefined;
       const payload = {
         purchaseType: 'team_registration',
         user,
@@ -198,7 +239,7 @@ class PaymentService {
           teamId: teamRegistration?.teamId ?? team.$id,
         },
         organization,
-        billingAddress,
+        billingAddress: resolvedBillingAddress,
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
@@ -310,7 +351,13 @@ class PaymentService {
     }
   }
 
-  async requestRefund(event: Event, user: UserData, reason?: string, targetUserId?: string): Promise<{
+  async requestRefund(
+    event: Event,
+    user: UserData,
+    reason?: string,
+    targetUserId?: string,
+    occurrence?: WeeklyOccurrenceSelection,
+  ): Promise<{
     success: boolean;
     message?: string;
     emailSent?: boolean;
@@ -327,6 +374,8 @@ class PaymentService {
                 user,
                 userId: targetUserId ?? user.$id,
                 reason: reason || 'requested_by_customer',
+                ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
+                ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
               },
         },
       );

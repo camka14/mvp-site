@@ -5,7 +5,10 @@ import { spawn, spawnSync } from 'node:child_process';
 const DEFAULT_NGROK_DOMAIN = 'untarnished-berserkly-everette.ngrok-free.dev';
 const STRIPE_LISTEN_EVENTS = [
   'account.updated',
+  'charge.dispute.closed',
+  'payment_intent.processing',
   'payment_intent.succeeded',
+  'payment_intent.payment_failed',
   'invoice.created',
   'invoice.paid',
   'customer.subscription.created',

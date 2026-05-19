@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { extractStripePaymentIntentId } from '@/lib/stripeClientSecret';
+import { buildRefundCreateParamsForPaymentIntent } from '@/lib/stripeConnectAccounts';
 import type { AuthContext } from '@/lib/permissions';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
 import {
@@ -15,6 +16,7 @@ type BillActionRow = {
   organizationId: string | null;
   eventId: string | null;
   totalAmountCents: number;
+  status: 'OPEN' | 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED' | null;
   paymentPlanEnabled: boolean | null;
   lineItems: unknown;
 };
@@ -23,9 +25,10 @@ type BillPaymentActionRow = {
   id: string;
   billId: string;
   amountCents: number;
-  status: 'PENDING' | 'PROCESSING' | 'PAID' | 'VOID' | null;
+  status: 'PENDING' | 'PROCESSING' | 'FAILED' | 'DISPUTED' | 'PAID' | 'VOID' | null;
   paymentIntentId: string | null;
   payerUserId: string | null;
+  refundedAmountCents: number | null;
 };
 
 const normalizeId = (value: unknown): string | null => {
@@ -48,6 +51,50 @@ const sumPaid = (payments: Array<{ amountCents: number; status: string | null }>
   ), 0)
 );
 
+const normalizeAmountCents = (value: unknown): number => {
+  const amount = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0;
+};
+
+const normalizeStripeSecretKey = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (!normalized.length) return null;
+  const normalizedLower = normalized.toLowerCase();
+  if (normalizedLower === 'undefined' || normalizedLower === 'null') return null;
+  return normalized;
+};
+
+const isAlreadyRefundedStripeError = (error: unknown): boolean => {
+  const code = typeof (error as { code?: unknown })?.code === 'string'
+    ? (error as { code: string }).code.toLowerCase()
+    : '';
+  if (code === 'charge_already_refunded') return true;
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  return message.toLowerCase().includes('already refunded');
+};
+
+const isUnpaidBillPaymentStatus = (status: BillPaymentActionRow['status']): boolean => (
+  status !== 'PAID' && status !== 'VOID'
+);
+
+export const loadBillForAction = async (billId: string) => (
+  prisma.bills.findUnique({
+    where: { id: billId },
+    select: {
+      id: true,
+      ownerType: true,
+      ownerId: true,
+      organizationId: true,
+      eventId: true,
+      totalAmountCents: true,
+      status: true,
+      paymentPlanEnabled: true,
+      lineItems: true,
+    },
+  }) as Promise<BillActionRow | null>
+);
+
 export const loadBillPaymentForAction = async (billId: string, billPaymentId: string) => {
   const [bill, payment] = await Promise.all([
     prisma.bills.findUnique({
@@ -59,6 +106,7 @@ export const loadBillPaymentForAction = async (billId: string, billPaymentId: st
         organizationId: true,
         eventId: true,
         totalAmountCents: true,
+        status: true,
         paymentPlanEnabled: true,
         lineItems: true,
       },
@@ -72,6 +120,7 @@ export const loadBillPaymentForAction = async (billId: string, billPaymentId: st
         status: true,
         paymentIntentId: true,
         payerUserId: true,
+        refundedAmountCents: true,
       },
     }) as Promise<BillPaymentActionRow | null>,
   ]);
@@ -139,6 +188,40 @@ export const canManageBillPayment = async (
   return false;
 };
 
+export const canAdministerBillPayment = async (
+  session: AuthContext,
+  bill: BillActionRow,
+): Promise<boolean> => {
+  if (session.isAdmin) return true;
+
+  if (bill.eventId) {
+    const event = await prisma.events.findUnique({
+      where: { id: bill.eventId },
+      select: {
+        id: true,
+        hostId: true,
+        assistantHostIds: true,
+        organizationId: true,
+      },
+    });
+    if (event && await canManageEvent(session, event)) {
+      return true;
+    }
+  }
+
+  if (bill.organizationId) {
+    const organization = await prisma.organizations.findUnique({
+      where: { id: bill.organizationId },
+      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    });
+    if (organization && await canManageOrganization(session, organization)) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
 export const reconcileBillForPendingPayment = async (billId: string, now: Date) => {
   const bill = await prisma.bills.findUnique({
     where: { id: billId },
@@ -162,8 +245,9 @@ export const reconcileBillForPendingPayment = async (billId: string, now: Date) 
 
   const paidAmountCents = Math.min(bill.totalAmountCents, sumPaid(payments));
   const processingPayment = payments.find((payment) => payment.status === 'PROCESSING') ?? null;
+  const failedPayment = payments.find((payment) => payment.status === 'FAILED' || payment.status === 'DISPUTED') ?? null;
   const pendingPayment = payments.find((payment) => payment.status === 'PENDING' || payment.status === null) ?? null;
-  const nextPayment = processingPayment ?? pendingPayment;
+  const nextPayment = processingPayment ?? failedPayment ?? pendingPayment;
   const status = paidAmountCents >= bill.totalAmountCents
     ? 'PAID'
     : processingPayment
@@ -390,4 +474,166 @@ export const cancelProcessingBillPaymentForAction = async ({
 
   await cancelRelatedRegistration({ bill, payment, now });
   return prisma.bills.findUnique({ where: { id: bill.id } });
+};
+
+export const refundBillPaymentForAction = async ({
+  bill,
+  payment,
+  amountCents,
+  actorUserId,
+  now,
+}: {
+  bill: BillActionRow;
+  payment: BillPaymentActionRow;
+  amountCents: number;
+  actorUserId: string;
+  now: Date;
+}) => {
+  if (payment.status !== 'PAID') {
+    throw new Error('Only paid bill payments can be refunded.');
+  }
+
+  const paymentIntentId = normalizeId(payment.paymentIntentId);
+  if (!paymentIntentId) {
+    throw new Error('Bill payment does not have a Stripe payment intent.');
+  }
+
+  const requestedAmountCents = normalizeAmountCents(amountCents);
+  if (requestedAmountCents <= 0) {
+    throw new Error('amountCents must be greater than 0.');
+  }
+
+  const paymentAmountCents = normalizeAmountCents(payment.amountCents);
+  const refundedAmountCents = normalizeAmountCents(payment.refundedAmountCents);
+  const refundableAmountCents = Math.max(0, paymentAmountCents - refundedAmountCents);
+  if (refundableAmountCents <= 0) {
+    throw new Error('This bill payment has no refundable balance left.');
+  }
+  if (requestedAmountCents > refundableAmountCents) {
+    throw new Error('Requested refund exceeds refundable balance.');
+  }
+
+  const stripeSecretKey = normalizeStripeSecretKey(process.env.STRIPE_SECRET_KEY);
+  if (!stripeSecretKey) {
+    throw new Error('Stripe is not configured for refunds.');
+  }
+
+  const stripe = new Stripe(stripeSecretKey);
+  let refundId: string | null = null;
+  let appliedRefundAmountCents = requestedAmountCents;
+  try {
+    const refund = await stripe.refunds.create(
+      await buildRefundCreateParamsForPaymentIntent({
+        stripe,
+        paymentIntentId,
+        amountCents: requestedAmountCents,
+        reason: 'requested_by_customer',
+        metadata: {
+          bill_id: bill.id,
+          bill_payment_id: payment.id,
+          actor_user_id: actorUserId,
+          ...(bill.eventId ? { event_id: bill.eventId } : {}),
+          ...(bill.organizationId ? { organization_id: bill.organizationId } : {}),
+        },
+      }),
+      {
+        idempotencyKey: `bill-payment-refund:${payment.id}:${refundedAmountCents}:${requestedAmountCents}`,
+      },
+    );
+    refundId = normalizeId(refund.id);
+  } catch (error) {
+    if (!isAlreadyRefundedStripeError(error)) {
+      throw error;
+    }
+    appliedRefundAmountCents = refundableAmountCents;
+  }
+
+  const nextRefundedAmountCents = Math.min(
+    paymentAmountCents,
+    refundedAmountCents + appliedRefundAmountCents,
+  );
+  const updatedPayment = await prisma.billPayments.update({
+    where: { id: payment.id },
+    data: {
+      refundedAmountCents: nextRefundedAmountCents,
+      updatedAt: now,
+    },
+  });
+
+  await prisma.bills.update({
+    where: { id: bill.id },
+    data: { updatedAt: now },
+  });
+
+  return {
+    payment: updatedPayment,
+    refundedAmountCents: appliedRefundAmountCents,
+    remainingRefundableAmountCents: Math.max(0, paymentAmountCents - nextRefundedAmountCents),
+    refundId,
+  };
+};
+
+export const cancelBillPaymentPlanForAction = async ({
+  bill,
+  now,
+}: {
+  bill: BillActionRow;
+  now: Date;
+}) => {
+  if (!bill.paymentPlanEnabled) {
+    throw new Error('Bill does not have an active payment plan.');
+  }
+
+  const payments = await prisma.billPayments.findMany({
+    where: { billId: bill.id },
+    orderBy: { sequence: 'asc' },
+    select: {
+      id: true,
+      billId: true,
+      amountCents: true,
+      status: true,
+      paymentIntentId: true,
+      payerUserId: true,
+      refundedAmountCents: true,
+    },
+  }) as BillPaymentActionRow[];
+
+  const unpaidPayments = payments.filter((payment) => isUnpaidBillPaymentStatus(payment.status));
+  if (!unpaidPayments.length) {
+    throw new Error('Payment plan has no unpaid installments to cancel.');
+  }
+
+  for (const payment of unpaidPayments) {
+    if (payment.status === 'PROCESSING') {
+      await cancelStripePaymentIntent(payment.paymentIntentId);
+    }
+  }
+
+  const paidAmountCents = Math.min(bill.totalAmountCents, sumPaid(payments));
+  const nextStatus = paidAmountCents >= bill.totalAmountCents ? 'PAID' : 'CANCELLED';
+  const unpaidPaymentIds = unpaidPayments.map((payment) => payment.id);
+
+  return prisma.$transaction(async (tx) => {
+    await tx.billPayments.updateMany({
+      where: { id: { in: unpaidPaymentIds } },
+      data: {
+        status: 'VOID',
+        paymentIntentId: null,
+        payerUserId: null,
+        paidAt: null,
+        updatedAt: now,
+      },
+    });
+    return tx.bills.update({
+      where: { id: bill.id },
+      data: {
+        paidAmountCents,
+        status: nextStatus,
+        paymentPlanEnabled: false,
+        nextPaymentDue: null,
+        nextPaymentAmountCents: null,
+        updatedAt: now,
+      },
+    });
+  });
 };

@@ -34,15 +34,19 @@ const prismaMock = {
 
 const requireSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
+const getEventParticipantIdsForEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/accessControl', () => ({ canManageEvent: (...args: unknown[]) => canManageEventMock(...args) }));
+jest.mock('@/server/events/eventRegistrations', () => ({
+  getEventParticipantIdsForEvent: (...args: unknown[]) => getEventParticipantIdsForEventMock(...args),
+}));
 
 import { POST } from '@/app/api/events/[eventId]/teams/[teamId]/billing/refunds/route';
 
-const requestFor = (body: unknown) =>
-  new NextRequest('http://localhost/api/events/event_1/teams/team_1/billing/refunds', {
+const requestFor = (body: unknown, query = '') =>
+  new NextRequest(`http://localhost/api/events/event_1/teams/team_1/billing/refunds${query}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
@@ -55,6 +59,12 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/refunds', () => {
 
     requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
     canManageEventMock.mockResolvedValue(true);
+    getEventParticipantIdsForEventMock.mockResolvedValue({
+      teamIds: ['team_1'],
+      userIds: [],
+      waitListIds: [],
+      freeAgentIds: [],
+    });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       hostId: 'host_1',
@@ -175,5 +185,52 @@ describe('POST /api/events/[eventId]/teams/[teamId]/billing/refunds', () => {
     expect(payload.refundableAmountCents).toBe(100);
     expect(mockStripeRefundCreate).not.toHaveBeenCalled();
     expect(prismaMock.billPayments.update).not.toHaveBeenCalled();
+  });
+
+  it('scopes participant validation to the selected weekly occurrence', async () => {
+    prismaMock.billPayments.findUnique.mockResolvedValue({
+      id: 'payment_1',
+      billId: 'bill_1',
+      amountCents: 1000,
+      status: 'PAID',
+      paymentIntentId: 'pi_1',
+      refundedAmountCents: 0,
+    });
+    prismaMock.bills.findUnique.mockResolvedValue({
+      id: 'bill_1',
+      ownerType: 'USER',
+      ownerId: 'user_2',
+      eventId: 'event_1',
+    });
+    mockStripePaymentIntentRetrieve.mockResolvedValueOnce({
+      id: 'pi_1',
+      transfer_data: null,
+    });
+    mockStripeRefundCreate.mockResolvedValue({ id: 're_1' });
+    prismaMock.billPayments.update.mockResolvedValue({
+      id: 'payment_1',
+      billId: 'bill_1',
+      amountCents: 1000,
+      status: 'PAID',
+      paymentIntentId: 'pi_1',
+      refundedAmountCents: 500,
+    });
+
+    const response = await POST(
+      requestFor({
+        billPaymentId: 'payment_1',
+        amountCents: 500,
+      }, '?slotId=slot_1&occurrenceDate=2026-05-19'),
+      {
+        params: Promise.resolve({ eventId: 'event_1', teamId: 'team_1' }),
+      },
+    );
+
+    expect(response.status).toBe(200);
+    expect(getEventParticipantIdsForEventMock).toHaveBeenCalledWith(
+      'event_1',
+      prismaMock,
+      { slotId: 'slot_1', occurrenceDate: '2026-05-19' },
+    );
   });
 });

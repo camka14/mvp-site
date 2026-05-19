@@ -61,6 +61,7 @@ type CanonicalTeamRow = {
   sport?: string | null;
   organizationId?: string | null;
   createdBy?: string | null;
+  parentTeamId?: string | null;
   openRegistration?: boolean | null;
   registrationPriceCents?: number | null;
   requiredTemplateIds?: string[] | null;
@@ -369,11 +370,12 @@ const buildFallbackCanonicalTeam = (team: EventTeamRow): ReturnType<typeof seria
       profileImageId: normalizeId(team.profileImageId),
       sport: normalizeId(team.sport),
       organizationId: null,
-        createdBy: normalizeId(team.managerId),
-        openRegistration: false,
-        registrationPriceCents: 0,
-        requiredTemplateIds: [],
-      },
+      parentTeamId: normalizeId(team.parentTeamId),
+      createdBy: normalizeId(team.managerId),
+      openRegistration: false,
+      registrationPriceCents: 0,
+      requiredTemplateIds: [],
+    },
     playerRegistrations,
     staffAssignments,
   });

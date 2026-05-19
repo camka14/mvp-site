@@ -22,7 +22,7 @@ import {
 } from '@/types';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { ApiError, authService } from '@/lib/auth';
-import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
+import { eventService, type EventParticipantRegistrationEntry, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { userService } from '@/lib/userService';
 import { teamService } from '@/lib/teamService';
 import { paymentService } from '@/lib/paymentService';
@@ -517,6 +517,34 @@ type EventDivisionOption = {
     ageCutoffDate?: string;
     ageCutoffLabel?: string;
     ageCutoffSource?: string;
+};
+
+const isPaymentFailedRegistration = (registration: EventParticipantRegistrationEntry): boolean =>
+    String(registration.status ?? '').trim().toUpperCase() === 'PAYMENT_FAILED';
+
+const collectPaymentFailedRegistrationState = (
+    registrations: {
+        teams?: EventParticipantRegistrationEntry[];
+        users?: EventParticipantRegistrationEntry[];
+        children?: EventParticipantRegistrationEntry[];
+    } | undefined,
+    currentUserId: string | null,
+): { userFailed: boolean; teamIds: string[] } => {
+    const normalizedUserId = normalizeUserId(currentUserId);
+    const failedUsers = (registrations?.users ?? []).filter(isPaymentFailedRegistration);
+    const failedTeams = (registrations?.teams ?? []).filter(isPaymentFailedRegistration);
+
+    return {
+        userFailed: Boolean(
+            normalizedUserId &&
+            failedUsers.some((registration) => normalizeUserId(registration.registrantId) === normalizedUserId),
+        ),
+        teamIds: Array.from(new Set(
+            failedTeams
+                .map((registration) => normalizeUserId(registration.registrantId))
+                .filter((teamId): teamId is string => Boolean(teamId)),
+        )),
+    };
 };
 
 type EventDivisionDetail = NonNullable<Event['divisionDetails']>[number];
@@ -1134,6 +1162,8 @@ export default function EventDetailSheet({
     const [players, setPlayers] = useState<UserData[]>([]);
     const [teams, setTeams] = useState<Team[]>([]);
     const [freeAgents, setFreeAgents] = useState<UserData[]>([]);
+    const [currentUserPaymentFailed, setCurrentUserPaymentFailed] = useState(false);
+    const [paymentFailedTeamIds, setPaymentFailedTeamIds] = useState<string[]>([]);
     const [isLoadingEvent, setIsLoadingEvent] = useState(false);
     const [isLoadingTeams, setIsLoadingTeams] = useState(false);
     const [showPlayersDropdown, setShowPlayersDropdown] = useState(false);
@@ -1881,6 +1911,9 @@ export default function EventDetailSheet({
                 if (selectedOccurrence?.slotId && selectedOccurrence?.occurrenceDate) {
                     try {
                         const snapshot = await eventService.getEventParticipants(targetId, selectedOccurrence);
+                        const failedState = collectPaymentFailedRegistrationState(snapshot.registrations, user?.$id ?? null);
+                        setCurrentUserPaymentFailed(failedState.userFailed);
+                        setPaymentFailedTeamIds(failedState.teamIds);
                         const refreshedTeamIds = Array.from(new Set(
                             (snapshot.participants.teamIds ?? [])
                                 .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
@@ -1930,6 +1963,8 @@ export default function EventDetailSheet({
                         eventFreeAgents = orderedFreeAgents;
                     } catch (error) {
                         console.error('Failed to load weekly session participants:', error);
+                        setCurrentUserPaymentFailed(false);
+                        setPaymentFailedTeamIds([]);
                         resolvedEvent = {
                             ...baseEvent,
                             teamIds: [],
@@ -1944,6 +1979,8 @@ export default function EventDetailSheet({
                         eventFreeAgents = [];
                     }
                 } else {
+                    setCurrentUserPaymentFailed(false);
+                    setPaymentFailedTeamIds([]);
                     resolvedEvent = {
                         ...baseEvent,
                         teamIds: [],
@@ -1960,6 +1997,9 @@ export default function EventDetailSheet({
             } else {
                 try {
                     const snapshot = await eventService.getEventParticipants(targetId);
+                    const failedState = collectPaymentFailedRegistrationState(snapshot.registrations, user?.$id ?? null);
+                    setCurrentUserPaymentFailed(failedState.userFailed);
+                    setPaymentFailedTeamIds(failedState.teamIds);
                     const refreshedTeamIds = Array.from(new Set(
                         (snapshot.participants.teamIds ?? [])
                             .map((teamId) => (typeof teamId === 'string' ? teamId.trim() : ''))
@@ -2024,6 +2064,8 @@ export default function EventDetailSheet({
                     eventFreeAgents = orderedFreeAgents;
                 } catch (error) {
                     console.error('Failed to load event participants:', error);
+                    setCurrentUserPaymentFailed(false);
+                    setPaymentFailedTeamIds([]);
                     const freeAgentIds = collectUniqueUserIds(baseEvent.freeAgentIds);
                     const shouldLoadFreeAgents = Boolean(baseEvent.teamSignup) && freeAgentIds.length > 0;
 
@@ -2052,7 +2094,7 @@ export default function EventDetailSheet({
         } finally {
             setIsLoadingEvent(false);
         }
-    }, [renderInline, selectedWeeklyOccurrenceDate, selectedWeeklyOccurrenceSlotId]);
+    }, [renderInline, selectedWeeklyOccurrenceDate, selectedWeeklyOccurrenceSlotId, user?.$id]);
 
     useEffect(() => {
         eventRef.current = event;
@@ -2085,6 +2127,8 @@ export default function EventDetailSheet({
             setPlayers([]);
             setTeams([]);
             setFreeAgents([]);
+            setCurrentUserPaymentFailed(false);
+            setPaymentFailedTeamIds([]);
             setIsLoadingEvent(false);
             setIsLoadingTeams(false);
             setJoinError(null); // Reset error when modal closes
@@ -3844,18 +3888,25 @@ export default function EventDetailSheet({
     const selectedTeamRegistration = selectedTeamId
         ? teams.find((team) => team.$id === selectedTeamId || team.parentTeamId === selectedTeamId) ?? null
         : null;
+    const selectedTeamUsesSchedulableSlots = isTeamSignup && ['LEAGUE', 'TOURNAMENT'].includes(String(currentEvent.eventType ?? '').toUpperCase());
     const selectedTeamIsRegistered = Boolean(
         selectedTeamRegistration
         || (
+            !selectedTeamUsesSchedulableSlots
+            &&
             selectedTeamId
             && collectUniqueUserIds(currentEvent.teamIds).includes(selectedTeamId)
         ),
     );
+    const selectedTeamPaymentFailed = Boolean(
+        selectedTeamId
+        && paymentFailedTeamIds.includes(selectedTeamId)
+    );
     const selectedTeamIsWaitlisted = Boolean(selectedTeamId && normalizedWaitlistIdSet.has(selectedTeamId));
     const joinAtCapacity = eventAtCapacity || selectedDivisionAtCapacity;
-    const showSelfWaitlistActions = joinAtCapacity || isUserWaitlisted;
+    const showSelfWaitlistActions = !currentUserPaymentFailed && (joinAtCapacity || isUserWaitlisted);
     const childWaitlistMode = !isTeamSignup && (joinAtCapacity || selectedChildIsWaitlisted);
-    const showTeamWaitlistActions = !selectedTeamIsRegistered && (joinAtCapacity || selectedTeamIsWaitlisted);
+    const showTeamWaitlistActions = !selectedTeamPaymentFailed && !selectedTeamIsRegistered && (joinAtCapacity || selectedTeamIsWaitlisted);
     const selfJoinDisabled = weeklySelectionRequired || Boolean(selfRegistrationBlockedReason) || joining || confirmingPurchase || isDivisionSelectionMissing;
     const selfWaitlistJoinDisabled = weeklySelectionRequired || Boolean(selfRegistrationBlockedReason) || joining || isDivisionSelectionMissing;
     const selfWaitlistLeaveDisabled = joining || eventHasStarted;
@@ -4891,7 +4942,7 @@ export default function EventDetailSheet({
                                                                         : isMinor
                                                                             ? 'Send'
                                                                     : selectedDivisionBilling.priceCents > 0
-                                                                    ? `Join Event - ${formatPrice(selectedDivisionBilling.priceCents)}`
+                                                                    ? (currentUserPaymentFailed ? 'Complete payment' : `Join Event - ${formatPrice(selectedDivisionBilling.priceCents)}`)
                                                                     : 'Join Event'}
                                                     </Button>
                                                 )}
@@ -4995,7 +5046,7 @@ export default function EventDetailSheet({
                                                                                 : joining
                                                                                     ? 'Joining...'
                                                                                     : (!isFreeForUser && selectedDivisionBilling.priceCents > 0)
-                                                                                        ? `Join for ${formatPrice(selectedDivisionBilling.priceCents)}`
+                                                                                        ? (selectedTeamPaymentFailed ? 'Complete payment' : `Join for ${formatPrice(selectedDivisionBilling.priceCents)}`)
                                                                                         : 'Join Event'}
                                                                         </Button>
                                                                     )}
@@ -5147,6 +5198,8 @@ export default function EventDetailSheet({
                                 event={currentEvent}
                                 userRegistered={!!isUserRegistered}
                                 linkedChildren={activeChildren}
+                                selectedOccurrence={selectedWeeklyOccurrence ?? null}
+                                effectiveStart={eventStartDate}
                                 onRefundSuccess={loadEventDetails}
                             />
                         </div>

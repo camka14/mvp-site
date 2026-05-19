@@ -1043,6 +1043,10 @@ function OrganizationDetailContent() {
   const [visibleCustomerCount, setVisibleCustomerCount] = useState(CUSTOMER_PAGE_SIZE);
   const customerSentinelRef = useRef<HTMLDivElement | null>(null);
   const [selectedCustomerKey, setSelectedCustomerKey] = useState<string | null>(null);
+  const [customerRefundAmountDraftByPaymentId, setCustomerRefundAmountDraftByPaymentId] = useState<Record<string, number>>({});
+  const [refundingCustomerPaymentId, setRefundingCustomerPaymentId] = useState<string | null>(null);
+  const [cancellingCustomerPaymentId, setCancellingCustomerPaymentId] = useState<string | null>(null);
+  const [cancellingCustomerPlanBillId, setCancellingCustomerPlanBillId] = useState<string | null>(null);
   const [previewSignedTextDocument, setPreviewSignedTextDocument] = useState<OrganizationUserDocumentSummary | null>(null);
 
   const closeTemplateBuilder = useCallback(() => {
@@ -2670,6 +2674,98 @@ function OrganizationDetailContent() {
     ));
   }, [activeTab, organizationCustomerRows]);
 
+  const refreshOrganizationCustomers = useCallback(async () => {
+    if (!org?.$id) {
+      return;
+    }
+    await loadOrganizationUsers(org.$id, { silent: true });
+  }, [loadOrganizationUsers, org?.$id]);
+
+  const handleRefundCustomerBillPayment = useCallback(async (
+    bill: OrganizationBillSummary,
+    payment: OrganizationBillPaymentSummary,
+  ) => {
+    const draftDollars = customerRefundAmountDraftByPaymentId[payment.paymentId] ?? (payment.refundableAmountCents / 100);
+    const amountCents = Math.round(Number(draftDollars) * 100);
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
+      notifications.show({ color: 'red', message: 'Enter a refund amount greater than zero.' });
+      return;
+    }
+    if (amountCents > payment.refundableAmountCents) {
+      notifications.show({ color: 'red', message: 'Refund amount exceeds the refundable balance.' });
+      return;
+    }
+    const confirmed = window.confirm(`Refund ${formatPrice(amountCents)} for this bill payment?`);
+    if (!confirmed) {
+      return;
+    }
+
+    setRefundingCustomerPaymentId(payment.paymentId);
+    try {
+      await apiRequest(`/api/billing/bills/${encodeURIComponent(bill.billId)}/payments/${encodeURIComponent(payment.paymentId)}/refund`, {
+        method: 'POST',
+        body: { amountCents },
+      });
+      notifications.show({ color: 'green', message: 'Bill payment refunded.' });
+      setCustomerRefundAmountDraftByPaymentId((current) => {
+        const next = { ...current };
+        delete next[payment.paymentId];
+        return next;
+      });
+      await refreshOrganizationCustomers();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to refund bill payment.';
+      notifications.show({ color: 'red', message });
+    } finally {
+      setRefundingCustomerPaymentId(null);
+    }
+  }, [customerRefundAmountDraftByPaymentId, refreshOrganizationCustomers]);
+
+  const handleCancelCustomerPendingBillPayment = useCallback(async (
+    bill: OrganizationBillSummary,
+    payment: OrganizationBillPaymentSummary,
+  ) => {
+    const confirmed = window.confirm('Cancel this pending Stripe payment? The customer can retry payment afterward when the bill remains open.');
+    if (!confirmed) {
+      return;
+    }
+
+    setCancellingCustomerPaymentId(payment.paymentId);
+    try {
+      await apiRequest(`/api/billing/bills/${encodeURIComponent(bill.billId)}/payments/${encodeURIComponent(payment.paymentId)}/cancel`, {
+        method: 'POST',
+      });
+      notifications.show({ color: 'green', message: 'Pending bill payment cancelled.' });
+      await refreshOrganizationCustomers();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to cancel pending payment.';
+      notifications.show({ color: 'red', message });
+    } finally {
+      setCancellingCustomerPaymentId(null);
+    }
+  }, [refreshOrganizationCustomers]);
+
+  const handleCancelCustomerPaymentPlan = useCallback(async (bill: OrganizationBillSummary) => {
+    const confirmed = window.confirm('Cancel this bill payment plan and void its unpaid installments? Paid installments will stay recorded.');
+    if (!confirmed) {
+      return;
+    }
+
+    setCancellingCustomerPlanBillId(bill.billId);
+    try {
+      await apiRequest(`/api/billing/bills/${encodeURIComponent(bill.billId)}/payment-plan/cancel`, {
+        method: 'POST',
+      });
+      notifications.show({ color: 'green', message: 'Bill payment plan cancelled.' });
+      await refreshOrganizationCustomers();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to cancel payment plan.';
+      notifications.show({ color: 'red', message });
+    } finally {
+      setCancellingCustomerPlanBillId(null);
+    }
+  }, [refreshOrganizationCustomers]);
+
   const renderCustomerEvents = (
     events: OrganizationUserEventSummary[],
     emptyText = 'No organization events.',
@@ -2702,24 +2798,148 @@ function OrganizationDetailContent() {
 
   const renderCustomerBills = (bills: OrganizationBillSummary[], emptyText = 'No bills.') => (
     bills.length > 0 ? (
-      <Stack gap={8}>
+      <Stack gap="sm">
         {bills.map((bill) => {
+          const payments = bill.payments.slice().sort((a, b) => a.sequence - b.sequence);
           const billMeta = [
             bill.ownerName,
             bill.ownerType,
             formatCustomerMetaToken(bill.status) ?? 'Open',
+            bill.paymentPlanEnabled ? 'Payment plan' : null,
           ].filter(Boolean);
           const paymentSummary = formatPaidProgress(bill.paidAmountCents, bill.totalAmountCents);
           const paymentLine = [
             paymentSummary,
             bill.refundedAmountCents > 0 ? `${formatPrice(bill.refundedAmountCents)} refunded` : null,
+            bill.refundableAmountCents > 0 ? `${formatPrice(bill.refundableAmountCents)} refundable` : null,
           ].filter(Boolean);
+          const hasUnpaidPlanPayments = payments.some((payment) => (
+            payment.status !== 'PAID' && payment.status !== 'VOID'
+          ));
+          const canCancelPaymentPlan = Boolean(
+            isOwner
+              && bill.paymentPlanEnabled
+              && bill.status !== 'CANCELLED'
+              && hasUnpaidPlanPayments,
+          );
+
           return (
-            <Stack key={bill.billId} gap={0}>
-              <Text size="sm">{bill.eventName ?? 'Event bill'}</Text>
-              <Text size="xs" c="dimmed">{billMeta.join(' • ')}</Text>
-              {paymentLine.length > 0 && (
-                <Text size="xs" c="dimmed">{paymentLine.join(' • ')}</Text>
+            <Stack
+              key={bill.billId}
+              gap="xs"
+              className="rounded-md border border-slate-200 bg-white/70 p-3"
+            >
+              <Group justify="space-between" align="flex-start" gap="xs" wrap="wrap">
+                <Stack gap={0} className="min-w-0">
+                  <Text size="sm" fw={500}>{bill.eventName ?? 'Event bill'}</Text>
+                  <Text size="xs" c="dimmed">{billMeta.join(' • ')}</Text>
+                  {paymentLine.length > 0 && (
+                    <Text size="xs" c="dimmed">{paymentLine.join(' • ')}</Text>
+                  )}
+                </Stack>
+                {canCancelPaymentPlan && (
+                  <Button
+                    size="compact-xs"
+                    variant="light"
+                    color="red"
+                    loading={cancellingCustomerPlanBillId === bill.billId}
+                    onClick={() => {
+                      void handleCancelCustomerPaymentPlan(bill);
+                    }}
+                  >
+                    Cancel plan
+                  </Button>
+                )}
+              </Group>
+
+              {payments.length > 0 && (
+                <Stack gap={6}>
+                  {payments.map((payment) => {
+                    const statusLabel = formatCustomerMetaToken(payment.status) ?? 'Pending';
+                    const canRefundPayment = Boolean(
+                      isOwner
+                        && payment.isRefundable
+                        && payment.paymentIntentId
+                        && payment.refundableAmountCents > 0,
+                    );
+                    const canCancelPendingPayment = Boolean(isOwner && payment.status === 'PROCESSING');
+                    const maxRefundDollars = payment.refundableAmountCents / 100;
+                    const draftRefundDollars = customerRefundAmountDraftByPaymentId[payment.paymentId] ?? maxRefundDollars;
+                    return (
+                      <Stack
+                        key={payment.paymentId}
+                        gap={6}
+                        className="rounded-md bg-slate-50 px-3 py-2"
+                      >
+                        <Group justify="space-between" gap="xs" wrap="wrap">
+                          <Group gap={6}>
+                            <Text size="xs" fw={600}>Payment #{payment.sequence || 1}</Text>
+                            <Badge size="xs" variant="light" color={payment.status === 'PAID' ? 'green' : payment.status === 'PROCESSING' ? 'yellow' : 'gray'}>
+                              {statusLabel}
+                            </Badge>
+                          </Group>
+                          <Text size="xs" c="dimmed">
+                            {formatPrice(payment.amountCents)}
+                            {payment.refundedAmountCents > 0 ? ` • ${formatPrice(payment.refundedAmountCents)} refunded` : ''}
+                          </Text>
+                        </Group>
+
+                        {(canRefundPayment || canCancelPendingPayment) && (
+                          <Group gap="xs" align="flex-end" wrap="wrap">
+                            {canRefundPayment && (
+                              <>
+                                <NumberInput
+                                  aria-label={`Refund amount for payment ${payment.sequence || 1}`}
+                                  min={0}
+                                  max={maxRefundDollars}
+                                  decimalScale={2}
+                                  fixedDecimalScale
+                                  prefix="$"
+                                  value={draftRefundDollars}
+                                  onChange={(value) => {
+                                    const numeric = typeof value === 'number' ? value : Number(value);
+                                    setCustomerRefundAmountDraftByPaymentId((current) => ({
+                                      ...current,
+                                      [payment.paymentId]: Number.isFinite(numeric)
+                                        ? Math.min(maxRefundDollars, Math.max(0, numeric))
+                                        : 0,
+                                    }));
+                                  }}
+                                  w={132}
+                                  size="xs"
+                                />
+                                <Button
+                                  size="compact-xs"
+                                  loading={refundingCustomerPaymentId === payment.paymentId}
+                                  disabled={Boolean(refundingCustomerPaymentId && refundingCustomerPaymentId !== payment.paymentId)}
+                                  onClick={() => {
+                                    void handleRefundCustomerBillPayment(bill, payment);
+                                  }}
+                                >
+                                  Refund
+                                </Button>
+                              </>
+                            )}
+                            {canCancelPendingPayment && (
+                              <Button
+                                size="compact-xs"
+                                variant="light"
+                                color="red"
+                                loading={cancellingCustomerPaymentId === payment.paymentId}
+                                disabled={Boolean(cancellingCustomerPaymentId && cancellingCustomerPaymentId !== payment.paymentId)}
+                                onClick={() => {
+                                  void handleCancelCustomerPendingBillPayment(bill, payment);
+                                }}
+                              >
+                                Cancel pending
+                              </Button>
+                            )}
+                          </Group>
+                        )}
+                      </Stack>
+                    );
+                  })}
+                </Stack>
               )}
             </Stack>
           );

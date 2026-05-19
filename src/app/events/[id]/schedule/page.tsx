@@ -4491,15 +4491,29 @@ function EventScheduleContent() {
     setTeamComplianceRefreshKey((current) => current + 1);
   }, []);
 
+  const appendSelectedOccurrenceQuery = useCallback((path: string): string => {
+    const params = new URLSearchParams();
+    if (selectedOccurrence?.slotId) {
+      params.set('slotId', selectedOccurrence.slotId);
+    }
+    if (selectedOccurrence?.occurrenceDate) {
+      params.set('occurrenceDate', selectedOccurrence.occurrenceDate);
+    }
+    const query = params.toString();
+    return query ? `${path}?${query}` : path;
+  }, [selectedOccurrence?.occurrenceDate, selectedOccurrence?.slotId]);
+
   const loadTeamBillingSnapshot = useCallback(
     async (teamId: string): Promise<TeamBillingSnapshot> => {
       const targetEventId = activeEvent?.$id ?? eventId;
       if (!targetEventId) {
         throw new Error('Event context is unavailable.');
       }
-      return apiRequest<TeamBillingSnapshot>(`/api/events/${targetEventId}/teams/${teamId}/billing`);
+      return apiRequest<TeamBillingSnapshot>(
+        appendSelectedOccurrenceQuery(`/api/events/${targetEventId}/teams/${teamId}/billing`),
+      );
     },
-    [activeEvent?.$id, eventId],
+    [activeEvent?.$id, appendSelectedOccurrenceQuery, eventId],
   );
 
   const closeRefundModal = useCallback(() => {
@@ -4567,13 +4581,16 @@ function EventScheduleContent() {
       setRefundingPaymentId(paymentId);
       setRefundError(null);
       try {
-        await apiRequest(`/api/events/${targetEventId}/teams/${team.$id}/billing/refunds`, {
-          method: 'POST',
-          body: {
-            billPaymentId: paymentId,
-            amountCents,
+        await apiRequest(
+          appendSelectedOccurrenceQuery(`/api/events/${targetEventId}/teams/${team.$id}/billing/refunds`),
+          {
+            method: 'POST',
+            body: {
+              billPaymentId: paymentId,
+              amountCents,
+            },
           },
-        });
+        );
         const snapshot = await loadTeamBillingSnapshot(team.$id);
         setRefundSnapshot(snapshot);
         const nextDefaults: Record<string, number> = {};
@@ -4594,6 +4611,7 @@ function EventScheduleContent() {
     },
     [
       activeEvent?.$id,
+      appendSelectedOccurrenceQuery,
       eventId,
       loadTeamBillingSnapshot,
       refreshTeamCompliance,
@@ -4803,19 +4821,22 @@ function EventScheduleContent() {
     setCreatingBill(true);
     setCreateBillError(null);
     try {
-      await apiRequest(`/api/events/${targetEventId}/teams/${team.$id}/billing/bills`, {
-        method: 'POST',
-        body: {
-          ownerType: createBillOwnerType,
-          ownerId: createBillOwnerType === 'TEAM'
-            ? (normalizeIdToken(team.parentTeamId) ?? team.$id)
-            : createBillOwnerId,
-          eventAmountCents: createBillEventAmountCents,
-          taxAmountCents: createBillTaxAmountCents,
-          allowSplit: createBillOwnerType === 'TEAM' ? createBillAllowSplit : false,
-          label: createBillLabel,
+      await apiRequest(
+        appendSelectedOccurrenceQuery(`/api/events/${targetEventId}/teams/${team.$id}/billing/bills`),
+        {
+          method: 'POST',
+          body: {
+            ownerType: createBillOwnerType,
+            ownerId: createBillOwnerType === 'TEAM'
+              ? (normalizeIdToken(team.parentTeamId) ?? team.$id)
+              : createBillOwnerId,
+            eventAmountCents: createBillEventAmountCents,
+            taxAmountCents: createBillTaxAmountCents,
+            allowSplit: createBillOwnerType === 'TEAM' ? createBillAllowSplit : false,
+            label: createBillLabel,
+          },
         },
-      });
+      );
       setInfoMessage('Bill created successfully.');
       closeCreateBillModal();
       refreshTeamCompliance();
@@ -4827,6 +4848,7 @@ function EventScheduleContent() {
     }
   }, [
     activeEvent?.$id,
+    appendSelectedOccurrenceQuery,
     closeCreateBillModal,
     createBillAllowSplit,
     createBillEventAmountCents,
@@ -6754,6 +6776,20 @@ function EventScheduleContent() {
   const formatCompliancePaymentLabel = useCallback((payment: TeamComplianceSummary['payment']) => {
     if (!payment.hasBill) {
       return 'No bill';
+    }
+    const status = String(payment.status ?? '').toUpperCase();
+    if (status === 'DISPUTED') {
+      return 'Payment disputed';
+    }
+    if (status === 'FAILED') {
+      return 'Payment failed';
+    }
+    if (status === 'PENDING') {
+      const prefix = payment.inheritedFromTeamBill ? 'Team bill' : 'User bill';
+      return `${prefix} pending (${formatBillAmount(payment.totalAmountCents)})`;
+    }
+    if (status === 'PROCESSING') {
+      return `Payment processing (${formatBillAmount(payment.totalAmountCents)})`;
     }
     if (payment.isPaidInFull) {
       return `Paid in full (${formatBillAmount(payment.totalAmountCents)})`;
@@ -9742,7 +9778,7 @@ function EventScheduleContent() {
             </Alert>
           )}
 
-          {hasSplitDivisionUnassignedTeams && (
+          {canManageEvent && hasSplitDivisionUnassignedTeams && (
             <Alert color="yellow" radius="md">
               Split-division leagues require every registered team to be assigned to a division before saving or rescheduling.
               Unassigned teams: {unassignedFilledParticipantTeams.map(getTeamWarningLabel).join(', ')}.
@@ -9983,28 +10019,27 @@ function EventScheduleContent() {
                             </Paper>
                           );
                         })}
-                        <Paper withBorder radius="md" p="md" miw={320}>
-                          <Stack gap="sm">
-                            <Group justify="space-between" align="center">
-                              <Text fw={600}>Unassigned</Text>
-                              <Text size="xs" c={unassignedFilledParticipantTeams.length > 0 ? 'red' : 'dimmed'}>
-                                {unassignedFilledParticipantTeams.length}
-                              </Text>
-                            </Group>
-                            {unassignedParticipantTeams.length === 0 ? (
-                              <Text size="sm" c="dimmed">All teams assigned.</Text>
-                            ) : (
-                              <Stack gap="sm">
-                                {unassignedParticipantTeams.map((team) => {
-                                  const canMoveTeamBetweenDivisions = canManageEvent;
-                                  const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
-                                  const teamActions = canManageEvent && !isPlaceholderTeam
-                                    ? (
-                                      participantsUpdatingTeamId === team.$id
-                                        ? <Text size="xs" c="dimmed">Updating...</Text>
-                                        : (
-                                          <Stack gap={6} align="flex-start">
-                                            {canMoveTeamBetweenDivisions ? (
+                        {canManageEvent && (
+                          <Paper withBorder radius="md" p="md" miw={320}>
+                            <Stack gap="sm">
+                              <Group justify="space-between" align="center">
+                                <Text fw={600}>Unassigned</Text>
+                                <Text size="xs" c={unassignedFilledParticipantTeams.length > 0 ? 'red' : 'dimmed'}>
+                                  {unassignedFilledParticipantTeams.length}
+                                </Text>
+                              </Group>
+                              {unassignedParticipantTeams.length === 0 ? (
+                                <Text size="sm" c="dimmed">All teams assigned.</Text>
+                              ) : (
+                                <Stack gap="sm">
+                                  {unassignedParticipantTeams.map((team) => {
+                                    const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
+                                    const teamActions = !isPlaceholderTeam
+                                      ? (
+                                        participantsUpdatingTeamId === team.$id
+                                          ? <Text size="xs" c="dimmed">Updating...</Text>
+                                          : (
+                                            <Stack gap={6} align="flex-start">
                                               <Select
                                                 size="xs"
                                                 aria-label={`Move ${team.name || 'team'} to division`}
@@ -10017,36 +10052,36 @@ function EventScheduleContent() {
                                                 allowDeselect
                                                 w={200}
                                               />
-                                            ) : null}
-                                            {renderEditBillingActions(team)}
-                                            <Button
-                                              size="xs"
-                                              variant="light"
-                                              color="red"
-                                              onClick={(event) => {
-                                                event.stopPropagation();
-                                                void handleRemoveTeamFromParticipants(team);
-                                              }}
-                                            >
-                                              Remove
-                                            </Button>
-                                          </Stack>
-                                        )
-                                    )
-                                    : undefined;
+                                              {renderEditBillingActions(team)}
+                                              <Button
+                                                size="xs"
+                                                variant="light"
+                                                color="red"
+                                                onClick={(event) => {
+                                                  event.stopPropagation();
+                                                  void handleRemoveTeamFromParticipants(team);
+                                                }}
+                                              >
+                                                Remove
+                                              </Button>
+                                            </Stack>
+                                          )
+                                      )
+                                      : undefined;
 
-                                  return renderParticipantTeamCard({
-                                    cardKey: `unassigned:${team.$id}`,
-                                    team,
-                                    className: isPlaceholderTeam ? '!bg-gray-100' : '',
-                                    enableDetailsView: !isPlaceholderTeam,
-                                    actions: teamActions,
-                                  });
-                                })}
-                              </Stack>
-                            )}
-                          </Stack>
-                        </Paper>
+                                    return renderParticipantTeamCard({
+                                      cardKey: `unassigned:${team.$id}`,
+                                      team,
+                                      className: isPlaceholderTeam ? '!bg-gray-100' : '',
+                                      enableDetailsView: !isPlaceholderTeam,
+                                      actions: teamActions,
+                                    });
+                                  })}
+                                </Stack>
+                              )}
+                            </Stack>
+                          </Paper>
+                        )}
                       </Group>
                     </div>
                   ) : (

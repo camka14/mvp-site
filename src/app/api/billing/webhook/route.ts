@@ -7,10 +7,11 @@ import {
   resolveConnectedAccountId,
 } from '@/lib/stripeConnectAccounts';
 import { syncManagedOrganizationStripeAccount } from '@/server/organizationStripeVerification';
-import { sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
+import { sendPaymentFailureEmail, sendPurchaseReceiptEmail } from '@/server/purchaseReceipts';
 import { syncStripeSubscriptionMirrorById, upsertStripeSubscriptionMirror } from '@/lib/stripeSubscriptions';
 import { buildEventRegistrationId } from '@/server/events/eventRegistrations';
 import {
+  activateFailedTeamRegistration,
   activateStartedTeamRegistration,
   cancelPendingTeamRegistration,
   markTeamRegistrationPaymentPending,
@@ -32,6 +33,12 @@ const sumPaid = (payments: Array<{ amountCents: number; status: string | null }>
     return total;
   }, 0);
 };
+
+const BILL_PAYMENT_ISSUE_STATUSES = new Set(['FAILED', 'DISPUTED']);
+
+const isBillPaymentIssueStatus = (status: unknown): boolean => (
+  BILL_PAYMENT_ISSUE_STATUSES.has(String(status ?? '').trim().toUpperCase())
+);
 
 const BILL_APP_FEE_PERCENTAGE = 0.01;
 const STRIPE_FIXED_FEE_CENTS = 30;
@@ -64,8 +71,19 @@ const toIntOrNull = (value: unknown): number | null => {
   return null;
 };
 
+const toExpandableId = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    return toStringOrNull(value);
+  }
+  if (value && typeof value === 'object' && 'id' in value) {
+    return toStringOrNull((value as { id?: unknown }).id);
+  }
+  return null;
+};
+
 const SUPPORTED_EVENT_TYPES = new Set([
   'account.updated',
+  'charge.dispute.closed',
   'payment_intent.processing',
   'payment_intent.succeeded',
   'payment_intent.payment_failed',
@@ -525,7 +543,7 @@ const cancelEventRegistrationFromFailedPayment = async ({
           status: { in: ['STARTED', 'PENDING'] },
         },
         data: {
-          status: 'CANCELLED',
+          status: 'PAYMENT_FAILED',
           updatedAt: now,
         },
       });
@@ -680,6 +698,7 @@ const reconcileBill = async ({
   );
   const remainingAmountCents = Math.max(bill.totalAmountCents - paidAmountCents, 0);
   const processingPayment = payments.find((entry) => entry.status === 'PROCESSING') ?? null;
+  const failedPayment = payments.find((entry) => isBillPaymentIssueStatus(entry.status)) ?? null;
   const pendingPayment = payments.find((entry) => entry.status === 'PENDING' || entry.status === null) ?? null;
 
   let nextPaymentDue: Date | null = null;
@@ -688,6 +707,9 @@ const reconcileBill = async ({
   if (processingPayment) {
     nextPaymentDue = processingPayment.dueDate;
     nextPaymentAmountCents = processingPayment.amountCents;
+  } else if (failedPayment) {
+    nextPaymentDue = failedPayment.dueDate;
+    nextPaymentAmountCents = failedPayment.amountCents;
   } else if (pendingPayment) {
     if (remainingAmountCents <= 0) {
       const syncedIntentId = await syncPendingPaymentIntent({
@@ -1004,12 +1026,12 @@ const releaseBillPaymentProcessing = async ({
   const payment = billPaymentId
     ? await prisma.billPayments.findUnique({
         where: { id: billPaymentId },
-        select: { id: true, billId: true, status: true },
+        select: { id: true, billId: true, status: true, amountCents: true, paymentIntentId: true },
       })
     : paymentIntentId
       ? await prisma.billPayments.findFirst({
           where: { paymentIntentId },
-          select: { id: true, billId: true, status: true },
+          select: { id: true, billId: true, status: true, amountCents: true, paymentIntentId: true },
         })
       : null;
 
@@ -1022,7 +1044,16 @@ const releaseBillPaymentProcessing = async ({
     );
     return { billId, billPaymentId: payment.id, updated: false };
   }
-  if (payment.status === 'PAID') {
+  if (paymentIntentId && payment.paymentIntentId && payment.paymentIntentId !== paymentIntentId) {
+    console.warn(
+      `Stripe webhook payment intent mismatch while releasing payment processing (paymentIntentId=${paymentIntentId}, billPaymentId=${payment.id}).`,
+    );
+    return { billId: payment.billId, billPaymentId: payment.id, updated: false };
+  }
+  if (isBillPaymentIssueStatus(payment.status)) {
+    return { billId: payment.billId, billPaymentId: payment.id, updated: false };
+  }
+  if (payment.status === 'PAID' && !paymentIntentId) {
     return { billId: payment.billId, billPaymentId: payment.id, updated: false };
   }
 
@@ -1034,14 +1065,12 @@ const releaseBillPaymentProcessing = async ({
     return { billId: payment.billId, billPaymentId: payment.id, updated: false };
   }
 
-  const nextPaymentStatus = bill.paymentPlanEnabled ? 'PENDING' : 'VOID';
   await prisma.billPayments.update({
     where: { id: payment.id },
     data: {
-      status: nextPaymentStatus,
+      status: 'FAILED',
       paidAt: null,
-      paymentIntentId: null,
-      payerUserId: null,
+      paymentIntentId: paymentIntentId ?? payment.paymentIntentId,
       updatedAt: now,
     },
   });
@@ -1053,15 +1082,88 @@ const releaseBillPaymentProcessing = async ({
       where: { id: bill.id },
       data: {
         paidAmountCents: 0,
-        status: 'CANCELLED',
-        nextPaymentDue: null,
-        nextPaymentAmountCents: null,
+        status: 'OPEN',
+        nextPaymentDue: now,
+        nextPaymentAmountCents: payment.amountCents,
         updatedAt: now,
       },
     });
   }
 
   return { billId: bill.id, billPaymentId: payment.id, updated: true };
+};
+
+const resolvePaymentIntentIdFromDispute = async ({
+  dispute,
+  stripe,
+}: {
+  dispute: Stripe.Dispute & { payment_intent?: unknown; charge?: unknown };
+  stripe: Stripe | null;
+}): Promise<string | null> => {
+  const directPaymentIntentId = toExpandableId(dispute.payment_intent);
+  if (directPaymentIntentId) {
+    return directPaymentIntentId;
+  }
+
+  const chargeId = toExpandableId(dispute.charge);
+  if (!chargeId || !stripe) {
+    return null;
+  }
+
+  try {
+    const charge = await stripe.charges.retrieve(chargeId);
+    return toExpandableId(charge.payment_intent);
+  } catch (error) {
+    console.warn(`Failed to resolve disputed charge ${chargeId} to a PaymentIntent.`, error);
+    return null;
+  }
+};
+
+const markBillPaymentDisputed = async ({
+  paymentIntentId,
+  now,
+  stripe,
+}: {
+  paymentIntentId: string | null;
+  now: Date;
+  stripe: Stripe | null;
+}): Promise<{ billId: string | null; billPaymentId: string | null; updated: boolean }> => {
+  if (!paymentIntentId) {
+    return { billId: null, billPaymentId: null, updated: false };
+  }
+
+  const payment = await prisma.billPayments.findFirst({
+    where: { paymentIntentId },
+    select: { id: true, billId: true, status: true },
+  });
+  if (!payment) {
+    return { billId: null, billPaymentId: null, updated: false };
+  }
+  if (payment.status === 'VOID') {
+    return { billId: payment.billId, billPaymentId: payment.id, updated: false };
+  }
+
+  if (payment.status !== 'DISPUTED') {
+    await prisma.billPayments.update({
+      where: { id: payment.id },
+      data: {
+        status: 'DISPUTED',
+        paidAt: null,
+        updatedAt: now,
+      },
+    });
+  }
+
+  const reconciledBill = await reconcileBill({ billId: payment.billId, now, stripe });
+  if (reconciledBill?.parentBillId) {
+    await reconcileBill({ billId: reconciledBill.parentBillId, now, stripe });
+  }
+
+  return {
+    billId: payment.billId,
+    billPaymentId: payment.id,
+    updated: payment.status !== 'DISPUTED',
+  };
 };
 
 const createInstantBillAndPayment = async ({
@@ -1090,7 +1192,7 @@ const createInstantBillAndPayment = async ({
   totalChargeCents: number | null;
   metadata: Record<string, unknown>;
   now: Date;
-  targetPaymentStatus?: 'PAID' | 'PROCESSING';
+  targetPaymentStatus?: 'PAID' | 'PROCESSING' | 'FAILED';
   stripe: Stripe | null;
 }): Promise<{
   billId: string | null;
@@ -1166,6 +1268,32 @@ const createInstantBillAndPayment = async ({
         stripe,
       });
     }
+    if (targetPaymentStatus === 'FAILED' && !isBillPaymentIssueStatus(existingPayment.status)) {
+      await prisma.billPayments.update({
+        where: { id: existingPayment.id },
+        data: {
+          status: 'FAILED',
+          paidAt: null,
+          paymentIntentId,
+          payerUserId: userId ?? undefined,
+          taxCalculationId,
+          taxAmountCents,
+          stripeProcessingFeeCents,
+          stripeTaxServiceFeeCents,
+          updatedAt: now,
+        },
+      });
+      await prisma.bills.update({
+        where: { id: existingPayment.billId },
+        data: {
+          status: 'OPEN',
+          paidAmountCents: 0,
+          nextPaymentDue: now,
+          nextPaymentAmountCents: effectiveAmountCents,
+          updatedAt: now,
+        },
+      });
+    }
     return {
       billId: existingPayment.billId,
       billPaymentId: existingPayment.id,
@@ -1189,6 +1317,7 @@ const createInstantBillAndPayment = async ({
     }
 
     const isPaid = targetPaymentStatus === 'PAID';
+    const isProcessing = targetPaymentStatus === 'PROCESSING';
     const purchaseMetadata = {
       purchaseType: normalizedPurchaseType || null,
       userId,
@@ -1218,13 +1347,15 @@ const createInstantBillAndPayment = async ({
         ownerId,
         organizationId: organizationId ?? null,
         eventId: eventId ?? null,
+        slotId: purchaseMetadata.occurrenceSlotId,
+        occurrenceDate: purchaseMetadata.occurrenceDate,
         totalAmountCents: effectiveAmountCents,
         paidAmountCents: isPaid ? effectiveAmountCents : 0,
         nextPaymentDue: isPaid ? null : now,
         nextPaymentAmountCents: isPaid ? null : effectiveAmountCents,
         parentBillId: null,
         allowSplit: false,
-        status: isPaid ? 'PAID' : 'PENDING',
+        status: isPaid ? 'PAID' : isProcessing ? 'PENDING' : 'OPEN',
         paymentPlanEnabled: false,
         createdBy: userId ?? null,
         lineItems,
@@ -1262,6 +1393,51 @@ const createInstantBillAndPayment = async ({
       transitionedToPaid: isPaid,
     };
   });
+};
+
+const loadBillPurchaseMetadata = async (billId: string | null): Promise<Record<string, unknown> | null> => {
+  if (!billId) return null;
+  const bill = await prisma.bills.findUnique({
+    where: { id: billId },
+    select: {
+      ownerType: true,
+      ownerId: true,
+      eventId: true,
+      organizationId: true,
+      slotId: true,
+      occurrenceDate: true,
+      lineItems: true,
+    },
+  });
+  if (!bill || !Array.isArray(bill.lineItems)) {
+    return bill
+      ? {
+          eventId: bill.eventId,
+          organizationId: bill.organizationId,
+          occurrenceSlotId: bill.slotId,
+          occurrenceDate: bill.occurrenceDate,
+          userId: bill.ownerType === 'USER' ? bill.ownerId : null,
+          teamId: bill.ownerType === 'TEAM' ? bill.ownerId : null,
+        }
+      : null;
+  }
+
+  const purchaseLineItem = bill.lineItems.find((item) => (
+    item &&
+    typeof item === 'object' &&
+    !Array.isArray(item) &&
+    typeof (item as Record<string, unknown>).purchaseType === 'string'
+  )) as Record<string, unknown> | undefined;
+
+  return {
+    ...(purchaseLineItem ?? {}),
+    eventId: toStringOrNull(purchaseLineItem?.eventId) ?? bill.eventId,
+    organizationId: toStringOrNull(purchaseLineItem?.organizationId) ?? bill.organizationId,
+    occurrenceSlotId: toStringOrNull(purchaseLineItem?.occurrenceSlotId) ?? bill.slotId,
+    occurrenceDate: toStringOrNull(purchaseLineItem?.occurrenceDate) ?? bill.occurrenceDate,
+    userId: toStringOrNull(purchaseLineItem?.userId) ?? (bill.ownerType === 'USER' ? bill.ownerId : null),
+    teamId: toStringOrNull(purchaseLineItem?.teamId) ?? (bill.ownerType === 'TEAM' ? bill.ownerId : null),
+  };
 };
 
 export async function POST(req: NextRequest) {
@@ -1395,6 +1571,42 @@ export async function POST(req: NextRequest) {
         stripeSubscriptionId,
       });
     }
+    return NextResponse.json({ received: true }, { status: 200 });
+  }
+
+  if (eventType === 'charge.dispute.closed') {
+    const dispute = (event.data?.object ?? null) as (Stripe.Dispute & {
+      payment_intent?: unknown;
+      charge?: unknown;
+    }) | null;
+    const disputeStatus = String(dispute?.status ?? '').trim().toLowerCase();
+    if (!dispute || disputeStatus !== 'lost') {
+      return NextResponse.json({ received: true }, { status: 200 });
+    }
+
+    try {
+      const now = new Date();
+      const paymentIntentId = await resolvePaymentIntentIdFromDispute({
+        dispute,
+        stripe: stripeForPaymentIntentSync,
+      });
+      const disputedPayment = await markBillPaymentDisputed({
+        paymentIntentId,
+        now,
+        stripe: stripeForPaymentIntentSync,
+      });
+      if (!disputedPayment.billPaymentId) {
+        console.warn('Stripe webhook did not mark a bill payment disputed.', {
+          disputeId: dispute.id,
+          paymentIntentId,
+          billId: disputedPayment.billId,
+          billPaymentId: disputedPayment.billPaymentId,
+        });
+      }
+    } catch (error) {
+      console.error('Stripe dispute webhook handling failed', error);
+    }
+
     return NextResponse.json({ received: true }, { status: 200 });
   }
 
@@ -1533,6 +1745,26 @@ export async function POST(req: NextRequest) {
       resolvedBillId = releasedBill.billId ?? resolvedBillId;
       resolvedBillPaymentId = releasedBill.billPaymentId ?? resolvedBillPaymentId;
 
+      if (!resolvedBillId && !resolvedBillPaymentId) {
+        const failedBill = await createInstantBillAndPayment({
+          purchaseType,
+          paymentIntentId,
+          userId,
+          teamId,
+          eventId,
+          organizationId,
+          registrationId,
+          amountCents,
+          totalChargeCents,
+          metadata,
+          now,
+          targetPaymentStatus: 'FAILED',
+          stripe: stripeForPaymentIntentSync,
+        });
+        resolvedBillId = failedBill.billId ?? resolvedBillId;
+        resolvedBillPaymentId = failedBill.billPaymentId ?? resolvedBillPaymentId;
+      }
+
       const registrationResult = await cancelEventRegistrationFromFailedPayment({
         purchaseType,
         eventId,
@@ -1585,6 +1817,29 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      void sendPaymentFailureEmail({
+        purchaseType,
+        paymentIntentId,
+        userId,
+        teamId,
+        eventId,
+        productId,
+        organizationId,
+        billId: resolvedBillId,
+        billPaymentId: resolvedBillPaymentId,
+        amountCents,
+        totalChargeCents,
+        receiptEmail,
+        metadata,
+        failedAt: now,
+      }).catch((error) => {
+        console.error('Failed to send payment failure email', {
+          paymentIntentId,
+          userId,
+          error,
+        });
+      });
+
       return NextResponse.json({ received: true }, { status: 200 });
     }
 
@@ -1635,6 +1890,67 @@ export async function POST(req: NextRequest) {
               billId: reconciledBill.parentBillId,
               now,
               stripe: stripeForPaymentIntentSync,
+            });
+          }
+
+          const billPurchaseMetadata = await loadBillPurchaseMetadata(billId);
+          const billPurchaseType = toStringOrNull(billPurchaseMetadata?.purchaseType) ?? purchaseType;
+          const billEventId = toStringOrNull(billPurchaseMetadata?.eventId) ?? eventId;
+          const billTeamId = toStringOrNull(billPurchaseMetadata?.teamId) ?? teamId;
+          const billUserId = toStringOrNull(billPurchaseMetadata?.userId) ?? userId;
+          const billRegistrationId = toStringOrNull(billPurchaseMetadata?.registrationId) ?? registrationId;
+          const billOccurrenceSlotId = toStringOrNull(billPurchaseMetadata?.occurrenceSlotId) ?? occurrenceSlotId;
+          const billOccurrenceDate = toStringOrNull(billPurchaseMetadata?.occurrenceDate) ?? occurrenceDate;
+
+          const registrationResult = await ensureEventRegistrationFromPurchase({
+            purchaseType: billPurchaseType,
+            eventId: billEventId,
+            teamId: billTeamId,
+            userId: billUserId,
+            registrationId: billRegistrationId,
+            occurrenceSlotId: billOccurrenceSlotId,
+            occurrenceDate: billOccurrenceDate,
+            now,
+            targetStatus: 'ACTIVE',
+          });
+          if (
+            !registrationResult.applied &&
+            registrationResult.reason &&
+            registrationResult.reason !== 'not_event_purchase' &&
+            registrationResult.reason !== 'missing_event_id' &&
+            registrationResult.reason !== 'missing_participant'
+          ) {
+            console.warn('Stripe webhook skipped paid bill event registration sync.', {
+              paymentIntentId,
+              purchaseType: billPurchaseType,
+              userId: billUserId,
+              teamId: billTeamId,
+              eventId: billEventId,
+              registrationId: billRegistrationId,
+              reason: registrationResult.reason,
+            });
+          }
+
+          const teamRegistrationResult = billPurchaseType === 'team_registration'
+            ? await activateFailedTeamRegistration({
+                teamId: billTeamId,
+                userId: billUserId,
+                registrationId: billRegistrationId,
+                now,
+              })
+            : { applied: false, reason: 'not_team_registration_purchase' };
+          if (
+            !teamRegistrationResult.applied &&
+            teamRegistrationResult.reason &&
+            teamRegistrationResult.reason !== 'not_team_registration_purchase'
+          ) {
+            console.warn('Stripe webhook skipped paid bill team registration sync.', {
+              paymentIntentId,
+              purchaseType: billPurchaseType,
+              userId: billUserId,
+              teamId: billTeamId,
+              registrationId: billRegistrationId,
+              reason: teamRegistrationResult.reason,
             });
           }
         }

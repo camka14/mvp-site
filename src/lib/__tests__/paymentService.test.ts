@@ -279,5 +279,33 @@ describe('paymentService', () => {
         }),
       );
     });
+
+    it('sends weekly occurrence context when requesting a refund for a selected session', async () => {
+      apiRequestMock.mockResolvedValue({ success: true, emailSent: false });
+
+      const mockUser = { $id: 'user_1' } as UserData;
+      const mockEvent = buildEvent({ $id: 'weekly_parent' }) as Event;
+
+      const result = await paymentService.requestRefund(
+        mockEvent,
+        mockUser,
+        'Cannot attend',
+        'user_1',
+        { slotId: 'slot_1', occurrenceDate: '2026-08-05' },
+      );
+
+      expect(result.success).toBe(true);
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        '/api/billing/refund',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({
+            userId: 'user_1',
+            slotId: 'slot_1',
+            occurrenceDate: '2026-08-05',
+          }),
+        }),
+      );
+    });
   });
 });

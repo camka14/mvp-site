@@ -13,6 +13,8 @@ export type RefundRequestRow = {
   organizationId: string | null;
   reason: string;
   status: 'WAITING' | 'APPROVED' | 'REJECTED' | null;
+  slotId?: string | null;
+  occurrenceDate?: string | null;
 };
 
 const TEAM_REGISTRATION_REFUND_EVENT_PREFIX = 'team_registration:';
@@ -94,6 +96,14 @@ export const resolveRefundablePaymentsForRequest = async (
 ): Promise<Array<RefundablePaymentRow & { refundableAmountCents: number }>> => {
   let bills: Array<{ id: string }> = [];
   const normalizedTeamId = normalizeId(request.teamId);
+  const normalizedSlotId = normalizeId(request.slotId);
+  const normalizedOccurrenceDate = normalizeId(request.occurrenceDate);
+  const occurrenceBillWhere = normalizedSlotId && normalizedOccurrenceDate
+    ? {
+      slotId: normalizedSlotId,
+      occurrenceDate: normalizedOccurrenceDate,
+    }
+    : {};
   const isTeamRegistrationRefund = Boolean(
     normalizedTeamId
       && request.eventId === buildTeamRegistrationRefundEventId(normalizedTeamId),
@@ -128,6 +138,7 @@ export const resolveRefundablePaymentsForRequest = async (
             eventId: isTeamRegistrationRefund ? null : request.eventId,
             ownerType: 'TEAM',
             ownerId: { in: teamOwnerIds },
+            ...occurrenceBillWhere,
           },
           select: { id: true },
         })
@@ -140,6 +151,7 @@ export const resolveRefundablePaymentsForRequest = async (
             ownerType: 'USER',
             parentBillId: { in: teamBillIds },
             ...(isTeamRegistrationRefund ? { ownerId: request.userId } : {}),
+            ...occurrenceBillWhere,
           },
           select: { id: true },
         })
@@ -150,6 +162,7 @@ export const resolveRefundablePaymentsForRequest = async (
             eventId: isTeamRegistrationRefund ? null : request.eventId,
             ownerType: 'USER',
             ownerId: isTeamRegistrationRefund ? request.userId : { in: participantUserIds },
+            ...occurrenceBillWhere,
           },
           select: { id: true },
         })
@@ -167,6 +180,7 @@ export const resolveRefundablePaymentsForRequest = async (
         eventId: request.eventId,
         ownerType: 'USER',
         ownerId: request.userId,
+        ...occurrenceBillWhere,
       },
       select: { id: true },
     });

@@ -98,6 +98,102 @@ const normalizeUserIdList = (values: unknown): string[] => {
       .filter(Boolean),
   );
 };
+
+const paymentFailedRegistrationSelect = {
+  id: true,
+  registrantId: true,
+  registrantType: true,
+  rosterRole: true,
+  status: true,
+  parentId: true,
+  eventTeamId: true,
+  divisionId: true,
+  divisionTypeId: true,
+  divisionTypeKey: true,
+  consentDocumentId: true,
+  consentStatus: true,
+  slotId: true,
+  occurrenceDate: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const toRegistrationEntry = (row: any) => ({
+  registrationId: row.id,
+  registrantId: row.registrantId,
+  registrantType: row.registrantType,
+  rosterRole: row.rosterRole,
+  status: row.status,
+  parentId: normalizeId(row.parentId),
+  divisionId: normalizeId(row.divisionId),
+  divisionTypeId: normalizeId(row.divisionTypeId),
+  divisionTypeKey: normalizeId(row.divisionTypeKey),
+  consentDocumentId: normalizeId(row.consentDocumentId),
+  consentStatus: normalizeId(row.consentStatus),
+  slotId: normalizeId(row.slotId),
+  occurrenceDate: normalizeId(row.occurrenceDate),
+  createdAt: row.createdAt ? row.createdAt.toISOString() : null,
+  updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null,
+});
+
+const emptyRegistrationSnapshot = () => ({
+  teams: [],
+  users: [],
+  children: [],
+  waitlist: [],
+  freeAgents: [],
+});
+
+const loadViewerPaymentFailedRegistrations = async ({
+  eventId,
+  userId,
+  slotId,
+  occurrenceDate,
+}: {
+  eventId: string;
+  userId: string;
+  slotId: string | null;
+  occurrenceDate: string | null;
+}) => {
+  const viewer = await prisma.userData.findUnique({
+    where: { id: userId },
+    select: { teamIds: true },
+  });
+  const viewerTeamIds = normalizeUserIdList(viewer?.teamIds);
+  const or: any[] = [
+    { registrantType: 'SELF', registrantId: userId },
+    { registrantType: 'CHILD', parentId: userId },
+  ];
+  if (viewerTeamIds.length > 0) {
+    or.push(
+      { registrantType: 'TEAM', registrantId: { in: viewerTeamIds } },
+      { registrantType: 'TEAM', eventTeamId: { in: viewerTeamIds } },
+      { registrantType: 'TEAM', parentId: { in: viewerTeamIds } },
+    );
+  }
+
+  const rows = await prisma.eventRegistrations.findMany({
+    where: {
+      eventId,
+      status: 'PAYMENT_FAILED' as any,
+      slotId: slotId ?? null,
+      occurrenceDate: occurrenceDate ?? null,
+      OR: or,
+    },
+    select: paymentFailedRegistrationSelect,
+    orderBy: [
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ],
+  });
+
+  return {
+    ...emptyRegistrationSnapshot(),
+    teams: rows.filter((row) => row.registrantType === 'TEAM').map(toRegistrationEntry),
+    users: rows.filter((row) => row.registrantType === 'SELF').map(toRegistrationEntry),
+    children: rows.filter((row) => row.registrantType === 'CHILD').map(toRegistrationEntry),
+  };
+};
 const normalizeRequiredTemplateIds = (values: unknown): string[] => {
   if (!Array.isArray(values)) {
     return [];
@@ -333,10 +429,62 @@ const isSchedulableTeamSignupEvent = (event: { eventType?: unknown; teamSignup?:
   Boolean(event.teamSignup)
   && ['LEAGUE', 'TOURNAMENT'].includes(String(event.eventType ?? '').trim().toUpperCase())
 );
-const placeholderNameForEventTeam = (event: { teamIds?: unknown }, eventTeamId: string): string => {
-  const eventTeamIds = normalizeUserIdList(event.teamIds);
-  const index = eventTeamIds.findIndex((teamId) => teamId === eventTeamId);
-  return `Place Holder ${index >= 0 ? index + 1 : eventTeamIds.length + 1}`;
+const normalizePlaceholderName = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length ? normalized : null;
+};
+const placeholderNameForEventTeam = async (params: {
+  tx: PrismaLike;
+  event: { id: string; teamIds?: unknown };
+  eventTeamId: string;
+}): Promise<string> => {
+  let eventTeamIds = normalizeUserIdList(params.event.teamIds);
+  if (!eventTeamIds.length && typeof params.tx.divisions?.findMany === 'function') {
+    const divisionRows = await params.tx.divisions.findMany({
+      where: { eventId: params.event.id },
+      orderBy: { createdAt: 'asc' },
+      select: { teamIds: true },
+    });
+    eventTeamIds = ensureUnique(
+      (Array.isArray(divisionRows) ? divisionRows : [])
+        .flatMap((row: { teamIds?: unknown }) => normalizeUserIdList(row.teamIds)),
+    );
+  }
+
+  const eventTeamIndex = eventTeamIds.findIndex((teamId) => teamId === params.eventTeamId);
+  let ordinal = eventTeamIndex >= 0 ? eventTeamIndex + 1 : eventTeamIds.length + 1;
+
+  const existingPlaceholderNames = new Set<string>();
+  if (typeof params.tx.teams?.findMany === 'function') {
+    const placeholderRows = await params.tx.teams.findMany({
+      where: {
+        eventId: params.event.id,
+        kind: 'PLACEHOLDER',
+      },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+    (Array.isArray(placeholderRows) ? placeholderRows : []).forEach((row: { id?: unknown; name?: unknown }) => {
+      if (normalizeId(row.id) === params.eventTeamId) {
+        return;
+      }
+      const name = normalizePlaceholderName(row.name);
+      if (name) {
+        existingPlaceholderNames.add(name);
+      }
+    });
+  }
+
+  while (existingPlaceholderNames.has(`place holder ${ordinal}`)) {
+    ordinal += 1;
+  }
+
+  return `Place Holder ${ordinal}`;
 };
 const normalizeNonNegativeInt = (value: unknown): number | null => {
   const numeric = typeof value === 'number' ? value : Number(value);
@@ -372,6 +520,11 @@ const resetEventTeamSlotToPlaceholder = async (params: {
     ?? normalizeNonNegativeInt(params.eventTeam?.teamSize)
     ?? normalizeNonNegativeInt(params.team?.teamSize)
     ?? 0;
+  const placeholderName = await placeholderNameForEventTeam({
+    tx: params.tx,
+    event: params.event,
+    eventTeamId: params.eventTeamId,
+  });
 
   await params.tx.teams.update({
     where: { id: params.eventTeamId },
@@ -384,7 +537,7 @@ const resetEventTeamSlotToPlaceholder = async (params: {
       divisionTypeId,
       wins: 0,
       losses: 0,
-      name: placeholderNameForEventTeam(params.event, params.eventTeamId),
+      name: placeholderName,
       captainId: '',
       managerId: '',
       headCoachId: null,
@@ -583,32 +736,45 @@ const hasRefundablePaidTeamEventPayments = async (
   const teamOwnerIds = normalizeUserIdList(params.teamOwnerIds ?? []);
   const participantUserIds = normalizeUserIdList(params.participantUserIds ?? []);
 
-  const ownerFilters: Prisma.BillsWhereInput[] = [];
-  if (teamOwnerIds.length > 0) {
-    ownerFilters.push({
-      ownerType: 'TEAM',
-      ownerId: { in: teamOwnerIds },
-    });
-  }
-  if (participantUserIds.length > 0) {
-    ownerFilters.push({
-      ownerType: 'USER',
-      ownerId: { in: participantUserIds },
-    });
-  }
-  if (!ownerFilters.length) {
+  if (!teamOwnerIds.length && !participantUserIds.length) {
     return false;
   }
 
-  const bills = await client.bills.findMany({
-    where: {
-      eventId: params.eventId,
-      OR: ownerFilters,
-    },
-    select: {
-      id: true,
-    },
-  });
+  const teamBills = teamOwnerIds.length
+    ? await client.bills.findMany({
+      where: {
+        eventId: params.eventId,
+        ownerType: 'TEAM',
+        ownerId: { in: teamOwnerIds },
+      },
+      select: { id: true },
+    })
+    : [];
+  const directUserBills = participantUserIds.length
+    ? await client.bills.findMany({
+      where: {
+        eventId: params.eventId,
+        ownerType: 'USER',
+        ownerId: { in: participantUserIds },
+      },
+      select: { id: true },
+    })
+    : [];
+  const splitUserBills = teamBills.length
+    ? await client.bills.findMany({
+      where: {
+        eventId: params.eventId,
+        ownerType: 'USER',
+        parentBillId: { in: teamBills.map((bill) => bill.id) },
+      },
+      select: { id: true },
+    })
+    : [];
+  const bills = Array.from(
+    new Map(
+      [...teamBills, ...directUserBills, ...splitUserBills].map((bill) => [bill.id, bill]),
+    ).values(),
+  );
   if (!bills.length) {
     return false;
   }
@@ -724,10 +890,18 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       occurrence: slotId && occurrenceDate ? { slotId, occurrenceDate } : null,
       includeRegistrations: manageModeRequested,
     });
+    const viewerPaymentFailedRegistrations = !manageModeRequested && session
+      ? await loadViewerPaymentFailedRegistrations({
+          eventId,
+          userId: session.userId,
+          slotId: slotId ?? null,
+          occurrenceDate: occurrenceDate ?? null,
+        })
+      : undefined;
     return NextResponse.json({
       event: withLegacyEvent(event),
       participants: snapshot.participants,
-      registrations: snapshot.registrations,
+      registrations: manageModeRequested ? snapshot.registrations : viewerPaymentFailedRegistrations,
       teams: snapshot.teams.map((team) => withLegacyFields(team)),
       users: snapshot.users.map((user) => withLegacyFields(user)),
       participantCount: snapshot.participantCount,
@@ -887,7 +1061,13 @@ async function updateParticipants(
 
   const requiredTemplateIds = normalizeRequiredTemplateIds(event.requiredTemplateIds);
   const warnings: string[] = [];
-  const refundPolicy = getRefundPolicy(event);
+  const refundPolicyStart = resolvedOccurrence
+    ? resolveWeeklyOccurrenceStartAt(resolvedOccurrence.slot, resolvedOccurrence.occurrenceDate) ?? event.start
+    : event.start;
+  const refundPolicy = getRefundPolicy({
+    start: refundPolicyStart,
+    cancellationRefundHours: event.cancellationRefundHours,
+  });
   const requestedRefundMode = mode === 'remove' && teamId
     ? (parsed.data.refundMode ?? 'request')
     : undefined;
@@ -977,6 +1157,7 @@ async function updateParticipants(
   let teamRefundReason = normalizeId(parsed.data.refundReason) ?? 'team_refund_requested';
   let teamRefundOwnerIds: string[] = [];
   let teamRefundParticipantUserIds: string[] = [];
+  let teamRefundRequestTeamId: string | null = null;
   let canonicalTeamRow: Record<string, any> | null = null;
   let teamForRemoval: Record<string, any> | null = null;
 
@@ -1002,11 +1183,16 @@ async function updateParticipants(
     teamRefundReason = (!isTeamManager && canManageCurrentEvent)
       ? 'team_unregistered_by_host'
       : 'team_refund_requested';
+    teamRefundRequestTeamId = normalizeId((registeredEventTeam as any)?.parentTeamId)
+      ?? normalizeId((team as any).parentTeamId)
+      ?? team.id;
     teamRefundOwnerIds = ensureUnique(
       [
-        normalizeId(registeredEventTeam?.id) ?? '',
+        normalizeId(registeredEventTeam?.id),
+        normalizeId((registeredEventTeam as any)?.parentTeamId),
+        normalizeId((team as any).parentTeamId),
         team.id,
-      ].filter(Boolean),
+      ].filter((value): value is string => Boolean(value)),
     );
     teamRefundParticipantUserIds = ensureUnique(
       [
@@ -1189,26 +1375,40 @@ async function updateParticipants(
     let autoRefundAttempts: StripeRefundAttempt[] = [];
 
     if (requestedRefundMode === 'auto') {
+      const refundTeamIds = ensureUnique(
+        [
+          teamRefundRequestTeamId,
+          teamId,
+          normalizeId(existingRegistration.eventTeamId),
+        ].filter((value): value is string => Boolean(value)),
+      );
       existingAutoRefundRequest = await prisma.refundRequests.findFirst({
         where: {
           eventId: event.id,
-          teamId,
+          teamId: { in: refundTeamIds },
           status: { in: ['WAITING', 'APPROVED'] },
         },
         orderBy: { updatedAt: 'desc' },
         select: refundRequestSelect,
       }) as RefundRequestRow | null;
       autoRefundRequest = existingAutoRefundRequest
-        ? { ...existingAutoRefundRequest, reason: teamRefundReason }
+        ? {
+          ...existingAutoRefundRequest,
+          reason: teamRefundReason,
+          slotId: resolvedOccurrence?.slotId ?? null,
+          occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
+        }
         : {
           id: crypto.randomUUID(),
           eventId: event.id,
           userId: session.userId,
           hostId: event.hostId,
-          teamId,
+          teamId: teamRefundRequestTeamId ?? teamId,
           organizationId: event.organizationId ?? null,
           reason: teamRefundReason,
           status: 'APPROVED',
+          slotId: resolvedOccurrence?.slotId ?? null,
+          occurrenceDate: resolvedOccurrence?.occurrenceDate ?? null,
         };
 
       try {
@@ -1333,7 +1533,7 @@ async function updateParticipants(
           eventId: event.id,
           hostId: event.hostId,
           organizationId: event.organizationId ?? null,
-          teamId: normalizeId(existingRegistration.eventTeamId) ?? teamId,
+          teamId: teamRefundRequestTeamId ?? normalizeId(existingRegistration.eventTeamId) ?? teamId,
           requestedByUserId: session.userId,
           reason: teamRefundReason,
           teamOwnerIds: teamRefundOwnerIds,

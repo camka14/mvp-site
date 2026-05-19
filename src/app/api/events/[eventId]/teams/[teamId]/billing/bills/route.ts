@@ -38,6 +38,21 @@ const normalizeIdList = (value: unknown): string[] => (
     : []
 );
 
+const resolveOccurrenceFromRequest = (req: NextRequest): {
+  occurrence: { slotId: string; occurrenceDate: string } | null;
+  error: string | null;
+} => {
+  const slotId = normalizeId(req.nextUrl.searchParams.get('slotId'));
+  const occurrenceDate = normalizeId(req.nextUrl.searchParams.get('occurrenceDate'));
+  if (!slotId && !occurrenceDate) {
+    return { occurrence: null, error: null };
+  }
+  if (!slotId || !occurrenceDate) {
+    return { occurrence: null, error: 'slotId and occurrenceDate are both required for weekly billing.' };
+  }
+  return { occurrence: { slotId, occurrenceDate }, error: null };
+};
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ eventId: string; teamId: string }> },
@@ -93,7 +108,11 @@ export async function POST(
 
   const ownerType = parsed.data.ownerType;
   const requestedOwnerId = normalizeId(parsed.data.ownerId);
-  const participantIds = await getEventParticipantIdsForEvent(event.id);
+  const participantOccurrence = resolveOccurrenceFromRequest(req);
+  if (participantOccurrence.error) {
+    return NextResponse.json({ error: participantOccurrence.error }, { status: 400 });
+  }
+  const participantIds = await getEventParticipantIdsForEvent(event.id, prisma, participantOccurrence.occurrence);
   let ownerId: string | null = null;
   let allowSplit = false;
 

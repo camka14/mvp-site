@@ -107,7 +107,7 @@ When running in WSL, the dev wrapper also attempts to resolve Windows-installed 
 - Manual listener (if using `npm run dev:plain`):
 ```bash
 stripe listen \
-  --events account.updated,payment_intent.succeeded,invoice.created,invoice.paid,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted \
+  --events account.updated,charge.dispute.closed,payment_intent.processing,payment_intent.succeeded,payment_intent.payment_failed,invoice.created,invoice.paid,customer.subscription.created,customer.subscription.updated,customer.subscription.deleted \
   --forward-to http://localhost:3000/api/billing/webhook
 ```
 - Manual trigger test:

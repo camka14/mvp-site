@@ -3399,6 +3399,114 @@ describe('League schedule page', () => {
     });
   });
 
+  it('hides the unassigned split-division teams from non-host viewers', async () => {
+    useAppMock.mockReturnValue({
+      user: { $id: 'viewer_1' },
+      isAuthenticated: true,
+      isGuest: false,
+      loading: false,
+      setUser: jest.fn(),
+    });
+
+    const assignedTeam = {
+      $id: 'team_assigned',
+      id: 'team_assigned',
+      name: 'Court Kings',
+      division: 'Open',
+      sport: 'Volleyball',
+      playerIds: [],
+      captainId: '',
+      pending: [],
+      teamSize: 2,
+      currentSize: 0,
+      isFull: false,
+      avatarUrl: '',
+      parentTeamId: 'parent_assigned',
+    };
+    const unassignedTeam = {
+      $id: 'team_unassigned',
+      id: 'team_unassigned',
+      name: 'Midnight Owls',
+      division: 'Open',
+      sport: 'Volleyball',
+      playerIds: [],
+      captainId: '',
+      pending: [],
+      teamSize: 2,
+      currentSize: 0,
+      isFull: false,
+      avatarUrl: '',
+      parentTeamId: 'parent_unassigned',
+    };
+    const teams = [assignedTeam, unassignedTeam];
+    const event = buildApiEvent({
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teamSignup: true,
+      teamIds: teams.map((team) => team.$id),
+      teams,
+      divisions: ['division_open', 'division_advanced'],
+      divisionDetails: [
+        {
+          id: 'division_open',
+          key: 'open',
+          name: 'Open',
+          kind: 'LEAGUE',
+          teamIds: [assignedTeam.$id],
+        },
+        {
+          id: 'division_advanced',
+          key: 'advanced',
+          name: 'Advanced',
+          kind: 'LEAGUE',
+          teamIds: [],
+        },
+      ],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path.startsWith('/api/teams?ids=')) {
+        return Promise.resolve({ teams });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teamIds: teams.map((team) => team.$id),
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams,
+      users: [],
+      participantCount: 2,
+      participantCapacity: null,
+      occurrence: null,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const divisionsTab = await screen.findByRole('tab', { name: /divisions/i });
+    fireEvent.click(divisionsTab);
+
+    expect((await screen.findAllByText('Court Kings')).length).toBeGreaterThan(0);
+    await waitFor(() => {
+      expect(screen.queryByText('Unassigned')).not.toBeInTheDocument();
+      expect(screen.queryByText('Midnight Owls')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Unassigned teams:/)).not.toBeInTheDocument();
+    });
+  });
+
   it('shows the division selector above manage buttons for unassigned split-division teams in manage mode', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {
@@ -4511,6 +4619,107 @@ describe('League schedule page', () => {
         typeof path === 'string' && path.startsWith('/api/teams?ids=')
       )),
     ).toHaveLength(1);
+  });
+
+  it('loads weekly participant refunds with the selected occurrence context', async () => {
+    const { event, slotId, occurrenceDate } = buildWeeklyParentEvent({
+      occurrenceDate: new Date(2026, 5, 16),
+      slotEndOffsetDays: 21,
+    });
+    const teamEvent = {
+      ...event,
+      teamSignup: true,
+      singleDivision: true,
+      teamIds: [],
+      teams: [],
+      userIds: [],
+      players: [],
+    };
+    const participantTeam = {
+      $id: 'team_weekly_1',
+      id: 'team_weekly_1',
+      name: 'Weeknight Strikers',
+      division: 'Open',
+      sport: 'Soccer',
+      playerIds: [],
+      captainId: '',
+      pending: [],
+      teamSize: 2,
+      currentSize: 0,
+      isFull: false,
+      avatarUrl: '',
+      parentTeamId: 'club_team_1',
+    };
+
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'tab') return 'participants';
+        if (key === 'mode') return 'edit';
+        if (key === 'slotId') return slotId;
+        if (key === 'occurrenceDate') return occurrenceDate;
+        if (key === 'preview') return null;
+        return null;
+      },
+    });
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        const payload = { ...teamEvent };
+        delete (payload as any).matches;
+        return Promise.resolve({ event: payload });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      if (path.startsWith('/api/teams?ids=')) {
+        return Promise.resolve({ teams: [participantTeam] });
+      }
+      if (path.startsWith('/api/events/event_1/teams/compliance')) {
+        return Promise.resolve({ teams: [] });
+      }
+      if (path === `/api/events/event_1/teams/team_weekly_1/billing?slotId=${slotId}&occurrenceDate=${occurrenceDate}`) {
+        return Promise.resolve({
+          event: { id: 'event_1' },
+          team: { id: 'team_weekly_1', name: 'Weeknight Strikers', playerIds: [] },
+          users: [],
+          bills: [],
+          totals: {
+            paidAmountCents: 0,
+            refundedAmountCents: 0,
+            refundableAmountCents: 0,
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEvent as jest.Mock).mockResolvedValue({ ...teamEvent });
+    (eventService.getEventById as jest.Mock).mockResolvedValue({ ...teamEvent });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event: teamEvent,
+      participants: {
+        teamIds: ['team_weekly_1'],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams: [participantTeam],
+      users: [],
+      participantCount: 1,
+      participantCapacity: 10,
+      occurrence: { slotId, occurrenceDate },
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await screen.findByText('Weeknight Strikers');
+    fireEvent.click(await screen.findByRole('button', { name: /^refund$/i }));
+
+    await waitFor(() => {
+      expect(apiRequestMock).toHaveBeenCalledWith(
+        `/api/events/event_1/teams/team_weekly_1/billing?slotId=${slotId}&occurrenceDate=${occurrenceDate}`,
+      );
+    });
   });
 
   it('uses the weekly schedule calendar to select a session', async () => {

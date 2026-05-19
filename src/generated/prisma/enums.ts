@@ -31,6 +31,8 @@ export type BillsStatusEnum = (typeof BillsStatusEnum)[keyof typeof BillsStatusE
 export const BillPaymentsStatusEnum = {
   PENDING: 'PENDING',
   PROCESSING: 'PROCESSING',
+  FAILED: 'FAILED',
+  DISPUTED: 'DISPUTED',
   PAID: 'PAID',
   VOID: 'VOID'
 } as const
@@ -199,6 +201,7 @@ export type EventRegistrationsRosterRoleEnum = (typeof EventRegistrationsRosterR
 export const EventRegistrationsStatusEnum = {
   STARTED: 'STARTED',
   PENDING: 'PENDING',
+  PAYMENT_FAILED: 'PAYMENT_FAILED',
   ACTIVE: 'ACTIVE',
   BLOCKED: 'BLOCKED',
   CANCELLED: 'CANCELLED',

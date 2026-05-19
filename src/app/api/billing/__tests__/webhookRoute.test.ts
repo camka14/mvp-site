@@ -55,6 +55,7 @@ const prismaMock = {
 };
 
 const sendPurchaseReceiptEmailMock = jest.fn();
+const sendPaymentFailureEmailMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('stripe', () => ({
@@ -63,6 +64,7 @@ jest.mock('stripe', () => ({
 }));
 jest.mock('@/server/purchaseReceipts', () => ({
   sendPurchaseReceiptEmail: (...args: any[]) => sendPurchaseReceiptEmailMock(...args),
+  sendPaymentFailureEmail: (...args: any[]) => sendPaymentFailureEmailMock(...args),
 }));
 jest.mock('@/server/organizationStripeVerification', () => ({
   syncManagedOrganizationStripeAccount: (...args: any[]) => syncManagedOrganizationStripeAccountMock(...args),
@@ -108,12 +110,28 @@ const buildPaymentIntentSucceededEvent = (params: {
   amountReceived?: number;
 }) => buildPaymentIntentEvent({ ...params, type: 'payment_intent.succeeded' });
 
+const buildDisputeClosedEvent = (params: {
+  disputeId: string;
+  paymentIntentId: string;
+  status?: string;
+}) => ({
+  type: 'charge.dispute.closed',
+  data: {
+    object: {
+      id: params.disputeId,
+      status: params.status ?? 'lost',
+      payment_intent: params.paymentIntentId,
+    },
+  },
+});
+
 describe('POST /api/billing/webhook', () => {
   const originalStripeSecret = process.env.STRIPE_SECRET_KEY;
 
   beforeEach(() => {
     jest.clearAllMocks();
     sendPurchaseReceiptEmailMock.mockResolvedValue({ sent: true });
+    sendPaymentFailureEmailMock.mockResolvedValue({ sent: true });
     delete process.env.STRIPE_SECRET_KEY;
     stripeInvoicesUpdateMock.mockResolvedValue({});
     stripeSubscriptionsRetrieveMock.mockResolvedValue({
@@ -493,6 +511,17 @@ describe('POST /api/billing/webhook', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(prismaMock.bills.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          eventId: 'weekly_parent',
+          ownerType: 'TEAM',
+          ownerId: 'team_1',
+          slotId: 'slot_1',
+          occurrenceDate: '2026-04-14',
+        }),
+      }),
+    );
     expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'weekly_parent__team__team_1__slot_1__2026-04-14' },
@@ -502,6 +531,62 @@ describe('POST /api/billing/webhook', () => {
       }),
     );
     expect(sendPurchaseReceiptEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses weekly bill occurrence fields when activating a paid existing bill registration', async () => {
+    prismaMock.billPayments.findUnique.mockResolvedValueOnce({
+      id: 'bill_payment_weekly_1',
+      billId: 'bill_weekly_1',
+      status: 'PENDING',
+    });
+    prismaMock.bills.findUnique
+      .mockResolvedValueOnce({
+        id: 'bill_weekly_1',
+        totalAmountCents: 4700,
+        status: 'OPEN',
+        parentBillId: null,
+      })
+      .mockResolvedValueOnce({
+        ownerType: 'TEAM',
+        ownerId: 'team_1',
+        eventId: 'weekly_parent',
+        organizationId: 'org_1',
+        slotId: 'slot_1',
+        occurrenceDate: '2026-04-14',
+        lineItems: [],
+      });
+    prismaMock.$queryRaw.mockResolvedValueOnce([
+      {
+        id: 'weekly_parent',
+        eventType: 'WEEKLY_EVENT',
+        teamSignup: true,
+      },
+    ]);
+    prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({ status: 'STARTED' });
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentSucceededEvent({
+        intentId: 'pi_weekly_bill_1',
+        metadata: {
+          purchase_type: 'event',
+          user_id: 'user_1',
+          bill_id: 'bill_weekly_1',
+          bill_payment_id: 'bill_payment_weekly_1',
+        },
+        amount: 4700,
+        amountReceived: 4700,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.eventRegistrations.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'weekly_parent__team__team_1__slot_1__2026-04-14' },
+        data: expect.objectContaining({
+          status: 'ACTIVE',
+        }),
+      }),
+    );
   });
 
   it('marks an async event registration payment as pending when the payment intent is processing', async () => {
@@ -562,7 +647,7 @@ describe('POST /api/billing/webhook', () => {
     expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
   });
 
-  it('cancels a pending event registration when the payment intent fails', async () => {
+  it('marks a pending event registration payment failed when the payment intent fails', async () => {
     prismaMock.$queryRaw.mockResolvedValueOnce([
       {
         id: 'event_1',
@@ -596,12 +681,123 @@ describe('POST /api/billing/webhook', () => {
           status: { in: ['STARTED', 'PENDING'] },
         }),
         data: expect.objectContaining({
-          status: 'CANCELLED',
+          status: 'PAYMENT_FAILED',
         }),
       }),
     );
     expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
+    expect(sendPaymentFailureEmailMock).toHaveBeenCalledWith(expect.objectContaining({
+      purchaseType: 'event',
+      paymentIntentId: 'pi_event_failed_1',
+      userId: 'user_1',
+      eventId: 'event_1',
+    }));
+  });
+
+  it('reopens a paid bill when Stripe later reports the same payment intent failed', async () => {
+    prismaMock.billPayments.findUnique.mockResolvedValueOnce({
+      id: 'bill_payment_failed_late_1',
+      billId: 'bill_failed_late_1',
+      status: 'PAID',
+      amountCents: 5141,
+      paymentIntentId: 'pi_failed_late_1',
     });
+    prismaMock.bills.findUnique.mockResolvedValueOnce({
+      id: 'bill_failed_late_1',
+      paymentPlanEnabled: false,
+    });
+
+    const response = await POST(
+      jsonPost(buildPaymentIntentEvent({
+        type: 'payment_intent.payment_failed',
+        intentId: 'pi_failed_late_1',
+        metadata: {
+          purchase_type: 'bill',
+          bill_id: 'bill_failed_late_1',
+          bill_payment_id: 'bill_payment_failed_late_1',
+          user_id: 'user_1',
+        },
+        amount: 5141,
+        amountReceived: 0,
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.billPayments.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'bill_payment_failed_late_1' },
+        data: expect.objectContaining({
+          status: 'FAILED',
+          paidAt: null,
+          paymentIntentId: 'pi_failed_late_1',
+        }),
+      }),
+    );
+    expect(prismaMock.bills.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'bill_failed_late_1' },
+        data: expect.objectContaining({
+          paidAmountCents: 0,
+          status: 'OPEN',
+          nextPaymentAmountCents: 5141,
+        }),
+      }),
+    );
+    expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
+  });
+
+  it('reopens a paid bill when a disputed payment intent is lost', async () => {
+    prismaMock.billPayments.findFirst.mockResolvedValueOnce({
+      id: 'bill_payment_disputed_1',
+      billId: 'bill_disputed_1',
+      status: 'PAID',
+    });
+    prismaMock.bills.findUnique.mockResolvedValueOnce({
+      id: 'bill_disputed_1',
+      totalAmountCents: 5141,
+      status: 'PAID',
+      parentBillId: null,
+    });
+    prismaMock.billPayments.findMany.mockResolvedValueOnce([
+      {
+        id: 'bill_payment_disputed_1',
+        amountCents: 5141,
+        status: 'DISPUTED',
+        dueDate: new Date('2026-05-19T00:00:00.000Z'),
+        paymentIntentId: 'pi_disputed_1',
+      },
+    ]);
+    prismaMock.bills.findMany.mockResolvedValueOnce([]);
+
+    const response = await POST(
+      jsonPost(buildDisputeClosedEvent({
+        disputeId: 'du_lost_1',
+        paymentIntentId: 'pi_disputed_1',
+      })),
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.billPayments.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'bill_payment_disputed_1' },
+        data: expect.objectContaining({
+          status: 'DISPUTED',
+          paidAt: null,
+        }),
+      }),
+    );
+    expect(prismaMock.bills.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'bill_disputed_1' },
+        data: expect.objectContaining({
+          paidAmountCents: 0,
+          status: 'OPEN',
+          nextPaymentAmountCents: 5141,
+        }),
+      }),
+    );
+    expect(sendPurchaseReceiptEmailMock).not.toHaveBeenCalled();
+  });
 
   it('is idempotent for repeated instant webhook events by payment intent id', async () => {
     prismaMock.billPayments.findFirst.mockResolvedValueOnce({

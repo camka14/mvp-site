@@ -3893,8 +3893,15 @@ function ProfilePageContent() {
                 const processingPayment = billPayments.find(
                   (payment) => payment.status === "PROCESSING",
                 );
+                const failedPayment = billPayments.find(
+                  (payment) => payment.status === "FAILED",
+                );
+                const disputedPayment = billPayments.find(
+                  (payment) => payment.status === "DISPUTED",
+                );
                 const isPaymentProcessing =
                   bill.status === "PENDING" || Boolean(processingPayment);
+                const hasPaymentIssue = Boolean(failedPayment || disputedPayment);
                 const remaining = Math.max(
                   bill.totalAmountCents - bill.paidAmountCents,
                   0,
@@ -3936,6 +3943,8 @@ function ProfilePageContent() {
                         color={
                           isPaymentProcessing
                             ? "yellow"
+                            : hasPaymentIssue
+                              ? "red"
                             : nextAmount > 0
                               ? "yellow"
                               : "green"
@@ -3945,14 +3954,25 @@ function ProfilePageContent() {
                       >
                         {isPaymentProcessing
                           ? "Pending"
-                          : nextAmount > 0
-                            ? "Payment due"
+                          : disputedPayment
+                            ? "Payment disputed"
+                          : failedPayment
+                            ? "Payment failed"
+                            : nextAmount > 0
+                              ? "Payment due"
                             : "Paid up"}
                       </Badge>
                     </Group>
                     {isPaymentProcessing && (
                       <Alert color="yellow" variant="light" mt="md">
                         A bank payment is pending with Stripe. You can cancel it before Stripe completes it.
+                      </Alert>
+                    )}
+                    {hasPaymentIssue && !isPaymentProcessing && (
+                      <Alert color="red" variant="light" mt="md">
+                        {disputedPayment
+                          ? "This payment was disputed, so the bill is due again. Complete the payment to resolve it."
+                          : "Your payment did not go through, so you were not registered and the rental was not booked. Complete the payment to try again."}
                       </Alert>
                     )}
                     <div className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -3997,7 +4017,7 @@ function ProfilePageContent() {
                         onClick={() => handlePayBill(bill)}
                         disabled={nextAmount <= 0 || isPaymentProcessing || bill.status === "CANCELLED"}
                       >
-                        Pay next installment
+                        {hasPaymentIssue ? "Complete payment" : "Pay next installment"}
                       </Button>
                       {processingPayment && (
                         <Button

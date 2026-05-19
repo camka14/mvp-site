@@ -35,6 +35,21 @@ const normalizeIdList = (value: unknown): string[] => (
     : []
 );
 
+const resolveOccurrenceFromRequest = (req: NextRequest): {
+  occurrence: { slotId: string; occurrenceDate: string } | null;
+  error: string | null;
+} => {
+  const slotId = normalizeId(req.nextUrl.searchParams.get('slotId'));
+  const occurrenceDate = normalizeId(req.nextUrl.searchParams.get('occurrenceDate'));
+  if (!slotId && !occurrenceDate) {
+    return { occurrence: null, error: null };
+  }
+  if (!slotId || !occurrenceDate) {
+    return { occurrence: null, error: 'slotId and occurrenceDate are both required for weekly billing refunds.' };
+  }
+  return { occurrence: { slotId, occurrenceDate }, error: null };
+};
+
 const normalizeStripeSecretKey = (value: unknown): string | null => {
   if (typeof value !== 'string') {
     return null;
@@ -95,7 +110,11 @@ export async function POST(
   if (!normalizedTeamId) {
     return NextResponse.json({ error: 'Invalid team id' }, { status: 400 });
   }
-  const participantIds = await getEventParticipantIdsForEvent(event.id);
+  const participantOccurrence = resolveOccurrenceFromRequest(req);
+  if (participantOccurrence.error) {
+    return NextResponse.json({ error: participantOccurrence.error }, { status: 400 });
+  }
+  const participantIds = await getEventParticipantIdsForEvent(event.id, prisma, participantOccurrence.occurrence);
 
   const requestedAmountCents = Math.round(parsed.data.amountCents);
   if (!Number.isFinite(requestedAmountCents) || requestedAmountCents <= 0) {

@@ -80,6 +80,9 @@ jest.mock('stripe', () => ({
 }));
 
 import { POST } from '@/app/api/billing/purchase-intent/route';
+import { resolveEventDivisionSelection } from '@/app/api/events/[eventId]/registrationDivisionUtils';
+
+const resolveEventDivisionSelectionMock = resolveEventDivisionSelection as jest.MockedFunction<typeof resolveEventDivisionSelection>;
 
 const jsonPost = (body: unknown) =>
   new NextRequest('http://localhost/api/billing/purchase-intent', {
@@ -121,6 +124,14 @@ describe('POST /api/billing/purchase-intent duplicate event registration guards'
       eventType: 'EVENT',
       organizationId: null,
       product: null,
+    });
+    resolveEventDivisionSelectionMock.mockResolvedValue({
+      ok: true,
+      selection: {
+        divisionId: null,
+        divisionTypeId: null,
+        divisionTypeKey: null,
+      },
     });
     calculateTaxQuoteMock.mockResolvedValue({
       subtotalCents: 2500,

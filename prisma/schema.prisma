@@ -23,6 +23,8 @@ enum BillsStatusEnum {
 enum BillPaymentsStatusEnum {
   PENDING
   PROCESSING
+  FAILED
+  DISPUTED
   PAID
   VOID
 }
@@ -137,6 +139,7 @@ enum EventRegistrationsRosterRoleEnum {
 enum EventRegistrationsStatusEnum {
   STARTED
   PENDING
+  PAYMENT_FAILED
   ACTIVE
   BLOCKED
   CANCELLED

@@ -19,6 +19,10 @@ export interface SendPurchaseReceiptEmailInput {
   metadata?: Record<string, unknown>;
 }
 
+export type SendPaymentFailureEmailInput = SendPurchaseReceiptEmailInput & {
+  failedAt?: Date | null;
+};
+
 type DetailRow = {
   label: string;
   value: string;
@@ -456,6 +460,94 @@ export const sendPurchaseReceiptEmail = async (
     teamId,
     recipient: redactEmail(recipientEmail),
     purchaseType,
+  });
+
+  return { sent: true };
+};
+
+export const sendPaymentFailureEmail = async (
+  input: SendPaymentFailureEmailInput,
+): Promise<{ sent: boolean; reason?: string }> => {
+  if (!isEmailEnabled()) {
+    console.warn('Payment failure email skipped: SMTP is not configured.', {
+      paymentIntentId: normalizeString(input.paymentIntentId),
+      userId: normalizeString(input.userId),
+      eventId: normalizeString(input.eventId),
+      teamId: normalizeString(input.teamId),
+      hasReceiptEmailFallback: Boolean(toLowerEmail(input.receiptEmail)),
+    });
+    return { sent: false, reason: 'email_disabled' };
+  }
+
+  const metadata = input.metadata ?? {};
+  const userId = input.userId ?? normalizeString(metadata.user_id ?? metadata.userId);
+  const eventId = input.eventId ?? normalizeString(metadata.event_id ?? metadata.eventId);
+  const productId = input.productId ?? normalizeString(metadata.product_id ?? metadata.productId);
+  const billId = input.billId ?? normalizeString(metadata.bill_id ?? metadata.billId);
+  const purchaseType = input.purchaseType ?? normalizeString(metadata.purchase_type ?? metadata.purchaseType);
+  const purchaseLabel = resolvePurchaseTypeLabel(purchaseType);
+  const eventName = normalizeString(metadata.event_name ?? metadata.eventName);
+  const productName = normalizeString(metadata.product_name ?? metadata.productName);
+
+  const [userEmailRow, event, product, bill] = await Promise.all([
+    userId
+      ? prisma.sensitiveUserData.findFirst({
+        where: { userId },
+        select: { email: true },
+        orderBy: { updatedAt: 'desc' },
+      })
+      : Promise.resolve(null),
+    eventId
+      ? prisma.events.findUnique({
+        where: { id: eventId },
+        select: { name: true },
+      })
+      : Promise.resolve(null),
+    productId
+      ? prisma.products.findUnique({
+        where: { id: productId },
+        select: { name: true },
+      })
+      : Promise.resolve(null),
+    billId
+      ? prisma.bills.findUnique({
+        where: { id: billId },
+        select: { id: true, totalAmountCents: true },
+      })
+      : Promise.resolve(null),
+  ]);
+
+  const to = toLowerEmail(userEmailRow?.email) ?? toLowerEmail(input.receiptEmail);
+  if (!to) {
+    return { sent: false, reason: 'missing_email' };
+  }
+
+  const title = event?.name ?? product?.name ?? eventName ?? productName ?? purchaseLabel;
+  const amountCents = input.totalChargeCents ?? input.amountCents ?? bill?.totalAmountCents ?? null;
+  const amountText = amountCents && amountCents > 0 ? ` for ${formatCurrency(amountCents)}` : '';
+  const normalizedPurchaseType = (purchaseType ?? '').trim().toLowerCase();
+  const failureEffectText = normalizedPurchaseType === 'rental'
+    ? `Your rental was not booked for ${title}.`
+    : normalizedPurchaseType === 'event' || normalizedPurchaseType === 'event_payment' || normalizedPurchaseType === 'team_registration'
+      ? `You have not been registered for ${title}.`
+      : `Your purchase was not completed for ${title}.`;
+  const retryText = bill?.id
+    ? 'You can open Bills in your profile to complete the payment again.'
+    : 'You can return to checkout to try the payment again.';
+
+  await sendEmail({
+    to,
+    subject: `Payment failed for ${title}`,
+    text: [
+      `Your payment${amountText} did not go through.`,
+      failureEffectText,
+      retryText,
+    ].join('\n\n'),
+    html: `
+      <p>Your payment${escapeHtml(amountText)} did not go through.</p>
+      <p>${escapeHtml(failureEffectText)}</p>
+      <p>${escapeHtml(retryText)}</p>
+    `,
   });
 
   return { sent: true };

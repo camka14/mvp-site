@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Paper, Text, Button, Alert, Textarea, Group, Select } from '@mantine/core';
 import { Event } from '@/types';
 import { paymentService } from '@/lib/paymentService';
-import { eventService } from '@/lib/eventService';
+import { eventService, type WeeklyOccurrenceSelection } from '@/lib/eventService';
 import { FamilyChild } from '@/lib/familyService';
 import { useApp } from '@/app/providers';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
@@ -12,6 +12,8 @@ interface RefundSectionProps {
   event: Event;
   userRegistered: boolean;
   linkedChildren?: FamilyChild[];
+  selectedOccurrence?: WeeklyOccurrenceSelection | null;
+  effectiveStart?: Date | string | null;
   onRefundSuccess: () => void;
 }
 
@@ -68,6 +70,8 @@ export default function RefundSection({
   event,
   userRegistered,
   linkedChildren = [],
+  selectedOccurrence = null,
+  effectiveStart = null,
   onRefundSuccess,
 }: RefundSectionProps) {
   const [loading, setLoading] = useState(false);
@@ -206,6 +210,15 @@ export default function RefundSection({
     }) ?? null;
   }, [event.teamSignup, event.teams, user?.$id]);
 
+  const refundPolicyEvent = useMemo(
+    () => ({
+      start: effectiveStart ?? event.start,
+      cancellationRefundHours: event.cancellationRefundHours,
+    }),
+    [effectiveStart, event.cancellationRefundHours, event.start],
+  );
+  const { canAutoRefund, eventHasStarted, refundDeadline } = getRefundPolicy(refundPolicyEvent);
+
   if (!user || !selectedTarget) {
     return null;
   }
@@ -213,20 +226,32 @@ export default function RefundSection({
   const isHost = user.$id === event.hostId;
   const isFreeForTarget = event.price === 0 || (isHost && selectedTarget.isSelf);
 
-  const { canAutoRefund, eventHasStarted, refundDeadline } = getRefundPolicy(event);
-
   const leaveSelectedTarget = async () => {
     if (!selectedTarget) {
       return;
     }
 
     if (selectedTarget.state === 'free_agent') {
-      await eventService.removeFreeAgent(event.$id, selectedTarget.id);
+      await eventService.removeFreeAgent(event.$id, selectedTarget.id, selectedOccurrence ?? undefined);
       return;
     }
 
     if (selectedTarget.state === 'waitlist') {
-      await eventService.removeFromWaitlist(event.$id, selectedTarget.id, 'user');
+      await eventService.removeFromWaitlist(event.$id, selectedTarget.id, 'user', selectedOccurrence ?? undefined);
+      return;
+    }
+
+    const occurrence = selectedOccurrence ?? undefined;
+    if (occurrence) {
+      await paymentService.leaveEvent(
+        registeredTeamForSelf ? undefined : (selectedTarget.isSelf ? user : undefined),
+        event,
+        registeredTeamForSelf ?? undefined,
+        selectedTarget.id,
+        undefined,
+        undefined,
+        occurrence,
+      );
       return;
     }
 
@@ -249,25 +274,48 @@ export default function RefundSection({
 
     try {
       if (event.teamSignup && selectedTarget.isSelf && registeredTeamForSelf) {
-        await paymentService.leaveEvent(
-          undefined,
-          event,
-          registeredTeamForSelf,
-          selectedTarget.id,
-          canAutoRefund
-            ? { refundMode: 'auto' }
-            : { refundMode: 'request', refundReason: refundReason.trim() },
-        );
+        const refundOptions = canAutoRefund
+          ? { refundMode: 'auto' as const }
+          : { refundMode: 'request' as const, refundReason: refundReason.trim() };
+        const occurrence = selectedOccurrence ?? undefined;
+        if (occurrence) {
+          await paymentService.leaveEvent(
+            undefined,
+            event,
+            registeredTeamForSelf,
+            selectedTarget.id,
+            refundOptions,
+            undefined,
+            occurrence,
+          );
+        } else {
+          await paymentService.leaveEvent(
+            undefined,
+            event,
+            registeredTeamForSelf,
+            selectedTarget.id,
+            refundOptions,
+          );
+        }
         onRefundSuccess();
         return;
       }
 
-      const result = await paymentService.requestRefund(
-        event,
-        user,
-        canAutoRefund ? undefined : refundReason,
-        selectedTarget.id,
-      );
+      const occurrence = selectedOccurrence ?? undefined;
+      const result = occurrence
+        ? await paymentService.requestRefund(
+          event,
+          user,
+          canAutoRefund ? undefined : refundReason,
+          selectedTarget.id,
+          occurrence,
+        )
+        : await paymentService.requestRefund(
+          event,
+          user,
+          canAutoRefund ? undefined : refundReason,
+          selectedTarget.id,
+        );
 
       if (result.success) {
         onRefundSuccess();

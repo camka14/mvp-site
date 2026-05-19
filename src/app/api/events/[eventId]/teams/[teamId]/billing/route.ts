@@ -26,6 +26,21 @@ const normalizeIdList = (value: unknown): string[] => (
     : []
 );
 
+const resolveOccurrenceFromRequest = (req: NextRequest): {
+  occurrence: { slotId: string; occurrenceDate: string } | null;
+  error: string | null;
+} => {
+  const slotId = normalizeId(req.nextUrl.searchParams.get('slotId'));
+  const occurrenceDate = normalizeId(req.nextUrl.searchParams.get('occurrenceDate'));
+  if (!slotId && !occurrenceDate) {
+    return { occurrence: null, error: null };
+  }
+  if (!slotId || !occurrenceDate) {
+    return { occurrence: null, error: 'slotId and occurrenceDate are both required for weekly billing.' };
+  }
+  return { occurrence: { slotId, occurrenceDate }, error: null };
+};
+
 const toDisplayName = (user: { id: string; firstName: string | null; lastName: string | null; userName: string }) => {
   const fullName = `${user.firstName ?? ''} ${user.lastName ?? ''}`.trim();
   if (fullName.length > 0) {
@@ -65,7 +80,11 @@ export async function GET(
   if (!normalizedTeamId) {
     return NextResponse.json({ error: 'Invalid team id' }, { status: 400 });
   }
-  const participantIds = await getEventParticipantIdsForEvent(event.id);
+  const participantOccurrence = resolveOccurrenceFromRequest(req);
+  if (participantOccurrence.error) {
+    return NextResponse.json({ error: participantOccurrence.error }, { status: 400 });
+  }
+  const participantIds = await getEventParticipantIdsForEvent(event.id, prisma, participantOccurrence.occurrence);
 
   if (!event.teamSignup) {
     const participantUserIds = participantIds.userIds;

@@ -15,6 +15,7 @@ export type RegistrationRosterRole = 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGENT';
 export type RegistrationLifecycleStatus =
   | 'STARTED'
   | 'PENDING'
+  | 'PAYMENT_FAILED'
   | 'ACTIVE'
   | 'BLOCKED'
   | 'CANCELLED'
@@ -120,7 +121,8 @@ export type EventParticipantSnapshot = {
   occurrence: { slotId: string; occurrenceDate: string } | null;
 };
 
-const REGISTERED_MEMBER_STATUSES = new Set<RegistrationLifecycleStatus>(['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED']);
+const DISPLAY_MEMBER_STATUSES = new Set<RegistrationLifecycleStatus>(['PENDING', 'ACTIVE', 'BLOCKED']);
+const CAPACITY_HOLDING_STATUSES = new Set<RegistrationLifecycleStatus>(['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED']);
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') {
@@ -168,6 +170,7 @@ const normalizeLifecycleStatus = (value: unknown): RegistrationLifecycleStatus =
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
   if (
     normalized === 'PENDING'
+    || normalized === 'PAYMENT_FAILED'
     || normalized === 'ACTIVE'
     || normalized === 'BLOCKED'
     || normalized === 'CANCELLED'
@@ -205,7 +208,7 @@ const toEntry = (row: RegistrationRow): EventParticipantEntry => ({
 });
 
 const isRegisteredLifecycleStatus = (value: unknown): boolean => (
-  REGISTERED_MEMBER_STATUSES.has(normalizeLifecycleStatus(value))
+  DISPLAY_MEMBER_STATUSES.has(normalizeLifecycleStatus(value))
 );
 
 const isRegisteredParticipant = (row: RegistrationRow): boolean => (
@@ -213,8 +216,58 @@ const isRegisteredParticipant = (row: RegistrationRow): boolean => (
   && isRegisteredLifecycleStatus(row.status)
 );
 
+const isPlaceholderTeamRow = (row?: { kind?: unknown; captainId?: unknown; parentTeamId?: unknown } | null): boolean => {
+  if (!row) {
+    return false;
+  }
+  const kind = String(row.kind ?? '').trim().toUpperCase();
+  if (kind === 'PLACEHOLDER') {
+    return true;
+  }
+  const hasSlotShape = Object.prototype.hasOwnProperty.call(row, 'captainId')
+    || Object.prototype.hasOwnProperty.call(row, 'parentTeamId');
+  return hasSlotShape && !normalizeId(row.captainId) && !normalizeId(row.parentTeamId);
+};
+
+const normalizeIdKey = (value: unknown): string | null => normalizeId(value)?.toLowerCase() ?? null;
+
+const loadPlaceholderTeamIdKeys = async (
+  teamIds: string[],
+  client: PrismaLike,
+): Promise<Set<string>> => {
+  const normalizedTeamIds = Array.from(new Set(
+    teamIds
+      .map((teamId) => normalizeId(teamId))
+      .filter((teamId): teamId is string => Boolean(teamId)),
+  ));
+  const teamsDelegate = (client as any).teams;
+  if (!normalizedTeamIds.length || typeof teamsDelegate?.findMany !== 'function') {
+    return new Set();
+  }
+
+  const rows = await teamsDelegate.findMany({
+    where: {
+      id: { in: normalizedTeamIds },
+    },
+    select: {
+      id: true,
+      kind: true,
+      captainId: true,
+      parentTeamId: true,
+    },
+  });
+
+  return new Set(
+    (Array.isArray(rows) ? rows : [])
+      .filter(isPlaceholderTeamRow)
+      .map((row) => normalizeIdKey(row.id))
+      .filter((teamId): teamId is string => Boolean(teamId)),
+  );
+};
+
 const isCapacityHoldingParticipant = (row: RegistrationRow): boolean => {
-  return isRegisteredParticipant(row);
+  return normalizeRosterRole(row.rosterRole) === 'PARTICIPANT'
+    && CAPACITY_HOLDING_STATUSES.has(normalizeLifecycleStatus(row.status));
 };
 
 const isDisplayableRole = (row: RegistrationRow, role: RegistrationRosterRole): boolean => (
@@ -522,7 +575,7 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
       eventId: event.id,
       registrantType: 'TEAM',
       rosterRole: 'PARTICIPANT',
-      status: { in: Array.from(REGISTERED_MEMBER_STATUSES) },
+      status: { in: Array.from(DISPLAY_MEMBER_STATUSES) },
       slotId: null,
       occurrenceDate: null,
     },
@@ -532,7 +585,7 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
     },
   });
 
-  const activeTeamIds = Array.from(new Set(activeTeamRows.map((row) => row.registrantId).filter(Boolean)));
+  const activeRegisteredTeamIds = Array.from(new Set(activeTeamRows.map((row) => row.registrantId).filter(Boolean)));
   const currentTeamIdsByDivisionId = new Map<string, string[]>();
   leagueRows.forEach((row) => {
     currentTeamIdsByDivisionId.set(row.id, normalizeIdList(row.teamIds));
@@ -540,33 +593,10 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
   const currentDivisionTeamIds = Array.from(new Set(
     Array.from(currentTeamIdsByDivisionId.values()).flat(),
   ));
-  const placeholderTeamIds = new Set<string>();
-  const teamsDelegate = (client as any).teams;
-  if (currentDivisionTeamIds.length > 0 && teamsDelegate?.findMany) {
-    const teamRows = await teamsDelegate.findMany({
-      where: {
-        id: { in: currentDivisionTeamIds },
-      },
-      select: {
-        id: true,
-        kind: true,
-        captainId: true,
-        parentTeamId: true,
-      },
-    });
-    teamRows.forEach((row: { id?: unknown; kind?: unknown; captainId?: unknown; parentTeamId?: unknown }) => {
-      const teamId = normalizeId(row.id);
-      if (!teamId) {
-        return;
-      }
-      const kind = String(row.kind ?? '').trim().toUpperCase();
-      const captainId = normalizeId(row.captainId);
-      const parentTeamId = normalizeId(row.parentTeamId);
-      if (kind === 'PLACEHOLDER' || (!captainId && !parentTeamId)) {
-        placeholderTeamIds.add(teamId);
-      }
-    });
-  }
+  const teamIdsToInspect = Array.from(new Set([...currentDivisionTeamIds, ...activeRegisteredTeamIds]));
+  const placeholderTeamIdKeys = await loadPlaceholderTeamIdKeys(teamIdsToInspect, client);
+  const activeTeamRowsForSync = activeTeamRows.filter((row) => !placeholderTeamIdKeys.has(normalizeIdKey(row.registrantId) ?? ''));
+  const activeTeamIds = Array.from(new Set(activeTeamRowsForSync.map((row) => row.registrantId).filter(Boolean)));
 
   const divisionIdByExactId = new Map<string, string>();
   const divisionIdByUniqueKey = new Map<string, string | null>();
@@ -607,7 +637,7 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
   };
 
   const teamIdsByDivisionId = new Map<string, string[]>();
-  activeTeamRows.forEach((row) => {
+  activeTeamRowsForSync.forEach((row) => {
     const divisionId = resolveDivisionReference(row.divisionId);
     if (!divisionId) {
       return;
@@ -628,7 +658,7 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
   const buildNextTeamIds = (divisionId: string, assignedTeamIds: string[]): string[] => {
     const assigned = new Set(assignedTeamIds);
     const nextTeamIds = (currentTeamIdsByDivisionId.get(divisionId) ?? [])
-      .filter((teamId) => assigned.has(teamId) || placeholderTeamIds.has(teamId));
+      .filter((teamId) => assigned.has(teamId) || placeholderTeamIdKeys.has(normalizeIdKey(teamId) ?? ''));
     assignedTeamIds.forEach((teamId) => {
       if (!nextTeamIds.includes(teamId)) {
         nextTeamIds.push(teamId);
@@ -731,8 +761,21 @@ export const buildEventParticipantSnapshot = async (params: {
       })
       : Promise.resolve([]),
   ]);
+  const placeholderTeamIds = new Set<string>(
+    (teams as Array<{ id?: unknown; kind?: unknown; captainId?: unknown; parentTeamId?: unknown }>)
+      .filter(isPlaceholderTeamRow)
+      .map((team) => normalizeIdKey(team.id))
+      .filter((teamId): teamId is string => Boolean(teamId)),
+  );
+  const isDisplayableTeamRegistration = (row: RegistrationRow): boolean => (
+    row.registrantType !== 'TEAM'
+    || (
+      !placeholderTeamIds.has(normalizeIdKey(row.registrantId) ?? '')
+      && !placeholderTeamIds.has(normalizeIdKey(row.eventTeamId) ?? '')
+    )
+  );
 
-  const participantEntries = registrations.filter(isRegisteredParticipant);
+  const participantEntries = registrations.filter(isRegisteredParticipant).filter(isDisplayableTeamRegistration);
   const waitlistEntries = registrations.filter((row) => isDisplayableRole(row, 'WAITLIST'));
   const freeAgentEntries = registrations.filter((row) => isDisplayableRole(row, 'FREE_AGENT'));
   const participantCount = Boolean(params.event.teamSignup)
@@ -753,18 +796,51 @@ export const buildEventParticipantSnapshot = async (params: {
     ))
   );
 
+  const divisionRowReferences = new Map<string, typeof divisionRows[number] | null>();
+  const registerDivisionRowReference = (value: unknown, row: typeof divisionRows[number]) => {
+    resolveDivisionAliases(normalizeId(value))
+      .forEach((alias) => {
+        const existing = divisionRowReferences.get(alias);
+        if (existing === undefined) {
+          divisionRowReferences.set(alias, row);
+        } else if (existing?.id !== row.id) {
+          divisionRowReferences.set(alias, null);
+        }
+      });
+  };
+  divisionRows.forEach((row) => {
+    registerDivisionRowReference(row.id, row);
+    registerDivisionRowReference(row.key, row);
+  });
+  const findCanonicalDivisionRow = (value: unknown): typeof divisionRows[number] | null => {
+    const normalized = normalizeId(value)?.toLowerCase() ?? null;
+    if (!normalized) {
+      return null;
+    }
+    const direct = divisionRowReferences.get(normalized);
+    if (direct) {
+      return direct;
+    }
+    const token = extractDivisionTokenFromId(normalized);
+    return token ? (divisionRowReferences.get(token) ?? null) : null;
+  };
+
   const resolveDivisionIdentity = (row?: Pick<RegistrationRow, 'divisionId' | 'divisionTypeId' | 'divisionTypeKey'> | null): {
     divisionId: string | null;
     divisionTypeId: string | null;
     divisionTypeKey: string | null;
   } => {
-    const divisionId = normalizeId(row?.divisionId)
+    const explicitDivisionId = normalizeId(row?.divisionId);
+    const canonicalDivision = findCanonicalDivisionRow(explicitDivisionId);
+    const divisionId = normalizeId(canonicalDivision?.id)
+      ?? explicitDivisionId
       ?? normalizeId(divisionRows[0]?.id)
       ?? normalizeId(eventDivisionIds[0]);
-    const divisionTypeId = normalizeId(row?.divisionTypeId)
-      ?? normalizeId(divisionRows.find((entry) => entry.id === divisionId)?.divisionTypeId);
-    const divisionTypeKey = normalizeId(row?.divisionTypeKey)
-      ?? normalizeId(divisionRows.find((entry) => entry.id === divisionId)?.key)
+    const matchingDivision = canonicalDivision ?? divisionRows.find((entry) => entry.id === divisionId);
+    const divisionTypeId = normalizeId(matchingDivision?.divisionTypeId)
+      ?? normalizeId(row?.divisionTypeId);
+    const divisionTypeKey = normalizeId(matchingDivision?.key)
+      ?? normalizeId(row?.divisionTypeKey)
       ?? (divisionId ? extractDivisionTokenFromId(divisionId) : null)
       ?? null;
     return {
@@ -859,7 +935,13 @@ export const buildEventParticipantSnapshot = async (params: {
         freeAgents: freeAgentEntries.map(toEntry),
       }
       : undefined,
-    teams,
+    teams: (() => {
+      const displayableTeamIds = new Set(uniqueRegistrantIds(participantEntries, ['TEAM']).map((teamId) => teamId.toLowerCase()));
+      return (teams as any[]).filter((team) => {
+        const teamId = normalizeIdKey(team.id);
+        return Boolean(teamId && displayableTeamIds.has(teamId) && !placeholderTeamIds.has(teamId));
+      });
+    })(),
     users,
     participantCount,
     participantCapacity,
@@ -877,6 +959,7 @@ export const reserveCapacityRows = (rows: RegistrationRow[]): number => rows.fil
 export const getEventParticipantIds = async (
   eventIds: string[],
   client: PrismaLike = prisma,
+  occurrence?: WeeklyOccurrenceInput | null,
 ): Promise<Map<string, EventParticipantIds>> => {
   const normalizedEventIds = normalizeIdList(eventIds);
   const response = new Map<string, EventParticipantIds>();
@@ -884,17 +967,22 @@ export const getEventParticipantIds = async (
   if (!normalizedEventIds.length || typeof (client as any).eventRegistrations?.findMany !== 'function') {
     return response;
   }
+  const occurrenceSlotId = normalizeId(occurrence?.slotId);
+  const occurrenceDate = normalizeId(occurrence?.occurrenceDate);
+  const occurrenceWhere = occurrenceSlotId && occurrenceDate
+    ? { slotId: occurrenceSlotId, occurrenceDate }
+    : { slotId: null, occurrenceDate: null };
 
   const rows = await client.eventRegistrations.findMany({
     where: {
       eventId: { in: normalizedEventIds },
-      status: { in: Array.from(REGISTERED_MEMBER_STATUSES) },
-      slotId: null,
-      occurrenceDate: null,
+      status: { in: Array.from(DISPLAY_MEMBER_STATUSES) },
+      ...occurrenceWhere,
     },
     select: {
       eventId: true,
       registrantId: true,
+      eventTeamId: true,
       registrantType: true,
       rosterRole: true,
       createdAt: true,
@@ -906,10 +994,27 @@ export const getEventParticipantIds = async (
     ],
   });
 
+  const placeholderTeamIdKeys = await loadPlaceholderTeamIdKeys(
+    rows
+      .filter((row) => row.registrantType === 'TEAM')
+      .flatMap((row) => [row.registrantId, row.eventTeamId])
+      .filter((teamId): teamId is string => Boolean(teamId)),
+    client,
+  );
+
   rows.forEach((row) => {
     const eventId = normalizeId(row.eventId);
     const registrantId = normalizeId(row.registrantId);
     if (!eventId || !registrantId) {
+      return;
+    }
+    if (
+      row.registrantType === 'TEAM'
+      && (
+        placeholderTeamIdKeys.has(normalizeIdKey(row.registrantId) ?? '')
+        || placeholderTeamIdKeys.has(normalizeIdKey(row.eventTeamId) ?? '')
+      )
+    ) {
       return;
     }
     const ids = response.get(eventId) ?? emptyParticipantIds();
@@ -934,8 +1039,9 @@ export const getEventParticipantIds = async (
 export const getEventParticipantIdsForEvent = async (
   eventId: string,
   client: PrismaLike = prisma,
+  occurrence?: WeeklyOccurrenceInput | null,
 ): Promise<EventParticipantIds> => {
-  const ids = await getEventParticipantIds([eventId], client);
+  const ids = await getEventParticipantIds([eventId], client, occurrence);
   return ids.get(eventId) ?? emptyParticipantIds();
 };
 
@@ -974,16 +1080,26 @@ export const getEventParticipantAggregates = async (
   const registrations = await client.eventRegistrations.findMany({
     where: {
       eventId: { in: nonWeeklyIds },
-      status: { in: Array.from(REGISTERED_MEMBER_STATUSES) },
+      status: { in: Array.from(DISPLAY_MEMBER_STATUSES) },
     },
     select: {
       eventId: true,
+      registrantId: true,
+      eventTeamId: true,
       registrantType: true,
       rosterRole: true,
       slotId: true,
       occurrenceDate: true,
     },
   });
+
+  const placeholderTeamIdKeys = await loadPlaceholderTeamIdKeys(
+    registrations
+      .filter((row) => row.registrantType === 'TEAM')
+      .flatMap((row) => [row.registrantId, row.eventTeamId])
+      .filter((teamId): teamId is string => Boolean(teamId)),
+    client,
+  );
 
   registrations.forEach((row) => {
     if (normalizeRosterRole(row.rosterRole) !== 'PARTICIPANT') {
@@ -1002,6 +1118,16 @@ export const getEventParticipantAggregates = async (
       ? row.registrantType === 'TEAM'
       : row.registrantType === 'SELF' || row.registrantType === 'CHILD';
     if (!shouldCount) {
+      return;
+    }
+    if (
+      Boolean(event.teamSignup)
+      && row.registrantType === 'TEAM'
+      && (
+        placeholderTeamIdKeys.has(normalizeIdKey(row.registrantId) ?? '')
+        || placeholderTeamIdKeys.has(normalizeIdKey(row.eventTeamId) ?? '')
+      )
+    ) {
       return;
     }
     aggregate.participantCount = (aggregate.participantCount ?? 0) + 1;

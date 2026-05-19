@@ -669,11 +669,13 @@ export const activateStartedTeamRegistration = async ({
   userId,
   registrationId,
   now,
+  allowRetryableFailure = false,
 }: {
   teamId: string | null;
   userId: string | null;
   registrationId: string | null;
   now: Date;
+  allowRetryableFailure?: boolean;
 }): Promise<{ applied: boolean; reason?: string }> => {
   const normalizedTeamId = normalizeId(teamId);
   const normalizedUserId = normalizeId(userId);
@@ -699,6 +701,7 @@ export const activateStartedTeamRegistration = async ({
         teamId: true,
         userId: true,
         status: true,
+        createdAt: true,
       },
     });
     if (!registration) return { applied: false, reason: 'reservation_missing' };
@@ -708,7 +711,12 @@ export const activateStartedTeamRegistration = async ({
     if (registration.status === ACTIVE_MEMBER_STATUS) {
       return { applied: true, reason: 'already_active' };
     }
-    if (registration.status !== STARTED_MEMBER_STATUS && registration.status !== PENDING_MEMBER_STATUS) {
+    const isRetryableFailedRegistration = allowRetryableFailure && registration.status === LEFT_MEMBER_STATUS;
+    if (
+      registration.status !== STARTED_MEMBER_STATUS
+      && registration.status !== PENDING_MEMBER_STATUS
+      && !isRetryableFailedRegistration
+    ) {
       return { applied: false, reason: 'reservation_not_started' };
     }
 
@@ -721,7 +729,11 @@ export const activateStartedTeamRegistration = async ({
         },
         select: { id: true, createdAt: true },
       });
-      const ordered = sortRegistrationRows(capacityRows);
+      const ordered = sortRegistrationRows(
+        isRetryableFailedRegistration
+          ? [...capacityRows, { id: registration.id, createdAt: registration.createdAt }]
+          : capacityRows,
+      );
       if (ordered.length > teamSize) {
         const position = ordered.findIndex((row) => row.id === normalizedRegistrationId);
         if (position < 0 || position >= teamSize) {
@@ -736,7 +748,7 @@ export const activateStartedTeamRegistration = async ({
               },
             });
             await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
-          } else {
+          } else if (registration.status === STARTED_MEMBER_STATUS) {
             await tx.teamRegistrations.deleteMany({
               where: {
                 id: normalizedRegistrationId,
@@ -761,6 +773,18 @@ export const activateStartedTeamRegistration = async ({
     return { applied: true };
   });
 };
+
+export const activateFailedTeamRegistration = async (params: {
+  teamId: string | null;
+  userId: string | null;
+  registrationId: string | null;
+  now: Date;
+}): Promise<{ applied: boolean; reason?: string }> => (
+  activateStartedTeamRegistration({
+    ...params,
+    allowRetryableFailure: true,
+  })
+);
 
 export const leaveTeam = async ({
   teamId,

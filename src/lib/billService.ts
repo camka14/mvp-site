@@ -91,7 +91,8 @@ class BillService {
             throw new Error('This bill payment is pending with Stripe.');
         }
 
-        const nextPayment = openPayments.find((p) => p.status === 'PENDING');
+        const nextPayment = openPayments.find((p) => p.status === 'FAILED' || p.status === 'DISPUTED')
+            ?? openPayments.find((p) => p.status === 'PENDING');
         if (!nextPayment) {
             throw new Error('Bill has no pending installments');
         }
