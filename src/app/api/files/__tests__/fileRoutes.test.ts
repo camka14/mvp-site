@@ -77,6 +77,18 @@ describe('file routes', () => {
       expect(storageProvider.putObject).not.toHaveBeenCalled();
     });
 
+    it('rejects GIF uploads', async () => {
+      requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+      const storageProvider = { putObject: jest.fn() };
+      getStorageProviderMock.mockReturnValue(storageProvider);
+
+      const gifFile = new File([new Uint8Array([71, 73, 70, 56])], 'animated.gif', { type: 'image/gif' });
+      const res = await POST(buildFormRequest(gifFile));
+
+      expect(res.status).toBe(415);
+      expect(storageProvider.putObject).not.toHaveBeenCalled();
+    });
+
     it('stores image metadata and returns a file record', async () => {
       requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
       const storageProvider = {

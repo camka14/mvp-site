@@ -2,7 +2,6 @@ export const SVG_MIME_TYPE = 'image/svg+xml';
 
 const IMAGE_TYPE_BY_EXTENSION: Record<string, string> = {
   '.avif': 'image/avif',
-  '.gif': 'image/gif',
   '.jpeg': 'image/jpeg',
   '.jpg': 'image/jpeg',
   '.png': 'image/png',
@@ -12,7 +11,6 @@ const IMAGE_TYPE_BY_EXTENSION: Record<string, string> = {
 
 export const SUPPORTED_IMAGE_MIME_TYPES = new Set<string>([
   'image/avif',
-  'image/gif',
   'image/jpeg',
   'image/jpg',
   'image/png',

@@ -41,7 +41,7 @@ export function ImageSelectionModal({
         }
 
         if (!isSupportedImageUpload(file.type, file.name)) {
-            setError('Please select a PNG, JPEG, WebP, GIF, AVIF, or SVG image');
+            setError('Please select a PNG, JPEG, WebP, AVIF, or SVG image');
             return;
         }
 
@@ -121,7 +121,7 @@ export function ImageSelectionModal({
                                 </Button>
                             )}
                         </FileButton>
-                        <Text c="dimmed" size="sm">Max 10MB, PNG/JPEG/WebP/GIF/AVIF/SVG</Text>
+                        <Text c="dimmed" size="sm">Max 10MB, PNG/JPEG/WebP/AVIF/SVG</Text>
                     </Group>
                 )}
 
