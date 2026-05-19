@@ -544,6 +544,14 @@ svg {
   border-radius: 1rem;
 }
 
+.org-page-shell .org-customer-table-card table {
+  background: var(--ocean-surface);
+}
+
+.org-page-shell .org-customer-table-card thead {
+  background: var(--ocean-surface-muted);
+}
+
 .shared-calendar-layout {
   display: grid;
   grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);

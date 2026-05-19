@@ -6,7 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
-import { Badge, Checkbox, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table, Loader } from '@mantine/core';
+import { Badge, Checkbox, Chip, Container, Group, Title, Text, Button, Paper, SegmentedControl, SimpleGrid, Stack, TextInput, Select, NumberInput, Modal, Textarea, Switch, FileInput, Table, Loader } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import EventCard from '@/components/ui/EventCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
@@ -240,6 +240,7 @@ type OrganizationUserSummary = {
   profileImageId?: string | null;
   events: OrganizationUserEventSummary[];
   documents: OrganizationUserDocumentSummary[];
+  bills: OrganizationBillSummary[];
 };
 
 type OrganizationCustomerTypeFilter = 'users' | 'teams';
@@ -331,6 +332,7 @@ const buildOrganizationUserCardData = (summary: OrganizationUserSummary): UserDa
 const mapOrganizationUserRow = (row: Record<string, any>): OrganizationUserSummary => {
   const eventsRaw = Array.isArray(row?.events) ? row.events : [];
   const documentsRaw = Array.isArray(row?.documents) ? row.documents : [];
+  const billsRaw = Array.isArray(row?.bills) ? row.bills : [];
 
   const events = eventsRaw
     .map((eventRow: Record<string, any>): OrganizationUserEventSummary => ({
@@ -369,6 +371,9 @@ const mapOrganizationUserRow = (row: Record<string, any>): OrganizationUserSumma
     profileImageId: typeof row?.profileImageId === 'string' ? row.profileImageId : null,
     events,
     documents,
+    bills: billsRaw
+      .map((billRow: Record<string, any>) => mapOrganizationBillRow(billRow))
+      .filter((bill) => Boolean(bill.billId)),
   };
 };
 
@@ -1902,6 +1907,12 @@ function OrganizationDetailContent() {
     });
   }, []);
 
+  const resetCustomerFilters = useCallback(() => {
+    setCustomerTypeFilters(['users', 'teams']);
+    setUserCustomerSearch('');
+    setTeamCustomerSearch('');
+  }, []);
+
   const openOrganizationEvent = useCallback((eventId: string) => {
     const params = new URLSearchParams({ tab: 'details' });
     if (isOwner) {
@@ -2411,6 +2422,11 @@ function OrganizationDetailContent() {
         documentSummary.status,
         documentSummary.eventName,
       ]),
+      ...summary.bills.flatMap((bill) => [
+        bill.eventName,
+        bill.ownerName,
+        bill.status,
+      ]),
     ]))
   ), [normalizedUserCustomerSearch, organizationUsers]);
   const filteredOrganizationTeamCustomers = useMemo(() => (
@@ -2441,10 +2457,19 @@ function OrganizationDetailContent() {
   const visibleOrganizationTeamCustomers = filteredOrganizationTeamCustomers.slice(0, visibleTeamCustomerCount);
   const hasMoreVisibleUserCustomers = visibleOrganizationUsers.length < filteredOrganizationUsers.length;
   const hasMoreVisibleTeamCustomers = visibleOrganizationTeamCustomers.length < filteredOrganizationTeamCustomers.length;
-  const hasVisibleCustomerResults = (
-    (showUserCustomers && filteredOrganizationUsers.length > 0)
-    || (showTeamCustomers && filteredOrganizationTeamCustomers.length > 0)
+  const showUserCustomerTable = showUserCustomers && filteredOrganizationUsers.length > 0;
+  const showTeamCustomerTable = showTeamCustomers && filteredOrganizationTeamCustomers.length > 0;
+  const hasVisibleCustomerResults = showUserCustomerTable || showTeamCustomerTable;
+  const customerFilterIsDefault = (
+    customerTypeFilters.length === 2
+    && showUserCustomers
+    && showTeamCustomers
+    && userCustomerSearch.trim().length === 0
+    && teamCustomerSearch.trim().length === 0
   );
+  const customerTablesClassName = showUserCustomerTable && showTeamCustomerTable
+    ? 'grid gap-4 xl:grid-cols-2'
+    : 'grid gap-4';
 
   useEffect(() => {
     setVisibleUserCustomerCount(CUSTOMER_PAGE_SIZE);
@@ -2830,74 +2855,102 @@ function OrganizationDetailContent() {
                 {organizationUsersLoading ? (
                   <Text size="sm" c="dimmed">Loading customers...</Text>
                 ) : (
-                  <SimpleGrid cols={{ base: 1, md: 4 }} spacing="md">
-                    <Paper withBorder p="md" radius="md">
-                      <Stack gap="sm">
-                        <Title order={6}>Filter</Title>
-                        <Checkbox
-                          label="Users"
-                          checked={showUserCustomers}
-                          onChange={(event) => toggleCustomerTypeFilter('users', event.currentTarget.checked)}
-                        />
-                        <TextInput
-                          label="Search users"
-                          placeholder="Name, username, event..."
-                          value={userCustomerSearch}
-                          onChange={(event) => setUserCustomerSearch(event.currentTarget.value)}
-                          disabled={!showUserCustomers}
-                        />
-                        <Checkbox
-                          label="Teams"
-                          checked={showTeamCustomers}
-                          onChange={(event) => toggleCustomerTypeFilter('teams', event.currentTarget.checked)}
-                        />
-                        <TextInput
-                          label="Search teams"
-                          placeholder="Team, event team, bill..."
-                          value={teamCustomerSearch}
-                          onChange={(event) => setTeamCustomerSearch(event.currentTarget.value)}
-                          disabled={!showTeamCustomers}
-                        />
-                      </Stack>
-                    </Paper>
+                  <div className="grid gap-4 lg:grid-cols-[12rem_minmax(0,1fr)]">
+                    <aside className="lg:sticky lg:top-24 lg:self-start">
+                      <Paper withBorder p={0} radius="lg" className="overflow-hidden">
+                        <div className="discover-filter-panel p-4">
+                          <Group justify="space-between" align="center" mb="md">
+                            <Text fw={700} size="sm">
+                              Filters
+                            </Text>
+                            <Button
+                              variant="subtle"
+                              size="compact-sm"
+                              onClick={resetCustomerFilters}
+                              disabled={customerFilterIsDefault}
+                            >
+                              Reset
+                            </Button>
+                          </Group>
+                          <Stack gap="lg">
+                            <div>
+                              <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
+                                Customer Type
+                              </Text>
+                              <Group gap="xs">
+                                <Chip
+                                  radius="xl"
+                                  checked={showUserCustomers && showTeamCustomers}
+                                  onChange={(checked) => setCustomerTypeFilters(checked ? ['users', 'teams'] : [])}
+                                >
+                                  All
+                                </Chip>
+                                <Chip
+                                  radius="xl"
+                                  checked={showUserCustomers}
+                                  onChange={(checked) => toggleCustomerTypeFilter('users', checked)}
+                                >
+                                  Users
+                                </Chip>
+                                <Chip
+                                  radius="xl"
+                                  checked={showTeamCustomers}
+                                  onChange={(checked) => toggleCustomerTypeFilter('teams', checked)}
+                                >
+                                  Teams
+                                </Chip>
+                              </Group>
+                            </div>
+                            <div>
+                              <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
+                                Users
+                              </Text>
+                              <TextInput
+                                placeholder="Search users..."
+                                value={userCustomerSearch}
+                                onChange={(event) => setUserCustomerSearch(event.currentTarget.value)}
+                                disabled={!showUserCustomers}
+                              />
+                            </div>
+                            <div>
+                              <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={8}>
+                                Teams
+                              </Text>
+                              <TextInput
+                                placeholder="Search teams..."
+                                value={teamCustomerSearch}
+                                onChange={(event) => setTeamCustomerSearch(event.currentTarget.value)}
+                                disabled={!showTeamCustomers}
+                              />
+                            </div>
+                          </Stack>
+                        </div>
+                      </Paper>
+                    </aside>
 
-                    <Stack gap="md" style={{ gridColumn: 'span 3', minWidth: 0 }}>
+                    <div className="min-w-0 space-y-4">
                       {!hasVisibleCustomerResults && (
                         <Paper withBorder p="md" radius="md">
                           <Text size="sm" c="dimmed">No customers found for the selected filters.</Text>
                         </Paper>
                       )}
 
-                      {showUserCustomers && filteredOrganizationUsers.length > 0 && (
-                        <Paper withBorder p="md" radius="md">
-                          <Group justify="space-between" align="center" mb="md">
-                            <Title order={6}>Users</Title>
-                            <Text size="xs" c="dimmed">
-                              Showing {visibleOrganizationUsers.length} of {filteredOrganizationUsers.length}
-                            </Text>
-                          </Group>
-                          <div
-                            style={{
-                              border: '1px solid var(--mantine-color-default-border)',
-                              borderRadius: 'var(--mantine-radius-md)',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            <div style={{ overflowX: 'auto' }}>
-                              <Table withColumnBorders highlightOnHover miw={760}>
+                      <div className={customerTablesClassName}>
+                      {showUserCustomerTable && (
+                        <Paper withBorder p={0} radius="md" className="org-customer-table-card overflow-hidden">
+                          <div style={{ overflowX: 'auto' }}>
+                              <Table withColumnBorders highlightOnHover style={{ minWidth: '100%', tableLayout: 'fixed' }}>
                                 <Table.Thead>
                                   <Table.Tr>
-                                    <Table.Th>User</Table.Th>
-                                    <Table.Th>Events</Table.Th>
-                                    <Table.Th>Documents</Table.Th>
-                                    <Table.Th style={{ width: 120 }}>Details</Table.Th>
+                                    <Table.Th style={{ width: '36%' }}>User</Table.Th>
+                                    <Table.Th style={{ width: '46%' }}>Events</Table.Th>
+                                    <Table.Th style={{ width: '18%' }}>Details</Table.Th>
                                   </Table.Tr>
                                 </Table.Thead>
                                 <Table.Tbody>
                                   {visibleOrganizationUsers.map((summary) => {
                                     const expanded = expandedOrganizationUserIds.includes(summary.userId);
                                     const condensedEvents = summary.events.slice(0, 2);
-                                    const condensedDocuments = summary.documents.slice(0, 2);
                                     const userCardData = buildOrganizationUserCardData(summary);
 
                                     return (
@@ -2931,29 +2984,6 @@ function OrganizationDetailContent() {
                                             )}
                                           </Table.Td>
                                           <Table.Td>
-                                            {condensedDocuments.length > 0 ? (
-                                              <Stack gap={4}>
-                                                {condensedDocuments.map((documentSummary) => (
-                                                  <Button
-                                                    key={documentSummary.signedDocumentRecordId}
-                                                    size="xs"
-                                                    variant="subtle"
-                                                    onClick={() => openSignedDocumentPreview(documentSummary)}
-                                                  >
-                                                    {documentSummary.title}
-                                                  </Button>
-                                                ))}
-                                                {summary.documents.length > condensedDocuments.length && (
-                                                  <Text size="xs" c="dimmed">
-                                                    +{summary.documents.length - condensedDocuments.length} more
-                                                  </Text>
-                                                )}
-                                              </Stack>
-                                            ) : (
-                                              <Text size="xs" c="dimmed">No signed documents</Text>
-                                            )}
-                                          </Table.Td>
-                                          <Table.Td>
                                             <Button
                                               size="xs"
                                               variant="light"
@@ -2965,8 +2995,8 @@ function OrganizationDetailContent() {
                                         </Table.Tr>
                                         {expanded && (
                                           <Table.Tr>
-                                            <Table.Td colSpan={4}>
-                                              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                                            <Table.Td colSpan={3}>
+                                              <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="md">
                                                 <Paper withBorder p="sm" radius="md">
                                                   <Text fw={600} mb="xs">All events</Text>
                                                   {summary.events.length > 0 ? (
@@ -2992,6 +3022,36 @@ function OrganizationDetailContent() {
                                                     </Stack>
                                                   ) : (
                                                     <Text size="xs" c="dimmed">No events.</Text>
+                                                  )}
+                                                </Paper>
+                                                <Paper withBorder p="sm" radius="md">
+                                                  <Text fw={600} mb="xs">Bills</Text>
+                                                  {summary.bills.length > 0 ? (
+                                                    <Stack gap={6}>
+                                                      {summary.bills.map((bill) => {
+                                                        const billMeta = [bill.ownerName, bill.ownerType, bill.status ?? 'OPEN'].filter(Boolean);
+                                                        const billPaymentSummary = formatPaidProgress(bill.paidAmountCents, bill.totalAmountCents);
+                                                        const billPaymentLine = [
+                                                          billPaymentSummary,
+                                                          bill.refundedAmountCents > 0 ? `${formatPrice(bill.refundedAmountCents)} refunded` : null,
+                                                        ].filter(Boolean);
+                                                        return (
+                                                          <Stack key={bill.billId} gap={0}>
+                                                            <Text size="sm">{bill.eventName ?? 'Event bill'}</Text>
+                                                            <Text size="xs" c="dimmed">
+                                                              {billMeta.join(' • ')}
+                                                            </Text>
+                                                            {billPaymentLine.length > 0 && (
+                                                              <Text size="xs" c="dimmed">
+                                                                {billPaymentLine.join(' • ')}
+                                                              </Text>
+                                                            )}
+                                                          </Stack>
+                                                        );
+                                                      })}
+                                                    </Stack>
+                                                  ) : (
+                                                    <Text size="xs" c="dimmed">No bills.</Text>
                                                   )}
                                                 </Paper>
                                                 <Paper withBorder p="sm" radius="md">
@@ -3037,7 +3097,6 @@ function OrganizationDetailContent() {
                                 </Table.Tbody>
                               </Table>
                             </div>
-                          </div>
                           {hasMoreVisibleUserCustomers && (
                             <Group ref={userCustomerSentinelRef} justify="center" mt="sm">
                               <Text size="xs" c="dimmed">Scroll for more users.</Text>
@@ -3046,29 +3105,16 @@ function OrganizationDetailContent() {
                         </Paper>
                       )}
 
-                      {showTeamCustomers && filteredOrganizationTeamCustomers.length > 0 && (
-                        <Paper withBorder p="md" radius="md">
-                          <Group justify="space-between" align="center" mb="md">
-                            <Title order={6}>Teams</Title>
-                            <Text size="xs" c="dimmed">
-                              Showing {visibleOrganizationTeamCustomers.length} of {filteredOrganizationTeamCustomers.length}
-                            </Text>
-                          </Group>
-                          <div
-                            style={{
-                              border: '1px solid var(--mantine-color-default-border)',
-                              borderRadius: 'var(--mantine-radius-md)',
-                              overflow: 'hidden',
-                            }}
-                          >
-                            <div style={{ overflowX: 'auto' }}>
-                              <Table withColumnBorders highlightOnHover miw={860}>
+                      {showTeamCustomerTable && (
+                        <Paper withBorder p={0} radius="md" className="org-customer-table-card overflow-hidden">
+                          <div style={{ overflowX: 'auto' }}>
+                              <Table withColumnBorders highlightOnHover style={{ minWidth: '100%', tableLayout: 'fixed' }}>
                                 <Table.Thead>
                                   <Table.Tr>
-                                    <Table.Th>Team</Table.Th>
-                                    <Table.Th>Event Teams</Table.Th>
-                                    <Table.Th>Bills</Table.Th>
-                                    <Table.Th style={{ width: 120 }}>Details</Table.Th>
+                                    <Table.Th style={{ width: '30%' }}>Team</Table.Th>
+                                    <Table.Th style={{ width: '32%' }}>Event Teams</Table.Th>
+                                    <Table.Th style={{ width: '22%' }}>Bills</Table.Th>
+                                    <Table.Th style={{ width: '16%' }}>Details</Table.Th>
                                   </Table.Tr>
                                 </Table.Thead>
                                 <Table.Tbody>
@@ -3252,16 +3298,16 @@ function OrganizationDetailContent() {
                                 </Table.Tbody>
 	                              </Table>
 	                            </div>
-	                          </div>
 	                          {hasMoreVisibleTeamCustomers && (
 	                            <Group ref={teamCustomerSentinelRef} justify="center" mt="sm">
 	                              <Text size="xs" c="dimmed">Scroll for more teams.</Text>
 	                            </Group>
 	                          )}
 	                        </Paper>
-	                      )}
-                    </Stack>
-                  </SimpleGrid>
+		                      )}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </Stack>
             )}

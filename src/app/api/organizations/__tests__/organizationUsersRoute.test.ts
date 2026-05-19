@@ -205,6 +205,39 @@ describe('GET /api/organizations/[id]/users', () => {
         createdAt: new Date('2026-02-14T18:30:00.000Z'),
       },
     ]);
+    prismaMock.bills.findMany.mockResolvedValueOnce([
+      {
+        id: 'bill_user_event_1',
+        ownerType: 'USER',
+        ownerId: 'player_1',
+        eventId: 'event_1',
+        parentBillId: null,
+        totalAmountCents: 4500,
+        paidAmountCents: 0,
+        status: 'OPEN',
+        allowSplit: false,
+        paymentPlanEnabled: false,
+        lineItems: null,
+        createdAt: new Date('2026-01-10T18:10:00.000Z'),
+        updatedAt: new Date('2026-01-10T18:10:00.000Z'),
+      },
+    ]);
+    prismaMock.billPayments.findMany.mockResolvedValue([
+      {
+        id: 'payment_user_event_1',
+        billId: 'bill_user_event_1',
+        sequence: 1,
+        dueDate: new Date('2026-01-10T18:10:00.000Z'),
+        amountCents: 4500,
+        status: 'PENDING',
+        paidAt: null,
+        paymentIntentId: null,
+        payerUserId: null,
+        refundedAmountCents: 0,
+        createdAt: new Date('2026-01-10T18:10:00.000Z'),
+        updatedAt: new Date('2026-01-10T18:10:00.000Z'),
+      },
+    ]);
 
     const response = await GET(
       new NextRequest('http://localhost/api/organizations/org_1/users'),
@@ -233,6 +266,15 @@ describe('GET /api/organizations/[id]/users', () => {
         signedDocumentRecordId: 'signed_text_1',
         type: 'TEXT',
         content: 'I agree to follow the code of conduct.',
+      }),
+    ]));
+    expect(payload.users[0].bills).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        billId: 'bill_user_event_1',
+        ownerType: 'USER',
+        ownerId: 'player_1',
+        eventName: 'League Night',
+        totalAmountCents: 4500,
       }),
     ]));
   });
@@ -566,7 +608,9 @@ describe('GET /api/organizations/[id]/users', () => {
     expect(response.status).toBe(200);
     expect(payload.users).toEqual([]);
     expect(payload.teams).toEqual([]);
-    expect(prismaMock.canonicalTeams.findMany).not.toHaveBeenCalled();
+    expect(prismaMock.canonicalTeams.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org_1' },
+    }));
   });
 
   it('includes host and staff users from external events that use organization fields', async () => {

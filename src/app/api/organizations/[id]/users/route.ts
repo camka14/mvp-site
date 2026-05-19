@@ -88,6 +88,7 @@ type UserSummaryInternal = {
   profileImageId?: string | null;
   eventsById: Map<string, EventSummary>;
   documents: DocumentSummary[];
+  bills: BillSummary[];
 };
 
 type TeamSummaryInternal = {
@@ -687,6 +688,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       profileImageId: user.profileImageId ?? null,
       eventsById: new Map<string, EventSummary>(),
 	      documents: [],
+	      bills: [],
 	    });
 	  });
 	  const usersById = new Map(users.map((user) => [user.id, user] as const));
@@ -721,12 +723,17 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	  const parentBillIds = teamBills
 	    .map((bill) => normalizeId(bill.id))
 	    .filter((billId): billId is string => Boolean(billId));
-	  const userBills = parentBillIds.length
+	  const userBillFilters = [
+	    ...(userIds.length ? [{ ownerId: { in: userIds } }] : []),
+	    ...(parentBillIds.length ? [{ parentBillId: { in: parentBillIds } }] : []),
+	  ];
+	  const userBills = eventIds.length && userBillFilters.length
 	    ? await prisma.bills.findMany({
 	      where: {
 	        organizationId: id,
-	        parentBillId: { in: parentBillIds },
+	        eventId: { in: eventIds },
 	        ownerType: 'USER',
+	        OR: userBillFilters,
 	      },
 	      select: {
 	        id: true,
@@ -864,6 +871,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    const canonicalTeamId = parentBillId ? teamBillCanonicalTeamIdByBillId.get(parentBillId) : undefined;
 	    const summary = canonicalTeamId ? teamSummariesByCanonicalTeamId.get(canonicalTeamId) : undefined;
 	    const billSummary = billSummariesById.get(bill.id);
+	    const userSummary = summariesByUserId.get(bill.ownerId);
+	    if (userSummary && billSummary) {
+	      userSummary.bills.push(billSummary);
+	    }
 	    if (!summary || !billSummary) {
 	      return;
 	    }
@@ -1056,6 +1067,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         .sort((a, b) => getSortTimestamp(b.start) - getSortTimestamp(a.start));
       const documentsList = [...summary.documents]
         .sort((a, b) => getSortTimestamp(b.signedAt) - getSortTimestamp(a.signedAt));
+      const billsList = [...summary.bills]
+        .sort((a, b) => getSortTimestamp(b.createdAt) - getSortTimestamp(a.createdAt));
 
       return {
         userId: summary.userId,
@@ -1066,11 +1079,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         profileImageId: summary.profileImageId,
         events: eventsList,
         documents: documentsList,
+        bills: billsList,
       };
     })
     .filter((summary) => (
       summary.events.length > 0
       || summary.documents.length > 0
+      || summary.bills.length > 0
       || organizationTeamMemberUserIds.has(summary.userId)
     ))
     .sort((a, b) => a.fullName.localeCompare(b.fullName, undefined, { sensitivity: 'base' }));
