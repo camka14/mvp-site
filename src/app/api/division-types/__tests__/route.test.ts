@@ -82,7 +82,11 @@ describe('GET /api/division-types', () => {
     expect(payload.ages).toEqual(
       expect.arrayContaining([
         { id: 'u10', name: 'U10' },
+        { id: '14plus', name: '14+' },
         { id: '18plus', name: '18+' },
+        { id: '25plus', name: '25+' },
+        { id: '35plus', name: '35+' },
+        { id: '45plus', name: '45+' },
       ]),
     );
     expect(payload.sportSkills).toEqual([

@@ -13,7 +13,16 @@ describe('divisionTypes age alignment', () => {
         .filter((option) => option.ratingType === 'AGE')
         .map((option) => option.name);
 
-      expect(ageNames).toEqual(expect.arrayContaining(['18+', '30+', '40+']));
+      expect(ageNames).toEqual(expect.arrayContaining([
+        '14+',
+        '15+',
+        '16+',
+        '17+',
+        '18+',
+        '25+',
+        '35+',
+        '45+',
+      ]));
     });
   });
 
