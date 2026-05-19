@@ -2,9 +2,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Tabs } from '@mantine/core';
-import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice } from '@/types';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Tabs, Loader, Stack } from '@mantine/core';
+import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice, formatBillAmount } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
+import type { TeamComplianceSummary, TeamComplianceUserSummary, TeamMemberComplianceResponse } from '@/lib/eventTeamCompliance';
 import { useApp } from '@/app/providers';
 import { apiRequest } from '@/lib/apiClient';
 import { teamService, type TeamInviteEventTeamOption, type TeamInviteFreeAgentContext } from '@/lib/teamService';
@@ -120,6 +121,29 @@ const isActivePlayerRegistration = (registration: TeamPlayerRegistration): boole
     ACTIVE_PLAYER_REGISTRATION_STATUSES.has(String(registration.status ?? '').trim().toUpperCase())
 );
 
+const formatCompliancePaymentLabel = (payment?: TeamComplianceUserSummary['payment']): string => {
+    if (!payment) {
+        return 'Payment unavailable';
+    }
+    if (payment.paymentPending) {
+        return 'Payment pending';
+    }
+    if (!payment.hasBill) {
+        return 'No bill yet';
+    }
+    if (payment.isPaidInFull) {
+        return `Paid in full (${formatBillAmount(payment.totalAmountCents)})`;
+    }
+    return `${formatBillAmount(payment.paidAmountCents)} of ${formatBillAmount(payment.totalAmountCents)} paid`;
+};
+
+const documentComplianceLabel = (documents?: TeamComplianceUserSummary['documents']): string => {
+    if (!documents || documents.requiredCount <= 0) {
+        return 'No required documents';
+    }
+    return `${documents.signedCount}/${documents.requiredCount} signed`;
+};
+
 export default function TeamDetailModal({
     currentTeam,
     isOpen,
@@ -180,6 +204,10 @@ export default function TeamDetailModal({
     const [assistantCoachUsers, setAssistantCoachUsers] = useState<UserData[]>([]);
     const [draftCaptainId, setDraftCaptainId] = useState(currentTeam.captainId || '');
     const [updatingRoleAction, setUpdatingRoleAction] = useState<string | null>(null);
+    const [memberCompliance, setMemberCompliance] = useState<TeamComplianceSummary | null>(null);
+    const [memberComplianceLoading, setMemberComplianceLoading] = useState(false);
+    const [memberComplianceError, setMemberComplianceError] = useState<string | null>(null);
+    const [expandedComplianceUserIds, setExpandedComplianceUserIds] = useState<string[]>([]);
 
     const isTeamCaptain = currentTeam.captainId === user?.$id || currentTeam.managerId === user?.$id;
     const canManageTeam = canManage ?? isTeamCaptain;
@@ -252,6 +280,13 @@ export default function TeamDetailModal({
         ? `This team already has ${playerInviteCapacityCount} of ${playerInviteLimit} player slots filled. Remove a player or pending invite, or increase team size before inviting another player.`
         : '';
     const showSelfServiceRegistrationActions = Boolean(user?.$id) && !canManageTeam;
+    const complianceByUserId = useMemo(() => {
+        const byId = new Map<string, TeamComplianceUserSummary>();
+        (memberCompliance?.users ?? []).forEach((summary) => {
+            byId.set(summary.userId, summary);
+        });
+        return byId;
+    }, [memberCompliance?.users]);
     const selectedRoleLabel = (() => {
         switch (selectedInviteRole) {
             case 'team_manager':
@@ -715,6 +750,47 @@ export default function TeamDetailModal({
             cancelled = true;
         };
     }, [currentTeam.organizationId, isOpen]);
+
+    useEffect(() => {
+        if (!isOpen || !canManageTeam || !currentTeam.$id) {
+            setMemberCompliance(null);
+            setMemberComplianceError(null);
+            setMemberComplianceLoading(false);
+            setExpandedComplianceUserIds([]);
+            return;
+        }
+        if (typeof fetch !== 'function') {
+            setMemberCompliance(null);
+            setMemberComplianceError(null);
+            setMemberComplianceLoading(false);
+            setExpandedComplianceUserIds([]);
+            return;
+        }
+
+        let cancelled = false;
+        setMemberComplianceLoading(true);
+        setMemberComplianceError(null);
+        apiRequest<TeamMemberComplianceResponse>(`/api/teams/${currentTeam.$id}/compliance`)
+            .then((response) => {
+                if (cancelled) return;
+                setMemberCompliance(response.team ?? null);
+            })
+            .catch((loadError) => {
+                if (cancelled) return;
+                console.error('Failed to load team member compliance:', loadError);
+                setMemberCompliance(null);
+                setMemberComplianceError(loadError instanceof Error ? loadError.message : 'Failed to load billing and document status.');
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setMemberComplianceLoading(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [canManageTeam, currentTeam.$id, isOpen]);
 
     useEffect(() => {
         const nextJerseyNumbers: Record<string, string> = {};
@@ -1292,7 +1368,7 @@ export default function TeamDetailModal({
                                 ) : (
                                     <Title order={3}>{currentTeam.name}</Title>
                                 )}
-                                <Text c="dimmed">{currentTeam.sport ? `${teamDivisionLabel} • ${currentTeam.sport}` : teamDivisionLabel}</Text>
+                                <Text c="dimmed">{currentTeam.sport ? `${teamDivisionLabel} - ${currentTeam.sport}` : teamDivisionLabel}</Text>
                             </div>
                         </Group>
                         {canManageTeam && (
@@ -1473,37 +1549,155 @@ export default function TeamDetailModal({
 
                     {/* Team Members */}
                     <div className="mb-6">
-                        <Title order={5} mb="sm">Team Members ({teamPlayers.length})</Title>
+                        <Group justify="space-between" mb="sm">
+                            <Title order={5}>Team Members ({teamPlayers.length})</Title>
+                            {canManageTeam && memberComplianceLoading ? (
+                                <Group gap={6}>
+                                    <Loader size="xs" />
+                                    <Text size="xs" c="dimmed">Loading status</Text>
+                                </Group>
+                            ) : null}
+                        </Group>
+                        {canManageTeam && memberComplianceError ? (
+                            <Alert color="red" variant="light" mb="sm">
+                                {memberComplianceError}
+                            </Alert>
+                        ) : null}
                         {teamPlayers.length > 0 ? (
                             <ScrollArea.Autosize mah={240} type="auto">
                                 <div className="space-y-3">
                                     {teamPlayers.map(player => {
                                         const playerRegistration = activePlayerRegistrationByUserId.get(player.$id);
+                                        const compliance = complianceByUserId.get(player.$id);
+                                        const expanded = expandedComplianceUserIds.includes(player.$id);
+                                        const canExpandCompliance = canManageTeam && Boolean(compliance);
                                         return (
-                                            <Paper key={player.$id} withBorder radius="md" p="sm">
-                                                <Group justify="space-between">
-                                                    <Group>
-                                                        <Avatar
-                                                            src={getUserAvatarUrl(player, 40, playerRegistration?.jerseyNumber)}
-                                                            alt={getUserFullName(player)}
-                                                            size={40}
-                                                            radius="xl"
-                                                        />
-                                                        <div>
-                                                            <Text fw={500}>{getUserFullName(player)}</Text>
-                                                            {getUserHandle(player) && <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>}
-                                                            {player.$id === currentTeam.captainId && (
-                                                                <Badge color="blue" variant="light" size="xs">Captain</Badge>
+                                            <Paper
+                                                key={player.$id}
+                                                withBorder
+                                                radius="md"
+                                                p="sm"
+                                                onClick={() => {
+                                                    if (!canExpandCompliance) return;
+                                                    setExpandedComplianceUserIds((current) => (
+                                                        current.includes(player.$id)
+                                                            ? current.filter((id) => id !== player.$id)
+                                                            : [...current, player.$id]
+                                                    ));
+                                                }}
+                                                style={{ cursor: canExpandCompliance ? 'pointer' : 'default' }}
+                                            >
+                                                <Stack gap="sm">
+                                                    <Group justify="space-between" align="flex-start">
+                                                        <Group align="flex-start">
+                                                            <Avatar
+                                                                src={getUserAvatarUrl(player, 40, playerRegistration?.jerseyNumber)}
+                                                                alt={getUserFullName(player)}
+                                                                size={40}
+                                                                radius="xl"
+                                                            />
+                                                            <div>
+                                                                <Text fw={500}>{getUserFullName(player)}</Text>
+                                                                {getUserHandle(player) && <Text size="xs" c="dimmed">{getUserHandle(player)}</Text>}
+                                                                <Group gap={6} mt={4}>
+                                                                    {player.$id === currentTeam.captainId && (
+                                                                        <Badge color="blue" variant="light" size="xs">Captain</Badge>
+                                                                    )}
+                                                                    {canManageTeam && compliance ? (
+                                                                        <>
+                                                                            <Badge
+                                                                                color={compliance.payment.isPaidInFull ? 'green' : compliance.payment.paymentPending || compliance.payment.hasBill ? 'yellow' : 'gray'}
+                                                                                variant="light"
+                                                                                size="xs"
+                                                                            >
+                                                                                {formatCompliancePaymentLabel(compliance.payment)}
+                                                                            </Badge>
+                                                                            <Badge
+                                                                                color={compliance.documents.requiredCount > 0 && compliance.documents.signedCount < compliance.documents.requiredCount ? 'yellow' : 'green'}
+                                                                                variant="light"
+                                                                                size="xs"
+                                                                            >
+                                                                                {documentComplianceLabel(compliance.documents)}
+                                                                            </Badge>
+                                                                        </>
+                                                                    ) : null}
+                                                                </Group>
+                                                            </div>
+                                                        </Group>
+                                                        <Group gap="xs">
+                                                            {canExpandCompliance ? (
+                                                                <Button
+                                                                    variant="light"
+                                                                    size="xs"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        setExpandedComplianceUserIds((current) => (
+                                                                            current.includes(player.$id)
+                                                                                ? current.filter((id) => id !== player.$id)
+                                                                                : [...current, player.$id]
+                                                                        ));
+                                                                    }}
+                                                                >
+                                                                    {expanded ? 'Collapse' : 'Details'}
+                                                                </Button>
+                                                            ) : null}
+                                                            {canManageTeam && (
+                                                                (player.$id !== currentTeam.captainId)
+                                                                || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
+                                                            ) && (
+                                                                <Button
+                                                                    color="red"
+                                                                    variant="subtle"
+                                                                    size="xs"
+                                                                    onClick={(event) => {
+                                                                        event.stopPropagation();
+                                                                        void handleRemovePlayer(player.$id);
+                                                                    }}
+                                                                >
+                                                                    Remove
+                                                                </Button>
                                                             )}
-                                                        </div>
+                                                        </Group>
                                                     </Group>
-                                                    {canManageTeam && (
-                                                        (player.$id !== currentTeam.captainId)
-                                                        || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
-                                                    ) && (
-                                                        <Button color="red" variant="subtle" size="xs" onClick={() => handleRemovePlayer(player.$id)}>Remove</Button>
-                                                    )}
-                                                </Group>
+                                                    {expanded && compliance ? (
+                                                        <Paper withBorder radius="sm" p="sm" bg="gray.0">
+                                                            <Stack gap="xs">
+                                                                <Group justify="space-between" wrap="wrap">
+                                                                    <Text size="sm" fw={600}>Billing</Text>
+                                                                    <Text size="sm" c={compliance.payment.isPaidInFull ? 'green' : 'yellow'}>
+                                                                        {formatCompliancePaymentLabel(compliance.payment)}
+                                                                    </Text>
+                                                                </Group>
+                                                                <Group justify="space-between" wrap="wrap">
+                                                                    <Text size="sm" fw={600}>Documents</Text>
+                                                                    <Text size="sm" c={compliance.documents.requiredCount > 0 && compliance.documents.signedCount < compliance.documents.requiredCount ? 'yellow' : 'green'}>
+                                                                        {documentComplianceLabel(compliance.documents)}
+                                                                    </Text>
+                                                                </Group>
+                                                                {compliance.requiredDocuments.length > 0 ? (
+                                                                    <Stack gap={6}>
+                                                                        {compliance.requiredDocuments.map((document) => (
+                                                                            <Group key={document.key} justify="space-between" align="center" wrap="wrap">
+                                                                                <div>
+                                                                                    <Text size="sm">{document.title}</Text>
+                                                                                    <Text size="xs" c="dimmed">
+                                                                                        {document.signerLabel}
+                                                                                        {document.signOnce ? ' - Sign once' : ' - Team-specific'}
+                                                                                    </Text>
+                                                                                </div>
+                                                                                <Badge color={document.status === 'SIGNED' ? 'green' : 'yellow'} variant="light">
+                                                                                    {document.status === 'SIGNED' ? 'Signed' : 'Needs signature'}
+                                                                                </Badge>
+                                                                            </Group>
+                                                                        ))}
+                                                                    </Stack>
+                                                                ) : (
+                                                                    <Text size="xs" c="dimmed">No required documents for this user.</Text>
+                                                                )}
+                                                            </Stack>
+                                                        </Paper>
+                                                    ) : null}
+                                                </Stack>
                                             </Paper>
                                         );
                                     })}

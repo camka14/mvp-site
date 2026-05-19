@@ -377,8 +377,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	    }
 	  });
 
-	  const canonicalTeamIds = Array.from(new Set(Array.from(canonicalTeamIdByEventTeamId.values())));
+	  const eventCanonicalTeamIds = Array.from(new Set(Array.from(canonicalTeamIdByEventTeamId.values())));
 	  const canonicalTeamsDelegate = (prisma as any).canonicalTeams;
+	  const organizationCanonicalTeams = typeof canonicalTeamsDelegate?.findMany === 'function'
+	    ? await canonicalTeamsDelegate.findMany({
+	      where: { organizationId: id },
+	      select: {
+	        id: true,
+	        name: true,
+	        division: true,
+	        divisionTypeId: true,
+	        sport: true,
+	        profileImageId: true,
+	        teamSize: true,
+	      },
+	    })
+	    : [];
+	  const organizationCanonicalTeamIds = organizationCanonicalTeams
+	    .map((team: Record<string, any>) => normalizeId(team.id))
+	    .filter((teamId: string | null): teamId is string => Boolean(teamId));
+	  const canonicalTeamIds = Array.from(new Set([...eventCanonicalTeamIds, ...organizationCanonicalTeamIds]));
 	  const canonicalTeams = canonicalTeamIds.length && typeof canonicalTeamsDelegate?.findMany === 'function'
 	    ? await canonicalTeamsDelegate.findMany({
 	      where: { id: { in: canonicalTeamIds } },
@@ -577,6 +595,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   });
   teamMemberIdsByTeamId.forEach((memberIds) => {
     memberIds.forEach((memberId) => participantUserIds.add(memberId));
+  });
+  const organizationTeamMemberUserIds = new Set<string>();
+  canonicalTeamRegistrationRows.forEach((row: { userId?: string | null }) => {
+    const userId = normalizeId(row.userId);
+    if (!userId) {
+      return;
+    }
+    organizationTeamMemberUserIds.add(userId);
+    participantUserIds.add(userId);
   });
 
   const userIds = Array.from(participantUserIds);
@@ -1041,7 +1068,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         documents: documentsList,
       };
     })
-    .filter((summary) => summary.events.length > 0 || summary.documents.length > 0)
+    .filter((summary) => (
+      summary.events.length > 0
+      || summary.documents.length > 0
+      || organizationTeamMemberUserIds.has(summary.userId)
+    ))
     .sort((a, b) => a.fullName.localeCompare(b.fullName, undefined, { sensitivity: 'base' }));
 
 	  const teamsPayload = Array.from(teamSummariesByCanonicalTeamId.values())

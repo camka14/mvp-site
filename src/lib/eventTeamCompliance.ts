@@ -83,6 +83,10 @@ export type EventTeamComplianceResponse = {
   teams: TeamComplianceSummary[];
 };
 
+export type TeamMemberComplianceResponse = {
+  team: TeamComplianceSummary;
+};
+
 export type EventUserComplianceResponse = {
   users: TeamComplianceUserSummary[];
 };
