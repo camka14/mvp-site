@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { getStorageProvider } from '@/lib/storageProvider';
 import { summarizeErrorForLog } from '@/lib/serverErrorLog';
+import { resolveImageContentType } from '@/lib/imageUploadPolicy';
 import crypto from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -24,8 +25,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'File size must be 10MB or less' }, { status: 413 });
     }
 
-    const contentType = file.type || '';
-    if (!contentType.startsWith('image/')) {
+    const contentType = resolveImageContentType(file.type, file.name);
+    if (!contentType) {
       return NextResponse.json({ error: 'Only image uploads are supported' }, { status: 415 });
     }
 

@@ -114,6 +114,46 @@ describe('file routes', () => {
       );
       expect(json.file.id).toBe('file_1');
     });
+
+    it('accepts SVG uploads and stores them with the SVG content type', async () => {
+      requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+      const storageProvider = {
+        putObject: jest.fn().mockResolvedValue({ key: 'key.svg', bucket: 'bucket', sizeBytes: 109 }),
+      };
+      getStorageProviderMock.mockReturnValue(storageProvider);
+
+      prismaMock.file.create.mockResolvedValue({
+        id: 'file_svg',
+        organizationId: null,
+        uploaderId: 'user_1',
+        originalName: 'event-logo.svg',
+        mimeType: 'image/svg+xml',
+        sizeBytes: 109,
+        path: 'key.svg',
+        bucket: 'bucket',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
+      const file = new File([svg], 'event-logo.svg', { type: 'image/svg+xml' });
+      const res = await POST(buildFormRequest(file));
+
+      expect(res.status).toBe(201);
+      expect(storageProvider.putObject).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contentType: 'image/svg+xml',
+          originalName: 'event-logo.svg',
+        }),
+      );
+      expect(prismaMock.file.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            mimeType: 'image/svg+xml',
+          }),
+        }),
+      );
+    });
   });
 
   describe('GET /api/files/:id', () => {
@@ -179,6 +219,35 @@ describe('file routes', () => {
       expect(res.status).toBe(200);
       expect(metadata.width).toBe(8);
       expect(metadata.height).toBe(8);
+    });
+
+    it('serves SVG previews as the original vector even when dimensions are requested', async () => {
+      const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="20" height="10"/></svg>';
+
+      prismaMock.file.findUnique.mockResolvedValue({
+        id: 'file_svg',
+        path: 'path/file.svg',
+        bucket: null,
+        mimeType: 'image/svg+xml',
+        originalName: 'file.svg',
+      });
+
+      const storageProvider = {
+        getObjectStream: jest.fn().mockResolvedValue({
+          stream: Readable.from([Buffer.from(svg)]),
+          contentType: 'image/svg+xml',
+        }),
+      };
+      getStorageProviderMock.mockReturnValue(storageProvider);
+
+      const request = new NextRequest('http://localhost/api/files/file_svg/preview?w=8&h=8');
+      const res = await PREVIEW_GET(request, { params: Promise.resolve({ id: 'file_svg' }) });
+      const output = Buffer.from(await res.arrayBuffer()).toString('utf8');
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe('image/svg+xml');
+      expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff');
+      expect(output).toBe(svg);
     });
   });
 

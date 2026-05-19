@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { getStorageProvider } from '@/lib/storageProvider';
 import { summarizeErrorForLog } from '@/lib/serverErrorLog';
+import { SVG_IMAGE_RESPONSE_HEADERS, isSvgContentType } from '@/lib/imageUploadPolicy';
 import path from 'path';
 import { Readable } from 'stream';
 
@@ -39,6 +40,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const contentType = file.mimeType || streamResult.contentType || 'application/octet-stream';
     const downloadName = file.originalName || path.basename(file.path);
     const body = new Uint8Array(data);
+    const isSvg = isSvgContentType(contentType);
 
     return new NextResponse(body, {
       status: 200,
@@ -46,6 +48,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         'Content-Type': contentType,
         'Content-Length': body.byteLength.toString(),
         'Content-Disposition': `inline; filename="${encodeURIComponent(downloadName)}"`,
+        ...(isSvg ? SVG_IMAGE_RESPONSE_HEADERS : {}),
       },
     });
   } catch (error) {

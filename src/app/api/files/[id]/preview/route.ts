@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getStorageProvider } from '@/lib/storageProvider';
 import { summarizeErrorForLog } from '@/lib/serverErrorLog';
+import { SVG_IMAGE_RESPONSE_HEADERS, isSvgContentType } from '@/lib/imageUploadPolicy';
 import { Readable } from 'stream';
 import sharp from 'sharp';
 
@@ -48,8 +49,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const data = await streamToBuffer(streamResult.stream);
     const contentType = file.mimeType || streamResult.contentType || 'application/octet-stream';
+    const isSvg = isSvgContentType(contentType);
 
-    if (!width && !height) {
+    if ((!width && !height) || isSvg) {
       return new NextResponse(new Uint8Array(data), {
         status: 200,
         headers: {
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           'Content-Length': data.byteLength.toString(),
           'Cache-Control': CACHE_CONTROL,
           'Content-Disposition': `inline; filename="${encodeURIComponent(file.originalName || file.path)}"`,
+          ...(isSvg ? SVG_IMAGE_RESPONSE_HEADERS : {}),
         },
       });
     }

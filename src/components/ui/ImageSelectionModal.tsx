@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { userService } from '@/lib/userService';
 import { useApp } from '@/app/providers';
+import { IMAGE_UPLOAD_ACCEPT, isSupportedImageUpload } from '@/lib/imageUploadPolicy';
 import { Modal, Button, SimpleGrid, Image, Alert, Group, Stack, FileButton, Loader, Text, Box } from '@mantine/core';
 
 interface ImageSelectionModalProps {
@@ -21,6 +22,7 @@ export function ImageSelectionModal({
 
     const buildPreviewUrl = (id: string, size: number): string =>
         `/api/files/${id}/preview?w=${size}&h=${size}&fit=cover`;
+    const fallbackImageUrl = '/api/avatars/initials?name=Image&size=240';
 
     // ✅ Create image data with both ID and URL
     const uploadedImages = (user?.uploadedImages || []).map(imgId => ({
@@ -38,8 +40,8 @@ export function ImageSelectionModal({
             return;
         }
 
-        if (!file.type.startsWith('image/')) {
-            setError('Please select a valid image file');
+        if (!isSupportedImageUpload(file.type, file.name)) {
+            setError('Please select a PNG, JPEG, WebP, GIF, AVIF, or SVG image');
             return;
         }
 
@@ -111,7 +113,7 @@ export function ImageSelectionModal({
                                 // create a synthetic event to reuse handler
                                 handleFileUpload({ target: { files: [file] } } as any);
                             }}
-                            accept="image/*"
+                            accept={IMAGE_UPLOAD_ACCEPT}
                         >
                             {(props) => (
                                 <Button {...props} variant="light" leftSection={<span>📸</span>}>
@@ -119,7 +121,7 @@ export function ImageSelectionModal({
                                 </Button>
                             )}
                         </FileButton>
-                        <Text c="dimmed" size="sm">Max 10MB, images only</Text>
+                        <Text c="dimmed" size="sm">Max 10MB, PNG/JPEG/WebP/GIF/AVIF/SVG</Text>
                     </Group>
                 )}
 
@@ -129,7 +131,7 @@ export function ImageSelectionModal({
                         <Box key={image.id} style={{ aspectRatio: '1 / 1', overflow: 'hidden', borderRadius: 8, cursor: 'pointer', border: '1px solid var(--mantine-color-default-border)' }}
                              onClick={() => { onSelect(image.id, image.url); onClose(); }}>
                             <Image src={image.url} alt="Uploaded" fit="cover" height="100%" width="100%"
-                                   fallbackSrc="https://via.placeholder.com/400x400?text=Image" />
+                                   fallbackSrc={fallbackImageUrl} />
                         </Box>
                     ))}
                 </SimpleGrid>
