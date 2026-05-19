@@ -384,6 +384,7 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 
 
 export const ModelName = {
+  AppReleases: 'AppReleases',
   Fields: 'Fields',
   Matches: 'Matches',
   MatchSegments: 'MatchSegments',
@@ -442,10 +443,84 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
+    AppReleases: {
+      payload: Prisma.$AppReleasesPayload<ExtArgs>
+      fields: Prisma.AppReleasesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AppReleasesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AppReleasesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>
+        }
+        findFirst: {
+          args: Prisma.AppReleasesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AppReleasesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>
+        }
+        findMany: {
+          args: Prisma.AppReleasesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>[]
+        }
+        create: {
+          args: Prisma.AppReleasesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>
+        }
+        createMany: {
+          args: Prisma.AppReleasesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AppReleasesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>[]
+        }
+        delete: {
+          args: Prisma.AppReleasesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>
+        }
+        update: {
+          args: Prisma.AppReleasesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>
+        }
+        deleteMany: {
+          args: Prisma.AppReleasesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AppReleasesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AppReleasesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>[]
+        }
+        upsert: {
+          args: Prisma.AppReleasesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AppReleasesPayload>
+        }
+        aggregate: {
+          args: Prisma.AppReleasesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAppReleases>
+        }
+        groupBy: {
+          args: Prisma.AppReleasesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AppReleasesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AppReleasesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AppReleasesCountAggregateOutputType> | number
+        }
+      }
+    }
     Fields: {
       payload: Prisma.$FieldsPayload<ExtArgs>
       fields: Prisma.FieldsFieldRefs
@@ -3667,6 +3742,22 @@ export const TransactionIsolationLevel = runtime.makeStrictEnum({
 export type TransactionIsolationLevel = (typeof TransactionIsolationLevel)[keyof typeof TransactionIsolationLevel]
 
 
+export const AppReleasesScalarFieldEnum = {
+  id: 'id',
+  platform: 'platform',
+  versionName: 'versionName',
+  buildNumber: 'buildNumber',
+  changes: 'changes',
+  hasBreakingChanges: 'hasBreakingChanges',
+  isActive: 'isActive',
+  updateUrl: 'updateUrl',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type AppReleasesScalarFieldEnum = (typeof AppReleasesScalarFieldEnum)[keyof typeof AppReleasesScalarFieldEnum]
+
+
 export const FieldsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -4746,6 +4837,41 @@ export type ListStringFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaMod
 
 
 /**
+ * Reference to a field of type 'AppReleasePlatformEnum'
+ */
+export type EnumAppReleasePlatformEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AppReleasePlatformEnum'>
+
+
+
+/**
+ * Reference to a field of type 'AppReleasePlatformEnum[]'
+ */
+export type ListEnumAppReleasePlatformEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AppReleasePlatformEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'Int'
+ */
+export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
+
+
+
+/**
+ * Reference to a field of type 'Int[]'
+ */
+export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
+
+
+
+/**
+ * Reference to a field of type 'Boolean'
+ */
+export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Boolean'>
+
+
+
+/**
  * Reference to a field of type 'DateTime'
  */
 export type DateTimeFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'DateTime'>
@@ -4770,27 +4896,6 @@ export type FloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, '
  * Reference to a field of type 'Float[]'
  */
 export type ListFloatFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Float[]'>
-
-
-
-/**
- * Reference to a field of type 'Boolean'
- */
-export type BooleanFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Boolean'>
-
-
-
-/**
- * Reference to a field of type 'Int[]'
- */
-export type ListIntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int[]'>
-
-
-
-/**
- * Reference to a field of type 'Int'
- */
-export type IntFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'Int'>
 
 
 
@@ -5336,6 +5441,7 @@ export type PrismaClientOptions = ({
   comments?: runtime.SqlCommenterPlugin[]
 }
 export type GlobalOmitConfig = {
+  appReleases?: Prisma.AppReleasesOmit
   fields?: Prisma.FieldsOmit
   matches?: Prisma.MatchesOmit
   matchSegments?: Prisma.MatchSegmentsOmit

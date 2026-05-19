@@ -186,6 +186,28 @@ enum ModerationReportStatusEnum {
   DISMISSED
 }
 
+enum AppReleasePlatformEnum {
+  IOS
+  ANDROID
+}
+
+model AppReleases {
+  id                 String                 @id
+  platform           AppReleasePlatformEnum
+  versionName        String
+  buildNumber        Int?
+  changes            String[]               @default([])
+  hasBreakingChanges Boolean                @default(false)
+  isActive           Boolean                @default(true)
+  updateUrl          String?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  @@index([platform, isActive])
+  @@index([platform, buildNumber])
+  @@index([platform, versionName])
+}
+
 model Fields {
   id             String    @id
   createdAt      DateTime?
