@@ -9,7 +9,7 @@ import type { AgentConversationOwner } from './conversations';
 import pageLayoutDescriptions from './pageLayoutDescriptions.json';
 
 const CONFIRMATION_TTL_MS = 10 * 60 * 1000;
-const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'PRIVATE', 'DRAFT']);
+const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
 const PREFIXED_OBJECT_ID_PATTERN = /\b(?:user|event|match|field|team|org|organization|division|slot|registration|participant|official|confirmation|conv|local_team|dev_user|camka_upload)[_-][a-z0-9][a-z0-9_-]{5,}\b/gi;
 

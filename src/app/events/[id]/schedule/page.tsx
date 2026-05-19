@@ -888,7 +888,7 @@ const DEFAULT_NOTIFICATION_AUDIENCE: NotificationAudienceState = {
 };
 
 const DRAFT_LIKE_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
-const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT', 'PRIVATE']);
+const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
 
 const EVENT_LIFECYCLE_OPTIONS: Array<{ value: EventLifecycleStatus; label: string }> = [
   { value: 'DRAFT', label: 'Draft' },

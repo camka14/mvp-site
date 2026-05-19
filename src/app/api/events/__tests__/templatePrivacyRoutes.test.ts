@@ -209,22 +209,8 @@ describe('event template privacy routes', () => {
     expect(requireSessionMock).toHaveBeenCalled();
   });
 
-  it('forbids reading a private event when requester is not a manager', async () => {
+  it('allows reading a private event by direct link without requiring manager auth', async () => {
     prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PRIVATE', hostId: 'host_1' });
-    requireSessionMock.mockResolvedValueOnce({ userId: 'user_2', isAdmin: false });
-
-    const res = await eventGet(
-      new NextRequest('http://localhost/api/events/event_1'),
-      { params: Promise.resolve({ eventId: 'event_1' }) },
-    );
-
-    expect(res.status).toBe(403);
-    expect(requireSessionMock).toHaveBeenCalled();
-  });
-
-  it('allows reading a private event when requester is host', async () => {
-    prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PRIVATE', hostId: 'host_1' });
-    requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
 
     const res = await eventGet(
       new NextRequest('http://localhost/api/events/event_1'),
@@ -232,6 +218,19 @@ describe('event template privacy routes', () => {
     );
 
     expect(res.status).toBe(200);
+    expect(requireSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('allows reading a private event when requester is host', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({ id: 'event_1', state: 'PRIVATE', hostId: 'host_1' });
+
+    const res = await eventGet(
+      new NextRequest('http://localhost/api/events/event_1'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    expect(requireSessionMock).not.toHaveBeenCalled();
   });
 
   it('includes set config on playoff division details in GET /api/events/:eventId', async () => {
@@ -450,7 +449,7 @@ describe('event template privacy routes', () => {
         expect.objectContaining({
           OR: expect.arrayContaining([
             expect.objectContaining({
-              state: { in: ['UNPUBLISHED', 'PRIVATE'] },
+              state: { in: ['UNPUBLISHED'] },
               OR: expect.arrayContaining([
                 { hostId: 'host_1' },
                 { assistantHostIds: { has: 'host_1' } },

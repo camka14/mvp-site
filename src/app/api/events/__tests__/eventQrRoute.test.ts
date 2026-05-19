@@ -191,8 +191,8 @@ describe('event QR route', () => {
   it('forbids restricted event QR codes when the requester cannot manage the event', async () => {
     const event = {
       id: 'event_1',
-      name: 'Private Event',
-      state: 'PRIVATE',
+      name: 'Draft Event',
+      state: 'UNPUBLISHED',
       hostId: 'host_1',
     };
     eventsMock.findUnique.mockResolvedValueOnce(event);
@@ -214,8 +214,8 @@ describe('event QR route', () => {
   it('allows restricted event QR codes when the requester can manage the event', async () => {
     const event = {
       id: 'event_1',
-      name: 'Private Event',
-      state: 'PRIVATE',
+      name: 'Draft Event',
+      state: 'DRAFT',
       hostId: 'host_1',
     };
     eventsMock.findUnique.mockResolvedValueOnce(event);
@@ -228,5 +228,22 @@ describe('event QR route', () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get('cache-control')).toBe('private, no-store');
+  });
+
+  it('allows private event QR codes without requiring manager auth', async () => {
+    eventsMock.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      name: 'Private Event',
+      state: 'PRIVATE',
+      hostId: 'host_1',
+    });
+
+    const res = await eventQrGet(qrRequest('event_1'), {
+      params: Promise.resolve({ eventId: 'event_1' }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(requireSessionMock).not.toHaveBeenCalled();
+    expect(canManageEventMock).not.toHaveBeenCalled();
   });
 });

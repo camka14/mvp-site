@@ -9,7 +9,7 @@ import { MATCH_REALTIME_SCOPE } from '@/server/realtime/matchRealtime';
 export const dynamic = 'force-dynamic';
 
 const TOKEN_TTL_SECONDS = 5 * 60;
-const MANAGER_ONLY_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT', 'PRIVATE', 'TEMPLATE']);
+const MANAGER_ONLY_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT', 'TEMPLATE']);
 
 const normalizeId = (value: unknown): string | null => {
   if (typeof value !== 'string') return null;

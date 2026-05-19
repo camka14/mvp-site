@@ -49,7 +49,7 @@ import {
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
 const warnedMissingEventArguments = new Set<string>();
-const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'PRIVATE', 'DRAFT']);
+const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'DRAFT']);
 const EVENT_FIELDS_REQUIRED_MESSAGE = 'Select or create at least one field for this event.';
 
 const EVENT_UPDATE_FIELDS = new Set([

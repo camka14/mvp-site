@@ -172,6 +172,35 @@ describe('GET /api/events/[eventId]/participants', () => {
     }));
   });
 
+  it('allows guests to load participant snapshots for private events by direct link', async () => {
+    prismaMock.events.findUnique.mockResolvedValueOnce({
+      id: 'event_1',
+      name: 'Private Event',
+      state: 'PRIVATE',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: 'org_1',
+      teamSignup: false,
+      singleDivision: true,
+      maxParticipants: 10,
+      eventType: 'EVENT',
+      parentEvent: null,
+      timeSlotIds: [],
+      divisions: [],
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/events/event_1/participants'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(canManageEventMock).not.toHaveBeenCalled();
+    expect(buildEventParticipantSnapshotMock).toHaveBeenCalledWith(expect.objectContaining({
+      includeRegistrations: false,
+    }));
+  });
+
   it('still requires sign-in for management registration details', async () => {
     const response = await GET(
       new NextRequest('http://localhost/api/events/event_1/participants?manage=true'),

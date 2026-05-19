@@ -47,7 +47,7 @@ import {
 } from '@/server/events/tournamentPools';
 
 export const dynamic = 'force-dynamic';
-const HIDDEN_EVENT_STATES = new Set(['UNPUBLISHED', 'PRIVATE', 'DRAFT']);
+const RESTRICTED_EVENT_STATES = new Set(['UNPUBLISHED', 'DRAFT']);
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
 const payloadSchema = z.object({
@@ -662,7 +662,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
 
   const eventState = String(event.state ?? '').toUpperCase();
   const canManageCurrentEvent = session ? await canManageEvent(session, event) : false;
-  if (HIDDEN_EVENT_STATES.has(eventState) && !canManageCurrentEvent) {
+  if (RESTRICTED_EVENT_STATES.has(eventState) && !canManageCurrentEvent) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -814,7 +814,7 @@ async function updateParticipants(
   }
   const canManageCurrentEvent = await canManageEvent(session, event);
   const eventState = String(event.state ?? '').toUpperCase();
-  if (HIDDEN_EVENT_STATES.has(eventState) && !canManageCurrentEvent) {
+  if (RESTRICTED_EVENT_STATES.has(eventState) && !canManageCurrentEvent) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

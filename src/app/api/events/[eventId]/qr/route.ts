@@ -18,7 +18,7 @@ const QR_CODE_MARGIN = 48;
 const LOGO_SOURCE_SIZE = 512;
 const LOGO_CORNER_RADIUS = Math.round(LOGO_SOURCE_SIZE * 0.14);
 const QR_LOGO_ASSET = 'BIQ_drawing.svg';
-const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'PRIVATE', 'DRAFT']);
+const RESTRICTED_EVENT_STATES = new Set(['TEMPLATE', 'UNPUBLISHED', 'DRAFT']);
 
 type EventQrLogoContext = {
   organizationId?: string | null;
