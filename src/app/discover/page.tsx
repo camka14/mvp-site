@@ -127,6 +127,9 @@ function DiscoverPageContent() {
   const [hasMoreEvents, setHasMoreEvents] = useState(true);
   const [eventOffset, setEventOffset] = useState(0);
   const [eventsError, setEventsError] = useState<string | null>(null);
+  const hasLoadedEventsRef = useRef(false);
+  const latestFirstPageRequestRef = useRef(0);
+  const isFirstPageRequestInFlightRef = useRef(false);
 
   const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
@@ -141,6 +144,13 @@ function DiscoverPageContent() {
 
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
+  const hiddenEventIdsKey = (user?.hiddenEventIds ?? []).slice().sort().join('\0');
+  const hiddenEventIds = useMemo(() => {
+    if (!hiddenEventIdsKey) {
+      return new Set<string>();
+    }
+    return new Set(hiddenEventIdsKey.split('\0'));
+  }, [hiddenEventIdsKey]);
 
   /**
    * Rentals tab state
@@ -327,35 +337,48 @@ function DiscoverPageContent() {
   );
 
   const loadFirstPage = useCallback(async (queryOverride?: string) => {
-    setIsLoadingInitial(true);
+    const requestId = latestFirstPageRequestRef.current + 1;
+    latestFirstPageRequestRef.current = requestId;
+    isFirstPageRequestInFlightRef.current = true;
+    const shouldShowInitialLoader = !hasLoadedEventsRef.current;
+
+    if (shouldShowInitialLoader) {
+      setIsLoadingInitial(true);
+    }
     setIsLoadingMore(false);
     setEventsError(null);
-    setEventOffset(0);
-    setHasMoreEvents(true);
     try {
       const filters = buildEventFilters(queryOverride);
       const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, 0);
+      if (requestId !== latestFirstPageRequestRef.current) {
+        return;
+      }
 
-      const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
       setEvents(page.filter((event) => !hiddenEventIds.has(event.$id)));
       setEventOffset(page.length);
       setHasMoreEvents(page.length === EVENTS_LIMIT);
+      hasLoadedEventsRef.current = true;
     } catch (error) {
+      if (requestId !== latestFirstPageRequestRef.current) {
+        return;
+      }
       console.error('Failed to load events:', error);
       setEventsError('Failed to load events. Please try again.');
     } finally {
-      setIsLoadingInitial(false);
+      if (requestId === latestFirstPageRequestRef.current) {
+        isFirstPageRequestInFlightRef.current = false;
+        setIsLoadingInitial(false);
+      }
     }
-  }, [buildEventFilters, user?.hiddenEventIds]);
+  }, [buildEventFilters, hiddenEventIds]);
 
   const loadMoreEvents = useCallback(async () => {
-    if (isLoadingInitial || isLoadingMore || !hasMoreEvents) return;
+    if (isLoadingInitial || isFirstPageRequestInFlightRef.current || isLoadingMore || !hasMoreEvents) return;
     setIsLoadingMore(true);
     setEventsError(null);
     try {
       const filters = buildEventFilters();
       const page = await eventService.getEventsPaginated(filters, EVENTS_LIMIT, eventOffset);
-      const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
       setEvents((prev) => {
         const merged = [...prev, ...page.filter((event) => !hiddenEventIds.has(event.$id))];
         const seen = new Set<string>();
@@ -373,15 +396,14 @@ function DiscoverPageContent() {
     } finally {
       setIsLoadingMore(false);
     }
-  }, [buildEventFilters, eventOffset, isLoadingInitial, isLoadingMore, hasMoreEvents, user?.hiddenEventIds]);
+  }, [buildEventFilters, eventOffset, isLoadingInitial, isLoadingMore, hasMoreEvents, hiddenEventIds]);
 
   useEffect(() => {
-    const hiddenEventIds = new Set(user?.hiddenEventIds ?? []);
     if (hiddenEventIds.size === 0) {
       return;
     }
     setEvents((previous) => previous.filter((event) => !hiddenEventIds.has(event.$id)));
-  }, [user?.hiddenEventIds]);
+  }, [hiddenEventIds]);
 
   /**
    * Rentals fetching

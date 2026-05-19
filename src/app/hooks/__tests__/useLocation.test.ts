@@ -21,6 +21,20 @@ describe('useLocation', () => {
     (navigator as any).permissions = undefined;
   });
 
+  it('initializes from saved location before effects run', () => {
+    localStorage.setItem('user-location', JSON.stringify({ lat: 45.5, lng: -122.6 }));
+    localStorage.setItem('user-location-info', JSON.stringify({
+      lat: 45.5,
+      lng: -122.6,
+      city: 'Portland',
+    }));
+
+    const { result } = renderHook(() => useLocation());
+
+    expect(result.current.location).toEqual({ lat: 45.5, lng: -122.6 });
+    expect(result.current.locationInfo).toMatchObject({ city: 'Portland' });
+  });
+
   it('requests current location and stores it', async () => {
     mockedLocationService.getCurrentLocation.mockResolvedValue({ lat: 40, lng: -105 });
     mockedLocationService.reverseGeocode.mockResolvedValue({
@@ -72,4 +86,3 @@ describe('useLocation', () => {
     expect(localStorage.getItem('user-location')).toBeNull();
   });
 });
-

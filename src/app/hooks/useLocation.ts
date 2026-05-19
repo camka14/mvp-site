@@ -7,6 +7,43 @@ const listeners = new Set<Listener>();
 let sharedLocation: LocationCoordinates | null = null;
 let sharedLocationInfo: LocationInfo | null = null;
 
+const readStoredJson = <T,>(key: string): T | null => {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const value = window.localStorage.getItem(key);
+    return value ? JSON.parse(value) as T : null;
+  } catch {
+    return null;
+  }
+};
+
+const getInitialLocation = (): LocationCoordinates | null => {
+  if (sharedLocation) {
+    return sharedLocation;
+  }
+
+  const storedLocation = readStoredJson<LocationCoordinates>('user-location');
+  if (storedLocation) {
+    sharedLocation = storedLocation;
+  }
+  return storedLocation;
+};
+
+const getInitialLocationInfo = (): LocationInfo | null => {
+  if (sharedLocationInfo) {
+    return sharedLocationInfo;
+  }
+
+  const storedLocationInfo = readStoredJson<LocationInfo>('user-location-info');
+  if (storedLocationInfo) {
+    sharedLocationInfo = storedLocationInfo;
+  }
+  return storedLocationInfo;
+};
+
 const notifyAll = () => {
   listeners.forEach(fn => fn(sharedLocation, sharedLocationInfo));
 };
@@ -23,36 +60,16 @@ interface UseLocationReturn {
 }
 
 export function useLocation(): UseLocationReturn {
-  const [location, setLocation] = useState<LocationCoordinates | null>(null);
-  const [locationInfo, setLocationInfo] = useState<LocationInfo | null>(null);
+  const [location, setLocation] = useState<LocationCoordinates | null>(() => getInitialLocation());
+  const [locationInfo, setLocationInfo] = useState<LocationInfo | null>(() => getInitialLocationInfo());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Load saved location from localStorage
   useEffect(() => {
     // Initialize from shared store if available, otherwise from localStorage
-    const savedLocation = localStorage.getItem('user-location');
-    const savedLocationInfo = localStorage.getItem('user-location-info');
-
-    if (sharedLocation) {
-      setLocation(sharedLocation);
-    } else if (savedLocation) {
-      try {
-        const parsed = JSON.parse(savedLocation);
-        sharedLocation = parsed;
-        setLocation(parsed);
-      } catch {}
-    }
-
-    if (sharedLocationInfo) {
-      setLocationInfo(sharedLocationInfo);
-    } else if (savedLocationInfo) {
-      try {
-        const parsedInfo = JSON.parse(savedLocationInfo);
-        sharedLocationInfo = parsedInfo;
-        setLocationInfo(parsedInfo);
-      } catch {}
-    }
+    setLocation(getInitialLocation());
+    setLocationInfo(getInitialLocationInfo());
 
     // Subscribe to shared updates
     const listener: Listener = (loc, info) => {

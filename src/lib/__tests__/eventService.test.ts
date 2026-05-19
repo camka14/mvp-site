@@ -59,6 +59,46 @@ describe('eventService', () => {
     expect(event?.$id).toBe('evt_1');
   });
 
+  it('deduplicates concurrent paginated event searches', async () => {
+    let resolveRequest: ((value: { events?: any[] }) => void) | undefined;
+    apiRequestMock.mockImplementation(() => new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+
+    const first = eventService.getEventsPaginated({
+      dateFrom: '2026-05-19T07:00:00.000Z',
+      userLocation: { lat: 45.5152, lng: -122.6784 },
+    }, 18, 0);
+    const second = eventService.getEventsPaginated({
+      userLocation: { lng: -122.6784, lat: 45.5152 },
+      dateFrom: '2026-05-19T07:00:00.000Z',
+    }, 18, 0);
+
+    await Promise.resolve();
+    expect(apiRequestMock).toHaveBeenCalledTimes(1);
+
+    resolveRequest?.({ events: [{ ...baseEventRow }] });
+    const [firstEvents, secondEvents] = await Promise.all([first, second]);
+
+    expect(firstEvents.map((event) => event.$id)).toEqual(['evt_1']);
+    expect(secondEvents.map((event) => event.$id)).toEqual(['evt_1']);
+
+    apiRequestMock.mockResolvedValue({ events: [{ ...baseEventRow, $id: 'evt_2' }] });
+    const cachedEvents = await eventService.getEventsPaginated({
+      dateFrom: '2026-05-19T07:00:00.000Z',
+      userLocation: { lat: 45.5152, lng: -122.6784 },
+    }, 18, 0);
+    expect(cachedEvents.map((event) => event.$id)).toEqual(['evt_1']);
+    expect(apiRequestMock).toHaveBeenCalledTimes(1);
+
+    await eventService.getEventsPaginated({
+      dateFrom: '2026-05-19T07:00:00.000Z',
+      userLocation: { lat: 45.5152, lng: -122.6784 },
+    }, 18, 18);
+
+    expect(apiRequestMock).toHaveBeenCalledTimes(2);
+  });
+
   it('uses the extended timeout when scheduling an event', async () => {
     apiRequestMock.mockResolvedValue({
       preview: false,

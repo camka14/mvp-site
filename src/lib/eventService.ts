@@ -154,6 +154,34 @@ const LEGACY_SPORT_ID_ALIASES: Record<string, string> = {
   volleyball: "Indoor Volleyball",
 };
 
+const toStableRequestValue = (value: unknown): unknown => {
+  if (Array.isArray(value)) {
+    return value.map(toStableRequestValue);
+  }
+  if (value && typeof value === "object") {
+    return Object.keys(value as Record<string, unknown>)
+      .sort()
+      .reduce<Record<string, unknown>>((stable, key) => {
+        stable[key] = toStableRequestValue((value as Record<string, unknown>)[key]);
+        return stable;
+      }, {});
+  }
+  return value;
+};
+
+const buildPaginatedEventsRequestKey = (
+  filters: EventFilters,
+  limit: number,
+  offset: number,
+): string => JSON.stringify(toStableRequestValue({ filters, limit, offset }));
+
+const PAGINATED_EVENTS_RECENT_CACHE_MS = 2_000;
+const pendingPaginatedEventsRequests = new Map<string, Promise<Event[]>>();
+const recentPaginatedEventsResponses = new Map<
+  string,
+  { events: Event[]; expiresAt: number }
+>();
+
 class EventService {
   private resolveSportFromMap(
     sportsMap: Map<string, Sport>,
@@ -2989,23 +3017,50 @@ class EventService {
     offset: number = 0,
   ): Promise<Event[]> {
     try {
-      const response = await apiRequest<{ events?: any[] }>(
-        "/api/events/search",
-        {
-          method: "POST",
-          body: { filters, limit, offset },
-        },
-      );
-
-      const rows = response.events ?? [];
-      const events: Event[] = [];
-      for (const row of rows) {
-        await this.ensureSportRelationship(row);
-        await this.ensureLeagueScoringConfig(row);
-        events.push(this.mapRowToEvent(row));
+      const body = { filters, limit, offset };
+      const requestKey = buildPaginatedEventsRequestKey(filters, limit, offset);
+      const cachedResponse = recentPaginatedEventsResponses.get(requestKey);
+      if (cachedResponse && cachedResponse.expiresAt > Date.now()) {
+        return cachedResponse.events;
+      }
+      if (cachedResponse) {
+        recentPaginatedEventsResponses.delete(requestKey);
       }
 
-      return events;
+      let eventsPromise = pendingPaginatedEventsRequests.get(requestKey);
+      if (!eventsPromise) {
+        eventsPromise = (async () => {
+          const response = await apiRequest<{ events?: any[] }>(
+            "/api/events/search",
+            {
+              method: "POST",
+              body,
+            },
+          );
+
+          const rows = response.events ?? [];
+          const events: Event[] = [];
+          for (const row of rows) {
+            await this.ensureSportRelationship(row);
+            await this.ensureLeagueScoringConfig(row);
+            events.push(this.mapRowToEvent(row));
+          }
+          return events;
+        })()
+          .then((events) => {
+            recentPaginatedEventsResponses.set(requestKey, {
+              events,
+              expiresAt: Date.now() + PAGINATED_EVENTS_RECENT_CACHE_MS,
+            });
+            return events;
+          })
+          .finally(() => {
+            pendingPaginatedEventsRequests.delete(requestKey);
+          });
+        pendingPaginatedEventsRequests.set(requestKey, eventsPromise);
+      }
+
+      return await eventsPromise;
     } catch (error) {
       console.error("Failed to fetch paginated events:", error);
       throw new Error("Failed to load events");
