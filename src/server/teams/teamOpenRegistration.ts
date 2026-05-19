@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { resolveConnectedAccountId } from '@/lib/stripeConnectAccounts';
+import { buildTeamRegistrationRefundEventId } from '@/server/refunds/refundExecution';
 import { getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 import {
   loadCanonicalTeamById,
@@ -37,6 +38,10 @@ export type TeamRegistrationRosterRole = 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGEN
 
 type RegistrationResult =
   | { ok: true; registrationId: string; status: 'ACTIVE' | 'STARTED' | 'PENDING' }
+  | { ok: false; status: number; error: string };
+
+type TeamRegistrationRefundResult =
+  | { ok: true; refundId: string; refundAlreadyPending: boolean }
   | { ok: false; status: number; error: string };
 
 const normalizeCents = (value: unknown): number => {
@@ -832,5 +837,128 @@ export const leaveTeam = async ({
     });
     await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     return { ok: true };
+  });
+};
+
+export const requestTeamRegistrationRefund = async ({
+  teamId,
+  userId,
+  reason,
+  now,
+}: {
+  teamId: string | null;
+  userId: string | null;
+  reason?: string | null;
+  now: Date;
+}): Promise<TeamRegistrationRefundResult> => {
+  const normalizedTeamId = normalizeId(teamId);
+  const normalizedUserId = normalizeId(userId);
+  if (!normalizedTeamId) {
+    return { ok: false, status: 400, error: 'Team id is required.' };
+  }
+  if (!normalizedUserId) {
+    return { ok: false, status: 401, error: 'Sign in to request a refund.' };
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const lockedTeams = await tx.$queryRaw<LockedTeamRow[]>`
+      SELECT
+        "id",
+        "teamSize",
+        "openRegistration",
+        "registrationPriceCents",
+        "organizationId",
+        "createdBy"
+      FROM "Teams"
+      WHERE "id" = ${normalizedTeamId}
+      FOR UPDATE
+    `;
+    const team = lockedTeams[0] ?? null;
+    if (!team) {
+      return { ok: false, status: 404, error: 'Team not found.' };
+    }
+    if (!team.openRegistration || normalizeCents(team.registrationPriceCents) <= 0) {
+      return { ok: false, status: 409, error: 'Refund requests are only available for paid open registrations.' };
+    }
+
+    const registration = await tx.teamRegistrations.findUnique({
+      where: {
+        teamId_userId: {
+          teamId: normalizedTeamId,
+          userId: normalizedUserId,
+        },
+      },
+      select: {
+        id: true,
+        status: true,
+        isCaptain: true,
+      },
+    });
+    if (!registration || registration.status !== ACTIVE_MEMBER_STATUS) {
+      return { ok: false, status: 409, error: 'You are not an active member of this team.' };
+    }
+    if (registration.isCaptain) {
+      return { ok: false, status: 409, error: 'Transfer captain before requesting a refund.' };
+    }
+
+    const activeStaffAssignment = await tx.teamStaffAssignments.findFirst({
+      where: {
+        teamId: normalizedTeamId,
+        userId: normalizedUserId,
+        status: ACTIVE_MEMBER_STATUS as any,
+      },
+      select: { id: true },
+    });
+    if (activeStaffAssignment) {
+      return { ok: false, status: 409, error: 'Transfer team staff duties before requesting a refund.' };
+    }
+
+    const refundEventId = buildTeamRegistrationRefundEventId(normalizedTeamId);
+    const normalizedReason = normalizeId(reason) ?? 'team_registration_refund_requested';
+    const existingRefund = await tx.refundRequests.findFirst({
+      where: {
+        eventId: refundEventId,
+        userId: normalizedUserId,
+        teamId: normalizedTeamId,
+        status: { in: ['WAITING', 'APPROVED'] as any },
+      },
+      orderBy: { updatedAt: 'desc' },
+      select: { id: true },
+    });
+
+    const previousMemberIds = await readTeamBeforeChatSync(tx, normalizedTeamId);
+    await tx.teamRegistrations.update({
+      where: { id: registration.id },
+      data: {
+        status: LEFT_MEMBER_STATUS as any,
+        isCaptain: false,
+        updatedAt: now,
+      },
+    });
+    await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
+
+    if (existingRefund) {
+      return { ok: true, refundId: existingRefund.id, refundAlreadyPending: true };
+    }
+
+    const organizationId = await findOrganizationIdForTeam(tx, team);
+    const hostUserId = await findHostUserIdForTeam(tx, team);
+    const refund = await tx.refundRequests.create({
+      data: {
+        id: crypto.randomUUID(),
+        eventId: refundEventId,
+        userId: normalizedUserId,
+        hostId: hostUserId,
+        teamId: normalizedTeamId,
+        organizationId,
+        reason: normalizedReason,
+        status: 'WAITING' as any,
+        createdAt: now,
+        updatedAt: now,
+      },
+      select: { id: true },
+    });
+
+    return { ok: true, refundId: refund.id, refundAlreadyPending: false };
   });
 };

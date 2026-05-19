@@ -3,9 +3,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
-import { canManageEvent } from '@/server/accessControl';
+import { canManageEvent, hasOrganizationStaffAccess } from '@/server/accessControl';
+import { canManageCanonicalTeam } from '@/server/teams/teamMembership';
 import {
   applyRefundAttempts,
+  buildTeamRegistrationRefundEventId,
   createStripeRefundAttempts,
   resolveRefundablePaymentsForRequest,
   summarizeRefundAttempts,
@@ -44,6 +46,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!existing) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
+  const teamRegistrationRefundEventId = existing.teamId
+    ? buildTeamRegistrationRefundEventId(existing.teamId)
+    : null;
+  const isTeamRegistrationRefund = Boolean(
+    existing.teamId
+      && teamRegistrationRefundEventId
+      && existing.eventId === teamRegistrationRefundEventId,
+  );
 
   const eventAccess = await prisma.events.findUnique({
     where: { id: existing.eventId },
@@ -54,12 +64,42 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       organizationId: true,
     },
   });
-  if (!eventAccess) {
+  if (eventAccess) {
+    if (!session.isAdmin && !(await canManageEvent(session, eventAccess))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  } else if (isTeamRegistrationRefund && existing.teamId) {
+    const team = await prisma.canonicalTeams.findUnique({
+      where: { id: existing.teamId },
+      select: {
+        id: true,
+        organizationId: true,
+      },
+    });
+    if (!team) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+    const [canManageTeam, organization] = await Promise.all([
+      canManageCanonicalTeam({ teamId: team.id, userId: session.userId, isAdmin: session.isAdmin }),
+      team.organizationId
+        ? prisma.organizations.findUnique({
+          where: { id: team.organizationId },
+          select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+        })
+        : Promise.resolve(null),
+    ]);
+    const canManageOrganization = organization
+      ? await hasOrganizationStaffAccess(
+        { userId: session.userId, isAdmin: session.isAdmin },
+        organization,
+        ['HOST', 'STAFF'],
+      )
+      : false;
+    if (!canManageTeam && !canManageOrganization) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  } else {
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
-  }
-
-  if (!session.isAdmin && !(await canManageEvent(session, eventAccess))) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   const now = new Date();

@@ -15,6 +15,12 @@ export type RefundRequestRow = {
   status: 'WAITING' | 'APPROVED' | 'REJECTED' | null;
 };
 
+const TEAM_REGISTRATION_REFUND_EVENT_PREFIX = 'team_registration:';
+
+export const buildTeamRegistrationRefundEventId = (teamId: string): string => (
+  `${TEAM_REGISTRATION_REFUND_EVENT_PREFIX}${teamId}`
+);
+
 type RefundablePaymentRow = {
   id: string;
   billId: string;
@@ -88,6 +94,10 @@ export const resolveRefundablePaymentsForRequest = async (
 ): Promise<Array<RefundablePaymentRow & { refundableAmountCents: number }>> => {
   let bills: Array<{ id: string }> = [];
   const normalizedTeamId = normalizeId(request.teamId);
+  const isTeamRegistrationRefund = Boolean(
+    normalizedTeamId
+      && request.eventId === buildTeamRegistrationRefundEventId(normalizedTeamId),
+  );
 
   if (normalizedTeamId) {
     const team = await client.teams.findUnique({
@@ -115,7 +125,7 @@ export const resolveRefundablePaymentsForRequest = async (
       const teamBills = teamOwnerIds.length
         ? await client.bills.findMany({
           where: {
-            eventId: request.eventId,
+            eventId: isTeamRegistrationRefund ? null : request.eventId,
             ownerType: 'TEAM',
             ownerId: { in: teamOwnerIds },
           },
@@ -126,9 +136,10 @@ export const resolveRefundablePaymentsForRequest = async (
       const splitUserBills = teamBillIds.length
         ? await client.bills.findMany({
           where: {
-            eventId: request.eventId,
+            eventId: isTeamRegistrationRefund ? null : request.eventId,
             ownerType: 'USER',
             parentBillId: { in: teamBillIds },
+            ...(isTeamRegistrationRefund ? { ownerId: request.userId } : {}),
           },
           select: { id: true },
         })
@@ -136,9 +147,9 @@ export const resolveRefundablePaymentsForRequest = async (
       const directUserBills = participantUserIds.length
         ? await client.bills.findMany({
           where: {
-            eventId: request.eventId,
+            eventId: isTeamRegistrationRefund ? null : request.eventId,
             ownerType: 'USER',
-            ownerId: { in: participantUserIds },
+            ownerId: isTeamRegistrationRefund ? request.userId : { in: participantUserIds },
           },
           select: { id: true },
         })
@@ -171,6 +182,7 @@ export const resolveRefundablePaymentsForRequest = async (
       billId: { in: billIds },
       status: 'PAID',
       paymentIntentId: { not: null },
+      ...(isTeamRegistrationRefund ? { payerUserId: request.userId } : {}),
     },
     select: {
       id: true,
