@@ -17,7 +17,7 @@ import { useAgentContext } from '@/context/AgentContext';
 import type { AgentClientAction, AgentClientActionResult } from '@/lib/agent/types';
 import { useLocation } from '@/app/hooks/useLocation';
 import { chatService, type ChatTermsConsentState } from '@/lib/chatService';
-import { eventService } from '@/lib/eventService';
+import { eventService, type EventParticipantDivisionWarning } from '@/lib/eventService';
 import { getHomePathForUser } from '@/lib/homePage';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
@@ -1246,6 +1246,7 @@ function EventScheduleContent() {
   const loadedParticipantOfficialsKeyRef = useRef<string | null>(null);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
+  const [participantDivisionWarnings, setParticipantDivisionWarnings] = useState<EventParticipantDivisionWarning[]>([]);
   const [participantsUpdatingTeamId, setParticipantsUpdatingTeamId] = useState<string | null>(null);
   const [teamComplianceById, setTeamComplianceById] = useState<Record<string, TeamComplianceSummary>>({});
   const [teamComplianceLoading, setTeamComplianceLoading] = useState(false);
@@ -2239,6 +2240,21 @@ function EventScheduleContent() {
     () => participantDivisionColumns.map((column) => ({ value: column.id, label: column.label })),
     [participantDivisionColumns],
   );
+
+  const participantDivisionWarningsByDivisionId = useMemo(() => {
+    const warningsByDivisionId = new Map<string, EventParticipantDivisionWarning[]>();
+    participantDivisionWarnings.forEach((warning) => {
+      const divisionId = normalizeIdToken(warning.divisionId)?.toLowerCase();
+      if (!divisionId) {
+        return;
+      }
+      warningsByDivisionId.set(divisionId, [
+        ...(warningsByDivisionId.get(divisionId) ?? []),
+        warning,
+      ]);
+    });
+    return warningsByDivisionId;
+  }, [participantDivisionWarnings]);
 
   const isSplitDivisionEvent = Boolean(
     (activeEvent?.eventType ?? changesEvent?.eventType ?? 'EVENT') === 'LEAGUE'
@@ -3989,6 +4005,7 @@ function EventScheduleContent() {
 
       setParticipantTeams(orderedTeams);
       setParticipantUsers(orderedUsers);
+      setParticipantDivisionWarnings(snapshot.divisionWarnings ?? []);
       setEvent((prev) => (prev
         ? {
             ...prev,
@@ -4030,6 +4047,7 @@ function EventScheduleContent() {
     if (isCreateMode) {
       setParticipantTeams([]);
       setParticipantUsers([]);
+      setParticipantDivisionWarnings([]);
       setParticipantsError(null);
       setParticipantsLoading(false);
       loadedParticipantSnapshotKeyRef.current = null;
@@ -9955,6 +9973,7 @@ function EventScheduleContent() {
                             .map((teamId) => participantTeamsById.get(teamId))
                             .filter((team): team is Team => Boolean(team));
                           const filledColumnTeamsCount = columnTeams.filter((team) => !isPlaceholderParticipantTeam(team)).length;
+                          const columnWarnings = participantDivisionWarningsByDivisionId.get(column.id.toLowerCase()) ?? [];
                           return (
                             <Paper key={column.id} withBorder radius="md" p="md" miw={320}>
                               <Stack gap="sm">
@@ -9962,6 +9981,11 @@ function EventScheduleContent() {
                                   <Text fw={600}>{column.label}</Text>
                                   <Text size="xs" c="dimmed">{filledColumnTeamsCount}</Text>
                                 </Group>
+                                {columnWarnings.map((warning) => (
+                                  <Alert key={`${column.id}:${warning.code}`} color="yellow" radius="md" py="xs">
+                                    <Text size="xs">{warning.message}</Text>
+                                  </Alert>
+                                ))}
                                 {columnTeams.length === 0 ? (
                                   <Text size="sm" c="dimmed">No teams assigned.</Text>
                                 ) : (

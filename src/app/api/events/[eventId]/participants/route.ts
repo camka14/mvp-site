@@ -865,6 +865,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       participantCount: 0,
       participantCapacity: null,
       occurrence: null,
+      divisionWarnings: [],
       weeklySelectionRequired: true,
     }, { status: 200 });
   }
@@ -907,6 +908,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       participantCount: snapshot.participantCount,
       participantCapacity: snapshot.participantCapacity,
       occurrence: snapshot.occurrence,
+      divisionWarnings: snapshot.divisionWarnings,
       weeklySelectionRequired: false,
     }, { status: 200 });
   } catch (error) {

@@ -102,8 +102,18 @@ export type EventParticipantsResponse = {
   participantCount: number;
   participantCapacity: number | null;
   occurrence: { slotId: string; occurrenceDate: string } | null;
+  divisionWarnings: Array<{
+    divisionId: string;
+    code: "OVER_CAPACITY" | "MISSING_PLACEHOLDERS";
+    message: string;
+    filledCount: number;
+    slotCount: number;
+    maxTeams: number;
+  }>;
   weeklySelectionRequired?: boolean;
 };
+
+export type EventParticipantDivisionWarning = EventParticipantsResponse["divisionWarnings"][number];
 
 export interface LeagueGenerationMatchResult {
   id?: string | number | null;
@@ -401,6 +411,25 @@ class EventService {
           ? response.participantCapacity
           : null,
       occurrence: response?.occurrence ?? null,
+      divisionWarnings: Array.isArray(response?.divisionWarnings)
+        ? response.divisionWarnings
+            .map((warning: any) => ({
+              divisionId: typeof warning?.divisionId === "string" ? warning.divisionId : "",
+              code:
+                warning?.code === "OVER_CAPACITY" || warning?.code === "MISSING_PLACEHOLDERS"
+                  ? warning.code
+                  : "OVER_CAPACITY",
+              message: typeof warning?.message === "string" ? warning.message : "",
+              filledCount: Number.isFinite(Number(warning?.filledCount)) ? Number(warning.filledCount) : 0,
+              slotCount: Number.isFinite(Number(warning?.slotCount)) ? Number(warning.slotCount) : 0,
+              maxTeams: Number.isFinite(Number(warning?.maxTeams)) ? Number(warning.maxTeams) : 0,
+            }))
+            .filter((warning: EventParticipantDivisionWarning) => (
+              warning.divisionId.length > 0
+              && warning.message.length > 0
+              && warning.maxTeams > 0
+            ))
+        : [],
       weeklySelectionRequired: Boolean(response?.weeklySelectionRequired),
     };
   }

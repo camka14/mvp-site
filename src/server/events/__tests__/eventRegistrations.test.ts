@@ -385,6 +385,114 @@ describe('buildEventParticipantSnapshot', () => {
       }),
     ]);
   });
+
+  it('returns backend division warnings for overfilled and under-slotted team divisions', async () => {
+    const snapshot = await buildEventParticipantSnapshot({
+      event: {
+        id: 'event_1',
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        singleDivision: false,
+        divisions: ['div_over', 'div_missing'],
+        maxParticipants: 6,
+      },
+    }, {
+      eventRegistrations: {
+        findMany: jest.fn().mockResolvedValue([
+          ...['team_1', 'team_2', 'team_3'].map((teamId, index) => ({
+            id: `event_1__team__${teamId}`,
+            eventId: 'event_1',
+            registrantId: teamId,
+            parentId: `canonical_${teamId}`,
+            registrantType: 'TEAM',
+            rosterRole: 'PARTICIPANT',
+            status: 'ACTIVE',
+            eventTeamId: teamId,
+            ageAtEvent: null,
+            divisionId: 'div_over',
+            divisionTypeId: null,
+            divisionTypeKey: null,
+            consentDocumentId: null,
+            consentStatus: null,
+            createdBy: 'user_1',
+            slotId: null,
+            occurrenceDate: null,
+            createdAt: new Date(`2026-04-01T00:0${index}:00.000Z`),
+            updatedAt: new Date(`2026-04-01T00:0${index}:00.000Z`),
+          })),
+          {
+            id: 'event_1__team__team_4',
+            eventId: 'event_1',
+            registrantId: 'team_4',
+            parentId: 'canonical_team_4',
+            registrantType: 'TEAM',
+            rosterRole: 'PARTICIPANT',
+            status: 'ACTIVE',
+            eventTeamId: 'team_4',
+            ageAtEvent: null,
+            divisionId: 'div_missing',
+            divisionTypeId: null,
+            divisionTypeKey: null,
+            consentDocumentId: null,
+            consentStatus: null,
+            createdBy: 'user_1',
+            slotId: null,
+            occurrenceDate: null,
+            createdAt: new Date('2026-04-01T00:04:00.000Z'),
+            updatedAt: new Date('2026-04-01T00:04:00.000Z'),
+          },
+        ]),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'team_1', kind: 'REGISTERED', parentTeamId: 'canonical_team_1', captainId: 'captain_1' },
+          { id: 'team_2', kind: 'REGISTERED', parentTeamId: 'canonical_team_2', captainId: 'captain_2' },
+          { id: 'team_3', kind: 'REGISTERED', parentTeamId: 'canonical_team_3', captainId: 'captain_3' },
+          { id: 'team_4', kind: 'REGISTERED', parentTeamId: 'canonical_team_4', captainId: 'captain_4' },
+        ]),
+      },
+      userData: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      divisions: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'div_over',
+            key: 'over',
+            kind: 'LEAGUE',
+            divisionTypeId: null,
+            maxParticipants: 2,
+            teamIds: ['team_1', 'team_2', 'team_3'],
+          },
+          {
+            id: 'div_missing',
+            key: 'missing',
+            kind: 'LEAGUE',
+            divisionTypeId: null,
+            maxParticipants: 4,
+            teamIds: ['team_4', 'placeholder_1'],
+          },
+        ]),
+      },
+    } as any);
+
+    expect(snapshot.divisionWarnings).toEqual([
+      expect.objectContaining({
+        divisionId: 'div_over',
+        code: 'OVER_CAPACITY',
+        filledCount: 3,
+        slotCount: 3,
+        maxTeams: 2,
+      }),
+      expect.objectContaining({
+        divisionId: 'div_missing',
+        code: 'MISSING_PLACEHOLDERS',
+        filledCount: 1,
+        slotCount: 2,
+        maxTeams: 4,
+      }),
+    ]);
+  });
 });
 
 describe('getEventParticipantIdsForEvent', () => {

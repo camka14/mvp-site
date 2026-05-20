@@ -88,6 +88,15 @@ export type EventParticipantDivisionIds = {
   freeAgentIds: string[];
 };
 
+export type EventParticipantDivisionWarning = {
+  divisionId: string;
+  code: 'OVER_CAPACITY' | 'MISSING_PLACEHOLDERS';
+  message: string;
+  filledCount: number;
+  slotCount: number;
+  maxTeams: number;
+};
+
 export type EventParticipantIdsSnapshot = {
   teamIds: string[];
   userIds: string[];
@@ -119,6 +128,7 @@ export type EventParticipantSnapshot = {
   participantCount: number;
   participantCapacity: number | null;
   occurrence: { slotId: string; occurrenceDate: string } | null;
+  divisionWarnings: EventParticipantDivisionWarning[];
 };
 
 const DISPLAY_MEMBER_STATUSES = new Set<RegistrationLifecycleStatus>(['PENDING', 'ACTIVE', 'BLOCKED']);
@@ -316,7 +326,10 @@ const registrationSelect = {
 const participantDivisionSelect = {
   id: true,
   key: true,
+  kind: true,
   divisionTypeId: true,
+  maxParticipants: true,
+  teamIds: true,
 } as const;
 
 const resolveDivisionAliases = (value: string | null): string[] => {
@@ -904,6 +917,54 @@ export const buildEventParticipantSnapshot = async (params: {
     pushUnique(group.freeAgentIds, normalizeId(row.registrantId));
   });
 
+  const divisionWarnings: EventParticipantDivisionWarning[] = [];
+  if (Boolean(params.event.teamSignup)) {
+    const filledCountsByDivisionId = new Map<string, number>();
+    participantEntries
+      .filter((row) => row.registrantType === 'TEAM')
+      .forEach((row) => {
+        const divisionId = resolveDivisionIdentity(row).divisionId;
+        if (!divisionId) {
+          return;
+        }
+        filledCountsByDivisionId.set(divisionId, (filledCountsByDivisionId.get(divisionId) ?? 0) + 1);
+      });
+
+    divisionRows.forEach((row) => {
+      const divisionId = normalizeId(row.id);
+      if (!divisionId || String(row.kind ?? 'LEAGUE').toUpperCase() === 'PLAYOFF') {
+        return;
+      }
+      const maxTeams = positiveInt(row.maxParticipants)
+        ?? (Boolean(params.event.singleDivision) ? positiveInt(params.event.maxParticipants) : null);
+      if (!maxTeams) {
+        return;
+      }
+      const filledCount = filledCountsByDivisionId.get(divisionId) ?? 0;
+      const slotCount = normalizeIdList(row.teamIds).length;
+      if (filledCount > maxTeams) {
+        divisionWarnings.push({
+          divisionId,
+          code: 'OVER_CAPACITY',
+          message: `This division has ${filledCount} teams, which is over the ${maxTeams}-team limit.`,
+          filledCount,
+          slotCount,
+          maxTeams,
+        });
+      }
+      if (slotCount < maxTeams) {
+        divisionWarnings.push({
+          divisionId,
+          code: 'MISSING_PLACEHOLDERS',
+          message: `This division has ${slotCount} team slots for a ${maxTeams}-team max. Rebuilding the event will create the missing placeholders.`,
+          filledCount,
+          slotCount,
+          maxTeams,
+        });
+      }
+    });
+  }
+
   return {
     participants: {
       teamIds: uniqueRegistrantIds(participantEntries, ['TEAM']),
@@ -951,6 +1012,7 @@ export const buildEventParticipantSnapshot = async (params: {
         occurrenceDate: occurrence.occurrenceDate,
       }
       : null,
+    divisionWarnings,
   };
 };
 
