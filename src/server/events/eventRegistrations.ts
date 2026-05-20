@@ -780,6 +780,11 @@ export const buildEventParticipantSnapshot = async (params: {
       .map((team) => normalizeIdKey(team.id))
       .filter((teamId): teamId is string => Boolean(teamId)),
   );
+  const teamsById = new Map<string, any>(
+    (teams as any[])
+      .map((team) => [normalizeIdKey(team.id), team])
+      .filter((entry): entry is [string, any] => Boolean(entry[0])),
+  );
   const isDisplayableTeamRegistration = (row: RegistrationRow): boolean => (
     row.registrantType !== 'TEAM'
     || (
@@ -787,8 +792,58 @@ export const buildEventParticipantSnapshot = async (params: {
       && !placeholderTeamIds.has(normalizeIdKey(row.eventTeamId) ?? '')
     )
   );
+  const teamRegistrationIdentityKey = (row: RegistrationRow): string | null => {
+    if (row.registrantType !== 'TEAM') {
+      return null;
+    }
+    const eventTeam = teamsById.get(normalizeIdKey(row.eventTeamId) ?? '')
+      ?? teamsById.get(normalizeIdKey(row.registrantId) ?? '');
+    return normalizeIdKey(row.parentId)
+      ?? normalizeIdKey(eventTeam?.parentTeamId)
+      ?? normalizeIdKey(row.eventTeamId)
+      ?? normalizeIdKey(row.registrantId);
+  };
+  const compareTeamRegistrationFreshness = (left: RegistrationRow, right: RegistrationRow): number => {
+    const leftUpdatedAt = left.updatedAt ? new Date(left.updatedAt).getTime() : 0;
+    const rightUpdatedAt = right.updatedAt ? new Date(right.updatedAt).getTime() : 0;
+    if (leftUpdatedAt !== rightUpdatedAt) {
+      return leftUpdatedAt - rightUpdatedAt;
+    }
+    const leftCreatedAt = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+    const rightCreatedAt = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+    if (leftCreatedAt !== rightCreatedAt) {
+      return leftCreatedAt - rightCreatedAt;
+    }
+    return String(left.id).localeCompare(String(right.id));
+  };
+  const dedupeTeamParticipantEntries = (rows: RegistrationRow[]): RegistrationRow[] => {
+    if (!Boolean(params.event.teamSignup)) {
+      return rows;
+    }
+    const selectedByIdentity = new Map<string, RegistrationRow>();
+    const passthroughRows: RegistrationRow[] = [];
+    rows.forEach((row) => {
+      if (row.registrantType !== 'TEAM') {
+        passthroughRows.push(row);
+        return;
+      }
+      const identityKey = teamRegistrationIdentityKey(row);
+      if (!identityKey) {
+        passthroughRows.push(row);
+        return;
+      }
+      const existing = selectedByIdentity.get(identityKey);
+      if (!existing || compareTeamRegistrationFreshness(existing, row) < 0) {
+        selectedByIdentity.set(identityKey, row);
+      }
+    });
+    const selectedIds = new Set(Array.from(selectedByIdentity.values()).map((row) => row.id));
+    return rows.filter((row) => row.registrantType !== 'TEAM' || selectedIds.has(row.id));
+  };
 
-  const participantEntries = registrations.filter(isRegisteredParticipant).filter(isDisplayableTeamRegistration);
+  const participantEntries = dedupeTeamParticipantEntries(
+    registrations.filter(isRegisteredParticipant).filter(isDisplayableTeamRegistration),
+  );
   const waitlistEntries = registrations.filter((row) => isDisplayableRole(row, 'WAITLIST'));
   const freeAgentEntries = registrations.filter((row) => isDisplayableRole(row, 'FREE_AGENT'));
   const participantCount = Boolean(params.event.teamSignup)

@@ -493,6 +493,116 @@ describe('buildEventParticipantSnapshot', () => {
       }),
     ]);
   });
+
+  it('dedupes active team registrations by canonical team identity', async () => {
+    const openDivisionId = 'event_1__division__open';
+    const mensDivisionId = 'event_1__division__mens';
+    const oldRegistration = {
+      id: 'event_1__team__old_event_team',
+      eventId: 'event_1',
+      registrantId: 'old_event_team',
+      parentId: 'canonical_team_1',
+      registrantType: 'TEAM',
+      rosterRole: 'PARTICIPANT',
+      status: 'ACTIVE',
+      eventTeamId: 'old_event_team',
+      sourceTeamRegistrationId: null,
+      ageAtEvent: null,
+      divisionId: openDivisionId,
+      divisionTypeId: 'open',
+      divisionTypeKey: 'open',
+      jerseyNumber: null,
+      position: null,
+      isCaptain: false,
+      consentDocumentId: null,
+      consentStatus: null,
+      createdBy: 'user_1',
+      slotId: null,
+      occurrenceDate: null,
+      createdAt: new Date('2026-04-01T00:00:00.000Z'),
+      updatedAt: new Date('2026-04-01T00:00:00.000Z'),
+    };
+    const freshRegistration = {
+      ...oldRegistration,
+      id: 'event_1__team__fresh_event_team',
+      registrantId: 'fresh_event_team',
+      eventTeamId: 'fresh_event_team',
+      divisionId: mensDivisionId,
+      divisionTypeId: 'mens',
+      divisionTypeKey: 'mens',
+      updatedAt: new Date('2026-04-02T00:00:00.000Z'),
+    };
+
+    const snapshot = await buildEventParticipantSnapshot({
+      event: {
+        id: 'event_1',
+        eventType: 'LEAGUE',
+        teamSignup: true,
+        singleDivision: false,
+        divisions: [openDivisionId, mensDivisionId],
+        maxParticipants: 12,
+      },
+    }, {
+      eventRegistrations: {
+        findMany: jest.fn().mockResolvedValue([oldRegistration, freshRegistration]),
+      },
+      teams: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: 'old_event_team',
+            name: 'Sea Glass Smash',
+            kind: 'REGISTERED',
+            parentTeamId: 'canonical_team_1',
+            captainId: 'captain_1',
+          },
+          {
+            id: 'fresh_event_team',
+            name: 'Sea Glass Smash',
+            kind: 'REGISTERED',
+            parentTeamId: 'canonical_team_1',
+            captainId: 'captain_1',
+          },
+        ]),
+      },
+      userData: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      divisions: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: openDivisionId,
+            key: 'open',
+            kind: 'LEAGUE',
+            divisionTypeId: 'open',
+            maxParticipants: 12,
+            teamIds: ['old_event_team'],
+          },
+          {
+            id: mensDivisionId,
+            key: 'mens',
+            kind: 'LEAGUE',
+            divisionTypeId: 'mens',
+            maxParticipants: 12,
+            teamIds: ['fresh_event_team'],
+          },
+        ]),
+      },
+    } as any);
+
+    expect(snapshot.participants.teamIds).toEqual(['fresh_event_team']);
+    expect(snapshot.participants.divisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        divisionId: openDivisionId,
+        teamIds: [],
+      }),
+      expect.objectContaining({
+        divisionId: mensDivisionId,
+        teamIds: ['fresh_event_team'],
+      }),
+    ]));
+    expect(snapshot.teams.map((team) => team.id)).toEqual(['fresh_event_team']);
+    expect(snapshot.participantCount).toBe(1);
+  });
 });
 
 describe('getEventParticipantIdsForEvent', () => {

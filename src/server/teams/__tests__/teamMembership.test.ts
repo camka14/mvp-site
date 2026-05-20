@@ -847,9 +847,6 @@ describe('claimOrCreateEventTeamSnapshot', () => {
       division: 'div_a',
     }));
 
-    expect(findManyMock).not.toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ parentTeamId: 'event_team_existing' }),
-    }));
     expect(findManyMock).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ kind: 'PLACEHOLDER' }),
     }));
@@ -858,6 +855,15 @@ describe('claimOrCreateEventTeamSnapshot', () => {
       data: expect.objectContaining({
         kind: 'REGISTERED',
         parentTeamId: 'canonical_team_1',
+        division: 'div_a',
+        divisionTypeId: 'open',
+      }),
+    }));
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'event_team_duplicate' },
+      data: expect.objectContaining({
+        kind: 'PLACEHOLDER',
+        parentTeamId: null,
         division: 'div_a',
         divisionTypeId: 'open',
       }),
