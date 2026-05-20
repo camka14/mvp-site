@@ -5,6 +5,8 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useLayoutEffect,
+  useRef,
   Suspense,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -65,6 +67,7 @@ import {
   Avatar,
   SimpleGrid,
   Select,
+  SegmentedControl,
   Modal,
   Stack,
   PasswordInput,
@@ -194,6 +197,135 @@ type ProfileViewTab =
   | "templates"
   | "billing";
 type ProfileEditTab = "general" | "security";
+type ProfileRefundRequestsTab = "submitted" | "hosted";
+
+const PROFILE_BILLING_VISIBLE_ITEM_COUNT = 5;
+const PROFILE_BILLING_LIST_GAP = 12;
+
+const PROFILE_REFUND_REQUEST_TABS: Array<{
+  description: string;
+  label: string;
+  title: string;
+  value: ProfileRefundRequestsTab;
+}> = [
+  {
+    value: "submitted",
+    label: "Your requests",
+    title: "Your Refund Requests",
+    description:
+      "Track the refund requests you submitted and their current status.",
+  },
+  {
+    value: "hosted",
+    label: "Hosted requests",
+    title: "Hosted Event Refund Requests",
+    description:
+      "Review refund requests submitted by participants for events you host.",
+  },
+];
+
+type ProfileScrollableListProps = {
+  ariaLabel: string;
+  children: React.ReactNode;
+  itemCount: number;
+};
+
+function ProfileScrollableList({
+  ariaLabel,
+  children,
+  itemCount,
+}: ProfileScrollableListProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [measuredMaxHeight, setMeasuredMaxHeight] = useState<number | null>(
+    null,
+  );
+  const shouldScroll = itemCount > PROFILE_BILLING_VISIBLE_ITEM_COUNT;
+
+  useLayoutEffect(() => {
+    if (!shouldScroll) return;
+
+    const container = containerRef.current;
+    if (!container) return;
+
+    let animationFrame: number | null = null;
+
+    const updateMeasuredHeight = () => {
+      animationFrame = null;
+      const visibleItems = Array.from(container.children)
+        .slice(0, PROFILE_BILLING_VISIBLE_ITEM_COUNT)
+        .filter((child): child is HTMLElement => child instanceof HTMLElement);
+
+      if (!visibleItems.length) return;
+
+      const nextHeight =
+        visibleItems.reduce(
+          (total, child) => total + child.getBoundingClientRect().height,
+          0,
+        ) +
+        PROFILE_BILLING_LIST_GAP * Math.max(visibleItems.length - 1, 0);
+
+      setMeasuredMaxHeight((current) => {
+        const rounded = Math.ceil(nextHeight);
+        return current === rounded ? current : rounded;
+      });
+    };
+
+    const scheduleMeasurement = () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      animationFrame = window.requestAnimationFrame(updateMeasuredHeight);
+    };
+
+    scheduleMeasurement();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", scheduleMeasurement);
+      return () => {
+        if (animationFrame !== null) {
+          window.cancelAnimationFrame(animationFrame);
+        }
+        window.removeEventListener("resize", scheduleMeasurement);
+      };
+    }
+
+    const resizeObserver = new ResizeObserver(scheduleMeasurement);
+    resizeObserver.observe(container);
+    Array.from(container.children)
+      .slice(0, PROFILE_BILLING_VISIBLE_ITEM_COUNT)
+      .forEach((child) => {
+        if (child instanceof HTMLElement) {
+          resizeObserver.observe(child);
+        }
+      });
+
+    return () => {
+      if (animationFrame !== null) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+      resizeObserver.disconnect();
+    };
+  }, [children, itemCount, shouldScroll]);
+
+  return (
+    <div
+      ref={containerRef}
+      aria-label={ariaLabel}
+      className="space-y-3"
+      style={
+        shouldScroll
+          ? {
+              maxHeight: measuredMaxHeight ?? undefined,
+              overflowY: "auto",
+              paddingRight: 4,
+            }
+          : undefined
+      }
+    >
+      {children}
+    </div>
+  );
+}
 
 type ProfileSidebarItemProps = {
   active: boolean;
@@ -216,9 +348,9 @@ function ProfileSidebarItem({
     <button
       type="button"
       onClick={onClick}
-      className={`w-full rounded-2xl border px-4 py-3 text-left transition-all ${
+      className={`w-full rounded-lg border px-3 py-2.5 text-left transition-all ${
         active
-          ? "border-blue-300 bg-blue-600 text-white shadow-lg shadow-blue-100"
+          ? "border-blue-300 bg-blue-600 text-white shadow-sm"
           : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
       }`}
     >
@@ -273,8 +405,9 @@ function ProfilePageContent() {
     );
   const [savingNotificationSettings, setSavingNotificationSettings] =
     useState(false);
-  const [notificationSettingsError, setNotificationSettingsError] =
-    useState<string | null>(null);
+  const [notificationSettingsError, setNotificationSettingsError] = useState<
+    string | null
+  >(null);
 
   // Profile form data
   const [profileData, setProfileData] = useState({
@@ -286,8 +419,9 @@ function ProfilePageContent() {
   });
   const [savedBillingAddress, setSavedBillingAddress] =
     useState<BillingAddress>(EMPTY_BILLING_ADDRESS);
-  const [billingAddressData, setBillingAddressData] =
-    useState<BillingAddress>(EMPTY_BILLING_ADDRESS);
+  const [billingAddressData, setBillingAddressData] = useState<BillingAddress>(
+    EMPTY_BILLING_ADDRESS,
+  );
   const [loadingBillingAddress, setLoadingBillingAddress] = useState(false);
   const [billingAddressError, setBillingAddressError] = useState<string | null>(
     null,
@@ -371,7 +505,9 @@ function ProfilePageContent() {
   );
   const [payingBill, setPayingBill] = useState<OwnedBill | null>(null);
   const [splittingBillId, setSplittingBillId] = useState<string | null>(null);
-  const [cancellingBillPaymentId, setCancellingBillPaymentId] = useState<string | null>(null);
+  const [cancellingBillPaymentId, setCancellingBillPaymentId] = useState<
+    string | null
+  >(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [productsById, setProductsById] = useState<Record<string, Product>>({});
   const [organizationsById, setOrganizationsById] = useState<
@@ -383,6 +519,8 @@ function ProfilePageContent() {
   );
   const [cancellingSubId, setCancellingSubId] = useState<string | null>(null);
   const [restartingSubId, setRestartingSubId] = useState<string | null>(null);
+  const [refundRequestsTab, setRefundRequestsTab] =
+    useState<ProfileRefundRequestsTab>("submitted");
   const [unsignedDocuments, setUnsignedDocuments] = useState<
     ProfileDocumentCard[]
   >([]);
@@ -557,9 +695,8 @@ function ProfilePageContent() {
         setError("Please provide a valid date of birth");
         return;
       }
-      const normalizedBillingAddress = normalizeBillingAddress(
-        billingAddressData,
-      );
+      const normalizedBillingAddress =
+        normalizeBillingAddress(billingAddressData);
       if (
         !normalizedBillingAddress.line1.trim() ||
         !normalizedBillingAddress.city.trim() ||
@@ -576,8 +713,12 @@ function ProfilePageContent() {
         setError("Select a supported billing state.");
         return;
       }
-      if (!isSupportedBillingCountryCode(normalizedBillingAddress.countryCode)) {
-        setError("Only United States billing addresses are supported right now.");
+      if (
+        !isSupportedBillingCountryCode(normalizedBillingAddress.countryCode)
+      ) {
+        setError(
+          "Only United States billing addresses are supported right now.",
+        );
         return;
       }
 
@@ -596,7 +737,9 @@ function ProfilePageContent() {
           city: normalizedBillingAddress.city.trim(),
           state: normalizeUsStateCode(normalizedBillingAddress.state),
           postalCode: normalizedBillingAddress.postalCode.trim(),
-          countryCode: normalizeBillingCountryCode(normalizedBillingAddress.countryCode),
+          countryCode: normalizeBillingCountryCode(
+            normalizedBillingAddress.countryCode,
+          ),
         }),
       ]);
 
@@ -846,7 +989,10 @@ function ProfilePageContent() {
           const leaveSharedChats = window.confirm(
             "Leave all chats with this user? Select OK to leave shared chats now, or Cancel to keep them.",
           );
-          const result = await userService.blockUser(targetUserId, leaveSharedChats);
+          const result = await userService.blockUser(
+            targetUserId,
+            leaveSharedChats,
+          );
           setUser(result.user);
           if (result.removedChatIds.length > 0) {
             hideChatGroups(result.removedChatIds);
@@ -1271,7 +1417,11 @@ function ProfilePageContent() {
   );
 
   const handleBillPaymentPending = useCallback(async () => {
-    if (!billPaymentData?.billId || !billPaymentData.billPaymentId || !billPaymentData.paymentIntent) {
+    if (
+      !billPaymentData?.billId ||
+      !billPaymentData.billPaymentId ||
+      !billPaymentData.paymentIntent
+    ) {
       await loadBills();
       return;
     }
@@ -1306,7 +1456,9 @@ function ProfilePageContent() {
         await loadBills();
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : "Failed to cancel pending payment";
+          err instanceof Error
+            ? err.message
+            : "Failed to cancel pending payment";
         setBillError(message);
         notifications.show({ color: "red", message });
       } finally {
@@ -1649,11 +1801,7 @@ function ProfilePageContent() {
   );
 
   const confirmPasswordAndStartSigning = useCallback(async () => {
-    if (
-      !activeSigningDocument ||
-      !user ||
-      !authUser?.email
-    ) {
+    if (!activeSigningDocument || !user || !authUser?.email) {
       return;
     }
     if (!signPassword.trim()) {
@@ -1730,8 +1878,13 @@ function ProfilePageContent() {
       documentId: string;
       type: SignStep["type"];
     }): Promise<{ operationId?: string; syncStatus?: string }> => {
-      if ((!activeSigningDocument?.eventId && !activeSigningDocument?.teamId) || !user) {
-        throw new Error("A signing source and user are required to record signatures.");
+      if (
+        (!activeSigningDocument?.eventId && !activeSigningDocument?.teamId) ||
+        !user
+      ) {
+        throw new Error(
+          "A signing source and user are required to record signatures.",
+        );
       }
       const signingUserId =
         activeSigningDocument.signerContext === "child" &&
@@ -2260,8 +2413,8 @@ function ProfilePageContent() {
   ];
 
   const renderOverviewTab = () => (
-    <div className="space-y-6">
-      <Paper withBorder radius="xl" p="lg" shadow="sm">
+    <div className="space-y-5">
+      <Paper withBorder radius="lg" p="md" shadow="xs">
         <Group justify="space-between" align="flex-start" gap="md">
           <div>
             <Title order={4}>Billing address</Title>
@@ -2293,11 +2446,11 @@ function ProfilePageContent() {
         )}
       </Paper>
 
-      <Paper withBorder radius="xl" p="lg" shadow="sm">
+      <Paper withBorder radius="lg" p="md" shadow="xs">
         <ProfileInvitesSection userId={user.$id} />
       </Paper>
 
-      <Paper withBorder radius="xl" p="lg" shadow="sm">
+      <Paper withBorder radius="lg" p="md" shadow="xs">
         <Suspense fallback={<Loading text="Loading teams..." />}>
           <ManageTeams showNavigation={false} withContainer={false} />
         </Suspense>
@@ -2307,7 +2460,7 @@ function ProfilePageContent() {
 
   const renderNotificationsTab = () => (
     <div className="space-y-6">
-      <Paper withBorder radius="xl" p="lg" shadow="sm">
+      <Paper withBorder radius="lg" p="md" shadow="xs">
         <Group justify="space-between" align="flex-start" gap="md" mb="md">
           <div>
             <Title order={4}>Notifications</Title>
@@ -2339,7 +2492,7 @@ function ProfilePageContent() {
                 {NOTIFICATION_CHANNELS.map((channel) => (
                   <th
                     key={channel}
-                    className="border-b border-slate-200 px-3 py-3 text-center font-semibold capitalize text-slate-700"
+                    className="border-b border-slate-200 px-3 py-3 text-center font-semibold text-slate-700 capitalize"
                   >
                     {channel}
                   </th>
@@ -2401,7 +2554,7 @@ function ProfilePageContent() {
     emptyLabel: string,
     content: React.ReactNode,
   ) => (
-    <Paper withBorder radius="xl" p="lg" shadow="sm">
+    <Paper withBorder radius="lg" p="md" shadow="xs">
       <Title order={5} mb="sm">
         {title}
       </Title>
@@ -2421,7 +2574,7 @@ function ProfilePageContent() {
 
   const renderSocialTab = () => (
     <div className="space-y-6">
-      <Paper withBorder radius="xl" p="xl" shadow="sm">
+      <Paper withBorder radius="lg" p="lg" shadow="xs">
         <Group justify="space-between" align="flex-start" gap="md">
           <div>
             <Badge variant="light" color="blue" radius="xl">
@@ -2446,7 +2599,7 @@ function ProfilePageContent() {
           </Button>
         </Group>
         <div className="mt-5 grid gap-3 sm:grid-cols-5">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Friends
             </Text>
@@ -2454,7 +2607,7 @@ function ProfilePageContent() {
               {socialGraph?.friends.length ?? 0}
             </Text>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Following
             </Text>
@@ -2462,7 +2615,7 @@ function ProfilePageContent() {
               {socialGraph?.following.length ?? 0}
             </Text>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Followers
             </Text>
@@ -2470,7 +2623,7 @@ function ProfilePageContent() {
               {socialGraph?.followers.length ?? 0}
             </Text>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Requests
             </Text>
@@ -2478,7 +2631,7 @@ function ProfilePageContent() {
               {socialGraph?.incomingFriendRequests.length ?? 0}
             </Text>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Blocked
             </Text>
@@ -2492,7 +2645,7 @@ function ProfilePageContent() {
       {socialError && <Alert color="red">{socialError}</Alert>}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.85fr)]">
-        <Paper withBorder radius="xl" p="lg" shadow="sm">
+        <Paper withBorder radius="lg" p="md" shadow="xs">
           <Title order={5}>Find people</Title>
           <Text size="sm" c="dimmed" mt="xs" mb="md">
             Search by name or username and manage friend/follow actions directly
@@ -2954,9 +3107,9 @@ function ProfilePageContent() {
     <div className="space-y-6">
       <Paper
         withBorder
-        radius="xl"
-        p="xl"
-        shadow="sm"
+        radius="lg"
+        p="lg"
+        shadow="xs"
         style={{
           background:
             "linear-gradient(135deg, rgba(220, 234, 247, 0.9), rgba(248, 250, 252, 0.95))",
@@ -2996,7 +3149,7 @@ function ProfilePageContent() {
           </Group>
         </Group>
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+          <div className="rounded-lg border border-white/70 bg-white/80 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Linked children
             </Text>
@@ -3004,7 +3157,7 @@ function ProfilePageContent() {
               {children.length}
             </Text>
           </div>
-          <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+          <div className="rounded-lg border border-white/70 bg-white/80 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Guardian actions
             </Text>
@@ -3012,7 +3165,7 @@ function ProfilePageContent() {
               {joinRequests.length}
             </Text>
           </div>
-          <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3">
+          <div className="rounded-lg border border-white/70 bg-white/80 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Pending child docs
             </Text>
@@ -3027,7 +3180,7 @@ function ProfilePageContent() {
 
       {showAddChildForm && (
         <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
-          <Paper withBorder radius="xl" p="lg" shadow="sm">
+          <Paper withBorder radius="lg" p="md" shadow="xs">
             <div className="space-y-3">
               <Title order={5}>
                 {isEditingChild ? "Edit child details" : "Add a child"}
@@ -3107,7 +3260,7 @@ function ProfilePageContent() {
             </div>
           </Paper>
 
-          <Paper withBorder radius="xl" p="lg" shadow="sm">
+          <Paper withBorder radius="lg" p="md" shadow="xs">
             <div className="space-y-3">
               <Title order={5}>Link an existing child</Title>
               <Text size="sm" c="dimmed">
@@ -3248,7 +3401,7 @@ function ProfilePageContent() {
         </SimpleGrid>
       )}
 
-      <Paper withBorder radius="xl" p="lg" shadow="sm">
+      <Paper withBorder radius="lg" p="md" shadow="xs">
         <Group justify="space-between" mb="md">
           <div>
             <Title order={5}>Join requests awaiting guardian approval</Title>
@@ -3395,8 +3548,8 @@ function ProfilePageContent() {
                 <Paper
                   key={child.userId}
                   withBorder
-                  radius="xl"
-                  shadow="sm"
+                  radius="lg"
+                  shadow="xs"
                   style={{ overflow: "hidden" }}
                 >
                   <div className="h-20 border-b border-slate-200 bg-gradient-to-r from-blue-50 via-white to-slate-50" />
@@ -3467,7 +3620,7 @@ function ProfilePageContent() {
 
   const renderDocumentsTab = () => (
     <div className="space-y-6">
-      <Paper withBorder radius="xl" p="xl" shadow="sm">
+      <Paper withBorder radius="lg" p="lg" shadow="xs">
         <Group justify="space-between" align="flex-start" gap="md">
           <div>
             <Badge variant="light" color="blue" radius="xl">
@@ -3491,7 +3644,7 @@ function ProfilePageContent() {
           </Button>
         </Group>
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Requires signature
             </Text>
@@ -3499,7 +3652,7 @@ function ProfilePageContent() {
               {visibleUnsignedDocuments.length}
             </Text>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
             <Text size="xs" tt="uppercase" fw={700} c="dimmed">
               Signed records
             </Text>
@@ -3560,9 +3713,9 @@ function ProfilePageContent() {
                     <Paper
                       key={document.id}
                       withBorder
-                      radius="xl"
-                      p="lg"
-                      shadow="sm"
+                      radius="lg"
+                      p="md"
+                      shadow="xs"
                     >
                       <div className="space-y-3">
                         <Badge color="yellow" variant="light" radius="xl">
@@ -3652,9 +3805,9 @@ function ProfilePageContent() {
                     <Paper
                       key={document.id}
                       withBorder
-                      radius="xl"
-                      p="lg"
-                      shadow="sm"
+                      radius="lg"
+                      p="md"
+                      shadow="xs"
                     >
                       <div className="space-y-3">
                         <Badge color="green" variant="light" radius="xl">
@@ -3707,7 +3860,7 @@ function ProfilePageContent() {
 
   const renderTemplatesTab = () => (
     <div className="space-y-6">
-      <Paper withBorder radius="xl" p="xl" shadow="sm">
+      <Paper withBorder radius="lg" p="lg" shadow="xs">
         <Group justify="space-between" align="flex-start" gap="md">
           <div>
             <Badge variant="light" color="blue" radius="xl">
@@ -3744,9 +3897,9 @@ function ProfilePageContent() {
             <Paper
               key={template.id}
               withBorder
-              radius="xl"
-              p="lg"
-              shadow="sm"
+              radius="lg"
+              p="md"
+              shadow="xs"
               style={{
                 minHeight: 220,
                 display: "flex",
@@ -3787,372 +3940,439 @@ function ProfilePageContent() {
     </div>
   );
 
-  const renderBillingTab = () => (
-    <div className="space-y-6">
-      <Paper
-        withBorder
-        radius="xl"
-        p="xl"
-        shadow="sm"
-        style={{
-          background:
-            "linear-gradient(135deg, rgba(25, 73, 122, 0.96), rgba(61, 109, 157, 0.96))",
-          borderColor: "rgba(25, 73, 122, 0.2)",
-        }}
-      >
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <Badge radius="xl" color="blue" variant="white">
-              Billing
-            </Badge>
-            <Title order={3} mt="md" c="white">
-              Payments and subscriptions
-            </Title>
-            <Text size="sm" c="rgba(255,255,255,0.82)" mt="xs">
-              {userHasStripeAccount
-                ? "Manage your Stripe connection, upcoming bills, memberships, and refund activity."
-                : "Connect Stripe to accept payments for events and rentals, then monitor bills and memberships here."}
-            </Text>
-          </div>
-          <Button
-            variant="white"
-            color="dark"
-            loading={userHasStripeAccount ? managingStripe : connectingStripe}
-            onClick={
-              userHasStripeAccount
-                ? handleManageStripeAccount
-                : handleConnectStripeAccount
-            }
-          >
-            {userHasStripeAccount
-              ? "Manage Stripe account"
-              : "Connect Stripe account"}
-          </Button>
-        </div>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-            <Text size="xs" tt="uppercase" fw={700} c="rgba(255,255,255,0.72)">
-              Bills due
-            </Text>
-            <Text fw={700} size="xl" mt={2} c="white">
-              {pendingBillsCount}
-            </Text>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-            <Text size="xs" tt="uppercase" fw={700} c="rgba(255,255,255,0.72)">
-              Memberships
-            </Text>
-            <Text fw={700} size="xl" mt={2} c="white">
-              {activeMembershipCount}
-            </Text>
-          </div>
-          <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3">
-            <Text size="xs" tt="uppercase" fw={700} c="rgba(255,255,255,0.72)">
-              Refund views
-            </Text>
-            <Text fw={700} size="xl" mt={2} c="white">
-              2
-            </Text>
-          </div>
-        </div>
-      </Paper>
+  const renderBillingTab = () => {
+    const activeRefundRequestsTab =
+      PROFILE_REFUND_REQUEST_TABS.find(
+        (tab) => tab.value === refundRequestsTab,
+      ) ?? PROFILE_REFUND_REQUEST_TABS[0];
 
-      <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
-        <Paper withBorder radius="xl" p="lg" shadow="sm">
-          <Group justify="space-between" mb="sm">
+    return (
+      <div className="space-y-6">
+        <Paper
+          withBorder
+          radius="lg"
+          p="lg"
+          shadow="xs"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(25, 73, 122, 0.96), rgba(61, 109, 157, 0.96))",
+            borderColor: "rgba(25, 73, 122, 0.2)",
+          }}
+        >
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <Title order={4}>Bills</Title>
-              <Text size="sm" c="dimmed">
-                Upcoming payments for personal and team-owned billing.
+              <Badge radius="xl" color="blue" variant="white">
+                Billing
+              </Badge>
+              <Title order={3} mt="md" c="white">
+                Payments and subscriptions
+              </Title>
+              <Text size="sm" c="rgba(255,255,255,0.82)" mt="xs">
+                {userHasStripeAccount
+                  ? "Manage your Stripe connection, upcoming bills, memberships, and refund activity."
+                  : "Connect Stripe to accept payments for events and rentals, then monitor bills and memberships here."}
               </Text>
             </div>
             <Button
-              variant="light"
-              size="xs"
-              onClick={loadBills}
-              loading={loadingBills}
+              variant="white"
+              color="dark"
+              loading={userHasStripeAccount ? managingStripe : connectingStripe}
+              onClick={
+                userHasStripeAccount
+                  ? handleManageStripeAccount
+                  : handleConnectStripeAccount
+              }
             >
-              Refresh
+              {userHasStripeAccount
+                ? "Manage Stripe account"
+                : "Connect Stripe account"}
             </Button>
-          </Group>
-          {billError && (
-            <Alert color="red" mb="md">
-              {billError}
-            </Alert>
-          )}
-          {loadingBills ? (
-            <Text c="dimmed">Loading bills...</Text>
-          ) : bills.length === 0 ? (
-            <Text c="dimmed">No bills available.</Text>
-          ) : (
-            <div className="space-y-3">
-              {bills.map((bill) => {
-                const billPayments = (bill.payments ?? [])
-                  .slice()
-                  .sort((a, b) => a.sequence - b.sequence);
-                const processingPayment = billPayments.find(
-                  (payment) => payment.status === "PROCESSING",
-                );
-                const failedPayment = billPayments.find(
-                  (payment) => payment.status === "FAILED",
-                );
-                const disputedPayment = billPayments.find(
-                  (payment) => payment.status === "DISPUTED",
-                );
-                const isPaymentProcessing =
-                  bill.status === "PENDING" || Boolean(processingPayment);
-                const hasPaymentIssue = Boolean(failedPayment || disputedPayment);
-                const remaining = Math.max(
-                  bill.totalAmountCents - bill.paidAmountCents,
-                  0,
-                );
-                const nextAmount =
-                  processingPayment?.amountCents ??
-                  (bill.nextPaymentAmountCents !== null &&
-                  bill.nextPaymentAmountCents !== undefined
-                    ? bill.nextPaymentAmountCents
-                    : remaining);
-                const nextDue = bill.nextPaymentDue
-                  ? formatDisplayDate(bill.nextPaymentDue)
-                  : "TBD";
-                const ownerName =
-                  bill.ownerLabel ??
-                  (bill.ownerType === "TEAM"
-                    ? (userTeams[bill.ownerId]?.name ?? "Team")
-                    : user.fullName);
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-lg border border-white/10 bg-white/10 px-4 py-3">
+              <Text
+                size="xs"
+                tt="uppercase"
+                fw={700}
+                c="rgba(255,255,255,0.72)"
+              >
+                Bills due
+              </Text>
+              <Text fw={700} size="xl" mt={2} c="white">
+                {pendingBillsCount}
+              </Text>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/10 px-4 py-3">
+              <Text
+                size="xs"
+                tt="uppercase"
+                fw={700}
+                c="rgba(255,255,255,0.72)"
+              >
+                Memberships
+              </Text>
+              <Text fw={700} size="xl" mt={2} c="white">
+                {activeMembershipCount}
+              </Text>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-white/10 px-4 py-3">
+              <Text
+                size="xs"
+                tt="uppercase"
+                fw={700}
+                c="rgba(255,255,255,0.72)"
+              >
+                Refund views
+              </Text>
+              <Text fw={700} size="xl" mt={2} c="white">
+                2
+              </Text>
+            </div>
+          </div>
+        </Paper>
 
-                return (
-                  <Paper
-                    key={bill.$id}
-                    withBorder
-                    radius="lg"
-                    p="md"
-                    shadow="xs"
-                  >
-                    <Group justify="space-between" align="flex-start" gap="md">
-                      <div>
-                        <Text fw={700}>{ownerName}</Text>
-                        <Text size="sm" c="dimmed">
-                          Bill #{bill.$id.slice(0, 6)} • {bill.status}
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          Next due: {nextDue}
-                        </Text>
-                      </div>
-                      <Badge
-                        color={
-                          isPaymentProcessing
-                            ? "yellow"
-                            : hasPaymentIssue
-                              ? "red"
-                            : nextAmount > 0
+        <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
+          <Paper withBorder radius="lg" p="md" shadow="xs">
+            <Group justify="space-between" mb="sm">
+              <div>
+                <Title order={4}>Bills</Title>
+                <Text size="sm" c="dimmed">
+                  Upcoming payments for personal and team-owned billing.
+                </Text>
+              </div>
+              <Button
+                variant="light"
+                size="xs"
+                onClick={loadBills}
+                loading={loadingBills}
+              >
+                Refresh
+              </Button>
+            </Group>
+            {billError && (
+              <Alert color="red" mb="md">
+                {billError}
+              </Alert>
+            )}
+            {loadingBills ? (
+              <Text c="dimmed">Loading bills...</Text>
+            ) : bills.length === 0 ? (
+              <Text c="dimmed">No bills available.</Text>
+            ) : (
+              <ProfileScrollableList ariaLabel="Bills" itemCount={bills.length}>
+                {bills.map((bill) => {
+                  const billPayments = (bill.payments ?? [])
+                    .slice()
+                    .sort((a, b) => a.sequence - b.sequence);
+                  const processingPayment = billPayments.find(
+                    (payment) => payment.status === "PROCESSING",
+                  );
+                  const failedPayment = billPayments.find(
+                    (payment) => payment.status === "FAILED",
+                  );
+                  const disputedPayment = billPayments.find(
+                    (payment) => payment.status === "DISPUTED",
+                  );
+                  const isPaymentProcessing =
+                    bill.status === "PENDING" || Boolean(processingPayment);
+                  const hasPaymentIssue = Boolean(
+                    failedPayment || disputedPayment,
+                  );
+                  const remaining = Math.max(
+                    bill.totalAmountCents - bill.paidAmountCents,
+                    0,
+                  );
+                  const nextAmount =
+                    processingPayment?.amountCents ??
+                    (bill.nextPaymentAmountCents !== null &&
+                    bill.nextPaymentAmountCents !== undefined
+                      ? bill.nextPaymentAmountCents
+                      : remaining);
+                  const nextDue = bill.nextPaymentDue
+                    ? formatDisplayDate(bill.nextPaymentDue)
+                    : "TBD";
+                  const ownerName =
+                    bill.ownerLabel ??
+                    (bill.ownerType === "TEAM"
+                      ? (userTeams[bill.ownerId]?.name ?? "Team")
+                      : user.fullName);
+
+                  return (
+                    <Paper
+                      key={bill.$id}
+                      withBorder
+                      radius="lg"
+                      p="md"
+                      shadow="xs"
+                    >
+                      <Group
+                        justify="space-between"
+                        align="flex-start"
+                        gap="md"
+                      >
+                        <div>
+                          <Text fw={700}>{ownerName}</Text>
+                          <Text size="sm" c="dimmed">
+                            Bill #{bill.$id.slice(0, 6)} • {bill.status}
+                          </Text>
+                          <Text size="sm" c="dimmed">
+                            Next due: {nextDue}
+                          </Text>
+                        </div>
+                        <Badge
+                          color={
+                            isPaymentProcessing
                               ? "yellow"
-                              : "green"
-                        }
-                        variant="light"
-                        radius="xl"
-                      >
-                        {isPaymentProcessing
-                          ? "Pending"
-                          : disputedPayment
-                            ? "Payment disputed"
-                          : failedPayment
-                            ? "Payment failed"
-                            : nextAmount > 0
-                              ? "Payment due"
-                            : "Paid up"}
-                      </Badge>
-                    </Group>
-                    {isPaymentProcessing && (
-                      <Alert color="yellow" variant="light" mt="md">
-                        A bank payment is pending with Stripe. You can cancel it before Stripe completes it.
-                      </Alert>
-                    )}
-                    {hasPaymentIssue && !isPaymentProcessing && (
-                      <Alert color="red" variant="light" mt="md">
-                        {disputedPayment
-                          ? "This payment was disputed, so the bill is due again. Complete the payment to resolve it."
-                          : "Your payment did not go through, so you were not registered and the rental was not booked. Complete the payment to try again."}
-                      </Alert>
-                    )}
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                        <Text size="xs" tt="uppercase" fw={700} c="dimmed">
-                          Total
-                        </Text>
-                        <Text fw={700} mt={2}>
-                          {formatBillAmount(bill.totalAmountCents)}
-                        </Text>
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                        <Text size="xs" tt="uppercase" fw={700} c="dimmed">
-                          Paid
-                        </Text>
-                        <Text fw={700} mt={2}>
-                          {formatBillAmount(bill.paidAmountCents)}
-                        </Text>
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
-                        <Text size="xs" tt="uppercase" fw={700} c="dimmed">
-                          Next
-                        </Text>
-                        <Text fw={700} mt={2}>
-                          {formatBillAmount(nextAmount)}
-                        </Text>
-                      </div>
-                    </div>
-                    <Group gap="xs" justify="flex-end" mt="md">
-                      {bill.ownerType === "TEAM" && bill.allowSplit && (
-                        <Button
-                          size="xs"
-                          variant="default"
-                          loading={splittingBillId === bill.$id}
-                          onClick={() => handleSplitBill(bill)}
+                              : hasPaymentIssue
+                                ? "red"
+                                : nextAmount > 0
+                                  ? "yellow"
+                                  : "green"
+                          }
+                          variant="light"
+                          radius="xl"
                         >
-                          Split across team
-                        </Button>
+                          {isPaymentProcessing
+                            ? "Pending"
+                            : disputedPayment
+                              ? "Payment disputed"
+                              : failedPayment
+                                ? "Payment failed"
+                                : nextAmount > 0
+                                  ? "Payment due"
+                                  : "Paid up"}
+                        </Badge>
+                      </Group>
+                      {isPaymentProcessing && (
+                        <Alert color="yellow" variant="light" mt="md">
+                          A bank payment is pending with Stripe. You can cancel
+                          it before Stripe completes it.
+                        </Alert>
                       )}
-                      <Button
-                        size="xs"
-                        onClick={() => handlePayBill(bill)}
-                        disabled={nextAmount <= 0 || isPaymentProcessing || bill.status === "CANCELLED"}
-                      >
-                        {hasPaymentIssue ? "Complete payment" : "Pay next installment"}
-                      </Button>
-                      {processingPayment && (
+                      {hasPaymentIssue && !isPaymentProcessing && (
+                        <Alert color="red" variant="light" mt="md">
+                          {disputedPayment
+                            ? "This payment was disputed, so the bill is due again. Complete the payment to resolve it."
+                            : "Your payment did not go through, so you were not registered and the rental was not booked. Complete the payment to try again."}
+                        </Alert>
+                      )}
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                          <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+                            Total
+                          </Text>
+                          <Text fw={700} mt={2}>
+                            {formatBillAmount(bill.totalAmountCents)}
+                          </Text>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                          <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+                            Paid
+                          </Text>
+                          <Text fw={700} mt={2}>
+                            {formatBillAmount(bill.paidAmountCents)}
+                          </Text>
+                        </div>
+                        <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                          <Text size="xs" tt="uppercase" fw={700} c="dimmed">
+                            Next
+                          </Text>
+                          <Text fw={700} mt={2}>
+                            {formatBillAmount(nextAmount)}
+                          </Text>
+                        </div>
+                      </div>
+                      <Group gap="xs" justify="flex-end" mt="md">
+                        {bill.ownerType === "TEAM" && bill.allowSplit && (
+                          <Button
+                            size="xs"
+                            variant="default"
+                            loading={splittingBillId === bill.$id}
+                            onClick={() => handleSplitBill(bill)}
+                          >
+                            Split across team
+                          </Button>
+                        )}
                         <Button
                           size="xs"
+                          onClick={() => handlePayBill(bill)}
+                          disabled={
+                            nextAmount <= 0 ||
+                            isPaymentProcessing ||
+                            bill.status === "CANCELLED"
+                          }
+                        >
+                          {hasPaymentIssue
+                            ? "Complete payment"
+                            : "Pay next installment"}
+                        </Button>
+                        {processingPayment && (
+                          <Button
+                            size="xs"
+                            variant="light"
+                            color="red"
+                            loading={
+                              cancellingBillPaymentId === processingPayment.$id
+                            }
+                            onClick={() => handleCancelPendingBillPayment(bill)}
+                          >
+                            Cancel pending payment
+                          </Button>
+                        )}
+                      </Group>
+                    </Paper>
+                  );
+                })}
+              </ProfileScrollableList>
+            )}
+          </Paper>
+
+          <Paper withBorder radius="lg" p="md" shadow="xs">
+            <Group justify="space-between" mb="sm">
+              <div>
+                <Title order={4}>Memberships</Title>
+                <Text size="sm" c="dimmed">
+                  Subscription products tied to your account and organizations.
+                </Text>
+              </div>
+              <Button
+                variant="light"
+                size="xs"
+                onClick={loadSubscriptions}
+                loading={loadingSubscriptions}
+              >
+                Refresh
+              </Button>
+            </Group>
+            {subscriptionError && (
+              <Alert color="red" mb="md">
+                {subscriptionError}
+              </Alert>
+            )}
+            {loadingSubscriptions ? (
+              <Loading fullScreen={false} text="Loading memberships..." />
+            ) : subscriptions.length === 0 ? (
+              <Text c="dimmed">No active memberships.</Text>
+            ) : (
+              <ProfileScrollableList
+                ariaLabel="Memberships"
+                itemCount={subscriptions.length}
+              >
+                {subscriptions.map((sub) => {
+                  const status = sub.status || "ACTIVE";
+                  const isCancelled = status === "CANCELLED";
+                  const product = productsById[sub.productId];
+                  const organization = sub.organizationId
+                    ? organizationsById[sub.organizationId]
+                    : undefined;
+                  const membershipTitle =
+                    product?.name ?? sub.productId ?? "Membership";
+                  const organizationLabel = organization?.name
+                    ? organization.name
+                    : sub.organizationId
+                      ? `Organization ${sub.organizationId}`
+                      : "Organization";
+
+                  return (
+                    <Paper
+                      key={sub.$id}
+                      withBorder
+                      radius="lg"
+                      p="md"
+                      shadow="xs"
+                    >
+                      <Group
+                        justify="space-between"
+                        align="flex-start"
+                        gap="sm"
+                      >
+                        <div>
+                          <Text fw={700}>{membershipTitle}</Text>
+                          <Text size="sm" c="dimmed">
+                            {organizationLabel}
+                          </Text>
+                          <Text size="sm" mt={4}>
+                            {formatPrice(sub.priceCents)} / {sub.period}
+                          </Text>
+                          <Text size="xs" c="dimmed" mt={4}>
+                            Started {formatDisplayDate(sub.startDate)}
+                          </Text>
+                        </div>
+                        <Badge
+                          color={isCancelled ? "red" : "green"}
+                          variant="light"
+                          radius="xl"
+                        >
+                          {status}
+                        </Badge>
+                      </Group>
+                      {isCancelled ? (
+                        <Button
+                          variant="light"
+                          color="green"
+                          size="xs"
+                          fullWidth
+                          mt="md"
+                          loading={restartingSubId === sub.$id}
+                          onClick={() => handleRestartSubscription(sub.$id)}
+                        >
+                          Restart membership
+                        </Button>
+                      ) : (
+                        <Button
                           variant="light"
                           color="red"
-                          loading={cancellingBillPaymentId === processingPayment.$id}
-                          onClick={() => handleCancelPendingBillPayment(bill)}
+                          size="xs"
+                          fullWidth
+                          mt="md"
+                          loading={cancellingSubId === sub.$id}
+                          onClick={() => handleCancelSubscription(sub.$id)}
                         >
-                          Cancel pending payment
+                          Cancel membership
                         </Button>
                       )}
-                    </Group>
-                  </Paper>
-                );
-              })}
-            </div>
-          )}
-        </Paper>
+                    </Paper>
+                  );
+                })}
+              </ProfileScrollableList>
+            )}
+          </Paper>
+        </SimpleGrid>
 
-        <Paper withBorder radius="xl" p="lg" shadow="sm">
-          <Group justify="space-between" mb="sm">
+        <Paper withBorder radius="lg" p="md" shadow="xs">
+          <Group justify="space-between" align="flex-start" gap="md" mb="md">
             <div>
-              <Title order={4}>Memberships</Title>
+              <Title order={4}>{activeRefundRequestsTab.title}</Title>
               <Text size="sm" c="dimmed">
-                Subscription products tied to your account and organizations.
+                {activeRefundRequestsTab.description}
               </Text>
             </div>
-            <Button
-              variant="light"
-              size="xs"
-              onClick={loadSubscriptions}
-              loading={loadingSubscriptions}
-            >
-              Refresh
-            </Button>
+            <SegmentedControl
+              value={refundRequestsTab}
+              onChange={(value) =>
+                setRefundRequestsTab(value as ProfileRefundRequestsTab)
+              }
+              data={PROFILE_REFUND_REQUEST_TABS.map((tab) => ({
+                label: tab.label,
+                value: tab.value,
+              }))}
+            />
           </Group>
-          {subscriptionError && (
-            <Alert color="red" mb="md">
-              {subscriptionError}
-            </Alert>
-          )}
-          {loadingSubscriptions ? (
-            <Loading fullScreen={false} text="Loading memberships..." />
-          ) : subscriptions.length === 0 ? (
-            <Text c="dimmed">No active memberships.</Text>
-          ) : (
-            <div className="space-y-3">
-              {subscriptions.map((sub) => {
-                const status = sub.status || "ACTIVE";
-                const isCancelled = status === "CANCELLED";
-                const product = productsById[sub.productId];
-                const organization = sub.organizationId
-                  ? organizationsById[sub.organizationId]
-                  : undefined;
-                const membershipTitle =
-                  product?.name ?? sub.productId ?? "Membership";
-                const organizationLabel = organization?.name
-                  ? organization.name
-                  : sub.organizationId
-                    ? `Organization ${sub.organizationId}`
-                    : "Organization";
-
-                return (
-                  <Paper
-                    key={sub.$id}
-                    withBorder
-                    radius="lg"
-                    p="md"
-                    shadow="xs"
-                  >
-                    <Group justify="space-between" align="flex-start" gap="sm">
-                      <div>
-                        <Text fw={700}>{membershipTitle}</Text>
-                        <Text size="sm" c="dimmed">
-                          {organizationLabel}
-                        </Text>
-                        <Text size="sm" mt={4}>
-                          {formatPrice(sub.priceCents)} / {sub.period}
-                        </Text>
-                        <Text size="xs" c="dimmed" mt={4}>
-                          Started {formatDisplayDate(sub.startDate)}
-                        </Text>
-                      </div>
-                      <Badge
-                        color={isCancelled ? "red" : "green"}
-                        variant="light"
-                        radius="xl"
-                      >
-                        {status}
-                      </Badge>
-                    </Group>
-                    {isCancelled ? (
-                      <Button
-                        variant="light"
-                        color="green"
-                        size="xs"
-                        fullWidth
-                        mt="md"
-                        loading={restartingSubId === sub.$id}
-                        onClick={() => handleRestartSubscription(sub.$id)}
-                      >
-                        Restart membership
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="light"
-                        color="red"
-                        size="xs"
-                        fullWidth
-                        mt="md"
-                        loading={cancellingSubId === sub.$id}
-                        onClick={() => handleCancelSubscription(sub.$id)}
-                      >
-                        Cancel membership
-                      </Button>
-                    )}
-                  </Paper>
-                );
-              })}
-            </div>
-          )}
+          <RefundRequestsList
+            key={refundRequestsTab}
+            userId={refundRequestsTab === "submitted" ? user.$id : undefined}
+            hostId={refundRequestsTab === "hosted" ? user.$id : undefined}
+            showHeader={false}
+            withContainer={false}
+          />
         </Paper>
-      </SimpleGrid>
-
-      <div className="grid gap-6 xl:grid-cols-2">
-        <RefundRequestsList userId={user.$id} />
-        <RefundRequestsList hostId={user.$id} />
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderGeneralEditTab = () => (
     <div className="space-y-6">
-      <Paper withBorder radius="xl" p="xl" shadow="sm">
+      <Paper withBorder radius="lg" p="lg" shadow="xs">
         <Badge variant="light" color="blue" radius="xl">
           General info
         </Badge>
@@ -4165,7 +4385,7 @@ function ProfilePageContent() {
       </Paper>
 
       <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
-        <Paper withBorder radius="xl" p="lg" shadow="sm">
+        <Paper withBorder radius="lg" p="md" shadow="xs">
           <div className="space-y-4">
             <Title order={4}>Profile details</Title>
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
@@ -4213,7 +4433,7 @@ function ProfilePageContent() {
           </div>
         </Paper>
 
-        <Paper withBorder radius="xl" p="lg" shadow="sm">
+        <Paper withBorder radius="lg" p="md" shadow="xs">
           <div className="space-y-4">
             <Title order={4}>Profile photo</Title>
             <ImageUploader
@@ -4226,7 +4446,7 @@ function ProfilePageContent() {
               placeholder="Upload new profile picture"
             />
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <Text size="xs" tt="uppercase" fw={700} c="dimmed">
                   Member since
                 </Text>
@@ -4234,7 +4454,7 @@ function ProfilePageContent() {
                   {memberSinceLabel}
                 </Text>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <Text size="xs" tt="uppercase" fw={700} c="dimmed">
                   Current email
                 </Text>
@@ -4247,7 +4467,7 @@ function ProfilePageContent() {
         </Paper>
       </SimpleGrid>
 
-      <Paper withBorder radius="xl" p="lg" shadow="sm">
+      <Paper withBorder radius="lg" p="md" shadow="xs">
         <div className="space-y-4">
           <div>
             <Title order={4}>Billing address</Title>
@@ -4276,7 +4496,7 @@ function ProfilePageContent() {
 
   const renderSecurityEditTab = () => (
     <div className="space-y-6">
-      <Paper withBorder radius="xl" p="xl" shadow="sm">
+      <Paper withBorder radius="lg" p="lg" shadow="xs">
         <Badge variant="light" color="blue" radius="xl">
           Account security
         </Badge>
@@ -4289,7 +4509,7 @@ function ProfilePageContent() {
       </Paper>
 
       <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="lg">
-        <Paper withBorder radius="xl" p="lg" shadow="sm">
+        <Paper withBorder radius="lg" p="md" shadow="xs">
           <Group justify="space-between" mb="sm">
             <div>
               <Title order={4}>Email address</Title>
@@ -4336,7 +4556,7 @@ function ProfilePageContent() {
               </Button>
             </div>
           ) : (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
               <Group gap="sm">
                 <Mail className="h-4 w-4 text-slate-500" />
                 <Text size="sm" c="dimmed">
@@ -4347,7 +4567,7 @@ function ProfilePageContent() {
           )}
         </Paper>
 
-        <Paper withBorder radius="xl" p="lg" shadow="sm">
+        <Paper withBorder radius="lg" p="md" shadow="xs">
           <Group justify="space-between" mb="sm">
             <div>
               <Title order={4}>Password</Title>
@@ -4411,7 +4631,7 @@ function ProfilePageContent() {
               </Button>
             </div>
           ) : (
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
               <Group gap="sm">
                 <ShieldCheck className="h-4 w-4 text-slate-500" />
                 <Text size="sm" c="dimmed">
@@ -4454,19 +4674,19 @@ function ProfilePageContent() {
   return (
     <>
       <Navigation />
-      <div className="min-h-screen bg-[linear-gradient(180deg,_rgba(237,243,250,0.85)_0%,_rgba(248,250,252,0.96)_24%,_rgba(255,255,255,1)_100%)] py-8">
-        <Container size="xl">
-          <div className="space-y-6">
-            <Paper withBorder radius="xl" p="xl" shadow="sm">
-              <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+      <div className="min-h-screen bg-[var(--mvp-bg)]">
+        <Container fluid py="xl" className="discover-shell profile-page-shell">
+          <div className="space-y-5">
+            <Paper withBorder radius="lg" p="lg" shadow="xs">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                   <Avatar
                     src={profileImagePreviewUrl}
                     alt={displayName}
-                    size={128}
+                    size={112}
                     radius={999}
                     style={{
-                      boxShadow: "var(--mantine-shadow-lg)",
+                      boxShadow: "var(--mantine-shadow-md)",
                     }}
                   />
                   <div>
@@ -4506,12 +4726,13 @@ function ProfilePageContent() {
               </Alert>
             )}
 
-            <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
+            <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
               <div className="space-y-4">
                 <Paper
                   withBorder
                   radius="xl"
                   shadow="sm"
+                  className="profile-summary-card"
                   style={{ overflow: "hidden" }}
                 >
                   <div className="grid grid-cols-2 divide-x divide-y divide-slate-200">
@@ -4555,7 +4776,7 @@ function ProfilePageContent() {
                   </div>
                 </Paper>
 
-                <Paper withBorder radius="xl" p="sm" shadow="sm">
+                <Paper withBorder radius="lg" p="sm" shadow="xs">
                   <div className="space-y-2">
                     {isEditing
                       ? editNavigationItems.map((item) => (
@@ -4604,7 +4825,8 @@ function ProfilePageContent() {
                 Signed at{" "}
                 {formatDateTimeLabel(selectedSignedTextDocument.signedAt)}
               </Text>
-              {(selectedSignedTextDocument.eventName || selectedSignedTextDocument.teamName) && (
+              {(selectedSignedTextDocument.eventName ||
+                selectedSignedTextDocument.teamName) && (
                 <Text size="sm" c="dimmed">
                   {selectedSignedTextDocument.eventName
                     ? `Event: ${selectedSignedTextDocument.eventName}`

@@ -544,6 +544,18 @@ svg {
   border-radius: 1rem;
 }
 
+.profile-page-shell .mantine-Paper-root:not(.profile-summary-card) {
+  background: var(--ocean-surface);
+  border-color: var(--ocean-border);
+  border-radius: 1rem;
+  box-shadow: 0 8px 24px -22px rgba(15, 23, 42, 0.45);
+}
+
+.profile-page-shell .profile-summary-card {
+  background: var(--ocean-surface);
+  border-color: var(--ocean-border);
+}
+
 .org-page-shell .org-customer-table-card table {
   background: var(--ocean-surface);
 }

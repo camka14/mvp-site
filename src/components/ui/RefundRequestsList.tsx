@@ -14,6 +14,8 @@ type RefundRequestsListProps = {
   organizationId?: string;
   userId?: string;
   hostId?: string;
+  showHeader?: boolean;
+  withContainer?: boolean;
 };
 
 const displayUserName = (user: { firstName?: string; lastName?: string; userName?: string; $id?: string }) => {
@@ -23,7 +25,13 @@ const displayUserName = (user: { firstName?: string; lastName?: string; userName
   return user.$id ?? 'User';
 };
 
-export default function RefundRequestsList({ organizationId, userId, hostId }: RefundRequestsListProps) {
+export default function RefundRequestsList({
+  organizationId,
+  userId,
+  hostId,
+  showHeader = true,
+  withContainer = true,
+}: RefundRequestsListProps) {
   const [refunds, setRefunds] = useState<RefundRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -195,26 +203,32 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
     return false;
   };
 
-  return (
-    <Paper withBorder radius="md" p="md">
-      <Group justify="space-between" mb="sm">
-        <div>
-          <Title order={4}>{title}</Title>
-          <Text size="sm" c="dimmed">
-            {description}
-          </Text>
-        </div>
-        {loading && <Loader size="sm" />}
-      </Group>
+  const content = (
+    <Stack gap="md">
+      {showHeader ? (
+        <Group justify="space-between">
+          <div>
+            <Title order={4}>{title}</Title>
+            <Text size="sm" c="dimmed">
+              {description}
+            </Text>
+          </div>
+          {loading && <Loader size="sm" />}
+        </Group>
+      ) : loading ? (
+        <Group justify="flex-end">
+          <Loader size="sm" />
+        </Group>
+      ) : null}
 
       {error && (
-        <Alert color="red" mb="sm" data-testid="refund-error">
+        <Alert color="red" data-testid="refund-error">
           {error}
         </Alert>
       )}
 
       {actionError && (
-        <Alert color="red" mb="sm" data-testid="refund-action-error">
+        <Alert color="red" data-testid="refund-action-error">
           {actionError}
         </Alert>
       )}
@@ -226,130 +240,142 @@ export default function RefundRequestsList({ organizationId, userId, hostId }: R
       )}
 
       {!loading && !error && visibleRefunds.length > 0 && (
-        <Table highlightOnHover withTableBorder withColumnBorders>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Event</Table.Th>
-              <Table.Th>Reason</Table.Th>
-              <Table.Th>Team</Table.Th>
-              <Table.Th>Requested By</Table.Th>
-              <Table.Th>Host</Table.Th>
-              <Table.Th>Organization</Table.Th>
-              <Table.Th>Requested At</Table.Th>
-              <Table.Th>Status</Table.Th>
-              {!isRequesterView && <Table.Th>Actions</Table.Th>}
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {visibleRefunds.map((refund) => {
-              const eventName = eventsById[refund.eventId] ?? refund.eventId ?? 'Unknown event';
-              const requesterName = usersById[refund.userId] ?? refund.userId ?? 'Unknown user';
-              const hostName = refund.hostId
-                ? usersById[refund.hostId] ?? refund.hostId
-                : null;
-              const teamName = refund.teamId
-                ? teamsById[refund.teamId] ?? refund.teamId
-                : null;
-              const organizationName = refund.organizationId
-                ? organizationsById[refund.organizationId] ?? refund.organizationId
-                : null;
+        <Table.ScrollContainer minWidth={isRequesterView ? 900 : 1080}>
+          <Table highlightOnHover withTableBorder withColumnBorders>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Event</Table.Th>
+                <Table.Th>Reason</Table.Th>
+                <Table.Th>Team</Table.Th>
+                <Table.Th>Requested By</Table.Th>
+                <Table.Th>Host</Table.Th>
+                <Table.Th>Organization</Table.Th>
+                <Table.Th>Requested At</Table.Th>
+                <Table.Th>Status</Table.Th>
+                {!isRequesterView && <Table.Th>Actions</Table.Th>}
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {visibleRefunds.map((refund) => {
+                const eventName = eventsById[refund.eventId] ?? refund.eventId ?? 'Unknown event';
+                const requesterName = usersById[refund.userId] ?? refund.userId ?? 'Unknown user';
+                const hostName = refund.hostId
+                  ? usersById[refund.hostId] ?? refund.hostId
+                  : null;
+                const teamName = refund.teamId
+                  ? teamsById[refund.teamId] ?? refund.teamId
+                  : null;
+                const organizationName = refund.organizationId
+                  ? organizationsById[refund.organizationId] ?? refund.organizationId
+                  : null;
 
-              return (
-                <Table.Tr key={refund.$id}>
-                  <Table.Td>
-                    <Stack gap={2}>
-                      <Text fw={500}>{eventName}</Text>
-                    </Stack>
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">{refund.reason || 'No reason provided'}</Text>
-                  </Table.Td>
-                  <Table.Td>
-                    {teamName ? (
-                      <Badge variant="light" color="cyan">
-                        {teamName}
-                      </Badge>
-                    ) : (
-                      <Text size="sm" c="dimmed">
-                        —
-                      </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color="blue">
-                      {requesterName}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>
-                    {hostName ? (
-                      <Badge variant="light" color="violet">
-                        {hostName}
-                      </Badge>
-                    ) : (
-                      <Text size="sm" c="dimmed">
-                        —
-                      </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    {organizationName ? (
-                      <Badge variant="light" color="green">
-                        {organizationName}
-                      </Badge>
-                    ) : (
-                      <Text size="sm" c="dimmed">
-                        —
-                      </Text>
-                    )}
-                  </Table.Td>
-                  <Table.Td>
-                    <Text size="sm">
-                      {refund.$createdAt ? formatDisplayDateTime(refund.$createdAt) : 'Unknown'}
-                    </Text>
-                  </Table.Td>
-                  <Table.Td>
-                    <Badge variant="light" color={statusColor(refund.status)}>
-                      {refund.status ?? 'WAITING'}
-                    </Badge>
-                  </Table.Td>
-                  {!isRequesterView && (
+                return (
+                  <Table.Tr key={refund.$id}>
                     <Table.Td>
-                      {canTakeAction(refund) ? (
-                        <Group gap="xs">
-                          <Button
-                            size="xs"
-                            color="green"
-                            variant="light"
-                            disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
-                            loading={processingId === refund.$id}
-                            onClick={() => handleStatusChange(refund.$id, 'APPROVED')}
-                          >
-                            Approve
-                          </Button>
-                          <Button
-                            size="xs"
-                            color="red"
-                            variant="light"
-                            disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
-                            loading={processingId === refund.$id}
-                            onClick={() => handleStatusChange(refund.$id, 'REJECTED')}
-                          >
-                            Deny
-                          </Button>
-                        </Group>
+                      <Stack gap={2}>
+                        <Text fw={500}>{eventName}</Text>
+                      </Stack>
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">{refund.reason || 'No reason provided'}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      {teamName ? (
+                        <Badge variant="light" color="cyan">
+                          {teamName}
+                        </Badge>
                       ) : (
                         <Text size="sm" c="dimmed">
                           —
                         </Text>
                       )}
                     </Table.Td>
-                  )}
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
+                    <Table.Td>
+                      <Badge variant="light" color="blue">
+                        {requesterName}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {hostName ? (
+                        <Badge variant="light" color="violet">
+                          {hostName}
+                        </Badge>
+                      ) : (
+                        <Text size="sm" c="dimmed">
+                          —
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      {organizationName ? (
+                        <Badge variant="light" color="green">
+                          {organizationName}
+                        </Badge>
+                      ) : (
+                        <Text size="sm" c="dimmed">
+                          —
+                        </Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="sm">
+                        {refund.$createdAt ? formatDisplayDateTime(refund.$createdAt) : 'Unknown'}
+                      </Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge variant="light" color={statusColor(refund.status)}>
+                        {refund.status ?? 'WAITING'}
+                      </Badge>
+                    </Table.Td>
+                    {!isRequesterView && (
+                      <Table.Td>
+                        {canTakeAction(refund) ? (
+                          <Group gap="xs">
+                            <Button
+                              size="xs"
+                              color="green"
+                              variant="light"
+                              disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
+                              loading={processingId === refund.$id}
+                              onClick={() => handleStatusChange(refund.$id, 'APPROVED')}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="xs"
+                              color="red"
+                              variant="light"
+                              disabled={(refund.status && refund.status !== 'WAITING') || processingId === refund.$id}
+                              loading={processingId === refund.$id}
+                              onClick={() => handleStatusChange(refund.$id, 'REJECTED')}
+                            >
+                              Deny
+                            </Button>
+                          </Group>
+                        ) : (
+                          <Text size="sm" c="dimmed">
+                            —
+                          </Text>
+                        )}
+                      </Table.Td>
+                    )}
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
+    </Stack>
+  );
+
+  if (!withContainer) {
+    return content;
+  }
+
+  return (
+    <Paper withBorder radius="md" p="md">
+      {content}
     </Paper>
   );
 }
