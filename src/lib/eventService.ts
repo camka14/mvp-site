@@ -42,6 +42,10 @@ import {
   normalizeOrganizationTaxClassification,
   normalizeRentalTaxHandling,
 } from "@/lib/taxPolicy";
+import type {
+  EventTeamComplianceResponse,
+  EventUserComplianceResponse,
+} from "@/lib/eventTeamCompliance";
 
 export interface LeagueGenerationOptions {
   dryRun?: boolean;
@@ -114,6 +118,18 @@ export type EventParticipantsResponse = {
 };
 
 export type EventParticipantDivisionWarning = EventParticipantsResponse["divisionWarnings"][number];
+
+export type EventDetailBootstrapResponse = {
+  event: Event;
+  participantSnapshot: EventParticipantsResponse;
+  matches: Match[];
+  fields: Field[];
+  timeSlots: TimeSlot[];
+  leagueScoringConfig: LeagueScoringConfig | null;
+  staffInvites: Invite[];
+  teamCompliance: EventTeamComplianceResponse | null;
+  userCompliance: EventUserComplianceResponse | null;
+};
 
 export interface LeagueGenerationMatchResult {
   id?: string | number | null;
@@ -312,6 +328,72 @@ class EventService {
     }
   }
 
+  async getEventDetailBootstrap(
+    id: string,
+    occurrence?: WeeklyOccurrenceSelection | null,
+    options?: { manage?: boolean | "auto" },
+  ): Promise<EventDetailBootstrapResponse | undefined> {
+    const params = new URLSearchParams();
+    const slotId =
+      typeof occurrence?.slotId === "string" ? occurrence.slotId.trim() : "";
+    const occurrenceDate =
+      typeof occurrence?.occurrenceDate === "string"
+        ? occurrence.occurrenceDate.trim()
+        : "";
+    if (slotId) {
+      params.set("slotId", slotId);
+    }
+    if (occurrenceDate) {
+      params.set("occurrenceDate", occurrenceDate);
+    }
+    if (options?.manage === "auto") {
+      params.set("manage", "auto");
+    } else if (options?.manage) {
+      params.set("manage", "true");
+    }
+    const query = params.toString();
+
+    try {
+      const response = await apiRequest<any>(
+        `/api/events/${id}/detail${query ? `?${query}` : ""}`,
+      );
+      const eventPayload = response?.event ?? null;
+      if (!eventPayload) {
+        return undefined;
+      }
+      const relationSource = {
+        ...eventPayload,
+        fields: Array.isArray(response?.fields) ? response.fields : eventPayload.fields,
+        timeSlots: Array.isArray(response?.timeSlots) ? response.timeSlots : eventPayload.timeSlots,
+        matches: Array.isArray(response?.matches) ? response.matches : eventPayload.matches,
+        leagueScoringConfig: Object.prototype.hasOwnProperty.call(response ?? {}, "leagueScoringConfig")
+          ? response.leagueScoringConfig
+          : eventPayload.leagueScoringConfig,
+        staffInvites: Array.isArray(response?.staffInvites) ? response.staffInvites : eventPayload.staffInvites,
+      };
+
+      await this.ensureSportRelationship(relationSource);
+      await this.ensureLeagueScoringConfig(relationSource);
+
+      const baseEvent = this.mapRowToEvent(relationSource);
+      const event = await this.hydrateEventRelations(baseEvent, relationSource);
+      return {
+        event,
+        participantSnapshot: this.mapEventParticipantsResponse(response?.participantSnapshot),
+        matches: Array.isArray(event.matches) ? event.matches : [],
+        fields: Array.isArray(event.fields) ? event.fields : [],
+        timeSlots: Array.isArray(event.timeSlots) ? event.timeSlots : [],
+        leagueScoringConfig: event.leagueScoringConfig ?? null,
+        staffInvites: Array.isArray(relationSource.staffInvites) ? relationSource.staffInvites : [],
+        teamCompliance: response?.teamCompliance ?? null,
+        userCompliance: response?.userCompliance ?? null,
+      };
+    } catch (error) {
+      console.error("Failed to fetch event detail bootstrap:", error);
+      return undefined;
+    }
+  }
+
   /**
    * Get basic event without expanded relationships (for list views)
    */
@@ -383,6 +465,10 @@ class EventService {
     const response = await apiRequest<any>(
       `/api/events/${eventId}/participants${query ? `?${query}` : ""}`,
     );
+    return this.mapEventParticipantsResponse(response);
+  }
+
+  private mapEventParticipantsResponse(response: any): EventParticipantsResponse {
     const eventPayload = response?.event
       ? this.mapRowToEvent(response.event)
       : undefined;

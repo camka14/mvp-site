@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { getOptionalSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
+import { canManageEvent } from '@/server/accessControl';
 import { loadEventWithRelations } from '@/server/repositories/events';
 import { serializeMatchesLegacy } from '@/server/scheduler/serialize';
 import { GET as getEvent } from '../route';
@@ -62,6 +64,19 @@ const passthrough = (payload: any, status: number) => (
   NextResponse.json(payload ?? { error: 'Request failed' }, { status })
 );
 
+const requestWithManageMode = (req: NextRequest, manage: boolean): NextRequest => {
+  const url = new URL(req.url);
+  if (manage) {
+    url.searchParams.set('manage', 'true');
+  } else {
+    url.searchParams.delete('manage');
+  }
+  return new NextRequest(url, {
+    headers: req.headers,
+    method: req.method,
+  });
+};
+
 export async function GET(req: NextRequest, { params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
   const routeParams = () => Promise.resolve({ eventId });
@@ -72,7 +87,32 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
     return passthrough(eventPayload, eventResponse.status);
   }
 
-  const participantResponse = await getParticipants(req, { params: routeParams() });
+  const manageMode = req.nextUrl.searchParams.get('manage');
+  const shouldLoadManageData = await (async () => {
+    if (manageMode === 'true') {
+      return true;
+    }
+    if (manageMode !== 'auto') {
+      return false;
+    }
+    const session = await getOptionalSession(req);
+    if (!session) {
+      return false;
+    }
+    return canManageEvent(session, {
+      hostId: normalizeId(eventPayload?.hostId),
+      assistantHostIds: Array.isArray(eventPayload?.assistantHostIds)
+        ? eventPayload.assistantHostIds
+        : [],
+      organizationId:
+        normalizeId(eventPayload?.organizationId)
+        ?? normalizeId(eventPayload?.organization?.id)
+        ?? normalizeId(eventPayload?.organization?.$id),
+    });
+  })();
+  const detailReq = requestWithManageMode(req, shouldLoadManageData);
+
+  const participantResponse = await getParticipants(detailReq, { params: routeParams() });
   const participantPayload = await jsonFrom(participantResponse);
   if (!participantResponse.ok) {
     return passthrough(participantPayload, participantResponse.status);
@@ -108,10 +148,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
 
     let teamCompliance: any = null;
     let userCompliance: any = null;
-    if (req.nextUrl.searchParams.get('manage') === 'true') {
+    if (shouldLoadManageData) {
       const complianceResponse = eventPayload?.teamSignup
-        ? await getTeamCompliance(req, { params: routeParams() })
-        : await getUserCompliance(req, { params: routeParams() });
+        ? await getTeamCompliance(detailReq, { params: routeParams() })
+        : await getUserCompliance(detailReq, { params: routeParams() });
       const compliancePayload = await jsonFrom(complianceResponse);
       if (!complianceResponse.ok) {
         return passthrough(compliancePayload, complianceResponse.status);

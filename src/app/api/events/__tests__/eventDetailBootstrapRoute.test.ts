@@ -19,8 +19,16 @@ const getEventMock = jest.fn();
 const getParticipantsMock = jest.fn();
 const getTeamComplianceMock = jest.fn();
 const getUserComplianceMock = jest.fn();
+const getOptionalSessionMock = jest.fn();
+const canManageEventMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+jest.mock('@/lib/permissions', () => ({
+  getOptionalSession: (...args: unknown[]) => getOptionalSessionMock(...args),
+}));
+jest.mock('@/server/accessControl', () => ({
+  canManageEvent: (...args: unknown[]) => canManageEventMock(...args),
+}));
 jest.mock('@/server/repositories/events', () => ({
   loadEventWithRelations: (...args: unknown[]) => loadEventWithRelationsMock(...args),
 }));
@@ -58,6 +66,8 @@ describe('GET /api/events/[eventId]/detail', () => {
       timeSlotIds: ['slot_1'],
       leagueScoringConfigId: 'league_config_1',
       staffInvites: [{ id: 'invite_1', eventId: 'event_1', type: 'STAFF' }],
+      assistantHostIds: [],
+      organizationId: null,
     }));
     getParticipantsMock.mockResolvedValue(okJson({
       participants: {
@@ -85,6 +95,8 @@ describe('GET /api/events/[eventId]/detail', () => {
       teams: [{ teamId: 'team_1', teamName: 'Team One' }],
     }));
     getUserComplianceMock.mockResolvedValue(okJson({ users: [] }));
+    getOptionalSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    canManageEventMock.mockResolvedValue(true);
     loadEventWithRelationsMock.mockResolvedValue({
       matches: {
         match_late: { id: 'match_late', start: new Date('2026-01-01T12:00:00.000Z') },
@@ -134,5 +146,18 @@ describe('GET /api/events/[eventId]/detail', () => {
     expect(payload.userCompliance).toBeNull();
     expect(getTeamComplianceMock).not.toHaveBeenCalled();
     expect(getUserComplianceMock).not.toHaveBeenCalled();
+  });
+
+  it('auto-loads management data only when the viewer can manage the event', async () => {
+    canManageEventMock.mockResolvedValueOnce(false);
+
+    const response = await GET(requestFor('?manage=auto'), { params: Promise.resolve({ eventId: 'event_1' }) });
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.teamCompliance).toBeNull();
+    expect(getParticipantsMock).toHaveBeenCalledTimes(1);
+    expect(getParticipantsMock.mock.calls[0][0].nextUrl.searchParams.get('manage')).toBeNull();
+    expect(getTeamComplianceMock).not.toHaveBeenCalled();
   });
 });

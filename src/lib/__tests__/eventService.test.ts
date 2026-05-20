@@ -732,6 +732,54 @@ describe('eventService', () => {
     expect(event?.resolvedMatchRules).toEqual(resolvedMatchRules);
   });
 
+  it('fetches event detail bootstrap with auto manage and hydrates relations from the payload', async () => {
+    apiRequestMock.mockResolvedValue({
+      event: {
+        ...baseEventRow,
+        fieldIds: ['field_1'],
+        timeSlotIds: ['slot_1'],
+        leagueScoringConfigId: 'league_config_1',
+      },
+      participantSnapshot: {
+        participants: {
+          teamIds: [],
+          userIds: ['user_1'],
+          waitListIds: [],
+          freeAgentIds: [],
+          divisions: [],
+        },
+        teams: [],
+        users: [{ $id: 'user_1', firstName: 'Pat', lastName: 'Player' }],
+        participantCount: 1,
+        participantCapacity: 10,
+        occurrence: null,
+        divisionWarnings: [],
+      },
+      matches: [],
+      fields: [{ id: 'field_1', name: 'Court 1' }],
+      timeSlots: [{ id: 'slot_1', startDate: '2026-01-01T00:00:00.000Z' }],
+      leagueScoringConfig: { id: 'league_config_1', pointsForWin: 3 },
+      staffInvites: [{ id: 'invite_1' }],
+      teamCompliance: null,
+      userCompliance: { users: [{ userId: 'user_1', fullName: 'Pat Player' }] },
+    });
+
+    const bootstrap = await eventService.getEventDetailBootstrap(
+      'evt_1',
+      { slotId: 'slot_1', occurrenceDate: '2026-01-01' },
+      { manage: 'auto' },
+    );
+
+    expect(apiRequestMock).toHaveBeenCalledWith(
+      '/api/events/evt_1/detail?slotId=slot_1&occurrenceDate=2026-01-01&manage=auto',
+    );
+    expect(bootstrap?.event.$id).toBe('evt_1');
+    expect(bootstrap?.event.fields?.[0]?.$id).toBe('field_1');
+    expect(bootstrap?.event.timeSlots?.[0]?.$id).toBe('slot_1');
+    expect(bootstrap?.participantSnapshot.participants.userIds).toEqual(['user_1']);
+    expect(bootstrap?.userCompliance?.users).toEqual([{ userId: 'user_1', fullName: 'Pat Player' }]);
+  });
+
   it('skips field cleanup when deleting an unpublished organization event', async () => {
     apiRequestMock.mockResolvedValue({});
 

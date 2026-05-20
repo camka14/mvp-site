@@ -17,7 +17,12 @@ import { useAgentContext } from '@/context/AgentContext';
 import type { AgentClientAction, AgentClientActionResult } from '@/lib/agent/types';
 import { useLocation } from '@/app/hooks/useLocation';
 import { chatService, type ChatTermsConsentState } from '@/lib/chatService';
-import { eventService, type EventParticipantDivisionWarning } from '@/lib/eventService';
+import {
+  eventService,
+  type EventDetailBootstrapResponse,
+  type EventParticipantDivisionWarning,
+  type EventParticipantsResponse,
+} from '@/lib/eventService';
 import { getHomePathForUser } from '@/lib/homePage';
 import { leagueService } from '@/lib/leagueService';
 import { tournamentService, type LeagueStandingsDivisionResponse } from '@/lib/tournamentService';
@@ -310,6 +315,20 @@ const buildParticipantSnapshotKey = (
   return slotId && occurrenceDate
     ? `${normalizedEventId}:${slotId}:${occurrenceDate}`
     : `${normalizedEventId}:all`;
+};
+
+const buildComplianceSnapshotKey = (
+  eventId: unknown,
+  participantIdsKey: string,
+  occurrence: { slotId?: string | null; occurrenceDate?: string | null } | null | undefined,
+  refreshKey: number,
+): string | null => {
+  const participantKey = participantIdsKey.trim();
+  const snapshotKey = buildParticipantSnapshotKey(eventId, occurrence);
+  if (!snapshotKey || !participantKey) {
+    return null;
+  }
+  return `${snapshotKey}:${participantKey}:${refreshKey}`;
 };
 
 const buildWeeklyOccurrenceRegistrationKey = (
@@ -1244,6 +1263,8 @@ function EventScheduleContent() {
   const loadedParticipantTeamsKeyRef = useRef<string | null>(null);
   const loadedParticipantUsersKeyRef = useRef<string | null>(null);
   const loadedParticipantOfficialsKeyRef = useRef<string | null>(null);
+  const loadedTeamComplianceKeyRef = useRef<string | null>(null);
+  const loadedUserComplianceKeyRef = useRef<string | null>(null);
   const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participantsError, setParticipantsError] = useState<string | null>(null);
   const [participantDivisionWarnings, setParticipantDivisionWarnings] = useState<EventParticipantDivisionWarning[]>([]);
@@ -1255,6 +1276,7 @@ function EventScheduleContent() {
   const [userComplianceLoading, setUserComplianceLoading] = useState(false);
   const [userComplianceError, setUserComplianceError] = useState<string | null>(null);
   const [teamComplianceRefreshKey, setTeamComplianceRefreshKey] = useState(0);
+  const teamComplianceRefreshKeyRef = useRef(teamComplianceRefreshKey);
   const [selectedComplianceTeamId, setSelectedComplianceTeamId] = useState<string | null>(null);
   const [expandedComplianceUserIds, setExpandedComplianceUserIds] = useState<string[]>([]);
   const [selectedRefundTeam, setSelectedRefundTeam] = useState<Team | null>(null);
@@ -2487,6 +2509,9 @@ function EventScheduleContent() {
   const canUseTeamCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup);
   const canUseUserCompliance = Boolean(isEditingEvent && canManageEvent && activeEvent?.teamSignup === false);
   const canManageStandings = Boolean(canManageEvent && !isPreview && !isCreateMode);
+  useEffect(() => {
+    teamComplianceRefreshKeyRef.current = teamComplianceRefreshKey;
+  }, [teamComplianceRefreshKey]);
   const entityLabel = isTemplateEvent
     ? 'Template'
     : isTournament
@@ -3595,22 +3620,37 @@ function EventScheduleContent() {
 
   useEffect(() => {
     if (!canUseTeamCompliance) {
-      setTeamComplianceById({});
       setTeamComplianceError(null);
       setTeamComplianceLoading(false);
-      setSelectedComplianceTeamId(null);
-      setExpandedComplianceUserIds([]);
+      if (!canManageEvent || activeEvent?.teamSignup !== true) {
+        loadedTeamComplianceKeyRef.current = null;
+        setTeamComplianceById({});
+        setSelectedComplianceTeamId(null);
+        setExpandedComplianceUserIds([]);
+      }
       return;
     }
 
     const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
     const teamIds = parseStableIdListKey(participantTeamIdsKey);
     if (!targetEventId || teamIds.length === 0) {
+      loadedTeamComplianceKeyRef.current = null;
       setTeamComplianceById({});
       setTeamComplianceError(null);
       setTeamComplianceLoading(false);
       return;
     }
+
+    const complianceKey = buildComplianceSnapshotKey(
+      targetEventId,
+      participantTeamIdsKey,
+      selectedOccurrence,
+      teamComplianceRefreshKey,
+    );
+    if (complianceKey && loadedTeamComplianceKeyRef.current === complianceKey) {
+      return;
+    }
+    loadedTeamComplianceKeyRef.current = complianceKey;
 
     let cancelled = false;
     setTeamComplianceLoading(true);
@@ -3644,6 +3684,9 @@ function EventScheduleContent() {
         if (cancelled) {
           return;
         }
+        if (loadedTeamComplianceKeyRef.current === complianceKey) {
+          loadedTeamComplianceKeyRef.current = null;
+        }
         console.error('Failed to load team compliance summaries:', complianceError);
         setTeamComplianceById({});
         setTeamComplianceError(
@@ -3661,24 +3704,39 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, canUseTeamCompliance, eventId, participantTeamIdsKey, selectedOccurrence, teamComplianceRefreshKey]);
+  }, [activeEvent?.$id, activeEvent?.teamSignup, canManageEvent, canUseTeamCompliance, eventId, participantTeamIdsKey, selectedOccurrence, teamComplianceRefreshKey]);
 
   useEffect(() => {
     if (!canUseUserCompliance) {
-      setUserComplianceById({});
       setUserComplianceError(null);
       setUserComplianceLoading(false);
+      if (!canManageEvent || activeEvent?.teamSignup !== false) {
+        loadedUserComplianceKeyRef.current = null;
+        setUserComplianceById({});
+      }
       return;
     }
 
     const targetEventId = normalizeIdToken(activeEvent?.$id ?? eventId);
     const userIds = parseStableIdListKey(participantUserIdsKey);
     if (!targetEventId || userIds.length === 0) {
+      loadedUserComplianceKeyRef.current = null;
       setUserComplianceById({});
       setUserComplianceError(null);
       setUserComplianceLoading(false);
       return;
     }
+
+    const complianceKey = buildComplianceSnapshotKey(
+      targetEventId,
+      participantUserIdsKey,
+      selectedOccurrence,
+      teamComplianceRefreshKey,
+    );
+    if (complianceKey && loadedUserComplianceKeyRef.current === complianceKey) {
+      return;
+    }
+    loadedUserComplianceKeyRef.current = complianceKey;
 
     let cancelled = false;
     setUserComplianceLoading(true);
@@ -3712,6 +3770,9 @@ function EventScheduleContent() {
         if (cancelled) {
           return;
         }
+        if (loadedUserComplianceKeyRef.current === complianceKey) {
+          loadedUserComplianceKeyRef.current = null;
+        }
         console.error('Failed to load participant user compliance summaries:', complianceError);
         setUserComplianceById({});
         setUserComplianceError(
@@ -3729,7 +3790,7 @@ function EventScheduleContent() {
     return () => {
       cancelled = true;
     };
-  }, [activeEvent?.$id, canUseUserCompliance, eventId, participantUserIdsKey, selectedOccurrence, teamComplianceRefreshKey]);
+  }, [activeEvent?.$id, activeEvent?.teamSignup, canManageEvent, canUseUserCompliance, eventId, participantUserIdsKey, selectedOccurrence, teamComplianceRefreshKey]);
 
   useEffect(() => {
     if (!selectedComplianceTeamId) {
@@ -3939,6 +4000,99 @@ function EventScheduleContent() {
     teamSearchMeetsMinimum,
   ]);
 
+  const applyParticipantSnapshot = useCallback((
+    targetEventId: string,
+    snapshot: EventParticipantsResponse,
+    occurrence?: { slotId?: string | null; occurrenceDate?: string | null } | null,
+    refreshedEvent?: Event | null,
+  ) => {
+    const snapshotKey = buildParticipantSnapshotKey(targetEventId, occurrence);
+    const refreshedTeamIds = Array.from(new Set(
+      (snapshot.participants.teamIds ?? [])
+        .map((teamId) => normalizeIdToken(teamId))
+        .filter((teamId): teamId is string => Boolean(teamId)),
+    ));
+    const participantUserIds = Array.from(new Set(
+      (snapshot.participants.userIds ?? [])
+        .map((userId) => normalizeIdToken(userId))
+        .filter((userId): userId is string => Boolean(userId)),
+    ));
+    const waitListIds = Array.from(new Set(
+      (snapshot.participants.waitListIds ?? [])
+        .map((userId) => normalizeIdToken(userId))
+        .filter((userId): userId is string => Boolean(userId)),
+    ));
+    const freeAgentIds = Array.from(new Set(
+      (snapshot.participants.freeAgentIds ?? [])
+        .map((userId) => normalizeIdToken(userId))
+        .filter((userId): userId is string => Boolean(userId)),
+    ));
+
+    const teamsById = new Map((snapshot.teams ?? []).map((team) => [team.$id, team]));
+    const orderedTeams = refreshedTeamIds
+      .map((teamId) => teamsById.get(teamId))
+      .filter((team): team is Team => Boolean(team));
+    const usersById = new Map((snapshot.users ?? []).map((participant) => [participant.$id, participant]));
+    const orderedUsers = participantUserIds
+      .map((userId) => usersById.get(userId))
+      .filter((participant): participant is UserData => Boolean(participant));
+
+    setParticipantTeams(orderedTeams);
+    setParticipantUsers(orderedUsers);
+    setParticipantDivisionWarnings(snapshot.divisionWarnings ?? []);
+    setParticipantsError(null);
+    setParticipantsLoading(false);
+
+    if (snapshotKey) {
+      loadedParticipantSnapshotKeyRef.current = snapshotKey;
+    }
+
+    const participantTeamKey = refreshedTeamIds.join('|');
+    const participantUserKey = participantUserIds.join('|');
+    const targetKeyPrefix = `${targetEventId}:`;
+    loadedParticipantTeamsKeyRef.current =
+      refreshedTeamIds.length === orderedTeams.length
+        ? `${targetKeyPrefix}${participantTeamKey}`
+        : null;
+    loadedParticipantUsersKeyRef.current =
+      participantUserIds.length === orderedUsers.length
+        ? `${targetKeyPrefix}${participantUserKey}`
+        : null;
+
+    setEvent((prev) => (prev
+      ? {
+          ...prev,
+          teamIds: refreshedTeamIds,
+          teams: orderedTeams,
+          userIds: participantUserIds,
+          players: orderedUsers,
+          waitListIds,
+          freeAgentIds,
+          participantCount: snapshot.participantCount,
+          participantCapacity: snapshot.participantCapacity,
+          ...(Array.isArray(refreshedEvent?.divisions) ? { divisions: refreshedEvent.divisions } : {}),
+          ...(Array.isArray(refreshedEvent?.divisionDetails) ? { divisionDetails: refreshedEvent.divisionDetails } : {}),
+          ...(Array.isArray(refreshedEvent?.playoffDivisionDetails) ? { playoffDivisionDetails: refreshedEvent.playoffDivisionDetails } : {}),
+        }
+      : prev));
+    setChangesEvent((prev) => (prev
+      ? {
+          ...prev,
+          teamIds: refreshedTeamIds,
+          teams: orderedTeams,
+          userIds: participantUserIds,
+          players: orderedUsers,
+          waitListIds,
+          freeAgentIds,
+          participantCount: snapshot.participantCount,
+          participantCapacity: snapshot.participantCapacity,
+          ...(Array.isArray(refreshedEvent?.divisions) ? { divisions: refreshedEvent.divisions } : {}),
+          ...(Array.isArray(refreshedEvent?.divisionDetails) ? { divisionDetails: refreshedEvent.divisionDetails } : {}),
+          ...(Array.isArray(refreshedEvent?.playoffDivisionDetails) ? { playoffDivisionDetails: refreshedEvent.playoffDivisionDetails } : {}),
+        }
+      : prev));
+  }, []);
+
   const refreshParticipantTeamsFromServer = useCallback(
     async (
       targetEventId: string,
@@ -3956,21 +4110,6 @@ function EventScheduleContent() {
         (snapshot.participants.teamIds ?? [])
           .map((teamId) => normalizeIdToken(teamId))
           .filter((teamId): teamId is string => Boolean(teamId)),
-      ));
-      const participantUserIds = Array.from(new Set(
-        (snapshot.participants.userIds ?? [])
-          .map((userId) => normalizeIdToken(userId))
-          .filter((userId): userId is string => Boolean(userId)),
-      ));
-      const waitListIds = Array.from(new Set(
-        (snapshot.participants.waitListIds ?? [])
-          .map((userId) => normalizeIdToken(userId))
-          .filter((userId): userId is string => Boolean(userId)),
-      ));
-      const freeAgentIds = Array.from(new Set(
-        (snapshot.participants.freeAgentIds ?? [])
-          .map((userId) => normalizeIdToken(userId))
-          .filter((userId): userId is string => Boolean(userId)),
       ));
 
       const teamsById = new Map((snapshot.teams ?? []).map((team) => [team.$id, team]));
@@ -3998,49 +4137,12 @@ function EventScheduleContent() {
           console.error('Failed to hydrate participant rosters:', hydrationError);
         }
       }
-      const usersById = new Map((snapshot.users ?? []).map((participant) => [participant.$id, participant]));
-      const orderedUsers = participantUserIds
-        .map((userId) => usersById.get(userId))
-        .filter((participant): participant is UserData => Boolean(participant));
-
-      setParticipantTeams(orderedTeams);
-      setParticipantUsers(orderedUsers);
-      setParticipantDivisionWarnings(snapshot.divisionWarnings ?? []);
-      setEvent((prev) => (prev
-        ? {
-            ...prev,
-            teamIds: refreshedTeamIds,
-            teams: orderedTeams,
-            userIds: participantUserIds,
-            players: orderedUsers,
-            waitListIds,
-            freeAgentIds,
-            participantCount: snapshot.participantCount,
-            participantCapacity: snapshot.participantCapacity,
-            ...(Array.isArray(refreshedEvent.divisions) ? { divisions: refreshedEvent.divisions } : {}),
-            ...(Array.isArray(refreshedEvent.divisionDetails) ? { divisionDetails: refreshedEvent.divisionDetails } : {}),
-            ...(Array.isArray(refreshedEvent.playoffDivisionDetails) ? { playoffDivisionDetails: refreshedEvent.playoffDivisionDetails } : {}),
-          }
-        : prev));
-      setChangesEvent((prev) => (prev
-        ? {
-            ...prev,
-            teamIds: refreshedTeamIds,
-            teams: orderedTeams,
-            userIds: participantUserIds,
-            players: orderedUsers,
-            waitListIds,
-            freeAgentIds,
-            participantCount: snapshot.participantCount,
-            participantCapacity: snapshot.participantCapacity,
-            ...(Array.isArray(refreshedEvent.divisions) ? { divisions: refreshedEvent.divisions } : {}),
-            ...(Array.isArray(refreshedEvent.divisionDetails) ? { divisionDetails: refreshedEvent.divisionDetails } : {}),
-            ...(Array.isArray(refreshedEvent.playoffDivisionDetails) ? { playoffDivisionDetails: refreshedEvent.playoffDivisionDetails } : {}),
-          }
-        : prev));
-      loadedParticipantSnapshotKeyRef.current = snapshotKey;
+      if (orderedTeams !== snapshotOrderedTeams) {
+        snapshot.teams = orderedTeams;
+      }
+      applyParticipantSnapshot(targetEventId, snapshot, occurrence, refreshedEvent);
     },
-    [],
+    [applyParticipantSnapshot],
   );
 
   useEffect(() => {
@@ -5532,6 +5634,65 @@ function EventScheduleContent() {
     });
   }, []);
 
+  const applyEventDetailBootstrap = useCallback((
+    bootstrap: EventDetailBootstrapResponse,
+    targetEventId: string,
+    normalizedEvent: Event,
+  ) => {
+    applyParticipantSnapshot(
+      targetEventId,
+      bootstrap.participantSnapshot,
+      selectedOccurrence,
+      bootstrap.participantSnapshot.event ?? normalizedEvent,
+    );
+
+    const teamIdsKey = (bootstrap.participantSnapshot.participants.teamIds ?? [])
+      .map((teamId) => normalizeIdToken(teamId))
+      .filter((teamId): teamId is string => Boolean(teamId))
+      .join('|');
+    const userIdsKey = (bootstrap.participantSnapshot.participants.userIds ?? [])
+      .map((userId) => normalizeIdToken(userId))
+      .filter((userId): userId is string => Boolean(userId))
+      .join('|');
+    const currentComplianceRefreshKey = teamComplianceRefreshKeyRef.current;
+
+    if (bootstrap.teamCompliance) {
+      const byId: Record<string, TeamComplianceSummary> = {};
+      (bootstrap.teamCompliance.teams ?? []).forEach((teamSummary) => {
+        if (teamSummary?.teamId) {
+          byId[teamSummary.teamId] = teamSummary;
+        }
+      });
+      setTeamComplianceById(byId);
+      setTeamComplianceError(null);
+      setTeamComplianceLoading(false);
+      loadedTeamComplianceKeyRef.current = buildComplianceSnapshotKey(
+        targetEventId,
+        teamIdsKey,
+        selectedOccurrence,
+        currentComplianceRefreshKey,
+      );
+    }
+
+    if (bootstrap.userCompliance) {
+      const byId: Record<string, TeamComplianceUserSummary> = {};
+      (bootstrap.userCompliance.users ?? []).forEach((userSummary) => {
+        if (userSummary?.userId) {
+          byId[userSummary.userId] = userSummary;
+        }
+      });
+      setUserComplianceById(byId);
+      setUserComplianceError(null);
+      setUserComplianceLoading(false);
+      loadedUserComplianceKeyRef.current = buildComplianceSnapshotKey(
+        targetEventId,
+        userIdsKey,
+        selectedOccurrence,
+        currentComplianceRefreshKey,
+      );
+    }
+  }, [applyParticipantSnapshot, selectedOccurrence]);
+
   const createButtonLabel = 'Create Event';
   const cancelButtonLabel = (() => {
     if (isCreateMode) return 'Cancel';
@@ -5983,7 +6144,10 @@ function EventScheduleContent() {
     }
 
     try {
-      let fetchedEvent = await eventService.getEventWithRelations(eventId);
+      const bootstrap = await eventService.getEventDetailBootstrap(eventId, selectedOccurrence ?? undefined, {
+        manage: user?.$id ? 'auto' : false,
+      });
+      let fetchedEvent = bootstrap?.event ?? await eventService.getEventWithRelations(eventId);
       if (!fetchedEvent) {
         const response = await apiRequest<any>(`/api/events/${eventId}`);
         const responseEvent = response?.event ?? response;
@@ -5995,6 +6159,9 @@ function EventScheduleContent() {
       }
       const normalizedEvent = await hydrateEventFormDependencies(fetchedEvent);
       hydrateEvent(normalizedEvent);
+      if (bootstrap) {
+        applyEventDetailBootstrap(bootstrap, eventId, normalizedEvent);
+      }
       if (!hasUnsavedChangesRef.current) {
         setHasUnsavedChanges(false);
         setFormHasUnsavedChanges(false);
@@ -6007,7 +6174,15 @@ function EventScheduleContent() {
         setLoading(false);
       }
     }
-  }, [eventId, hydrateEvent, hydrateEventFormDependencies, isCreateMode]);
+  }, [
+    applyEventDetailBootstrap,
+    eventId,
+    hydrateEvent,
+    hydrateEventFormDependencies,
+    isCreateMode,
+    selectedOccurrence,
+    user?.$id,
+  ]);
 
   const agentDraftScheduleContext = useMemo(() => {
     const fieldsById = new Map<string, Field>();
@@ -6713,6 +6888,7 @@ function EventScheduleContent() {
         team={team}
         className={className}
         actions={teamCardActions}
+        actionsPlacement="below"
         onClick={enableDetailsView
           ? () => {
             setSelectedParticipantTeam(team);

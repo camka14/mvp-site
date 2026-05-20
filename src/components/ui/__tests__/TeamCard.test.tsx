@@ -192,3 +192,36 @@ describe('TeamCard members visibility', () => {
     expect(screen.queryByText('Members:')).not.toBeInTheDocument();
   });
 });
+
+describe('TeamCard player counts', () => {
+  it('falls back to zero when currentSize is missing', () => {
+    const team = createTeam({
+      currentSize: undefined as unknown as number,
+      playerIds: [],
+      players: [],
+      teamSize: 2,
+      isFull: false,
+    });
+
+    renderWithMantine(<TeamCard team={team} />);
+
+    expect(screen.getByText('0/2')).toBeInTheDocument();
+    expect(screen.getByText('2 spots left')).toBeInTheDocument();
+    expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument();
+  });
+
+  it('can place dense actions below the team identity', () => {
+    renderWithMantine(
+      <TeamCard
+        team={createTeam()}
+        actionsPlacement="below"
+        actions={<button type="button">Remove</button>}
+      />,
+    );
+
+    const teamName = screen.getByText('Falcons');
+    const removeButton = screen.getByRole('button', { name: /remove/i });
+
+    expect(teamName.compareDocumentPosition(removeButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});

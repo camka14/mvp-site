@@ -1,12 +1,13 @@
 import { extractDivisionTokenFromId, inferDivisionDetails, parseDivisionToken } from '@/lib/divisionTypes';
 import { Team, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
-import { Paper, Group, Avatar, Text, Badge, SimpleGrid } from '@mantine/core';
+import { Box, Paper, Group, Avatar, Text, Badge, SimpleGrid } from '@mantine/core';
 
 interface TeamCardProps {
   team: Team;
   showStats?: boolean;
   actions?: React.ReactNode;
+  actionsPlacement?: 'header' | 'below';
   onClick?: () => void;
   className?: string;
 }
@@ -21,9 +22,25 @@ export default function TeamCard({
   team,
   showStats = true,
   actions,
+  actionsPlacement = 'header',
   onClick,
   className = ''
 }: TeamCardProps) {
+  const toNonNegativeInteger = (value: unknown): number | null => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      return null;
+    }
+    return Math.max(0, Math.trunc(value));
+  };
+
+  const currentSize = toNonNegativeInteger(team.currentSize)
+    ?? (Array.isArray(team.players) ? team.players.length : null)
+    ?? (Array.isArray(team.playerIds) ? team.playerIds.length : 0);
+  const teamSize = toNonNegativeInteger(team.teamSize);
+  const hasCapacity = teamSize !== null && teamSize > 0;
+  const isFull = team.isFull === true || (hasCapacity && currentSize >= teamSize);
+  const spotsLeft = hasCapacity ? Math.max(teamSize - currentSize, 0) : null;
+
   const visibleMembers = (team.players ?? []).filter((player) => {
     if (player.isIdentityHidden) {
       return false;
@@ -108,11 +125,32 @@ export default function TeamCard({
     ?? divisionLabelFromObjectId
     ?? divisionLabelFromString
     ?? 'Division';
+  const renderedActions = actions ? (
+    <Box
+      style={{
+        flex: actionsPlacement === 'header' ? '0 1 auto' : undefined,
+        marginLeft: actionsPlacement === 'header' ? 'auto' : undefined,
+        maxWidth: '100%',
+        minWidth: 0,
+      }}
+      onClick={(event) => {
+        event.stopPropagation();
+      }}
+      onMouseDown={(event) => {
+        event.stopPropagation();
+      }}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+      }}
+    >
+      {actions}
+    </Box>
+  ) : null;
 
   return (
     <Paper withBorder radius="md" p="md" className={className} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
-      <Group align="flex-start" justify="space-between" mb="sm" wrap="nowrap">
-        <Group gap="sm" align="flex-start" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+      <Group align="flex-start" justify="space-between" mb={actionsPlacement === 'below' && renderedActions ? 'xs' : 'sm'} wrap="wrap">
+        <Group gap="sm" align="flex-start" wrap="nowrap" style={{ flex: '1 1 220px', minWidth: 0 }}>
           <Avatar src={getTeamAvatarUrl(team, 56)} alt={team.name || 'Team'} size={56} radius="xl" />
           <div style={{ flex: 1, minWidth: 0 }}>
             <Text fw={600} size="lg" truncate>{team.name || 'Unnamed Team'}</Text>
@@ -125,13 +163,19 @@ export default function TeamCard({
             </Group>
           </div>
         </Group>
-        {actions}
+        {actionsPlacement === 'header' ? renderedActions : null}
       </Group>
+
+      {actionsPlacement === 'below' && renderedActions ? (
+        <Box mb="sm">
+          {renderedActions}
+        </Box>
+      ) : null}
 
       {showStats && (
         <SimpleGrid cols={1} spacing="sm" mb="sm">
           <div style={{ textAlign: 'center' }}>
-            <Text fw={600}>{team.currentSize}/{team.teamSize}</Text>
+            <Text fw={600}>{hasCapacity ? `${currentSize}/${teamSize}` : currentSize}</Text>
             <Text size="xs" c="dimmed">Players</Text>
           </div>
         </SimpleGrid>
@@ -165,8 +209,12 @@ export default function TeamCard({
             <Text size="xs" c="orange" fw={600}>{team.pending.length} pending</Text>
           )}
         </Group>
-        <Text size="xs" c={team.isFull ? 'red' : 'green'} fw={600}>
-          {team.isFull ? 'Team Full' : `${team.teamSize - team.currentSize} spots left`}
+        <Text size="xs" c={isFull ? 'red' : 'green'} fw={600}>
+          {isFull
+            ? 'Team Full'
+            : spotsLeft === null
+              ? `${currentSize} ${currentSize === 1 ? 'player' : 'players'}`
+              : `${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left`}
         </Text>
       </Group>
     </Paper>

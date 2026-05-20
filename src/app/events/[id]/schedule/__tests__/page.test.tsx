@@ -63,6 +63,7 @@ jest.mock('@/lib/eventService', () => ({
     getEvent: jest.fn(),
     getEventById: jest.fn(),
     getEventWithRelations: jest.fn(),
+    getEventDetailBootstrap: jest.fn(),
     deleteEvent: jest.fn(),
     deleteUnpublishedEvent: jest.fn(),
     updateEvent: jest.fn(),
@@ -413,6 +414,7 @@ describe('League schedule page', () => {
     (eventService.getEvent as jest.Mock).mockReset();
     (eventService.getEventById as jest.Mock).mockReset();
     (eventService.getEventWithRelations as jest.Mock).mockReset();
+    (eventService.getEventDetailBootstrap as jest.Mock).mockReset();
     (eventService.deleteEvent as jest.Mock).mockReset();
     (eventService.deleteUnpublishedEvent as jest.Mock).mockReset();
     (eventService.updateEvent as jest.Mock).mockReset();
@@ -466,6 +468,7 @@ describe('League schedule page', () => {
       return event;
     });
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(undefined);
+    (eventService.getEventDetailBootstrap as jest.Mock).mockResolvedValue(undefined);
     (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
       event: null,
       participants: {
@@ -590,6 +593,91 @@ describe('League schedule page', () => {
     expect(capturedEventFormProps?.event?.matches?.[0]?.$id).toBe('match_1');
   });
 
+  it('uses the event detail bootstrap endpoint for initial schedule hydration', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return 'edit';
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => 'mode=edit',
+    });
+    const bootstrappedTeam = {
+      $id: 'team_1',
+      name: 'Bootstrap Team',
+      playerIds: [],
+      players: [],
+    };
+    const bootstrappedEvent = buildApiEvent({
+      teamSignup: true,
+      teamIds: ['team_1'],
+      teams: [bootstrappedTeam],
+    });
+    (eventService.getEventDetailBootstrap as jest.Mock).mockResolvedValue({
+      event: bootstrappedEvent,
+      participantSnapshot: {
+        event: bootstrappedEvent,
+        participants: {
+          teamIds: ['team_1'],
+          userIds: [],
+          waitListIds: [],
+          freeAgentIds: [],
+          divisions: [],
+        },
+        teams: [bootstrappedTeam],
+        users: [],
+        participantCount: 1,
+        participantCapacity: 0,
+        occurrence: null,
+        divisionWarnings: [],
+      },
+      matches: bootstrappedEvent.matches ?? [],
+      fields: bootstrappedEvent.fields ?? [],
+      timeSlots: bootstrappedEvent.timeSlots ?? [],
+      leagueScoringConfig: bootstrappedEvent.leagueScoringConfig ?? null,
+      staffInvites: [],
+      teamCompliance: {
+        teams: [{
+          teamId: 'team_1',
+          teamName: 'Bootstrap Team',
+          payment: {
+            hasBill: false,
+            billId: null,
+            totalAmountCents: 0,
+            paidAmountCents: 0,
+            status: null,
+            isPaidInFull: false,
+            paymentPending: false,
+          },
+          documents: {
+            signedCount: 0,
+            requiredCount: 0,
+          },
+          users: [],
+        }],
+      },
+      userCompliance: null,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Summer League/)).toBeInTheDocument();
+    });
+
+    expect(eventService.getEventDetailBootstrap).toHaveBeenCalledWith('event_1', undefined, {
+      manage: 'auto',
+    });
+    expect(eventService.getEventWithRelations).not.toHaveBeenCalled();
+    expect(eventService.getEventParticipants).not.toHaveBeenCalled();
+    expect(
+      apiRequestMock.mock.calls.some(([path]) => path === '/api/events/event_1/matches'),
+    ).toBe(false);
+    expect(
+      apiRequestMock.mock.calls.some(([path]) => path === '/api/events/event_1/teams/compliance'),
+    ).toBe(false);
+  });
+
   it('hides event management actions from signed-in users who cannot manage the event', async () => {
     useAppMock.mockReturnValue({
       user: { $id: 'viewer_1' },
@@ -650,7 +738,7 @@ describe('League schedule page', () => {
 
   it('renders match incidents loaded with schedule matches', async () => {
     useAppMock.mockReturnValue({
-      user: { $id: 'official_1' },
+      user: { $id: 'viewer_1' },
       isAuthenticated: true,
       isGuest: false,
       loading: false,
@@ -891,7 +979,6 @@ describe('League schedule page', () => {
     renderWithMantine(<LeagueSchedulePage />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Select First Match' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Match Details' }));
     expect(await screen.findByText('No match details recorded.')).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole('button', { name: 'Add Incident' })[0]);
@@ -4614,11 +4701,17 @@ describe('League schedule page', () => {
       slotId,
       occurrenceDate,
     });
+    expect(eventService.getEventDetailBootstrap).toHaveBeenCalledWith('event_1', {
+      slotId,
+      occurrenceDate,
+    }, {
+      manage: 'auto',
+    });
     expect(
       apiRequestMock.mock.calls.filter(([path]) => (
         typeof path === 'string' && path.startsWith('/api/teams?ids=')
       )),
-    ).toHaveLength(1);
+    ).toHaveLength(0);
   });
 
   it('loads weekly participant refunds with the selected occurrence context', async () => {
