@@ -418,6 +418,9 @@ class TeamService {
 
             const params = new URLSearchParams();
             params.set('ids', teamIds.join(','));
+            if (visibilityContext.eventId) {
+                params.set('eventId', visibilityContext.eventId);
+            }
             const response = await apiRequest<{ teams?: any[] }>(`/api/teams?${params.toString()}`);
 
             const teams = (response.teams ?? []).map(row => this.mapRowToTeam(row));

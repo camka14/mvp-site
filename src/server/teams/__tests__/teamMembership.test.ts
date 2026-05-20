@@ -201,6 +201,90 @@ describe('listTeamsByIds', () => {
       where: { id: { in: ['event_team_1'] } },
     });
   });
+
+  it('prefers event-scoped teams over canonical teams when an event id is supplied', async () => {
+    const canonicalFindManyMock = jest.fn().mockResolvedValue([
+      {
+        id: 'shadow_id',
+        name: 'Canonical Shadow',
+        division: 'Open',
+        divisionTypeId: 'open',
+        wins: null,
+        losses: null,
+        teamSize: 2,
+        profileImageId: null,
+        sport: 'Beach Volleyball',
+        organizationId: null,
+        createdBy: 'user_1',
+        openRegistration: false,
+        registrationPriceCents: 0,
+        requiredTemplateIds: [],
+        createdAt: new Date('2026-04-20T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-20T01:00:00.000Z'),
+      },
+    ]);
+    const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([]);
+    const teamStaffAssignmentsFindManyMock = jest.fn().mockResolvedValue([]);
+    const eventTeamsFindManyMock = jest.fn().mockResolvedValue([
+      {
+        id: 'shadow_id',
+        name: 'Event Team',
+        eventId: 'event_1',
+        kind: 'REGISTERED',
+        playerIds: ['player_1'],
+        playerRegistrationIds: [],
+        division: 'Men',
+        divisionTypeId: 'men',
+        wins: 0,
+        losses: 0,
+        captainId: 'player_1',
+        managerId: 'manager_1',
+        headCoachId: null,
+        coachIds: [],
+        staffAssignmentIds: [],
+        parentTeamId: 'canonical_team_1',
+        pending: [],
+        teamSize: 2,
+        profileImageId: null,
+        sport: 'Beach Volleyball',
+        createdAt: new Date('2026-04-20T00:00:00.000Z'),
+        updatedAt: new Date('2026-04-20T01:00:00.000Z'),
+      },
+    ]);
+
+    const teams = await listTeamsByIds(['shadow_id'], {
+      canonicalTeams: {
+        findMany: canonicalFindManyMock,
+      },
+      teamRegistrations: {
+        findMany: teamRegistrationsFindManyMock,
+      },
+      teamStaffAssignments: {
+        findMany: teamStaffAssignmentsFindManyMock,
+      },
+      teams: {
+        findMany: eventTeamsFindManyMock,
+      },
+    }, { eventId: 'event_1' });
+
+    expect(teams).toHaveLength(1);
+    expect(teams[0]).toMatchObject({
+      id: 'shadow_id',
+      $id: 'shadow_id',
+      name: 'Event Team',
+      eventId: 'event_1',
+      parentTeamId: 'canonical_team_1',
+    });
+    expect(eventTeamsFindManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['shadow_id'] },
+        eventId: 'event_1',
+      },
+    });
+    expect(canonicalFindManyMock).not.toHaveBeenCalled();
+    expect(teamRegistrationsFindManyMock).not.toHaveBeenCalled();
+    expect(teamStaffAssignmentsFindManyMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('listCanonicalTeamsForUser', () => {

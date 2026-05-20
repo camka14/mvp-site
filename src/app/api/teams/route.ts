@@ -194,6 +194,7 @@ const canIncludeAdminOnlyTeams = async (
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
   const idsParam = params.get('ids');
+  const eventId = normalizeId(params.get('eventId'));
   const organizationId = normalizeId(params.get('organizationId'));
   const playerId = params.get('playerId');
   const managerId = params.get('managerId');
@@ -208,6 +209,7 @@ export async function GET(req: NextRequest) {
   const ids = idsParam ? idsParam.split(',').map((id) => id.trim()).filter(Boolean) : undefined;
   const teams = await listCanonicalTeamsForUser({
     ids,
+    eventId,
     organizationId,
     playerId: normalizeId(playerId),
     managerId: normalizeId(managerId),

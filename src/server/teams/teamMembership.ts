@@ -465,20 +465,39 @@ export const loadCanonicalTeamById = async (teamId: string, client: PrismaLike =
   });
 };
 
-export const listTeamsByIds = async (ids: string[], client: PrismaLike = prisma) => {
+export const listTeamsByIds = async (
+  ids: string[],
+  client: PrismaLike = prisma,
+  options: { eventId?: string | null } = {},
+) => {
   const normalizedIds = normalizeIdList(ids);
   if (!normalizedIds.length) {
     return [];
   }
 
+  const eventId = normalizeId(options.eventId);
   const teamsById = new Map<string, ReturnType<typeof serializeCanonicalTeam> | ReturnType<typeof serializeLegacyEventTeam>>();
+  const eventTeamsDelegate = getEventTeamsDelegate(client);
+  if (eventId && eventTeamsDelegate?.findMany) {
+    const rows = await eventTeamsDelegate.findMany({
+      where: {
+        id: { in: normalizedIds },
+        eventId,
+      },
+    }) as EventTeamRow[];
+    rows.forEach((row) => {
+      teamsById.set(row.id, serializeLegacyEventTeam(row));
+    });
+  }
+
   const canonicalTeamsDelegate = getCanonicalTeamsDelegate(client);
   const teamRegistrationsDelegate = getTeamRegistrationsDelegate(client);
   const teamStaffAssignmentsDelegate = getTeamStaffAssignmentsDelegate(client);
+  const canonicalCandidateIds = normalizedIds.filter((teamId) => !teamsById.has(teamId));
 
-  if (canonicalTeamsDelegate?.findMany && teamRegistrationsDelegate?.findMany && teamStaffAssignmentsDelegate?.findMany) {
+  if (canonicalCandidateIds.length && canonicalTeamsDelegate?.findMany && teamRegistrationsDelegate?.findMany && teamStaffAssignmentsDelegate?.findMany) {
     const canonicalRows = await canonicalTeamsDelegate.findMany({
-      where: { id: { in: normalizedIds } },
+      where: { id: { in: canonicalCandidateIds } },
     }) as CanonicalTeamRow[];
     const canonicalIds = canonicalRows.map((row) => row.id).filter(Boolean);
 
@@ -531,8 +550,7 @@ export const listTeamsByIds = async (ids: string[], client: PrismaLike = prisma)
   }
 
   const remainingIds = normalizedIds.filter((teamId) => !teamsById.has(teamId));
-  if (remainingIds.length) {
-    const eventTeamsDelegate = getEventTeamsDelegate(client);
+  if (remainingIds.length && !eventId) {
     if (eventTeamsDelegate?.findMany) {
       const rows = await eventTeamsDelegate.findMany({
         where: { id: { in: remainingIds } },
@@ -550,6 +568,7 @@ export const listTeamsByIds = async (ids: string[], client: PrismaLike = prisma)
 
 export const listCanonicalTeamsForUser = async (params: {
   ids?: string[];
+  eventId?: string | null;
   organizationId?: string | null;
   playerId?: string | null;
   managerId?: string | null;
@@ -559,7 +578,7 @@ export const listCanonicalTeamsForUser = async (params: {
   limit?: number;
 }, client: PrismaLike = prisma) => {
   if (params.ids?.length) {
-    const teams = await listTeamsByIds(params.ids, client);
+    const teams = await listTeamsByIds(params.ids, client, { eventId: params.eventId });
     return params.includeAdminOnly
       ? teams
       : teams.filter((team) => !isAdminOnlyCanonicalTeam(team as Record<string, unknown>));

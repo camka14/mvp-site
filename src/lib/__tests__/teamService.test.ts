@@ -275,6 +275,16 @@ describe('teamService', () => {
     });
   });
 
+  describe('getTeamsByIds', () => {
+    it('passes event context to the teams API when provided', async () => {
+      apiRequestMock.mockResolvedValue({ teams: [] });
+
+      await teamService.getTeamsByIds(['team_1'], false, { eventId: 'event_1' });
+
+      expect(apiRequestMock).toHaveBeenCalledWith('/api/teams?ids=team_1&eventId=event_1');
+    });
+  });
+
   describe('searchOpenRegistrationTeams', () => {
     it('requests open-registration teams with the search query and drops closed teams defensively', async () => {
       apiRequestMock.mockResolvedValue({

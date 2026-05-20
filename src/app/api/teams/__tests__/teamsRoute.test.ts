@@ -187,6 +187,65 @@ describe('/api/teams route', () => {
     }));
   });
 
+  it('returns the event-scoped team when an id also exists as a canonical team', async () => {
+    prismaMock.canonicalTeams = {
+      findMany: (...args: any[]) => canonicalTeamsFindManyMock(...args),
+    };
+    prismaMock.teamRegistrations = {
+      findMany: (...args: any[]) => teamRegistrationsFindManyMock(...args),
+    };
+    prismaMock.teamStaffAssignments = {
+      findMany: (...args: any[]) => teamStaffAssignmentsFindManyMock(...args),
+    };
+    findManyMock.mockResolvedValue([
+      {
+        id: 'shared_id',
+        name: 'Sea Glass Smash',
+        eventId: 'event_1',
+        kind: 'REGISTERED',
+        playerIds: ['player_1'],
+        playerRegistrationIds: [],
+        division: 'mens',
+        divisionTypeId: 'mens',
+        wins: 0,
+        losses: 0,
+        captainId: 'player_1',
+        managerId: 'manager_1',
+        headCoachId: null,
+        coachIds: [],
+        staffAssignmentIds: [],
+        parentTeamId: 'sea_glass_canonical',
+        pending: [],
+        teamSize: 2,
+        profileImageId: null,
+        sport: 'Beach Volleyball',
+      },
+    ]);
+
+    const response = await GET(new NextRequest('http://localhost/api/teams?ids=shared_id&eventId=event_1&limit=200'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.teams).toEqual([
+      expect.objectContaining({
+        id: 'shared_id',
+        $id: 'shared_id',
+        name: 'Sea Glass Smash',
+        eventId: 'event_1',
+        parentTeamId: 'sea_glass_canonical',
+      }),
+    ]);
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: {
+        id: { in: ['shared_id'] },
+        eventId: 'event_1',
+      },
+    });
+    expect(canonicalTeamsFindManyMock).not.toHaveBeenCalled();
+    expect(teamRegistrationsFindManyMock).not.toHaveBeenCalled();
+    expect(teamStaffAssignmentsFindManyMock).not.toHaveBeenCalled();
+  });
+
   it('creates a manager-only team when addSelfAsPlayer is false', async () => {
     createMock.mockResolvedValue({
       id: 'team_1',
