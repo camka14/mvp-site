@@ -1,11 +1,5 @@
 import { Readable } from 'stream';
-import { createReadStream, promises as fs } from 'fs';
-import {
-  buildStoredName,
-  fileExists,
-  getAbsolutePath,
-  writeLocalFile,
-} from '@/lib/storage';
+import { buildStoredName } from '@/lib/storageNames';
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -80,6 +74,7 @@ export const getStorageProvider = (): StorageProvider => {
 const createLocalProvider = (): StorageProvider => {
   return {
     async putObject(params) {
+      const { writeLocalFile } = await import('./localStorageProvider');
       const stored = await writeLocalFile(params.data, params.originalName, params.organizationId);
       return {
         key: stored.relativePath,
@@ -88,38 +83,16 @@ const createLocalProvider = (): StorageProvider => {
       };
     },
     async getObjectStream(params) {
-      const absolutePath = getAbsolutePath(params.key);
-      const exists = await fileExists(params.key);
-      if (!exists) {
-        throw new Error('FILE_MISSING');
-      }
-      const stats = await fs.stat(absolutePath);
-      return {
-        stream: createReadStream(absolutePath),
-        sizeBytes: stats.size,
-      };
+      const { getLocalObjectStream } = await import('./localStorageProvider');
+      return getLocalObjectStream(params.key);
     },
     async deleteObject(params) {
-      const absolutePath = getAbsolutePath(params.key);
-      try {
-        await fs.unlink(absolutePath);
-      } catch (error: any) {
-        if (error?.code !== 'ENOENT') {
-          throw error;
-        }
-      }
+      const { deleteLocalObject } = await import('./localStorageProvider');
+      await deleteLocalObject(params.key);
     },
     async headObject(params) {
-      const absolutePath = getAbsolutePath(params.key);
-      try {
-        const stats = await fs.stat(absolutePath);
-        return { exists: true, sizeBytes: stats.size };
-      } catch (error: any) {
-        if (error?.code === 'ENOENT') {
-          return { exists: false };
-        }
-        throw error;
-      }
+      const { headLocalObject } = await import('./localStorageProvider');
+      return headLocalObject(params.key);
     },
   };
 };

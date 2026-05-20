@@ -60,7 +60,7 @@ export default function Image() {
           }}
         />
 
-        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '24px', zIndex: 1 }}>
+        <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <div
             style={{
               display: 'flex',
@@ -98,7 +98,6 @@ export default function Image() {
         <div
           style={{
             position: 'relative',
-            zIndex: 1,
             minWidth: 380,
             padding: '28px',
             borderRadius: '18px',
