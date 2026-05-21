@@ -13,10 +13,11 @@ import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
-import type { BillingAddress, Event, Organization, Product, ProductType, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
+import type { BillingAddress, Event, Organization, OrganizationRole, Product, ProductType, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
 import { formatPrice } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { eventService } from '@/lib/eventService';
+import { getStaffMemberTypesForOrganizationRole } from '@/lib/staff';
 import { createId } from '@/lib/id';
 import { buildOrganizationEventCreateUrl } from '@/lib/eventCreateNavigation';
 import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
@@ -29,7 +30,6 @@ import CentsInput from '@/components/ui/CentsInput';
 import { paymentService } from '@/lib/paymentService';
 import { userService } from '@/lib/userService';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
-import { hasStaffMemberType } from '@/lib/staff';
 import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
@@ -706,9 +706,8 @@ function OrganizationDetailContent() {
   const [staffResults, setStaffResults] = useState<UserData[]>([]);
   const [staffSearchLoading, setStaffSearchLoading] = useState(false);
   const [staffError, setStaffError] = useState<string | null>(null);
-  const [existingStaffInviteTypes, setExistingStaffInviteTypes] = useState<StaffMemberType[]>(['HOST']);
   const [staffInvites, setStaffInvites] = useState<RoleInviteRow[]>([
-    { firstName: '', lastName: '', email: '', types: ['HOST'] },
+    { firstName: '', lastName: '', email: '', types: ['STAFF'], roleId: null },
   ]);
   const [staffInviteError, setStaffInviteError] = useState<string | null>(null);
   const [invitingStaff, setInvitingStaff] = useState(false);
@@ -738,15 +737,8 @@ function OrganizationDetailContent() {
     viewerCanManageOrganization
       || (
         user
-          && org
-          && (
-            user.$id === org.ownerId
-            || (org.staffMembers ?? []).some((staffMember) => (
-              staffMember.userId === user.$id
-                && !staffMember.invite
-                && hasStaffMemberType(staffMember, ['HOST', 'STAFF'])
-            ))
-          )
+        && org
+        && user.$id === org.ownerId
       ),
   );
   const isOrganizationRoleMember = Boolean(
@@ -845,8 +837,12 @@ function OrganizationDetailContent() {
   }, [org?.events]);
 
   const currentHostIds = useMemo(
-    () => (Array.isArray(org?.hostIds) ? org.hostIds.filter((id): id is string => typeof id === 'string') : []),
-    [org?.hostIds],
+    () => (Array.isArray(org?.hosts)
+      ? org.hosts
+        .map((host) => host?.$id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+      : []),
+    [org?.hosts],
   );
   const currentHosts = useMemo(() => org?.hosts ?? [], [org?.hosts]);
   const ownerHost = useMemo(() => {
@@ -888,6 +884,8 @@ function OrganizationDetailContent() {
         status: 'active',
         subtitle: 'Owner',
         types: ['HOST'],
+        roleId: null,
+        roleName: 'Owner',
         canRemove: false,
         locked: true,
       });
@@ -903,6 +901,8 @@ function OrganizationDetailContent() {
         status: 'active',
         subtitle: 'Owner',
         types: ['HOST'],
+        roleId: null,
+        roleName: 'Owner',
         canRemove: false,
         locked: true,
       });
@@ -925,6 +925,8 @@ function OrganizationDetailContent() {
         status: staffMember.invite?.status === 'DECLINED' ? 'declined' : staffMember.invite ? 'pending' : 'active',
         subtitle: undefined,
         types: staffMember.types,
+        roleId: staffMember.roleId ?? null,
+        roleName: staffMember.role?.name ?? org?.staffRoles?.find((role) => role.$id === staffMember.roleId)?.name ?? null,
         canRemove: true,
       });
     });
@@ -943,13 +945,15 @@ function OrganizationDetailContent() {
         status: invite.status === 'DECLINED' ? 'declined' : 'pending',
         subtitle: undefined,
         types: invite.staffTypes ?? ['HOST'],
+        roleId: null,
+        roleName: 'Pending',
         canRemove: true,
       });
       seen.add(invite.userId);
     });
 
     return entries;
-  }, [org?.ownerId, org?.staffEmailsByUserId, org?.staffInvites, org?.staffMembers, ownerHost, userDisplayName]);
+  }, [org?.ownerId, org?.staffEmailsByUserId, org?.staffInvites, org?.staffMembers, org?.staffRoles, ownerHost, userDisplayName]);
   const eventHostOptions = useMemo(() => {
     const ids = new Set<string>();
     if (typeof org?.ownerId === 'string' && org.ownerId.length > 0) {
@@ -2393,6 +2397,9 @@ function OrganizationDetailContent() {
         setStaffSearchLoading(true);
         const results = await userService.searchUsers(query.trim());
         const selectedUserIds = new Set((org?.staffMembers ?? []).map((staffMember) => staffMember.userId));
+        if (org?.ownerId) {
+          selectedUserIds.add(org.ownerId);
+        }
         const filtered = results.filter((candidate) => !selectedUserIds.has(candidate.$id));
         setStaffResults(filtered);
       } catch (error) {
@@ -2402,14 +2409,30 @@ function OrganizationDetailContent() {
         setStaffSearchLoading(false);
       }
     },
-    [org?.staffMembers],
+    [org?.ownerId, org?.staffMembers],
+  );
+
+  const resolveStaffAssignmentRole = useCallback(
+    (roleId?: string | null): OrganizationRole | null => {
+      const roles = Array.isArray(org?.staffRoles) ? org.staffRoles : [];
+      if (roleId) {
+        const selectedRole = roles.find((role) => role.$id === roleId);
+        if (selectedRole) {
+          return selectedRole;
+        }
+      }
+      return roles.find((role) => getStaffMemberTypesForOrganizationRole(role).includes('STAFF'))
+        ?? roles[0]
+        ?? null;
+    },
+    [org?.staffRoles],
   );
 
   const handleInviteExistingStaff = useCallback(
-    async (candidate: UserData, types: StaffMemberType[]) => {
+    async (candidate: UserData, roleId: string, types: StaffMemberType[]) => {
       if (!org || !isOwner) return;
       try {
-        await organizationService.inviteExistingStaff(org.$id, candidate.$id, types);
+        await organizationService.inviteExistingStaff(org.$id, candidate.$id, types, roleId);
         await loadOrg(org.$id, { silent: true });
         setStaffResults((prev) => prev.filter((entry) => entry.$id !== candidate.$id));
         notifications.show({
@@ -2427,16 +2450,20 @@ function OrganizationDetailContent() {
   const handleInviteStaffEmails = useCallback(async () => {
     if (!org || !isOwner || !user) return;
 
-    const sanitized = staffInvites.map((invite) => ({
-      firstName: invite.firstName.trim(),
-      lastName: invite.lastName.trim(),
-      email: invite.email.trim(),
-      types: invite.types,
-    }));
+    const sanitized = staffInvites.map((invite) => {
+      const role = resolveStaffAssignmentRole(invite.roleId);
+      return {
+        firstName: invite.firstName.trim(),
+        lastName: invite.lastName.trim(),
+        email: invite.email.trim(),
+        roleId: role?.$id ?? null,
+        types: getStaffMemberTypesForOrganizationRole(role),
+      };
+    });
 
     for (const invite of sanitized) {
-      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email) || invite.types.length === 0) {
-        setStaffInviteError('Enter first name, last name, email, and at least one staff type for every invite.');
+      if (!invite.firstName || !invite.lastName || !EMAIL_REGEX.test(invite.email) || !invite.roleId || invite.types.length === 0) {
+        setStaffInviteError('Enter first name, last name, email, and a role for every invite.');
         return;
       }
     }
@@ -2451,6 +2478,8 @@ function OrganizationDetailContent() {
           type: 'STAFF',
           organizationId: org.$id,
           staffTypes: invite.types,
+          roleId: invite.roleId,
+          replaceStaffTypes: true,
         })),
       );
       await loadOrg(org.$id, { silent: true });
@@ -2458,13 +2487,13 @@ function OrganizationDetailContent() {
         color: 'green',
         message: 'Staff invites sent.',
       });
-      setStaffInvites([{ firstName: '', lastName: '', email: '', types: ['HOST'] }]);
+      setStaffInvites([{ firstName: '', lastName: '', email: '', types: ['STAFF'], roleId: null }]);
     } catch (error) {
       setStaffInviteError(error instanceof Error ? error.message : 'Failed to invite staff.');
     } finally {
       setInvitingStaff(false);
     }
-  }, [isOwner, loadOrg, org, staffInvites, user]);
+  }, [isOwner, loadOrg, org, resolveStaffAssignmentRole, staffInvites, user]);
 
   const handleRemoveStaffMember = useCallback(
     async (userIdToRemove: string) => {
@@ -2486,18 +2515,71 @@ function OrganizationDetailContent() {
     [isOwner, loadOrg, org],
   );
 
-  const handleUpdateStaffTypes = useCallback(
-    async (userIdToUpdate: string, nextTypes: StaffMemberType[]) => {
-      if (!org || !isOwner || nextTypes.length === 0) return;
+  const handleUpdateStaffRole = useCallback(
+    async (userIdToUpdate: string, roleId: string) => {
+      if (!org || !isOwner || !roleId) return;
+      const role = (org.staffRoles ?? []).find((entry) => entry.$id === roleId);
+      if (!role) {
+        const error = new Error('Select a valid staff role.');
+        notifications.show({ color: 'red', message: error.message });
+        throw error;
+      }
       try {
-        await organizationService.updateStaffMemberTypes(org.$id, userIdToUpdate, nextTypes);
+        await organizationService.updateStaffMemberTypes(
+          org.$id,
+          userIdToUpdate,
+          getStaffMemberTypesForOrganizationRole(role),
+          roleId,
+        );
         await loadOrg(org.$id, { silent: true });
       } catch (error) {
-        console.error('Failed to update staff member types:', error);
-        notifications.show({ color: 'red', message: 'Failed to update staff member types.' });
+        console.error('Failed to update staff member role:', error);
+        notifications.show({ color: 'red', message: 'Failed to update staff member role.' });
+        throw error;
       }
     },
     [isOwner, loadOrg, org],
+  );
+
+  const applyStaffRoleUpdate = useCallback((role: OrganizationRole) => {
+    setOrg((prev) => {
+      if (!prev) return prev;
+      const existingRoles = Array.isArray(prev.staffRoles) ? prev.staffRoles : [];
+      const hasRole = existingRoles.some((entry) => entry.$id === role.$id);
+      const nextRoles = hasRole
+        ? existingRoles.map((entry) => (entry.$id === role.$id ? role : entry))
+        : [...existingRoles, role];
+      const nextStaffMembers = Array.isArray(prev.staffMembers)
+        ? prev.staffMembers.map((staffMember) => (
+          staffMember.roleId === role.$id
+            ? { ...staffMember, role }
+            : staffMember
+        ))
+        : prev.staffMembers;
+      return {
+        ...prev,
+        staffRoles: nextRoles,
+        staffMembers: nextStaffMembers,
+      };
+    });
+  }, []);
+
+  const handleCreateStaffRole = useCallback(
+    async (name: string, permissions: string[]) => {
+      if (!org || !isOwner) return;
+      const role = await organizationService.createStaffRole(org.$id, { name, permissions });
+      applyStaffRoleUpdate(role);
+    },
+    [applyStaffRoleUpdate, isOwner, org],
+  );
+
+  const handleUpdateStaffRoleDefinition = useCallback(
+    async (roleId: string, data: { name?: string; permissions?: string[] }) => {
+      if (!org || !isOwner) return;
+      const role = await organizationService.updateStaffRole(org.$id, roleId, data);
+      applyStaffRoleUpdate(role);
+    },
+    [applyStaffRoleUpdate, isOwner, org],
   );
 
   const handleUpdateEventHost = useCallback(async (eventId: string, hostId: string) => {
@@ -3043,7 +3125,7 @@ function OrganizationDetailContent() {
             </Group>
           </Group>
           <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-            <Paper withBorder p="sm" radius="md">
+            <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
               <Text fw={600} mb="xs">Org teams</Text>
               {summary.teams.length > 0 ? (
                 <Stack gap={8}>
@@ -3072,15 +3154,15 @@ function OrganizationDetailContent() {
                 <Text size="xs" c="dimmed">No organization team registrations.</Text>
               )}
             </Paper>
-            <Paper withBorder p="sm" radius="md">
+            <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
               <Text fw={600} mb="xs">Events</Text>
               {renderCustomerEvents(summary.events)}
             </Paper>
-            <Paper withBorder p="sm" radius="md">
+            <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
               <Text fw={600} mb="xs">Bills</Text>
               {renderCustomerBills(summary.bills)}
             </Paper>
-            <Paper withBorder p="sm" radius="md">
+            <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
               <Text fw={600} mb="xs">Signed documents</Text>
               {renderCustomerDocuments(summary.documents)}
             </Paper>
@@ -3120,7 +3202,7 @@ function OrganizationDetailContent() {
           </Group>
         </Group>
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-          <Paper withBorder p="sm" radius="md">
+          <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
             <Text fw={600} mb="xs">Team staff</Text>
             {staffRows.length > 0 ? (
               <Stack gap={8}>
@@ -3135,12 +3217,12 @@ function OrganizationDetailContent() {
               <Text size="xs" c="dimmed">No manager or coach assignments.</Text>
             )}
           </Paper>
-          <Paper withBorder p="sm" radius="md">
+          <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
             <Text fw={600} mb="xs">Events</Text>
             {renderCustomerEvents(summary.registrations, 'No organization event registrations.')}
           </Paper>
         </SimpleGrid>
-        <Paper withBorder p="sm" radius="md">
+        <Paper withBorder p="sm" radius="md" className="org-customer-detail-section org-customer-detail-section--grouped">
           <Text fw={600} mb="xs">Players</Text>
           {summary.members.length > 0 ? (
             <Stack gap="sm">
@@ -3153,7 +3235,7 @@ function OrganizationDetailContent() {
                   member.jerseyNumber ? `#${member.jerseyNumber}` : null,
                 ].filter(Boolean);
                 return (
-                  <Paper key={member.userId} withBorder p="sm" radius="md">
+                  <Paper key={member.userId} withBorder p="sm" radius="md" className="org-customer-detail-item">
                     <Stack gap="sm">
                       <Group justify="space-between" align="flex-start" wrap="wrap">
                         {renderPersonSummary(member)}
@@ -3168,11 +3250,11 @@ function OrganizationDetailContent() {
                         )}
                       </Group>
                       <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                        <div>
+                        <div className="org-customer-detail-subgroup">
                           <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={4}>Bills</Text>
                           {renderCustomerBills(member.bills, 'No player bills.')}
                         </div>
-                        <div>
+                        <div className="org-customer-detail-subgroup">
                           <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={4}>Documents</Text>
                           {renderCustomerDocuments(member.documents, 'No player documents.')}
                         </div>
@@ -3187,11 +3269,11 @@ function OrganizationDetailContent() {
           )}
         </Paper>
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-          <Paper withBorder p="sm" radius="md">
+          <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
             <Text fw={600} mb="xs">Team bills</Text>
             {renderCustomerBills(summary.bills)}
           </Paper>
-          <Paper withBorder p="sm" radius="md">
+          <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
             <Text fw={600} mb="xs">Team documents</Text>
             {renderCustomerDocuments(summary.documents)}
           </Paper>
@@ -3268,7 +3350,7 @@ function OrganizationDetailContent() {
             {activeTab === 'overview' && (
               <SimpleGrid cols={{ base: 1, lg: 3 }} spacing="lg">
                 <div style={{ gridColumn: 'span 2' }}>
-                  <Paper withBorder p="md" radius="md" mb="md">
+                  <Paper withBorder p="md" radius="md" mb="md" className="org-tab-surface">
                     <Group justify="space-between" align="flex-start" mb="xs">
                       <Title order={5}>About</Title>
                       {isOwner && (
@@ -3279,7 +3361,7 @@ function OrganizationDetailContent() {
                     </Group>
                     <Text size="sm" c="dimmed" style={{ whiteSpace: 'pre-line' }}>{org.description || 'No description'}</Text>
                   </Paper>
-                  <Paper withBorder p="md" radius="md">
+                  <Paper withBorder p="md" radius="md" className="org-tab-surface">
                     <Title order={5} mb="md">Recent Events</Title>
                     {overviewRecentEvents.length > 0 ? (
                       <ResponsiveCardGrid>
@@ -3304,7 +3386,7 @@ function OrganizationDetailContent() {
                 </div>
                 <div>
                   {isOwner && (
-                    <Paper withBorder p="md" radius="md" mb="md">
+                    <Paper withBorder p="md" radius="md" mb="md" className="org-tab-surface">
                       <Title order={5} mb="sm">Payments</Title>
                       <Text size="sm" c="dimmed" mb="sm">
                         {organizationVerificationStatus === 'VERIFIED'
@@ -3369,12 +3451,12 @@ function OrganizationDetailContent() {
                       </Stack>
                     </Paper>
                   )}
-                  <Paper withBorder p="md" radius="md">
+                  <Paper withBorder p="md" radius="md" className="org-tab-surface org-tab-surface--grouped">
                     <Title order={5} mb="md">Teams</Title>
                     {org.teams && org.teams.length > 0 ? (
                       <div className="space-y-3">
                         {org.teams.slice(0, 3).map((t) => (
-                          <TeamCard key={t.$id} team={t} showStats={false} />
+                          <TeamCard key={t.$id} team={t} showStats={false} className="org-tab-item" />
                         ))}
                       </div>
                     ) : (
@@ -3382,12 +3464,12 @@ function OrganizationDetailContent() {
                     )}
                   </Paper>
                   {isOwner && (
-                    <Paper withBorder p="md" radius="md" mt="md">
+                    <Paper withBorder p="md" radius="md" mt="md" className="org-tab-surface org-tab-surface--grouped">
                       <Title order={5} mb="md">Officials</Title>
                       {currentOfficials.length > 0 ? (
                         <div className="space-y-3">
                           {currentOfficials.slice(0, 4).map((ref) => (
-                            <UserCard key={ref.$id} user={ref} className="!p-0 !shadow-none" />
+                            <UserCard key={ref.$id} user={ref} className="org-tab-item !shadow-none" />
                           ))}
                         </div>
                       ) : (
@@ -3437,7 +3519,7 @@ function OrganizationDetailContent() {
             )}
 
             {isOwner && activeTab === 'eventTemplates' && (
-              <Paper withBorder p="md" radius="md">
+              <Paper withBorder p="md" radius="md" className="org-tab-surface">
                 <Group justify="space-between" mb="md">
                   <Title order={5}>Event Templates</Title>
                   <Group>
@@ -3477,7 +3559,7 @@ function OrganizationDetailContent() {
             )}
 
             {activeTab === 'teams' && (
-              <Paper withBorder p="md" radius="md">
+              <Paper withBorder p="md" radius="md" className="org-tab-surface">
                 <Group justify="space-between" mb="md">
                   <Title order={5}>Teams</Title>
                   {isOwner && <Button onClick={() => setShowCreateTeamModal(true)}>Create Team</Button>}
@@ -3488,6 +3570,7 @@ function OrganizationDetailContent() {
                       <TeamCard
                         key={t.$id}
                         team={t}
+                        className="org-tab-item"
                         onClick={() => {
                           setSelectedTeam(t);
                           setShowTeamDetailModal(true);
@@ -3668,7 +3751,7 @@ function OrganizationDetailContent() {
                         )}
                       </Paper>
 
-                      <Paper withBorder p="md" radius="md" className="min-w-0 xl:sticky xl:top-24 xl:self-start">
+                      <Paper withBorder p="md" radius="md" className="org-customer-detail-panel min-w-0 xl:sticky xl:top-24 xl:self-start">
                         <ScrollArea.Autosize mah={720} type="auto">
                           {renderSelectedCustomerDetail()}
                         </ScrollArea.Autosize>
@@ -3680,7 +3763,7 @@ function OrganizationDetailContent() {
             )}
 
             {isOwner && activeTab === 'templates' && (
-              <Paper withBorder p="md" radius="md">
+              <Paper withBorder p="md" radius="md" className="org-tab-surface">
                 <Group justify="space-between" mb="md">
                   <Title order={5}>Document Templates</Title>
                   <Group>
@@ -3710,7 +3793,7 @@ function OrganizationDetailContent() {
                 ) : (pendingTemplateCreates.length > 0 || templateDocuments.length > 0) ? (
                   <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
                     {pendingTemplateCreates.map((pendingTemplate) => (
-                      <Paper key={pendingTemplate.localId} withBorder p="sm" radius="md">
+                      <Paper key={pendingTemplate.localId} withBorder p="sm" radius="md" className="org-tab-item">
                         <Text fw={600}>{pendingTemplate.title || 'Untitled Template'}</Text>
                         <Text size="sm" c="dimmed">
                           {pendingTemplate.signOnce ? 'Sign once per participant' : 'Sign for every event'}
@@ -3735,7 +3818,7 @@ function OrganizationDetailContent() {
                       </Paper>
                     ))}
                     {templateDocuments.map((template) => (
-                      <Paper key={template.$id} withBorder p="sm" radius="md">
+                      <Paper key={template.$id} withBorder p="sm" radius="md" className="org-tab-item">
                         <Text fw={600}>{template.title || 'Untitled Template'}</Text>
                         <Text size="sm" c="dimmed">
                           {template.signOnce ? 'Sign once per participant' : 'Sign for every event'}
@@ -3801,16 +3884,17 @@ function OrganizationDetailContent() {
                 searchResults={staffResults}
                 searchLoading={staffSearchLoading}
                 searchError={staffError}
-                existingInviteTypes={existingStaffInviteTypes}
-                onExistingInviteTypesChange={setExistingStaffInviteTypes}
-                onAddExisting={(candidate, types) => { void handleInviteExistingStaff(candidate, types); }}
+                onAddExisting={(candidate, roleId, types) => { void handleInviteExistingStaff(candidate, roleId, types); }}
                 inviteRows={staffInvites}
                 onInviteRowsChange={(rows) => setStaffInvites(rows)}
                 inviteError={staffInviteError}
                 inviting={invitingStaff}
+                staffRoles={org.staffRoles ?? []}
                 onSendInvites={() => { void handleInviteStaffEmails(); }}
                 onRemoveFromRoster={(entryUserId) => { void handleRemoveStaffMember(entryUserId); }}
-                onTypesChange={(entryUserId, nextTypes) => { void handleUpdateStaffTypes(entryUserId, nextTypes); }}
+                onRoleChange={(entryUserId, roleId) => handleUpdateStaffRole(entryUserId, roleId)}
+                onCreateRole={(name, permissions) => handleCreateStaffRole(name, permissions)}
+                onUpdateRole={(roleId, data) => handleUpdateStaffRoleDefinition(roleId, data)}
               />
             )}
 
@@ -3831,7 +3915,7 @@ function OrganizationDetailContent() {
             )}
 
             {activeTab === 'store' && org && (
-              <Paper withBorder p="md" radius="md">
+              <Paper withBorder p="md" radius="md" className="org-tab-surface">
                 <Group justify="space-between" align="center" mb="md">
                   <Title order={5}>Store</Title>
                   {!organizationHasStripeAccount && (
@@ -3842,7 +3926,7 @@ function OrganizationDetailContent() {
                 </Group>
 
                   {isOwner && (
-                    <Paper withBorder radius="md" p="md" mb="lg">
+                    <Paper withBorder radius="md" p="md" mb="lg" className="org-tab-item">
                     <Title order={6} mb="xs">Add product</Title>
                     <Text size="sm" c="dimmed" mb="md">
                       Create a recurring or one-time product that users can purchase.
@@ -3910,6 +3994,7 @@ function OrganizationDetailContent() {
                         withBorder
                         radius="md"
                         p="md"
+                        className="org-tab-item"
                         onClick={() => {
                           if (isOwner) {
                             openProductModal(product);

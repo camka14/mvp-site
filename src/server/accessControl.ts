@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/prisma';
+import { ORG_PERMISSIONS, type OrganizationPermission } from '@/lib/organizationPermissions';
 import { STAFF_ACCESS_TYPES, getBlockingStaffInvite, hasStaffMemberType, normalizeStaffMemberTypes } from '@/lib/staff';
 import type { StaffMemberType } from '@/types';
 import { evaluateRazumlyAdminAccess } from '@/server/razumlyAdmin';
@@ -25,8 +26,6 @@ type SessionLike = {
 type OrganizationAccessRecord = {
   id?: string | null | undefined;
   ownerId: string | null | undefined;
-  hostIds?: string[] | null | undefined;
-  officialIds?: string[] | null | undefined;
 };
 
 type EventAccessRecord = {
@@ -50,8 +49,6 @@ type OrganizationLookupClient = {
     findUnique: (args: any) => Promise<{
       id?: string | null;
       ownerId: string | null;
-      hostIds?: string[] | null;
-      officialIds?: string[] | null;
     } | null>;
   };
   staffMembers?: {
@@ -59,6 +56,18 @@ type OrganizationLookupClient = {
       organizationId: string;
       userId: string;
       types: string[] | null;
+      roleId?: string | null;
+    } | null>;
+  } | undefined;
+  organizationRoles?: {
+    findFirst: (args: any) => Promise<{
+      id: string;
+      organizationId: string;
+    } | null>;
+  } | undefined;
+  organizationRolePermissions?: {
+    findFirst: (args: any) => Promise<{
+      permission: string;
     } | null>;
   } | undefined;
   invites?: {
@@ -84,10 +93,26 @@ const hasRazumlyOrganizationAccess = async (
   return status.allowed;
 };
 
-export const hasOrganizationStaffAccess = async (
+const canUseRolePermissions = (client: OrganizationLookupClient): boolean => (
+  Boolean(client.organizationRoles?.findFirst && client.organizationRolePermissions?.findFirst)
+);
+
+const hasLegacyStaffTypeAccess = (
+  staffMember: { types?: unknown } | null | undefined,
+  allowedTypes: readonly StaffMemberType[],
+): boolean => (
+  Boolean(staffMember)
+  && hasStaffMemberType({ types: normalizeStaffMemberTypes(staffMember?.types) }, allowedTypes)
+);
+
+const isManagementTypeCheck = (allowedTypes: readonly StaffMemberType[]): boolean => (
+  allowedTypes.includes('HOST') || allowedTypes.includes('STAFF')
+);
+
+export const hasOrgPermission = async (
   session: SessionLike,
   organization: OrganizationAccessRecord | null | undefined,
-  allowedTypes: readonly StaffMemberType[],
+  permission: OrganizationPermission,
   client: OrganizationLookupClient = prisma,
 ): Promise<boolean> => {
   if (session.isAdmin) {
@@ -104,13 +129,109 @@ export const hasOrganizationStaffAccess = async (
     return false;
   }
 
-  const assignedHostIds = normalizeIdList(organization.hostIds);
-  const assignedOfficialIds = normalizeIdList(organization.officialIds);
-  if (
-    ((allowedTypes.includes('HOST') || allowedTypes.includes('STAFF')) && assignedHostIds.includes(session.userId))
-    || (allowedTypes.includes('OFFICIAL') && assignedOfficialIds.includes(session.userId))
-  ) {
+  if (await hasRazumlyOrganizationAccess(session, client)) {
     return true;
+  }
+
+  const [staffMember, invites] = await Promise.all([
+    client.staffMembers?.findUnique
+      ? client.staffMembers.findUnique({
+        where: {
+          organizationId_userId: {
+            organizationId,
+            userId: session.userId,
+          },
+        },
+        select: {
+          organizationId: true,
+          userId: true,
+          types: true,
+          roleId: true,
+        },
+      })
+      : Promise.resolve(null),
+    client.invites?.findMany
+      ? client.invites.findMany({
+        where: {
+          organizationId,
+          userId: session.userId,
+          type: 'STAFF',
+        },
+        select: {
+          organizationId: true,
+          userId: true,
+          type: true,
+          status: true,
+        },
+      })
+      : Promise.resolve([]),
+  ]);
+
+  if (!staffMember) {
+    return false;
+  }
+  if (getBlockingStaffInvite(invites, organizationId, session.userId)) {
+    return false;
+  }
+
+  const roleId = typeof staffMember.roleId === 'string' && staffMember.roleId.trim().length > 0
+    ? staffMember.roleId
+    : null;
+  if (roleId && canUseRolePermissions(client)) {
+    const role = await client.organizationRoles?.findFirst({
+      where: {
+        id: roleId,
+        organizationId,
+      },
+      select: {
+        id: true,
+        organizationId: true,
+      },
+    });
+    if (!role) {
+      return false;
+    }
+    const rolePermission = await client.organizationRolePermissions?.findFirst({
+      where: {
+        organizationRoleId: role.id,
+        permission,
+      },
+      select: {
+        permission: true,
+      },
+    });
+    return Boolean(rolePermission);
+  }
+
+  if (permission === ORG_PERMISSIONS.ORGANIZATION_MANAGE) {
+    return hasLegacyStaffTypeAccess(staffMember, STAFF_ACCESS_TYPES);
+  }
+
+  return false;
+};
+
+export const hasOrganizationStaffAccess = async (
+  session: SessionLike,
+  organization: OrganizationAccessRecord | null | undefined,
+  allowedTypes: readonly StaffMemberType[],
+  client: OrganizationLookupClient = prisma,
+): Promise<boolean> => {
+  if (isManagementTypeCheck(allowedTypes)) {
+    return hasOrgPermission(session, organization, ORG_PERMISSIONS.ORGANIZATION_MANAGE, client);
+  }
+
+  if (session.isAdmin) {
+    return true;
+  }
+  if (!organization) {
+    return false;
+  }
+  if (organization.ownerId === session.userId) {
+    return true;
+  }
+  const organizationId = typeof organization.id === 'string' ? organization.id : null;
+  if (!organizationId) {
+    return false;
   }
 
   if (await hasRazumlyOrganizationAccess(session, client)) {
@@ -150,7 +271,7 @@ export const hasOrganizationStaffAccess = async (
       : Promise.resolve([]),
   ]);
 
-  if (!staffMember || !hasStaffMemberType({ types: normalizeStaffMemberTypes(staffMember.types) }, allowedTypes)) {
+  if (!hasLegacyStaffTypeAccess(staffMember, allowedTypes)) {
     return false;
   }
 
@@ -161,7 +282,7 @@ export const canManageOrganization = async (
   session: SessionLike,
   organization: OrganizationAccessRecord | null | undefined,
   client: OrganizationLookupClient = prisma,
-): Promise<boolean> => hasOrganizationStaffAccess(session, organization, STAFF_ACCESS_TYPES, client);
+): Promise<boolean> => hasOrgPermission(session, organization, ORG_PERMISSIONS.ORGANIZATION_MANAGE, client);
 
 export const canOfficialOrganization = async (
   session: SessionLike,
@@ -199,7 +320,7 @@ export const canManageEvent = async (
   }
   const organization = await client.organizations.findUnique({
     where: { id: organizationId },
-    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    select: { id: true, ownerId: true },
   });
   return canManageOrganization(session, organization, client);
 };

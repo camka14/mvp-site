@@ -13,23 +13,34 @@ describe('organizationEventAccess helpers', () => {
     expect(normalizeUniqueIds(['user_1', ' user_1 ', '', 'user_2'])).toEqual(['user_1', 'user_2']);
   });
 
-  it('collects host and official ids from organization metadata', () => {
+  it('collects host and official ids from active staff memberships', () => {
     const organization = {
       ownerId: 'owner_1',
-      hostIds: ['host_1', 'host_2'],
-      officialIds: ['official_1'],
-      officials: [{ $id: 'official_2' }, { $id: 'official_1' }],
+      staffMembers: [
+        { organizationId: 'org_1', userId: 'host_1', types: ['HOST'] },
+        { organizationId: 'org_1', userId: 'host_2', types: ['HOST'] },
+        { organizationId: 'org_1', userId: 'official_1', types: ['OFFICIAL'] },
+        { organizationId: 'org_1', userId: 'pending_official', types: ['OFFICIAL'] },
+      ],
+      staffInvites: [
+        { organizationId: 'org_1', userId: 'pending_official', type: 'STAFF', status: 'PENDING' },
+      ],
     };
 
     expect(collectOrganizationHostIds(organization)).toEqual(['owner_1', 'host_1', 'host_2']);
-    expect(collectOrganizationOfficialIds(organization)).toEqual(['official_1', 'official_2']);
+    expect(collectOrganizationOfficialIds(organization)).toEqual(['official_1']);
   });
 
   it('sanitizes assignments for organization events', () => {
     const organization = {
       ownerId: 'owner_1',
-      hostIds: ['host_1', 'host_2'],
-      officialIds: ['official_1', 'official_2'],
+      staffMembers: [
+        { organizationId: 'org_1', userId: 'host_1', types: ['HOST'] },
+        { organizationId: 'org_1', userId: 'host_2', types: ['HOST'] },
+        { organizationId: 'org_1', userId: 'official_1', types: ['OFFICIAL'] },
+        { organizationId: 'org_1', userId: 'official_2', types: ['OFFICIAL'] },
+      ],
+      staffInvites: [],
     };
 
     const sanitized = sanitizeOrganizationEventAssignments(

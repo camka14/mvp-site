@@ -1,4 +1,5 @@
 import type { Prisma } from '@/generated/prisma/client';
+import { isPrivateToOrganizationsVisibility, normalizeAccountVisibility } from '@/lib/accountVisibility';
 import { formatNameParts, normalizeOptionalName } from '@/lib/nameCase';
 
 export const NAME_HIDDEN_LABEL = 'Name Hidden';
@@ -23,6 +24,7 @@ export const publicUserSelect = {
   uploadedImages: true,
   profileImageId: true,
   homePageOrganizationId: true,
+  accountVisibility: true,
 } as const;
 
 export type PublicUser = Prisma.UserDataGetPayload<{ select: typeof publicUserSelect }>;
@@ -72,6 +74,7 @@ export type VisibilityContext = {
   contextEventParentVisibleUserIds: Set<string>;
   contextOrganizationVisibleUserIds: Set<string>;
   contextEventFreeAgentIds: Set<string>;
+  sharedOrganizationUserIds: Set<string>;
   viewerManagesContextTeam: boolean;
   allowManagerFreeAgentUnmask: boolean;
 };
@@ -129,7 +132,7 @@ const resolveDisplayName = (user: Pick<PublicUser, 'firstName' | 'lastName' | 'u
 export const createVisibilityContext = async (
   client: {
     parentChildLinks: { findMany: (args: any) => Promise<Array<{ childId: string }>> };
-    staffMembers: { findMany: (args: any) => Promise<Array<{ organizationId: string }>> };
+    staffMembers: { findMany: (args: any) => Promise<Array<{ organizationId?: string; userId?: string | null }>> };
     teams: {
       findMany: (args: any) => Promise<Array<{
         id?: string;
@@ -164,7 +167,7 @@ export const createVisibilityContext = async (
       }>>;
     };
     organizations: {
-      findMany: (args: any) => Promise<Array<{ id: string }>>;
+      findMany: (args: any) => Promise<Array<{ id?: string; ownerId?: string | null }>>;
       findUnique: (args: any) => Promise<{ id?: string } | null>;
     };
     canonicalTeams?: {
@@ -205,6 +208,7 @@ export const createVisibilityContext = async (
       contextEventParentVisibleUserIds: new Set(),
       contextOrganizationVisibleUserIds: new Set(),
       contextEventFreeAgentIds: new Set(normalizeIdList(options.freeAgentUserIds)),
+      sharedOrganizationUserIds: new Set(),
       viewerManagesContextTeam: isAdmin,
       allowManagerFreeAgentUnmask: Boolean(options.allowManagerFreeAgentUnmask),
     };
@@ -230,9 +234,28 @@ export const createVisibilityContext = async (
     }),
   ]);
   const viewerOrganizationIds = new Set(normalizeIdList([
-    ...ownedOrganizations.map((organization) => organization.id),
-    ...staffMemberships.map((membership) => membership.organizationId),
+    ...ownedOrganizations.map((organization) => organization.id ?? ''),
+    ...staffMemberships.map((membership) => membership.organizationId ?? ''),
   ]));
+  let sharedOrganizationUserIds = new Set<string>();
+  const viewerOrganizationIdValues = Array.from(viewerOrganizationIds);
+  if (viewerOrganizationIdValues.length > 0) {
+    const [sharedStaffMemberships, sharedOwnedOrganizations] = await Promise.all([
+      client.staffMembers.findMany({
+        where: { organizationId: { in: viewerOrganizationIdValues } },
+        select: { userId: true },
+      }),
+      client.organizations.findMany({
+        where: { id: { in: viewerOrganizationIdValues } },
+        select: { ownerId: true },
+      }),
+    ]);
+    sharedOrganizationUserIds = new Set(normalizeIdList([
+      viewerId,
+      ...sharedStaffMemberships.map((membership) => membership.userId ?? ''),
+      ...sharedOwnedOrganizations.map((organization) => organization.ownerId ?? ''),
+    ]));
+  }
 
   let parentTeamIds = new Set<string>();
   if (activeChildIds.size > 0) {
@@ -440,6 +463,7 @@ export const createVisibilityContext = async (
     contextEventParentVisibleUserIds,
     contextOrganizationVisibleUserIds,
     contextEventFreeAgentIds,
+    sharedOrganizationUserIds,
     viewerManagesContextTeam,
     allowManagerFreeAgentUnmask: Boolean(options.allowManagerFreeAgentUnmask),
   };
@@ -478,6 +502,7 @@ export const applyUserPrivacy = (user: PublicUser, context: VisibilityContext): 
     ...user,
     firstName: normalizeOptionalName(user.firstName),
     lastName: normalizeOptionalName(user.lastName),
+    accountVisibility: normalizeAccountVisibility(user.accountVisibility),
   };
 
   if (!isIdentityHidden) {
@@ -490,7 +515,7 @@ export const applyUserPrivacy = (user: PublicUser, context: VisibilityContext): 
   }
 
   return {
-    ...user,
+    ...normalizedUser,
     firstName: 'Name',
     lastName: 'Hidden',
     userName: 'hidden',
@@ -504,6 +529,24 @@ export const applyUserPrivacyList = (users: PublicUser[], context: VisibilityCon
   return users.map((user) => applyUserPrivacy(user, context));
 };
 
-export const isVisibleInGenericSearch = (user: Pick<PublicUser, 'dateOfBirth'>): boolean => {
-  return !isMinorAtUtcDate(user.dateOfBirth);
+export const isVisibleInGenericSearch = (
+  user: Pick<PublicUser, 'id' | 'dateOfBirth' | 'accountVisibility'>,
+  context: VisibilityContext,
+): boolean => {
+  if (isMinorAtUtcDate(user.dateOfBirth, context.now)) {
+    return false;
+  }
+  if (!isPrivateToOrganizationsVisibility(user.accountVisibility)) {
+    return true;
+  }
+  if (context.isAdmin) {
+    return true;
+  }
+  if (!context.viewerId) {
+    return false;
+  }
+  if (context.viewerId === user.id) {
+    return true;
+  }
+  return context.sharedOrganizationUserIds.has(user.id);
 };

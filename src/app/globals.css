@@ -544,6 +544,69 @@ svg {
   border-radius: 1rem;
 }
 
+.org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-panel {
+  background: var(--mvp-neutral-0);
+  border-color: var(--mvp-neutral-200);
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-section {
+  background: var(--mvp-neutral-50);
+  border-color: var(--mvp-neutral-200);
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-section--grouped {
+  background: var(--mvp-neutral-100);
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-item {
+  background: var(--mvp-neutral-0);
+  border-color: var(--mvp-neutral-200);
+}
+
+.org-page-shell .org-customer-detail-subgroup {
+  min-height: 100%;
+  border: 1px solid var(--mvp-neutral-200);
+  border-radius: 0.75rem;
+  background: var(--mvp-neutral-50);
+  padding: 0.75rem;
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root.org-tab-surface {
+  background: var(--mvp-neutral-50);
+  border-color: var(--mvp-neutral-200);
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root.org-tab-surface--grouped {
+  background: var(--mvp-neutral-100);
+  border-color: var(--mvp-neutral-200);
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root.org-tab-item,
+.org-page-shell .org-tab-content .mantine-Card-root.org-tab-item {
+  border: 1px solid var(--mvp-neutral-200);
+  background: var(--mvp-neutral-0);
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root.org-tab-nested-item {
+  background: var(--mvp-neutral-50);
+  border-color: var(--mvp-neutral-200);
+}
+
+.org-page-shell .org-tab-table-surface {
+  overflow: hidden;
+  border: 1px solid var(--mvp-neutral-200);
+  border-radius: 0.75rem;
+  background: var(--mvp-neutral-0);
+}
+
+.org-page-shell .org-tab-table-surface table {
+  background: var(--mvp-neutral-0);
+}
+
+.org-page-shell .org-tab-table-surface thead {
+  background: var(--mvp-neutral-50);
+}
+
 .profile-page-shell .mantine-Paper-root:not(.profile-summary-card) {
   background: var(--ocean-surface);
   border-color: var(--ocean-border);
@@ -5908,5 +5971,20 @@ body:has(.landing-root) .site-footer-muted {
   .landing-static-operations.is-reveal-ready .landing-operation-static-panel .landing-operation-preview-crop {
     opacity: 1;
     transform: none;
+  }
+}
+.staff-roster-layout {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
+}
+
+.role-add-row {
+  cursor: pointer;
+}
+
+@media (max-width: 768px) {
+  .staff-roster-layout {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

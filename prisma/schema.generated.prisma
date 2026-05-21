@@ -743,10 +743,8 @@ model Organizations {
   description                 String?
   logoId                      String?
   ownerId                     String
-  hostIds                     String[]                                 @default([])
   website                     String?
   sports                      String[]                                 @default([])
-  officialIds                 String[]
   hasStripeAccount            Boolean?
   verificationStatus          OrganizationsVerificationStatusEnum      @default(UNVERIFIED)
   verifiedAt                  DateTime?

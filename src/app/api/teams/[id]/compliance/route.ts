@@ -130,7 +130,7 @@ export async function GET(
     team.organizationId
       ? prisma.organizations.findUnique({
         where: { id: team.organizationId },
-        select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+        select: { id: true, ownerId: true },
       })
       : Promise.resolve(null),
   ]);

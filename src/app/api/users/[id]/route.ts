@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { parseAccountVisibility } from '@/lib/accountVisibility';
 import { applyNameCaseToUserFields, formatNameParts, normalizeOptionalName } from '@/lib/nameCase';
 import { requireSession, assertUserAccess, getOptionalSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
-import { hasOrganizationStaffAccess } from '@/server/accessControl';
+import { getBlockingStaffInvite } from '@/lib/staff';
 import {
   findUserNameConflictUserId,
   isPrismaUserNameUniqueError,
@@ -33,6 +34,7 @@ const USER_MUTABLE_FIELDS = new Set<string>([
   'profileImageId',
   'homePageOrganizationId',
   'onboardingIntent',
+  'accountVisibility',
   'notificationSettings',
 ]);
 const USER_IMMUTABLE_FIELDS = new Set<string>([
@@ -63,6 +65,49 @@ const parseDateValue = (value: unknown): Date | null => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
   return null;
+};
+
+const canSetHomePageOrganization = async (
+  userId: string,
+  organization: { id?: string | null; ownerId?: string | null },
+): Promise<boolean> => {
+  if (organization.ownerId === userId) {
+    return true;
+  }
+  const organizationId = typeof organization.id === 'string' ? organization.id.trim() : '';
+  if (!organizationId) {
+    return false;
+  }
+
+  const [staffMember, invites] = await Promise.all([
+    prisma.staffMembers.findUnique({
+      where: {
+        organizationId_userId: {
+          organizationId,
+          userId,
+        },
+      },
+      select: {
+        organizationId: true,
+        userId: true,
+      },
+    }),
+    prisma.invites.findMany({
+      where: {
+        organizationId,
+        userId,
+        type: 'STAFF',
+      },
+      select: {
+        organizationId: true,
+        userId: true,
+        type: true,
+        status: true,
+      },
+    }),
+  ]);
+
+  return Boolean(staffMember) && !getBlockingStaffInvite(invites, organizationId, userId);
 };
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -193,6 +238,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       nextData.onboardingIntent = onboardingIntent;
     }
   }
+  if (Object.prototype.hasOwnProperty.call(nextData, 'accountVisibility')) {
+    const accountVisibility = parseAccountVisibility(nextData.accountVisibility);
+    if (!accountVisibility) {
+      return NextResponse.json({ error: 'accountVisibility is invalid.' }, { status: 400 });
+    }
+    nextData.accountVisibility = accountVisibility;
+  }
 
   if (Object.prototype.hasOwnProperty.call(nextData, 'homePageOrganizationId')) {
     const rawHomePageOrganizationId = nextData.homePageOrganizationId;
@@ -211,22 +263,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           select: {
             id: true,
             ownerId: true,
-            hostIds: true,
-            officialIds: true,
           },
         });
         if (!organization) {
           return NextResponse.json({ error: 'Organization not found.' }, { status: 404 });
         }
 
-        const isOrganizationRoleMember = await hasOrganizationStaffAccess(
-          { userId: id, isAdmin: false },
-          organization,
-          ['HOST', 'OFFICIAL', 'STAFF'],
-        );
-        if (!isOrganizationRoleMember) {
+        if (!await canSetHomePageOrganization(id, organization)) {
           return NextResponse.json(
-            { error: 'Only organization owners, hosts, or officials can set this organization as home page.' },
+            { error: 'Only organization members can set this organization as home page.' },
             { status: 403 },
           );
         }

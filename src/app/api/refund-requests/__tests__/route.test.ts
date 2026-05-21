@@ -105,8 +105,6 @@ describe('refund request routes', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: ['manager_1'],
-      officialIds: [],
     });
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
@@ -360,7 +358,7 @@ describe('refund request routes', () => {
       expect(payload.error).toBe('Forbidden');
       expect(prismaMock.organizations.findUnique).toHaveBeenCalledWith({
         where: { id: 'org_1' },
-        select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+        select: { id: true, ownerId: true },
       });
       expect(prismaMock.refundRequests.findMany).not.toHaveBeenCalled();
     });

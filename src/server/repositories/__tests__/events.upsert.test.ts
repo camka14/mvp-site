@@ -1435,8 +1435,6 @@ describe('upsertEventFromPayload', () => {
     const client = createMockClient();
     client.organizations.findUnique.mockResolvedValue({
       ownerId: 'owner_1',
-      hostIds: ['owner_1'],
-      officialIds: [],
     });
 
     const payload = {
@@ -1563,15 +1561,16 @@ describe('upsertEventFromPayload', () => {
     expect(eventUpsertArgs.update.leagueScoringConfigId).toBe(configUpsertArgs.where.id);
   });
 
-  it('keeps the creator as host for new organization events even when hostIds exclude them', async () => {
+  it('keeps the creator as host for new organization events when creator is organization staff', async () => {
     const client = createMockClient();
     client.organizations.findUnique
       .mockResolvedValueOnce({
         ownerId: 'owner_1',
-        hostIds: ['owner_1'],
-        officialIds: [],
       })
       .mockResolvedValueOnce({ hasStripeAccount: true });
+    client.staffMembers.findMany.mockResolvedValueOnce([
+      { organizationId: 'org_1', userId: 'creator_1', types: ['HOST'] },
+    ]);
 
     const payload = {
       ...baseEventPayload(),

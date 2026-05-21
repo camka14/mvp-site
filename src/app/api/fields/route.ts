@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
   const organization = orgId
     ? await prisma.organizations.findUnique({
         where: { id: orgId },
-        select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+        select: { id: true, ownerId: true },
       })
     : null;
 

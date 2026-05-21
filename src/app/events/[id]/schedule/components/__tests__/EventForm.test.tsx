@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithMantine } from '../../../../../../../test/utils/renderWithMantine';
 import EventForm, { EventFormHandle } from '../EventForm';
@@ -428,16 +428,13 @@ describe('EventForm dirty state', () => {
       },
     ],
     staffInvites: [],
-    hostIds: ['host_1', 'host_2', 'assistant_1'],
     hosts: [
       { $id: 'host_1', email: 'host@example.com', firstName: 'Harper', lastName: 'Host' },
       { $id: 'host_2', email: 'host2@example.com', firstName: 'Jordan', lastName: 'Host' },
       { $id: 'assistant_1', email: 'assistant@example.com', firstName: 'Alex', lastName: 'Host' },
     ],
-    officialIds: ['official_1', 'official_2'],
     officials: [
       { $id: 'official_1', email: 'official1@example.com', firstName: 'Riley', lastName: 'Official' },
-      { $id: 'official_2', email: 'official2@example.com', firstName: 'Casey', lastName: 'Official' },
     ],
   });
 
@@ -1324,7 +1321,16 @@ describe('EventForm dirty state', () => {
       expect(onDirtyStateChange).toHaveBeenCalledWith(false);
     });
 
-    fireEvent.click(screen.getAllByRole('button', { name: 'Set as host' })[1]);
+    const hostName = await screen.findByText('Jordan Host');
+    let hostCard = hostName.parentElement;
+    while (hostCard && !within(hostCard).queryByRole('button', { name: 'Set as host' })) {
+      hostCard = hostCard.parentElement;
+    }
+    expect(hostCard).not.toBeNull();
+    const setHostButton = within(hostCard as HTMLElement).getByRole('button', { name: 'Set as host' });
+    expect(setHostButton).toBeEnabled();
+
+    fireEvent.click(setHostButton);
 
     await waitFor(() => {
       expect(formRef.current?.getDraft()).toEqual(

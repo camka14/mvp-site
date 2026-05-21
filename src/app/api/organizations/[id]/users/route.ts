@@ -291,7 +291,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const org = await prisma.organizations.findUnique({
     where: { id },
-    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    select: { id: true, ownerId: true },
   });
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });

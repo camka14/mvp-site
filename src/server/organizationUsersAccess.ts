@@ -9,8 +9,6 @@ type SessionLike = {
 type OrganizationUsersAccessOrg = {
   id: string;
   ownerId: string;
-  hostIds?: string[] | null;
-  officialIds?: string[] | null;
 };
 
 export type OrganizationUsersScopeEvent = {
@@ -36,7 +34,7 @@ type OrganizationUsersAccessClient = {
   organizations: {
     findUnique: (args: {
       where: { id: string };
-      select: { id: true; ownerId: true; hostIds: true; officialIds: true };
+      select: { id: true; ownerId: true };
     }) => Promise<OrganizationUsersAccessOrg | null>;
   };
   fields: {

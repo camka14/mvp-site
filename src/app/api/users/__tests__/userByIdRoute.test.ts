@@ -133,7 +133,7 @@ describe('PATCH /api/users/[id]', () => {
     }));
   });
 
-  it('rejects setting homePageOrganizationId when the user is not an org owner/host/official', async () => {
+  it('rejects setting homePageOrganizationId when the user is not an organization member', async () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'other_user',
@@ -146,7 +146,7 @@ describe('PATCH /api/users/[id]', () => {
     const json = await response.json();
 
     expect(response.status).toBe(403);
-    expect(json.error).toContain('owners, hosts, or officials');
+    expect(json.error).toContain('organization members');
     expect(prismaMock.userData.update).not.toHaveBeenCalled();
   });
 
@@ -223,6 +223,36 @@ describe('PATCH /api/users/[id]', () => {
 
     expect(response.status).toBe(400);
     expect(json.error).toBe('onboardingIntent is invalid.');
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
+  });
+
+  it('updates accountVisibility when the value is valid', async () => {
+    prismaMock.userData.update.mockResolvedValue({
+      id: 'user_1',
+      accountVisibility: 'PRIVATE_TO_ORGS',
+    });
+
+    const response = await patchUserById(
+      buildJsonRequest('http://localhost/api/users/user_1', { data: { accountVisibility: 'private' } }),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.userData.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'user_1' },
+      data: expect.objectContaining({ accountVisibility: 'PRIVATE_TO_ORGS' }),
+    }));
+  });
+
+  it('rejects invalid accountVisibility values', async () => {
+    const response = await patchUserById(
+      buildJsonRequest('http://localhost/api/users/user_1', { data: { accountVisibility: 'friends_only' } }),
+      { params: Promise.resolve({ id: 'user_1' }) },
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(400);
+    expect(json.error).toBe('accountVisibility is invalid.');
     expect(prismaMock.userData.update).not.toHaveBeenCalled();
   });
 

@@ -594,7 +594,6 @@ const seed = async (): Promise<void> => {
         hasStripeAccount: SEED_ORG.hasStripeAccount,
         coordinates: SEED_ORG.coordinates,
         productIds: [],
-        officialIds: [],
         createdAt: now,
         updatedAt: now,
       },

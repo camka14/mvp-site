@@ -2,14 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { normalizeStaffMemberTypes } from '@/lib/staff';
-import { canManageOrganization } from '@/server/accessControl';
+import { getStaffMemberTypesForOrganizationRole, normalizeStaffMemberTypes } from '@/lib/staff';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
+import { hasOrgPermission } from '@/server/accessControl';
+import { resolveDefaultOrganizationRoleIdForStaffTypes } from '@/server/organizationRoles';
 
 export const dynamic = 'force-dynamic';
 
 const updateSchema = z.object({
   userId: z.string(),
-  types: z.array(z.string()),
+  types: z.array(z.string()).optional(),
+  roleId: z.string().nullable().optional(),
 }).passthrough();
 
 const deleteSchema = z.object({
@@ -32,13 +35,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
-  if (!(await canManageOrganization(session, org))) {
+  if (!(await hasOrgPermission(session, org, ORG_PERMISSIONS.STAFF_MANAGE))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const types = normalizeStaffMemberTypes(parsed.data.types);
-  if (!types.length) {
-    return NextResponse.json({ error: 'At least one staff type is required' }, { status: 400 });
+  if (!Object.prototype.hasOwnProperty.call(parsed.data, 'types')
+    && !Object.prototype.hasOwnProperty.call(parsed.data, 'roleId')) {
+    return NextResponse.json({ error: 'At least one staff field is required' }, { status: 400 });
   }
 
   const existing = await prisma.staffMembers.findUnique({
@@ -53,12 +56,46 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: 'Staff member not found' }, { status: 404 });
   }
 
+  const data: Record<string, unknown> = {
+    updatedAt: new Date(),
+  };
+  let nextTypes = normalizeStaffMemberTypes(existing.types);
+  if (Object.prototype.hasOwnProperty.call(parsed.data, 'types')) {
+    nextTypes = normalizeStaffMemberTypes(parsed.data.types);
+    if (!nextTypes.length) {
+      return NextResponse.json({ error: 'At least one staff type is required' }, { status: 400 });
+    }
+    data.types = nextTypes;
+  }
+
+  if (typeof parsed.data.roleId === 'string') {
+    const role = await prisma.organizationRoles.findFirst({
+      where: {
+        id: parsed.data.roleId,
+        organizationId: id,
+      },
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        systemKey: true,
+      },
+    });
+    if (!role) {
+      return NextResponse.json({ error: 'Role not found' }, { status: 404 });
+    }
+    nextTypes = getStaffMemberTypesForOrganizationRole(role);
+    data.types = nextTypes;
+    data.roleId = role.id;
+  } else if (parsed.data.roleId === null) {
+    data.roleId = await resolveDefaultOrganizationRoleIdForStaffTypes(prisma, id, nextTypes);
+  } else if (!existing.roleId && Object.prototype.hasOwnProperty.call(parsed.data, 'types')) {
+    data.roleId = await resolveDefaultOrganizationRoleIdForStaffTypes(prisma, id, nextTypes);
+  }
+
   const updated = await prisma.staffMembers.update({
     where: { id: existing.id },
-    data: {
-      types,
-      updatedAt: new Date(),
-    },
+    data,
   });
 
   return NextResponse.json({ staffMember: updated }, { status: 200 });
@@ -80,7 +117,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
-  if (!(await canManageOrganization(session, org))) {
+  if (!(await hasOrgPermission(session, org, ORG_PERMISSIONS.STAFF_MANAGE))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

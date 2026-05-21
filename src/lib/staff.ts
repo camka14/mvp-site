@@ -38,6 +38,22 @@ export const normalizeStaffMemberTypes = (value: unknown): StaffMemberType[] => 
   );
 };
 
+export const getStaffMemberTypesForOrganizationRole = (
+  role: { kind?: unknown; systemKey?: unknown; name?: unknown } | null | undefined,
+): StaffMemberType[] => {
+  const kind = typeof role?.kind === 'string' ? role.kind.trim().toUpperCase() : '';
+  const systemKey = typeof role?.systemKey === 'string' ? role.systemKey.trim().toUpperCase() : '';
+  const name = typeof role?.name === 'string' ? role.name.trim().toUpperCase() : '';
+
+  if (kind === 'HOST' || systemKey === 'HOST' || (!systemKey && name === 'HOST')) {
+    return ['HOST'];
+  }
+  if (kind === 'OFFICIAL' || systemKey === 'OFFICIAL' || (!systemKey && name === 'OFFICIAL')) {
+    return ['OFFICIAL'];
+  }
+  return ['STAFF'];
+};
+
 export const normalizeInviteType = (value: unknown): InviteType | null => {
   if (typeof value !== 'string') {
     return null;

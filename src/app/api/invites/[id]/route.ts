@@ -41,8 +41,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           select: {
             id: true,
             ownerId: true,
-            hostIds: true,
-            officialIds: true,
           },
         });
         allowed = await canManageOrganization(session, organization, prisma);

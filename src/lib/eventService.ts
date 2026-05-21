@@ -2429,12 +2429,6 @@ class EventService {
       address: row.address ?? undefined,
       coordinates: coordinates,
       ownerId: row.ownerId ?? undefined,
-      hostIds: Array.isArray(row.hostIds)
-        ? row.hostIds.map((id: unknown) => String(id))
-        : [],
-      officialIds: Array.isArray(row.officialIds)
-        ? row.officialIds.map((id: unknown) => String(id))
-        : [],
       hasStripeAccount:
         typeof row.hasStripeAccount === "boolean"
           ? row.hasStripeAccount

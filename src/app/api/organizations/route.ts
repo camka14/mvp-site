@@ -14,6 +14,7 @@ import {
   normalizeOrganizationStatus,
 } from '@/lib/organizationStatus';
 import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
+import { ensureDefaultOrganizationRoles } from '@/server/organizationRoles';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -27,10 +28,8 @@ const createSchema = z.object({
   description: z.string().optional(),
   logoId: z.string().optional(),
   ownerId: z.string(),
-  hostIds: z.array(z.string()).optional(),
   website: z.string().optional(),
   sports: z.array(z.string()).optional(),
-  officialIds: z.array(z.string()).optional(),
   status: z.string().optional(),
   coordinates: z.any().optional(),
   productIds: z.array(z.string()).optional(),
@@ -248,10 +247,8 @@ export async function POST(req: NextRequest) {
     description: data.description ?? null,
     logoId: data.logoId ?? null,
     ownerId: data.ownerId,
-    hostIds: Array.isArray(data.hostIds) ? data.hostIds : [],
     website: data.website ?? null,
     sports: Array.isArray(data.sports) ? data.sports : [],
-    officialIds: Array.isArray(data.officialIds) ? data.officialIds : [],
     status,
     hasStripeAccount: false,
     coordinates: data.coordinates ?? null,
@@ -266,6 +263,7 @@ export async function POST(req: NextRequest) {
     createdAt: new Date(),
     updatedAt: new Date(),
   });
+  await ensureDefaultOrganizationRoles(prisma, organization.id);
 
   return NextResponse.json(withLegacyFields(organization), { status: 201 });
 }

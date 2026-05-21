@@ -37,17 +37,17 @@ const prismaMock = {
     findMany: jest.fn(),
     update: jest.fn(),
   },
-  organizations: {
-    findMany: jest.fn(),
-    update: jest.fn(),
-  },
   events: {
     findMany: jest.fn(),
     update: jest.fn(),
     deleteMany: jest.fn(),
   },
   eventOfficials: {
+    updateMany: jest.fn(),
     deleteMany: jest.fn(),
+  },
+  eventRegistrations: {
+    updateMany: jest.fn(),
   },
   staffMembers: {
     deleteMany: jest.fn(),
@@ -140,13 +140,6 @@ describe('DELETE /api/auth/account', () => {
         captainId: 'user_1',
         managerId: 'user_1',
         headCoachId: null,
-      },
-    ]);
-    prismaMock.organizations.findMany.mockResolvedValue([
-      {
-        id: 'org_1',
-        hostIds: ['user_1', 'user_2'],
-        officialIds: ['user_1'],
       },
     ]);
     prismaMock.events.findMany.mockResolvedValue([

@@ -6,9 +6,11 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Container,
   Group,
   Paper,
+  Select,
   SimpleGrid,
   Stack,
   Text,
@@ -21,12 +23,20 @@ import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import { useApp } from '@/app/providers';
 import { createId } from '@/lib/id';
+import {
+  PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY,
+  PUBLIC_ACCOUNT_VISIBILITY,
+  isPrivateToOrganizationsVisibility,
+  type AccountVisibility,
+} from '@/lib/accountVisibility';
 import { buildIndividualEventCreateUrl } from '@/lib/eventCreateNavigation';
 import { getHomePathForUser } from '@/lib/homePage';
 import {
   hasOnboardingIntent,
   type OnboardingIntent,
 } from '@/lib/onboardingIntent';
+import { organizationService } from '@/lib/organizationService';
+import type { Organization } from '@/types';
 
 type OnboardingOption = {
   intent: OnboardingIntent;
@@ -79,6 +89,15 @@ export default function OnboardingPage() {
   const selectionInProgressRef = useRef(false);
   const [savingIntent, setSavingIntent] = useState<OnboardingIntent | null>(null);
   const [error, setError] = useState('');
+  const [organizationError, setOrganizationError] = useState('');
+  const [loadingOrganizations, setLoadingOrganizations] = useState(false);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [selectedHomeOrganizationId, setSelectedHomeOrganizationId] = useState<string | null>(null);
+  const [privateAccount, setPrivateAccount] = useState(false);
+
+  useEffect(() => {
+    setPrivateAccount(isPrivateToOrganizationsVisibility(user?.accountVisibility));
+  }, [user?.accountVisibility]);
 
   useEffect(() => {
     if (loading || selectionInProgressRef.current) {
@@ -95,8 +114,64 @@ export default function OnboardingPage() {
     }
   }, [isAuthenticated, isGuest, loading, router, user]);
 
+  useEffect(() => {
+    if (
+      loading
+      || !user?.$id
+      || !isAuthenticated
+      || isGuest
+      || hasOnboardingIntent(user.onboardingIntent)
+    ) {
+      setOrganizations([]);
+      setSelectedHomeOrganizationId(null);
+      setOrganizationError('');
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingOrganizations(true);
+    setOrganizationError('');
+
+    organizationService.getOrganizationsByUser(user.$id)
+      .then((nextOrganizations) => {
+        if (cancelled) return;
+        setOrganizations(nextOrganizations);
+        const currentHomeOrganizationId = typeof user.homePageOrganizationId === 'string'
+          ? user.homePageOrganizationId.trim()
+          : '';
+        const nextHomeOrganizationId = nextOrganizations.some((organization) => organization.$id === currentHomeOrganizationId)
+          ? currentHomeOrganizationId
+          : nextOrganizations[0]?.$id ?? null;
+        setSelectedHomeOrganizationId(nextHomeOrganizationId || null);
+      })
+      .catch((loadError: unknown) => {
+        if (cancelled) return;
+        setOrganizations([]);
+        setSelectedHomeOrganizationId(null);
+        setOrganizationError(loadError instanceof Error ? loadError.message : 'Unable to load your organizations.');
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingOrganizations(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isGuest, loading, user]);
+
+  const organizationOptions = organizations.map((organization) => ({
+    value: organization.$id,
+    label: organization.name,
+  }));
+  const hasOrganizationMembership = organizationOptions.length > 0;
+  const selectedHomeOrganization = selectedHomeOrganizationId
+    ? organizations.find((organization) => organization.$id === selectedHomeOrganizationId)
+    : null;
+
   const handleSelect = async (intent: OnboardingIntent) => {
-    if (savingIntent) return;
+    if (savingIntent || loadingOrganizations) return;
 
     selectionInProgressRef.current = true;
     setSavingIntent(intent);
@@ -104,7 +179,24 @@ export default function OnboardingPage() {
 
     try {
       if (user && isAuthenticated && !isGuest) {
-        const updated = await updateUser({ onboardingIntent: intent });
+        const accountVisibility: AccountVisibility = privateAccount
+          ? PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY
+          : PUBLIC_ACCOUNT_VISIBILITY;
+        const updates: {
+          onboardingIntent: OnboardingIntent;
+          accountVisibility?: AccountVisibility;
+          homePageOrganizationId?: string;
+        } = { onboardingIntent: intent };
+        if (hasOrganizationMembership) {
+          updates.accountVisibility = accountVisibility;
+          if (
+            selectedHomeOrganization?.$id
+            && selectedHomeOrganization.$id !== user.homePageOrganizationId
+          ) {
+            updates.homePageOrganizationId = selectedHomeOrganization.$id;
+          }
+        }
+        const updated = await updateUser(updates);
         if (!updated) {
           throw new Error('Unable to save your selection.');
         }
@@ -148,6 +240,38 @@ export default function OnboardingPage() {
                 You can browse and join events now. Creating events or organizations is available after email verification.
               </Alert>
             ) : null}
+            {organizationError ? (
+              <Alert color="yellow" variant="light" title="Organizations not loaded">
+                {organizationError}
+              </Alert>
+            ) : null}
+            {hasOrganizationMembership ? (
+              <Paper withBorder radius="md" p="lg" bg="white">
+                <Stack gap="md">
+                  <Stack gap={4}>
+                    <Title order={2} size="h3">Account visibility</Title>
+                    <Text c="dimmed" size="sm">
+                      This controls whether people outside your organizations can find your account in search.
+                    </Text>
+                  </Stack>
+                  {organizationOptions.length > 1 ? (
+                    <Select
+                      label="Home organization"
+                      data={organizationOptions}
+                      value={selectedHomeOrganizationId}
+                      onChange={setSelectedHomeOrganizationId}
+                      allowDeselect={false}
+                    />
+                  ) : null}
+                  <Checkbox
+                    label="Private account"
+                    description="Only people in your organizations can find your profile in search."
+                    checked={privateAccount}
+                    onChange={(event) => setPrivateAccount(event.currentTarget.checked)}
+                  />
+                </Stack>
+              </Paper>
+            ) : null}
 
             <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
               {OPTIONS.map((option) => {
@@ -163,11 +287,11 @@ export default function OnboardingPage() {
                     radius="md"
                     p="lg"
                     ta="left"
-                    disabled={Boolean(savingIntent)}
+                    disabled={Boolean(savingIntent) || loadingOrganizations}
                     onClick={() => handleSelect(option.intent)}
                     style={{
                       minHeight: 220,
-                      cursor: savingIntent ? 'default' : 'pointer',
+                      cursor: savingIntent || loadingOrganizations ? 'default' : 'pointer',
                       background: 'white',
                     }}
                   >

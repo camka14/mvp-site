@@ -742,7 +742,7 @@ export async function GET(req: NextRequest) {
       if (organizationId) {
         const organization = await prisma.organizations.findUnique({
           where: { id: organizationId },
-          select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+          select: { id: true, ownerId: true },
         });
         if (!(await canManageOrganization(templateSession, organization))) {
           return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -768,7 +768,7 @@ export async function GET(req: NextRequest) {
     }
     return prisma.organizations.findUnique({
       where: { id: organizationId },
-      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+      select: { id: true, ownerId: true },
     }).then((organization) => canManageOrganization(sessionContext, organization));
   })();
   const canViewOrganizationDrafts = await includeManagedOrganizationDrafts;

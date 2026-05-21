@@ -132,8 +132,6 @@ describe('event PATCH route', () => {
     organizationsMock.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: ['host_1'],
-      officialIds: ['official_1'],
     });
     staffMembersMock.findMany.mockResolvedValue([]);
     invitesMock.findMany.mockResolvedValue([]);
@@ -310,9 +308,12 @@ describe('event PATCH route', () => {
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
     organizationsMock.findUnique.mockResolvedValueOnce({
       ownerId: 'owner_1',
-      hostIds: ['host_1', 'host_2'],
-      officialIds: ['official_org_1'],
     });
+    staffMembersMock.findMany.mockResolvedValueOnce([
+      { organizationId: 'org_1', userId: 'host_1', types: ['HOST'] },
+      { organizationId: 'org_1', userId: 'host_2', types: ['HOST'] },
+      { organizationId: 'org_1', userId: 'official_org_1', types: ['OFFICIAL'] },
+    ]);
     prismaMock.events.findUnique
       .mockResolvedValueOnce({
         id: 'event_1',

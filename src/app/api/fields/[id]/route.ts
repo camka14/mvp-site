@@ -225,7 +225,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const organization = orgId
     ? await prisma.organizations.findUnique({
         where: { id: orgId },
-        select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+        select: { id: true, ownerId: true },
       })
     : null;
 

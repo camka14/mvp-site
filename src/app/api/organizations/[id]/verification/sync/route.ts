@@ -20,8 +20,6 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       select: {
         id: true,
         ownerId: true,
-        hostIds: true,
-        officialIds: true,
       },
     });
 

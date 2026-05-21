@@ -178,7 +178,7 @@ export const canManageBillPayment = async (
   if (bill.organizationId) {
     const organization = await prisma.organizations.findUnique({
       where: { id: bill.organizationId },
-      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+      select: { id: true, ownerId: true },
     });
     if (organization && await canManageOrganization(session, organization)) {
       return true;
@@ -212,7 +212,7 @@ export const canAdministerBillPayment = async (
   if (bill.organizationId) {
     const organization = await prisma.organizations.findUnique({
       where: { id: bill.organizationId },
-      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+      select: { id: true, ownerId: true },
     });
     if (organization && await canManageOrganization(session, organization)) {
       return true;

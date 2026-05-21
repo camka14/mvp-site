@@ -22,6 +22,9 @@ const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
   },
+  organizationRoles: {
+    findFirst: jest.fn(),
+  },
   events: {
     findUnique: jest.fn(),
   },
@@ -86,6 +89,7 @@ describe('/api/invites', () => {
       id: 'org_1',
       ownerId: 'owner_1',
     });
+    prismaMock.organizationRoles.findFirst.mockResolvedValue(null);
     prismaMock.events.findUnique.mockResolvedValue({
       id: 'event_1',
       hostId: 'host_1',
@@ -398,6 +402,130 @@ describe('/api/invites', () => {
         eventId: 'event_1',
         organizationId: null,
         staffTypes: ['OFFICIAL'],
+        userId: 'user_staff_1',
+      }),
+    });
+  });
+
+  it('rejects organization-scoped STAFF invites for the organization owner', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.authUser.findUnique.mockResolvedValue({
+      email: 'owner@example.com',
+      passwordHash: 'hash',
+      lastLogin: new Date('2020-01-01T00:00:00.000Z'),
+      emailVerifiedAt: new Date('2020-01-01T00:00:00.000Z'),
+    });
+
+    const res = await POST(
+      jsonRequest({
+        invites: [{
+          type: 'STAFF',
+          organizationId: 'org_1',
+          userId: 'owner_1',
+          staffTypes: ['HOST'],
+        }],
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(409);
+    expect(json.error).toBe('Organization owner already has staff access');
+    expect(canManageOrganizationMock).toHaveBeenCalledWith(
+      { userId: 'owner_1', isAdmin: false },
+      expect.objectContaining({ id: 'org_1', ownerId: 'owner_1' }),
+      prismaMock,
+    );
+    expect(prismaMock.staffMembers.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.invites.create).not.toHaveBeenCalled();
+    expect(sendInviteEmailsMock).not.toHaveBeenCalled();
+  });
+
+  it('uses organization role selection as the source of staff type for organization STAFF invites', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    ensureAuthUserAndUserDataByEmailMock.mockResolvedValue({ userId: 'user_staff_1', authUserExisted: true });
+    prismaMock.organizationRoles.findFirst.mockResolvedValue({
+      id: 'role_scheduler',
+      name: 'Scheduler',
+      kind: 'STAFF',
+      systemKey: null,
+    });
+    prismaMock.staffMembers.findUnique.mockResolvedValue({
+      roleId: 'role_host',
+      types: ['HOST'],
+    });
+
+    const createdAt = new Date('2020-01-01T00:00:00.000Z');
+    const createdInvite = {
+      id: 'invite_staff_org_role',
+      type: 'STAFF',
+      email: 'staff@example.com',
+      status: 'PENDING',
+      eventId: null,
+      organizationId: 'org_1',
+      teamId: null,
+      userId: 'user_staff_1',
+      createdBy: 'owner_1',
+      firstName: 'Sam',
+      lastName: 'Staff',
+      staffTypes: ['STAFF'],
+      createdAt,
+      updatedAt: createdAt,
+    };
+    prismaMock.invites.create.mockResolvedValue(createdInvite);
+    sendInviteEmailsMock.mockResolvedValue([]);
+
+    const res = await POST(
+      jsonRequest({
+        invites: [{
+          type: 'STAFF',
+          organizationId: 'org_1',
+          email: 'staff@example.com',
+          firstName: 'Sam',
+          lastName: 'Staff',
+          staffTypes: ['HOST'],
+          roleId: 'role_scheduler',
+          replaceStaffTypes: true,
+        }],
+      }),
+    );
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.invites[0].staffTypes).toEqual(['STAFF']);
+    expect(prismaMock.organizationRoles.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: 'role_scheduler',
+        organizationId: 'org_1',
+      },
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        systemKey: true,
+      },
+    });
+    expect(prismaMock.staffMembers.upsert).toHaveBeenCalledWith({
+      where: {
+        organizationId_userId: {
+          organizationId: 'org_1',
+          userId: 'user_staff_1',
+        },
+      },
+      create: expect.objectContaining({
+        organizationId: 'org_1',
+        userId: 'user_staff_1',
+        types: ['STAFF'],
+        roleId: 'role_scheduler',
+      }),
+      update: expect.objectContaining({
+        types: { set: ['STAFF'] },
+        roleId: 'role_scheduler',
+      }),
+    });
+    expect(prismaMock.invites.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        organizationId: 'org_1',
+        staffTypes: ['STAFF'],
         userId: 'user_staff_1',
       }),
     });

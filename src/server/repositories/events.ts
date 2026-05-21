@@ -3906,8 +3906,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
       where: { id: resolvedOrganizationId },
       select: {
         ownerId: true,
-        hostIds: true,
-        officialIds: true,
         coordinates: true,
       } as any,
     })
@@ -3934,20 +3932,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     })
     : [];
   const requestedPayloadHostId = normalizeEntityId(payload.hostId);
-  const allowCreatorHostAssignment = !existingEvent && Boolean(requestedPayloadHostId);
-  const effectiveOrganizationAccess = organizationAccess
-    ? {
-      ...organizationAccess,
-      hostIds: allowCreatorHostAssignment
-        ? Array.from(
-          new Set([
-            ...ensureStringArray(organizationAccess.hostIds),
-            requestedPayloadHostId as string,
-          ]),
-        )
-        : organizationAccess.hostIds,
-    }
-    : null;
   const organizationAssignments = resolvedOrganizationId
     ? sanitizeOrganizationEventAssignments(
       {
@@ -3955,8 +3939,8 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
         assistantHostIds: ensureStringArray(payload.assistantHostIds),
         officialIds: ensureStringArray(payload.officialIds),
       },
-      effectiveOrganizationAccess
-        ? { ...effectiveOrganizationAccess, staffMembers: organizationStaffMembers, staffInvites: organizationStaffInvites }
+      organizationAccess
+        ? { ...organizationAccess, staffMembers: organizationStaffMembers, staffInvites: organizationStaffInvites }
         : null,
     )
     : null;

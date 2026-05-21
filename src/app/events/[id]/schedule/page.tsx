@@ -5562,6 +5562,11 @@ function EventScheduleContent() {
             const base = prev ?? ({ $id: eventId, state: 'DRAFT' } as Event);
             const orgLocation = (resolvedHostOrg.location ?? '').trim();
             const orgAddress = (resolvedHostOrg.address ?? '').trim();
+            const resolvedOrgOfficialIds = Array.isArray(resolvedHostOrg.officials)
+              ? resolvedHostOrg.officials
+                .map((official) => official?.$id)
+                .filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+              : [];
             const orgCoordinates =
               Array.isArray(resolvedHostOrg.coordinates) &&
                 typeof resolvedHostOrg.coordinates[0] === 'number' &&
@@ -5585,7 +5590,7 @@ function EventScheduleContent() {
                 : Array.isArray(resolvedHostOrg.fields)
                   ? resolvedHostOrg.fields
                   : base.fields,
-              officialIds: Array.isArray(resolvedHostOrg.officialIds) ? resolvedHostOrg.officialIds : base.officialIds,
+              officialIds: resolvedOrgOfficialIds.length > 0 ? resolvedOrgOfficialIds : base.officialIds,
               officials: Array.isArray(resolvedHostOrg.officials) ? resolvedHostOrg.officials : base.officials,
               location: baseLocation || orgLocation || '',
               address: baseAddress || orgAddress || '',

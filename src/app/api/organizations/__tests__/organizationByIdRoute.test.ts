@@ -57,8 +57,6 @@ describe('/api/organizations/[id]', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: [],
-      officialIds: [],
       name: 'Test Org',
     });
 
@@ -83,8 +81,6 @@ describe('/api/organizations/[id]', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: [],
-      officialIds: [],
       name: 'Test Org',
     });
 

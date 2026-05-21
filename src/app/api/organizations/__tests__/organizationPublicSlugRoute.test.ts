@@ -35,8 +35,6 @@ describe('/api/organizations/public-slug', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: [],
-      officialIds: [],
       publicSlug: null,
     });
   });
@@ -79,8 +77,6 @@ describe('/api/organizations/public-slug', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: [],
-      officialIds: [],
       publicSlug: 'south-county-soccer',
     });
 

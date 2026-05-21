@@ -137,7 +137,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       ]);
       const teamIds = participantIds.teamIds;
       const directPlayerIds = participantIds.userIds;
-      const hostIds = normalizeIds([eventAccess.hostId, ...normalizeIds(eventAccess.assistantHostIds)]);
+      const hostUserIds = normalizeIds([eventAccess.hostId, ...normalizeIds(eventAccess.assistantHostIds)]);
 
       const teams = teamIds.length
         ? await tx.teams.findMany({
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
         players: allPlayerIds,
         parents: parentIds,
         officials: officialIds,
-        hosts: hostIds,
+        hosts: hostUserIds,
       };
 
       const selectedUserIds = normalizeIds([

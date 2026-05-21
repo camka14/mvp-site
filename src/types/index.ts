@@ -1,6 +1,7 @@
 import { formatDisplayDate, formatDisplayTime, parseLocalDateTime } from '@/lib/dateUtils';
 import { normalizeEnumValue } from '@/lib/enumUtils';
 import { formatNameParts } from '@/lib/nameCase';
+import type { AccountVisibility } from '@/lib/accountVisibility';
 import type { NotificationSettings } from '@/lib/notificationSettings';
 import type { OnboardingIntent } from '@/lib/onboardingIntent';
 import type {
@@ -476,6 +477,7 @@ export interface UserData {
   chatTermsAcceptedAt?: string | null;
   chatTermsVersion?: string | null;
   onboardingIntent?: OnboardingIntent | null;
+  accountVisibility?: AccountVisibility | null;
   notificationSettings?: NotificationSettings | null;
   stripeAccountId?: string | null;
   $createdAt?: string;
@@ -489,12 +491,28 @@ export interface UserData {
 export type StaffMemberType = 'HOST' | 'OFFICIAL' | 'STAFF';
 export type InviteType = 'STAFF' | 'TEAM' | 'EVENT';
 export type InviteStatus = 'PENDING' | 'DECLINED' | 'FAILED';
+export type OrganizationRoleKind = 'OWNER' | 'STAFF' | 'HOST' | 'OFFICIAL';
+
+export interface OrganizationRole {
+  $id: string;
+  organizationId: string;
+  name: string;
+  kind: OrganizationRoleKind;
+  systemKey?: string | null;
+  isSystem: boolean;
+  isDefault: boolean;
+  permissions: string[];
+  $createdAt?: string;
+  $updatedAt?: string;
+}
 
 export interface StaffMember {
   $id: string;
   organizationId: string;
   userId: string;
   types: StaffMemberType[];
+  roleId?: string | null;
+  role?: OrganizationRole | null;
   user?: UserData;
   invite?: Invite | null;
   $createdAt?: string;
@@ -751,7 +769,6 @@ export interface Organization {
   address?: string;
   coordinates?: [number, number];
   ownerId?: string;
-  hostIds?: string[];
   status?: OrganizationStatus;
   hasStripeAccount?: boolean;
   taxOrganizationType?: OrganizationTaxClassification;
@@ -767,9 +784,9 @@ export interface Organization {
   verificationReviewStatus?: OrganizationVerificationReviewStatus;
   verificationReviewNotes?: string;
   verificationReviewUpdatedAt?: string;
-  officialIds?: string[];
   staffMembers?: StaffMember[];
   staffInvites?: Invite[];
+  staffRoles?: OrganizationRole[];
   staffEmailsByUserId?: Record<string, string>;
   productIds?: string[];
   publicSlug?: string | null;

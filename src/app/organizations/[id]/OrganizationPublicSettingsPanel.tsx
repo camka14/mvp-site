@@ -433,7 +433,7 @@ function WidgetEventSearchPicker({
       {selectedEvents.length ? (
         <Stack gap="xs">
           {selectedEvents.map((event) => (
-            <Paper key={event.id} withBorder p="xs" radius="md">
+            <Paper key={event.id} withBorder p="xs" radius="md" className="org-tab-nested-item">
               <Group justify="space-between" align="flex-start" wrap="nowrap">
                 <div>
                   <Text size="sm" fw={600}>{event.name}</Text>
@@ -459,7 +459,7 @@ function WidgetEventSearchPicker({
       </Text>
 
       {normalizedQuery ? (
-        <Paper withBorder p="xs" radius="md">
+        <Paper withBorder p="xs" radius="md" className="org-tab-item">
           <Stack gap="xs">
             {loading ? <Loader size="sm" /> : null}
             {!loading && error ? <Text size="xs" c="red">{error}</Text> : null}
@@ -467,7 +467,7 @@ function WidgetEventSearchPicker({
               <Text size="xs" c="dimmed">No matching events found.</Text>
             ) : null}
             {!loading && !error ? results.map((event) => (
-              <Paper key={event.id} withBorder p="xs" radius="md">
+              <Paper key={event.id} withBorder p="xs" radius="md" className="org-tab-nested-item">
                 <Group justify="space-between" align="center" wrap="nowrap">
                   <div>
                     <Text size="sm" fw={600}>{event.name}</Text>
@@ -765,7 +765,7 @@ export default function OrganizationPublicSettingsPanel({
 
   return (
     <Stack gap="lg">
-      <Paper withBorder p="md" radius="md">
+      <Paper withBorder p="md" radius="md" className="org-tab-surface">
         <Group justify="space-between" align="flex-start" mb="md">
           <div>
             <Title order={5}>Public page and widgets</Title>
@@ -883,7 +883,7 @@ export default function OrganizationPublicSettingsPanel({
         </SimpleGrid>
       </Paper>
 
-      <Paper withBorder p="md" radius="md">
+      <Paper withBorder p="md" radius="md" className="org-tab-surface">
         <Title order={5} mb="sm">Preview and snippets</Title>
         <Stack gap="sm">
           <Group align="flex-end" gap="sm" wrap="wrap">
@@ -920,7 +920,7 @@ export default function OrganizationPublicSettingsPanel({
             </Text>
           </div>
           <Group align="stretch" gap="md" wrap="wrap">
-            <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.common}>
+            <Paper withBorder p="sm" radius="md" className="org-tab-item" style={SECTION_WIDTH_STYLES.common}>
               <Stack gap="xs">
                 <Title order={6}>Common settings</Title>
                 {widgetIncludesStandings(widgetKind) || widgetIncludesBrackets(widgetKind) ? (
@@ -943,7 +943,7 @@ export default function OrganizationPublicSettingsPanel({
             </Paper>
 
             {visibleWidgetSections.includes('events') ? (
-              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.events}>
+              <Paper withBorder p="sm" radius="md" className="org-tab-item" style={SECTION_WIDTH_STYLES.events}>
                 <Stack gap="xs">
                   <Title order={6}>Events settings</Title>
                   <Group align="flex-end" gap="sm" wrap="wrap">
@@ -1035,7 +1035,7 @@ export default function OrganizationPublicSettingsPanel({
             ) : null}
 
             {visibleWidgetSections.includes('teams') ? (
-              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.teams}>
+              <Paper withBorder p="sm" radius="md" className="org-tab-item" style={SECTION_WIDTH_STYLES.teams}>
                 <Stack gap="xs">
                   <Title order={6}>Teams settings</Title>
                   <Group align="flex-end" gap="sm" wrap="wrap">
@@ -1050,7 +1050,7 @@ export default function OrganizationPublicSettingsPanel({
             ) : null}
 
             {visibleWidgetSections.includes('products') ? (
-              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.products}>
+              <Paper withBorder p="sm" radius="md" className="org-tab-item" style={SECTION_WIDTH_STYLES.products}>
                 <Stack gap="xs">
                   <Title order={6}>Products settings</Title>
                   <Group align="flex-end" gap="sm" wrap="wrap">
@@ -1067,7 +1067,7 @@ export default function OrganizationPublicSettingsPanel({
             ) : null}
 
             {visibleWidgetSections.includes('standings') ? (
-              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.selection}>
+              <Paper withBorder p="sm" radius="md" className="org-tab-item" style={SECTION_WIDTH_STYLES.selection}>
                 <Stack gap="sm">
                   <Title order={6}>Standings settings</Title>
                   <Group align="flex-end" gap="sm" wrap="wrap">
@@ -1097,7 +1097,7 @@ export default function OrganizationPublicSettingsPanel({
             ) : null}
 
             {visibleWidgetSections.includes('brackets') ? (
-              <Paper withBorder p="sm" radius="md" style={SECTION_WIDTH_STYLES.selection}>
+              <Paper withBorder p="sm" radius="md" className="org-tab-item" style={SECTION_WIDTH_STYLES.selection}>
                 <Stack gap="sm">
                   <Title order={6}>Bracket settings</Title>
                   <Group align="flex-end" gap="sm" wrap="wrap">

@@ -181,6 +181,63 @@ describe('users list route', () => {
     expect(json.users.map((user: any) => user.$id)).toEqual(['user_visible']);
   });
 
+  it('filters private-to-organization accounts from outsider search', async () => {
+    findManyMock.mockResolvedValue([
+      {
+        id: 'user_public',
+        userName: 'public_user',
+        firstName: 'Public',
+        lastName: 'User',
+        dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+        accountVisibility: 'PUBLIC',
+      },
+      {
+        id: 'user_private',
+        userName: 'private_user',
+        firstName: 'Private',
+        lastName: 'User',
+        dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+        accountVisibility: 'PRIVATE_TO_ORGS',
+      },
+    ]);
+
+    const res = await usersGet(new NextRequest('http://localhost/api/users?query=user'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.users.map((user: any) => user.$id)).toEqual(['user_public']);
+  });
+
+  it('shows private-to-organization accounts to viewers from the same organization', async () => {
+    getOptionalSessionMock.mockReturnValue({ userId: 'viewer_1', isAdmin: false, rawToken: 'token' });
+    staffMembersFindManyMock
+      .mockResolvedValueOnce([{ organizationId: 'org_1' }])
+      .mockResolvedValueOnce([{ userId: 'viewer_1' }, { userId: 'user_private' }]);
+    organizationsFindManyMock
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ ownerId: 'owner_1' }]);
+    findManyMock.mockResolvedValue([
+      {
+        id: 'user_private',
+        userName: 'private_user',
+        firstName: 'Private',
+        lastName: 'User',
+        dateOfBirth: new Date('1990-01-01T00:00:00.000Z'),
+        accountVisibility: 'PRIVATE_TO_ORGS',
+      },
+    ]);
+
+    const res = await usersGet(new NextRequest('http://localhost/api/users?query=private'));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(staffMembersFindManyMock).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: { organizationId: { in: ['org_1'] } },
+      select: { userId: true },
+    }));
+    expect(json.users.map((user: any) => user.$id)).toEqual(['user_private']);
+  });
+
   it('returns an empty list for invalid search payload', async () => {
     const res = await usersGet(new NextRequest('http://localhost/api/users'));
     const json = await res.json();

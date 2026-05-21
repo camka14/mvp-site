@@ -431,7 +431,10 @@ model UserData {
   chatTermsAcceptedAt     DateTime?
   chatTermsVersion        String?
   onboardingIntent        String?
+  accountVisibility       String    @default("PUBLIC")
   notificationSettings    Json      @default("{}")
+
+  @@index([accountVisibility])
 }
 
 model SensitiveUserData {
@@ -496,10 +499,40 @@ model StaffMembers {
   organizationId String
   userId         String
   types          String[]  @default([])
+  roleId         String?
 
   @@unique([organizationId, userId])
   @@index([organizationId])
   @@index([userId])
+  @@index([roleId])
+}
+
+model OrganizationRoles {
+  id             String    @id
+  createdAt      DateTime?
+  updatedAt      DateTime?
+  organizationId String
+  name           String
+  kind           String
+  systemKey      String?
+  isSystem       Boolean   @default(false)
+  isDefault      Boolean   @default(false)
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+  @@index([systemKey])
+}
+
+model OrganizationRolePermissions {
+  id                 String    @id
+  createdAt          DateTime?
+  updatedAt          DateTime?
+  organizationRoleId String
+  permission         String
+
+  @@unique([organizationRoleId, permission])
+  @@index([organizationRoleId])
+  @@index([permission])
 }
 
 model EventOfficials {
@@ -913,10 +946,8 @@ model Organizations {
   description                 String?
   logoId                      String?
   ownerId                     String
-  hostIds                     String[]                                 @default([])
   website                     String?
   sports                      String[]                                 @default([])
-  officialIds                 String[]
   status                      OrganizationsStatusEnum                  @default(LISTED)
   hasStripeAccount            Boolean?
   verificationStatus          OrganizationsVerificationStatusEnum      @default(UNVERIFIED)

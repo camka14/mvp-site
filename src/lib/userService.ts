@@ -1,4 +1,5 @@
 import { Invite, StaffMemberType, UserData, Subscription } from '@/types';
+import { normalizeAccountVisibility, type AccountVisibility } from '@/lib/accountVisibility';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import { normalizeNotificationSettings } from '@/lib/notificationSettings';
 import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
@@ -25,6 +26,7 @@ const normalizeUserDataNames = (user: UserData): UserData => ({
   chatTermsAcceptedAt: user.chatTermsAcceptedAt ?? null,
   chatTermsVersion: user.chatTermsVersion ?? null,
   onboardingIntent: normalizeOnboardingIntent(user.onboardingIntent),
+  accountVisibility: normalizeAccountVisibility(user.accountVisibility),
   notificationSettings: normalizeNotificationSettings(user.notificationSettings),
 });
 
@@ -42,6 +44,7 @@ interface UpdateProfileData {
   userName?: string;
   dateOfBirth?: string;
   profileImageId?: string;
+  accountVisibility?: AccountVisibility;
 }
 
 export interface UserVisibilityContext {
@@ -326,6 +329,7 @@ class UserService {
       userId?: string;
       type?: string;
       staffTypes?: StaffMemberType[];
+      roleId?: string | null;
       eventId?: string;
       organizationId?: string;
       teamId?: string;

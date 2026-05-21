@@ -13,6 +13,13 @@ jest.mock('@/app/providers', () => ({
   useApp: () => useAppMock(),
 }));
 
+const mockGetOrganizationsByUser = jest.fn();
+jest.mock('@/lib/organizationService', () => ({
+  organizationService: {
+    getOrganizationsByUser: (...args: any[]) => mockGetOrganizationsByUser(...args),
+  },
+}));
+
 jest.mock('@/components/layout/Navigation', () => ({
   __esModule: true,
   default: () => null,
@@ -37,6 +44,8 @@ describe('OnboardingPage', () => {
   beforeEach(() => {
     replaceMock.mockReset();
     useAppMock.mockReset();
+    mockGetOrganizationsByUser.mockReset();
+    mockGetOrganizationsByUser.mockResolvedValue([]);
     useAppMock.mockReturnValue({
       user: null,
       loading: false,
@@ -82,7 +91,12 @@ describe('OnboardingPage', () => {
 
     renderPage();
 
-    fireEvent.click(screen.getByText(/create a facility or organization/i).closest('button') as HTMLButtonElement);
+    const optionButton = screen.getByText(/create a facility or organization/i).closest('button') as HTMLButtonElement;
+    await waitFor(() => {
+      expect(mockGetOrganizationsByUser).toHaveBeenCalledWith('user_1');
+      expect(optionButton).not.toBeDisabled();
+    });
+    fireEvent.click(optionButton);
 
     await waitFor(() => {
       expect(updateUser).toHaveBeenCalledWith({ onboardingIntent: 'ORGANIZATION' });
@@ -106,7 +120,12 @@ describe('OnboardingPage', () => {
 
     renderPage();
 
-    fireEvent.click(screen.getByText(/create events as an individual/i).closest('button') as HTMLButtonElement);
+    const optionButton = screen.getByText(/create events as an individual/i).closest('button') as HTMLButtonElement;
+    await waitFor(() => {
+      expect(mockGetOrganizationsByUser).toHaveBeenCalledWith('user_1');
+      expect(optionButton).not.toBeDisabled();
+    });
+    fireEvent.click(optionButton);
 
     await waitFor(() => {
       expect(updateUser).toHaveBeenCalledWith({ onboardingIntent: 'INDIVIDUAL_EVENTS' });
@@ -131,7 +150,7 @@ describe('OnboardingPage', () => {
     });
   });
 
-  it('warns signed-in unverified users that creation needs verification', () => {
+  it('warns signed-in unverified users that creation needs verification', async () => {
     useAppMock.mockReturnValue({
       user: { $id: 'user_1', onboardingIntent: null },
       loading: false,
@@ -144,5 +163,43 @@ describe('OnboardingPage', () => {
     renderPage();
 
     expect(screen.getByText(/creating events or organizations is available after email verification/i)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText(/create a facility or organization/i).closest('button')).not.toBeDisabled();
+    });
+  });
+
+  it('asks organization users for privacy and saves their home organization', async () => {
+    const updateUser = jest.fn().mockResolvedValue({
+      $id: 'user_1',
+      onboardingIntent: 'DISCOVER_EVENTS',
+      accountVisibility: 'PRIVATE_TO_ORGS',
+      homePageOrganizationId: 'org_1',
+    });
+    mockGetOrganizationsByUser.mockResolvedValue([{ $id: 'org_1', name: 'Main Facility' }]);
+    useAppMock.mockReturnValue({
+      user: { $id: 'user_1', onboardingIntent: null, homePageOrganizationId: null },
+      loading: false,
+      isAuthenticated: true,
+      isGuest: false,
+      requiresEmailVerification: false,
+      updateUser,
+    });
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByText(/account visibility/i)).toBeInTheDocument();
+    });
+    fireEvent.click(screen.getByLabelText(/private account/i));
+    fireEvent.click(screen.getByText(/search for events to join/i).closest('button') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(updateUser).toHaveBeenCalledWith({
+        onboardingIntent: 'DISCOVER_EVENTS',
+        accountVisibility: 'PRIVATE_TO_ORGS',
+        homePageOrganizationId: 'org_1',
+      });
+    });
+    expect(replaceMock).toHaveBeenCalledWith('/discover');
   });
 });

@@ -6,6 +6,7 @@ import { requireSession } from '@/lib/permissions';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import {
   deriveStaffInviteTypes,
+  getStaffMemberTypesForOrganizationRole,
   getLegacyTeamInviteRole,
   normalizeInviteStatus,
   normalizeInviteType,
@@ -16,6 +17,7 @@ import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { canManageEvent, canManageOrganization } from '@/server/accessControl';
+import { resolveDefaultOrganizationRoleIdForStaffTypes } from '@/server/organizationRoles';
 import { loadCanonicalTeamById, normalizeId, normalizeIdList } from '@/server/teams/teamMembership';
 import {
   removeCanonicalPendingInvitee,
@@ -33,6 +35,7 @@ const inviteSchema = z.object({
   organizationId: z.string().optional(),
   teamId: z.string().optional(),
   userId: z.string().optional(),
+  roleId: z.string().nullable().optional(),
   createdBy: z.string().optional(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
@@ -107,7 +110,7 @@ const canManageTeamInvites = async (
 
   const organization = await client.organizations?.findUnique?.({
     where: { id: organizationId },
-    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    select: { id: true, ownerId: true },
   });
   return canManageOrganization(session, organization, client);
 };
@@ -252,7 +255,7 @@ export async function POST(req: NextRequest) {
           const organization = organizationId
             ? await tx.organizations.findUnique({
               where: { id: organizationId },
-              select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+              select: { id: true, ownerId: true },
             })
             : null;
           const event = eventId
@@ -271,6 +274,9 @@ export async function POST(req: NextRequest) {
             if (!(await canManageOrganization(session, organization, tx))) {
               throw new InviteRouteError(403, 'Forbidden');
             }
+            if (organization.ownerId && inviteUserId === organization.ownerId) {
+              throw new InviteRouteError(409, 'Organization owner already has staff access');
+            }
           } else {
             if (!event) {
               throw new InviteRouteError(404, 'Event not found');
@@ -280,15 +286,43 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          const staffTypes = normalizeStaffMemberTypes(
-            deriveStaffInviteTypes(
-              { staffTypes: invite.staffTypes },
-              typeof invite.type === 'string' ? invite.type : null,
-            ),
-          );
+          const requestedRoleId = typeof invite.roleId === 'string' && invite.roleId.trim()
+            ? invite.roleId.trim()
+            : null;
+          if (requestedRoleId && !organizationId) {
+            throw new InviteRouteError(400, 'Role selection requires organizationId');
+          }
+          const selectedRole = requestedRoleId && organizationId
+            ? await tx.organizationRoles.findFirst({
+              where: {
+                id: requestedRoleId,
+                organizationId,
+              },
+              select: {
+                id: true,
+                name: true,
+                kind: true,
+                systemKey: true,
+              },
+            })
+            : null;
+          if (requestedRoleId && !selectedRole) {
+            throw new InviteRouteError(404, 'Role not found');
+          }
+
+          const staffTypes = selectedRole
+            ? getStaffMemberTypesForOrganizationRole(selectedRole)
+            : normalizeStaffMemberTypes(
+              deriveStaffInviteTypes(
+                { staffTypes: invite.staffTypes },
+                typeof invite.type === 'string' ? invite.type : null,
+              ),
+            );
           if (!staffTypes.length) {
             throw new InviteRouteError(400, 'Staff invite requires at least one staff type');
           }
+
+          const replaceStaffTypes = invite.replaceStaffTypes === true;
 
           if (organizationId) {
             const existingStaffMember = await tx.staffMembers.findUnique({
@@ -298,8 +332,11 @@ export async function POST(req: NextRequest) {
                   userId: inviteUserId,
                 },
               },
-              select: { types: true },
+              select: { roleId: true, types: true },
             });
+            const defaultRoleId = selectedRole?.id
+              ?? existingStaffMember?.roleId
+              ?? await resolveDefaultOrganizationRoleIdForStaffTypes(tx, organizationId, staffTypes);
             await tx.staffMembers.upsert({
               where: {
                 organizationId_userId: {
@@ -312,19 +349,19 @@ export async function POST(req: NextRequest) {
                 organizationId,
                 userId: inviteUserId,
                 types: staffTypes,
+                roleId: defaultRoleId,
                 createdAt: now,
                 updatedAt: now,
               },
               update: {
                 types: {
-                  set: unionStrings(staffTypes, existingStaffMember?.types ?? []),
+                  set: replaceStaffTypes ? staffTypes : unionStrings(staffTypes, existingStaffMember?.types ?? []),
                 },
+                roleId: defaultRoleId,
                 updatedAt: now,
               },
             });
           }
-
-          const replaceStaffTypes = invite.replaceStaffTypes === true;
 
           const existingInvite = await tx.invites.findFirst({
             where: {

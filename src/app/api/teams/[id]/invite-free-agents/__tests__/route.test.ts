@@ -85,8 +85,6 @@ describe('/api/teams/[id]/invite-free-agents GET', () => {
     organizationFindUniqueMock.mockResolvedValue({
       id: 'org_1',
       ownerId: 'org_owner_1',
-      hostIds: [],
-      officialIds: [],
     });
   });
 
@@ -189,11 +187,11 @@ describe('/api/teams/[id]/invite-free-agents GET', () => {
     });
     expect(organizationFindUniqueMock).toHaveBeenCalledWith({
       where: { id: 'org_1' },
-      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+      select: { id: true, ownerId: true },
     });
     expect(canManageOrganizationMock).toHaveBeenCalledWith(
       { userId: 'org_owner_1', isAdmin: false },
-      { id: 'org_1', ownerId: 'org_owner_1', hostIds: [], officialIds: [] },
+      { id: 'org_1', ownerId: 'org_owner_1' },
     );
     expect(parentChildLinkFindFirstMock).not.toHaveBeenCalled();
   });

@@ -14,6 +14,11 @@ import { useApp } from "@/app/providers";
 import { useChat } from "@/context/ChatContext";
 import { useChatUI } from "@/context/ChatUIContext";
 import { authService } from "@/lib/auth";
+import {
+  PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY,
+  PUBLIC_ACCOUNT_VISIBILITY,
+  isPrivateToOrganizationsVisibility,
+} from "@/lib/accountVisibility";
 import { billingAddressService } from "@/lib/billingAddressService";
 import {
   isSupportedBillingCountryCode,
@@ -416,6 +421,7 @@ function ProfilePageContent() {
     userName: "",
     dateOfBirth: "",
     profileImageId: "",
+    accountVisibility: PUBLIC_ACCOUNT_VISIBILITY,
   });
   const [savedBillingAddress, setSavedBillingAddress] =
     useState<BillingAddress>(EMPTY_BILLING_ADDRESS);
@@ -579,6 +585,11 @@ function ProfilePageContent() {
         userName: user.userName,
         dateOfBirth: toDateInputValue(user.dateOfBirth),
         profileImageId: user.profileImageId || "",
+        accountVisibility: isPrivateToOrganizationsVisibility(
+          user.accountVisibility,
+        )
+          ? PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY
+          : PUBLIC_ACCOUNT_VISIBILITY,
       });
       setNotificationSettings(
         normalizeNotificationSettings(user.notificationSettings),
@@ -665,6 +676,11 @@ function ProfilePageContent() {
           userName: user.userName,
           dateOfBirth: toDateInputValue(user.dateOfBirth),
           profileImageId: user.profileImageId || "",
+          accountVisibility: isPrivateToOrganizationsVisibility(
+            user.accountVisibility,
+          )
+            ? PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY
+            : PUBLIC_ACCOUNT_VISIBILITY,
         });
       }
       setBillingAddressData(savedBillingAddress);
@@ -729,6 +745,7 @@ function ProfilePageContent() {
           userName: profileData.userName,
           dateOfBirth: normalizedDob,
           profileImageId: profileData.profileImageId,
+          accountVisibility: profileData.accountVisibility,
         }),
         billingAddressService.saveBillingAddress({
           ...normalizedBillingAddress,
@@ -4430,6 +4447,22 @@ function ProfilePageContent() {
                 required
               />
             </SimpleGrid>
+            <Checkbox
+              label="Private account"
+              description="Only people in your organizations can find your profile in search."
+              checked={
+                profileData.accountVisibility ===
+                PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY
+              }
+              onChange={(event) =>
+                setProfileData((prev) => ({
+                  ...prev,
+                  accountVisibility: event.currentTarget.checked
+                    ? PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY
+                    : PUBLIC_ACCOUNT_VISIBILITY,
+                }))
+              }
+            />
           </div>
         </Paper>
 

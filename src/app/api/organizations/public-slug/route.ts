@@ -52,8 +52,6 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         ownerId: true,
-        hostIds: true,
-        officialIds: true,
         publicSlug: true,
       },
     });

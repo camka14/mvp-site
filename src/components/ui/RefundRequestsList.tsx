@@ -240,8 +240,9 @@ export default function RefundRequestsList({
       )}
 
       {!loading && !error && visibleRefunds.length > 0 && (
-        <Table.ScrollContainer minWidth={isRequesterView ? 900 : 1080}>
-          <Table highlightOnHover withTableBorder withColumnBorders>
+        <div className="org-tab-table-surface">
+          <Table.ScrollContainer minWidth={isRequesterView ? 900 : 1080}>
+            <Table highlightOnHover withTableBorder withColumnBorders>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Event</Table.Th>
@@ -363,8 +364,9 @@ export default function RefundRequestsList({
                 );
               })}
             </Table.Tbody>
-          </Table>
-        </Table.ScrollContainer>
+            </Table>
+          </Table.ScrollContainer>
+        </div>
       )}
     </Stack>
   );
@@ -374,7 +376,7 @@ export default function RefundRequestsList({
   }
 
   return (
-    <Paper withBorder radius="md" p="md">
+    <Paper withBorder radius="md" p="md" className="org-tab-surface">
       {content}
     </Paper>
   );

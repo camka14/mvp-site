@@ -266,31 +266,6 @@ export async function DELETE(req: NextRequest) {
       });
     }
 
-    const organizations = await tx.organizations.findMany({
-      where: {
-        OR: [
-          { hostIds: { has: userId } },
-          { officialIds: { has: userId } },
-        ],
-      },
-      select: {
-        id: true,
-        hostIds: true,
-        officialIds: true,
-      },
-    });
-
-    for (const organization of organizations) {
-      await tx.organizations.update({
-        where: { id: organization.id },
-        data: {
-          hostIds: removeIdFromList(organization.hostIds, userId),
-          officialIds: removeIdFromList(organization.officialIds, userId),
-          updatedAt: now,
-        },
-      });
-    }
-
     const activeEvents = await tx.events.findMany({
       where: {
         assistantHostIds: { has: userId },

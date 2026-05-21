@@ -75,7 +75,7 @@ describe('POST /api/billing/host/onboarding-link', () => {
     process.env.STRIPE_CONNECT_CLIENT_ID = 'ca_test_123';
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     canManageOrganizationMock.mockReturnValue(true);
-    prismaMock.organizations.findUnique.mockResolvedValue({ ownerId: 'user_1', hostIds: [] });
+    prismaMock.organizations.findUnique.mockResolvedValue({ ownerId: 'user_1' });
     prismaMock.stripeAccounts.findFirst.mockResolvedValue(null);
     accountsRetrieveMock.mockReset();
     accountsCreateLoginLinkMock.mockReset();
@@ -405,7 +405,7 @@ describe('POST /api/billing/host/onboarding-link', () => {
   it('enforces organization owner/host permissions', async () => {
     canManageOrganizationMock.mockReturnValueOnce(false);
     prismaMock.stripeAccounts.findFirst.mockResolvedValue({ accountId: 'acct_123' });
-    prismaMock.organizations.findUnique.mockResolvedValue({ ownerId: 'owner_1', hostIds: [] });
+    prismaMock.organizations.findUnique.mockResolvedValue({ ownerId: 'owner_1' });
 
     const response = await POST(
       jsonPost('http://localhost/api/billing/host/onboarding-link', {
@@ -420,7 +420,6 @@ describe('POST /api/billing/host/onboarding-link', () => {
     expect(payload.error).toBe('Forbidden');
     expect(canManageOrganizationMock).toHaveBeenCalledWith({ userId: 'user_1', isAdmin: false }, {
       ownerId: 'owner_1',
-      hostIds: [],
     });
   });
 });

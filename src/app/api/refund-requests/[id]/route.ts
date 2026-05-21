@@ -84,7 +84,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       team.organizationId
         ? prisma.organizations.findUnique({
           where: { id: team.organizationId },
-          select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+          select: { id: true, ownerId: true },
         })
         : Promise.resolve(null),
     ]);

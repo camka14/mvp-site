@@ -97,7 +97,7 @@ describe('POST /api/billing/host/connect', () => {
     process.env.STRIPE_CONNECT_CLIENT_ID = 'ca_test_123';
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     canManageOrganizationMock.mockReturnValue(true);
-    prismaMock.organizations.findUnique.mockResolvedValue({ ownerId: 'user_1', hostIds: [] });
+    prismaMock.organizations.findUnique.mockResolvedValue({ ownerId: 'user_1' });
     prismaMock.organizations.update.mockResolvedValue({ id: 'org_1' });
     prismaMock.userData.update.mockResolvedValue({ id: 'user_1' });
     prismaMock.stripeAccounts.upsert.mockResolvedValue({
@@ -192,7 +192,6 @@ describe('POST /api/billing/host/connect', () => {
     expect(payload.error).toBe('Forbidden');
     expect(canManageOrganizationMock).toHaveBeenCalledWith({ userId: 'user_1', isAdmin: false }, {
       ownerId: 'user_1',
-      hostIds: [],
     });
   });
 
@@ -262,7 +261,6 @@ describe('POST /api/billing/host/connect', () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       ownerId: 'user_1',
-      hostIds: [],
       name: 'Bracket IQ Org',
       website: 'https://example.com',
     });

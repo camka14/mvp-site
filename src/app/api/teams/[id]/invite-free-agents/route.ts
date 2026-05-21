@@ -100,7 +100,7 @@ const hasOrganizationTeamManagementAccess = async (
   }
   const organization = await prisma.organizations.findUnique({
     where: { id: organizationId },
-    select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+    select: { id: true, ownerId: true },
   });
   if (!organization) {
     return false;

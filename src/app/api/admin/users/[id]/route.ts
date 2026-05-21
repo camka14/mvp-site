@@ -249,16 +249,10 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
       const organizations = await tx.organizations.findMany({
         where: {
-          OR: [
-            { hostIds: { has: userId } },
-            { officialIds: { has: userId } },
-            { taxResponsibilityAcceptedByUserId: userId },
-          ],
+          taxResponsibilityAcceptedByUserId: userId,
         },
         select: {
           id: true,
-          hostIds: true,
-          officialIds: true,
           taxResponsibilityAcceptedByUserId: true,
         },
       });
@@ -267,8 +261,6 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
         await tx.organizations.update({
           where: { id: organization.id },
           data: {
-            hostIds: removeIdFromList(organization.hostIds, userId),
-            officialIds: removeIdFromList(organization.officialIds, userId),
             ...(organization.taxResponsibilityAcceptedByUserId === userId
               ? {
                   taxResponsibilityAcceptedAt: null,
@@ -356,6 +348,9 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           },
         }),
         tx.eventOfficials?.deleteMany?.({
+          where: { userId },
+        }),
+        tx.staffMembers?.deleteMany?.({
           where: { userId },
         }),
         tx.eventRegistrations?.updateMany?.({

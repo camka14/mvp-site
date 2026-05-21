@@ -296,6 +296,20 @@ const normalizeInviteStaffTypes = (staffTypes: unknown): EventInviteStaffType[] 
         : []
 );
 
+const normalizeRosterStaffTypes = (staffTypes: unknown): StaffMemberType[] => (
+    Array.isArray(staffTypes)
+        ? Array.from(
+            new Set(
+                staffTypes
+                    .map((type) => String(type).trim().toUpperCase())
+                    .filter((type): type is StaffMemberType => (
+                        type === 'HOST' || type === 'OFFICIAL' || type === 'STAFF'
+                    )),
+            ),
+        )
+        : []
+);
+
 const getUserEmail = (candidate?: Partial<UserData> | null): string | null => {
     const email = typeof (candidate as { email?: unknown } | undefined)?.email === 'string'
         ? String((candidate as { email?: string }).email).trim().toLowerCase()
@@ -5439,27 +5453,49 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const organizerTaxCollectionAllowed = eventTaxPolicyForPreview.liabilityParty === 'ORGANIZER';
     const organizerManualTaxSelected = organizerTaxCollectionAllowed
         && eventTaxPolicyForPreview.collectionStrategy === 'ORGANIZER_MANUAL_TAX';
-    const organizationAssignableStaffIds = useMemo(
-        () => Array.from(
-            new Set([
-                resolvedOrganization?.ownerId,
-                ...(Array.isArray(resolvedOrganization?.staffMembers) ? resolvedOrganization.staffMembers.map((member) => member.userId) : []),
-                ...(Array.isArray(resolvedOrganization?.staffInvites) ? resolvedOrganization.staffInvites.map((invite) => invite.userId ?? '') : []),
-            ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0)),
-        ),
-        [resolvedOrganization?.ownerId, resolvedOrganization?.staffInvites, resolvedOrganization?.staffMembers],
-    );
+    const organizationStaffAssignmentIds = useMemo(() => {
+        const hostUserIds = new Set<string>();
+        const officialUserIds = new Set<string>();
+        const addByTypes = (userId: unknown, staffTypes: unknown, status: StaffRosterStatus) => {
+            const normalizedUserId = normalizeEntityId(userId);
+            if (!normalizedUserId || status !== 'active') {
+                return;
+            }
+            const types = normalizeRosterStaffTypes(staffTypes);
+            if (types.includes('HOST')) {
+                hostUserIds.add(normalizedUserId);
+            }
+            if (types.includes('OFFICIAL')) {
+                officialUserIds.add(normalizedUserId);
+            }
+        };
+
+        if (resolvedOrganization?.ownerId) {
+            hostUserIds.add(resolvedOrganization.ownerId);
+        }
+        (Array.isArray(resolvedOrganization?.staffMembers) ? resolvedOrganization.staffMembers : []).forEach((member) => {
+            addByTypes(member.userId, member.types, normalizeInviteStatusToken(member.invite?.status));
+        });
+        (Array.isArray(resolvedOrganization?.staffInvites) ? resolvedOrganization.staffInvites : []).forEach((invite) => {
+            addByTypes(invite.userId, invite.staffTypes, normalizeInviteStatusToken(invite.status));
+        });
+
+        return {
+            hostUserIds: Array.from(hostUserIds),
+            officialUserIds: Array.from(officialUserIds),
+        };
+    }, [resolvedOrganization?.ownerId, resolvedOrganization?.staffInvites, resolvedOrganization?.staffMembers]);
     const organizationAllowedHostIds = useMemo(
-        () => organizationAssignableStaffIds,
-        [organizationAssignableStaffIds],
+        () => organizationStaffAssignmentIds.hostUserIds,
+        [organizationStaffAssignmentIds],
     );
     const organizationAllowedHostIdSet = useMemo(
         () => new Set(organizationAllowedHostIds),
         [organizationAllowedHostIds],
     );
     const organizationAllowedOfficialIds = useMemo(
-        () => organizationAssignableStaffIds,
-        [organizationAssignableStaffIds],
+        () => organizationStaffAssignmentIds.officialUserIds,
+        [organizationStaffAssignmentIds],
     );
     const organizationAllowedOfficialIdSet = useMemo(
         () => new Set(organizationAllowedOfficialIds),
@@ -5480,7 +5516,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const organizationOfficialsById = useMemo(() => {
         const map = new Map<string, UserData>();
         (resolvedOrganization?.officials || []).forEach((official) => {
-            if (official?.$id) {
+            if (official?.$id && organizationAllowedOfficialIdSet.has(official.$id)) {
                 map.set(official.$id, official);
             }
         });
@@ -5604,7 +5640,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 user: staffMember.user ?? null,
                 status: normalizeInviteStatusToken(staffMember.invite?.status),
                 subtitle: null,
-                types: Array.isArray(staffMember.types) ? staffMember.types : [],
+                types: normalizeRosterStaffTypes(staffMember.types),
             });
             seen.add(staffMember.userId);
         });
@@ -5622,7 +5658,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 user: null,
                 status: normalizeInviteStatusToken(invite.status),
                 subtitle: null,
-                types: Array.isArray(invite.staffTypes) ? invite.staffTypes : ['HOST'],
+                types: normalizeRosterStaffTypes(invite.staffTypes),
             });
             seen.add(invite.userId);
         });
@@ -5675,8 +5711,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             },
             {
                 ownerId: resolvedOrganization?.ownerId,
-                hostIds: organizationAllowedHostIds,
-                officialIds: [],
+                staffMembers: resolvedOrganization?.staffMembers,
+                staffInvites: resolvedOrganization?.staffInvites,
             },
         );
         const normalizedCurrentHostId = normalizeEntityId(eventData.hostId) ?? null;
@@ -5704,7 +5740,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.hostId,
         isOrganizationHostedEvent,
         resolvedOrganization?.ownerId,
-        organizationAllowedHostIds,
+        resolvedOrganization?.staffInvites,
+        resolvedOrganization?.staffMembers,
         setEventData,
     ]);
     useEffect(() => {
@@ -9183,8 +9220,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         if (refsPrefilledRef.current) {
             return;
         }
-        const orgOfficialIds = resolvedOrganization.officialIds ?? [];
-        const orgOfficials = resolvedOrganization.officials ?? [];
+        const orgOfficialIds = organizationAllowedOfficialIds;
+        const orgOfficialIdSet = new Set(orgOfficialIds);
+        const orgOfficials = (resolvedOrganization.officials ?? []).filter((official) => (
+            official?.$id && orgOfficialIdSet.has(official.$id)
+        ));
         if (orgOfficialIds.length || orgOfficials.length) {
             setEventData((prev) => ({
                 ...prev,
@@ -9193,7 +9233,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             }));
             refsPrefilledRef.current = true;
         }
-    }, [resolvedOrganization, isEditMode, setEventData]);
+    }, [organizationAllowedOfficialIds, resolvedOrganization, isEditMode, setEventData]);
 
     // Launches the Stripe onboarding flow before allowing event owners to set paid pricing.
     const handleConnectStripe = async () => {
@@ -9557,9 +9597,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 },
                 {
                     ownerId: resolvedOrganization?.ownerId,
-                    hostIds: organizationAllowedHostIds,
-                    officialIds: organizationAllowedOfficialIds,
-                    officials: resolvedOrganization?.officials,
+                    staffMembers: resolvedOrganization?.staffMembers,
+                    staffInvites: resolvedOrganization?.staffInvites,
                 },
             )
             : null;
@@ -11379,6 +11418,8 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                         const isHostAssigned = Boolean(userId && userId === eventData.hostId);
                                                         const isAssistantAssigned = Boolean(userId && assistantHostValue.includes(userId));
                                                         const assignmentsDisabled = !userId;
+                                                        const canAssignOfficial = entry.status === 'active' && entry.types.includes('OFFICIAL');
+                                                        const canAssignHost = entry.status === 'active' && entry.types.includes('HOST');
                                                         return (
                                                             <Paper key={entry.id} withBorder radius="md" p="sm">
                                                                 <Stack gap="xs">
@@ -11401,7 +11442,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                         <Button
                                                                             type="button"
                                                                             size="xs"
-                                                                            disabled={assignmentsDisabled || isOfficialAssigned || isImmutableField('officialIds')}
+                                                                            disabled={assignmentsDisabled || !canAssignOfficial || isOfficialAssigned || isImmutableField('officialIds')}
                                                                             onClick={() => handleAddOfficial({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
                                                                         >
                                                                             Add as official
@@ -11410,7 +11451,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                             type="button"
                                                                             size="xs"
                                                                             variant="default"
-                                                                            disabled={assignmentsDisabled || isAssistantAssigned || isHostAssigned || isImmutableField('assistantHostIds')}
+                                                                            disabled={assignmentsDisabled || !canAssignHost || isAssistantAssigned || isHostAssigned || isImmutableField('assistantHostIds')}
                                                                             onClick={() => handleAddAssistantHost({ ...((entry.user ?? {}) as UserData), $id: userId ?? undefined })}
                                                                         >
                                                                             Add as assistant
@@ -11419,7 +11460,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                                             type="button"
                                                                             size="xs"
                                                                             variant="light"
-                                                                            disabled={assignmentsDisabled || isHostAssigned || isImmutableField('hostId')}
+                                                                            disabled={assignmentsDisabled || !canAssignHost || isHostAssigned || isImmutableField('hostId')}
                                                                             onClick={() => handleHostChange(userId)}
                                                                         >
                                                                             Set as host

@@ -1930,8 +1930,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
             where: { id: nextOrganizationId },
             select: {
               ownerId: true,
-              hostIds: true,
-              officialIds: true,
             },
           }),
           tx.staffMembers?.findMany

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
+import { parseAccountVisibility } from '@/lib/accountVisibility';
 import { applyNameCaseToUserFields, normalizeOptionalName } from '@/lib/nameCase';
 import { normalizeNotificationSettings } from '@/lib/notificationSettings';
 import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
@@ -131,7 +132,7 @@ export async function GET(req: NextRequest) {
     if (isExcludedSearchEmail(row.email)) excludedEmailUserIds.add(row.id);
   });
   const filteredUsers = usersWithDerivedTeamIds
-    .filter((user) => isVisibleInGenericSearch(user) && !excludedEmailUserIds.has(user.id))
+    .filter((user) => isVisibleInGenericSearch(user, visibilityContext) && !excludedEmailUserIds.has(user.id))
     .slice(0, 20);
   return NextResponse.json(
     { users: withLegacyList(applyUserPrivacyList(filteredUsers, visibilityContext)) },
@@ -170,6 +171,13 @@ export async function POST(req: NextRequest) {
       }
       normalizedData.onboardingIntent = onboardingIntent;
     }
+  }
+  if (Object.prototype.hasOwnProperty.call(normalizedData, 'accountVisibility')) {
+    const accountVisibility = parseAccountVisibility(normalizedData.accountVisibility);
+    if (!accountVisibility) {
+      return NextResponse.json({ error: 'accountVisibility is invalid.' }, { status: 400 });
+    }
+    normalizedData.accountVisibility = accountVisibility;
   }
   const now = new Date();
   const existing = await prisma.userData.findUnique({ where: { id } });

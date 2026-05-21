@@ -7,7 +7,7 @@ import {
   resolveOrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
 import { getOrganizationStatus } from '@/lib/organizationStatus';
-import type { Event, Field, Invite, Organization, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
+import type { Event, Field, Invite, Organization, OrganizationRole, Product, StaffMember, StaffMemberType, Team, UserData } from '@/types';
 import { fieldService } from './fieldService';
 import { eventService } from './eventService';
 import { buildPayload } from './utils';
@@ -151,6 +151,30 @@ class OrganizationService {
       organizationId: String(row.organizationId ?? ''),
       userId: String(row.userId ?? ''),
       types: normalizeStaffMemberTypes(row.types),
+      roleId: typeof row.roleId === 'string' ? row.roleId : null,
+      role: row.role && typeof row.role === 'object'
+        ? this.mapOrganizationRole(row.role as Record<string, unknown>)
+        : null,
+      $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
+      $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
+    };
+  }
+
+  private mapOrganizationRole(row: Record<string, unknown>): OrganizationRole {
+    const kind = typeof row.kind === 'string' && ['OWNER', 'STAFF', 'HOST', 'OFFICIAL'].includes(row.kind)
+      ? row.kind as OrganizationRole['kind']
+      : 'STAFF';
+    return {
+      $id: String(row.$id ?? row.id ?? ''),
+      organizationId: String(row.organizationId ?? ''),
+      name: typeof row.name === 'string' ? row.name : 'Staff',
+      kind,
+      systemKey: typeof row.systemKey === 'string' ? row.systemKey : null,
+      isSystem: row.isSystem === true,
+      isDefault: row.isDefault === true,
+      permissions: Array.isArray(row.permissions)
+        ? row.permissions.filter((permission): permission is string => typeof permission === 'string')
+        : [],
       $createdAt: typeof row.$createdAt === 'string' ? row.$createdAt : undefined,
       $updatedAt: typeof row.$updatedAt === 'string' ? row.$updatedAt : undefined,
     };
@@ -179,12 +203,6 @@ class OrganizationService {
 
   private mapRowToOrganization(row: AnyRow): Organization {
     const coordinates = this.resolveCoordinates(row);
-    const officialIds = Array.isArray(row.officialIds)
-      ? row.officialIds.map((value: unknown) => String(value))
-      : undefined;
-    const hostIds = Array.isArray(row.hostIds)
-      ? row.hostIds.map((value: unknown) => String(value))
-      : undefined;
     const productIds = Array.isArray(row.productIds)
       ? row.productIds.map((value: unknown) => String(value))
       : undefined;
@@ -201,6 +219,9 @@ class OrganizationService {
     const staffMembers = Array.isArray(row.staffMembers)
       ? row.staffMembers.map((value: unknown) => this.mapStaffMember(value as Record<string, unknown>))
       : [];
+    const staffRoles = Array.isArray(row.staffRoles)
+      ? row.staffRoles.map((value: unknown) => this.mapOrganizationRole(value as Record<string, unknown>))
+      : [];
     const derivedHostIds = deriveOrganizationRoleIds(staffMembers, staffInvites, 'HOST');
     const derivedOfficialIds = deriveOrganizationRoleIds(staffMembers, staffInvites, 'OFFICIAL');
 
@@ -215,7 +236,6 @@ class OrganizationService {
       address: row.address ?? undefined,
       coordinates: coordinates,
       ownerId: row.ownerId ?? row.owner_id ?? undefined,
-      hostIds: staffMembers.length > 0 ? derivedHostIds : hostIds,
       status: getOrganizationStatus(row.status),
       hasStripeAccount: Boolean(row.hasStripeAccount),
       taxOrganizationType: normalizeOrganizationTaxClassification(row.taxOrganizationType),
@@ -253,9 +273,9 @@ class OrganizationService {
         : row.verificationReviewUpdatedAt instanceof Date
           ? row.verificationReviewUpdatedAt.toISOString()
           : undefined,
-      officialIds: staffMembers.length > 0 ? derivedOfficialIds : officialIds,
       staffMembers,
       staffInvites,
+      staffRoles,
       staffEmailsByUserId: row.staffEmailsByUserId && typeof row.staffEmailsByUserId === 'object'
         ? Object.fromEntries(
           Object.entries(row.staffEmailsByUserId as Record<string, unknown>)
@@ -297,12 +317,6 @@ class OrganizationService {
   async createOrganization(data: Partial<Organization> & { name: string; ownerId: string }): Promise<Organization> {
     const payload = buildPayload(data);
 
-    if (data.officialIds !== undefined) {
-      payload.officialIds = Array.isArray(data.officialIds) ? data.officialIds : [];
-    }
-    if (data.hostIds !== undefined) {
-      payload.hostIds = Array.isArray(data.hostIds) ? data.hostIds : [];
-    }
     if (data.sports !== undefined) {
       payload.sports = Array.isArray(data.sports) ? data.sports : [];
     }
@@ -331,13 +345,8 @@ class OrganizationService {
     delete (payload as Record<string, unknown>).owner;
     delete (payload as Record<string, unknown>).staffMembers;
     delete (payload as Record<string, unknown>).staffInvites;
+    delete (payload as Record<string, unknown>).staffRoles;
     delete (payload as Record<string, unknown>).staffEmailsByUserId;
-    if (data.officialIds !== undefined) {
-      payload.officialIds = Array.isArray(data.officialIds) ? data.officialIds : [];
-    }
-    if (data.hostIds !== undefined) {
-      payload.hostIds = Array.isArray(data.hostIds) ? data.hostIds : [];
-    }
     if (data.sports !== undefined) {
       payload.sports = Array.isArray(data.sports) ? data.sports : [];
     }
@@ -381,13 +390,52 @@ class OrganizationService {
     return (response.organizations ?? []).map((row) => this.mapRowToOrganization(row));
   }
 
-  async updateStaffMemberTypes(organizationId: string, userId: string, types: StaffMemberType[]): Promise<StaffMember> {
+  async updateStaffMemberTypes(
+    organizationId: string,
+    userId: string,
+    types: StaffMemberType[],
+    roleId?: string | null,
+  ): Promise<StaffMember> {
     const response = await apiRequest<{ staffMember: Record<string, unknown> }>(`/api/organizations/${organizationId}/staff`, {
       method: 'PATCH',
-      body: { userId, types },
+      body: { userId, types, roleId },
     });
     this.invalidateOrganizationCache(organizationId);
     return this.mapStaffMember(response.staffMember);
+  }
+
+  async updateStaffMemberRole(organizationId: string, userId: string, roleId: string): Promise<StaffMember> {
+    const response = await apiRequest<{ staffMember: Record<string, unknown> }>(`/api/organizations/${organizationId}/staff`, {
+      method: 'PATCH',
+      body: { userId, roleId },
+    });
+    this.invalidateOrganizationCache(organizationId);
+    return this.mapStaffMember(response.staffMember);
+  }
+
+  async createStaffRole(
+    organizationId: string,
+    data: { name: string; permissions: string[] },
+  ): Promise<OrganizationRole> {
+    const response = await apiRequest<{ role: Record<string, unknown> }>(`/api/organizations/${organizationId}/roles`, {
+      method: 'POST',
+      body: data,
+    });
+    this.invalidateOrganizationCache(organizationId);
+    return this.mapOrganizationRole(response.role);
+  }
+
+  async updateStaffRole(
+    organizationId: string,
+    roleId: string,
+    data: { name?: string; permissions?: string[] },
+  ): Promise<OrganizationRole> {
+    const response = await apiRequest<{ role: Record<string, unknown> }>(`/api/organizations/${organizationId}/roles/${roleId}`, {
+      method: 'PATCH',
+      body: data,
+    });
+    this.invalidateOrganizationCache(organizationId);
+    return this.mapOrganizationRole(response.role);
   }
 
   async removeStaffMember(organizationId: string, userId: string): Promise<void> {
@@ -402,6 +450,7 @@ class OrganizationService {
     organizationId: string,
     userId: string,
     staffTypes: StaffMemberType[],
+    roleId?: string | null,
   ): Promise<Invite> {
     const response = await apiRequest<{ invites?: Array<Record<string, unknown>> }>('/api/invites', {
       method: 'POST',
@@ -411,6 +460,8 @@ class OrganizationService {
           organizationId,
           userId,
           staffTypes,
+          roleId,
+          replaceStaffTypes: true,
           status: 'PENDING',
         }],
       },
@@ -498,8 +549,6 @@ class OrganizationService {
 
     organization.fields = fields;
     organization.staffMembers = hydratedStaffMembers;
-    organization.hostIds = activeHostIds;
-    organization.officialIds = activeOfficialIds;
     organization.officials = activeOfficialIds
       .map((userId) => staffUsersById.get(userId))
       .filter((entry): entry is UserData => Boolean(entry));
@@ -557,8 +606,6 @@ class OrganizationService {
       organization.fields = fields;
       organization.events = events;
       organization.staffMembers = hydratedStaffMembers;
-      organization.hostIds = activeHostIds;
-      organization.officialIds = activeOfficialIds;
       organization.officials = activeOfficials;
       organization.hosts = activeHosts;
       organization.owner = owner;

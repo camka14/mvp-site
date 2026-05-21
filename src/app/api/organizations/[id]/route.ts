@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { canManageOrganization } from '@/server/accessControl';
+import { ensureDefaultOrganizationRoles } from '@/server/organizationRoles';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { canAccessOrganizationUsers } from '@/server/organizationUsersAccess';
 import {
@@ -30,10 +31,8 @@ const ORGANIZATION_MUTABLE_FIELDS = new Set<string>([
   'address',
   'description',
   'logoId',
-  'hostIds',
   'website',
   'sports',
-  'officialIds',
   'status',
   'coordinates',
   'productIds',
@@ -139,7 +138,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 
   const session = await requireSession(_req).catch(() => null);
   const viewerCanManageOrganization = session
-    ? await canManageOrganization(session, { id: org.id, ownerId: org.ownerId, hostIds: org.hostIds, officialIds: org.officialIds })
+    ? await canManageOrganization(session, { id: org.id, ownerId: org.ownerId })
     : false;
   const viewerCanAccessUsers = session
     ? await canAccessOrganizationUsers({
@@ -147,13 +146,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       organization: {
         id: org.id,
         ownerId: org.ownerId,
-        hostIds: org.hostIds,
-        officialIds: org.officialIds,
       },
       canManage: viewerCanManageOrganization,
     })
     : false;
-  const [staffInvites, staffEmails] = viewerCanManageOrganization
+  const [staffInvites, staffEmails, staffRoles] = viewerCanManageOrganization
     ? await Promise.all([
       prisma.invites.findMany({
         where: { organizationId: id, type: 'STAFF' },
@@ -173,8 +170,9 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
           email: true,
         },
       }),
+      ensureDefaultOrganizationRoles(prisma, id),
     ])
-    : [[], []];
+    : [[], [], []];
 
   const staffEmailsByUserId = Object.fromEntries(
     staffEmails
@@ -185,8 +183,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json(
     withLegacyFields({
       ...org,
-      staffMembers,
+      staffMembers: viewerCanManageOrganization
+        ? staffMembers.map((staffMember) => ({
+          ...staffMember,
+          role: staffRoles.find((role) => role.id === staffMember.roleId) ?? null,
+        }))
+        : staffMembers,
       staffInvites,
+      staffRoles,
       staffEmailsByUserId,
       viewerCanManageOrganization,
       viewerCanAccessUsers,

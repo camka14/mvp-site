@@ -1,10 +1,7 @@
-import type { UserData } from '@/types';
 import { deriveOrganizationRoleIds } from '@/lib/staff';
 
 type OrganizationAccessLike = {
   ownerId?: string | null;
-  hostIds?: string[] | null;
-  officialIds?: string[] | null;
   staffMembers?: Array<{
     organizationId?: string | null;
     userId?: string | null;
@@ -16,7 +13,6 @@ type OrganizationAccessLike = {
     type?: string | null;
     status?: string | null;
   } | null | undefined> | null;
-  officials?: Array<Pick<UserData, '$id'> | null | undefined> | null;
 } | null | undefined;
 
 type AssignmentInput = {
@@ -73,7 +69,6 @@ export const collectOrganizationHostIds = (organization: OrganizationAccessLike)
     'HOST',
   );
   derivedStaffHostIds.forEach((id) => ids.add(id));
-  normalizeUniqueIds(organization?.hostIds).forEach((id) => ids.add(id));
   return Array.from(ids);
 };
 
@@ -93,13 +88,6 @@ export const collectOrganizationOfficialIds = (organization: OrganizationAccessL
     })),
     'OFFICIAL',
   ).forEach((id) => ids.add(id));
-  normalizeUniqueIds(organization?.officialIds).forEach((id) => ids.add(id));
-  (organization?.officials ?? []).forEach((official) => {
-    const officialId = normalizeEntityId(official?.$id);
-    if (officialId) {
-      ids.add(officialId);
-    }
-  });
   return Array.from(ids);
 };
 

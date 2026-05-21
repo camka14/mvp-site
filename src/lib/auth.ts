@@ -1,4 +1,5 @@
 import type { UserData } from '@/types';
+import { normalizeAccountVisibility } from '@/lib/accountVisibility';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import { normalizeOnboardingIntent } from '@/lib/onboardingIntent';
 
@@ -31,6 +32,7 @@ const normalizeUserData = (user: UserData | null): UserData | null => {
     firstName: normalizeOptionalName(user.firstName) ?? '',
     lastName: normalizeOptionalName(user.lastName) ?? '',
     onboardingIntent: normalizeOnboardingIntent(user.onboardingIntent),
+    accountVisibility: normalizeAccountVisibility(user.accountVisibility),
   };
   if (normalizedUser.$id) return normalizedUser;
   const raw = user as UserData & { id?: string };

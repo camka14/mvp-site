@@ -116,8 +116,6 @@ describe('/api/teams route', () => {
     const organization = {
       id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: [],
-      officialIds: [],
     };
     getOptionalSessionMock.mockResolvedValue(session);
     organizationFindUniqueMock.mockResolvedValue(organization);
@@ -140,7 +138,7 @@ describe('/api/teams route', () => {
     expect(payload.teams).toEqual([]);
     expect(organizationFindUniqueMock).toHaveBeenCalledWith({
       where: { id: 'org_1' },
-      select: { id: true, ownerId: true, hostIds: true, officialIds: true },
+      select: { id: true, ownerId: true },
     });
     expect(canManageOrganizationMock).toHaveBeenCalledWith(session, organization);
     expect(canonicalTeamsFindManyMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -155,8 +153,6 @@ describe('/api/teams route', () => {
     const organization = {
       id: 'org_1',
       ownerId: 'owner_1',
-      hostIds: [],
-      officialIds: [],
     };
     getOptionalSessionMock.mockResolvedValue(session);
     organizationFindUniqueMock.mockResolvedValue(organization);

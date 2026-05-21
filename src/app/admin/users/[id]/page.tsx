@@ -47,7 +47,7 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
     profile,
     authUser,
     sensitiveUser,
-    ownedOrganizations,
+    staffMemberships,
     hostedEvents,
     teamRegistrations,
     staffAssignments,
@@ -74,17 +74,9 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
         billingCountryCode: true,
       },
     }),
-    prisma.organizations.findMany({
-      where: {
-        OR: [
-          { ownerId: userId },
-          { hostIds: { has: userId } },
-          { officialIds: { has: userId } },
-        ],
-      },
-      select: { id: true, name: true, ownerId: true },
-      orderBy: { name: 'asc' },
-      take: 25,
+    prisma.staffMembers.findMany({
+      where: { userId },
+      select: { organizationId: true },
     }),
     prisma.events.findMany({
       where: {
@@ -114,6 +106,21 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
   if (!profile && !authUser && !sensitiveUser) {
     notFound();
   }
+
+  const staffOrganizationIds = Array.from(new Set(
+    staffMemberships.map((membership) => membership.organizationId).filter(Boolean),
+  ));
+  const ownedOrganizations = await prisma.organizations.findMany({
+    where: {
+      OR: [
+        { ownerId: userId },
+        ...(staffOrganizationIds.length > 0 ? [{ id: { in: staffOrganizationIds } }] : []),
+      ],
+    },
+    select: { id: true, name: true, ownerId: true },
+    orderBy: { name: 'asc' },
+    take: 25,
+  });
 
   const normalizedProfile = profile ? applyNameCaseToUserFields(profile) : null;
   const displayName = [normalizedProfile?.firstName, normalizedProfile?.lastName]
