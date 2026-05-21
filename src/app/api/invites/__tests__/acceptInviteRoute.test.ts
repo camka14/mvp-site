@@ -44,6 +44,7 @@ describe('POST /api/invites/[id]/accept', () => {
     },
     userData: {
       update: jest.fn(),
+      updateMany: jest.fn(),
     },
   };
 
@@ -53,6 +54,7 @@ describe('POST /api/invites/[id]/accept', () => {
     prismaMock.$transaction.mockImplementation(async (fn: (tx: typeof txMock) => unknown) => fn(txMock));
     prismaMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
     txMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
+    txMock.userData.updateMany.mockResolvedValue({ count: 1 });
     getTeamChatBaseMemberIdsMock.mockReturnValue(['captain_1']);
     syncTeamChatInTxMock.mockResolvedValue(undefined);
     loadCanonicalTeamByIdMock.mockResolvedValue({
@@ -67,7 +69,7 @@ describe('POST /api/invites/[id]/accept', () => {
     syncCanonicalTeamRosterMock.mockResolvedValue(undefined);
   });
 
-  it('accepts a STAFF invite by deleting it without a transaction', async () => {
+  it('accepts a STAFF invite and sets the organization as home when unset', async () => {
     prismaMock.invites.findUnique.mockResolvedValue({
       id: 'invite_1',
       type: 'STAFF',
@@ -83,8 +85,18 @@ describe('POST /api/invites/[id]/accept', () => {
 
     expect(response.status).toBe(200);
     expect(payload.ok).toBe(true);
-    expect(prismaMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
-    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(payload.organizationId).toBe('org_1');
+    expect(txMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
+    expect(txMock.userData.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'user_1',
+        homePageOrganizationId: null,
+      },
+      data: {
+        homePageOrganizationId: 'org_1',
+        updatedAt: expect.any(Date),
+      },
+    });
   });
 
   it('accepts a TEAM player invite by syncing the canonical roster and deleting the invite', async () => {
@@ -125,6 +137,7 @@ describe('POST /api/invites/[id]/accept', () => {
     });
     expect(txMock.teams.update).not.toHaveBeenCalled();
     expect(txMock.userData.update).not.toHaveBeenCalled();
+    expect(txMock.userData.updateMany).not.toHaveBeenCalled();
     expect(txMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
   });
 

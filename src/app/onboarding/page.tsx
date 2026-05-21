@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Alert,
+  Avatar,
   Box,
   Button,
   Checkbox,
@@ -36,7 +37,8 @@ import {
   type OnboardingIntent,
 } from '@/lib/onboardingIntent';
 import { organizationService } from '@/lib/organizationService';
-import type { Organization } from '@/types';
+import { userService } from '@/lib/userService';
+import type { Invite, Organization } from '@/types';
 
 type OnboardingOption = {
   intent: OnboardingIntent;
@@ -88,10 +90,12 @@ export default function OnboardingPage() {
   const router = useRouter();
   const selectionInProgressRef = useRef(false);
   const [savingIntent, setSavingIntent] = useState<OnboardingIntent | null>(null);
+  const [savingInviteId, setSavingInviteId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [organizationError, setOrganizationError] = useState('');
   const [loadingOrganizations, setLoadingOrganizations] = useState(false);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [pendingOrganizationInvites, setPendingOrganizationInvites] = useState<Invite[]>([]);
   const [selectedHomeOrganizationId, setSelectedHomeOrganizationId] = useState<string | null>(null);
   const [privateAccount, setPrivateAccount] = useState(false);
 
@@ -123,6 +127,7 @@ export default function OnboardingPage() {
       || hasOnboardingIntent(user.onboardingIntent)
     ) {
       setOrganizations([]);
+      setPendingOrganizationInvites([]);
       setSelectedHomeOrganizationId(null);
       setOrganizationError('');
       return;
@@ -132,21 +137,52 @@ export default function OnboardingPage() {
     setLoadingOrganizations(true);
     setOrganizationError('');
 
-    organizationService.getOrganizationsByUser(user.$id)
-      .then((nextOrganizations) => {
+    Promise.all([
+      organizationService.getOrganizationsByUser(user.$id),
+      userService.listInvites({ userId: user.$id, type: 'STAFF' }),
+    ])
+      .then(async ([nextOrganizations, staffInvites]) => {
         if (cancelled) return;
-        setOrganizations(nextOrganizations);
+        const nextPendingOrganizationInvites = staffInvites.filter((invite) => (
+          invite.type === 'STAFF'
+          && typeof invite.organizationId === 'string'
+          && invite.organizationId.trim().length > 0
+          && (invite.status ?? 'PENDING') === 'PENDING'
+        ));
+        const nextOrganizationById = new Map(nextOrganizations.map((organization) => [organization.$id, organization]));
+        const missingInviteOrganizationIds = Array.from(new Set(
+          nextPendingOrganizationInvites
+            .map((invite) => invite.organizationId?.trim())
+            .filter((organizationId): organizationId is string => {
+              if (!organizationId) {
+                return false;
+              }
+              return !nextOrganizationById.has(organizationId);
+            }),
+        ));
+        if (missingInviteOrganizationIds.length) {
+          const inviteOrganizations = await organizationService.getOrganizationsByIds(missingInviteOrganizationIds);
+          for (const organization of inviteOrganizations) {
+            nextOrganizationById.set(organization.$id, organization);
+          }
+        }
+        if (cancelled) return;
+        const combinedOrganizations = Array.from(nextOrganizationById.values());
+        setOrganizations(combinedOrganizations);
+        setPendingOrganizationInvites(nextPendingOrganizationInvites);
         const currentHomeOrganizationId = typeof user.homePageOrganizationId === 'string'
           ? user.homePageOrganizationId.trim()
           : '';
-        const nextHomeOrganizationId = nextOrganizations.some((organization) => organization.$id === currentHomeOrganizationId)
+        const firstInviteOrganizationId = nextPendingOrganizationInvites[0]?.organizationId?.trim() ?? '';
+        const nextHomeOrganizationId = combinedOrganizations.some((organization) => organization.$id === currentHomeOrganizationId)
           ? currentHomeOrganizationId
-          : nextOrganizations[0]?.$id ?? null;
+          : firstInviteOrganizationId || combinedOrganizations[0]?.$id || null;
         setSelectedHomeOrganizationId(nextHomeOrganizationId || null);
       })
       .catch((loadError: unknown) => {
         if (cancelled) return;
         setOrganizations([]);
+        setPendingOrganizationInvites([]);
         setSelectedHomeOrganizationId(null);
         setOrganizationError(loadError instanceof Error ? loadError.message : 'Unable to load your organizations.');
       })
@@ -169,9 +205,29 @@ export default function OnboardingPage() {
   const selectedHomeOrganization = selectedHomeOrganizationId
     ? organizations.find((organization) => organization.$id === selectedHomeOrganizationId)
     : null;
+  const selectedOrganizationHasPendingInvite = selectedHomeOrganization
+    ? pendingOrganizationInvites.some((invite) => invite.organizationId === selectedHomeOrganization.$id)
+    : false;
+  const pendingOrganizationInviteOptions = pendingOrganizationInvites
+    .map((invite) => {
+      const organizationId = invite.organizationId?.trim();
+      const organization = organizationId
+        ? organizations.find((entry) => entry.$id === organizationId)
+        : undefined;
+      return organization ? { invite, organization } : null;
+    })
+    .filter((entry): entry is { invite: Invite; organization: Organization } => Boolean(entry));
+  const isSavingAny = Boolean(savingIntent || savingInviteId);
+
+  const getOrganizationLogoUrl = (organization: Organization, size: number = 44): string => {
+    if (organization.logoId) {
+      return `/api/files/${organization.logoId}/preview?w=${size}&h=${size}&fit=cover`;
+    }
+    return `/api/avatars/initials?name=${encodeURIComponent(organization.name || 'Org')}&size=${size}`;
+  };
 
   const handleSelect = async (intent: OnboardingIntent) => {
-    if (savingIntent || loadingOrganizations) return;
+    if (isSavingAny || loadingOrganizations) return;
 
     selectionInProgressRef.current = true;
     setSavingIntent(intent);
@@ -191,6 +247,7 @@ export default function OnboardingPage() {
           updates.accountVisibility = accountVisibility;
           if (
             selectedHomeOrganization?.$id
+            && !selectedOrganizationHasPendingInvite
             && selectedHomeOrganization.$id !== user.homePageOrganizationId
           ) {
             updates.homePageOrganizationId = selectedHomeOrganization.$id;
@@ -206,6 +263,36 @@ export default function OnboardingPage() {
       selectionInProgressRef.current = false;
       setError(selectError instanceof Error ? selectError.message : 'Unable to save your selection.');
       setSavingIntent(null);
+    }
+  };
+
+  const handleAcceptOrganizationInvite = async (invite: Invite, organization: Organization) => {
+    if (isSavingAny || loadingOrganizations) return;
+
+    selectionInProgressRef.current = true;
+    setSavingInviteId(invite.$id);
+    setError('');
+
+    try {
+      if (user && isAuthenticated && !isGuest) {
+        const accountVisibility: AccountVisibility = privateAccount
+          ? PRIVATE_TO_ORGS_ACCOUNT_VISIBILITY
+          : PUBLIC_ACCOUNT_VISIBILITY;
+        await userService.acceptInvite(invite.$id);
+        const updated = await updateUser({
+          onboardingIntent: 'ORGANIZATION',
+          accountVisibility,
+          homePageOrganizationId: organization.$id,
+        });
+        if (!updated) {
+          throw new Error('Unable to save your selection.');
+        }
+      }
+      router.replace(`/organizations/${encodeURIComponent(organization.$id)}`);
+    } catch (selectError: unknown) {
+      selectionInProgressRef.current = false;
+      setError(selectError instanceof Error ? selectError.message : 'Unable to accept the organization invite.');
+      setSavingInviteId(null);
     }
   };
 
@@ -274,6 +361,61 @@ export default function OnboardingPage() {
             ) : null}
 
             <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
+              {pendingOrganizationInviteOptions.map(({ invite, organization }) => {
+                const isSaving = savingInviteId === invite.$id;
+
+                return (
+                  <Paper
+                    key={invite.$id}
+                    component="button"
+                    type="button"
+                    withBorder
+                    radius="md"
+                    p="lg"
+                    ta="left"
+                    disabled={isSavingAny || loadingOrganizations}
+                    onClick={() => handleAcceptOrganizationInvite(invite, organization)}
+                    style={{
+                      minHeight: 220,
+                      cursor: isSavingAny || loadingOrganizations ? 'default' : 'pointer',
+                      background: 'white',
+                    }}
+                  >
+                    <Stack h="100%" justify="space-between" gap="xl">
+                      <Stack gap="md">
+                        <Avatar
+                          src={getOrganizationLogoUrl(organization)}
+                          alt={organization.name}
+                          size={44}
+                          radius="md"
+                        >
+                          <Building2 size={22} aria-hidden="true" />
+                        </Avatar>
+                        <Stack gap={6}>
+                          <Title order={3} size="h4">
+                            Accept {organization.name} invite
+                          </Title>
+                          <Text c="dimmed" size="sm" lh={1.5}>
+                            Join {organization.name} and open the organization page.
+                          </Text>
+                        </Stack>
+                      </Stack>
+
+                      <Group justify="flex-end" wrap="nowrap">
+                        <Button
+                          component="span"
+                          variant="subtle"
+                          size="compact-sm"
+                          loading={isSaving}
+                          rightSection={<ArrowRight size={16} aria-hidden="true" />}
+                        >
+                          Accept
+                        </Button>
+                      </Group>
+                    </Stack>
+                  </Paper>
+                );
+              })}
               {OPTIONS.map((option) => {
                 const Icon = option.icon;
                 const isSaving = savingIntent === option.intent;
@@ -287,11 +429,11 @@ export default function OnboardingPage() {
                     radius="md"
                     p="lg"
                     ta="left"
-                    disabled={Boolean(savingIntent) || loadingOrganizations}
+                    disabled={isSavingAny || loadingOrganizations}
                     onClick={() => handleSelect(option.intent)}
                     style={{
                       minHeight: 220,
-                      cursor: savingIntent || loadingOrganizations ? 'default' : 'pointer',
+                      cursor: isSavingAny || loadingOrganizations ? 'default' : 'pointer',
                       background: 'white',
                     }}
                   >

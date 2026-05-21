@@ -14,9 +14,20 @@ jest.mock('@/app/providers', () => ({
 }));
 
 const mockGetOrganizationsByUser = jest.fn();
+const mockGetOrganizationsByIds = jest.fn();
 jest.mock('@/lib/organizationService', () => ({
   organizationService: {
     getOrganizationsByUser: (...args: any[]) => mockGetOrganizationsByUser(...args),
+    getOrganizationsByIds: (...args: any[]) => mockGetOrganizationsByIds(...args),
+  },
+}));
+
+const mockListInvites = jest.fn();
+const mockAcceptInvite = jest.fn();
+jest.mock('@/lib/userService', () => ({
+  userService: {
+    listInvites: (...args: any[]) => mockListInvites(...args),
+    acceptInvite: (...args: any[]) => mockAcceptInvite(...args),
   },
 }));
 
@@ -45,7 +56,13 @@ describe('OnboardingPage', () => {
     replaceMock.mockReset();
     useAppMock.mockReset();
     mockGetOrganizationsByUser.mockReset();
+    mockGetOrganizationsByIds.mockReset();
+    mockListInvites.mockReset();
+    mockAcceptInvite.mockReset();
     mockGetOrganizationsByUser.mockResolvedValue([]);
+    mockGetOrganizationsByIds.mockResolvedValue([]);
+    mockListInvites.mockResolvedValue([]);
+    mockAcceptInvite.mockResolvedValue(true);
     useAppMock.mockReturnValue({
       user: null,
       loading: false,
@@ -198,6 +215,84 @@ describe('OnboardingPage', () => {
         onboardingIntent: 'DISCOVER_EVENTS',
         accountVisibility: 'PRIVATE_TO_ORGS',
         homePageOrganizationId: 'org_1',
+      });
+    });
+    expect(replaceMock).toHaveBeenCalledWith('/discover');
+  });
+
+  it('accepts a pending organization invite and routes to the organization page', async () => {
+    const updateUser = jest.fn().mockResolvedValue({
+      $id: 'user_1',
+      onboardingIntent: 'ORGANIZATION',
+      accountVisibility: 'PUBLIC',
+      homePageOrganizationId: 'org_1',
+    });
+    mockGetOrganizationsByUser.mockResolvedValue([{ $id: 'org_1', name: 'Razumly', logoId: 'file_1' }]);
+    mockListInvites.mockResolvedValue([{
+      $id: 'invite_1',
+      type: 'STAFF',
+      status: 'PENDING',
+      organizationId: 'org_1',
+      userId: 'user_1',
+    }]);
+    useAppMock.mockReturnValue({
+      user: { $id: 'user_1', onboardingIntent: null, homePageOrganizationId: null },
+      loading: false,
+      isAuthenticated: true,
+      isGuest: false,
+      requiresEmailVerification: false,
+      updateUser,
+    });
+
+    renderPage();
+
+    const inviteButton = await screen.findByText(/accept razumly invite/i);
+    fireEvent.click(inviteButton.closest('button') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(mockAcceptInvite).toHaveBeenCalledWith('invite_1');
+      expect(updateUser).toHaveBeenCalledWith({
+        onboardingIntent: 'ORGANIZATION',
+        accountVisibility: 'PUBLIC',
+        homePageOrganizationId: 'org_1',
+      });
+    });
+    expect(replaceMock).toHaveBeenCalledWith('/organizations/org_1');
+  });
+
+  it('does not set a pending invite organization as home from a generic option', async () => {
+    const updateUser = jest.fn().mockResolvedValue({
+      $id: 'user_1',
+      onboardingIntent: 'DISCOVER_EVENTS',
+      accountVisibility: 'PUBLIC',
+    });
+    mockGetOrganizationsByUser.mockResolvedValue([{ $id: 'org_1', name: 'Razumly' }]);
+    mockListInvites.mockResolvedValue([{
+      $id: 'invite_1',
+      type: 'STAFF',
+      status: 'PENDING',
+      organizationId: 'org_1',
+      userId: 'user_1',
+    }]);
+    useAppMock.mockReturnValue({
+      user: { $id: 'user_1', onboardingIntent: null, homePageOrganizationId: null },
+      loading: false,
+      isAuthenticated: true,
+      isGuest: false,
+      requiresEmailVerification: false,
+      updateUser,
+    });
+
+    renderPage();
+
+    await screen.findByText(/accept razumly invite/i);
+    fireEvent.click(screen.getByText(/search for events to join/i).closest('button') as HTMLButtonElement);
+
+    await waitFor(() => {
+      expect(mockAcceptInvite).not.toHaveBeenCalled();
+      expect(updateUser).toHaveBeenCalledWith({
+        onboardingIntent: 'DISCOVER_EVENTS',
+        accountVisibility: 'PUBLIC',
       });
     });
     expect(replaceMock).toHaveBeenCalledWith('/discover');

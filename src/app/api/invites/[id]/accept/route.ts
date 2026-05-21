@@ -33,8 +33,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   if (inviteType === 'STAFF') {
-    await prisma.invites.delete({ where: { id: invite.id } });
-    return NextResponse.json({ ok: true }, { status: 200 });
+    const now = new Date();
+    await prisma.$transaction(async (tx) => {
+      await tx.invites.delete({ where: { id: invite.id } });
+      if (invite.organizationId && invite.userId) {
+        await tx.userData.updateMany({
+          where: {
+            id: invite.userId,
+            homePageOrganizationId: null,
+          },
+          data: {
+            homePageOrganizationId: invite.organizationId,
+            updatedAt: now,
+          },
+        });
+      }
+    });
+    return NextResponse.json({ ok: true, organizationId: invite.organizationId ?? null }, { status: 200 });
   }
 
   if (inviteType !== 'TEAM' || !invite.teamId || !invite.userId) {

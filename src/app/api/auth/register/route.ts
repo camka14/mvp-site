@@ -178,6 +178,33 @@ const profileConflictResponse = (
   }, { status: 409 });
 };
 
+const resolveInviteHomeOrganizationId = async (client: any, userId: string): Promise<string | null> => {
+  const invite = await client.invites.findFirst({
+    where: {
+      userId,
+      type: 'STAFF',
+      organizationId: { not: null },
+      status: { notIn: ['DECLINED', 'FAILED'] },
+    },
+    orderBy: { createdAt: 'asc' },
+    select: { organizationId: true },
+  });
+  if (typeof invite?.organizationId === 'string' && invite.organizationId.trim()) {
+    return invite.organizationId.trim();
+  }
+
+  const staffMember = await client.staffMembers.findFirst({
+    where: { userId },
+    orderBy: { createdAt: 'asc' },
+    select: { organizationId: true },
+  });
+  if (typeof staffMember?.organizationId === 'string' && staffMember.organizationId.trim()) {
+    return staffMember.organizationId.trim();
+  }
+
+  return null;
+};
+
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const parsed = registerSchema.safeParse(body);
@@ -282,6 +309,10 @@ export async function POST(req: NextRequest) {
             },
           });
 
+      const inviteHomeOrganizationId = existingAuth && isInvitePlaceholderAuthUser(existingAuth)
+        ? await resolveInviteHomeOrganizationId(tx, createdAuth.id)
+        : null;
+
       const profileRow = existingProfile
         ? await (() => {
             const nextProfile = {
@@ -302,6 +333,9 @@ export async function POST(req: NextRequest) {
                 lastName: nextProfile.lastName,
                 userName: finalUserName,
                 dateOfBirth: nextProfile.dateOfBirth,
+                ...(inviteHomeOrganizationId && !existingProfile.homePageOrganizationId
+                  ? { homePageOrganizationId: inviteHomeOrganizationId }
+                  : {}),
                 requiredProfileFieldsCompletedAt,
                 updatedAt: now,
               },
@@ -336,6 +370,7 @@ export async function POST(req: NextRequest) {
                 followingIds: [],
                 uploadedImages: [],
                 profileImageId: null,
+                homePageOrganizationId: inviteHomeOrganizationId,
               },
             });
           })();

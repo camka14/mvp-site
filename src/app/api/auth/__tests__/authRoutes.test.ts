@@ -14,6 +14,12 @@ const prismaMock = {
     create: jest.fn(),
     update: jest.fn(),
   },
+  invites: {
+    findFirst: jest.fn(),
+  },
+  staffMembers: {
+    findFirst: jest.fn(),
+  },
   sensitiveUserData: {
     findFirst: jest.fn(),
     upsert: jest.fn(),
@@ -71,6 +77,8 @@ describe('auth routes', () => {
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn({
       authUser: prismaMock.authUser,
       userData: prismaMock.userData,
+      invites: prismaMock.invites,
+      staffMembers: prismaMock.staffMembers,
       sensitiveUserData: prismaMock.sensitiveUserData,
     }));
 
@@ -82,6 +90,8 @@ describe('auth routes', () => {
     authSessionsMock.isSessionTokenCurrent.mockReturnValue(true);
     authEmailVerificationMock.isInitialEmailVerificationAvailable.mockReturnValue(true);
     authEmailVerificationMock.sendInitialEmailVerification.mockResolvedValue({ sent: true });
+    prismaMock.invites.findFirst.mockResolvedValue(null);
+    prismaMock.staffMembers.findFirst.mockResolvedValue(null);
   });
 
   describe('POST /api/auth/register', () => {
@@ -249,6 +259,80 @@ describe('auth routes', () => {
           where: { id: 'user_1' },
           data: expect.objectContaining({
             passwordHash: 'hashed',
+          }),
+        }),
+      );
+    });
+
+    it('sets the home organization when claiming an organization invite account', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: null,
+        passwordHash: '__NO_PASSWORD__',
+        lastLogin: null,
+        emailVerifiedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.sensitiveUserData.findFirst.mockResolvedValue({ id: 'user_1', userId: 'user_1', email: 'test@example.com' });
+      prismaMock.userData.findUnique.mockResolvedValue({
+        id: 'user_1',
+        firstName: null,
+        lastName: null,
+        userName: 'invited',
+        dateOfBirth: new Date('2000-01-01'),
+        homePageOrganizationId: null,
+      });
+      prismaMock.invites.findFirst.mockResolvedValue({ organizationId: 'org_1' });
+
+      prismaMock.authUser.update.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Test User',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.userData.update.mockResolvedValue({
+        id: 'user_1',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        dateOfBirth: new Date('2000-01-01'),
+        homePageOrganizationId: 'org_1',
+      });
+      prismaMock.sensitiveUserData.upsert.mockResolvedValue({ id: 'user_1' });
+
+      const req = buildJsonRequest('http://localhost/api/auth/register', {
+        email: 'test@example.com',
+        password: 'password123',
+        name: 'Test User',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        dateOfBirth: '2000-01-01',
+      });
+
+      const res = await REGISTER_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(202);
+      expect(json.user.id).toBe('user_1');
+      expect(prismaMock.invites.findFirst).toHaveBeenCalledWith({
+        where: {
+          userId: 'user_1',
+          type: 'STAFF',
+          organizationId: { not: null },
+          status: { notIn: ['DECLINED', 'FAILED'] },
+        },
+        orderBy: { createdAt: 'asc' },
+        select: { organizationId: true },
+      });
+      expect(prismaMock.userData.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'user_1' },
+          data: expect.objectContaining({
+            homePageOrganizationId: 'org_1',
           }),
         }),
       );
