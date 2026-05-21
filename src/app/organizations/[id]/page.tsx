@@ -20,7 +20,6 @@ import { eventService } from '@/lib/eventService';
 import { getStaffMemberTypesForOrganizationRole } from '@/lib/staff';
 import { createId } from '@/lib/id';
 import { buildOrganizationEventCreateUrl } from '@/lib/eventCreateNavigation';
-import EventDetailSheet from '@/app/discover/components/EventDetailSheet';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
@@ -673,8 +672,6 @@ function OrganizationDetailContent() {
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [showTeamDetailModal, setShowTeamDetailModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
-  const [selectedEvent, setSelectedEvent] = useState<any | null>(null);
-  const [showEventDetailSheet, setShowEventDetailSheet] = useState(false);
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
   const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
   const [eventSearchTerm, setEventSearchTerm] = useState('');
@@ -2049,13 +2046,8 @@ function OrganizationDetailContent() {
   }, [isOwner, router]);
 
   const handleOrganizationEventClick = useCallback((event: Event) => {
-    if (isOwner) {
-      openOrganizationEvent(event.$id);
-      return;
-    }
-    setSelectedEvent(event);
-    setShowEventDetailSheet(true);
-  }, [isOwner, openOrganizationEvent]);
+    openOrganizationEvent(event.$id);
+  }, [openOrganizationEvent]);
 
   const openSignedDocumentPreview = useCallback((document: OrganizationUserDocumentSummary) => {
     if (document.type === 'PDF') {
@@ -4057,13 +4049,6 @@ function OrganizationDetailContent() {
       </Container>
 
       {/* Modals */}
-      {showEventDetailSheet && selectedEvent ? (
-        <EventDetailSheet
-          event={selectedEvent}
-          isOpen={showEventDetailSheet}
-          onClose={() => { setShowEventDetailSheet(false); }}
-        />
-      ) : null}
       <CreateTeamModal
         isOpen={showCreateTeamModal}
         onClose={() => setShowCreateTeamModal(false)}
