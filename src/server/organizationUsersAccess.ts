@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
-import { canManageOrganization, canOfficialOrganization } from '@/server/accessControl';
+import { canManageOrganization, canOfficialOrganization, hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 
 type SessionLike = {
   userId: string;
@@ -293,6 +294,10 @@ export const canAccessOrganizationUsers = async (
     ? params.canManage
     : await canManageOrganization(params.session, params.organization, client);
   if (canManage) {
+    return true;
+  }
+
+  if (await hasOrgPermission(params.session, params.organization, ORG_PERMISSIONS.USERS_VIEW, client)) {
     return true;
   }
 

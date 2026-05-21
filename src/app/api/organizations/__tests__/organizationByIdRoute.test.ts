@@ -21,6 +21,14 @@ const prismaMock = {
   authUser: {
     findUnique: jest.fn(),
   },
+  organizationRoles: {
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+  },
+  organizationRolePermissions: {
+    findFirst: jest.fn(),
+    findMany: jest.fn(),
+  },
   fields: {
     findMany: jest.fn(),
   },
@@ -47,6 +55,10 @@ describe('/api/organizations/[id]', () => {
     prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.sensitiveUserData.findMany.mockResolvedValue([]);
     prismaMock.authUser.findUnique.mockResolvedValue(null);
+    prismaMock.organizationRoles.findFirst.mockResolvedValue(null);
+    prismaMock.organizationRoles.findMany.mockResolvedValue([]);
+    prismaMock.organizationRolePermissions.findFirst.mockResolvedValue(null);
+    prismaMock.organizationRolePermissions.findMany.mockResolvedValue([]);
     prismaMock.fields.findMany.mockResolvedValue([]);
     prismaMock.events.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
@@ -94,6 +106,54 @@ describe('/api/organizations/[id]', () => {
     expect(payload.viewerCanManageOrganization).toBe(true);
     expect(payload.viewerCanAccessUsers).toBe(true);
     expect(prismaMock.sensitiveUserData.findMany).toHaveBeenCalled();
+  });
+
+  it('returns custom role permissions and staff roster data for staff managers', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'staff_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+      name: 'Test Org',
+    });
+    prismaMock.staffMembers.findMany.mockResolvedValue([{
+      id: 'staff_member_1',
+      organizationId: 'org_1',
+      userId: 'staff_1',
+      types: ['STAFF'],
+      roleId: 'role_1',
+    }]);
+    prismaMock.staffMembers.findUnique.mockResolvedValue({
+      organizationId: 'org_1',
+      userId: 'staff_1',
+      types: ['STAFF'],
+      roleId: 'role_1',
+    });
+    prismaMock.organizationRoles.findFirst.mockResolvedValue({
+      id: 'role_1',
+      organizationId: 'org_1',
+    });
+    prismaMock.organizationRolePermissions.findFirst.mockImplementation(async ({ where }: any) => (
+      ['staff.manage', 'events.manage'].includes(where.permission)
+        ? { permission: where.permission }
+        : null
+    ));
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/organizations/org_1'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.viewerCanManageOrganization).toBe(false);
+    expect(payload.viewerPermissions).toEqual(expect.arrayContaining(['staff.manage', 'events.manage']));
+    expect(prismaMock.sensitiveUserData.findMany).toHaveBeenCalled();
+    expect(payload.staffMembers).toEqual([
+      expect.objectContaining({
+        userId: 'staff_1',
+        role: null,
+      }),
+    ]);
   });
 
   it('rejects direct hasStripeAccount patch attempts', async () => {

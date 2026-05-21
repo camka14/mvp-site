@@ -3,7 +3,8 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
-import { canManageOrganization } from '@/server/accessControl';
+import { hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import type { Product, ProductType } from '@/types';
 import {
@@ -100,7 +101,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return existing.organizationId;
   })();
   const org = await prisma.organizations.findUnique({ where: { id: targetOrganizationIdRaw } });
-  if (!session.isAdmin && !(await canManageOrganization(session, org))) {
+  if (!session.isAdmin && !(await hasOrgPermission(session, org, ORG_PERMISSIONS.PRODUCTS_MANAGE))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -206,7 +207,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   const org = await prisma.organizations.findUnique({ where: { id: existing.organizationId } });
-  if (!(await canManageOrganization(session, org))) {
+  if (!(await hasOrgPermission(session, org, ORG_PERMISSIONS.PRODUCTS_MANAGE))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

@@ -322,6 +322,6 @@ export const canManageEvent = async (
     where: { id: organizationId },
     select: { id: true, ownerId: true },
   });
-  return canManageOrganization(session, organization, client);
+  return hasOrgPermission(session, organization, ORG_PERMISSIONS.EVENTS_MANAGE, client);
 };
 

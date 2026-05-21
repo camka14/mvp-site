@@ -39,6 +39,7 @@ const sendInviteEmailsMock = jest.fn();
 const ensureAuthUserAndUserDataByEmailMock = jest.fn();
 const canManageOrganizationMock = jest.fn();
 const canManageEventMock = jest.fn();
+const hasOrgPermissionMock = jest.fn();
 const loadCanonicalTeamByIdMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
@@ -50,6 +51,7 @@ jest.mock('@/server/inviteUsers', () => ({
 jest.mock('@/server/accessControl', () => ({
   canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
   canManageEvent: (...args: any[]) => canManageEventMock(...args),
+  hasOrgPermission: (...args: any[]) => hasOrgPermissionMock(...args),
 }));
 jest.mock('@/server/teams/teamMembership', () => ({
   loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
@@ -99,6 +101,7 @@ describe('/api/invites', () => {
     });
     canManageOrganizationMock.mockResolvedValue(true);
     canManageEventMock.mockResolvedValue(true);
+    hasOrgPermissionMock.mockResolvedValue(true);
     loadCanonicalTeamByIdMock.mockResolvedValue(null);
   });
 
@@ -430,9 +433,10 @@ describe('/api/invites', () => {
 
     expect(res.status).toBe(409);
     expect(json.error).toBe('Organization owner already has staff access');
-    expect(canManageOrganizationMock).toHaveBeenCalledWith(
+    expect(hasOrgPermissionMock).toHaveBeenCalledWith(
       { userId: 'owner_1', isAdmin: false },
       expect.objectContaining({ id: 'org_1', ownerId: 'owner_1' }),
+      'staff.manage',
       prismaMock,
     );
     expect(prismaMock.staffMembers.upsert).not.toHaveBeenCalled();

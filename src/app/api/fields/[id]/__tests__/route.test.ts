@@ -16,12 +16,12 @@ const prismaMock = {
 };
 
 const requireSessionMock = jest.fn();
-const canManageOrganizationMock = jest.fn();
+const hasOrgPermissionMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/accessControl', () => ({
-  canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
+  hasOrgPermission: (...args: any[]) => hasOrgPermissionMock(...args),
 }));
 
 import { PATCH } from '@/app/api/fields/[id]/route';
@@ -36,7 +36,7 @@ describe('PATCH /api/fields/[id]', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
-    canManageOrganizationMock.mockResolvedValue(true);
+    hasOrgPermissionMock.mockResolvedValue(true);
   });
 
   it('rejects immutable organization ownership updates', async () => {

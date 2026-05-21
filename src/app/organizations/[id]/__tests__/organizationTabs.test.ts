@@ -50,4 +50,23 @@ describe('buildOrganizationTabs', () => {
       { label: 'Store', value: 'store' },
     ]);
   });
+
+  it('shows only permission-backed management tabs for custom staff roles', () => {
+    expect(buildOrganizationTabs({
+      isOrganizationRoleMember: true,
+      canManageTeams: true,
+      canManageFields: true,
+      canManageStaff: true,
+      hasTeams: false,
+      hasRentals: false,
+      hasProducts: false,
+    })).toEqual([
+      { label: 'Overview', value: 'overview' },
+      { label: 'Events', value: 'events' },
+      { label: 'Teams', value: 'teams' },
+      { label: 'Staff', value: 'staff' },
+      { label: 'Fields', value: 'fields' },
+      { label: 'Store', value: 'store' },
+    ]);
+  });
 });

@@ -16,7 +16,8 @@ import { withLegacyFields } from '@/server/legacyFormat';
 import { sendInviteEmails } from '@/server/inviteEmails';
 import { ensureAuthUserAndUserDataByEmail } from '@/server/inviteUsers';
 import { getRequestOrigin } from '@/lib/requestOrigin';
-import { canManageEvent, canManageOrganization } from '@/server/accessControl';
+import { canManageEvent, canManageOrganization, hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { resolveDefaultOrganizationRoleIdForStaffTypes } from '@/server/organizationRoles';
 import { loadCanonicalTeamById, normalizeId, normalizeIdList } from '@/server/teams/teamMembership';
 import {
@@ -271,7 +272,7 @@ export async function POST(req: NextRequest) {
             if (!organization) {
               throw new InviteRouteError(404, 'Organization not found');
             }
-            if (!(await canManageOrganization(session, organization, tx))) {
+            if (!(await hasOrgPermission(session, organization, ORG_PERMISSIONS.STAFF_MANAGE, tx))) {
               throw new InviteRouteError(403, 'Forbidden');
             }
             if (organization.ownerId && inviteUserId === organization.ownerId) {

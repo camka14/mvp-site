@@ -60,6 +60,7 @@ import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
 import { buildOrganizationTabs, type OrganizationTab } from './organizationTabs';
 import { buildOrganizationUsersSubtitle } from './organizationUsersCopy';
 import OrganizationPublicSettingsPanel from './OrganizationPublicSettingsPanel';
+import { ORG_PERMISSIONS, type OrganizationPermission } from '@/lib/organizationPermissions';
 
 export default function OrganizationDetailPage() {
   return (
@@ -730,6 +731,26 @@ function OrganizationDetailContent() {
   const [stripeEmailError, setStripeEmailError] = useState<string | null>(null);
   const [updatingHomePagePreference, setUpdatingHomePagePreference] = useState(false);
   const viewerCanManageOrganization = Boolean(org?.viewerCanManageOrganization);
+  const viewerPermissions = useMemo(
+    () => (Array.isArray(org?.viewerPermissions) ? org.viewerPermissions : []),
+    [org?.viewerPermissions],
+  );
+  const viewerHasPermission = useCallback(
+    (permission: OrganizationPermission): boolean => (
+      viewerCanManageOrganization || viewerPermissions.includes(permission)
+    ),
+    [viewerCanManageOrganization, viewerPermissions],
+  );
+  const canManageEvents = viewerHasPermission(ORG_PERMISSIONS.EVENTS_MANAGE);
+  const canManageFields = viewerHasPermission(ORG_PERMISSIONS.FIELDS_MANAGE);
+  const canManageTeams = viewerHasPermission(ORG_PERMISSIONS.TEAMS_MANAGE);
+  const canManageProducts = viewerHasPermission(ORG_PERMISSIONS.PRODUCTS_MANAGE);
+  const canManageStaff = viewerHasPermission(ORG_PERMISSIONS.STAFF_MANAGE);
+  const canManageRoles = viewerHasPermission(ORG_PERMISSIONS.ROLES_MANAGE);
+  const canManageStaffSurface = canManageStaff || canManageRoles;
+  const canManageTemplates = viewerHasPermission(ORG_PERMISSIONS.TEMPLATES_MANAGE);
+  const canManageRefunds = viewerHasPermission(ORG_PERMISSIONS.REFUNDS_MANAGE);
+  const canManagePublicPage = viewerHasPermission(ORG_PERMISSIONS.ORGANIZATION_MANAGE);
   const isOwner = Boolean(
     viewerCanManageOrganization
       || (
@@ -762,8 +783,8 @@ function OrganizationDetailContent() {
     ),
     [org?.fields],
   );
-  const canCreateOrganizationEvents = isOwner && organizationFieldCount > 0;
-  const createEventHelperText = isOwner && organizationFieldCount === 0
+  const canCreateOrganizationEvents = canManageEvents && organizationFieldCount > 0;
+  const createEventHelperText = canManageEvents && organizationFieldCount === 0
     ? ORG_EVENT_CREATE_FIELD_REQUIRED_TEXT
     : null;
   const canToggleHomePagePreference = Boolean(isOrganizationRoleMember || isCurrentOrganizationHomePage);
@@ -792,6 +813,13 @@ function OrganizationDetailContent() {
       viewerCanAccessUsers: org?.viewerCanAccessUsers,
       isOwner,
       isOrganizationRoleMember,
+      canManageStaff: canManageStaffSurface,
+      canManageTemplates,
+      canManageRefunds,
+      canManagePublicPage,
+      canManageTeams,
+      canManageFields,
+      canManageProducts,
       hasTeams: hasVisibleTeams,
       hasRentals: hasVisibleRentals,
       hasProducts: hasVisibleProducts,
@@ -800,6 +828,13 @@ function OrganizationDetailContent() {
       hasVisibleProducts,
       hasVisibleRentals,
       hasVisibleTeams,
+      canManageFields,
+      canManageProducts,
+      canManagePublicPage,
+      canManageRefunds,
+      canManageStaffSurface,
+      canManageTeams,
+      canManageTemplates,
       isOrganizationRoleMember,
       isOwner,
       org?.viewerCanAccessUsers,
@@ -1736,13 +1771,13 @@ function OrganizationDetailContent() {
   }, [org?.products]);
 
   useEffect(() => {
-    if (!org || !isOwner || !user) {
+    if (!org || !canManageTemplates || !user) {
       setTemplateDocuments([]);
       setPendingTemplateCreates([]);
       return;
     }
     loadTemplates(org.$id);
-  }, [org, isOwner, user, loadTemplates]);
+  }, [org, canManageTemplates, user, loadTemplates]);
 
   useEffect(() => {
     if (pendingTemplateCreates.length === 0 || templateDocuments.length === 0) {
@@ -1758,12 +1793,12 @@ function OrganizationDetailContent() {
   }, [pendingTemplateCreates.length, templateDocuments]);
 
   useEffect(() => {
-    if (!org || !isOwner || !user) {
+    if (!org || !canManageTemplates || !user) {
       setEventTemplates([]);
       return;
     }
     void loadEventTemplates(org.$id);
-  }, [org, isOwner, user, loadEventTemplates]);
+  }, [org, canManageTemplates, user, loadEventTemplates]);
 
   useEffect(() => {
     if (!org || !user || !org.viewerCanAccessUsers) {
@@ -2039,11 +2074,11 @@ function OrganizationDetailContent() {
 
   const openOrganizationEvent = useCallback((eventId: string) => {
     const params = new URLSearchParams({ tab: 'details' });
-    if (isOwner) {
+    if (canManageEvents) {
       params.set('mode', 'edit');
     }
     router.push(`/events/${eventId}?${params.toString()}`);
-  }, [isOwner, router]);
+  }, [canManageEvents, router]);
 
   const handleOrganizationEventClick = useCallback((event: Event) => {
     openOrganizationEvent(event.$id);
@@ -2161,7 +2196,7 @@ function OrganizationDetailContent() {
   );
 
   const handleCreateProduct = useCallback(async () => {
-    if (!org || !user || !isOwner) return;
+    if (!org || !user || !canManageProducts) return;
     const priceCents = normalizePriceCents(productPriceCents);
     if (!productName.trim()) {
       notifications.show({ color: 'red', message: 'Product name is required.' });
@@ -2198,7 +2233,7 @@ function OrganizationDetailContent() {
     } finally {
       setCreatingProduct(false);
     }
-  }, [isOwner, org, productDescription, productName, productPeriod, productPriceCents, productType, refreshOrganizationProducts, user]);
+  }, [canManageProducts, org, productDescription, productName, productPeriod, productPriceCents, productType, refreshOrganizationProducts, user]);
 
   const openProductModal = useCallback((product: Product) => {
     setSelectedProduct(product);
@@ -2238,7 +2273,7 @@ function OrganizationDetailContent() {
   }, [editProductPeriod]);
 
   const handleUpdateProduct = useCallback(async () => {
-    if (!org || !selectedProduct || !isOwner) return;
+    if (!org || !selectedProduct || !canManageProducts) return;
     const priceCents = normalizePriceCents(editProductPriceCents);
     if (!editProductName.trim()) {
       notifications.show({ color: 'red', message: 'Product name is required.' });
@@ -2269,10 +2304,10 @@ function OrganizationDetailContent() {
     } finally {
       setUpdatingProduct(false);
     }
-  }, [closeProductModal, editProductDescription, editProductName, editProductPeriod, editProductPriceCents, editProductType, isOwner, org, refreshOrganizationProducts, selectedProduct]);
+  }, [canManageProducts, closeProductModal, editProductDescription, editProductName, editProductPeriod, editProductPriceCents, editProductType, org, refreshOrganizationProducts, selectedProduct]);
 
   const handleDeleteProduct = useCallback(async () => {
-    if (!org || !selectedProduct || !isOwner) return;
+    if (!org || !selectedProduct || !canManageProducts) return;
     if (typeof window !== 'undefined') {
       const confirmed = window.confirm(`Delete product "${selectedProduct.name}"? This cannot be undone.`);
       if (!confirmed) {
@@ -2291,7 +2326,7 @@ function OrganizationDetailContent() {
     } finally {
       setDeletingProduct(false);
     }
-  }, [closeProductModal, isOwner, org, refreshOrganizationProducts, selectedProduct]);
+  }, [canManageProducts, closeProductModal, org, refreshOrganizationProducts, selectedProduct]);
 
   const startProductCheckout = useCallback(
     async (product: Product, billingAddress?: BillingAddress) => {
@@ -2422,7 +2457,7 @@ function OrganizationDetailContent() {
 
   const handleInviteExistingStaff = useCallback(
     async (candidate: UserData, roleId: string, types: StaffMemberType[]) => {
-      if (!org || !isOwner) return;
+      if (!org || !canManageStaff) return;
       try {
         await organizationService.inviteExistingStaff(org.$id, candidate.$id, types, roleId);
         await loadOrg(org.$id, { silent: true });
@@ -2436,11 +2471,11 @@ function OrganizationDetailContent() {
         notifications.show({ color: 'red', message: error instanceof Error ? error.message : 'Failed to invite staff member.' });
       }
     },
-    [isOwner, loadOrg, org],
+    [canManageStaff, loadOrg, org],
   );
 
   const handleInviteStaffEmails = useCallback(async () => {
-    if (!org || !isOwner || !user) return;
+    if (!org || !canManageStaff || !user) return;
 
     const sanitized = staffInvites.map((invite) => {
       const role = resolveStaffAssignmentRole(invite.roleId);
@@ -2485,11 +2520,11 @@ function OrganizationDetailContent() {
     } finally {
       setInvitingStaff(false);
     }
-  }, [isOwner, loadOrg, org, resolveStaffAssignmentRole, staffInvites, user]);
+  }, [canManageStaff, loadOrg, org, resolveStaffAssignmentRole, staffInvites, user]);
 
   const handleRemoveStaffMember = useCallback(
     async (userIdToRemove: string) => {
-      if (!org || !isOwner) return;
+      if (!org || !canManageStaff) return;
       if (typeof window !== 'undefined') {
         const confirmed = window.confirm('Remove this staff member from the organization?');
         if (!confirmed) {
@@ -2504,12 +2539,12 @@ function OrganizationDetailContent() {
         notifications.show({ color: 'red', message: 'Failed to remove staff member.' });
       }
     },
-    [isOwner, loadOrg, org],
+    [canManageStaff, loadOrg, org],
   );
 
   const handleUpdateStaffRole = useCallback(
     async (userIdToUpdate: string, roleId: string) => {
-      if (!org || !isOwner || !roleId) return;
+      if (!org || !canManageStaff || !roleId) return;
       const role = (org.staffRoles ?? []).find((entry) => entry.$id === roleId);
       if (!role) {
         const error = new Error('Select a valid staff role.');
@@ -2530,7 +2565,7 @@ function OrganizationDetailContent() {
         throw error;
       }
     },
-    [isOwner, loadOrg, org],
+    [canManageStaff, loadOrg, org],
   );
 
   const applyStaffRoleUpdate = useCallback((role: OrganizationRole) => {
@@ -2558,24 +2593,24 @@ function OrganizationDetailContent() {
 
   const handleCreateStaffRole = useCallback(
     async (name: string, permissions: string[]) => {
-      if (!org || !isOwner) return;
+      if (!org || !canManageRoles) return;
       const role = await organizationService.createStaffRole(org.$id, { name, permissions });
       applyStaffRoleUpdate(role);
     },
-    [applyStaffRoleUpdate, isOwner, org],
+    [applyStaffRoleUpdate, canManageRoles, org],
   );
 
   const handleUpdateStaffRoleDefinition = useCallback(
     async (roleId: string, data: { name?: string; permissions?: string[] }) => {
-      if (!org || !isOwner) return;
+      if (!org || !canManageRoles) return;
       const role = await organizationService.updateStaffRole(org.$id, roleId, data);
       applyStaffRoleUpdate(role);
     },
-    [applyStaffRoleUpdate, isOwner, org],
+    [applyStaffRoleUpdate, canManageRoles, org],
   );
 
   const handleUpdateEventHost = useCallback(async (eventId: string, hostId: string) => {
-    if (!org || !isOwner || !eventId || !hostId) return;
+    if (!org || !canManageEvents || !eventId || !hostId) return;
     try {
       setUpdatingEventHostId(eventId);
       await apiRequest(`/api/events/${eventId}`, {
@@ -2598,7 +2633,7 @@ function OrganizationDetailContent() {
     } finally {
       setUpdatingEventHostId(null);
     }
-	  }, [isOwner, org]);
+	  }, [canManageEvents, org]);
 
   const showUserCustomers = customerTypeFilters.includes('users');
   const showTeamCustomers = customerTypeFilters.includes('teams');
@@ -3362,10 +3397,10 @@ function OrganizationDetailContent() {
                             key={e.$id}
                             event={e}
                             onClick={() => handleOrganizationEventClick(e)}
-                            hostOptions={isOwner ? eventHostOptions : undefined}
+                            hostOptions={canManageEvents ? eventHostOptions : undefined}
                             selectedHostId={e.hostId}
                             hostChangeDisabled={updatingEventHostId === e.$id}
-                            onHostChange={isOwner ? (hostId) => {
+                            onHostChange={canManageEvents ? (hostId) => {
                               void handleUpdateEventHost(e.$id, hostId);
                             } : undefined}
                           />
@@ -3502,7 +3537,7 @@ function OrganizationDetailContent() {
                 eventsError={eventsTabError}
                 onEventClick={handleOrganizationEventClick}
                 onCreateEvent={handleCreateEvent}
-                showCreateEventButton={isOwner}
+                showCreateEventButton={canManageEvents}
                 createEventDisabled={!canCreateOrganizationEvents}
                 createEventHelperText={createEventHelperText}
                 hideWeeklyChildren={hideWeeklyChildEvents}
@@ -3510,7 +3545,7 @@ function OrganizationDetailContent() {
               />
             )}
 
-            {isOwner && activeTab === 'eventTemplates' && (
+            {canManageTemplates && activeTab === 'eventTemplates' && (
               <Paper withBorder p="md" radius="md" className="org-tab-surface">
                 <Group justify="space-between" mb="md">
                   <Title order={5}>Event Templates</Title>
@@ -3554,7 +3589,7 @@ function OrganizationDetailContent() {
               <Paper withBorder p="md" radius="md" className="org-tab-surface">
                 <Group justify="space-between" mb="md">
                   <Title order={5}>Teams</Title>
-                  {isOwner && <Button onClick={() => setShowCreateTeamModal(true)}>Create Team</Button>}
+                  {canManageTeams && <Button onClick={() => setShowCreateTeamModal(true)}>Create Team</Button>}
                 </Group>
                 {org.teams && org.teams.length > 0 ? (
                   <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
@@ -3754,7 +3789,7 @@ function OrganizationDetailContent() {
               </Stack>
             )}
 
-            {isOwner && activeTab === 'templates' && (
+            {canManageTemplates && activeTab === 'templates' && (
               <Paper withBorder p="md" radius="md" className="org-tab-surface">
                 <Group justify="space-between" mb="md">
                   <Title order={5}>Document Templates</Title>
@@ -3868,7 +3903,7 @@ function OrganizationDetailContent() {
               </Paper>
             )}
 
-            {isOwner && activeTab === 'staff' && (
+            {canManageStaffSurface && activeTab === 'staff' && (
               <RoleRosterManager
                 rosterEntries={staffRosterEntries}
                 searchValue={staffSearch}
@@ -3890,11 +3925,11 @@ function OrganizationDetailContent() {
               />
             )}
 
-            {isOwner && activeTab === 'refunds' && org && (
+            {canManageRefunds && activeTab === 'refunds' && org && (
               <RefundRequestsList organizationId={org.$id} />
             )}
 
-            {isOwner && activeTab === 'publicPage' && org && (
+            {canManagePublicPage && activeTab === 'publicPage' && org && (
               <OrganizationPublicSettingsPanel
                 organization={org}
                 onUpdated={async (updatedOrg) => {
@@ -3917,7 +3952,7 @@ function OrganizationDetailContent() {
                   )}
                 </Group>
 
-                  {isOwner && (
+                  {canManageProducts && (
                     <Paper withBorder radius="md" p="md" mb="lg" className="org-tab-item">
                     <Title order={6} mb="xs">Add product</Title>
                     <Text size="sm" c="dimmed" mb="md">
@@ -3988,11 +4023,11 @@ function OrganizationDetailContent() {
                         p="md"
                         className="org-tab-item"
                         onClick={() => {
-                          if (isOwner) {
+                          if (canManageProducts) {
                             openProductModal(product);
                           }
                         }}
-                        style={{ cursor: isOwner ? 'pointer' : 'default' }}
+                        style={{ cursor: canManageProducts ? 'pointer' : 'default' }}
                       >
                         <Group justify="space-between" align="flex-start" mb="xs">
                           <div>
@@ -4001,7 +4036,7 @@ function OrganizationDetailContent() {
                           </div>
                           <div style={{ textAlign: 'right' }}>
                             <Text size="sm" c="dimmed">{formatProductPeriodLabel(product.period)}</Text>
-                            {isOwner && (
+                            {canManageProducts && (
                               <Text size="xs" c="dimmed">Click card to edit</Text>
                             )}
                           </div>
@@ -4012,21 +4047,21 @@ function OrganizationDetailContent() {
                         )}
                         <Button
                           fullWidth
-                          variant={isOwner ? 'outline' : 'filled'}
+                          variant={canManageProducts ? 'outline' : 'filled'}
                           loading={startingProductCheckoutId === product.$id}
                           disabled={
                             product.isActive === false
-                            || (!organizationHasStripeAccount && !isOwner)
+                            || (!organizationHasStripeAccount && !canManageProducts)
                             || startingProductCheckoutId !== null
                           }
                           onClick={(event) => {
-                            if (isOwner) {
+                            if (canManageProducts) {
                               event.stopPropagation();
                             }
                             handlePurchaseProduct(product);
                           }}
                         >
-                          {resolveProductCheckoutLabel(product, isOwner)}
+                          {resolveProductCheckoutLabel(product, canManageProducts)}
                         </Button>
                       </Paper>
                     ))}
@@ -4040,6 +4075,7 @@ function OrganizationDetailContent() {
                 organization={org}
                 organizationId={id ?? ''}
                 currentUser={user ?? null}
+                canManageFields={canManageFields}
                 showBackButton={!isOrganizationRoleMember}
               />
             )}
@@ -4079,7 +4115,7 @@ function OrganizationDetailContent() {
             setShowTeamDetailModal(false);
             setSelectedTeam(null);
           }}
-          canManage={isOwner}
+          canManage={canManageTeams}
           canChargeRegistration={Boolean(org?.hasStripeAccount)}
           onTeamUpdated={(updatedTeam) => {
             setSelectedTeam(updatedTeam);

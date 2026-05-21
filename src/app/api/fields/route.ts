@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
-import { canManageOrganization } from '@/server/accessControl';
+import { hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
 
-  if (organization && !(await canManageOrganization(session, organization))) {
+  if (organization && !(await hasOrgPermission(session, organization, ORG_PERMISSIONS.FIELDS_MANAGE))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

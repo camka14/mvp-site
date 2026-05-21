@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
-import { canManageOrganization } from '@/server/accessControl';
+import { hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import {
   createEmbeddedTemplateFromPdf,
   isBoldSignConfigured,
@@ -135,7 +136,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
-  if (!(await canManageOrganization(session, org))) {
+  if (!(await hasOrgPermission(session, org, ORG_PERMISSIONS.TEMPLATES_MANAGE))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

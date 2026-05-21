@@ -8,7 +8,8 @@ import {
   isBoldSignInvalidTemplateIdError,
   isBoldSignNotFoundError,
 } from '@/lib/boldsignServer';
-import { canManageOrganization } from '@/server/accessControl';
+import { hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export async function GET(
   if (!org) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
   }
-  if (!(await canManageOrganization(session, org))) {
+  if (!(await hasOrgPermission(session, org, ORG_PERMISSIONS.TEMPLATES_MANAGE))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

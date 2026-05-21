@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
-import { canManageOrganization } from '@/server/accessControl';
+import { canManageOrganization, hasOrgPermission } from '@/server/accessControl';
 import { ensureDefaultOrganizationRoles } from '@/server/organizationRoles';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { canAccessOrganizationUsers } from '@/server/organizationUsersAccess';
+import { ORGANIZATION_PERMISSION_OPTIONS, ORG_PERMISSIONS, type OrganizationPermission } from '@/lib/organizationPermissions';
 import {
   normalizeEmbedAllowedDomains,
   normalizePublicColor,
@@ -137,9 +138,16 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   }
 
   const session = await requireSession(_req).catch(() => null);
-  const viewerCanManageOrganization = session
-    ? await canManageOrganization(session, { id: org.id, ownerId: org.ownerId })
-    : false;
+  const viewerPermissions = session
+    ? (
+      await Promise.all(ORGANIZATION_PERMISSION_OPTIONS.map(async (option) => (
+        await hasOrgPermission(session, { id: org.id, ownerId: org.ownerId }, option.value)
+          ? option.value
+          : null
+      )))
+    ).filter((permission): permission is OrganizationPermission => Boolean(permission))
+    : [];
+  const viewerCanManageOrganization = viewerPermissions.includes(ORG_PERMISSIONS.ORGANIZATION_MANAGE);
   const viewerCanAccessUsers = session
     ? await canAccessOrganizationUsers({
       session,
@@ -150,7 +158,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       canManage: viewerCanManageOrganization,
     })
     : false;
-  const [staffInvites, staffEmails, staffRoles] = viewerCanManageOrganization
+  const viewerCanManageStaffRoster = viewerCanManageOrganization
+    || viewerPermissions.includes(ORG_PERMISSIONS.STAFF_MANAGE)
+    || viewerPermissions.includes(ORG_PERMISSIONS.ROLES_MANAGE);
+  const [staffInvites, staffEmails, staffRoles] = viewerCanManageStaffRoster
     ? await Promise.all([
       prisma.invites.findMany({
         where: { organizationId: id, type: 'STAFF' },
@@ -183,7 +194,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   return NextResponse.json(
     withLegacyFields({
       ...org,
-      staffMembers: viewerCanManageOrganization
+      staffMembers: viewerCanManageStaffRoster
         ? staffMembers.map((staffMember) => ({
           ...staffMember,
           role: staffRoles.find((role) => role.id === staffMember.roleId) ?? null,
@@ -194,6 +205,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       staffEmailsByUserId,
       viewerCanManageOrganization,
       viewerCanAccessUsers,
+      viewerPermissions,
     }),
     { status: 200 },
   );

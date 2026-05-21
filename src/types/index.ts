@@ -800,6 +800,7 @@ export interface Organization {
   publicCompletionRedirectUrl?: string | null;
   viewerCanManageOrganization?: boolean;
   viewerCanAccessUsers?: boolean;
+  viewerPermissions?: string[];
   $createdAt?: string;
   $updatedAt?: string;
 

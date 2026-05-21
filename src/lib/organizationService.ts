@@ -301,6 +301,9 @@ class OrganizationService {
         : null,
       viewerCanManageOrganization: Boolean(row.viewerCanManageOrganization),
       viewerCanAccessUsers: Boolean(row.viewerCanAccessUsers),
+      viewerPermissions: Array.isArray(row.viewerPermissions)
+        ? row.viewerPermissions.filter((permission): permission is string => typeof permission === 'string')
+        : [],
       $createdAt: row.$createdAt,
       $updatedAt: row.$updatedAt,
       events: [],

@@ -22,7 +22,7 @@ const prismaMock: any = {
 const requireSessionMock = jest.fn();
 const getOptionalSessionMock = jest.fn();
 const syncTeamChatByTeamIdMock = jest.fn();
-const canManageOrganizationMock = jest.fn();
+const hasOrgPermissionMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({
@@ -37,7 +37,7 @@ jest.mock('@/server/teamChatSync', () => ({
   syncTeamChatByTeamId: (...args: any[]) => syncTeamChatByTeamIdMock(...args),
 }));
 jest.mock('@/server/accessControl', () => ({
-  canManageOrganization: (...args: any[]) => canManageOrganizationMock(...args),
+  hasOrgPermission: (...args: any[]) => hasOrgPermissionMock(...args),
 }));
 
 import { GET, POST } from '@/app/api/teams/route';
@@ -57,7 +57,7 @@ describe('/api/teams route', () => {
     getOptionalSessionMock.mockResolvedValue(null);
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     syncTeamChatByTeamIdMock.mockResolvedValue(undefined);
-    canManageOrganizationMock.mockResolvedValue(false);
+    hasOrgPermissionMock.mockResolvedValue(false);
     organizationFindUniqueMock.mockResolvedValue(null);
   });
 
@@ -119,7 +119,7 @@ describe('/api/teams route', () => {
     };
     getOptionalSessionMock.mockResolvedValue(session);
     organizationFindUniqueMock.mockResolvedValue(organization);
-    canManageOrganizationMock.mockResolvedValue(true);
+    hasOrgPermissionMock.mockResolvedValue(true);
     prismaMock.canonicalTeams = {
       findMany: (...args: any[]) => canonicalTeamsFindManyMock(...args),
     };
@@ -140,7 +140,7 @@ describe('/api/teams route', () => {
       where: { id: 'org_1' },
       select: { id: true, ownerId: true },
     });
-    expect(canManageOrganizationMock).toHaveBeenCalledWith(session, organization);
+    expect(hasOrgPermissionMock).toHaveBeenCalledWith(session, organization, 'teams.manage');
     expect(canonicalTeamsFindManyMock).toHaveBeenCalledWith(expect.objectContaining({
       where: { organizationId: 'org_1' },
       take: 200,
@@ -156,7 +156,7 @@ describe('/api/teams route', () => {
     };
     getOptionalSessionMock.mockResolvedValue(session);
     organizationFindUniqueMock.mockResolvedValue(organization);
-    canManageOrganizationMock.mockResolvedValue(false);
+    hasOrgPermissionMock.mockResolvedValue(false);
     prismaMock.canonicalTeams = {
       findMany: (...args: any[]) => canonicalTeamsFindManyMock(...args),
     };

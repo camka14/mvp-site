@@ -3,7 +3,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getTokenFromRequest, verifySessionToken } from '@/lib/authServer';
 import { requireSession } from '@/lib/permissions';
-import { canManageEvent, canManageOrganization } from '@/server/accessControl';
+import { canManageEvent, hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { isSessionTokenCurrent } from '@/server/authSessions';
 import { withEventAttendeeCounts } from '@/app/api/events/participantCounts';
 import { withDerivedEventParticipantIds } from '@/server/events/eventRegistrations';
@@ -744,7 +745,7 @@ export async function GET(req: NextRequest) {
           where: { id: organizationId },
           select: { id: true, ownerId: true },
         });
-        if (!(await canManageOrganization(templateSession, organization))) {
+        if (!(await hasOrgPermission(templateSession, organization, ORG_PERMISSIONS.TEMPLATES_MANAGE))) {
           return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
         // Organization template visibility is org-scoped, not host-scoped.
@@ -769,7 +770,7 @@ export async function GET(req: NextRequest) {
     return prisma.organizations.findUnique({
       where: { id: organizationId },
       select: { id: true, ownerId: true },
-    }).then((organization) => canManageOrganization(sessionContext, organization));
+    }).then((organization) => hasOrgPermission(sessionContext, organization, ORG_PERMISSIONS.EVENTS_MANAGE));
   })();
   const canViewOrganizationDrafts = await includeManagedOrganizationDrafts;
 

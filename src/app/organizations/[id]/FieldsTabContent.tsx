@@ -484,6 +484,7 @@ type FieldsTabContentProps = {
   backLabel?: string;
   showBackButton?: boolean;
   primaryActionLabel?: string;
+  canManageFields?: boolean;
   onRentalSelectionReady?: (payload: RentalSelectionCheckoutPayload) => void;
 };
 
@@ -495,6 +496,7 @@ export default function FieldsTabContent({
   backLabel = 'Back to Discover',
   showBackButton = true,
   primaryActionLabel = 'Create Event',
+  canManageFields = false,
   onRentalSelectionReady,
 }: FieldsTabContentProps) {
   const router = useRouter();
@@ -502,7 +504,7 @@ export default function FieldsTabContent({
   const [orgLoading, setOrgLoading] = useState(!organization);
   const [orgError, setOrgError] = useState<string | null>(null);
   const organizationHasStripeAccount = canOrganizationUsePaidBilling(org);
-  const canManage = Boolean(currentUser && org && currentUser.$id === org.ownerId);
+  const canManage = Boolean(canManageFields || (currentUser && org && currentUser.$id === org.ownerId));
 
   const localizer = useMemo(() => dateFnsLocalizer({
     format,

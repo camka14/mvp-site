@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { getOptionalSession, requireSession } from '@/lib/permissions';
-import { canManageOrganization } from '@/server/accessControl';
+import { hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
 import {
   inferDivisionDetails,
@@ -188,7 +189,7 @@ const canIncludeAdminOnlyTeams = async (
     select: { id: true, ownerId: true },
   });
 
-  return canManageOrganization(session, organization);
+  return hasOrgPermission(session, organization, ORG_PERMISSIONS.TEAMS_MANAGE);
 };
 
 export async function GET(req: NextRequest) {
@@ -260,7 +261,7 @@ export async function POST(req: NextRequest) {
       where: { id: organizationId },
       select: { id: true, ownerId: true },
     });
-    if (!organization || !await canManageOrganization(session, organization)) {
+    if (!organization || !await hasOrgPermission(session, organization, ORG_PERMISSIONS.TEAMS_MANAGE)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   }
