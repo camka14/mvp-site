@@ -5849,6 +5849,16 @@ body:has(.landing-root) .site-footer-muted {
   font-weight: 700;
 }
 
+.blog-article img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 1.5rem;
+  border: 1px solid color-mix(in srgb, var(--landing-border) 80%, transparent);
+  border-radius: 0.75rem;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+}
+
 [data-reveal] {
   animation: landing-reveal 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
   animation-delay: calc(var(--reveal-delay, 0) * 60ms);

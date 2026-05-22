@@ -29,6 +29,7 @@ jest.mock('@/lib/eventService', () => ({
   eventService: {
     getEventWithRelations: jest.fn(),
     getEvent: jest.fn(),
+    getEventParticipants: jest.fn(),
     addToWaitlist: jest.fn(),
     removeFromWaitlist: jest.fn(),
     addFreeAgent: jest.fn(),
@@ -100,12 +101,35 @@ import { boldsignService } from '@/lib/boldsignService';
 import { billService } from '@/lib/billService';
 import { eventService } from '@/lib/eventService';
 import { familyService } from '@/lib/familyService';
+import { paymentService } from '@/lib/paymentService';
 import { registrationService } from '@/lib/registrationService';
 import { userService } from '@/lib/userService';
 
 describe('EventDetailSheet payment-plan join conflicts', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     (userService.getUserById as jest.Mock).mockResolvedValue(undefined);
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      participants: {
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      registrations: {
+        teams: [],
+        users: [],
+        children: [],
+        waitlist: [],
+        freeAgents: [],
+      },
+      teams: [],
+      users: [],
+      participantCount: 0,
+      participantCapacity: null,
+      divisionWarnings: [],
+    });
   });
 
   it('surfaces create-bill conflicts (409) and stops loading when no signing links are required', async () => {
@@ -211,6 +235,62 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
     expect(boldsignService.createSignLinks).not.toHaveBeenCalled();
     expect(registrationService.registerSelfForEvent).not.toHaveBeenCalled();
     expect(billService.createBill).not.toHaveBeenCalled();
+  });
+
+  it('starts checkout before creating an active self-registration for paid individual events', async () => {
+    const futureStart = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const futureEnd = new Date(Date.now() + 8 * 24 * 60 * 60 * 1000).toISOString();
+
+    const event = buildEvent({
+      $id: 'event_paid_self',
+      teamSignup: false,
+      singleDivision: true,
+      divisions: ['open'],
+      divisionDetails: [{ id: 'open', name: 'Open', price: 2500, maxParticipants: 12 }] as any,
+      start: futureStart,
+      end: futureEnd,
+      price: 2500,
+      allowPaymentPlans: false,
+      requiredTemplateIds: [],
+    });
+
+    const user = buildUser({
+      $id: 'user_1',
+      dateOfBirth: '1990-01-01',
+    });
+    const authUser = { $id: user.$id, email: 'user@example.com', name: user.fullName };
+
+    (useApp as jest.Mock).mockReturnValue({ user, authUser });
+    (familyService.listChildren as jest.Mock).mockResolvedValue([]);
+    (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
+    (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (boldsignService.createSignLinks as jest.Mock).mockResolvedValue([]);
+    (paymentService.createPaymentIntent as jest.Mock).mockResolvedValue({
+      paymentIntent: 'pi_client_secret',
+      publishableKey: 'pk_test_123',
+      checkoutMode: 'PAYMENT_INTENT',
+    });
+
+    renderWithMantine(
+      <EventDetailSheet event={event} isOpen={true} onClose={jest.fn()} renderInline={true} />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /Join Event/i }));
+
+    await waitFor(() => {
+      expect(paymentService.createPaymentIntent).toHaveBeenCalledWith(
+        user,
+        expect.objectContaining({ $id: 'event_paid_self' }),
+        undefined,
+        undefined,
+        undefined,
+        expect.objectContaining({ divisionId: 'open' }),
+        undefined,
+        undefined,
+      );
+    });
+
+    expect(registrationService.registerSelfForEvent).not.toHaveBeenCalled();
   });
 });
 

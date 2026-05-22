@@ -45,9 +45,9 @@ describe('LandingPage', () => {
     expect(screen.getByRole('link', { name: /^platform$/i })).toHaveAttribute('href', '#platform');
     expect(screen.getByRole('link', { name: /^operations$/i })).toHaveAttribute('href', '#operations');
     expect(screen.getByRole('link', { name: /^integrations$/i })).toHaveAttribute('href', '#integrations');
-    expect(screen.getByRole('link', { name: /read schedule guide/i })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: /read payment guide/i })).toHaveAttribute(
       'href',
-      '/blog/tournament-schedule-maker',
+      '/blog/paid-pickup-event-payments',
     );
     expect(screen.queryByRole('link', { name: /browse all guides/i })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /free to use\. pay only on processing/i })).toBeInTheDocument();

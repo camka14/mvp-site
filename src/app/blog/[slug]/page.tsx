@@ -119,7 +119,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
               </div>
               <div>
                 <LayoutDashboard aria-hidden="true" className="h-5 w-5" />
-                <span>Scheduling operations</span>
+                <span>Player payments</span>
               </div>
             </div>
           </aside>
@@ -136,8 +136,8 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         <section className="container-responsive relative space-y-8 pb-20">
           <BlogFaq items={post.faq} />
           <BlogCtaCard
-            title="Ready to build a tournament schedule your teams can trust?"
-            description="Create the event, assign your venues, publish the bracket, and keep updates moving from one official source."
+            title="Ready to publish a paid pickup event?"
+            description="Create the event, set the player price, publish the page, and give players one way to pay."
             actions={post.ctas}
           />
         </section>

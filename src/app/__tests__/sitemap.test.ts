@@ -6,6 +6,6 @@ describe('sitemap', () => {
     const urls = entries.map((entry) => entry.url);
 
     expect(urls).toContain('https://bracket-iq.com/blog');
-    expect(urls).toContain('https://bracket-iq.com/blog/tournament-schedule-maker');
+    expect(urls).toContain('https://bracket-iq.com/blog/paid-pickup-event-payments');
   });
 });

@@ -9,14 +9,14 @@ import MarketingHeader from '@/components/marketing/MarketingHeader';
 export const metadata: Metadata = {
   title: 'Blog | BracketIQ by Razumly',
   description:
-    'Practical guides for tournament hosts, league organizers, and facilities running sports events with BracketIQ.',
+    'Practical guides for event hosts, league organizers, and facilities running sports events with BracketIQ.',
   alternates: {
     canonical: '/blog',
   },
   openGraph: {
     title: 'Blog | BracketIQ by Razumly',
     description:
-      'Practical guides for tournament hosts, league organizers, and facilities running sports events with BracketIQ.',
+      'Practical guides for event hosts, league organizers, and facilities running sports events with BracketIQ.',
     url: `${SITE_URL}/blog`,
   },
 };
@@ -43,10 +43,10 @@ export default function BlogIndexPage() {
               BracketIQ Blog
             </p>
             <h1 className="landing-title text-4xl font-semibold sm:text-5xl">
-              Guides for cleaner schedules, brackets, and event days.
+              Guides for cleaner signups, payments, and event days.
             </h1>
             <p className="landing-copy max-w-3xl text-base sm:text-lg">
-              Practical playbooks for organizers who need fewer conflicts, faster updates, and a calmer event desk.
+              Simple guides for organizers who need cleaner setup, easier payments, and a calmer event desk.
             </p>
             <div className="flex flex-wrap gap-3">
               <Link
@@ -84,10 +84,10 @@ export default function BlogIndexPage() {
                 </article>
                 <article>
                   <LayoutDashboard aria-hidden="true" className="h-5 w-5" />
-                  <span>Schedule workflow</span>
+                  <span>Player payments</span>
                 </article>
               </div>
-              <h2 className="landing-card-title mt-6">Tournament scheduling playbook</h2>
+              <h2 className="landing-card-title mt-6">Paid pickup event playbook</h2>
               <p className="landing-section-copy mt-4 text-sm leading-7">{featuredPost.description}</p>
               <Link href={featuredPost.canonicalPath} className="landing-btn-primary landing-btn-large mt-7">
                 Read featured guide
@@ -100,7 +100,7 @@ export default function BlogIndexPage() {
         <section className="container-responsive relative pb-20 pt-0">
           <div className="marketing-section-row">
             <p className="landing-label">Latest resources</p>
-            <p className="landing-section-copy text-sm">Built for event operators, facility teams, and tournament directors.</p>
+            <p className="landing-section-copy text-sm">Built for event hosts, facility teams, and independent hosts.</p>
           </div>
           <div className="marketing-blog-grid mt-8">
             {posts.map((post) => (

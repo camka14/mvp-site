@@ -2,33 +2,33 @@ import { getPreferredMobileStoreUrl } from '@/lib/mobileAppLinks';
 import { SITE_URL } from '@/lib/siteUrl';
 import type { BlogPostEntry } from './types';
 
-const tournamentScheduleMaker: BlogPostEntry = {
-  slug: 'tournament-schedule-maker',
-  title: 'Tournament Schedule Maker: How to Build Brackets That Don’t Break on Game Day',
+const paidPickupEventPayments: BlogPostEntry = {
+  slug: 'paid-pickup-event-payments',
+  title: 'How to Create a Paid Pickup Sports Event With BracketIQ',
   description:
-    'Build tournament schedules and brackets for round robin, single elimination, and double elimination formats with fewer conflicts and faster updates.',
-  publishedAt: '2026-03-18',
-  updatedAt: '2026-03-18',
+    'Create a paid pickup event, set the player price, publish it, and let players pay online with BracketIQ.',
+  publishedAt: '2026-05-22',
+  updatedAt: '2026-05-22',
   isPublished: true,
-  primaryKeyword: 'tournament schedule maker',
+  primaryKeyword: 'pickup sports event payments',
   longTailKeywords: [
-    'tournament bracket generator',
-    'double elimination bracket',
-    'round robin tournament schedule',
-    'how to schedule a sports tournament',
-    'tournament scheduling software',
+    'create a paid pickup sports event',
+    'sports pickup event signups',
+    'collect payments for pickup games',
+    'beach volleyball pickup event',
+    'sports event payment software',
   ],
-  readingMinutes: 14,
-  canonicalPath: '/blog/tournament-schedule-maker',
+  readingMinutes: 10,
+  canonicalPath: '/blog/paid-pickup-event-payments',
   ctas: [
     {
-      label: 'Create your first tournament schedule',
+      label: 'Create a paid pickup event',
       href: '/login',
       variant: 'primary',
     },
     {
-      label: 'See a demo schedule template',
-      href: '#demo-schedule-template',
+      label: 'Jump to player payment',
+      href: '#player-payment',
       variant: 'secondary',
     },
     {
@@ -40,26 +40,26 @@ const tournamentScheduleMaker: BlogPostEntry = {
   ],
   faq: [
     {
-      question: 'How long should the break be between games?',
+      question: 'Do I need an organization account to create a paid pickup event?',
       answer:
-        'Most tournaments need enough buffer for warmup, score entry, cleanup, and the next teams to arrive. A common starting point is 15 to 30 minutes between games, then adjust based on sport, age group, and whether courts or fields need turnover time.',
+        'No. You can create this event from your own profile instead of an organization page. You still need payments turned on before you charge players.',
     },
     {
-      question: 'How many fields or courts do I need?',
+      question: 'Why does a single pickup event still need a division?',
       answer:
-        'Start with your team count, format, and available game windows. Estimate the total number of games, divide by how many slots one field can host, and add a buffer for weather delays, overtime, and late starts.',
+        'BracketIQ uses divisions to know who can join, how many spots are open, and what each player pays. Even if everyone joins the same casual group, add one simple division such as CoEd Open 18+.',
     },
     {
-      question: 'What should I do if a team drops after the bracket is published?',
+      question: 'What do players pay?',
       answer:
-        'Freeze as much of the schedule as possible, identify the smallest part of the bracket affected, and communicate the revision quickly. For pool play, that may mean rebalancing one group. For elimination formats, it may mean a bye or a reseed depending on your published rules.',
+        'Players see the event price plus BracketIQ and Stripe fees. The final total can change after the player chooses how to pay because Stripe fees vary by payment type.',
     },
   ],
-  ogImageAlt: 'BracketIQ tournament scheduling guide preview',
-  load: () => import('@/content/blog/tournament-schedule-maker.mdx'),
+  ogImageAlt: 'BracketIQ paid pickup event guide preview',
+  load: () => import('@/content/blog/paid-pickup-event-payments.mdx'),
 };
 
-const blogPosts = [tournamentScheduleMaker] satisfies BlogPostEntry[];
+const blogPosts = [paidPickupEventPayments] satisfies BlogPostEntry[];
 
 export function getPublishedBlogPosts() {
   return blogPosts
@@ -83,5 +83,6 @@ export function formatBlogDate(date: string) {
     month: 'long',
     day: 'numeric',
     year: 'numeric',
+    timeZone: 'UTC',
   }).format(new Date(date));
 }

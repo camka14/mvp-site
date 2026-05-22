@@ -1231,8 +1231,8 @@ export default function LandingPage({
               <p className="landing-section-copy mt-4">
                 Short guides for scheduling, payments, and team updates.
               </p>
-              <Link href="/blog/tournament-schedule-maker" className="landing-btn-primary landing-btn-large mt-7">
-                Read schedule guide
+              <Link href="/blog/paid-pickup-event-payments" className="landing-btn-primary landing-btn-large mt-7">
+                Read payment guide
                 <ArrowRight aria-hidden="true" className="h-4 w-4" />
               </Link>
             </div>
@@ -1241,11 +1241,11 @@ export default function LandingPage({
               <article className="landing-featured-guide">
                 <div className="landing-featured-guide-header">
                   <p className="landing-operation-code">Featured guide</p>
-                  <span>12 min</span>
+                  <span>10 min</span>
                 </div>
-                <h3>Tournament schedule maker</h3>
+                <h3>Paid pickup events</h3>
                 <ul className="landing-resource-point-list">
-                  {['Choose format', 'Check conflicts', 'Publish updates'].map((item) => (
+                  {['Set price', 'Publish event', 'Verify checkout'].map((item) => (
                     <li key={item}>
                       <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                       <span>{item}</span>

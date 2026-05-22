@@ -10,17 +10,17 @@ jest.mock('@/app/providers', () => ({
 }));
 
 describe('BlogIndexPage', () => {
-  it('lists the published tournament scheduling article', () => {
+  it('lists the published paid pickup event article', () => {
     render(<BlogIndexPage />);
 
     expect(
       screen.getByRole('heading', {
-        name: /tournament schedule maker: how to build brackets that don’t break on game day/i,
+        name: /how to create a paid pickup sports event with bracketiq/i,
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /read the guide/i })).toHaveAttribute(
       'href',
-      '/blog/tournament-schedule-maker',
+      '/blog/paid-pickup-event-payments',
     );
   });
 });

@@ -2530,7 +2530,9 @@ export default function EventDetailSheet({
             return;
         }
 
-        const shouldRegisterSelf = intent.mode === 'user' && !currentEvent.teamSignup;
+        const shouldRegisterSelf = intent.mode === 'user'
+            && !currentEvent.teamSignup
+            && (isFreeForUser || selectedDivisionBilling.allowPaymentPlans);
         let registrationResult: EventRegistration | null = null;
 
         if (shouldRegisterSelf) {

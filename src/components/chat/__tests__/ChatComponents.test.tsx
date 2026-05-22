@@ -86,7 +86,7 @@ describe('ChatComponents', () => {
       isAuthenticated: true,
       isGuest: false,
     });
-    usePathnameMock.mockReturnValue('/blog/tournament-schedule-maker');
+    usePathnameMock.mockReturnValue('/blog/paid-pickup-event-payments');
 
     render(<ChatComponents />);
 
