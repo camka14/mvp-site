@@ -5754,7 +5754,10 @@ body:has(.landing-root) .site-footer-muted {
 }
 
 .marketing-article-brief {
-  align-self: stretch;
+  align-self: start;
+  justify-self: end;
+  width: max-content;
+  max-width: min(100%, 24rem);
 }
 
 .marketing-article-brief > div > div {

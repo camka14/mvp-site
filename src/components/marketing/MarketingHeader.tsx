@@ -15,19 +15,26 @@ const marketingNavItems = [
   { label: 'Resources', href: '#resources' },
 ];
 
+type MarketingNavItem = {
+  label: string;
+  href: string;
+};
+
 type MarketingHeaderProps = {
   brandHref?: string;
   anchorHrefPrefix?: string;
+  navItems?: MarketingNavItem[];
   hideRequestDemoCta?: boolean;
 };
 
 const resolveAnchorHref = (href: string, prefix: string) => (
-  prefix ? `${prefix}${href}` : href
+  prefix && href.startsWith('#') ? `${prefix}${href}` : href
 );
 
 export default function MarketingHeader({
   brandHref = '/',
   anchorHrefPrefix = '',
+  navItems: providedNavItems,
   hideRequestDemoCta = false,
 }: MarketingHeaderProps) {
   const { user, isAuthenticated, isGuest } = useApp();
@@ -68,7 +75,7 @@ export default function MarketingHeader({
   }, []);
 
   const closeMobileMenu = () => setIsMobileMenuOpen(false);
-  const navItems = marketingNavItems.map((item) => ({
+  const navItems = (providedNavItems ?? marketingNavItems).map((item) => ({
     ...item,
     href: resolveAnchorHref(item.href, anchorHrefPrefix),
   }));

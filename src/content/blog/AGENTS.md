@@ -2,6 +2,10 @@
 
 This file is only for lessons learned while using Playwright to create or update article fixture events for screenshot-based blog posts. Do not store article outlines, per-event plans, fixture event ids, or user assignments here. Those belong in dedicated ExecPlans under `plans/`.
 
+The living blog and article roadmap belongs in `docs/blog-article-roadmap.md`. Keep roadmap updates there instead of adding editorial planning notes to this folder-level file.
+
+All published article pages should use the shared blog metadata/rendering path so the bottom author footer shows Samuel Razumovskiy, the profile photo from `public/blog/authors/samuel-razumovskiy.jpg`, and the article created/updated dates. Do not hand-code a different author block inside individual MDX files.
+
 ## Lessons Learned
 
 - Host login can redirect to the host's organization home even when the article is documenting a non-organization event. After login, navigate directly to the individual event create/edit URL.

@@ -8,11 +8,12 @@ export function createArticleStructuredData(post: BlogPostEntry) {
     headline: post.title,
     description: post.description,
     datePublished: post.publishedAt,
-    dateModified: post.updatedAt ?? post.publishedAt,
+    dateModified: post.updatedAt,
     mainEntityOfPage: `${SITE_URL}${post.canonicalPath}`,
     author: {
-      '@type': 'Organization',
-      name: 'BracketIQ by Razumly',
+      '@type': 'Person',
+      name: post.author.name,
+      image: `${SITE_URL}${post.author.image}`,
     },
     publisher: {
       '@type': 'Organization',

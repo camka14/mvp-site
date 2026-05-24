@@ -10,7 +10,7 @@ export default function BlogCard({ post }: { post: BlogPostEntry }) {
         <span className="landing-kicker rounded-full px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em]">
           {post.primaryKeyword}
         </span>
-        <span>{formatBlogDate(post.publishedAt)}</span>
+        <span>Created on {formatBlogDate(post.createdAt)}</span>
         <span>{post.readingMinutes} min read</span>
       </div>
       <h2 className="landing-section-title mt-5 text-2xl font-semibold sm:text-3xl">

@@ -6,6 +6,11 @@ import { getPublishedBlogPosts } from '@/lib/blog';
 import { SITE_URL } from '@/lib/siteUrl';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
 
+const blogHeaderNavItems = [
+  { label: 'Info', href: '/info' },
+  { label: 'Blog', href: '/blog' },
+];
+
 export const metadata: Metadata = {
   title: 'Blog | BracketIQ by Razumly',
   description:
@@ -33,7 +38,7 @@ export default function BlogIndexPage() {
         <div className="landing-grid-pattern" />
       </div>
 
-      <MarketingHeader anchorHrefPrefix="/info" />
+      <MarketingHeader navItems={blogHeaderNavItems} />
 
       <main className="relative">
         <section className="marketing-page-hero container-responsive relative grid gap-10 pb-14 pt-12 lg:grid-cols-[0.92fr_0.72fr] lg:items-center lg:pb-20 lg:pt-16">
@@ -84,10 +89,10 @@ export default function BlogIndexPage() {
                 </article>
                 <article>
                   <LayoutDashboard aria-hidden="true" className="h-5 w-5" />
-                  <span>Player payments</span>
+                  <span>Step-by-step setup</span>
                 </article>
               </div>
-              <h2 className="landing-card-title mt-6">Paid pickup event playbook</h2>
+              <h2 className="landing-card-title mt-6">{featuredPost.title}</h2>
               <p className="landing-section-copy mt-4 text-sm leading-7">{featuredPost.description}</p>
               <Link href={featuredPost.canonicalPath} className="landing-btn-primary landing-btn-large mt-7">
                 Read featured guide

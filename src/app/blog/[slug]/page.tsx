@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { ArrowRight, CalendarDays, Clock3, LayoutDashboard } from 'lucide-react';
+import BlogAuthorFooter from '@/components/blog/BlogAuthorFooter';
 import BlogCtaCard from '@/components/blog/BlogCtaCard';
 import BlogFaq from '@/components/blog/BlogFaq';
 import BlogStructuredData from '@/components/blog/BlogStructuredData';
@@ -9,6 +10,11 @@ import { formatBlogDate, getBlogPostBySlug, getPublishedBlogPosts } from '@/lib/
 import { SITE_URL } from '@/lib/siteUrl';
 import { createArticleStructuredData, createFaqStructuredData } from '@/lib/blog/structuredData';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
+
+const blogHeaderNavItems = [
+  { label: 'Info', href: '/info' },
+  { label: 'Blog', href: '/blog' },
+];
 
 type BlogPostPageProps = {
   params: Promise<{ slug: string }>;
@@ -45,7 +51,7 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
       url: `${SITE_URL}${post.canonicalPath}`,
       type: 'article',
       publishedTime: post.publishedAt,
-      modifiedTime: post.updatedAt ?? post.publishedAt,
+      modifiedTime: post.updatedAt,
       images: [
         {
           url: `${SITE_URL}/opengraph-image`,
@@ -84,7 +90,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         <div className="landing-grid-pattern" />
       </div>
 
-      <MarketingHeader anchorHrefPrefix="/info" />
+      <MarketingHeader navItems={blogHeaderNavItems} />
 
       <main className="relative">
         <section className="marketing-article-hero container-responsive relative grid gap-8 pb-12 pt-12 lg:grid-cols-[minmax(0,0.92fr)_minmax(18rem,0.42fr)] lg:items-end lg:pb-16 lg:pt-16">
@@ -100,7 +106,7 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
               <h1 className="landing-title text-4xl font-semibold leading-tight sm:text-5xl">{post.title}</h1>
               <p className="landing-copy max-w-3xl text-base sm:text-lg">{post.description}</p>
               <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-slate-500">
-                <span>{formatBlogDate(post.publishedAt)}</span>
+                <span>Created on {formatBlogDate(post.createdAt)}</span>
                 <span>{post.readingMinutes} min read</span>
               </div>
             </div>
@@ -115,11 +121,11 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
               </div>
               <div>
                 <CalendarDays aria-hidden="true" className="h-5 w-5" />
-                <span>{formatBlogDate(post.publishedAt)}</span>
+                <span>Created on {formatBlogDate(post.createdAt)}</span>
               </div>
               <div>
                 <LayoutDashboard aria-hidden="true" className="h-5 w-5" />
-                <span>Player payments</span>
+                <span>BracketIQ workflow</span>
               </div>
             </div>
           </aside>
@@ -136,10 +142,11 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         <section className="container-responsive relative space-y-8 pb-20">
           <BlogFaq items={post.faq} />
           <BlogCtaCard
-            title="Ready to publish a paid pickup event?"
-            description="Create the event, set the player price, publish the page, and give players one way to pay."
+            title="Ready to run it in BracketIQ?"
+            description="Create the event, publish the page, and give players one place to register, pay, and check updates."
             actions={post.ctas}
           />
+          <BlogAuthorFooter post={post} />
         </section>
       </main>
 

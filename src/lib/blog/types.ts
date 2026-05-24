@@ -12,12 +12,19 @@ export type BlogCta = {
   external?: boolean;
 };
 
+export type BlogAuthor = {
+  name: string;
+  image: `/${string}`;
+};
+
 export type BlogPostMeta = {
   slug: string;
   title: string;
   description: string;
+  createdAt: string;
   publishedAt: string;
-  updatedAt?: string;
+  updatedAt: string;
+  author: BlogAuthor;
   isPublished: boolean;
   primaryKeyword: string;
   longTailKeywords: string[];
