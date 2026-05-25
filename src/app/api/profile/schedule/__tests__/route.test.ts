@@ -47,7 +47,9 @@ describe('GET /api/profile/schedule', () => {
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
     prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.teams.findMany.mockReset();
+    prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.volleyBallTeams.findMany.mockReset();
+    prismaMock.volleyBallTeams.findMany.mockResolvedValue([]);
   });
 
   it('returns batched participant schedule payload', async () => {
@@ -91,14 +93,18 @@ describe('GET /api/profile/schedule', () => {
     prismaMock.fields.findMany.mockResolvedValue([
       { id: 'field_1', name: 'Field 1' },
     ]);
-    prismaMock.teams.findMany
-      .mockResolvedValueOnce([
-        { id: 'team_2' },
-      ])
-      .mockResolvedValueOnce([
+    prismaMock.teams.findMany.mockImplementation(async (args: any) => {
+      if (args?.where?.parentTeamId) {
+        return [{ id: 'team_2' }];
+      }
+      if (args?.where?.id) {
+        return [
         { id: 'team_1', name: 'Team One' },
         { id: 'team_2', name: 'Team Two' },
-      ]);
+        ];
+      }
+      return [];
+    });
 
     const response = await GET(
       new NextRequest(

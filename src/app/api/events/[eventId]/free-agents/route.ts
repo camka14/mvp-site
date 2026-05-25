@@ -87,7 +87,6 @@ async function updateFreeAgents(
         eventType: true,
         parentEvent: true,
         timeSlotIds: true,
-        divisions: true,
         maxParticipants: true,
         singleDivision: true,
       },

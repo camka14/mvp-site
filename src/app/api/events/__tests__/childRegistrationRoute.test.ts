@@ -16,6 +16,9 @@ const prismaMock = {
   sensitiveUserData: {
     findFirst: jest.fn(),
   },
+  divisions: {
+    findMany: jest.fn(),
+  },
   eventRegistrations: {
     findFirst: jest.fn(),
     create: jest.fn(),
@@ -71,6 +74,7 @@ describe('POST /api/events/[eventId]/registrations/child', () => {
       waitListIds: [],
     });
     prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
     prismaMock.invites.deleteMany.mockResolvedValue({ count: 0 });
     findEventRegistrationMock.mockResolvedValue(null);

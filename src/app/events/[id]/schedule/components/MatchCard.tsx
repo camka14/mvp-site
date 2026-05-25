@@ -4,7 +4,7 @@ import { memo } from 'react';
 import Image from 'next/image';
 import { getTeamAvatarUrl, getUserAvatarUrl, Match, UserData } from '@/types';
 import { formatDisplayDateTime, formatDisplayTime, normalizeTimeZone } from '@/lib/dateUtils';
-import { inferDivisionDetails } from '@/lib/divisionTypes';
+import { inferDivisionDetails, parseDivisionToken } from '@/lib/divisionTypes';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
 
 interface MatchCardProps {
@@ -30,13 +30,31 @@ interface MatchCardProps {
 
 type MatchDivisionInput = Match['division'] | string | null | undefined;
 
+const humanizeDivisionIdentifier = (identifier: string): string => (
+    identifier
+        .replace(/^.*__division__/i, '')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .replace(/\b\w/g, (letter) => letter.toUpperCase())
+);
+
+const resolveDivisionIdentifierLabel = (identifier: string): string => {
+    const inferred = inferDivisionDetails({ identifier });
+    const inferredName = String(inferred.defaultName ?? '').trim();
+    const token = String(inferred.token ?? identifier).trim();
+    const parsedToken = parseDivisionToken(token);
+    if (inferredName.length > 0 && (parsedToken || inferredName.toLowerCase().includes(token.toLowerCase()))) {
+        return inferredName;
+    }
+    return humanizeDivisionIdentifier(token || identifier) || inferredName || 'TBD';
+};
+
 export const resolveDivisionLabel = (rawDivision: MatchDivisionInput): string => {
     if (typeof rawDivision === 'string') {
         const cleaned = rawDivision.trim();
         if (cleaned.length > 0) {
-            const inferred = inferDivisionDetails({ identifier: cleaned });
-            const inferredName = String(inferred.defaultName ?? '').trim();
-            if (inferredName.length > 0) return inferredName;
+            return resolveDivisionIdentifierLabel(cleaned);
         }
         return 'TBD';
     }
@@ -47,9 +65,7 @@ export const resolveDivisionLabel = (rawDivision: MatchDivisionInput): string =>
         if (name.length > 0) return name;
         const id = String(divisionRecord.id ?? '').trim();
         if (id.length > 0) {
-            const inferred = inferDivisionDetails({ identifier: id });
-            const inferredName = String(inferred.defaultName ?? '').trim();
-            if (inferredName.length > 0) return inferredName;
+            return resolveDivisionIdentifierLabel(id);
         }
     }
 

@@ -249,20 +249,32 @@ const resolveDivisionForMatch = (
   event: Awaited<ReturnType<typeof loadEventWithRelations>>,
   requestedDivisionId: string | null,
 ): Division => {
-  if (requestedDivisionId) {
-    const existingDivision = event.divisions.find((division) => division.id === requestedDivisionId);
+  const allEventDivisions = [
+    ...event.divisions,
+    ...(event.playoffDivisions ?? []),
+  ];
+  const normalizedRequestedDivisionId = typeof requestedDivisionId === 'string'
+    ? requestedDivisionId.trim().toLowerCase()
+    : '';
+
+  if (normalizedRequestedDivisionId) {
+    const existingDivision = allEventDivisions.find((division) => (
+      division.id.trim().toLowerCase() === normalizedRequestedDivisionId
+    ));
     if (existingDivision) {
       return existingDivision;
     }
+    throw new Response(`Division ${requestedDivisionId} does not belong to this event.`, { status: 400 });
   }
 
   if (event.divisions.length > 0) {
     return event.divisions[0];
   }
+  if (allEventDivisions.length > 0) {
+    return allEventDivisions[0];
+  }
 
-  const fallback = new Division('OPEN', 'OPEN');
-  event.divisions.push(fallback);
-  return fallback;
+  return new Division('OPEN', 'OPEN');
 };
 
 const ensureEventDivisionMembershipForTeam = async (

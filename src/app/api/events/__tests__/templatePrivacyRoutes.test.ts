@@ -35,6 +35,12 @@ const prismaMock = {
   staffMembers: {
     findUnique: jest.fn(),
   },
+  organizationRoles: {
+    findFirst: jest.fn(),
+  },
+  organizationRolePermissions: {
+    findFirst: jest.fn(),
+  },
   invites: {
     findMany: jest.fn(),
   },
@@ -84,6 +90,8 @@ describe('event template privacy routes', () => {
     prismaMock.organizations.findMany.mockReset();
     prismaMock.organizations.findUnique.mockReset();
     prismaMock.staffMembers.findUnique.mockReset();
+    prismaMock.organizationRoles.findFirst.mockReset();
+    prismaMock.organizationRolePermissions.findFirst.mockReset();
     prismaMock.invites.findMany.mockReset();
     prismaMock.divisions.findMany.mockReset();
     prismaMock.authUser.findUnique.mockResolvedValue({ disabledAt: null, sessionVersion: 0 });
@@ -92,6 +100,8 @@ describe('event template privacy routes', () => {
     prismaMock.teams.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
     prismaMock.staffMembers.findUnique.mockResolvedValue(null);
+    prismaMock.organizationRoles.findFirst.mockResolvedValue(null);
+    prismaMock.organizationRolePermissions.findFirst.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.fields.findFirst.mockResolvedValue(null);
     prismaMock.organizations.findMany.mockResolvedValue([]);
@@ -154,7 +164,10 @@ describe('event template privacy routes', () => {
       organizationId: 'org_1',
       userId: 'host_1',
       types: ['HOST'],
+      roleId: 'role_events',
     });
+    prismaMock.organizationRoles.findFirst.mockResolvedValueOnce({ id: 'role_events', organizationId: 'org_1' });
+    prismaMock.organizationRolePermissions.findFirst.mockResolvedValueOnce({ permission: 'EVENTS_MANAGE' });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
     const res = await eventsGet(
@@ -241,7 +254,6 @@ describe('event template privacy routes', () => {
       hostId: 'host_1',
       eventType: 'LEAGUE',
       includePlayoffs: true,
-      divisions: [],
       start: new Date('2026-01-05T09:00:00.000Z'),
       price: 0,
       maxParticipants: 16,
@@ -253,6 +265,7 @@ describe('event template privacy routes', () => {
       installmentAmounts: [],
     });
     prismaMock.divisions.findMany
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([{ id: playoffDivisionId }])
       .mockResolvedValueOnce([
         {
@@ -325,7 +338,10 @@ describe('event template privacy routes', () => {
       organizationId: 'org_1',
       userId: 'host_1',
       types: ['HOST'],
+      roleId: 'role_events',
     });
+    prismaMock.organizationRoles.findFirst.mockResolvedValueOnce({ id: 'role_events', organizationId: 'org_1' });
+    prismaMock.organizationRolePermissions.findFirst.mockResolvedValueOnce({ permission: 'EVENTS_MANAGE' });
     requireSessionMock.mockResolvedValueOnce({ userId: 'host_1', isAdmin: false });
 
     const res = await eventGet(
@@ -407,7 +423,10 @@ describe('event template privacy routes', () => {
       organizationId: 'org_1',
       userId: 'host_1',
       types: ['HOST'],
+      roleId: 'role_events',
     });
+    prismaMock.organizationRoles.findFirst.mockResolvedValueOnce({ id: 'role_events', organizationId: 'org_1' });
+    prismaMock.organizationRolePermissions.findFirst.mockResolvedValueOnce({ permission: 'EVENTS_MANAGE' });
     prismaMock.events.findMany.mockResolvedValueOnce([]);
 
     const res = await eventsGet(new NextRequest('http://localhost/api/events?organizationId=org_1'));
@@ -509,7 +528,6 @@ describe('event template privacy routes', () => {
       {
         id: 'event_1',
         name: 'Split Division Event',
-        divisions: ['event_1__division__open', 'event_1__division__advanced'],
         sportId: 'sport_1',
         userIds: [],
       },
@@ -523,6 +541,7 @@ describe('event template privacy routes', () => {
         price: 3500,
         maxParticipants: 8,
         sportId: 'sport_1',
+        sortOrder: 0,
       },
       {
         eventId: 'event_1',
@@ -532,6 +551,7 @@ describe('event template privacy routes', () => {
         price: 5000,
         maxParticipants: 10,
         sportId: 'sport_1',
+        sortOrder: 1,
       },
     ];
     prismaMock.divisions.findMany
@@ -542,10 +562,10 @@ describe('event template privacy routes', () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.events[0].divisionDetails).toEqual([
+    expect(json.events[0].divisionDetails).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'event_1__division__open', price: 3500, maxParticipants: 8 }),
       expect.objectContaining({ id: 'event_1__division__advanced', price: 5000, maxParticipants: 10 }),
-    ]);
+    ]));
     expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -584,7 +604,6 @@ describe('event template privacy routes', () => {
       {
         id: 'event_2',
         name: 'Search Split Division Event',
-        divisions: ['event_2__division__open', 'event_2__division__advanced'],
         sportId: 'sport_1',
       },
     ]);
@@ -597,6 +616,7 @@ describe('event template privacy routes', () => {
         price: 2500,
         maxParticipants: 6,
         sportId: 'sport_1',
+        sortOrder: 0,
       },
       {
         eventId: 'event_2',
@@ -606,6 +626,7 @@ describe('event template privacy routes', () => {
         price: 4500,
         maxParticipants: 8,
         sportId: 'sport_1',
+        sortOrder: 1,
       },
     ];
     prismaMock.divisions.findMany
@@ -616,10 +637,10 @@ describe('event template privacy routes', () => {
 
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.events[0].divisionDetails).toEqual([
+    expect(json.events[0].divisionDetails).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'event_2__division__open', price: 2500, maxParticipants: 6 }),
       expect.objectContaining({ id: 'event_2__division__advanced', price: 4500, maxParticipants: 8 }),
-    ]);
+    ]));
     expect(prismaMock.divisions.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({

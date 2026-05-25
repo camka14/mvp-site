@@ -241,7 +241,7 @@ describe('agent tools dispatcher', () => {
     expect(result.result.lookupGuidance).toContain('without section or field filters');
     expect(result.result.suggestedMatches).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        sectionTitle: 'Division Settings',
+        sectionTitle: 'Divisions',
         path: 'splitLeaguePlayoffDivisions',
       }),
     ]));
@@ -269,7 +269,7 @@ describe('agent tools dispatcher', () => {
     expect(result.result.status).toBe('ok');
     expect(result.result.noMatches).toBe(true);
     expect(result.result.availableSections).toEqual(expect.arrayContaining([
-      expect.objectContaining({ title: 'Division Settings' }),
+      expect.objectContaining({ title: 'Divisions' }),
     ]));
   });
 

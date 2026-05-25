@@ -458,8 +458,8 @@ describe('upsertEventFromPayload', () => {
     await upsertEventFromPayload(payload, client as any);
 
     const eventUpsertArg = client.events.upsert.mock.calls[0][0];
-    expect(eventUpsertArg.create.divisions).toEqual([targetOpenDivisionId, targetAdvancedDivisionId]);
-    expect(eventUpsertArg.update.divisions).toEqual([targetOpenDivisionId, targetAdvancedDivisionId]);
+    expect(eventUpsertArg.create).not.toHaveProperty('divisions');
+    expect(eventUpsertArg.update).not.toHaveProperty('divisions');
 
     const persistedDivisionIds = client.divisions.upsert.mock.calls.map(([args]) => args.where.id);
     expect(persistedDivisionIds).toEqual(expect.arrayContaining([targetOpenDivisionId, targetAdvancedDivisionId]));
@@ -546,8 +546,8 @@ describe('upsertEventFromPayload', () => {
     const eventUpsertArg = client.events.upsert.mock.calls[0][0];
     expect(eventUpsertArg.create.registrationByDivisionType).toBe(true);
     expect(eventUpsertArg.update.registrationByDivisionType).toBe(true);
-    expect(eventUpsertArg.create.divisions).toEqual(leagueDivisionIds);
-    expect(eventUpsertArg.update.divisions).toEqual(leagueDivisionIds);
+    expect(eventUpsertArg.create).not.toHaveProperty('divisions');
+    expect(eventUpsertArg.update).not.toHaveProperty('divisions');
 
     const leagueDivisionUpserts = client.divisions.upsert.mock.calls
       .map(([args]) => args)

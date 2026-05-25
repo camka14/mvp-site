@@ -27,6 +27,7 @@ export type AggregateDivisions = {
 }
 
 export type DivisionsAvgAggregateOutputType = {
+  sortOrder: number | null
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
@@ -52,6 +53,7 @@ export type DivisionsAvgAggregateOutputType = {
 }
 
 export type DivisionsSumAggregateOutputType = {
+  sortOrder: number | null
   price: number | null
   maxParticipants: number | null
   playoffTeamCount: number | null
@@ -83,6 +85,7 @@ export type DivisionsMinAggregateOutputType = {
   name: string | null
   key: string | null
   kind: $Enums.DivisionsKindEnum | null
+  sortOrder: number | null
   eventId: string | null
   organizationId: string | null
   sportId: string | null
@@ -124,6 +127,7 @@ export type DivisionsMaxAggregateOutputType = {
   name: string | null
   key: string | null
   kind: $Enums.DivisionsKindEnum | null
+  sortOrder: number | null
   eventId: string | null
   organizationId: string | null
   sportId: string | null
@@ -165,6 +169,7 @@ export type DivisionsCountAggregateOutputType = {
   name: number
   key: number
   kind: number
+  sortOrder: number
   eventId: number
   organizationId: number
   sportId: number
@@ -212,6 +217,7 @@ export type DivisionsCountAggregateOutputType = {
 
 
 export type DivisionsAvgAggregateInputType = {
+  sortOrder?: true
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
@@ -237,6 +243,7 @@ export type DivisionsAvgAggregateInputType = {
 }
 
 export type DivisionsSumAggregateInputType = {
+  sortOrder?: true
   price?: true
   maxParticipants?: true
   playoffTeamCount?: true
@@ -268,6 +275,7 @@ export type DivisionsMinAggregateInputType = {
   name?: true
   key?: true
   kind?: true
+  sortOrder?: true
   eventId?: true
   organizationId?: true
   sportId?: true
@@ -309,6 +317,7 @@ export type DivisionsMaxAggregateInputType = {
   name?: true
   key?: true
   kind?: true
+  sortOrder?: true
   eventId?: true
   organizationId?: true
   sportId?: true
@@ -350,6 +359,7 @@ export type DivisionsCountAggregateInputType = {
   name?: true
   key?: true
   kind?: true
+  sortOrder?: true
   eventId?: true
   organizationId?: true
   sportId?: true
@@ -488,6 +498,7 @@ export type DivisionsGroupByOutputType = {
   name: string
   key: string | null
   kind: $Enums.DivisionsKindEnum | null
+  sortOrder: number | null
   eventId: string | null
   organizationId: string | null
   sportId: string | null
@@ -562,6 +573,7 @@ export type DivisionsWhereInput = {
   name?: Prisma.StringFilter<"Divisions"> | string
   key?: Prisma.StringNullableFilter<"Divisions"> | string | null
   kind?: Prisma.EnumDivisionsKindEnumNullableFilter<"Divisions"> | $Enums.DivisionsKindEnum | null
+  sortOrder?: Prisma.IntNullableFilter<"Divisions"> | number | null
   eventId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableFilter<"Divisions"> | string | null
@@ -613,6 +625,7 @@ export type DivisionsOrderByWithRelationInput = {
   name?: Prisma.SortOrder
   key?: Prisma.SortOrderInput | Prisma.SortOrder
   kind?: Prisma.SortOrderInput | Prisma.SortOrder
+  sortOrder?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   sportId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -667,6 +680,7 @@ export type DivisionsWhereUniqueInput = Prisma.AtLeast<{
   name?: Prisma.StringFilter<"Divisions"> | string
   key?: Prisma.StringNullableFilter<"Divisions"> | string | null
   kind?: Prisma.EnumDivisionsKindEnumNullableFilter<"Divisions"> | $Enums.DivisionsKindEnum | null
+  sortOrder?: Prisma.IntNullableFilter<"Divisions"> | number | null
   eventId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableFilter<"Divisions"> | string | null
@@ -718,6 +732,7 @@ export type DivisionsOrderByWithAggregationInput = {
   name?: Prisma.SortOrder
   key?: Prisma.SortOrderInput | Prisma.SortOrder
   kind?: Prisma.SortOrderInput | Prisma.SortOrder
+  sortOrder?: Prisma.SortOrderInput | Prisma.SortOrder
   eventId?: Prisma.SortOrderInput | Prisma.SortOrder
   organizationId?: Prisma.SortOrderInput | Prisma.SortOrder
   sportId?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -777,6 +792,7 @@ export type DivisionsScalarWhereWithAggregatesInput = {
   name?: Prisma.StringWithAggregatesFilter<"Divisions"> | string
   key?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   kind?: Prisma.EnumDivisionsKindEnumNullableWithAggregatesFilter<"Divisions"> | $Enums.DivisionsKindEnum | null
+  sortOrder?: Prisma.IntNullableWithAggregatesFilter<"Divisions"> | number | null
   eventId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   organizationId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
   sportId?: Prisma.StringNullableWithAggregatesFilter<"Divisions"> | string | null
@@ -828,6 +844,7 @@ export type DivisionsCreateInput = {
   name: string
   key?: string | null
   kind?: $Enums.DivisionsKindEnum | null
+  sortOrder?: number | null
   eventId?: string | null
   organizationId?: string | null
   sportId?: string | null
@@ -879,6 +896,7 @@ export type DivisionsUncheckedCreateInput = {
   name: string
   key?: string | null
   kind?: $Enums.DivisionsKindEnum | null
+  sortOrder?: number | null
   eventId?: string | null
   organizationId?: string | null
   sportId?: string | null
@@ -930,6 +948,7 @@ export type DivisionsUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   kind?: Prisma.NullableEnumDivisionsKindEnumFieldUpdateOperationsInput | $Enums.DivisionsKindEnum | null
+  sortOrder?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -981,6 +1000,7 @@ export type DivisionsUncheckedUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   kind?: Prisma.NullableEnumDivisionsKindEnumFieldUpdateOperationsInput | $Enums.DivisionsKindEnum | null
+  sortOrder?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1032,6 +1052,7 @@ export type DivisionsCreateManyInput = {
   name: string
   key?: string | null
   kind?: $Enums.DivisionsKindEnum | null
+  sortOrder?: number | null
   eventId?: string | null
   organizationId?: string | null
   sportId?: string | null
@@ -1083,6 +1104,7 @@ export type DivisionsUpdateManyMutationInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   kind?: Prisma.NullableEnumDivisionsKindEnumFieldUpdateOperationsInput | $Enums.DivisionsKindEnum | null
+  sortOrder?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1134,6 +1156,7 @@ export type DivisionsUncheckedUpdateManyInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string
   key?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   kind?: Prisma.NullableEnumDivisionsKindEnumFieldUpdateOperationsInput | $Enums.DivisionsKindEnum | null
+  sortOrder?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   eventId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   organizationId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   sportId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -1193,6 +1216,7 @@ export type DivisionsCountOrderByAggregateInput = {
   name?: Prisma.SortOrder
   key?: Prisma.SortOrder
   kind?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
@@ -1238,6 +1262,7 @@ export type DivisionsCountOrderByAggregateInput = {
 }
 
 export type DivisionsAvgOrderByAggregateInput = {
+  sortOrder?: Prisma.SortOrder
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
@@ -1269,6 +1294,7 @@ export type DivisionsMaxOrderByAggregateInput = {
   name?: Prisma.SortOrder
   key?: Prisma.SortOrder
   kind?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
@@ -1310,6 +1336,7 @@ export type DivisionsMinOrderByAggregateInput = {
   name?: Prisma.SortOrder
   key?: Prisma.SortOrder
   kind?: Prisma.SortOrder
+  sortOrder?: Prisma.SortOrder
   eventId?: Prisma.SortOrder
   organizationId?: Prisma.SortOrder
   sportId?: Prisma.SortOrder
@@ -1345,6 +1372,7 @@ export type DivisionsMinOrderByAggregateInput = {
 }
 
 export type DivisionsSumOrderByAggregateInput = {
+  sortOrder?: Prisma.SortOrder
   price?: Prisma.SortOrder
   maxParticipants?: Prisma.SortOrder
   playoffTeamCount?: Prisma.SortOrder
@@ -1463,6 +1491,7 @@ export type DivisionsSelect<ExtArgs extends runtime.Types.Extensions.InternalArg
   name?: boolean
   key?: boolean
   kind?: boolean
+  sortOrder?: boolean
   eventId?: boolean
   organizationId?: boolean
   sportId?: boolean
@@ -1514,6 +1543,7 @@ export type DivisionsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Ext
   name?: boolean
   key?: boolean
   kind?: boolean
+  sortOrder?: boolean
   eventId?: boolean
   organizationId?: boolean
   sportId?: boolean
@@ -1565,6 +1595,7 @@ export type DivisionsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Ext
   name?: boolean
   key?: boolean
   kind?: boolean
+  sortOrder?: boolean
   eventId?: boolean
   organizationId?: boolean
   sportId?: boolean
@@ -1616,6 +1647,7 @@ export type DivisionsSelectScalar = {
   name?: boolean
   key?: boolean
   kind?: boolean
+  sortOrder?: boolean
   eventId?: boolean
   organizationId?: boolean
   sportId?: boolean
@@ -1660,7 +1692,7 @@ export type DivisionsSelectScalar = {
   teamIds?: boolean
 }
 
-export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "gamesPerOpponent" | "restTimeMinutes" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "pointsToVictory" | "playoffDoubleElimination" | "playoffWinnerSetCount" | "playoffLoserSetCount" | "playoffWinnerBracketPointsToVictory" | "playoffLoserBracketPointsToVictory" | "playoffPrize" | "playoffFieldCount" | "playoffRestTimeMinutes" | "playoffMatchDurationMinutes" | "playoffSetDurationMinutes" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
+export type DivisionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "key" | "kind" | "sortOrder" | "eventId" | "organizationId" | "sportId" | "price" | "maxParticipants" | "playoffTeamCount" | "playoffPlacementDivisionIds" | "standingsOverrides" | "gamesPerOpponent" | "restTimeMinutes" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "pointsToVictory" | "playoffDoubleElimination" | "playoffWinnerSetCount" | "playoffLoserSetCount" | "playoffWinnerBracketPointsToVictory" | "playoffLoserBracketPointsToVictory" | "playoffPrize" | "playoffFieldCount" | "playoffRestTimeMinutes" | "playoffMatchDurationMinutes" | "playoffSetDurationMinutes" | "standingsConfirmedAt" | "standingsConfirmedBy" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "minRating" | "maxRating" | "divisionTypeId" | "ratingType" | "gender" | "ageCutoffDate" | "ageCutoffLabel" | "ageCutoffSource" | "fieldIds" | "teamIds", ExtArgs["result"]["divisions"]>
 
 export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Divisions"
@@ -1672,6 +1704,7 @@ export type $DivisionsPayload<ExtArgs extends runtime.Types.Extensions.InternalA
     name: string
     key: string | null
     kind: $Enums.DivisionsKindEnum | null
+    sortOrder: number | null
     eventId: string | null
     organizationId: string | null
     sportId: string | null
@@ -2143,6 +2176,7 @@ export interface DivisionsFieldRefs {
   readonly name: Prisma.FieldRef<"Divisions", 'String'>
   readonly key: Prisma.FieldRef<"Divisions", 'String'>
   readonly kind: Prisma.FieldRef<"Divisions", 'DivisionsKindEnum'>
+  readonly sortOrder: Prisma.FieldRef<"Divisions", 'Int'>
   readonly eventId: Prisma.FieldRef<"Divisions", 'String'>
   readonly organizationId: Prisma.FieldRef<"Divisions", 'String'>
   readonly sportId: Prisma.FieldRef<"Divisions", 'String'>

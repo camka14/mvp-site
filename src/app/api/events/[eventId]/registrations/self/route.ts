@@ -56,7 +56,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       maxAge: true,
       sportId: true,
       registrationByDivisionType: true,
-      divisions: true,
       requiredTemplateIds: true,
       organizationId: true,
       eventType: true,

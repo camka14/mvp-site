@@ -20,7 +20,7 @@ type RegistrationEventContext = {
   maxAge: number | null;
   sportId: string | null;
   registrationByDivisionType: boolean | null;
-  divisions: string[] | null;
+  divisions?: string[] | null;
   eventType?: string | null;
   includePlayoffs?: boolean | null;
   includePlayoffsOrPools?: boolean | null;
@@ -189,21 +189,6 @@ const buildDivisionOptions = async (
   event: RegistrationEventContext,
 ): Promise<EventDivisionOption[]> => {
   const useTournamentBracketDivisions = isTournamentPoolPlayEnabled(event);
-  const eventDivisionIds = Array.isArray(event.divisions)
-    ? Array.from(
-      new Set(
-        event.divisions
-          .map((entry) => normalizeKey(entry))
-          .filter((entry): entry is string => Boolean(entry)),
-      ),
-    )
-    : [];
-
-  if (!eventDivisionIds.length) {
-    if (!useTournamentBracketDivisions) {
-      return [];
-    }
-  }
 
   const rows = await prisma.divisions.findMany({
     where: useTournamentBracketDivisions
@@ -214,14 +199,21 @@ const buildDivisionOptions = async (
       : {
           eventId: event.id,
           OR: [
-            { id: { in: eventDivisionIds } },
-            { key: { in: eventDivisionIds } },
+            { kind: 'LEAGUE' },
+            { kind: null },
           ],
         },
+    orderBy: [
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+      { name: 'asc' },
+      { id: 'asc' },
+    ],
     select: {
       id: true,
       key: true,
       name: true,
+      sortOrder: true,
       sportId: true,
       divisionTypeId: true,
       ratingType: true,
@@ -231,11 +223,20 @@ const buildDivisionOptions = async (
       ageCutoffSource: true,
     },
   });
+  const orderedRows = [...rows].sort((left, right) => {
+    const leftOrder = typeof (left as any).sortOrder === 'number' ? (left as any).sortOrder : Number.POSITIVE_INFINITY;
+    const rightOrder = typeof (right as any).sortOrder === 'number' ? (right as any).sortOrder : Number.POSITIVE_INFINITY;
+    if (leftOrder !== rightOrder) {
+      return leftOrder - rightOrder;
+    }
+    return String(left.name ?? '').localeCompare(String(right.name ?? ''))
+      || String(left.id ?? '').localeCompare(String(right.id ?? ''));
+  });
 
   const rowsById = new Map<string, (typeof rows)[number]>();
   const rowsByKey = new Map<string, (typeof rows)[number]>();
 
-  rows.forEach((row) => {
+  orderedRows.forEach((row) => {
     const rowId = normalizeKey(row.id);
     if (rowId) {
       rowsById.set(rowId, row);
@@ -253,13 +254,11 @@ const buildDivisionOptions = async (
   const options: EventDivisionOption[] = [];
   const seen = new Set<string>();
 
-  const optionDivisionIds = useTournamentBracketDivisions
-    ? rows
-        .map((row) => normalizeKey(row.id) ?? normalizeKey(row.key))
-        .filter((entry): entry is string => Boolean(entry))
-    : eventDivisionIds;
+  const optionDivisionKeys = orderedRows
+    .map((row) => normalizeKey(row.id) ?? normalizeKey(row.key))
+    .filter((entry): entry is string => Boolean(entry));
 
-  optionDivisionIds.forEach((divisionId) => {
+  optionDivisionKeys.forEach((divisionId) => {
     const row = rowsById.get(divisionId)
       ?? rowsByKey.get(divisionId)
       ?? rowsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')

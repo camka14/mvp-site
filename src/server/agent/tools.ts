@@ -737,7 +737,6 @@ const getEventScheduleContext = async (
       officialSchedulingMode: true,
       teamSignup: true,
       singleDivision: true,
-      divisions: true,
     },
   });
   const access = await canReadEvent(owner, event);
@@ -777,7 +776,7 @@ const getEventScheduleContext = async (
     prisma.divisions.findMany({
       where: { eventId },
       select: { id: true, name: true, key: true, kind: true, teamIds: true },
-      orderBy: { name: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
     }),
     prisma.teams.findMany({
       where: { eventId },

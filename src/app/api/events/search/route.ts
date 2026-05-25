@@ -9,7 +9,6 @@ import { getEventOfficialIdsByEventIds } from '@/server/officials/eventOfficials
 import {
   cleanDivisionDisplayName,
   deriveDivisionTypeDisplayName,
-  extractDivisionTokenFromId,
   inferDivisionDetails,
   normalizeDivisionGender,
   normalizeDivisionRatingType,
@@ -52,6 +51,13 @@ const searchSchema = z.object({
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
+  if (!Array.isArray((legacy as any).divisions)) {
+    (legacy as any).divisions = Array.isArray((legacy as any).divisionDetails)
+      ? (legacy as any).divisionDetails
+          .map((detail: any) => (typeof detail?.id === 'string' ? detail.id : null))
+          .filter((id: string | null): id is string => Boolean(id))
+      : [];
+  }
   return legacy;
 };
 
@@ -67,6 +73,27 @@ const normalizeDivisionKeys = (value: unknown): string[] => {
     .map((entry) => normalizeDivisionKey(entry))
     .filter((entry): entry is string => Boolean(entry));
   return Array.from(new Set(keys));
+};
+
+const normalizeDivisionSortOrder = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
+};
+
+const compareDivisionRowsByStoredOrder = <T extends {
+  id?: string | null;
+  name?: string | null;
+  sortOrder?: number | null;
+}>(left: T, right: T): number => {
+  const leftOrder = normalizeDivisionSortOrder(left.sortOrder);
+  const rightOrder = normalizeDivisionSortOrder(right.sortOrder);
+  if (leftOrder !== null || rightOrder !== null) {
+    if (leftOrder === null) return 1;
+    if (rightOrder === null) return -1;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+  }
+  const nameCompare = String(left.name ?? '').localeCompare(String(right.name ?? ''));
+  return nameCompare || String(left.id ?? '').localeCompare(String(right.id ?? ''));
 };
 
 const normalizeIds = (value: unknown): string[] => {
@@ -121,16 +148,9 @@ const resolveOrganizationSearchClauses = async (queryTerm: string): Promise<any[
 };
 
 const getDivisionDetailsForEvents = async (
-  events: Array<{ id: string; divisions: unknown; sportId?: string | null }>,
+  events: Array<{ id: string; sportId?: string | null }>,
 ): Promise<Map<string, Array<Record<string, unknown>>>> => {
-  const normalizedDivisionsByEventId = new Map<string, string[]>();
-  const eventIds = events
-    .map((event) => {
-      const normalizedDivisions = normalizeDivisionKeys(event.divisions);
-      normalizedDivisionsByEventId.set(event.id, normalizedDivisions);
-      return normalizedDivisions.length > 0 ? event.id : null;
-    })
-    .filter((eventId): eventId is string => Boolean(eventId));
+  const eventIds = events.map((event) => event.id).filter(Boolean);
 
   const detailsByEventId = new Map<string, Array<Record<string, unknown>>>();
   if (!eventIds.length) {
@@ -140,12 +160,23 @@ const getDivisionDetailsForEvents = async (
   const rawRows = await prisma.divisions.findMany({
     where: {
       eventId: { in: eventIds },
+      OR: [
+        { kind: 'LEAGUE' },
+        { kind: null },
+      ],
     },
+    orderBy: [
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+      { name: 'asc' },
+      { id: 'asc' },
+    ],
     select: {
       eventId: true,
       id: true,
       key: true,
       name: true,
+      sortOrder: true,
       sportId: true,
       price: true,
       maxParticipants: true,
@@ -165,61 +196,34 @@ const getDivisionDetailsForEvents = async (
   });
 
   events.forEach((event) => {
-    const normalizedDivisions = normalizedDivisionsByEventId.get(event.id) ?? [];
-    if (!normalizedDivisions.length) {
-      detailsByEventId.set(event.id, []);
-      return;
-    }
-
-    const eventRows = rowsByEventId.get(event.id) ?? [];
-    const rowsById = new Map<string, (typeof eventRows)[number]>();
-    const rowsByKey = new Map<string, (typeof eventRows)[number]>();
-    eventRows.forEach((row) => {
-      const rowId = normalizeDivisionKey(row.id);
-      if (rowId) {
-        rowsById.set(rowId, row);
-        const token = extractDivisionTokenFromId(rowId);
-        if (token) {
-          rowsByKey.set(token, row);
-        }
-      }
-      const rowKey = normalizeDivisionKey(row.key);
-      if (rowKey) {
-        rowsByKey.set(rowKey, row);
-      }
-    });
-
-    const details = normalizedDivisions.map((divisionId) => {
-      const row = rowsById.get(divisionId)
-        ?? rowsByKey.get(divisionId)
-        ?? rowsByKey.get(extractDivisionTokenFromId(divisionId) ?? '')
-        ?? null;
+    const eventRows = [...(rowsByEventId.get(event.id) ?? [])].sort(compareDivisionRowsByStoredOrder);
+    const details = eventRows.map((row) => {
       const inferred = inferDivisionDetails({
-        identifier: row?.key ?? row?.id ?? divisionId,
-        sportInput: row?.sportId ?? event.sportId ?? undefined,
-        fallbackName: row?.name ?? undefined,
+        identifier: row.key ?? row.id,
+        sportInput: row.sportId ?? event.sportId ?? undefined,
+        fallbackName: row.name ?? undefined,
       });
-      const divisionTypeId = row?.divisionTypeId ?? inferred.divisionTypeId;
-      const ratingType = normalizeDivisionRatingType(row?.ratingType) ?? inferred.ratingType;
-      const gender = normalizeDivisionGender(row?.gender) ?? inferred.gender;
+      const divisionTypeId = row.divisionTypeId ?? inferred.divisionTypeId;
+      const ratingType = normalizeDivisionRatingType(row.ratingType) ?? inferred.ratingType;
+      const gender = normalizeDivisionGender(row.gender) ?? inferred.gender;
       const divisionTypeName = deriveDivisionTypeDisplayName({
-        sportInput: row?.sportId ?? event.sportId ?? undefined,
+        sportInput: row.sportId ?? event.sportId ?? undefined,
         gender,
         ratingType,
         divisionTypeId,
       });
 
       return {
-        id: row?.id ?? divisionId,
-        key: row?.key ?? inferred.token,
-        name: cleanDivisionDisplayName(row?.name, inferred.defaultName),
+        id: row.id,
+        key: row.key ?? inferred.token,
+        name: cleanDivisionDisplayName(row.name, inferred.defaultName),
         divisionTypeId,
         divisionTypeName,
         ratingType,
         gender,
-        sportId: row?.sportId ?? event.sportId ?? null,
-        price: typeof row?.price === 'number' ? row.price : null,
-        maxParticipants: typeof row?.maxParticipants === 'number' ? row.maxParticipants : null,
+        sportId: row.sportId ?? event.sportId ?? null,
+        price: typeof row.price === 'number' ? row.price : null,
+        maxParticipants: typeof row.maxParticipants === 'number' ? row.maxParticipants : null,
       };
     });
 
@@ -386,7 +390,23 @@ export async function POST(req: NextRequest) {
     where.price = { lte: filters.priceMax };
   }
   if (filters.divisions?.length) {
-    where.divisions = { hasSome: filters.divisions };
+    const divisionFilters = normalizeDivisionKeys(filters.divisions);
+    if (divisionFilters.length) {
+      const matchingDivisionRows = await prisma.divisions.findMany({
+        where: {
+          OR: [
+            { id: { in: divisionFilters } },
+            { key: { in: divisionFilters } },
+          ],
+        },
+        select: { eventId: true },
+      });
+      const matchingEventIds = uniqueStrings(matchingDivisionRows.map((row) => row.eventId));
+      if (!matchingEventIds.length) {
+        return NextResponse.json({ events: [] }, { status: 200 });
+      }
+      where.AND.push({ id: { in: matchingEventIds } });
+    }
   }
   if (filters.sports?.length) {
     const normalizedSports = Array.from(
@@ -533,7 +553,6 @@ export async function POST(req: NextRequest) {
   const divisionDetailsByEventId = await getDivisionDetailsForEvents(
     eventsWithParticipants.map((event) => ({
       id: event.id,
-      divisions: event.divisions,
       sportId: event.sportId,
     })),
   ).catch((error) => {
@@ -541,10 +560,14 @@ export async function POST(req: NextRequest) {
     return new Map<string, Array<Record<string, unknown>>>();
   });
 
-  const normalized = eventsWithParticipants.map((event) => withLegacyEvent({
-    ...event,
-    officialIds: officialIdsByEventId.get(event.id) ?? [],
-    divisionDetails: divisionDetailsByEventId.get(event.id) ?? [],
-  }));
+  const normalized = eventsWithParticipants.map((event) => {
+    const divisionDetails = divisionDetailsByEventId.get(event.id) ?? [];
+    return withLegacyEvent({
+      ...event,
+      officialIds: officialIdsByEventId.get(event.id) ?? [],
+      divisions: divisionDetails.map((division) => division.id).filter((id): id is string => typeof id === 'string'),
+      divisionDetails,
+    });
+  });
   return NextResponse.json({ events: normalized }, { status: 200 });
 }

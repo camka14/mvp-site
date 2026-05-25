@@ -356,6 +356,7 @@ model Divisions {
   name                        String
   key                         String?
   kind                        DivisionsKindEnum? @default(LEAGUE)
+  sortOrder                   Int?
   eventId                     String?
   organizationId              String?
   sportId                     String?
@@ -400,6 +401,7 @@ model Divisions {
   teamIds                     String[]           @default([])
 
   @@index([eventId])
+  @@index([eventId, kind, sortOrder])
   @@index([organizationId])
   @@index([sportId])
   @@index([key])
@@ -868,7 +870,6 @@ model Events {
   end                          DateTime?
   timeZone                     String               @default("UTC")
   description                  String?
-  divisions                    String[]
   winnerSetCount               Int?
   loserSetCount                Int?
   doubleElimination            Boolean?

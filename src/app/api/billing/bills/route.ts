@@ -197,7 +197,6 @@ export async function POST(req: NextRequest) {
         id: true,
         eventType: true,
         parentEvent: true,
-        divisions: true,
         timeSlotIds: true,
       },
     });

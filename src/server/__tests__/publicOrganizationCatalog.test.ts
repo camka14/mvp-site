@@ -548,6 +548,7 @@ describe('publicOrganizationCatalog', () => {
         teamId: { in: ['team_open', 'team_closed'] },
         OR: [
           { status: 'ACTIVE' },
+          { status: 'PENDING' },
           {
             status: 'STARTED',
             createdAt: { gte: expect.any(Date) },
@@ -688,6 +689,7 @@ describe('publicOrganizationCatalog', () => {
           teamId: { in: ['team_open'] },
           OR: [
             { status: 'ACTIVE' },
+            { status: 'PENDING' },
             {
               status: 'STARTED',
               createdAt: { gte: new Date('2026-04-21T21:55:00.000Z') },

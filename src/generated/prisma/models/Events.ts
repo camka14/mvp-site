@@ -207,7 +207,6 @@ export type EventsCountAggregateOutputType = {
   end: number
   timeZone: number
   description: number
-  divisions: number
   winnerSetCount: number
   loserSetCount: number
   doubleElimination: number
@@ -453,7 +452,6 @@ export type EventsCountAggregateInputType = {
   end?: true
   timeZone?: true
   description?: true
-  divisions?: true
   winnerSetCount?: true
   loserSetCount?: true
   doubleElimination?: true
@@ -612,7 +610,6 @@ export type EventsGroupByOutputType = {
   end: Date | null
   timeZone: string
   description: string | null
-  divisions: string[]
   winnerSetCount: number | null
   loserSetCount: number | null
   doubleElimination: boolean | null
@@ -707,7 +704,6 @@ export type EventsWhereInput = {
   end?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
   timeZone?: Prisma.StringFilter<"Events"> | string
   description?: Prisma.StringNullableFilter<"Events"> | string | null
-  divisions?: Prisma.StringNullableListFilter<"Events">
   winnerSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
   loserSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
   doubleElimination?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -779,7 +775,6 @@ export type EventsOrderByWithRelationInput = {
   end?: Prisma.SortOrderInput | Prisma.SortOrder
   timeZone?: Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
-  divisions?: Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
   loserSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
   doubleElimination?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -854,7 +849,6 @@ export type EventsWhereUniqueInput = Prisma.AtLeast<{
   end?: Prisma.DateTimeNullableFilter<"Events"> | Date | string | null
   timeZone?: Prisma.StringFilter<"Events"> | string
   description?: Prisma.StringNullableFilter<"Events"> | string | null
-  divisions?: Prisma.StringNullableListFilter<"Events">
   winnerSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
   loserSetCount?: Prisma.IntNullableFilter<"Events"> | number | null
   doubleElimination?: Prisma.BoolNullableFilter<"Events"> | boolean | null
@@ -926,7 +920,6 @@ export type EventsOrderByWithAggregationInput = {
   end?: Prisma.SortOrderInput | Prisma.SortOrder
   timeZone?: Prisma.SortOrder
   description?: Prisma.SortOrderInput | Prisma.SortOrder
-  divisions?: Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
   loserSetCount?: Prisma.SortOrderInput | Prisma.SortOrder
   doubleElimination?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -1006,7 +999,6 @@ export type EventsScalarWhereWithAggregatesInput = {
   end?: Prisma.DateTimeNullableWithAggregatesFilter<"Events"> | Date | string | null
   timeZone?: Prisma.StringWithAggregatesFilter<"Events"> | string
   description?: Prisma.StringNullableWithAggregatesFilter<"Events"> | string | null
-  divisions?: Prisma.StringNullableListFilter<"Events">
   winnerSetCount?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
   loserSetCount?: Prisma.IntNullableWithAggregatesFilter<"Events"> | number | null
   doubleElimination?: Prisma.BoolNullableWithAggregatesFilter<"Events"> | boolean | null
@@ -1078,7 +1070,6 @@ export type EventsCreateInput = {
   end?: Date | string | null
   timeZone?: string
   description?: string | null
-  divisions?: Prisma.EventsCreatedivisionsInput | string[]
   winnerSetCount?: number | null
   loserSetCount?: number | null
   doubleElimination?: boolean | null
@@ -1150,7 +1141,6 @@ export type EventsUncheckedCreateInput = {
   end?: Date | string | null
   timeZone?: string
   description?: string | null
-  divisions?: Prisma.EventsCreatedivisionsInput | string[]
   winnerSetCount?: number | null
   loserSetCount?: number | null
   doubleElimination?: boolean | null
@@ -1222,7 +1212,6 @@ export type EventsUpdateInput = {
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   timeZone?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisions?: Prisma.EventsUpdatedivisionsInput | string[]
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   loserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   doubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1294,7 +1283,6 @@ export type EventsUncheckedUpdateInput = {
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   timeZone?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisions?: Prisma.EventsUpdatedivisionsInput | string[]
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   loserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   doubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1366,7 +1354,6 @@ export type EventsCreateManyInput = {
   end?: Date | string | null
   timeZone?: string
   description?: string | null
-  divisions?: Prisma.EventsCreatedivisionsInput | string[]
   winnerSetCount?: number | null
   loserSetCount?: number | null
   doubleElimination?: boolean | null
@@ -1438,7 +1425,6 @@ export type EventsUpdateManyMutationInput = {
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   timeZone?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisions?: Prisma.EventsUpdatedivisionsInput | string[]
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   loserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   doubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1510,7 +1496,6 @@ export type EventsUncheckedUpdateManyInput = {
   end?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   timeZone?: Prisma.StringFieldUpdateOperationsInput | string
   description?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
-  divisions?: Prisma.EventsUpdatedivisionsInput | string[]
   winnerSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   loserSetCount?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
   doubleElimination?: Prisma.NullableBoolFieldUpdateOperationsInput | boolean | null
@@ -1582,7 +1567,6 @@ export type EventsCountOrderByAggregateInput = {
   end?: Prisma.SortOrder
   timeZone?: Prisma.SortOrder
   description?: Prisma.SortOrder
-  divisions?: Prisma.SortOrder
   winnerSetCount?: Prisma.SortOrder
   loserSetCount?: Prisma.SortOrder
   doubleElimination?: Prisma.SortOrder
@@ -1817,10 +1801,6 @@ export type EventsSumOrderByAggregateInput = {
   installmentAmounts?: Prisma.SortOrder
 }
 
-export type EventsCreatedivisionsInput = {
-  set: string[]
-}
-
 export type EventsCreateassistantHostIdsInput = {
   set: string[]
 }
@@ -1859,11 +1839,6 @@ export type EventsCreateinstallmentAmountsInput = {
 
 export type EventsCreaterequiredTemplateIdsInput = {
   set: string[]
-}
-
-export type EventsUpdatedivisionsInput = {
-  set?: string[]
-  push?: string | string[]
 }
 
 export type EventsUpdateassistantHostIdsInput = {
@@ -1939,7 +1914,6 @@ export type EventsSelect<ExtArgs extends runtime.Types.Extensions.InternalArgs =
   end?: boolean
   timeZone?: boolean
   description?: boolean
-  divisions?: boolean
   winnerSetCount?: boolean
   loserSetCount?: boolean
   doubleElimination?: boolean
@@ -2011,7 +1985,6 @@ export type EventsSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extens
   end?: boolean
   timeZone?: boolean
   description?: boolean
-  divisions?: boolean
   winnerSetCount?: boolean
   loserSetCount?: boolean
   doubleElimination?: boolean
@@ -2083,7 +2056,6 @@ export type EventsSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extens
   end?: boolean
   timeZone?: boolean
   description?: boolean
-  divisions?: boolean
   winnerSetCount?: boolean
   loserSetCount?: boolean
   doubleElimination?: boolean
@@ -2155,7 +2127,6 @@ export type EventsSelectScalar = {
   end?: boolean
   timeZone?: boolean
   description?: boolean
-  divisions?: boolean
   winnerSetCount?: boolean
   loserSetCount?: boolean
   doubleElimination?: boolean
@@ -2218,7 +2189,7 @@ export type EventsSelectScalar = {
   requiredTemplateIds?: boolean
 }
 
-export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "timeZone" | "description" | "divisions" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
+export type EventsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "name" | "start" | "end" | "timeZone" | "description" | "winnerSetCount" | "loserSetCount" | "doubleElimination" | "location" | "address" | "rating" | "teamSizeLimit" | "maxParticipants" | "minAge" | "maxAge" | "hostId" | "assistantHostIds" | "noFixedEndDateTime" | "price" | "taxHandling" | "organizerManualTaxRateBps" | "singleDivision" | "registrationByDivisionType" | "cancellationRefundHours" | "teamSignup" | "prize" | "registrationCutoffHours" | "seedColor" | "imageId" | "fieldCount" | "winnerBracketPointsToVictory" | "loserBracketPointsToVictory" | "coordinates" | "gamesPerOpponent" | "includePlayoffs" | "playoffTeamCount" | "usesSets" | "matchDurationMinutes" | "setDurationMinutes" | "setsPerMatch" | "restTimeMinutes" | "state" | "pointsToVictory" | "sportId" | "timeSlotIds" | "fieldIds" | "leagueScoringConfigId" | "organizationId" | "parentEvent" | "autoCancellation" | "eventType" | "officialSchedulingMode" | "doTeamsOfficiate" | "teamOfficialsMaySwap" | "officialPositions" | "matchRulesOverride" | "autoCreatePointMatchIncidents" | "allowPaymentPlans" | "installmentCount" | "installmentDueDates" | "installmentDueRelativeDays" | "installmentAmounts" | "allowTeamSplitDefault" | "splitLeaguePlayoffDivisions" | "requiredTemplateIds", ExtArgs["result"]["events"]>
 
 export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "Events"
@@ -2232,7 +2203,6 @@ export type $EventsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs
     end: Date | null
     timeZone: string
     description: string | null
-    divisions: string[]
     winnerSetCount: number | null
     loserSetCount: number | null
     doubleElimination: boolean | null
@@ -2724,7 +2694,6 @@ export interface EventsFieldRefs {
   readonly end: Prisma.FieldRef<"Events", 'DateTime'>
   readonly timeZone: Prisma.FieldRef<"Events", 'String'>
   readonly description: Prisma.FieldRef<"Events", 'String'>
-  readonly divisions: Prisma.FieldRef<"Events", 'String[]'>
   readonly winnerSetCount: Prisma.FieldRef<"Events", 'Int'>
   readonly loserSetCount: Prisma.FieldRef<"Events", 'Int'>
   readonly doubleElimination: Prisma.FieldRef<"Events", 'Boolean'>

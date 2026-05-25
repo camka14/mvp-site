@@ -266,7 +266,6 @@ const reserveEventRegistrationSlot = async ({
       maxAge: number | null;
       sportId: string | null;
       registrationByDivisionType: boolean | null;
-      divisions: unknown;
       maxParticipants: number | null;
       teamSignup: boolean | null;
       eventType: string | null;
@@ -281,7 +280,6 @@ const reserveEventRegistrationSlot = async ({
         "maxAge",
         "sportId",
         "registrationByDivisionType",
-        "divisions",
         "maxParticipants",
         "teamSignup",
         "eventType",
@@ -296,6 +294,30 @@ const reserveEventRegistrationSlot = async ({
     if (!event) {
       return { ok: false, status: 404, error: 'Event not found.' };
     }
+    const eventDivisionRows = typeof (tx as any).divisions?.findMany === 'function'
+      ? await (tx as any).divisions.findMany({
+          where: {
+            eventId,
+            OR: [
+              { kind: 'LEAGUE' },
+              { kind: null },
+            ],
+          },
+          orderBy: [
+            { sortOrder: 'asc' },
+            { createdAt: 'asc' },
+            { name: 'asc' },
+            { id: 'asc' },
+          ],
+          select: {
+            id: true,
+          },
+        })
+      : [];
+    const eventDivisionIds = eventDivisionRows.length
+      ? normalizeStringList(eventDivisionRows.map((row: { id?: string | null }) => row.id))
+      : normalizeStringList((event as any).divisions);
+    (event as any).divisions = eventDivisionIds;
 
     const expectsTeamRegistration = Boolean(event.teamSignup);
     if (expectsTeamRegistration && !teamId) {
@@ -345,7 +367,7 @@ const reserveEventRegistrationSlot = async ({
         maxAge: event.maxAge ?? null,
         sportId: event.sportId ?? null,
         registrationByDivisionType: event.registrationByDivisionType ?? null,
-        divisions: normalizeStringList(event.divisions),
+        divisions: normalizeStringList((event as any).divisions),
         eventType: event.eventType ?? null,
         includePlayoffs: event.includePlayoffs ?? null,
       },
@@ -449,7 +471,6 @@ const reserveEventRegistrationSlot = async ({
       };
     }
 
-    const eventDivisionIds = normalizeStringList(event.divisions);
     let divisionMaxParticipants: number | null = null;
     let divisionIdForCapacity: string | null = null;
     if (divisionSelection.divisionId) {

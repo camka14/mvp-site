@@ -18,6 +18,7 @@ const prismaMock = {
   },
   teams: {
     findMany: jest.fn(),
+    update: jest.fn(),
   },
   timeSlots: {
     findMany: jest.fn(),
@@ -43,6 +44,11 @@ jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/repositories/locks', () => ({
   acquireEventLock: (...args: any[]) => acquireEventLockMock(...args),
 }));
+jest.mock('@/server/matchScheduleNotifications', () => ({
+  collectMatchScheduleChanges: jest.fn(() => []),
+  notifyTeamsOfMatchScheduleUpdate: jest.fn(async () => undefined),
+  snapshotMatchScheduleState: jest.fn(async () => new Map()),
+}));
 
 import { POST as schedulePost } from '@/app/api/events/[eventId]/schedule/route';
 
@@ -65,6 +71,7 @@ describe('event schedule route - split divisions regression', () => {
     prismaMock.matches.deleteMany.mockResolvedValue(undefined);
     prismaMock.matches.upsert.mockResolvedValue(undefined);
     prismaMock.divisions.update.mockResolvedValue(undefined);
+    prismaMock.teams.update.mockResolvedValue(undefined);
     prismaMock.userData.findMany.mockResolvedValue([]);
     prismaMock.leagueScoringConfigs.findUnique.mockResolvedValue(null);
   });
@@ -247,13 +254,13 @@ describe('event schedule route - split divisions regression', () => {
     const persistedDivisions = prismaMock.matches.upsert.mock.calls
       .map((call) => call[0].create.division)
       .sort();
-    expect(persistedDivisions).toEqual(['advanced', 'beginner']);
+    expect(persistedDivisions).toEqual(['event_1__division__advanced', 'event_1__division__beginner']);
 
     const returnedDivisions = (Array.isArray(json.matches) ? json.matches : [])
       .map((match: any) => match.division)
       .filter(Boolean)
       .sort();
-    expect(returnedDivisions).toEqual(['advanced', 'beginner']);
+    expect(returnedDivisions).toEqual(['event_1__division__advanced', 'event_1__division__beginner']);
   });
 
   it('blocks split-division scheduling when event teams are unassigned', async () => {

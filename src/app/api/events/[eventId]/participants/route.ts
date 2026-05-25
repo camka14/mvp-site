@@ -671,16 +671,12 @@ const syncDivisionTeamMembership = async (params: {
   mode: 'add' | 'remove';
   targetDivisionId: string | null;
 }, client: PrismaLike = prisma) => {
-  const eventDivisionIds = normalizeUserIdList(params.event.divisions);
-  if (!eventDivisionIds.length) {
-    return;
-  }
   const rows = await client.divisions.findMany({
     where: {
       eventId: params.event.id,
       OR: [
-        { id: { in: eventDivisionIds } },
-        { key: { in: eventDivisionIds } },
+        { kind: 'LEAGUE' },
+        { kind: null },
       ],
     },
     select: {
@@ -819,7 +815,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ even
       eventType: true,
       parentEvent: true,
       timeSlotIds: true,
-      divisions: true,
     },
   });
   if (!event) {

@@ -209,6 +209,13 @@ const updateEventWithUnknownArgFallback = async (
 
 const withLegacyEvent = (row: any) => {
   const legacy = withLegacyFields(row);
+  if (!Array.isArray((legacy as any).divisions)) {
+    (legacy as any).divisions = Array.isArray((legacy as any).divisionDetails)
+      ? (legacy as any).divisionDetails
+          .map((detail: any) => (typeof detail?.id === 'string' ? detail.id : null))
+          .filter((id: string | null): id is string => Boolean(id))
+      : [];
+  }
   if (!Array.isArray(legacy.waitListIds)) {
     (legacy as any).waitListIds = [];
   }
@@ -563,6 +570,27 @@ const normalizeDivisionKeys = (value: unknown): string[] => {
     .map((entry) => normalizeDivisionKey(entry))
     .filter((entry): entry is string => Boolean(entry));
   return Array.from(new Set(keys));
+};
+
+const normalizeDivisionSortOrder = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
+};
+
+const compareDivisionRowsByStoredOrder = <T extends {
+  id?: string | null;
+  name?: string | null;
+  sortOrder?: number | null;
+}>(left: T, right: T): number => {
+  const leftOrder = normalizeDivisionSortOrder(left.sortOrder);
+  const rightOrder = normalizeDivisionSortOrder(right.sortOrder);
+  if (leftOrder !== null || rightOrder !== null) {
+    if (leftOrder === null) return 1;
+    if (rightOrder === null) return -1;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+  }
+  const nameCompare = String(left.name ?? '').localeCompare(String(right.name ?? ''));
+  return nameCompare || String(left.id ?? '').localeCompare(String(right.id ?? ''));
 };
 
 const normalizeDivisionIds = (value: unknown, eventId: string): string[] => {
@@ -1296,17 +1324,29 @@ const getDivisionDetailsForEvent = async (
 const getDivisionKeysForEventKind = async (
   eventId: string,
   kind: 'LEAGUE' | 'PLAYOFF',
+  client: any = prisma,
 ): Promise<string[]> => {
-  const rows = await prisma.divisions.findMany({
+  const rows = await client.divisions.findMany({
     where: {
       eventId,
-      kind,
+      ...(kind === 'LEAGUE'
+        ? { OR: [{ kind: 'LEAGUE' }, { kind: null }] }
+        : { kind }),
     },
+    orderBy: [
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+      { name: 'asc' },
+      { id: 'asc' },
+    ],
     select: {
       id: true,
+      name: true,
+      sortOrder: true,
     },
   });
-  return rows
+  return [...rows]
+    .sort(compareDivisionRowsByStoredOrder)
     .map((row) => normalizeDivisionKey(row.id))
     .filter((value): value is string => Boolean(value));
 };
@@ -1330,9 +1370,12 @@ const getTournamentPoolDivisionKeysForEvent = async (eventId: string): Promise<s
 
 const getVisibleDivisionKeysForEventResponse = async (
   eventId: string,
-  event: { eventType?: unknown; includePlayoffs?: unknown; divisions?: unknown },
+  event: { eventType?: unknown; includePlayoffs?: unknown },
 ): Promise<string[]> => {
-  const baseDivisionKeys = normalizeDivisionKeys(event.divisions);
+  const legacyDivisionKeys = normalizeDivisionKeys((event as any).divisions);
+  const baseDivisionKeys = legacyDivisionKeys.length
+    ? legacyDivisionKeys
+    : await getDivisionKeysForEventKind(eventId, 'LEAGUE');
   const isTournamentPoolPlay = String(event.eventType ?? '').toUpperCase() === 'TOURNAMENT'
     && Boolean(event.includePlayoffs);
   if (!isTournamentPoolPlay) {
@@ -2009,7 +2052,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
         data.leagueScoringConfigId = leagueScoringConfigId;
       }
 
-      const existingDivisionKeys = normalizeDivisionKeys(existing.divisions);
+      const legacyExistingDivisionKeys = normalizeDivisionKeys((existing as any).divisions);
+      const existingDivisionKeys = legacyExistingDivisionKeys.length
+        ? legacyExistingDivisionKeys
+        : await getDivisionKeysForEventKind(eventId, 'LEAGUE', tx);
       const existingFieldIds = normalizeFieldIds(existing.fieldIds);
       const payloadFieldIds = incomingFields
         .map((field) => {
@@ -2136,6 +2182,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           ? existingDivisionKeys
           : [hasDivisionDetailsInput ? buildEventDivisionId(eventId, DEFAULT_DIVISION_KEY) : DEFAULT_DIVISION_KEY];
       })();
+      delete data.divisions;
       const nextSingleDivision = typeof data.singleDivision === 'boolean'
         ? data.singleDivision
         : Boolean(existing.singleDivision);
@@ -2532,16 +2579,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           defaultInstallmentAmounts: defaultDivisionInstallmentAmounts,
           eventType: nextEventTypeRaw,
         }, tx as any);
-        if (targetEventType === 'TOURNAMENT' && Boolean(data.includePlayoffs ?? existing.includePlayoffs) && syncedDivisionIds.length) {
-          data.divisions = syncedDivisionIds;
-          await tx.events.update({
-            where: { id: eventId },
-            data: {
-              divisions: syncedDivisionIds,
-              updatedAt: new Date(),
-            },
-          });
-        }
+        void syncedDivisionIds;
       }
 
       const nextEventTypeForSchedule = (data.eventType ?? existing.eventType ?? updatedEvent.eventType) as string | null;

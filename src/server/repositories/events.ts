@@ -1283,6 +1283,39 @@ const matchBufferMs = (event: Tournament | League): number => {
   return Math.max(restMinutes, 0) * MINUTE_MS;
 };
 
+const normalizeDivisionSortOrder = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numeric) ? Math.trunc(numeric) : null;
+};
+
+const compareDivisionRowsByStoredOrder = <T extends {
+  id?: string | null;
+  name?: string | null;
+  createdAt?: Date | string | null;
+  sortOrder?: number | null;
+}>(left: T, right: T): number => {
+  const leftOrder = normalizeDivisionSortOrder(left.sortOrder);
+  const rightOrder = normalizeDivisionSortOrder(right.sortOrder);
+  if (leftOrder !== null || rightOrder !== null) {
+    if (leftOrder === null) return 1;
+    if (rightOrder === null) return -1;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+  }
+  const leftCreated = left.createdAt instanceof Date
+    ? left.createdAt.getTime()
+    : (typeof left.createdAt === 'string' ? Date.parse(left.createdAt) : Number.NaN);
+  const rightCreated = right.createdAt instanceof Date
+    ? right.createdAt.getTime()
+    : (typeof right.createdAt === 'string' ? Date.parse(right.createdAt) : Number.NaN);
+  if (Number.isFinite(leftCreated) || Number.isFinite(rightCreated)) {
+    if (!Number.isFinite(leftCreated)) return 1;
+    if (!Number.isFinite(rightCreated)) return -1;
+    if (leftCreated !== rightCreated) return leftCreated - rightCreated;
+  }
+  const nameCompare = String(left.name ?? '').localeCompare(String(right.name ?? ''));
+  return nameCompare || String(left.id ?? '').localeCompare(String(right.id ?? ''));
+};
+
 const buildDivisions = (
   divisionIds: string[],
   divisionRows: Array<{
@@ -1290,6 +1323,7 @@ const buildDivisions = (
     name?: string | null;
     key?: string | null;
     kind?: 'LEAGUE' | 'PLAYOFF' | null;
+    sortOrder?: number | null;
     fieldIds?: string[] | null;
     sportId?: string | null;
     price?: number | null;
@@ -2259,15 +2293,20 @@ export const loadEventWithRelations = async (
   const includeTeamPlayers = options.includeTeamPlayers !== false;
   const includeTeamRegistrations = options.includeTeamRegistrations !== false;
 
-  const eventDivisionIds = ensureStringArray(event.divisions);
   const allDivisionRows = await client.divisions.findMany({
     where: { eventId: event.id },
+    orderBy: [
+      { kind: 'asc' },
+      { sortOrder: 'asc' },
+      { createdAt: 'asc' },
+      { name: 'asc' },
+      { id: 'asc' },
+    ],
   });
-  const leagueDivisionRows = allDivisionRows.filter((row: any) => normalizeDivisionKind((row as any).kind, 'LEAGUE') !== 'PLAYOFF');
-  const playoffDivisionRows = allDivisionRows.filter((row: any) => normalizeDivisionKind((row as any).kind, 'LEAGUE') === 'PLAYOFF');
-  const leagueDivisionIds = eventDivisionIds.length
-    ? eventDivisionIds
-    : leagueDivisionRows.map((row: any) => row.id);
+  const orderedDivisionRows = [...allDivisionRows].sort(compareDivisionRowsByStoredOrder);
+  const leagueDivisionRows = orderedDivisionRows.filter((row: any) => normalizeDivisionKind((row as any).kind, 'LEAGUE') !== 'PLAYOFF');
+  const playoffDivisionRows = orderedDivisionRows.filter((row: any) => normalizeDivisionKind((row as any).kind, 'LEAGUE') === 'PLAYOFF');
+  const leagueDivisionIds = leagueDivisionRows.map((row: any) => row.id);
   const { divisions, map: leagueDivisionMap, fieldIdsByDivision } = buildDivisions(
     leagueDivisionIds,
     leagueDivisionRows,
@@ -3189,6 +3228,7 @@ export const syncEventDivisions = async (
       ageCutoffSource: true,
       fieldIds: true,
       kind: true,
+      sortOrder: true,
       playoffPlacementDivisionIds: true,
       standingsOverrides: true,
       gamesPerOpponent: true,
@@ -3335,8 +3375,8 @@ export const syncEventDivisions = async (
   }
 
   const targetDivisionDescriptors = [
-    ...effectiveDivisionIds.map((rawDivisionId) => ({ rawDivisionId, kind: 'LEAGUE' as const })),
-    ...normalizedPlayoffDetails.map((detail) => ({ rawDivisionId: detail.id, kind: 'PLAYOFF' as const })),
+    ...effectiveDivisionIds.map((rawDivisionId, sortOrder) => ({ rawDivisionId, kind: 'LEAGUE' as const, sortOrder })),
+    ...normalizedPlayoffDetails.map((detail, sortOrder) => ({ rawDivisionId: detail.id, kind: 'PLAYOFF' as const, sortOrder })),
   ];
   const seenDivisionIds = new Set<string>();
   const finalEntries = targetDivisionDescriptors
@@ -3348,7 +3388,7 @@ export const syncEventDivisions = async (
       seenDivisionIds.add(normalizedDivisionId);
       return true;
     })
-    .map(({ rawDivisionId, kind: targetKind }) => {
+    .map(({ rawDivisionId, kind: targetKind, sortOrder }) => {
     const normalizedDivisionId = normalizeDivisionKey(rawDivisionId) ?? rawDivisionId;
     const detail = detailLookup.get(normalizedDivisionId)
       ?? detailLookup.get(extractDivisionTokenFromId(normalizedDivisionId) ?? '')
@@ -3602,6 +3642,7 @@ export const syncEventDivisions = async (
       key,
       name,
       kind,
+      sortOrder,
       divisionTypeId,
       divisionTypeName,
       ratingType,
@@ -3693,6 +3734,7 @@ export const syncEventDivisions = async (
         key: entry.key,
         name: entry.name,
         kind: entry.kind,
+        sortOrder: entry.sortOrder,
         eventId: params.eventId,
         organizationId: params.organizationId ?? null,
         sportId: params.sportId ?? null,
@@ -3744,6 +3786,7 @@ export const syncEventDivisions = async (
         key: entry.key,
         name: entry.name,
         kind: entry.kind,
+        sortOrder: entry.sortOrder,
         eventId: params.eventId,
         organizationId: params.organizationId ?? null,
         sportId: params.sportId ?? null,
@@ -4254,7 +4297,6 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     end: normalizedEnd,
     timeZone: eventTimeZone,
     description: payload.description ?? null,
-    divisions: normalizedEventDivisionIds,
     winnerSetCount: payload.winnerSetCount ?? null,
     loserSetCount: payload.loserSetCount ?? null,
     doubleElimination: payload.doubleElimination ?? false,
@@ -4411,15 +4453,7 @@ export const upsertEventFromPayload = async (payload: any, client: PrismaLike = 
     eventType: nextEventType,
     clearPlayoffPlacementMappings: shouldClearLeaguePlayoffDivisionMappings,
   }, client);
-  if (nextEventType === 'TOURNAMENT' && includePlayoffsOrPools && syncedDivisionIds.length) {
-    await client.events.update({
-      where: { id },
-      data: {
-        divisions: syncedDivisionIds,
-        updatedAt: new Date(),
-      },
-    });
-  }
+  void syncedDivisionIds;
 
   const removedFieldIds = existingFieldIds.filter((fieldId) => !allowedFieldIdSet.has(fieldId));
   if (removedFieldIds.length) {

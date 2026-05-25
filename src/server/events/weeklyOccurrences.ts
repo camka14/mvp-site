@@ -195,7 +195,26 @@ export const resolveWeeklyOccurrence = async (
   }
 
   const divisionIds = normalizeIdList((slot as any).divisions);
-  const fallbackDivisionIds = normalizeIdList(params.event.divisions);
+  let fallbackDivisionIds = normalizeIdList(params.event.divisions);
+  if (!fallbackDivisionIds.length && typeof (client as any).divisions?.findMany === 'function') {
+    const divisionRows = await (client as any).divisions.findMany({
+      where: {
+        eventId: params.event.id,
+        OR: [
+          { kind: 'LEAGUE' },
+          { kind: null },
+        ],
+      },
+      orderBy: [
+        { sortOrder: 'asc' },
+        { createdAt: 'asc' },
+        { name: 'asc' },
+        { id: 'asc' },
+      ],
+      select: { id: true },
+    });
+    fallbackDivisionIds = normalizeIdList(divisionRows.map((row: { id?: string | null }) => row.id));
+  }
   return {
     ok: true,
     value: {

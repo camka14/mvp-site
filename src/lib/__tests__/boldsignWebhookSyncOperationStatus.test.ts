@@ -16,6 +16,9 @@ const prismaMock = {
     findFirst: jest.fn(),
     updateMany: jest.fn(),
   },
+  teamRegistrations: {
+    updateMany: jest.fn(),
+  },
   events: {
     findMany: jest.fn(),
   },
@@ -91,6 +94,7 @@ describe('boldsignWebhookSync operation status projection', () => {
     prismaMock.events.findMany.mockResolvedValue([]);
     prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
     prismaMock.eventRegistrations.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.teamRegistrations.updateMany.mockResolvedValue({ count: 0 });
     createOrUpdateBoldSignOperationMock.mockResolvedValue({
       id: 'op_1',
       status: 'PENDING_RECONCILE',

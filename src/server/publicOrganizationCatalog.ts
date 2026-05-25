@@ -773,7 +773,7 @@ const getDivisionLabelsByEventId = async (events: Array<Record<string, any>>): P
   const rows = await (prisma as any).divisions.findMany({
     where: { eventId: { in: eventIds } },
     select: { eventId: true, id: true, key: true, name: true },
-    orderBy: { name: 'asc' },
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
   });
   const rowsByEventId = new Map<string, Array<Record<string, string | null>>>();
   rows.forEach((row: Record<string, string | null>) => {
@@ -1626,11 +1626,11 @@ export const getPublicOrganizationEventForRegistration = async (
       : Promise.resolve(null),
     (prisma as any).divisions.findMany({
       where: { eventId, kind: { not: 'PLAYOFF' } },
-      orderBy: { name: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
     }),
     (prisma as any).divisions.findMany({
       where: { eventId, kind: 'PLAYOFF' },
-      orderBy: { name: 'asc' },
+      orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
     }),
     normalizeIdList(event.fieldIds).length
       ? (prisma as any).fields.findMany({ where: { id: { in: normalizeIdList(event.fieldIds) } } })
@@ -1659,6 +1659,7 @@ export const getPublicOrganizationEventForRegistration = async (
       waitListIds: participantIds.waitListIds,
       freeAgentIds: participantIds.freeAgentIds,
       officialIds,
+      divisions: divisionDetails.map((row: Record<string, any>) => row.id).filter(Boolean),
       sport: sport ? { ...sport, $id: sport.id } : undefined,
       organization: {
         $id: organization.id,

@@ -87,7 +87,6 @@ async function updateWaitlist(
       eventType: true,
       parentEvent: true,
       timeSlotIds: true,
-      divisions: true,
     },
   });
   if (!event) {

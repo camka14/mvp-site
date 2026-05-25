@@ -368,19 +368,27 @@ const eventCapacityForDivisions = async (
   client: PrismaLike = prisma,
 ): Promise<number | null> => {
   const fallbackCapacity = positiveInt(params.event.maxParticipants);
-  const scopedDivisionIds = normalizeIdList(params.divisionIds ?? params.event.divisions);
-  if (!scopedDivisionIds.length) {
+  const scopedDivisionIds = normalizeIdList(params.divisionIds);
+  if (params.divisionIds && !scopedDivisionIds.length) {
     return fallbackCapacity;
   }
 
   const divisionRows = await client.divisions.findMany({
-    where: {
-      eventId: params.event.id,
-      OR: [
-        { id: { in: scopedDivisionIds } },
-        { key: { in: scopedDivisionIds } },
-      ],
-    },
+    where: scopedDivisionIds.length
+      ? {
+          eventId: params.event.id,
+          OR: [
+            { id: { in: scopedDivisionIds } },
+            { key: { in: scopedDivisionIds } },
+          ],
+        }
+      : {
+          eventId: params.event.id,
+          OR: [
+            { kind: 'LEAGUE' as any },
+            { kind: null },
+          ],
+        },
     select: {
       id: true,
       key: true,
@@ -391,7 +399,7 @@ const eventCapacityForDivisions = async (
 
   const leagueRows = divisionRows.filter((row) => String(row.kind ?? 'LEAGUE').toUpperCase() !== 'PLAYOFF');
   if (!leagueRows.length) {
-    return null;
+    return fallbackCapacity;
   }
 
   if (Boolean(params.event.singleDivision)) {
@@ -663,7 +671,7 @@ export const syncDivisionTeamMembershipFromRegistrations = async (
   });
 
   const now = new Date();
-  const eventDivisionIds = normalizeIdList(event.divisions).map((divisionId) => divisionId.toLowerCase());
+  const eventDivisionIds = leagueRows.map((row) => row.id.toLowerCase());
   const primaryDivisionId = eventDivisionIds
     .map((divisionId) => resolveDivisionReference(divisionId))
     .find((divisionId): divisionId is string => Boolean(divisionId));
@@ -737,19 +745,29 @@ export const buildEventParticipantSnapshot = async (params: {
   }) as RegistrationRow[];
 
   const eventDivisionIds = normalizeIdList(params.event.divisions);
-  const divisionRows = eventDivisionIds.length
-    ? await client.divisions.findMany({
-      where: {
-        eventId: params.event.id,
-        OR: [
-          { id: { in: eventDivisionIds } },
-          { key: { in: eventDivisionIds } },
-        ],
-      },
-      select: participantDivisionSelect,
-      orderBy: { createdAt: 'asc' },
-    })
-    : [];
+  const divisionRows = await client.divisions.findMany({
+    where: eventDivisionIds.length
+      ? {
+          eventId: params.event.id,
+          OR: [
+            { id: { in: eventDivisionIds } },
+            { key: { in: eventDivisionIds } },
+          ],
+        }
+      : {
+          eventId: params.event.id,
+          OR: [
+            { kind: 'LEAGUE' as any },
+            { kind: null },
+          ],
+        },
+    select: participantDivisionSelect,
+    orderBy: [
+      { sortOrder: 'asc' } as any,
+      { createdAt: 'asc' },
+      { id: 'asc' },
+    ],
+  });
 
   const teamIds = Array.from(new Set(
     registrations

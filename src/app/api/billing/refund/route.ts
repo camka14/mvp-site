@@ -91,7 +91,6 @@ export async function POST(req: NextRequest) {
       eventType: true,
       parentEvent: true,
       timeSlotIds: true,
-      divisions: true,
     },
   });
   if (!event) {
