@@ -18,18 +18,19 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(3);
+    expect(posts).toHaveLength(4);
     expect(posts.map((post) => post.slug)).toEqual([
+      'tournament-pool-play',
       'manage-tournament-in-bracketiq',
       'create-tournament-in-bracketiq',
       'paid-pickup-event-payments',
     ]);
-    expect(posts[0]?.primaryKeyword).toBe('manage a sports tournament');
-    expect(posts[0]?.createdAt).toBe('2026-05-24');
-    expect(posts[0]?.updatedAt).toBe('2026-05-24');
+    expect(posts[0]?.primaryKeyword).toBe('tournament pool play');
+    expect(posts[0]?.createdAt).toBe('2026-05-25');
+    expect(posts[0]?.updatedAt).toBe('2026-05-25');
     expect(posts[0]?.contentType).toBe('guide');
     expect(posts[0]?.guideTopic).toBe('tournaments');
-    expect(posts[0]?.canonicalPath).toBe('/guides/manage-tournament-in-bracketiq');
+    expect(posts[0]?.canonicalPath).toBe('/guides/tournament-pool-play');
     expect(posts[0]?.author).toEqual({
       name: 'Samuel Razumovskiy',
       image: '/blog/authors/samuel-razumovskiy.jpg',
@@ -57,6 +58,7 @@ describe('blog registry', () => {
     const eventTopic = topics.find((topic) => topic.id === 'events');
 
     expect(tournamentTopic?.posts.map((post) => post.slug)).toEqual([
+      'tournament-pool-play',
       'manage-tournament-in-bracketiq',
       'create-tournament-in-bracketiq',
     ]);
@@ -68,8 +70,12 @@ describe('blog registry', () => {
   it('returns sitemap entries for published content at canonical paths', () => {
     expect(getContentSitemapEntries()).toEqual([
       {
+        url: 'https://bracket-iq.com/guides/tournament-pool-play',
+        lastModified: '2026-05-25',
+      },
+      {
         url: 'https://bracket-iq.com/guides/manage-tournament-in-bracketiq',
-        lastModified: '2026-05-24',
+        lastModified: '2026-05-25',
       },
       {
         url: 'https://bracket-iq.com/guides/create-tournament-in-bracketiq',

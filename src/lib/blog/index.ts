@@ -36,6 +36,67 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const tournamentPoolPlay: BlogPostEntry = {
+  slug: 'tournament-pool-play',
+  title: 'How to Run a Tournament With Pool Play',
+  description:
+    'Run tournament pool play in BracketIQ by checking pool settings, reviewing the schedule, entering results, confirming standings, and seeding teams into the bracket.',
+  contentType: 'guide',
+  guideTopic: 'tournaments',
+  createdAt: '2026-05-25',
+  publishedAt: '2026-05-25',
+  updatedAt: '2026-05-25',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'tournament pool play',
+  longTailKeywords: [
+    'how to run tournament pool play',
+    'pool play tournament bracket',
+    'sports tournament pool play guide',
+    'pool play standings and advancement',
+    'tournament pool schedule software',
+    'indoor soccer pool play tournament',
+  ],
+  readingMinutes: 10,
+  canonicalPath: '/guides/tournament-pool-play',
+  ctas: [
+    {
+      label: 'Run pool play in BracketIQ',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Create the tournament first',
+      href: '/guides/create-tournament-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Manage the tournament day workflow',
+      href: '/guides/manage-tournament-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'What is tournament pool play?',
+      answer:
+        'Pool play groups teams into smaller round robin groups before the bracket. Teams play several pool matches, standings are calculated, and selected teams advance into playoff or championship matches.',
+    },
+    {
+      question: 'When should I confirm pool standings in BracketIQ?',
+      answer:
+        'Confirm pool standings only after the scores for that pool are entered and reviewed. Once standings are confirmed with automatic playoff reassignment enabled, BracketIQ can seed advancing teams into the bracket.',
+    },
+    {
+      question: 'Can pool play work for sports other than soccer?',
+      answer:
+        'Yes. The same BracketIQ pool-play workflow works for volleyball, pickleball, basketball, tennis, hockey, baseball, football, outdoor soccer, indoor soccer, and other recreational sports that use pools before brackets.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ pool play tournament guide preview',
+  load: () => import('@/content/blog/tournament-pool-play.mdx'),
+};
+
 const manageTournamentInBracketiq: BlogPostEntry = {
   slug: 'manage-tournament-in-bracketiq',
   title: 'How to Manage a Tournament in BracketIQ',
@@ -45,7 +106,7 @@ const manageTournamentInBracketiq: BlogPostEntry = {
   guideTopic: 'tournaments',
   createdAt: '2026-05-24',
   publishedAt: '2026-05-24',
-  updatedAt: '2026-05-24',
+  updatedAt: '2026-05-25',
   author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
   isPublished: true,
   primaryKeyword: 'manage a sports tournament',
@@ -222,6 +283,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  tournamentPoolPlay,
   manageTournamentInBracketiq,
   createTournamentInBracketiq,
   paidPickupEventPayments,

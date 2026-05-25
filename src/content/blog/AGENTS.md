@@ -19,6 +19,8 @@ All published blog and guide pages should use the shared metadata/rendering path
 
 For BracketIQ guides, plan one workflow step at a time, perform the step in the app, capture screenshots, then write the final article text as end-user instructions before proceeding to the next step. The finished article should not mention browser automation, local URLs, fixture cleanup, or failed attempts.
 
+For guide or blog screenshots of a rendered event schedule, use Agenda view by default rather than Day view. Agenda view is the article standard because it is easier for readers to scan match order, times, teams, and field or court assignments in a static screenshot. Use another schedule view only when the article is specifically teaching that view.
+
 ## Blog Playwright Lessons
 
 This section is only for lessons learned while using Playwright to create or update article fixture events for screenshot-based guide posts. Do not store article outlines, per-event plans, fixture event ids, or user assignments here. Those belong in dedicated ExecPlans under `plans/`.
@@ -35,6 +37,8 @@ This section is only for lessons learned while using Playwright to create or upd
 - Paid individual joins must open checkout before an active self-registration exists. A bad capture produced an `ACTIVE` fixture registration with no bill; deleting only that fixture registration restored a clean checkout screenshot path.
 - Payment-form screenshots create a temporary `STARTED` event registration reservation. Clear only that fixture reservation after capture if the living event should remain immediately reusable.
 - Chat and realtime websocket warnings can appear while capturing authenticated event pages. Do not treat those as article-flow failures unless they block the visible step being documented.
+- Browser-runtime clipped screenshots use page coordinates. After scrolling, read the scroll offset before saving a clip so the image captures the visible section instead of an earlier part of the page.
+- Schedule screenshots can briefly capture the loading state or default Month view. Wait for matches to render, then switch to Agenda view when documenting tournament flow by time and field.
 - Final article text must read like simple user instructions, not a capture log. Do not mention browser runs, local development URLs, fixture events, screenshot process, or failed attempts unless the point is rewritten as an instruction the reader should follow.
 - Use plain words in article text. Prefer words such as description, players, payment, spots, signups, and rules unless a BracketIQ screen uses a different label.
 

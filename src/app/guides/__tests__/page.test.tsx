@@ -30,7 +30,7 @@ describe('GuidesPage', () => {
     expect(screen.getByRole('heading', { name: /payments and registration/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /day-of operations/i })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: /facility and club workflows/i })).toBeInTheDocument();
-    expect(screen.queryByText(/3 published guides/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/4 published guides/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /events guides/i })).not.toBeInTheDocument();
 
     expect(screen.getAllByText('Events').length).toBeGreaterThan(0);
@@ -38,6 +38,10 @@ describe('GuidesPage', () => {
     expect(screen.getAllByText('Leagues').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Organizations').length).toBeGreaterThan(0);
 
+    expect(
+      screen.getAllByRole('link', { name: 'How to Run a Tournament With Pool Play' })
+        .some((link) => link.getAttribute('href') === '/guides/tournament-pool-play'),
+    ).toBe(true);
     expect(
       screen.getAllByRole('link', { name: 'How to Manage a Tournament in BracketIQ' })
         .some((link) => link.getAttribute('href') === '/guides/manage-tournament-in-bracketiq'),

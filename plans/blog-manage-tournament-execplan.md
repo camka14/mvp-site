@@ -21,6 +21,7 @@ This plan covers tournament management only. The already published creation guid
 - [x] 2026-05-24 Wrote `src/content/blog/manage-tournament-in-bracketiq.mdx` in end-user language from the captured workflow.
 - [x] 2026-05-24 Updated the blog registry, roadmap, tests, sitemap expectations, and the creation article's next-step link.
 - [x] 2026-05-24 Validated with focused tests, TypeScript, and browser checks for `/blog` and `/blog/manage-tournament-in-bracketiq`.
+- [x] 2026-05-25 Replaced the schedule screenshot with Agenda view to match the article screenshot standard.
 
 ## Surprises & Discoveries
 
