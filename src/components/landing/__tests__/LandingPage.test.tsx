@@ -188,12 +188,12 @@ describe('LandingPage', () => {
     ).toBe(true);
     expect(
       screen
-        .getAllByRole('heading', { name: /schedule courts fast/i })
-        .some((heading) => heading.closest('article')?.getAttribute('style')?.includes('--landing-feature-theme')),
+        .getAllByText(/schedule courts fast/i)
+        .some((element) => element.closest('article')?.getAttribute('style')?.includes('--landing-feature-theme')),
     ).toBe(true);
     const staticFeatureCard = screen
-      .getAllByRole('heading', { name: /schedule courts fast/i })
-      .map((heading) => heading.closest('article'))
+      .getAllByText(/schedule courts fast/i)
+      .map((element) => element.closest('article'))
       .find((article) => article?.hasAttribute('data-mobile-feature-card'));
     expect(staticFeatureCard).toHaveAttribute('data-mobile-feature-card', 'true');
     expect(
@@ -211,7 +211,7 @@ describe('LandingPage', () => {
   it('presents signable document creation for rentals, events, and teams', () => {
     render(<LandingPage />);
 
-    expect(screen.getByRole('heading', { name: /documents signed/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/documents signed/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/waivers/i).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/clearance/i).length).toBeGreaterThan(0);
     expect(screen.getAllByAltText('Web signable document creation screen').length).toBeGreaterThan(0);

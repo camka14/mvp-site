@@ -4151,8 +4151,8 @@ summary::-webkit-details-marker {
   padding: 0;
 }
 
-.landing-fee-card h3,
-.landing-featured-guide h3 {
+.landing-fee-title,
+.landing-featured-guide-title {
   margin-top: 0.75rem;
   color: var(--landing-ink);
   font-family: var(--landing-font-heading);
@@ -4900,14 +4900,14 @@ summary::-webkit-details-marker {
   color: var(--landing-blue);
 }
 
-.landing-use-case h4 {
+.landing-use-case-title {
   font-family: var(--landing-font-heading);
   font-size: 0.98rem;
   font-weight: 750;
   line-height: 1;
 }
 
-.landing-use-case p {
+.landing-use-case-detail {
   margin-top: 0.28rem;
   color: var(--landing-text-muted);
   font-size: 0.76rem;
@@ -5045,7 +5045,7 @@ summary::-webkit-details-marker {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
-.landing-resource-panel .landing-featured-guide h3 {
+.landing-resource-panel .landing-featured-guide-title {
   max-width: 34rem;
   margin-top: 0;
   font-size: clamp(2rem, 5vw, 4.2rem);
@@ -5098,7 +5098,7 @@ summary::-webkit-details-marker {
   backdrop-filter: blur(16px);
 }
 
-.landing-resource-highlight h3 {
+.landing-resource-highlight-title {
   margin-top: 0.25rem;
   color: var(--landing-ink);
   font-family: var(--landing-font-heading);
@@ -5221,7 +5221,7 @@ summary::-webkit-details-marker {
   text-transform: uppercase;
 }
 
-.landing-payment-terminal-header h3 {
+.landing-payment-terminal-title {
   margin-top: 0.35rem;
   color: var(--landing-ink);
   font-family: var(--landing-font-heading);
@@ -5368,7 +5368,7 @@ summary::-webkit-details-marker {
   line-height: 1;
 }
 
-.landing-fee-card h3 {
+.landing-fee-title {
   margin-top: 1.15rem;
 }
 
@@ -5384,7 +5384,11 @@ summary::-webkit-details-marker {
 }
 
 .landing-post-scroll-section .landing-section-title,
-.landing-post-scroll-section h3 {
+.landing-post-scroll-section h3,
+.landing-post-scroll-section .landing-featured-guide-title,
+.landing-post-scroll-section .landing-resource-highlight-title,
+.landing-post-scroll-section .landing-payment-terminal-title,
+.landing-post-scroll-section .landing-fee-title {
   text-wrap: balance;
 }
 

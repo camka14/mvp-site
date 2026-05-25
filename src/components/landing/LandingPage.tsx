@@ -46,6 +46,7 @@ type FeatureSection = {
   title: string;
   eyebrow: string;
   visualLabel: string;
+  storyCopy: string;
   points: string[];
   details: string[];
   webImage: {
@@ -75,6 +76,7 @@ const featureSections = [
     eyebrow: 'Scheduling',
     visualLabel: 'Live resource board',
     title: 'Schedule courts fast.',
+    storyCopy: 'Build court and field blocks for sports events, then spot conflicts before the schedule goes live.',
     points: ['Courts + fields', 'Conflict checks'],
     details: ['Place resources quickly', 'See conflicts before publishing', 'Keep the full day visible'],
     webImage: {
@@ -96,6 +98,7 @@ const featureSections = [
     eyebrow: 'Registration',
     visualLabel: 'Roster status view',
     title: 'Rosters stay ready.',
+    storyCopy: 'Keep teams, waitlists, attendance, and participant status visible from registration through check-in.',
     points: ['Teams', 'Attendance'],
     details: ['Track team status', 'Manage waitlists', 'Confirm attendance'],
     webImage: {
@@ -117,6 +120,7 @@ const featureSections = [
     eyebrow: 'Payments',
     visualLabel: 'Checkout summary',
     title: 'Payments, reconciled.',
+    storyCopy: 'Collect event fees online, match payment records, and keep refunds tied to the right team or player.',
     points: ['Checkout', 'Refunds'],
     details: ['Collect from mobile', 'Match Stripe records', 'Handle refunds cleanly'],
     webImage: {
@@ -138,6 +142,7 @@ const featureSections = [
     eyebrow: 'Documents',
     visualLabel: 'Document builder',
     title: 'Documents signed.',
+    storyCopy: 'Attach waivers and agreements to registrations so staff can see who is cleared before play starts.',
     points: ['Waivers', 'Clearance'],
     details: ['Attach required forms', 'Reuse templates', 'Clearance status'],
     webImage: {
@@ -154,6 +159,7 @@ const featureSections = [
     eyebrow: 'Communication',
     visualLabel: 'Event message stream',
     title: 'Updates in context.',
+    storyCopy: 'Send announcements and group messages from the same event workspace that holds the schedule.',
     points: ['Chat', 'Announcements'],
     details: ['Message the right group', 'Send event updates', 'Keep context attached'],
     webImage: {
@@ -170,6 +176,7 @@ const featureSections = [
     eyebrow: 'Personal Schedules',
     visualLabel: 'Participant itinerary',
     title: 'Everyone knows where to be.',
+    storyCopy: 'Give players and staff a mobile-ready view of game times, locations, and schedule changes.',
     points: ['Game times', 'Locations'],
     details: ['Show each assignment', 'Surface locations', 'Reflect schedule changes'],
     webImage: {
@@ -566,7 +573,7 @@ function FeatureStoryPage({
           </h2>
 
           <p className="mt-5 max-w-md text-base font-semibold leading-7 text-white/74 2xl:mt-7 2xl:text-lg 2xl:leading-8">
-            Six connected rounds for scheduling, rosters, payments, documents, communication, and live operations.
+            {feature.storyCopy}
           </p>
 
           <ul
@@ -812,7 +819,7 @@ function StaticOperationsContent({ landingImageProps }: { landingImageProps: Lan
                     Round {String(index + 1).padStart(2, '0')} / {feature.eyebrow}
                   </p>
 
-                  <h3 className="landing-operation-static-title mt-2 text-3xl font-black text-slate-950">{feature.title}</h3>
+                  <p className="landing-operation-static-title mt-2 text-3xl font-black text-slate-950">{feature.title}</p>
                 </div>
               </div>
 
@@ -917,7 +924,9 @@ export default function LandingPage({
                 Bring your facility operations into one command center.
               </h1>
               <p className="landing-copy mx-auto max-w-2xl text-base sm:text-lg">
-                Create events, assign courts and fields, collect payments, publish schedules, and support teams from one clean web and mobile platform.
+                BracketIQ is a sports event platform that brings facility operations into one command center: create
+                events, assign courts and fields, collect payments, publish schedules, and support teams across web and
+                mobile.
               </p>
             </div>
 
@@ -1030,7 +1039,7 @@ export default function LandingPage({
                 <article key={signal.label} className="landing-proof-item">
                   <Icon aria-hidden="true" className="h-5 w-5" />
                   <div>
-                    <h2 className="landing-proof-label">{signal.label}</h2>
+                    <p className="landing-proof-label">{signal.label}</p>
                     <p className="landing-proof-detail">{signal.detail}</p>
                   </div>
                 </article>
@@ -1200,8 +1209,8 @@ export default function LandingPage({
                   <article key={useCase.label} className="landing-use-case">
                     <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                     <div>
-                      <h4>{useCase.label}</h4>
-                      <p>{useCase.detail}</p>
+                      <div className="landing-use-case-title">{useCase.label}</div>
+                      <p className="landing-use-case-detail">{useCase.detail}</p>
                     </div>
                   </article>
                 ))}
@@ -1243,7 +1252,7 @@ export default function LandingPage({
                   <p className="landing-operation-code">Featured guide</p>
                   <span>10 min</span>
                 </div>
-                <h3>Paid pickup events</h3>
+                <div className="landing-featured-guide-title">Paid pickup events</div>
                 <ul className="landing-resource-point-list">
                   {['Set price', 'Publish event', 'Verify checkout'].map((item) => (
                     <li key={item}>
@@ -1264,7 +1273,7 @@ export default function LandingPage({
                       </div>
                       <div>
                         <p className="landing-operation-code">{item.label}</p>
-                        <h3>{item.title}</h3>
+                        <div className="landing-resource-highlight-title">{item.title}</div>
                         <p>{item.detail}</p>
                       </div>
                     </article>
@@ -1293,7 +1302,7 @@ export default function LandingPage({
                 <div className="landing-payment-terminal-header">
                   <div>
                     <p>Payment flow</p>
-                    <h3>Processed only when needed</h3>
+                    <div className="landing-payment-terminal-title">Processed only when needed</div>
                   </div>
                   <div className="landing-payment-live">
                     <span />
@@ -1329,7 +1338,7 @@ export default function LandingPage({
                       <Icon aria-hidden="true" className="h-5 w-5" />
                       <span>{item.value}</span>
                     </div>
-                    <h3>{item.title}</h3>
+                    <div className="landing-fee-title">{item.title}</div>
                     <p>{item.detail}</p>
                   </article>
                 );

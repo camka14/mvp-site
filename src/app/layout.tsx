@@ -1,4 +1,4 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Archivo, IBM_Plex_Mono, Roboto_Flex } from 'next/font/google';
 import './globals.css';
 import '@mantine/core/styles.css';
@@ -14,7 +14,7 @@ import { AIAssistantDrawer } from '@/components/agent/AIAssistantDrawer';
 import ProfileCompletionGate from '@/components/auth/ProfileCompletionGate';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
 import SiteFooter from '@/components/layout/SiteFooter';
-import { getIosSmartAppBannerMetaContent } from '@/lib/mobileAppLinks';
+import { getIosAppStoreId } from '@/lib/mobileAppLinks';
 import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
 import { SITE_URL } from '@/lib/siteUrl';
 
@@ -51,6 +51,9 @@ export const metadata: Metadata = {
   title: 'BracketIQ | Sports Event Platform',
   description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
   keywords: ['sports', 'events', 'tournaments', 'leagues', 'pickup games', 'teams'],
+  alternates: {
+    canonical: SITE_URL,
+  },
   icons: {
     icon: [
       { url: '/BIQ_drawing.svg', type: 'image/svg+xml' },
@@ -84,6 +87,14 @@ export const metadata: Metadata = {
     description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
     images: ['/opengraph-image'],
   },
+  itunes: {
+    appId: getIosAppStoreId(),
+  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 };
 
 interface RootLayoutProps {
@@ -95,14 +106,9 @@ export default function RootLayout({ children }: RootLayoutProps) {
   const disableAgent = ['0', 'false', 'off', 'disabled'].includes(
     (process.env.OPENAI_AGENT_ENABLED ?? '').trim().toLowerCase(),
   );
-  const iosSmartAppBannerContent = getIosSmartAppBannerMetaContent();
 
   return (
     <html lang="en" className={`${robotoFlex.className} ${landingHeading.variable} ${landingMono.variable}`}>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="apple-itunes-app" content={iosSmartAppBannerContent} />
-      </head>
       <body className="min-h-screen bg-background text-foreground">
         <MantineProvider theme={theme} defaultColorScheme="light">
           <Providers>

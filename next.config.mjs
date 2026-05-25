@@ -35,6 +35,7 @@ const allowedDevOrigins = Array.from(
 const nextConfig = {
   allowedDevOrigins,
   pageExtensions: ['js', 'jsx', 'md', 'mdx', 'ts', 'tsx'],
+  poweredByHeader: false,
   transpilePackages: ['date-fns'],
   experimental: {
     optimizePackageImports: ['date-fns'],
