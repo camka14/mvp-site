@@ -1,6 +1,10 @@
 -- Division ownership now lives on Divisions.eventId. Preserve the old
--- Events.divisions display order as Divisions.sortOrder before dropping the
--- duplicate event-level array.
+-- Events.divisions display order as Divisions.sortOrder.
+--
+-- Keep the physical Events.divisions column during this deployment so the
+-- migration can run before the new code is live without breaking old server
+-- instances. The column is removed from Prisma/code usage in this release and
+-- can be dropped in a later cleanup migration after the rollout is complete.
 
 ALTER TABLE "Divisions"
   ADD COLUMN IF NOT EXISTS "sortOrder" INTEGER;
@@ -39,6 +43,3 @@ WHERE divisions."id" = unordered."id";
 
 CREATE INDEX IF NOT EXISTS "Divisions_eventId_kind_sortOrder_idx"
   ON "Divisions" ("eventId", "kind", "sortOrder");
-
-ALTER TABLE "Events"
-  DROP COLUMN IF EXISTS "divisions";

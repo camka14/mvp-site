@@ -14,7 +14,8 @@ After this change, the canonical relationship will be the `Divisions` table: a d
 
 - [x] (2026-05-24 23:18-07:00) Created this ExecPlan after the user approved removing the duplicate event-level division source.
 - [x] (2026-05-24 23:21-07:00) Inspected dirty repository changes before editing shared files.
-- [x] (2026-05-24 23:28-07:00) Added `Divisions.sortOrder`, created a migration that backfills order from `Events.divisions`, and drops `Events.divisions`.
+- [x] (2026-05-24 23:28-07:00) Added `Divisions.sortOrder` and created a migration that backfills order from `Events.divisions`.
+- [x] (2026-05-25 00:00-07:00) Made the migration deploy-safe by keeping the physical `Events.divisions` column for one release while removing it from Prisma/code usage; a later cleanup migration can drop it after rollout.
 - [x] (2026-05-24 23:33-07:00) Updated repository loaders and event saves to derive divisions from `Divisions.eventId`.
 - [x] (2026-05-24 23:37-07:00) Updated API routes that filter, validate, or serialize divisions from event rows.
 - [x] (2026-05-24 23:39-07:00) Kept web and mobile compatibility by continuing to emit derived `divisions` arrays in API responses; no mobile schema change was required in this pass.
