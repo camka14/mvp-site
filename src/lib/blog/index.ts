@@ -1,17 +1,110 @@
 import { getPreferredMobileStoreUrl } from '@/lib/mobileAppLinks';
 import { SITE_URL } from '@/lib/siteUrl';
-import type { BlogAuthor, BlogPostEntry } from './types';
+import type { BlogAuthor, BlogPostEntry, GuideTopicId } from './types';
 
 export const BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY = {
   name: 'Samuel Razumovskiy',
   image: '/blog/authors/samuel-razumovskiy.jpg',
 } satisfies BlogAuthor;
 
+export type GuideTopic = {
+  id: GuideTopicId;
+  title: string;
+  description: string;
+};
+
+export const GUIDE_TOPICS = [
+  {
+    id: 'events',
+    title: 'Events',
+    description: 'Pickup events, open play, clinics, and one-off registration workflows.',
+  },
+  {
+    id: 'tournaments',
+    title: 'Tournaments',
+    description: 'Tournament setup, team management, schedules, brackets, scores, and day-of operations.',
+  },
+  {
+    id: 'leagues',
+    title: 'Leagues',
+    description: 'Season setup, weekly schedules, standings, playoffs, and league communication.',
+  },
+  {
+    id: 'organizations',
+    title: 'Organizations',
+    description: 'Facility, club, event organizer, staff, public page, payment, and rental workflows.',
+  },
+] satisfies GuideTopic[];
+
+const manageTournamentInBracketiq: BlogPostEntry = {
+  slug: 'manage-tournament-in-bracketiq',
+  title: 'How to Manage a Tournament in BracketIQ',
+  description:
+    'Manage a published sports tournament in BracketIQ by reviewing teams, checking the schedule, confirming the bracket, updating match results, and verifying the public page.',
+  contentType: 'guide',
+  guideTopic: 'tournaments',
+  createdAt: '2026-05-24',
+  publishedAt: '2026-05-24',
+  updatedAt: '2026-05-24',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'manage a sports tournament',
+  longTailKeywords: [
+    'how to manage a sports tournament',
+    'sports tournament management guide',
+    'manage tournament teams and schedules',
+    'tournament bracket management software',
+    'tournament score entry software',
+    'indoor soccer tournament management',
+  ],
+  readingMinutes: 10,
+  canonicalPath: '/guides/manage-tournament-in-bracketiq',
+  ctas: [
+    {
+      label: 'Manage your tournament',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Create a tournament first',
+      href: '/guides/create-tournament-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Download the app to manage updates on the go',
+      href: getPreferredMobileStoreUrl(),
+      variant: 'tertiary',
+      external: true,
+    },
+  ],
+  faq: [
+    {
+      question: 'Should I create a tournament and manage a tournament in the same workflow?',
+      answer:
+        'No. Create the tournament first so the event, divisions, schedule windows, and public page are set up correctly. Manage the tournament after teams are registering, schedules need review, and matches need score updates.',
+    },
+    {
+      question: 'Can I manage a tournament for sports other than soccer?',
+      answer:
+        'Yes. The same BracketIQ management workflow applies to volleyball, pickleball, basketball, tennis, hockey, baseball, football, outdoor soccer, and other recreational sports.',
+    },
+    {
+      question: 'What should I check before tournament day?',
+      answer:
+        'Review the published details, registered teams, bills or documents, schedule, bracket, match score controls, and public page. The goal is to make BracketIQ the source of truth for staff and teams before matches start.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ tournament management guide preview',
+  load: () => import('@/content/blog/manage-tournament-in-bracketiq.mdx'),
+};
+
 const createTournamentInBracketiq: BlogPostEntry = {
   slug: 'create-tournament-in-bracketiq',
   title: 'How to Create a Tournament in BracketIQ',
   description:
     'Create a sports tournament, add divisions and fields, set schedule windows, publish the event, and verify the public tournament page in BracketIQ.',
+  contentType: 'guide',
+  guideTopic: 'tournaments',
   createdAt: '2026-05-24',
   publishedAt: '2026-05-24',
   updatedAt: '2026-05-24',
@@ -27,7 +120,7 @@ const createTournamentInBracketiq: BlogPostEntry = {
     'sports tournament scheduling software',
   ],
   readingMinutes: 11,
-  canonicalPath: '/blog/create-tournament-in-bracketiq',
+  canonicalPath: '/guides/create-tournament-in-bracketiq',
   ctas: [
     {
       label: 'Create a tournament',
@@ -72,6 +165,8 @@ const paidPickupEventPayments: BlogPostEntry = {
   title: 'How to Create a Paid Pickup Sports Event With BracketIQ',
   description:
     'Create a paid pickup event, set the player price, publish it, and let players pay online with BracketIQ.',
+  contentType: 'guide',
+  guideTopic: 'events',
   createdAt: '2026-05-22',
   publishedAt: '2026-05-22',
   updatedAt: '2026-05-22',
@@ -86,7 +181,7 @@ const paidPickupEventPayments: BlogPostEntry = {
     'sports event payment software',
   ],
   readingMinutes: 10,
-  canonicalPath: '/blog/paid-pickup-event-payments',
+  canonicalPath: '/guides/paid-pickup-event-payments',
   ctas: [
     {
       label: 'Create a paid pickup event',
@@ -126,24 +221,62 @@ const paidPickupEventPayments: BlogPostEntry = {
   load: () => import('@/content/blog/paid-pickup-event-payments.mdx'),
 };
 
-const blogPosts = [createTournamentInBracketiq, paidPickupEventPayments] satisfies BlogPostEntry[];
+const blogPosts = [
+  manageTournamentInBracketiq,
+  createTournamentInBracketiq,
+  paidPickupEventPayments,
+] satisfies BlogPostEntry[];
+
+const sortByPublishDateDesc = (posts: BlogPostEntry[]) => (
+  [...posts].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
+);
+
+export function getPublishedContentPosts() {
+  return sortByPublishDateDesc(
+    blogPosts.filter((post) => post.isPublished),
+  );
+}
 
 export function getPublishedBlogPosts() {
-  return blogPosts
-    .filter((post) => post.isPublished)
-    .sort((a, b) => b.publishedAt.localeCompare(a.publishedAt));
+  return sortByPublishDateDesc(
+    blogPosts.filter((post) => post.isPublished && post.contentType === 'blog'),
+  );
+}
+
+export function getPublishedGuidePosts() {
+  return sortByPublishDateDesc(
+    blogPosts.filter((post) => post.isPublished && post.contentType === 'guide'),
+  );
 }
 
 export function getBlogPostBySlug(slug: string) {
   return getPublishedBlogPosts().find((post) => post.slug === slug) ?? null;
 }
 
-export function getBlogSitemapEntries() {
-  return getPublishedBlogPosts().map((post) => ({
+export function getGuidePostBySlug(slug: string) {
+  return getPublishedGuidePosts().find((post) => post.slug === slug) ?? null;
+}
+
+export function getContentPostBySlug(slug: string) {
+  return getPublishedContentPosts().find((post) => post.slug === slug) ?? null;
+}
+
+export function getGuideTopics() {
+  const guidePosts = getPublishedGuidePosts();
+  return GUIDE_TOPICS.map((topic) => ({
+    ...topic,
+    posts: guidePosts.filter((post) => post.guideTopic === topic.id),
+  }));
+}
+
+export function getContentSitemapEntries() {
+  return getPublishedContentPosts().map((post) => ({
     url: `${SITE_URL}${post.canonicalPath}`,
     lastModified: post.updatedAt,
   }));
 }
+
+export const getBlogSitemapEntries = getContentSitemapEntries;
 
 export function formatBlogDate(date: string) {
   return new Intl.DateTimeFormat('en-US', {

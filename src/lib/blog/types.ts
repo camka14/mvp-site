@@ -17,10 +17,16 @@ export type BlogAuthor = {
   image: `/${string}`;
 };
 
+export type BlogContentType = 'blog' | 'guide';
+
+export type GuideTopicId = 'events' | 'tournaments' | 'leagues' | 'organizations';
+
 export type BlogPostMeta = {
   slug: string;
   title: string;
   description: string;
+  contentType: BlogContentType;
+  guideTopic?: GuideTopicId;
   createdAt: string;
   publishedAt: string;
   updatedAt: string;
@@ -29,7 +35,7 @@ export type BlogPostMeta = {
   primaryKeyword: string;
   longTailKeywords: string[];
   readingMinutes: number;
-  canonicalPath: `/blog/${string}`;
+  canonicalPath: `/${'blog' | 'guides'}/${string}`;
   ctas: BlogCta[];
   faq: BlogFaqItem[];
   ogImageAlt: string;

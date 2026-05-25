@@ -4,12 +4,16 @@ import { formatBlogDate } from '@/lib/blog';
 import type { BlogPostEntry } from '@/lib/blog/types';
 
 export default function BlogCard({ post }: { post: BlogPostEntry }) {
+  const contentLabel = post.contentType === 'guide' ? 'Guide' : 'Blog';
+  const actionLabel = post.contentType === 'guide' ? 'Open guide' : 'Read article';
+
   return (
     <article className="landing-surface-strong marketing-blog-card rounded-3xl p-6">
       <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500">
         <span className="landing-kicker rounded-full px-3 py-1 text-[0.7rem] font-semibold uppercase tracking-[0.14em]">
-          {post.primaryKeyword}
+          {contentLabel}
         </span>
+        <span>{post.primaryKeyword}</span>
         <span>Created on {formatBlogDate(post.createdAt)}</span>
         <span>{post.readingMinutes} min read</span>
       </div>
@@ -24,7 +28,7 @@ export default function BlogCard({ post }: { post: BlogPostEntry }) {
           href={post.canonicalPath}
           className="landing-btn-secondary landing-btn-large"
         >
-          Read the guide
+          {actionLabel}
           <ArrowRight aria-hidden="true" className="h-4 w-4" />
         </Link>
       </div>

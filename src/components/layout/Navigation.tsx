@@ -13,6 +13,7 @@ import { getUserFullName, NavItem } from '@/types';
 
 const baseNav: NavItem[] = [
   { label: 'Info', href: '/info' },
+  { label: 'Guides', href: '/guides' },
   { label: 'Discover', href: '/discover' },
   { label: 'My Organizations', href: '/organizations' },
   { label: 'My Schedule', href: '/my-schedule' },

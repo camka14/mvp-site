@@ -94,6 +94,20 @@ describe('ChatComponents', () => {
     expect(screen.queryByTestId('invite-users-modal')).not.toBeInTheDocument();
   });
 
+  it('does not render chat UI on guide pages', () => {
+    useAppMock.mockReturnValue({
+      loading: false,
+      isAuthenticated: true,
+      isGuest: false,
+    });
+    usePathnameMock.mockReturnValue('/guides/paid-pickup-event-payments');
+
+    render(<ChatComponents />);
+
+    expect(screen.queryByTestId('chat-drawer')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('invite-users-modal')).not.toBeInTheDocument();
+  });
+
   it('does not render chat UI on the request demo page', () => {
     useAppMock.mockReturnValue({
       loading: false,

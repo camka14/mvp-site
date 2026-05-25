@@ -1,42 +1,43 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { notFound, redirect } from 'next/navigation';
+import { notFound } from 'next/navigation';
 import { ArrowRight, CalendarDays, Clock3, LayoutDashboard } from 'lucide-react';
 import BlogAuthorFooter from '@/components/blog/BlogAuthorFooter';
 import BlogCtaCard from '@/components/blog/BlogCtaCard';
 import BlogFaq from '@/components/blog/BlogFaq';
 import BlogStructuredData from '@/components/blog/BlogStructuredData';
-import { formatBlogDate, getBlogPostBySlug, getContentPostBySlug, getPublishedContentPosts } from '@/lib/blog';
-import { SITE_URL } from '@/lib/siteUrl';
-import { createArticleStructuredData, createFaqStructuredData } from '@/lib/blog/structuredData';
+import GuideTopicNav from '@/components/guides/GuideTopicNav';
 import MarketingHeader from '@/components/marketing/MarketingHeader';
+import { formatBlogDate, getGuidePostBySlug, getGuideTopics, getPublishedGuidePosts } from '@/lib/blog';
+import { createArticleStructuredData, createFaqStructuredData } from '@/lib/blog/structuredData';
+import { SITE_URL } from '@/lib/siteUrl';
 
-const blogHeaderNavItems = [
+const guidesHeaderNavItems = [
   { label: 'Info', href: '/info' },
   { label: 'Guides', href: '/guides' },
   { label: 'Blog', href: '/blog' },
 ];
 
-type BlogPostPageProps = {
+type GuidePostPageProps = {
   params: Promise<{ slug: string }>;
 };
 
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return getPublishedContentPosts().map((post) => ({ slug: post.slug }));
+  return getPublishedGuidePosts().map((post) => ({ slug: post.slug }));
 }
 
-export async function generateMetadata({ params }: BlogPostPageProps): Promise<Metadata> {
+export async function generateMetadata({ params }: GuidePostPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const post = getContentPostBySlug(slug);
+  const post = getGuidePostBySlug(slug);
 
   if (!post) {
     return {};
   }
 
   return {
-    title: `${post.title} | BracketIQ by Razumly`,
+    title: `${post.title} | BracketIQ Guides`,
     description: post.description,
     keywords: [post.primaryKeyword, ...post.longTailKeywords],
     alternates: {
@@ -71,20 +72,15 @@ export async function generateMetadata({ params }: BlogPostPageProps): Promise<M
   };
 }
 
-export default async function BlogPostPage({ params }: BlogPostPageProps) {
+export default async function GuidePostPage({ params }: GuidePostPageProps) {
   const { slug } = await params;
-  const contentPost = getContentPostBySlug(slug);
-
-  if (contentPost && contentPost.contentType === 'guide') {
-    redirect(contentPost.canonicalPath);
-  }
-
-  const post = getBlogPostBySlug(slug);
+  const post = getGuidePostBySlug(slug);
 
   if (!post) {
     notFound();
   }
 
+  const topics = getGuideTopics();
   const { default: ArticleContent } = await post.load();
   const articleStructuredData = createArticleStructuredData(post);
   const faqStructuredData = createFaqStructuredData(post);
@@ -97,14 +93,14 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
         <div className="landing-grid-pattern" />
       </div>
 
-      <MarketingHeader navItems={blogHeaderNavItems} />
+      <MarketingHeader navItems={guidesHeaderNavItems} />
 
       <main className="relative">
         <section className="marketing-article-hero container-responsive relative grid gap-8 pb-12 pt-12 lg:grid-cols-[minmax(0,0.92fr)_minmax(18rem,0.42fr)] lg:items-end lg:pb-16 lg:pt-16">
           <div className="max-w-4xl" data-reveal>
-            <Link href="/blog" className="landing-label inline-flex items-center gap-2 text-sm font-semibold hover:text-[var(--ocean-primary)]">
+            <Link href="/guides" className="landing-label inline-flex items-center gap-2 text-sm font-semibold hover:text-[var(--ocean-primary)]">
               <ArrowRight aria-hidden="true" className="h-4 w-4 rotate-180" />
-              Back to blog
+              Back to guides
             </Link>
             <div className="mt-6 space-y-5">
               <p className="landing-kicker inline-flex rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]">
@@ -138,22 +134,24 @@ export default async function BlogPostPage({ params }: BlogPostPageProps) {
           </aside>
         </section>
 
-        <section className="container-responsive relative pb-10">
-          <div className="landing-surface-strong marketing-article-shell rounded-3xl px-6 py-8 sm:px-10 sm:py-10">
-            <article className="blog-article mx-auto max-w-3xl">
-              <ArticleContent />
-            </article>
+        <section className="container-responsive relative pb-20">
+          <div className="guide-shell guide-article-shell">
+            <GuideTopicNav topics={topics} activeSlug={post.slug} />
+            <div className="guide-main space-y-8">
+              <div className="landing-surface-strong marketing-article-shell rounded-3xl px-6 py-8 sm:px-10 sm:py-10">
+                <article className="blog-article mx-auto max-w-3xl">
+                  <ArticleContent />
+                </article>
+              </div>
+              <BlogFaq items={post.faq} />
+              <BlogCtaCard
+                title="Ready to run it in BracketIQ?"
+                description="Create the workflow, publish the page, and give players one place to register, pay, and check updates."
+                actions={post.ctas}
+              />
+              <BlogAuthorFooter post={post} />
+            </div>
           </div>
-        </section>
-
-        <section className="container-responsive relative space-y-8 pb-20">
-          <BlogFaq items={post.faq} />
-          <BlogCtaCard
-            title="Ready to run it in BracketIQ?"
-            description="Create the event, publish the page, and give players one place to register, pay, and check updates."
-            actions={post.ctas}
-          />
-          <BlogAuthorFooter post={post} />
         </section>
       </main>
 

@@ -1,10 +1,27 @@
-# Blog Playwright Lessons
+# Blog and Guide Content Instructions
 
-This file is only for lessons learned while using Playwright to create or update article fixture events for screenshot-based blog posts. Do not store article outlines, per-event plans, fixture event ids, or user assignments here. Those belong in dedicated ExecPlans under `plans/`.
+This folder can contain MDX used by both the Blog and Guides surfaces. The registry in `src/lib/blog/index.ts` decides whether a piece is a `blog` or a `guide`, which topic it belongs to, and what canonical route it uses.
+
+## Content Types
+
+- `guide`: product tutorial content for using BracketIQ. Guides should have canonical paths under `/guides/...`, set `contentType: 'guide'`, and set `guideTopic` to one of `events`, `tournaments`, `leagues`, or `organizations`.
+- `blog`: general informational or sport-specific content for hosting recreational sports events. Blog posts should have canonical paths under `/blog/...` and set `contentType: 'blog'`. They can explain how BracketIQ solves the problem, but they should not become click-by-click product tutorials.
+
+BracketIQ guides are a subset of the broader content library and are surfaced from `/guides`. The guide home page groups guide links by Events, Tournaments, Leagues, and Organizations in the left guide navigation. For example, tournament creation and tournament management guides belong under the Tournaments topic.
+
+Use the Blog for sport logistics and hosting advice such as indoor volleyball, outdoor volleyball, pickleball, indoor soccer, outdoor soccer, basketball, tennis, hockey, baseball/softball, and football articles. Sport-specific blog posts should depend on relevant generic guide content where useful, then focus on the sport's real-world logistics instead of repeating BracketIQ setup steps.
 
 The living blog and article roadmap belongs in `docs/blog-article-roadmap.md`. Keep roadmap updates there instead of adding editorial planning notes to this folder-level file.
 
-All published article pages should use the shared blog metadata/rendering path so the bottom author footer shows Samuel Razumovskiy, the profile photo from `public/blog/authors/samuel-razumovskiy.jpg`, and the article created/updated dates. Do not hand-code a different author block inside individual MDX files.
+All published blog and guide pages should use the shared metadata/rendering path so the bottom author footer shows Samuel Razumovskiy, the profile photo from `public/blog/authors/samuel-razumovskiy.jpg`, and the created/updated dates. Do not hand-code a different author block inside individual MDX files.
+
+## Guide Creation Process
+
+For BracketIQ guides, plan one workflow step at a time, perform the step in the app, capture screenshots, then write the final article text as end-user instructions before proceeding to the next step. The finished article should not mention browser automation, local URLs, fixture cleanup, or failed attempts.
+
+## Blog Playwright Lessons
+
+This section is only for lessons learned while using Playwright to create or update article fixture events for screenshot-based guide posts. Do not store article outlines, per-event plans, fixture event ids, or user assignments here. Those belong in dedicated ExecPlans under `plans/`.
 
 ## Lessons Learned
 

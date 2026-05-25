@@ -11,7 +11,9 @@ export function ChatComponents() {
     const isMarketingPage = pathname === '/'
         || pathname === '/request-demo'
         || pathname === '/blog'
-        || pathname.startsWith('/blog/');
+        || pathname.startsWith('/blog/')
+        || pathname === '/guides'
+        || pathname.startsWith('/guides/');
 
     if (loading || !isAuthenticated || isGuest || isMarketingPage) {
         return null;

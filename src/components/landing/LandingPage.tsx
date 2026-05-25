@@ -1231,7 +1231,7 @@ export default function LandingPage({
               <p className="landing-section-copy mt-4">
                 Short guides for scheduling, payments, and team updates.
               </p>
-              <Link href="/blog/paid-pickup-event-payments" className="landing-btn-primary landing-btn-large mt-7">
+              <Link href="/guides/paid-pickup-event-payments" className="landing-btn-primary landing-btn-large mt-7">
                 Read payment guide
                 <ArrowRight aria-hidden="true" className="h-4 w-4" />
               </Link>

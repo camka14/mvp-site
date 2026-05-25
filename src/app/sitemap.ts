@@ -1,5 +1,5 @@
 import type { MetadataRoute } from 'next';
-import { getBlogSitemapEntries } from '@/lib/blog';
+import { getContentSitemapEntries } from '@/lib/blog';
 import { SITE_URL } from '@/lib/siteUrl';
 
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -12,7 +12,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
     {
       url: `${SITE_URL}/blog`,
-      lastModified: new Date('2026-03-18'),
+      lastModified: new Date('2026-05-24'),
+      changeFrequency: 'weekly',
+      priority: 0.8,
+    },
+    {
+      url: `${SITE_URL}/guides`,
+      lastModified: new Date('2026-05-24'),
       changeFrequency: 'weekly',
       priority: 0.9,
     },
@@ -30,12 +36,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     },
   ];
 
-  const blogEntries: MetadataRoute.Sitemap = getBlogSitemapEntries().map((entry) => ({
+  const contentEntries: MetadataRoute.Sitemap = getContentSitemapEntries().map((entry) => ({
     url: entry.url,
     lastModified: new Date(entry.lastModified),
     changeFrequency: 'monthly',
     priority: 0.8,
   }));
 
-  return [...staticEntries, ...blogEntries];
+  return [...staticEntries, ...contentEntries];
 }

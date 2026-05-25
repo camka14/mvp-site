@@ -68,6 +68,7 @@ describe('Navigation', () => {
     render(<Navigation />);
 
     expect(screen.getByRole('link', { name: /info/i })).toHaveAttribute('href', '/info');
+    expect(screen.getByRole('link', { name: /guides/i })).toHaveAttribute('href', '/guides');
   });
 
   it('shows the hydrated profile name instead of the stale auth name', () => {

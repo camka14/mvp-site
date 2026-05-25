@@ -1,12 +1,15 @@
 import sitemap from '../sitemap';
 
 describe('sitemap', () => {
-  it('includes the blog hub and published articles', () => {
+  it('includes the blog hub, guide hub, and published content canonical routes', () => {
     const entries = sitemap();
     const urls = entries.map((entry) => entry.url);
 
     expect(urls).toContain('https://bracket-iq.com/blog');
-    expect(urls).toContain('https://bracket-iq.com/blog/create-tournament-in-bracketiq');
-    expect(urls).toContain('https://bracket-iq.com/blog/paid-pickup-event-payments');
+    expect(urls).toContain('https://bracket-iq.com/guides');
+    expect(urls).toContain('https://bracket-iq.com/guides/manage-tournament-in-bracketiq');
+    expect(urls).toContain('https://bracket-iq.com/guides/create-tournament-in-bracketiq');
+    expect(urls).toContain('https://bracket-iq.com/guides/paid-pickup-event-payments');
+    expect(urls).not.toContain('https://bracket-iq.com/blog/manage-tournament-in-bracketiq');
   });
 });
