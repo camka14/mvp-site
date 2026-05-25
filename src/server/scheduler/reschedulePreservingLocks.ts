@@ -10,7 +10,6 @@ import {
   UserData,
   usesTeamOfficialScheduling,
 } from './types';
-import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
 import { OfficialStaffingPlanner } from './officialStaffing';
 
 type SchedulerEvent = League | Tournament;
@@ -728,7 +727,6 @@ export const rescheduleEventMatchesPreservingLocks = (
     return { event, matches: [], warnings: [] };
   }
 
-  stripEventAvailabilityFromFieldRentalSlots(event);
   ensureSplitPlayoffTimeSlotCoverage(event);
   const schedulingDivisions = schedulingDivisionsForEvent(event);
   const openEndedSchedule = isOpenEndedSchedule(event);

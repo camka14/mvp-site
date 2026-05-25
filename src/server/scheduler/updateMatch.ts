@@ -12,7 +12,6 @@ import {
   MINUTE_MS,
   usesTeamOfficialScheduling,
 } from './types';
-import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
 import { rescheduleEventMatchesPreservingLocks } from './reschedulePreservingLocks';
 import {
   buildLegacyOfficialAssignment,
@@ -461,7 +460,6 @@ export const finalizeMatch = (
   _context: SchedulerContext = noopContext,
   currentTime: Date,
 ): FinalizeResult => {
-  stripEventAvailabilityFromFieldRentalSlots(event);
   syncMatchParticipants(Object.values(event.matches));
   for (const match of Object.values(event.matches)) {
     match.requiresTeamOfficial = usesTeamOfficialScheduling(event);

@@ -1166,6 +1166,69 @@ describe('EventForm dirty state', () => {
     expect(screen.getByText(/Timeslot field conflicts are warnings/i)).toBeInTheDocument();
   });
 
+  it('does not treat rental slots as external timeslot field conflicts', async () => {
+    const onDirtyStateChange = jest.fn();
+    const formRef = React.createRef<EventFormHandle>();
+    (eventService.getBlockingForFieldInRange as jest.Mock).mockResolvedValue({
+      events: [],
+      rentalSlots: [
+        {
+          $id: 'rental_slot_1',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          dayOfWeek: 0,
+          daysOfWeek: [0],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 21 * 60,
+          repeating: true,
+          startDate: '2026-04-20T09:00:00',
+          endDate: '2026-06-01T17:00:00',
+        },
+      ],
+    });
+
+    renderForm(onDirtyStateChange, formRef, {
+      state: 'UNPUBLISHED',
+      eventType: 'LEAGUE',
+      teamSignup: true,
+      start: '2026-04-20T09:00:00',
+      end: '2026-06-01T17:00:00',
+      noFixedEndDateTime: false,
+      fields: [{ $id: 'field_1', name: 'Field 1', location: 'Main Gym' }],
+      fieldIds: ['field_1'],
+      selectedFieldIds: ['field_1'],
+      timeSlots: [
+        {
+          $id: 'slot_1',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          dayOfWeek: 0,
+          daysOfWeek: [0],
+          divisions: ['open'],
+          startTimeMinutes: 9 * 60,
+          endTimeMinutes: 21 * 60,
+          repeating: true,
+          startDate: '2026-04-20T09:00:00',
+          endDate: '2026-06-01T17:00:00',
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(eventService.getBlockingForFieldInRange).toHaveBeenCalled();
+    });
+    expect(screen.getByTestId('league-conflict-count')).toHaveTextContent('0');
+
+    let isValid: boolean | undefined;
+    await act(async () => {
+      isValid = await formRef.current?.validate();
+    });
+
+    expect(isValid).toBe(true);
+    expect(formRef.current?.getValidationErrors()).toEqual([]);
+    expect(screen.queryByText(/Timeslot field conflicts are warnings/i)).not.toBeInTheDocument();
+  });
+
   it('keeps the end date value visible and serialized when no fixed end datetime scheduling is enabled', async () => {
     const onDirtyStateChange = jest.fn();
     const formRef = React.createRef<EventFormHandle>();

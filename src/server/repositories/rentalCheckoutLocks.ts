@@ -212,7 +212,6 @@ export const reserveRentalCheckoutLocks = async ({
         noFixedEndDateTime: window.noFixedEndDateTime,
         eventType: window.eventType,
         parentEvent: window.parentEvent,
-        includeFieldRentalAvailabilityConflicts: false,
       });
     } catch (error) {
       if (error instanceof EventFieldConflictError) {

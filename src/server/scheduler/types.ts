@@ -340,22 +340,7 @@ export class PlayingField implements Resource {
   }
 
   getEvents(): SchedulableEvent[] {
-    const slots = this.rentalSlots.filter((slot) => !slot.repeating);
-    const eventSlots: BlockingEvent[] = [];
-    for (const slot of slots) {
-      if (!slot.endDate) continue;
-      eventSlots.push(
-        new BlockingEvent({
-          id: slot.id,
-          start: slot.startDate,
-          end: slot.endDate,
-          field: this,
-          participants: [],
-          parentId: '',
-        }),
-      );
-    }
-    return [...this.matches, ...this.events, ...eventSlots];
+    return [...this.matches, ...this.events];
   }
 
   setEvents(event: SchedulableEvent): void {

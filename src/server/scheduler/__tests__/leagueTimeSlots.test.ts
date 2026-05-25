@@ -533,6 +533,76 @@ describe('league scheduling (time slots)', () => {
     expect(match.end.getTime()).toBeLessThanOrEqual(slotEnd.getTime());
   });
 
+  it('does not treat field rental slots as blockers when scheduling matches', () => {
+    const division = buildDivision();
+    const field = buildField(division);
+    const teams = buildTeams(2, division);
+    const eventStart = new Date(2026, 0, 3, 8, 0, 0);
+    const eventEnd = new Date(2026, 0, 3, 20, 0, 0);
+    const slotStart = new Date(2026, 0, 3, 10, 0, 0);
+    const slotEnd = new Date(2026, 0, 3, 12, 0, 0);
+
+    field.rentalSlots = [
+      new TimeSlot({
+        id: 'external_rental_slot',
+        dayOfWeek: 5,
+        startDate: slotStart,
+        endDate: slotEnd,
+        repeating: false,
+        startTimeMinutes: 10 * 60,
+        endTimeMinutes: 12 * 60,
+        field: field.id,
+        fieldIds: [field.id],
+        divisions: [division],
+      }),
+    ];
+
+    const league = new League({
+      id: 'league_rental_slot_not_blocking',
+      name: 'Rental Slot Not Blocking',
+      start: eventStart,
+      end: eventEnd,
+      noFixedEndDateTime: false,
+      maxParticipants: 2,
+      teamSignup: true,
+      eventType: 'LEAGUE',
+      teams,
+      divisions: [division],
+      officials: [],
+      fields: { [field.id]: field },
+      timeSlots: [
+        new TimeSlot({
+          id: 'slot_rental_overlap_allowed',
+          dayOfWeek: 5,
+          startDate: slotStart,
+          endDate: slotEnd,
+          repeating: false,
+          startTimeMinutes: 10 * 60,
+          endTimeMinutes: 12 * 60,
+          field: field.id,
+          fieldIds: [field.id],
+          divisions: [division],
+        }),
+      ],
+      doTeamsOfficiate: false,
+      gamesPerOpponent: 1,
+      includePlayoffs: false,
+      playoffTeamCount: 0,
+      usesSets: false,
+      matchDurationMinutes: 60,
+      restTimeMinutes: 0,
+      leagueScoringConfig: { pointsForWin: 3, pointsForDraw: 1, pointsForLoss: 0 },
+    });
+
+    const scheduled = scheduleEvent({ event: league }, context);
+
+    expect(scheduled.matches).toHaveLength(1);
+    const [match] = scheduled.matches;
+    expect(match.field?.id).toBe(field.id);
+    expect(match.start.getTime()).toBe(slotStart.getTime());
+    expect(match.end.getTime()).toBeLessThanOrEqual(slotEnd.getTime());
+  });
+
   it('errors when matches cannot fit within a non-repeating slot hard end datetime', () => {
     const division = buildDivision();
     const field = buildField(division);

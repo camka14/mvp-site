@@ -1,6 +1,5 @@
 import { EventBuilder } from './EventBuilder';
 import { Division, League, Match, Tournament, TIMES, MINUTE_MS, SchedulerContext, Team } from './types';
-import { stripEventAvailabilityFromFieldRentalSlots } from './fieldAvailability';
 
 export type ScheduleRequest = {
   event: League | Tournament;
@@ -407,8 +406,6 @@ export const scheduleEvent = (request: ScheduleRequest, context: SchedulerContex
   if (includePlaceholderTeams && typeof request.participantCount === 'number' && request.participantCount > 0) {
     event.maxParticipants = request.participantCount;
   }
-
-  stripEventAvailabilityFromFieldRentalSlots(event);
 
   const openEndedSchedule = isOpenEndedSchedule(event);
   if (!openEndedSchedule && event.end.getTime() <= event.start.getTime()) {

@@ -66,4 +66,61 @@ describe('/api/events/field/[fieldId]', () => {
       }),
     ]);
   });
+
+  it('returns league time slots as rental window blockers', async () => {
+    prismaMock.events.findMany.mockResolvedValue([
+      {
+        id: 'league_1',
+        eventType: 'LEAGUE',
+        parentEvent: null,
+        start: new Date('2026-05-01T00:00:00.000Z'),
+        end: new Date('2026-05-02T00:00:00.000Z'),
+        noFixedEndDateTime: false,
+        fieldIds: ['field_1'],
+        timeSlotIds: ['league_slot_1'],
+      },
+    ]);
+    prismaMock.fields.findFirst.mockResolvedValue({
+      rentalSlotIds: ['rental_slot_1'],
+    });
+    prismaMock.timeSlots.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'rental_slot_1',
+          startDate: new Date('2026-05-01T16:00:00.000Z'),
+          endDate: new Date('2026-05-01T20:00:00.000Z'),
+          repeating: false,
+          scheduledFieldId: null,
+          scheduledFieldIds: [],
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'league_slot_1',
+          startDate: new Date('2026-05-01T17:00:00.000Z'),
+          endDate: new Date('2026-05-01T18:00:00.000Z'),
+          startTimeMinutes: 17 * 60,
+          endTimeMinutes: 18 * 60,
+          repeating: false,
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+        },
+      ]);
+
+    const response = await GET(
+      new NextRequest(
+        'http://localhost/api/events/field/field_1?start=2026-05-01T00%3A00%3A00.000Z&end=2026-05-02T00%3A00%3A00.000Z&rentalOverlapOnly=1',
+      ),
+      { params: Promise.resolve({ fieldId: 'field_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.events).toEqual([
+      expect.objectContaining({
+        id: 'league_1',
+        $id: 'league_1',
+      }),
+    ]);
+  });
 });

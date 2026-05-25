@@ -1734,8 +1734,6 @@ const attachFieldSchedulingConflicts = async (params: {
   fields: Record<string, PlayingField>;
   windowStart: Date;
   windowEnd: Date;
-  currentEventSlotIdsOverride?: string[];
-  includeFieldRentalAvailabilityConflicts?: boolean;
 }): Promise<void> => {
   const fieldIds = Object.keys(params.fields);
   if (!fieldIds.length) {
@@ -1747,24 +1745,18 @@ const attachFieldSchedulingConflicts = async (params: {
 
   clearManagedFieldBlockingEvents(params.fields);
 
-  const shouldLookupCurrentEvent = !params.currentEventSlotIdsOverride || !normalizeEntityId(params.organizationId);
+  const shouldLookupCurrentEvent = !normalizeEntityId(params.organizationId);
   const currentEventRow = shouldLookupCurrentEvent
     ? await params.client.events.findUnique({
       where: { id: params.eventId },
       select: {
         organizationId: true,
-        timeSlotIds: true,
       },
     })
     : null;
   const scopedOrganizationId = normalizeEntityId(params.organizationId) ?? normalizeEntityId(currentEventRow?.organizationId);
-  const currentEventSlotIds = new Set(
-    params.currentEventSlotIdsOverride
-      ? ensureStringArray(params.currentEventSlotIdsOverride)
-      : ensureStringArray(currentEventRow?.timeSlotIds),
-  );
 
-  const [externalMatchRowsRaw, externalEventRowsRaw, fieldRows] = await Promise.all([
+  const [externalMatchRowsRaw, externalEventRowsRaw] = await Promise.all([
     params.client.matches.findMany({
       where: {
         fieldId: { in: fieldIds },
@@ -1797,17 +1789,6 @@ const attachFieldSchedulingConflicts = async (params: {
         end: true,
         fieldIds: true,
         timeSlotIds: true,
-      },
-    }),
-    params.client.fields.findMany({
-      where: {
-        id: { in: fieldIds },
-        ...(scopedOrganizationId ? { organizationId: scopedOrganizationId } : {}),
-      },
-      select: {
-        id: true,
-        organizationId: true,
-        rentalSlotIds: true,
       },
     }),
   ]);
@@ -1889,7 +1870,6 @@ const attachFieldSchedulingConflicts = async (params: {
     })
     : [];
   const externalEventSlotById = new Map(externalEventSlotRows.map((slot: any) => [slot.id, slot]));
-  const eventBoundSlotIds = new Set(externalEventSlotIds);
 
   for (const row of externalEventRows) {
     const eventType = typeof row.eventType === 'string' ? row.eventType.toUpperCase() : '';
@@ -1948,57 +1928,6 @@ const attachFieldSchedulingConflicts = async (params: {
           windowEnd: params.windowEnd,
           fallbackStart: start,
           fallbackEnd: end,
-        });
-      }
-    }
-  }
-
-  if (params.includeFieldRentalAvailabilityConflicts !== false) {
-    const rentalSlotIds = Array.from(
-      new Set(
-        fieldRows.flatMap((row: any) => ensureStringArray(row.rentalSlotIds)),
-      ),
-    );
-    const rentalSlotRows = rentalSlotIds.length > 0
-      ? await params.client.timeSlots.findMany({
-        where: {
-          id: { in: rentalSlotIds },
-        },
-      })
-      : [];
-    const rentalSlotById = new Map(rentalSlotRows.map((slot: any) => [slot.id, slot]));
-    for (const fieldRow of fieldRows) {
-      const field = params.fields[fieldRow.id];
-      if (!field) {
-        continue;
-      }
-      const eventOrganizationId = scopedOrganizationId ?? null;
-      const fieldOrganizationId = normalizeEntityId((fieldRow as any).organizationId);
-      const isRentingThisField = eventOrganizationId !== fieldOrganizationId;
-      if (isRentingThisField) {
-        continue;
-      }
-      const rentalIdsForField = ensureStringArray(fieldRow.rentalSlotIds);
-      for (const slotId of rentalIdsForField) {
-        if (currentEventSlotIds.has(slotId) || eventBoundSlotIds.has(slotId)) {
-          continue;
-        }
-        const slot = rentalSlotById.get(slotId);
-        if (!slot) {
-          continue;
-        }
-        const slotFieldIds = normalizeBlockingSlotFieldIds(slot);
-        if (slotFieldIds.length > 0 && !slotFieldIds.includes(fieldRow.id)) {
-          continue;
-        }
-        appendBlockingEventsFromSlot({
-          slot,
-          field,
-          fieldId: fieldRow.id,
-          blockPrefix: `${FIELD_EVENT_BLOCK_PREFIX}rental__${slotId}__`,
-          parentId: '',
-          windowStart: params.windowStart,
-          windowEnd: params.windowEnd,
         });
       }
     }
@@ -2068,7 +1997,6 @@ export const assertNoEventFieldSchedulingConflicts = async (params: {
   noFixedEndDateTime: boolean;
   eventType?: string | null;
   parentEvent?: string | null;
-  includeFieldRentalAvailabilityConflicts?: boolean;
 }): Promise<void> => {
   const eventType = typeof params.eventType === 'string' ? params.eventType.toUpperCase() : '';
   const parentEventId = normalizeEntityId(params.parentEvent);
@@ -2102,8 +2030,6 @@ export const assertNoEventFieldSchedulingConflicts = async (params: {
     fields,
     windowStart: params.start,
     windowEnd: conflictWindowEnd,
-    currentEventSlotIdsOverride: ensureStringArray(params.timeSlotIds),
-    includeFieldRentalAvailabilityConflicts: params.includeFieldRentalAvailabilityConflicts,
   });
 
   const conflicts = collectFieldScheduleConflicts({

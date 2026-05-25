@@ -4,7 +4,7 @@ jest.mock('@/lib/prisma', () => ({
   prisma: {},
 }));
 
-import { loadEventWithRelations } from '@/server/repositories/events';
+import { assertNoEventFieldSchedulingConflicts, loadEventWithRelations } from '@/server/repositories/events';
 
 type LoadClient = {
   events: {
@@ -183,7 +183,7 @@ describe('loadEventWithRelations field conflict hydration', () => {
     expect(eventConflictWhere.end.gt.toISOString()).toBe(start.toISOString());
   });
 
-  it('hydrates rental-slot blocking windows when event and field organizations match', async () => {
+  it('does not hydrate rental-slot blocking windows when event and field organizations match', async () => {
     const client = createClient({
       organizationId: 'org_1',
     });
@@ -222,8 +222,107 @@ describe('loadEventWithRelations field conflict hydration', () => {
     const loaded = await loadEventWithRelations('event_sched', client as any);
     const field = loaded.fields.field_1;
 
-    expect(field.events).toHaveLength(1);
-    expect(field.events[0]?.id).toContain('__field_event_block__rental__slot_rental_1__field_1__');
+    expect(field.events).toHaveLength(0);
+  });
+
+  it('allows event field validation to overlap rental slots', async () => {
+    const client = createClient({
+      organizationId: 'org_1',
+    });
+    client.fields.findMany.mockResolvedValue([
+      {
+        id: 'field_1',
+        organizationId: 'org_1',
+        divisions: ['open'],
+        name: 'Court A',
+        rentalSlotIds: ['slot_rental_1'],
+        createdAt: null,
+        updatedAt: null,
+      },
+    ]);
+    client.timeSlots.findMany.mockImplementation((args?: Record<string, any>) => {
+      const ids = args?.where?.id?.in;
+      if (Array.isArray(ids) && ids.includes('slot_rental_1')) {
+        return Promise.resolve([
+          {
+            id: 'slot_rental_1',
+            dayOfWeek: 6,
+            daysOfWeek: [6],
+            startTimeMinutes: 630,
+            endTimeMinutes: 690,
+            startDate: new Date('2026-03-01T10:30:00.000Z'),
+            endDate: new Date('2026-03-01T11:30:00.000Z'),
+            repeating: false,
+            scheduledFieldId: 'field_1',
+            scheduledFieldIds: ['field_1'],
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    await expect(assertNoEventFieldSchedulingConflicts({
+      client: client as any,
+      eventId: 'event_sched',
+      organizationId: 'org_1',
+      fieldIds: ['field_1'],
+      start: new Date('2026-03-01T10:00:00.000Z'),
+      end: new Date('2026-03-01T12:00:00.000Z'),
+      noFixedEndDateTime: false,
+      eventType: 'EVENT',
+      parentEvent: null,
+    })).resolves.toBeUndefined();
+  });
+
+  it('rejects event field validation when rental checkout overlaps a league time slot', async () => {
+    const client = createClient({
+      organizationId: 'org_1',
+    });
+    client.events.findMany.mockResolvedValue([
+      {
+        id: 'event_league_1',
+        eventType: 'LEAGUE',
+        parentEvent: null,
+        start: new Date('2026-03-01T10:00:00.000Z'),
+        end: new Date('2026-03-01T12:00:00.000Z'),
+        fieldIds: ['field_1'],
+        timeSlotIds: ['slot_league_1'],
+      },
+    ]);
+    client.timeSlots.findMany.mockResolvedValue([
+      {
+        id: 'slot_league_1',
+        dayOfWeek: 6,
+        daysOfWeek: [6],
+        startTimeMinutes: 630,
+        endTimeMinutes: 690,
+        startDate: new Date('2026-03-01T10:30:00.000Z'),
+        endDate: new Date('2026-03-01T11:30:00.000Z'),
+        repeating: false,
+        scheduledFieldId: 'field_1',
+        scheduledFieldIds: ['field_1'],
+      },
+    ]);
+
+    await expect(assertNoEventFieldSchedulingConflicts({
+      client: client as any,
+      eventId: 'rental_event_1',
+      organizationId: 'org_1',
+      fieldIds: ['field_1'],
+      start: new Date('2026-03-01T10:45:00.000Z'),
+      end: new Date('2026-03-01T11:15:00.000Z'),
+      noFixedEndDateTime: false,
+      eventType: 'EVENT',
+      parentEvent: null,
+    })).rejects.toMatchObject({
+      name: 'EventFieldConflictError',
+      conflicts: [
+        expect.objectContaining({
+          fieldId: 'field_1',
+          parentId: 'event_league_1',
+        }),
+      ],
+    });
   });
 
   it('does not hydrate rental-slot blocking windows when event rents from a different field organization', async () => {

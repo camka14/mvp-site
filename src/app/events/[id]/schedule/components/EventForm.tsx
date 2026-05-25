@@ -1996,27 +1996,6 @@ const buildConflictEntry = (
     };
 };
 
-const buildRentalConflictEntry = (slot: TimeSlot, fieldId: string): LeagueSlotForm['conflicts'][number] => ({
-    event: {
-        $id: `rental-${slot.$id}-${fieldId}`,
-        name: 'Rental Slot',
-        start: slot.startDate ?? '',
-        end: slot.endDate ?? slot.startDate ?? '',
-    } as Event,
-    schedule: {
-        $id: `rental-${slot.$id}-${fieldId}`,
-        repeating: slot.repeating !== false,
-        dayOfWeek: slot.dayOfWeek,
-        daysOfWeek: slot.daysOfWeek,
-        startDate: slot.startDate,
-        endDate: slot.endDate ?? undefined,
-        startTimeMinutes: slot.startTimeMinutes,
-        endTimeMinutes: slot.endTimeMinutes,
-        scheduledFieldId: fieldId,
-        scheduledFieldIds: [fieldId],
-    },
-});
-
 const buildExternalSlotConflicts = (
     slot: LeagueSlotForm,
     eventsByFieldId: Map<string, Event[]>,
@@ -2037,37 +2016,6 @@ const buildExternalSlotConflicts = (
             }
             seen.add(key);
             conflicts.push(buildConflictEntry(slot, event, fieldId, context));
-        });
-    });
-
-    return conflicts.sort((left, right) => {
-        const leftStart = parseLocalDateTime(left.event.start ?? null)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-        const rightStart = parseLocalDateTime(right.event.start ?? null)?.getTime() ?? Number.MAX_SAFE_INTEGER;
-        return leftStart - rightStart;
-    });
-};
-
-const buildRentalSlotConflicts = (
-    slot: LeagueSlotForm,
-    rentalSlotsByFieldId: Map<string, TimeSlot[]>,
-    context: SlotConflictContext,
-): LeagueSlotForm['conflicts'] => {
-    const seen = new Set<string>();
-    const conflicts: LeagueSlotForm['conflicts'] = [];
-    const rentalContext = { eventStart: undefined, eventEnd: undefined };
-
-    normalizeSlotFieldIds(slot).forEach((fieldId) => {
-        const rentalSlots = rentalSlotsByFieldId.get(fieldId) ?? [];
-        rentalSlots.forEach((rentalSlot) => {
-            if (!slotOverlapsExistingSlot(slot, context, rentalSlot, rentalContext)) {
-                return;
-            }
-            const key = `${rentalSlot.$id}:${fieldId}`;
-            if (seen.has(key)) {
-                return;
-            }
-            seen.add(key);
-            conflicts.push(buildRentalConflictEntry(rentalSlot, fieldId));
         });
     });
 
@@ -8499,17 +8447,11 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                 const eventsByFieldId = new Map(
                     blockingByFieldRows.map(([fieldId, blocking]) => [fieldId, blocking.events]),
                 );
-                const rentalSlotsByFieldId = new Map(
-                    blockingByFieldRows.map(([fieldId, blocking]) => [fieldId, blocking.rentalSlots]),
-                );
                 const conflictsBySlotKey = new Map(
                     slotForms.map((slot) => [
                         slot.key,
                         slotCanCheckExternalConflicts(slot, context)
-                            ? [
-                                ...buildExternalSlotConflicts(slot, eventsByFieldId, context),
-                                ...buildRentalSlotConflicts(slot, rentalSlotsByFieldId, context),
-                            ]
+                            ? buildExternalSlotConflicts(slot, eventsByFieldId, context)
                             : [],
                     ]),
                 );
