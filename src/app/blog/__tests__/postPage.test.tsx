@@ -18,6 +18,7 @@ describe('BlogPostPage', () => {
 
   it('keeps guide slugs in static params so old blog URLs can redirect', () => {
     expect(generateStaticParams()).toEqual([
+      { slug: 'tournament-results-advancement' },
       { slug: 'tournament-registration' },
       { slug: 'tournament-pool-play' },
       { slug: 'manage-tournament-in-bracketiq' },

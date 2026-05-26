@@ -43,6 +43,7 @@ describe('GuidesPage', () => {
       'How to Set Up Tournament Registration for Teams and Players',
       'How to Manage a Tournament in BracketIQ',
       'How to Run a Tournament With Pool Play',
+      'How to Manage Tournament Results, Standings, and Advancement',
     ];
     const renderedTournamentGuideOrder = screen
       .getAllByRole('link')
@@ -58,6 +59,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Run a Tournament With Pool Play' })
         .some((link) => link.getAttribute('href') === '/guides/tournament-pool-play'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Manage Tournament Results, Standings, and Advancement' })
+        .some((link) => link.getAttribute('href') === '/guides/tournament-results-advancement'),
     ).toBe(true);
     expect(
       screen.getAllByRole('link', { name: 'How to Manage a Tournament in BracketIQ' })

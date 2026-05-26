@@ -36,6 +36,67 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const tournamentResultsAdvancement: BlogPostEntry = {
+  slug: 'tournament-results-advancement',
+  title: 'How to Manage Tournament Results, Standings, and Advancement',
+  description:
+    'Manage tournament results in BracketIQ by reviewing scored matches, entering score updates, confirming standings, automatically seeding advancing teams, and continuing bracket score entry.',
+  contentType: 'guide',
+  guideTopic: 'tournaments',
+  createdAt: '2026-05-26',
+  publishedAt: '2026-05-26',
+  updatedAt: '2026-05-26',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'tournament results and standings',
+  longTailKeywords: [
+    'manage tournament results',
+    'tournament standings guide',
+    'tournament advancement software',
+    'pool standings to bracket',
+    'tournament score entry software',
+    'sports tournament bracket advancement',
+  ],
+  readingMinutes: 9,
+  canonicalPath: '/guides/tournament-results-advancement',
+  ctas: [
+    {
+      label: 'Manage tournament results',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Run pool play first',
+      href: '/guides/tournament-pool-play',
+      variant: 'secondary',
+    },
+    {
+      label: 'Review the tournament management workflow',
+      href: '/guides/manage-tournament-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'When should tournament standings be confirmed?',
+      answer:
+        'Confirm standings after every score in the division or pool has been entered and reviewed. Once standings are confirmed, BracketIQ can use the rankings to seed advancing teams into bracket matches.',
+    },
+    {
+      question: 'Can BracketIQ move teams from pool standings into the bracket?',
+      answer:
+        'Yes. When automatic playoff reassignment is enabled, confirmed standings can place advancing teams into the bracket so organizers do not need to copy rankings into another bracket tool.',
+    },
+    {
+      question: 'Can bracket matches be scored the same way as pool matches?',
+      answer:
+        'Yes. Open the bracket match, confirm the teams and field or court, enter the score by segment, save the result, and then verify the next bracket match updates as expected.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ tournament results and advancement guide preview',
+  load: () => import('@/content/blog/tournament-results-advancement.mdx'),
+};
+
 const tournamentRegistration: BlogPostEntry = {
   slug: 'tournament-registration',
   title: 'How to Set Up Tournament Registration for Teams and Players',
@@ -344,6 +405,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  tournamentResultsAdvancement,
   tournamentRegistration,
   tournamentPoolPlay,
   manageTournamentInBracketiq,
@@ -362,6 +424,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'tournament-registration',
     'manage-tournament-in-bracketiq',
     'tournament-pool-play',
+    'tournament-results-advancement',
   ],
   leagues: [],
   organizations: [],

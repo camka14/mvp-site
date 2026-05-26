@@ -41,6 +41,8 @@ This section is only for lessons learned while using Playwright to create or upd
 - Schedule screenshots can briefly capture the loading state or default Month view. Wait for matches to render, then switch to Agenda view when documenting tournament flow by time and field.
 - Final article text must read like simple user instructions, not a capture log. Do not mention browser runs, local development URLs, fixture events, screenshot process, or failed attempts unless the point is rewritten as an instruction the reader should follow.
 - Use plain words in article text. Prefer words such as description, players, payment, spots, signups, and rules unless a BracketIQ screen uses a different label.
+- If a custom dev server shares a port with another local mock server, authenticated client routes can fail to hydrate even though public pages render. Use a clean dev port before assuming the app flow is broken.
+- Match score buttons can write through the score endpoint during capture before the event toolbar is saved. Reset only the affected fixture match after exploratory score-entry screenshots if the living fixture should remain unplayed.
 
 ## Mistakes To Record Here
 
