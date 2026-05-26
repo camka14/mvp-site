@@ -742,15 +742,15 @@ describe('eventService', () => {
       },
       participantSnapshot: {
         participants: {
-          teamIds: [],
+          teamIds: ['team_1'],
           userIds: ['user_1'],
           waitListIds: [],
           freeAgentIds: [],
           divisions: [],
         },
-        teams: [],
-        users: [{ $id: 'user_1', firstName: 'Pat', lastName: 'Player' }],
-        participantCount: 1,
+        teams: [{ id: 'team_1', name: 'River City FC' }],
+        users: [{ id: 'user_1', firstName: 'Pat', lastName: 'Player' }],
+        participantCount: 2,
         participantCapacity: 10,
         occurrence: null,
         divisionWarnings: [],
@@ -777,6 +777,8 @@ describe('eventService', () => {
     expect(bootstrap?.event.fields?.[0]?.$id).toBe('field_1');
     expect(bootstrap?.event.timeSlots?.[0]?.$id).toBe('slot_1');
     expect(bootstrap?.participantSnapshot.participants.userIds).toEqual(['user_1']);
+    expect(bootstrap?.participantSnapshot.teams[0]?.$id).toBe('team_1');
+    expect(bootstrap?.participantSnapshot.users[0]?.$id).toBe('user_1');
     expect(bootstrap?.userCompliance?.users).toEqual([{ userId: 'user_1', fullName: 'Pat Player' }]);
   });
 

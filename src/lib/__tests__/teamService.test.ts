@@ -59,6 +59,24 @@ describe('teamService', () => {
   });
 
   describe('getTeamById', () => {
+    it('maps API id to the legacy $id field', async () => {
+      apiRequestMock.mockResolvedValue({
+        id: 'team_from_api',
+        name: 'River City FC',
+        sport: 'Indoor Soccer',
+        division: 'CoEd Open 18+',
+        playerIds: [],
+        pending: [],
+        teamSize: 5,
+        captainId: 'captain_1',
+      });
+
+      const team = await teamService.getTeamById('team_from_api');
+
+      expect(team?.$id).toBe('team_from_api');
+      expect(team?.name).toBe('River City FC');
+    });
+
     it('hydrates players, pending players, and captain when requested', async () => {
       apiRequestMock.mockResolvedValue({
         $id: 'team_1',

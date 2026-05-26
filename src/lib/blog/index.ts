@@ -36,6 +36,67 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const tournamentRegistration: BlogPostEntry = {
+  slug: 'tournament-registration',
+  title: 'How to Set Up Tournament Registration for Teams and Players',
+  description:
+    'Set up tournament registration in BracketIQ by confirming team signup, division capacity, pricing, public registration controls, captain team options, and organizer participant review.',
+  contentType: 'guide',
+  guideTopic: 'tournaments',
+  createdAt: '2026-05-26',
+  publishedAt: '2026-05-26',
+  updatedAt: '2026-05-26',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'tournament registration',
+  longTailKeywords: [
+    'set up tournament registration',
+    'team tournament registration guide',
+    'sports tournament registration software',
+    'tournament team signup',
+    'collect tournament registration payments',
+    'tournament division registration',
+  ],
+  readingMinutes: 9,
+  canonicalPath: '/guides/tournament-registration',
+  ctas: [
+    {
+      label: 'Set up tournament registration',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Create the tournament first',
+      href: '/guides/create-tournament-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Manage the tournament after teams join',
+      href: '/guides/manage-tournament-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Should tournament registration be team-based or player-based?',
+      answer:
+        'Use team registration when captains are responsible for entering a team into the tournament. Use player registration when each person signs up independently and the organizer will build teams later.',
+    },
+    {
+      question: 'Can BracketIQ charge a team entry fee for a tournament?',
+      answer:
+        'Yes. Set the tournament or division price before publishing. Captains see the team entry amount on the public event page and can move toward checkout after selecting the team they manage.',
+    },
+    {
+      question: 'What should organizers check before opening registration?',
+      answer:
+        'Confirm the tournament type, team size, registration cutoff, required documents, division capacity, team price, public page details, and captain team selection flow before sharing the link.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ tournament registration guide preview',
+  load: () => import('@/content/blog/tournament-registration.mdx'),
+};
+
 const tournamentPoolPlay: BlogPostEntry = {
   slug: 'tournament-pool-play',
   title: 'How to Run a Tournament With Pool Play',
@@ -283,6 +344,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  tournamentRegistration,
   tournamentPoolPlay,
   manageTournamentInBracketiq,
   createTournamentInBracketiq,
@@ -292,6 +354,35 @@ const blogPosts = [
 const sortByPublishDateDesc = (posts: BlogPostEntry[]) => (
   [...posts].sort((a, b) => b.publishedAt.localeCompare(a.publishedAt))
 );
+
+const GUIDE_TOPIC_POST_ORDER = {
+  events: ['paid-pickup-event-payments'],
+  tournaments: [
+    'create-tournament-in-bracketiq',
+    'tournament-registration',
+    'manage-tournament-in-bracketiq',
+    'tournament-pool-play',
+  ],
+  leagues: [],
+  organizations: [],
+} satisfies Record<GuideTopicId, string[]>;
+
+const sortGuideTopicPosts = (topicId: GuideTopicId, posts: BlogPostEntry[]) => {
+  const order = new Map(
+    GUIDE_TOPIC_POST_ORDER[topicId].map((slug, index) => [slug, index]),
+  );
+
+  return [...posts].sort((a, b) => {
+    const aIndex = order.get(a.slug) ?? Number.MAX_SAFE_INTEGER;
+    const bIndex = order.get(b.slug) ?? Number.MAX_SAFE_INTEGER;
+
+    if (aIndex !== bIndex) {
+      return aIndex - bIndex;
+    }
+
+    return b.publishedAt.localeCompare(a.publishedAt);
+  });
+};
 
 export function getPublishedContentPosts() {
   return sortByPublishDateDesc(
@@ -327,7 +418,10 @@ export function getGuideTopics() {
   const guidePosts = getPublishedGuidePosts();
   return GUIDE_TOPICS.map((topic) => ({
     ...topic,
-    posts: guidePosts.filter((post) => post.guideTopic === topic.id),
+    posts: sortGuideTopicPosts(
+      topic.id,
+      guidePosts.filter((post) => post.guideTopic === topic.id),
+    ),
   }));
 }
 

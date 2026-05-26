@@ -18,19 +18,20 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(4);
+    expect(posts).toHaveLength(5);
     expect(posts.map((post) => post.slug)).toEqual([
+      'tournament-registration',
       'tournament-pool-play',
       'manage-tournament-in-bracketiq',
       'create-tournament-in-bracketiq',
       'paid-pickup-event-payments',
     ]);
-    expect(posts[0]?.primaryKeyword).toBe('tournament pool play');
-    expect(posts[0]?.createdAt).toBe('2026-05-25');
-    expect(posts[0]?.updatedAt).toBe('2026-05-25');
+    expect(posts[0]?.primaryKeyword).toBe('tournament registration');
+    expect(posts[0]?.createdAt).toBe('2026-05-26');
+    expect(posts[0]?.updatedAt).toBe('2026-05-26');
     expect(posts[0]?.contentType).toBe('guide');
     expect(posts[0]?.guideTopic).toBe('tournaments');
-    expect(posts[0]?.canonicalPath).toBe('/guides/tournament-pool-play');
+    expect(posts[0]?.canonicalPath).toBe('/guides/tournament-registration');
     expect(posts[0]?.author).toEqual({
       name: 'Samuel Razumovskiy',
       image: '/blog/authors/samuel-razumovskiy.jpg',
@@ -58,9 +59,10 @@ describe('blog registry', () => {
     const eventTopic = topics.find((topic) => topic.id === 'events');
 
     expect(tournamentTopic?.posts.map((post) => post.slug)).toEqual([
-      'tournament-pool-play',
-      'manage-tournament-in-bracketiq',
       'create-tournament-in-bracketiq',
+      'tournament-registration',
+      'manage-tournament-in-bracketiq',
+      'tournament-pool-play',
     ]);
     expect(eventTopic?.posts.map((post) => post.slug)).toEqual([
       'paid-pickup-event-payments',
@@ -69,6 +71,10 @@ describe('blog registry', () => {
 
   it('returns sitemap entries for published content at canonical paths', () => {
     expect(getContentSitemapEntries()).toEqual([
+      {
+        url: 'https://bracket-iq.com/guides/tournament-registration',
+        lastModified: '2026-05-26',
+      },
       {
         url: 'https://bracket-iq.com/guides/tournament-pool-play',
         lastModified: '2026-05-25',

@@ -472,6 +472,14 @@ class EventService {
     const eventPayload = response?.event
       ? this.mapRowToEvent(response.event)
       : undefined;
+    const normalizeSnapshotEntity = <T extends Record<string, unknown>>(row: T): T & { $id?: string } => {
+      const id = typeof row?.$id === "string" && row.$id.trim().length > 0
+        ? row.$id
+        : typeof row?.id === "string" && row.id.trim().length > 0
+          ? row.id
+          : undefined;
+      return id ? { ...row, $id: id } : row;
+    };
     return {
       event: eventPayload,
       participants: response?.participants ?? {
@@ -483,10 +491,10 @@ class EventService {
       },
       registrations: response?.registrations ?? undefined,
       teams: Array.isArray(response?.teams)
-        ? response.teams.map((row: any) => row as Team)
+        ? response.teams.map((row: any) => normalizeSnapshotEntity(row) as Team)
         : [],
       users: Array.isArray(response?.users)
-        ? response.users.map((row: any) => row as UserData)
+        ? response.users.map((row: any) => normalizeSnapshotEntity(row) as UserData)
         : [],
       participantCount:
         typeof response?.participantCount === "number"

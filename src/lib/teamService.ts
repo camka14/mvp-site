@@ -345,8 +345,15 @@ class TeamService {
         const playerRegistrations = this.mapRowToPlayerRegistrations(row.playerRegistrations);
         const teamSize = typeof row.teamSize === 'number' ? row.teamSize : playerIds.length;
 
+        const teamId =
+            typeof row.$id === 'string' && row.$id.trim().length > 0
+                ? row.$id
+                : typeof row.id === 'string' && row.id.trim().length > 0
+                    ? row.id
+                    : row.$id;
+
         const team: Team = {
-            $id: row.$id,
+            $id: teamId,
             name: row.name,
             division: typeof row.division === 'string' ? row.division : (row.division?.name ?? 'Open'),
             divisionTypeId:

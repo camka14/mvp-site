@@ -38,6 +38,23 @@ describe('GuidesPage', () => {
     expect(screen.getAllByText('Leagues').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Organizations').length).toBeGreaterThan(0);
 
+    const expectedTournamentGuideOrder = [
+      'How to Create a Tournament in BracketIQ',
+      'How to Set Up Tournament Registration for Teams and Players',
+      'How to Manage a Tournament in BracketIQ',
+      'How to Run a Tournament With Pool Play',
+    ];
+    const renderedTournamentGuideOrder = screen
+      .getAllByRole('link')
+      .map((link) => link.textContent?.replace(/\s+/g, ' ').trim())
+      .filter((text): text is string => Boolean(text && expectedTournamentGuideOrder.includes(text)));
+
+    expect(renderedTournamentGuideOrder).toEqual(expectedTournamentGuideOrder);
+
+    expect(
+      screen.getAllByRole('link', { name: 'How to Set Up Tournament Registration for Teams and Players' })
+        .some((link) => link.getAttribute('href') === '/guides/tournament-registration'),
+    ).toBe(true);
     expect(
       screen.getAllByRole('link', { name: 'How to Run a Tournament With Pool Play' })
         .some((link) => link.getAttribute('href') === '/guides/tournament-pool-play'),
