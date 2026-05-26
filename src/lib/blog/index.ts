@@ -36,6 +36,68 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const createLeagueInBracketiq: BlogPostEntry = {
+  slug: 'create-league-in-bracketiq',
+  title: 'How to Create a League in BracketIQ',
+  description:
+    'Create a sports league in BracketIQ by adding league details, team registration, divisions, scoring rules, weekly schedule windows, publishing status, and public page review.',
+  contentType: 'guide',
+  guideTopic: 'leagues',
+  createdAt: '2026-05-26',
+  publishedAt: '2026-05-26',
+  updatedAt: '2026-05-26',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'create a sports league',
+  longTailKeywords: [
+    'how to create a sports league',
+    'sports league setup guide',
+    'create an indoor soccer league',
+    'create a volleyball league',
+    'league registration software',
+    'sports league scheduling software',
+  ],
+  readingMinutes: 10,
+  canonicalPath: '/guides/create-league-in-bracketiq',
+  ctas: [
+    {
+      label: 'Create a league',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Browse public events',
+      href: '/discover',
+      variant: 'secondary',
+    },
+    {
+      label: 'Download the app to manage updates on the go',
+      href: getPreferredMobileStoreUrl(),
+      variant: 'tertiary',
+      external: true,
+    },
+  ],
+  faq: [
+    {
+      question: 'Can I create leagues for sports other than soccer?',
+      answer:
+        'Yes. The same BracketIQ league setup works for volleyball, pickleball, basketball, tennis, hockey, baseball, football, outdoor soccer, indoor soccer, and other recreational sports.',
+    },
+    {
+      question: 'Does a single-division league still need a division?',
+      answer:
+        'Yes. BracketIQ uses the division to store capacity, price, age or skill eligibility, registration rules, schedule assignment, and standings behavior, even when every team plays in one group.',
+    },
+    {
+      question: 'Is creating a league the same as managing the league season?',
+      answer:
+        'No. Creation covers the initial league details, divisions, scoring rules, weekly schedule windows, and publishing setup. League management covers registrations, weekly updates, standings, schedule changes, and playoffs after teams start joining.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ league creation guide preview',
+  load: () => import('@/content/blog/create-league-in-bracketiq.mdx'),
+};
+
 const tournamentResultsAdvancement: BlogPostEntry = {
   slug: 'tournament-results-advancement',
   title: 'How to Manage Tournament Results, Standings, and Advancement',
@@ -405,6 +467,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  createLeagueInBracketiq,
   tournamentResultsAdvancement,
   tournamentRegistration,
   tournamentPoolPlay,
@@ -426,7 +489,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'tournament-pool-play',
     'tournament-results-advancement',
   ],
-  leagues: [],
+  leagues: ['create-league-in-bracketiq'],
   organizations: [],
 } satisfies Record<GuideTopicId, string[]>;
 

@@ -52,6 +52,16 @@ describe('GuidesPage', () => {
 
     expect(renderedTournamentGuideOrder).toEqual(expectedTournamentGuideOrder);
 
+    const expectedLeagueGuideOrder = [
+      'How to Create a League in BracketIQ',
+    ];
+    const renderedLeagueGuideOrder = screen
+      .getAllByRole('link')
+      .map((link) => link.textContent?.replace(/\s+/g, ' ').trim())
+      .filter((text): text is string => Boolean(text && expectedLeagueGuideOrder.includes(text)));
+
+    expect(renderedLeagueGuideOrder).toEqual(expectedLeagueGuideOrder);
+
     expect(
       screen.getAllByRole('link', { name: 'How to Set Up Tournament Registration for Teams and Players' })
         .some((link) => link.getAttribute('href') === '/guides/tournament-registration'),
@@ -75,6 +85,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Create a Paid Pickup Sports Event With BracketIQ' })
         .some((link) => link.getAttribute('href') === '/guides/paid-pickup-event-payments'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Create a League in BracketIQ' })
+        .some((link) => link.getAttribute('href') === '/guides/create-league-in-bracketiq'),
     ).toBe(true);
   });
 });
