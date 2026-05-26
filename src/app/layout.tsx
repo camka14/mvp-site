@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Archivo, IBM_Plex_Mono, Roboto_Flex } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -17,6 +18,8 @@ import SiteFooter from '@/components/layout/SiteFooter';
 import { getIosAppStoreId } from '@/lib/mobileAppLinks';
 import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
 import { SITE_URL } from '@/lib/siteUrl';
+
+const GOOGLE_ANALYTICS_ID = 'G-PXFLC9SY0D';
 
 const robotoFlex = Roboto_Flex({
   subsets: ['latin'],
@@ -137,6 +140,18 @@ export default function RootLayout({ children }: RootLayoutProps) {
           </Providers>
         </MantineProvider>
       </body>
+      <Script
+        src={`https://www.googletagmanager.com/gtag/js?id=${GOOGLE_ANALYTICS_ID}`}
+        strategy="afterInteractive"
+      />
+      <Script id="google-analytics" strategy="afterInteractive">
+        {`
+          window.dataLayer = window.dataLayer || [];
+          function gtag(){window.dataLayer.push(arguments);}
+          gtag('js', new Date());
+          gtag('config', '${GOOGLE_ANALYTICS_ID}');
+        `}
+      </Script>
     </html>
   );
 }
