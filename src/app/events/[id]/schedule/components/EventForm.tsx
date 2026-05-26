@@ -5491,6 +5491,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ),
         [eventData.assistantHostIds, eventData.hostId],
     );
+    const hostStaffUserIds = useMemo(
+        () => Array.from(
+            new Set(
+                [
+                    normalizeEntityId(eventData.hostId),
+                    ...assistantHostValue,
+                ].filter((id): id is string => Boolean(id)),
+            ),
+        ),
+        [assistantHostValue, eventData.hostId],
+    );
     const assistantHostUsersById = useMemo(() => {
         const map = new Map<string, UserData>();
         assistantHostUsers.forEach((userEntry) => {
@@ -5733,13 +5744,15 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         setEventData,
     ]);
     useEffect(() => {
-        const currentAssistantHostIds = assistantHostValue;
-        if (!currentAssistantHostIds.length) {
+        if (!hostStaffUserIds.length) {
             setAssistantHostUsers((prev) => (prev.length > 0 ? [] : prev));
             return;
         }
-        const knownIds = new Set(assistantHostUsers.map((userEntry) => userEntry.$id).filter(Boolean));
-        const missingIds = currentAssistantHostIds.filter((id) => !knownIds.has(id));
+        const knownIds = new Set([
+            ...assistantHostUsers.map((userEntry) => userEntry.$id).filter(Boolean),
+            ...organizationUsersById.keys(),
+        ]);
+        const missingIds = hostStaffUserIds.filter((id) => !knownIds.has(id));
         if (!missingIds.length) {
             return;
         }
@@ -5757,18 +5770,18 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                             byId.set(entry.$id, entry);
                         }
                     });
-                    return currentAssistantHostIds
+                    return hostStaffUserIds
                         .map((id) => byId.get(id))
                         .filter((entry): entry is UserData => Boolean(entry));
                 });
             } catch (error) {
-                console.warn('Failed to hydrate assistant hosts for event:', error);
+                console.warn('Failed to hydrate host staff for event:', error);
             }
         })();
         return () => {
             cancelled = true;
         };
-    }, [assistantHostUsers, assistantHostValue]);
+    }, [assistantHostUsers, hostStaffUserIds, organizationUsersById]);
     useEffect(() => {
         if (isOrganizationHostedEvent) {
             setNonOrgStaffResults([]);

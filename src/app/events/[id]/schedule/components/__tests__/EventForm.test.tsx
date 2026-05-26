@@ -876,6 +876,46 @@ describe('EventForm dirty state', () => {
     expect(onDirtyStateChange).not.toHaveBeenCalledWith(true);
   });
 
+  it('hydrates the primary host for standalone event host staff', async () => {
+    const onDirtyStateChange = jest.fn();
+    (userService.getUsersByIds as jest.Mock).mockResolvedValue([
+      { $id: 'host_2', email: 'host2@example.com', firstName: 'Jordan', lastName: 'Host' },
+    ]);
+
+    renderForm(onDirtyStateChange, undefined, {
+      hostId: 'host_2',
+      organizationId: null,
+      assistantHostIds: [],
+      state: 'UNPUBLISHED',
+    });
+
+    expect(await screen.findByText('Jordan Host')).toBeInTheDocument();
+    expect(screen.queryByText('host_2')).not.toBeInTheDocument();
+    expect(userService.getUsersByIds).toHaveBeenCalledWith(['host_2']);
+    await waitForStableDirtyState(onDirtyStateChange, false);
+  });
+
+  it('does not fetch an organization primary host already present in the org roster', async () => {
+    const onDirtyStateChange = jest.fn();
+    const organization = buildOrganization();
+
+    renderForm(
+      onDirtyStateChange,
+      undefined,
+      {
+        organizationId: organization.$id,
+        hostId: 'host_1',
+        assistantHostIds: [],
+        state: 'UNPUBLISHED',
+      },
+      organization,
+    );
+
+    expect(await screen.findByText('Harper Host')).toBeInTheDocument();
+    expect(userService.getUsersByIds).not.toHaveBeenCalledWith(['host_1']);
+    await waitForStableDirtyState(onDirtyStateChange, false);
+  });
+
   it('does not mark edit mode dirty when sport config hydrates from sportId', async () => {
     const onDirtyStateChange = jest.fn();
 
