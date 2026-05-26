@@ -23,7 +23,7 @@ jest.mock('@/lib/prisma', () => ({
   },
 }));
 
-import { canManageOrganization, canOfficialOrganization } from '@/server/accessControl';
+import { canManageEvent, canManageOrganization, canOfficialOrganization } from '@/server/accessControl';
 
 describe('canManageOrganization', () => {
   it('allows verified razumly admins to manage any organization', async () => {
@@ -242,5 +242,84 @@ describe('canManageOrganization', () => {
 
     expect(allowed).toBe(false);
     expect(rolePermissionLookup).not.toHaveBeenCalled();
+  });
+});
+
+describe('canManageEvent', () => {
+  it('allows verified razumly admins to manage standalone draft events', async () => {
+    const organizationLookup = jest.fn();
+    const allowed = await canManageEvent(
+      { userId: 'raz_admin_1', isAdmin: false },
+      {
+        hostId: 'host_1',
+        assistantHostIds: [],
+        organizationId: null,
+      },
+      {
+        authUser: {
+          findUnique: jest.fn().mockResolvedValue({
+            email: 'admin@razumly.com',
+            emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+            sessionVersion: 0,
+          }),
+        },
+        organizations: {
+          findUnique: organizationLookup,
+        },
+      },
+    );
+
+    expect(allowed).toBe(true);
+    expect(organizationLookup).not.toHaveBeenCalled();
+  });
+
+  it('allows verified razumly admins to manage events with missing organization rows', async () => {
+    const allowed = await canManageEvent(
+      { userId: 'raz_admin_1', isAdmin: false },
+      {
+        hostId: 'host_1',
+        assistantHostIds: [],
+        organizationId: 'missing_org',
+      },
+      {
+        authUser: {
+          findUnique: jest.fn().mockResolvedValue({
+            email: 'admin@razumly.com',
+            emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
+            sessionVersion: 0,
+          }),
+        },
+        organizations: {
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
+      },
+    );
+
+    expect(allowed).toBe(true);
+  });
+
+  it('denies standalone events to unverified razumly emails', async () => {
+    const allowed = await canManageEvent(
+      { userId: 'raz_admin_1', isAdmin: false },
+      {
+        hostId: 'host_1',
+        assistantHostIds: [],
+        organizationId: null,
+      },
+      {
+        authUser: {
+          findUnique: jest.fn().mockResolvedValue({
+            email: 'admin@razumly.com',
+            emailVerifiedAt: null,
+            sessionVersion: 0,
+          }),
+        },
+        organizations: {
+          findUnique: jest.fn(),
+        },
+      },
+    );
+
+    expect(allowed).toBe(false);
   });
 });

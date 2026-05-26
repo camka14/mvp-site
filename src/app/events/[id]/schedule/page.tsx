@@ -1240,6 +1240,7 @@ function EventScheduleContent() {
   const [contentTermsState, setContentTermsState] = useState<ChatTermsConsentState | null>(null);
   const [contentTermsLoading, setContentTermsLoading] = useState(false);
   const [contentTermsModalOpen, setContentTermsModalOpen] = useState(false);
+  const [isRazumlyAdmin, setIsRazumlyAdmin] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [reportingEvent, setReportingEvent] = useState(false);
   const [reschedulingMatches, setReschedulingMatches] = useState(false);
@@ -1803,7 +1804,7 @@ function EventScheduleContent() {
           )
       ),
   );
-  const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager);
+  const canManageEvent = Boolean(isPrimaryHost || isAssistantHost || isOrganizationManager || isRazumlyAdmin);
   const isEditingEvent = isTemplateEvent || ((isPreview || isEditParam) && canManageEvent);
   const activeMatches = usingChangeCopies ? changesMatches : matches;
   const activeMatchesById = useMemo<Record<string, Match>>(() => {
@@ -6341,6 +6342,37 @@ function EventScheduleContent() {
 
     loadSchedule();
   }, [authLoading, eventId, isAuthenticated, isGuest, isPreview, loadSchedule, router]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const sessionUserId = authUser?.$id ?? user?.$id ?? null;
+
+    const checkRazumlyAdminAccess = async () => {
+      if (!isAuthenticated || isGuest || !sessionUserId) {
+        if (!cancelled) {
+          setIsRazumlyAdmin(false);
+        }
+        return;
+      }
+
+      try {
+        const response = await apiRequest<{ allowed?: boolean }>('/api/admin/access');
+        if (!cancelled) {
+          setIsRazumlyAdmin(Boolean(response?.allowed));
+        }
+      } catch {
+        if (!cancelled) {
+          setIsRazumlyAdmin(false);
+        }
+      }
+    };
+
+    void checkRazumlyAdminAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authUser?.$id, isAuthenticated, isGuest, user?.$id]);
 
   const playoffMatches = useMemo(
     () =>

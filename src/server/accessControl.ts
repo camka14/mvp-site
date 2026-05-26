@@ -80,7 +80,7 @@ type OrganizationLookupClient = {
   } | undefined;
 };
 
-const hasRazumlyOrganizationAccess = async (
+const hasRazumlyAdminAccess = async (
   session: SessionLike,
   client: OrganizationLookupClient,
 ): Promise<boolean> => {
@@ -129,7 +129,7 @@ export const hasOrgPermission = async (
     return false;
   }
 
-  if (await hasRazumlyOrganizationAccess(session, client)) {
+  if (await hasRazumlyAdminAccess(session, client)) {
     return true;
   }
 
@@ -234,7 +234,7 @@ export const hasOrganizationStaffAccess = async (
     return false;
   }
 
-  if (await hasRazumlyOrganizationAccess(session, client)) {
+  if (await hasRazumlyAdminAccess(session, client)) {
     return true;
   }
 
@@ -316,12 +316,15 @@ export const canManageEvent = async (
   }
   const organizationId = event?.organizationId ?? null;
   if (!organizationId) {
-    return false;
+    return hasRazumlyAdminAccess(session, client);
   }
   const organization = await client.organizations.findUnique({
     where: { id: organizationId },
     select: { id: true, ownerId: true },
   });
+  if (!organization) {
+    return hasRazumlyAdminAccess(session, client);
+  }
   return hasOrgPermission(session, organization, ORG_PERMISSIONS.EVENTS_MANAGE, client);
 };
 
