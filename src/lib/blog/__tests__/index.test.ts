@@ -18,8 +18,9 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(7);
+    expect(posts).toHaveLength(8);
     expect(posts.map((post) => post.slug)).toEqual([
+      'manage-league-in-bracketiq',
       'create-league-in-bracketiq',
       'tournament-results-advancement',
       'tournament-registration',
@@ -28,12 +29,12 @@ describe('blog registry', () => {
       'create-tournament-in-bracketiq',
       'paid-pickup-event-payments',
     ]);
-    expect(posts[0]?.primaryKeyword).toBe('create a sports league');
-    expect(posts[0]?.createdAt).toBe('2026-05-26');
-    expect(posts[0]?.updatedAt).toBe('2026-05-26');
+    expect(posts[0]?.primaryKeyword).toBe('manage a sports league');
+    expect(posts[0]?.createdAt).toBe('2026-05-27');
+    expect(posts[0]?.updatedAt).toBe('2026-05-27');
     expect(posts[0]?.contentType).toBe('guide');
     expect(posts[0]?.guideTopic).toBe('leagues');
-    expect(posts[0]?.canonicalPath).toBe('/guides/create-league-in-bracketiq');
+    expect(posts[0]?.canonicalPath).toBe('/guides/manage-league-in-bracketiq');
     expect(posts[0]?.author).toEqual({
       name: 'Samuel Razumovskiy',
       image: '/blog/authors/samuel-razumovskiy.jpg',
@@ -73,11 +74,16 @@ describe('blog registry', () => {
     ]);
     expect(leagueTopic?.posts.map((post) => post.slug)).toEqual([
       'create-league-in-bracketiq',
+      'manage-league-in-bracketiq',
     ]);
   });
 
   it('returns sitemap entries for published content at canonical paths', () => {
     expect(getContentSitemapEntries()).toEqual([
+      {
+        url: 'https://bracket-iq.com/guides/manage-league-in-bracketiq',
+        lastModified: '2026-05-27',
+      },
       {
         url: 'https://bracket-iq.com/guides/create-league-in-bracketiq',
         lastModified: '2026-05-26',

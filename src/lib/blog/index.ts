@@ -36,6 +36,68 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const manageLeagueInBracketiq: BlogPostEntry = {
+  slug: 'manage-league-in-bracketiq',
+  title: 'How to Manage a League in BracketIQ',
+  description:
+    'Manage a published sports league in BracketIQ by reviewing teams, checking the weekly Agenda schedule, entering match scores, reviewing standings, and verifying the public page.',
+  contentType: 'guide',
+  guideTopic: 'leagues',
+  createdAt: '2026-05-27',
+  publishedAt: '2026-05-27',
+  updatedAt: '2026-05-27',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'manage a sports league',
+  longTailKeywords: [
+    'how to manage a sports league',
+    'sports league management guide',
+    'manage league teams and schedules',
+    'sports league standings software',
+    'league score entry software',
+    'indoor soccer league management',
+  ],
+  readingMinutes: 10,
+  canonicalPath: '/guides/manage-league-in-bracketiq',
+  ctas: [
+    {
+      label: 'Manage your league',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Create a league first',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Download the app to manage updates on the go',
+      href: getPreferredMobileStoreUrl(),
+      variant: 'tertiary',
+      external: true,
+    },
+  ],
+  faq: [
+    {
+      question: 'When should I use the league management workflow?',
+      answer:
+        'Use the league management workflow after the league has been created. The create workflow sets up the sport, registration, divisions, scoring rules, weekly schedule windows, and public page; management starts once teams are joining, matches need score updates, and standings need review.',
+    },
+    {
+      question: 'Can BracketIQ manage leagues for sports other than soccer?',
+      answer:
+        'Yes. The same BracketIQ league management workflow applies to volleyball, pickleball, basketball, tennis, hockey, baseball, football, outdoor soccer, indoor soccer, and other recreational sports.',
+    },
+    {
+      question: 'What should I check every week during a league season?',
+      answer:
+        'Review the registered teams, payment or document follow-up, Agenda schedule, match score controls, standings, and public league page so staff and teams can rely on the same information.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ league management guide preview',
+  load: () => import('@/content/blog/manage-league-in-bracketiq.mdx'),
+};
+
 const createLeagueInBracketiq: BlogPostEntry = {
   slug: 'create-league-in-bracketiq',
   title: 'How to Create a League in BracketIQ',
@@ -467,6 +529,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  manageLeagueInBracketiq,
   createLeagueInBracketiq,
   tournamentResultsAdvancement,
   tournamentRegistration,
@@ -489,7 +552,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'tournament-pool-play',
     'tournament-results-advancement',
   ],
-  leagues: ['create-league-in-bracketiq'],
+  leagues: ['create-league-in-bracketiq', 'manage-league-in-bracketiq'],
   organizations: [],
 } satisfies Record<GuideTopicId, string[]>;
 
