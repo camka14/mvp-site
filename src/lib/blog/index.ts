@@ -36,6 +36,67 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const multiWeekLeagueScheduling: BlogPostEntry = {
+  slug: 'multi-week-league-scheduling',
+  title: 'How to Schedule a Multi-Week Sports League',
+  description:
+    'Schedule a multi-week sports league in BracketIQ by confirming league details, adding recurring weekly timeslots, reviewing teams, checking Agenda view, rescheduling, and verifying the public schedule.',
+  contentType: 'guide',
+  guideTopic: 'leagues',
+  createdAt: '2026-05-27',
+  publishedAt: '2026-05-27',
+  updatedAt: '2026-05-27',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'schedule a sports league',
+  longTailKeywords: [
+    'how to schedule a sports league',
+    'multi-week sports league scheduling',
+    'recurring league schedule software',
+    'sports league field scheduling',
+    'indoor soccer league scheduling',
+    'league agenda schedule software',
+  ],
+  readingMinutes: 9,
+  canonicalPath: '/guides/multi-week-league-scheduling',
+  ctas: [
+    {
+      label: 'Schedule your league',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Create the league first',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Manage the league after scheduling',
+      href: '/guides/manage-league-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'What should I set before scheduling a multi-week league?',
+      answer:
+        'Set the league dates, sport, divisions, weekly timeslots, fields or courts, match duration, and team list before generating or rebuilding the schedule.',
+    },
+    {
+      question: 'Why use Agenda view for league schedule review?',
+      answer:
+        'Agenda view shows dates, times, teams, scores, and field or court assignments in one list, which makes it easier for organizers and staff to review a multi-week schedule before teams rely on it.',
+    },
+    {
+      question: 'Can this workflow schedule sports other than soccer?',
+      answer:
+        'Yes. The same BracketIQ recurring schedule workflow applies to volleyball, pickleball, basketball, tennis, hockey, baseball, football, outdoor soccer, indoor soccer, and other recreational sports.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ multi-week league scheduling guide preview',
+  load: () => import('@/content/blog/multi-week-league-scheduling.mdx'),
+};
+
 const manageLeagueInBracketiq: BlogPostEntry = {
   slug: 'manage-league-in-bracketiq',
   title: 'How to Manage a League in BracketIQ',
@@ -529,6 +590,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  multiWeekLeagueScheduling,
   manageLeagueInBracketiq,
   createLeagueInBracketiq,
   tournamentResultsAdvancement,
@@ -552,7 +614,11 @@ const GUIDE_TOPIC_POST_ORDER = {
     'tournament-pool-play',
     'tournament-results-advancement',
   ],
-  leagues: ['create-league-in-bracketiq', 'manage-league-in-bracketiq'],
+  leagues: [
+    'create-league-in-bracketiq',
+    'manage-league-in-bracketiq',
+    'multi-week-league-scheduling',
+  ],
   organizations: [],
 } satisfies Record<GuideTopicId, string[]>;
 
