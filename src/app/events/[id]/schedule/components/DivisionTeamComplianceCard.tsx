@@ -10,6 +10,7 @@ type DivisionTeamComplianceCardProps = {
   showComplianceDetails?: boolean;
   cardKind?: 'team' | 'participant';
   className?: string;
+  fullWidth?: boolean;
   actions?: React.ReactNode;
   onClick?: () => void;
 };
@@ -83,6 +84,7 @@ export default function DivisionTeamComplianceCard({
   showComplianceDetails = true,
   cardKind = 'team',
   className = '',
+  fullWidth = false,
   actions,
   onClick,
 }: DivisionTeamComplianceCardProps) {
@@ -97,7 +99,11 @@ export default function DivisionTeamComplianceCard({
       className={className}
       data-testid="division-team-compliance-card"
       onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default', width: 'fit-content', maxWidth: '100%' }}
+      style={{
+        cursor: onClick ? 'pointer' : 'default',
+        width: fullWidth ? '100%' : 'fit-content',
+        maxWidth: '100%',
+      }}
     >
       <Stack gap="sm">
         <Stack gap={6}>

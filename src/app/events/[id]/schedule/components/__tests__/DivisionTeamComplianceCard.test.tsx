@@ -233,4 +233,25 @@ describe('DivisionTeamComplianceCard', () => {
       maxWidth: '100%',
     });
   });
+
+  it('can fill a responsive grid cell without stretching actions', () => {
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam()}
+        summary={createSummary()}
+        fullWidth
+        actions={<button type="button">Remove</button>}
+      />,
+    );
+
+    expect(screen.getByTestId('division-team-compliance-card')).toHaveStyle({
+      width: '100%',
+      maxWidth: '100%',
+    });
+    expect(screen.getByTestId('division-team-compliance-actions')).toHaveStyle({
+      alignSelf: 'flex-start',
+      display: 'inline-flex',
+      maxWidth: '100%',
+    });
+  });
 });

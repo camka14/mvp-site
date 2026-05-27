@@ -12,6 +12,7 @@ import Navigation from '@/components/layout/Navigation';
 import { EventQrCodeModal, buildEventPublicUrl } from '@/components/events/EventQrCodeModal';
 import { TermsConsentModal } from '@/components/moderation/TermsConsentModal';
 import Loading from '@/components/ui/Loading';
+import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import { useApp } from '@/app/providers';
 import { useAgentContext } from '@/context/AgentContext';
 import type { AgentClientAction, AgentClientActionResult } from '@/lib/agent/types';
@@ -6881,6 +6882,7 @@ function EventScheduleContent() {
     className = '',
     showComplianceDetails = canUseTeamCompliance,
     enableDetailsView = true,
+    fullWidth = false,
   }: {
     cardKey: string;
     team: Team;
@@ -6888,6 +6890,7 @@ function EventScheduleContent() {
     className?: string;
     showComplianceDetails?: boolean;
     enableDetailsView?: boolean;
+    fullWidth?: boolean;
   }) => {
     if (isEditingEvent) {
       return (
@@ -6898,6 +6901,7 @@ function EventScheduleContent() {
           loading={showComplianceDetails ? teamComplianceLoading : false}
           showComplianceDetails={showComplianceDetails}
           className={className}
+          fullWidth={fullWidth}
           onClick={showComplianceDetails ? () => {
             setSelectedComplianceTeamId(team.$id);
             setExpandedComplianceUserIds([]);
@@ -6961,11 +6965,13 @@ function EventScheduleContent() {
     participant,
     actions,
     className = '',
+    fullWidth = false,
   }: {
     cardKey: string;
     participant: UserData;
     actions?: React.ReactNode;
     className?: string;
+    fullWidth?: boolean;
   }) => {
     const pseudoTeam = toUserParticipantPseudoTeam(participant);
     const userSummary = userComplianceById[participant.$id];
@@ -6989,6 +6995,7 @@ function EventScheduleContent() {
           showComplianceDetails={canUseUserCompliance}
           cardKind="participant"
           className={className}
+          fullWidth={fullWidth}
           actions={actions}
         />
       );
@@ -10142,12 +10149,13 @@ function EventScheduleContent() {
                         <Text>No participants have been added yet.</Text>
                       </Paper>
                     ) : (
-                      <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+                      <ResponsiveCardGrid maxCardWidth={360}>
                         {participantUsers.map((participant) => {
                           const pseudoTeam = toUserParticipantPseudoTeam(participant);
                           return renderParticipantUserCard({
                             cardKey: participant.$id,
                             participant,
+                            fullWidth: true,
                             actions: canManageEvent
                               ? (
                                 participantsUpdatingTeamId === participant.$id
@@ -10172,7 +10180,7 @@ function EventScheduleContent() {
                               : undefined,
                           });
                         })}
-                      </SimpleGrid>
+                      </ResponsiveCardGrid>
                     )
                   ) : participantTeams.length === 0 ? (
                     <Paper withBorder radius="md" p="xl" ta="center">
@@ -10322,7 +10330,7 @@ function EventScheduleContent() {
                       </Group>
                     </div>
                   ) : (
-                    <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
+                    <ResponsiveCardGrid maxCardWidth={360}>
                       {participantTeams.map((team) => {
                         const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
                         return renderParticipantTeamCard({
@@ -10330,6 +10338,7 @@ function EventScheduleContent() {
                           team,
                           className: isPlaceholderTeam ? '!bg-gray-100' : '',
                           enableDetailsView: !isPlaceholderTeam,
+                          fullWidth: true,
                           actions: canManageEvent && !isPlaceholderTeam
                             ? (
                               participantsUpdatingTeamId === team.$id
@@ -10354,7 +10363,7 @@ function EventScheduleContent() {
                             : undefined,
                         });
                       })}
-                    </SimpleGrid>
+                    </ResponsiveCardGrid>
                   )}
                 </Stack>
               </Tabs.Panel>
