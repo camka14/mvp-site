@@ -36,6 +36,128 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const leagueStandingsPlayoffSeeding: BlogPostEntry = {
+  slug: 'league-standings-playoff-seeding',
+  title: 'How to Manage League Standings and Playoff Seeding',
+  description:
+    'Manage league standings and playoff seeding in BracketIQ by reviewing Agenda results, saving final-points adjustments, confirming standings, checking the seeded bracket, and verifying the public standings page.',
+  contentType: 'guide',
+  guideTopic: 'leagues',
+  createdAt: '2026-05-27',
+  publishedAt: '2026-05-27',
+  updatedAt: '2026-05-27',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'league standings playoff seeding',
+  longTailKeywords: [
+    'how to manage league standings',
+    'sports league playoff seeding software',
+    'confirm league results',
+    'sports league standings adjustments',
+    'indoor soccer playoff seeding',
+    'league standings software',
+  ],
+  readingMinutes: 9,
+  canonicalPath: '/guides/league-standings-playoff-seeding',
+  ctas: [
+    {
+      label: 'Manage your league standings',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Manage the league first',
+      href: '/guides/manage-league-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Schedule a multi-week league',
+      href: '/guides/multi-week-league-scheduling',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'When should I confirm league standings?',
+      answer:
+        'Confirm league standings after completed match scores, forfeits, penalties, and final point adjustments have been reviewed for the division that feeds playoff qualification or seeding.',
+    },
+    {
+      question: 'Should I adjust points or edit the match score?',
+      answer:
+        'Edit the match score when the reported result is wrong. Use final point adjustments only for organizer decisions such as forfeits, eligibility penalties, tiebreak rulings, or other league rules that change standings points.',
+    },
+    {
+      question: 'Can BracketIQ seed league playoffs automatically?',
+      answer:
+        'Yes. When automatic playoff reassignment is enabled, BracketIQ can use confirmed standings to place qualified teams into playoff match slots so the bracket stays connected to the league results.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ league standings and playoff seeding guide preview',
+  load: () => import('@/content/blog/league-standings-playoff-seeding.mdx'),
+};
+
+const leaguePlayoffs: BlogPostEntry = {
+  slug: 'league-playoffs',
+  title: 'How to Run a League With Playoffs',
+  description:
+    'Run a sports league with playoffs in BracketIQ by confirming playoff settings, reviewing team eligibility, checking the playoff schedule in Agenda view, confirming qualifying standings, and verifying the seeded bracket.',
+  contentType: 'guide',
+  guideTopic: 'leagues',
+  createdAt: '2026-05-27',
+  publishedAt: '2026-05-27',
+  updatedAt: '2026-05-27',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'run a league with playoffs',
+  longTailKeywords: [
+    'how to run a sports league with playoffs',
+    'league playoff bracket software',
+    'sports league playoff setup',
+    'indoor soccer league playoffs',
+    'league playoff seeding guide',
+    'recreational sports league playoffs',
+  ],
+  readingMinutes: 9,
+  canonicalPath: '/guides/league-playoffs',
+  ctas: [
+    {
+      label: 'Run your league playoffs',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Manage standings first',
+      href: '/guides/league-standings-playoff-seeding',
+      variant: 'secondary',
+    },
+    {
+      label: 'Create the league first',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'When should I set the playoff team count?',
+      answer:
+        'Set the playoff team count before the final regular-season week so captains know how many teams qualify and staff can review the bracket dates before standings are confirmed.',
+    },
+    {
+      question: 'Can BracketIQ seed league playoff matches from standings?',
+      answer:
+        'Yes. When automatic playoff reassignment is enabled, confirmed standings can place qualified teams into playoff match slots so semifinals and finals stay connected to league results.',
+    },
+    {
+      question: 'What is different about split league and playoff divisions?',
+      answer:
+        'Split divisions are used when regular-season groups feed different playoff groups such as Gold and Silver. That workflow needs division placement rules and mapping, so it should be handled separately from a simple single-division playoff bracket.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ league playoffs guide preview',
+  load: () => import('@/content/blog/league-playoffs.mdx'),
+};
+
 const multiWeekLeagueScheduling: BlogPostEntry = {
   slug: 'multi-week-league-scheduling',
   title: 'How to Schedule a Multi-Week Sports League',
@@ -590,6 +712,8 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  leaguePlayoffs,
+  leagueStandingsPlayoffSeeding,
   multiWeekLeagueScheduling,
   manageLeagueInBracketiq,
   createLeagueInBracketiq,
@@ -618,6 +742,8 @@ const GUIDE_TOPIC_POST_ORDER = {
     'create-league-in-bracketiq',
     'manage-league-in-bracketiq',
     'multi-week-league-scheduling',
+    'league-standings-playoff-seeding',
+    'league-playoffs',
   ],
   organizations: [],
 } satisfies Record<GuideTopicId, string[]>;

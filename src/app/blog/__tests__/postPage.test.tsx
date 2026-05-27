@@ -18,6 +18,8 @@ describe('BlogPostPage', () => {
 
   it('keeps guide slugs in static params so old blog URLs can redirect', () => {
     expect(generateStaticParams()).toEqual([
+      { slug: 'league-playoffs' },
+      { slug: 'league-standings-playoff-seeding' },
       { slug: 'multi-week-league-scheduling' },
       { slug: 'manage-league-in-bracketiq' },
       { slug: 'create-league-in-bracketiq' },

@@ -56,6 +56,8 @@ describe('GuidesPage', () => {
       'How to Create a League in BracketIQ',
       'How to Manage a League in BracketIQ',
       'How to Schedule a Multi-Week Sports League',
+      'How to Manage League Standings and Playoff Seeding',
+      'How to Run a League With Playoffs',
     ];
     const renderedLeagueGuideOrder = screen
       .getAllByRole('link')
@@ -99,6 +101,14 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Schedule a Multi-Week Sports League' })
         .some((link) => link.getAttribute('href') === '/guides/multi-week-league-scheduling'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Manage League Standings and Playoff Seeding' })
+        .some((link) => link.getAttribute('href') === '/guides/league-standings-playoff-seeding'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Run a League With Playoffs' })
+        .some((link) => link.getAttribute('href') === '/guides/league-playoffs'),
     ).toBe(true);
   });
 });
