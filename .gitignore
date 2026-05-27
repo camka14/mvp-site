@@ -23,6 +23,7 @@ uploads/
 *.pem
 .idea
 tmp/
+.tmp/
 .codex-artifacts/
 
 # debug
