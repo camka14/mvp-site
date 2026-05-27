@@ -121,6 +121,58 @@ describe('socialGraph', () => {
     expect(users.get('user_1').followingIds).not.toContain('user_3');
   });
 
+  it('rejects friend requests involving minor or placeholder-DOB accounts', async () => {
+    users.set('minor_target', baseUser('minor_target', {
+      dateOfBirth: new Date('2012-01-01T00:00:00.000Z'),
+    }));
+    users.set('unknown_dob_actor', baseUser('unknown_dob_actor', {
+      dateOfBirth: new Date('1970-01-01T00:00:00.000Z'),
+    }));
+
+    await expect(sendFriendRequest('user_1', 'minor_target')).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(sendFriendRequest('unknown_dob_actor', 'user_1')).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(users.get('user_1').friendRequestSentIds).not.toContain('minor_target');
+    expect(users.get('minor_target').friendRequestIds).not.toContain('user_1');
+  });
+
+  it('rejects accepting friend requests involving minor accounts', async () => {
+    users.set('minor_requester', baseUser('minor_requester', {
+      dateOfBirth: new Date('2012-01-01T00:00:00.000Z'),
+      friendRequestSentIds: ['user_1'],
+    }));
+    users.set('user_1', baseUser('user_1', {
+      friendRequestIds: ['minor_requester'],
+    }));
+
+    await expect(acceptFriendRequest('user_1', 'minor_requester')).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(users.get('user_1').friendIds).not.toContain('minor_requester');
+    expect(users.get('minor_requester').friendIds).not.toContain('user_1');
+  });
+
+  it('rejects follows involving minor or placeholder-DOB accounts', async () => {
+    users.set('minor_target', baseUser('minor_target', {
+      dateOfBirth: new Date('2012-01-01T00:00:00.000Z'),
+    }));
+    users.set('unknown_dob_actor', baseUser('unknown_dob_actor', {
+      dateOfBirth: new Date('1970-01-01T00:00:00.000Z'),
+    }));
+
+    await expect(followUser('user_1', 'minor_target')).rejects.toMatchObject({
+      status: 403,
+    });
+    await expect(followUser('unknown_dob_actor', 'user_1')).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(users.get('user_1').followingIds).not.toContain('minor_target');
+    expect(users.get('unknown_dob_actor').followingIds).not.toContain('user_1');
+  });
+
   it('builds a social graph including followers', async () => {
     users.set('user_1', baseUser('user_1', {
       friendIds: ['user_2'],

@@ -7,6 +7,12 @@ const prismaMock = {
     findUnique: jest.fn(),
     delete: jest.fn(),
   },
+  userData: {
+    findUnique: jest.fn(),
+  },
+  parentChildLinks: {
+    findFirst: jest.fn(),
+  },
   $transaction: jest.fn(),
 };
 
@@ -15,6 +21,7 @@ const getTeamChatBaseMemberIdsMock = jest.fn();
 const syncTeamChatInTxMock = jest.fn();
 const loadCanonicalTeamByIdMock = jest.fn();
 const syncCanonicalTeamRosterMock = jest.fn();
+const reserveChildTeamRegistrationForGuardianMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
@@ -24,7 +31,16 @@ jest.mock('@/server/teamChatSync', () => ({
 }));
 jest.mock('@/server/teams/teamMembership', () => ({
   loadCanonicalTeamById: (...args: unknown[]) => loadCanonicalTeamByIdMock(...args),
+  normalizeId: (value: unknown) => (typeof value === 'string' && value.trim().length > 0 ? value.trim() : null),
+  normalizeIdList: (value: unknown) => (
+    Array.isArray(value)
+      ? Array.from(new Set(value.map((entry) => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)))
+      : []
+  ),
   syncCanonicalTeamRoster: (...args: unknown[]) => syncCanonicalTeamRosterMock(...args),
+}));
+jest.mock('@/server/teams/teamChildRegistration', () => ({
+  reserveChildTeamRegistrationForGuardian: (...args: unknown[]) => reserveChildTeamRegistrationForGuardianMock(...args),
 }));
 
 import { POST } from '@/app/api/invites/[id]/accept/route';
@@ -55,6 +71,19 @@ describe('POST /api/invites/[id]/accept', () => {
     prismaMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
     txMock.invites.delete.mockResolvedValue({ id: 'invite_1' });
     txMock.userData.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('2000-01-01T00:00:00.000Z'),
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue(null);
+    reserveChildTeamRegistrationForGuardianMock.mockResolvedValue({
+      ok: true,
+      payload: {
+        registrationId: 'team_1__child_1',
+        status: 'ACTIVE',
+        registration: null,
+        team: null,
+      },
+    });
     getTeamChatBaseMemberIdsMock.mockReturnValue(['captain_1']);
     syncTeamChatInTxMock.mockResolvedValue(undefined);
     loadCanonicalTeamByIdMock.mockResolvedValue({
@@ -198,6 +227,97 @@ describe('POST /api/invites/[id]/accept', () => {
 
     expect(response.status).toBe(400);
     expect(payload.error).toBe('Invalid invite');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('blocks a child from accepting a team invite when no parent link is detected', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'child_1', isAdmin: false });
+    prismaMock.invites.findUnique.mockResolvedValue({
+      id: 'invite_1',
+      type: 'TEAM',
+      teamId: 'team_1',
+      userId: 'child_1',
+    });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('2014-05-20T00:00:00.000Z'),
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue(null);
+
+    const response = await POST(
+      postRequest(),
+      { params: Promise.resolve({ id: 'invite_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('No parent/guardian link is detected. Please have your parent or guardian create an account and accept this invitation on your behalf.');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(reserveChildTeamRegistrationForGuardianMock).not.toHaveBeenCalled();
+  });
+
+  it('blocks a child from accepting a team invite when a parent must accept', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'child_1', isAdmin: false });
+    prismaMock.invites.findUnique.mockResolvedValue({
+      id: 'invite_1',
+      type: 'TEAM',
+      teamId: 'team_1',
+      userId: 'child_1',
+    });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('2014-05-20T00:00:00.000Z'),
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+
+    const response = await POST(
+      postRequest(),
+      { params: Promise.resolve({ id: 'invite_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('A parent or guardian must accept team invitations for child accounts.');
+    expect(prismaMock.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('lets a linked parent accept a child open team join request and creates the registration then', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'parent_1', isAdmin: false });
+    prismaMock.invites.findUnique.mockResolvedValue({
+      id: 'invite_1',
+      type: 'TEAM',
+      teamId: 'team_1',
+      userId: 'child_1',
+      createdBy: 'child_1',
+    });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('2014-05-20T00:00:00.000Z'),
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    loadCanonicalTeamByIdMock.mockResolvedValue({
+      id: 'team_1',
+      captainId: 'captain_1',
+      managerId: '',
+      headCoachId: null,
+      coachIds: [],
+      playerIds: ['captain_1'],
+      pending: [],
+    });
+
+    const response = await POST(
+      postRequest(),
+      { params: Promise.resolve({ id: 'invite_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.ok).toBe(true);
+    expect(payload.registrationId).toBe('team_1__child_1');
+    expect(reserveChildTeamRegistrationForGuardianMock).toHaveBeenCalledWith(expect.objectContaining({
+      teamId: 'team_1',
+      childId: 'child_1',
+      parentId: 'parent_1',
+      actorUserId: 'parent_1',
+    }));
+    expect(prismaMock.invites.delete).toHaveBeenCalledWith({ where: { id: 'invite_1' } });
     expect(prismaMock.$transaction).not.toHaveBeenCalled();
   });
 });

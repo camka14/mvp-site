@@ -2,8 +2,6 @@ import type { Prisma } from '@/generated/prisma/client';
 import { isPrivateToOrganizationsVisibility, normalizeAccountVisibility } from '@/lib/accountVisibility';
 import { formatNameParts, normalizeOptionalName } from '@/lib/nameCase';
 
-export const NAME_HIDDEN_LABEL = 'Name Hidden';
-
 export const publicUserSelect = {
   id: true,
   createdAt: true,
@@ -469,34 +467,8 @@ export const createVisibilityContext = async (
   };
 };
 
-const canViewerSeeMinorIdentity = (targetUserId: string, context: VisibilityContext): boolean => {
-  if (context.isAdmin) return true;
-  if (!context.viewerId) return false;
-  if (context.viewerId === targetUserId) return true;
-  if (context.activeChildIds.has(targetUserId)) return true;
-  if (context.viewerBelongsToContextTeam && context.contextTeamVisibleUserIds.has(targetUserId)) return true;
-  if (context.viewerManagesContextTeam && context.contextTeamVisibleUserIds.has(targetUserId)) return true;
-  if (context.contextEventViewerTeamVisibleUserIds.has(targetUserId)) return true;
-  if (context.contextEventAllowsHost && context.contextEventVisibleUserIds.has(targetUserId)) return true;
-  if (context.contextTeamAllowsParent && context.contextTeamVisibleUserIds.has(targetUserId)) return true;
-  if (context.contextEventAllowsParent && context.contextEventParentVisibleUserIds.has(targetUserId)) return true;
-  if (context.contextOrganizationAllowsStaff && context.contextOrganizationVisibleUserIds.has(targetUserId)) return true;
-
-  if (
-    context.allowManagerFreeAgentUnmask
-    && context.viewerManagesContextTeam
-    && context.contextEventFreeAgentIds.has(targetUserId)
-  ) {
-    return true;
-  }
-
-  return false;
-};
-
 export const applyUserPrivacy = (user: PublicUser, context: VisibilityContext): VisibilityUser => {
   const isMinor = isMinorAtUtcDate(user.dateOfBirth, context.now);
-  const canViewMinor = isMinor ? canViewerSeeMinorIdentity(user.id, context) : true;
-  const isIdentityHidden = isMinor && !canViewMinor;
 
   const normalizedUser: PublicUser = {
     ...user,
@@ -505,23 +477,11 @@ export const applyUserPrivacy = (user: PublicUser, context: VisibilityContext): 
     accountVisibility: normalizeAccountVisibility(user.accountVisibility),
   };
 
-  if (!isIdentityHidden) {
-    return {
-      ...normalizedUser,
-      isMinor,
-      isIdentityHidden: false,
-      displayName: resolveDisplayName(normalizedUser),
-    };
-  }
-
   return {
     ...normalizedUser,
-    firstName: 'Name',
-    lastName: 'Hidden',
-    userName: 'hidden',
     isMinor,
-    isIdentityHidden: true,
-    displayName: NAME_HIDDEN_LABEL,
+    isIdentityHidden: false,
+    displayName: resolveDisplayName(normalizedUser),
   };
 };
 

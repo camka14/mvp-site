@@ -2,18 +2,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Button, Group, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
-import type { Event, Invite, Organization, Team } from '@/types';
+import { Alert, Button, Group, Paper, SimpleGrid, Stack, Text, Title } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { isApiRequestError } from '@/lib/apiClient';
+import type { BillingAddress, Event, Invite, Organization, PaymentIntent, Team, TeamPlayerRegistration, UserData } from '@/types';
 import { userService } from '@/lib/userService';
 import { organizationService } from '@/lib/organizationService';
-import { teamService } from '@/lib/teamService';
+import { paymentService } from '@/lib/paymentService';
+import { teamService, type TeamRegistrationCheckoutTarget } from '@/lib/teamService';
 import { eventService } from '@/lib/eventService';
+import BillingAddressModal from '@/components/ui/BillingAddressModal';
+import PaymentModal, { type PaymentEventSummary } from '@/components/ui/PaymentModal';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import TeamCard from '@/components/ui/TeamCard';
 import EventCard from '@/components/ui/EventCard';
 
 type ProfileInvitesSectionProps = {
   userId: string;
+  currentUser?: UserData | null;
 };
 
 const getTeamInviteRoleLabel = (invite: Invite, team: Team | null): string => {
@@ -35,7 +41,60 @@ const getTeamInviteRoleLabel = (invite: Invite, team: Team | null): string => {
   return 'Team Invite';
 };
 
-export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionProps) {
+const normalizeText = (value: unknown): string => (
+  typeof value === 'string' ? value.trim() : ''
+);
+
+const getAcceptedChildUserId = (invite: Invite): string | null => {
+  if (invite.type !== 'TEAM' || !invite.viewerCanAcceptForChild) {
+    return null;
+  }
+  return normalizeText(invite.childUserId) || normalizeText(invite.userId) || null;
+};
+
+const isPayableTeamRegistration = (
+  registration: TeamPlayerRegistration,
+  childUserId: string,
+): boolean => {
+  if (normalizeText(registration.userId) !== childUserId) {
+    return false;
+  }
+  const status = normalizeText(registration.status).toUpperCase();
+  return status === 'STARTED' || status === 'PENDING';
+};
+
+export const buildAcceptedChildTeamCheckoutTarget = (
+  teamId: string,
+  registration: TeamPlayerRegistration,
+): TeamRegistrationCheckoutTarget => ({
+  id: normalizeText(registration.id) || undefined,
+  teamId,
+  registrantId: normalizeText(registration.registrantId ?? registration.userId) || undefined,
+  userId: normalizeText(registration.userId) || undefined,
+  parentId: normalizeText(registration.parentId) || null,
+  registrantType: normalizeText(registration.registrantType) || 'CHILD',
+  rosterRole: normalizeText(registration.rosterRole) || 'PARTICIPANT',
+  consentDocumentId: normalizeText(registration.consentDocumentId) || null,
+  consentStatus: normalizeText(registration.consentStatus) || null,
+});
+
+const buildTeamPaymentSummary = (team: Team): PaymentEventSummary => ({
+  name: team.name || 'Team registration',
+  location: '',
+  eventType: 'TOURNAMENT',
+  price: team.registrationPriceCents ?? 0,
+  imageId: team.profileImageId,
+});
+
+const buildUserFullName = (user?: UserData | null): string | null => {
+  const fullName = [normalizeText(user?.firstName), normalizeText(user?.lastName)]
+    .filter(Boolean)
+    .join(' ')
+    .trim();
+  return fullName || normalizeText(user?.userName) || null;
+};
+
+export default function ProfileInvitesSection({ userId, currentUser }: ProfileInvitesSectionProps) {
   const router = useRouter();
   const [invites, setInvites] = useState<Invite[]>([]);
   const [organizationsById, setOrganizationsById] = useState<Record<string, Organization>>({});
@@ -43,6 +102,12 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
   const [eventsById, setEventsById] = useState<Record<string, Event>>({});
   const [loading, setLoading] = useState(true);
   const [actingInviteId, setActingInviteId] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
+  const [paymentTeam, setPaymentTeam] = useState<Team | null>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
+  const [pendingCheckoutTarget, setPendingCheckoutTarget] = useState<TeamRegistrationCheckoutTarget | null>(null);
 
   const loadInvites = useCallback(async () => {
     setLoading(true);
@@ -97,11 +162,92 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
     [invites],
   );
 
-  const acceptInvite = async (inviteId: string) => {
+  const startAcceptedChildTeamCheckout = useCallback(async (
+    team: Team,
+    checkoutTarget: TeamRegistrationCheckoutTarget,
+    billingAddress?: BillingAddress,
+  ) => {
+    if (!currentUser) {
+      throw new Error('You must be signed in to continue.');
+    }
+
+    try {
+      const organization = team.organizationId ? organizationsById[team.organizationId] : undefined;
+      const nextPaymentData = await paymentService.createTeamRegistrationPaymentIntent(
+        currentUser,
+        team,
+        checkoutTarget,
+        organization,
+        billingAddress,
+      );
+      setPaymentTeam(team);
+      setPaymentData(nextPaymentData);
+      setShowPaymentModal(true);
+      setShowBillingAddressModal(false);
+      setPendingCheckoutTarget(null);
+    } catch (error) {
+      if (
+        isApiRequestError(error)
+        && error.data
+        && typeof error.data === 'object'
+        && 'billingAddressRequired' in error.data
+        && Boolean((error.data as { billingAddressRequired?: boolean }).billingAddressRequired)
+      ) {
+        setPaymentTeam(team);
+        setPendingCheckoutTarget(checkoutTarget);
+        setShowBillingAddressModal(true);
+        return;
+      }
+      throw error;
+    }
+  }, [currentUser, organizationsById]);
+
+  const maybeStartAcceptedChildTeamPayment = useCallback(async (invite: Invite) => {
+    const childUserId = getAcceptedChildUserId(invite);
+    if (!childUserId || !invite.teamId) {
+      return;
+    }
+
+    const acceptedTeam = await teamService.getTeamById(invite.teamId, true);
+    if (!acceptedTeam) {
+      setPaymentError('Invite accepted, but the team could not be reloaded for checkout.');
+      return;
+    }
+
+    setTeamsById((current) => ({
+      ...current,
+      [acceptedTeam.$id]: acceptedTeam,
+    }));
+
+    if ((acceptedTeam.registrationPriceCents ?? 0) <= 0) {
+      return;
+    }
+
+    const registration = (acceptedTeam.playerRegistrations ?? [])
+      .find((candidate) => isPayableTeamRegistration(candidate, childUserId));
+    if (!registration) {
+      setPaymentError('Invite accepted, but the child registration could not be found for checkout.');
+      return;
+    }
+
+    await startAcceptedChildTeamCheckout(
+      acceptedTeam,
+      buildAcceptedChildTeamCheckoutTarget(acceptedTeam.$id, registration),
+    );
+  }, [startAcceptedChildTeamCheckout]);
+
+  const acceptInvite = async (invite: Invite) => {
+    const inviteId = invite.$id;
     setActingInviteId(inviteId);
+    setPaymentError(null);
     try {
       await userService.acceptInvite(inviteId);
+      await maybeStartAcceptedChildTeamPayment(invite);
       await loadInvites();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to accept invite.';
+      console.error('Failed to accept invite:', error);
+      setPaymentError(message);
     } finally {
       setActingInviteId(null);
     }
@@ -134,6 +280,12 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
         </Text>
       </Stack>
 
+      {paymentError ? (
+        <Alert color="red" variant="light" onClose={() => setPaymentError(null)} withCloseButton>
+          {paymentError}
+        </Alert>
+      ) : null}
+
       {!hasInvites ? (
         <Paper withBorder radius="md" p="md">
           <Text size="sm" c="dimmed">No pending invites.</Text>
@@ -151,7 +303,7 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
                 organization={organization}
                 actions={(
                   <Stack gap={6}>
-                    <Button size="xs" loading={actingInviteId === invite.$id} onClick={() => { void acceptInvite(invite.$id); }}>
+                    <Button size="xs" loading={actingInviteId === invite.$id} onClick={() => { void acceptInvite(invite); }}>
                       Accept Invite
                     </Button>
                     <Button size="xs" variant="default" onClick={() => { void declineInvite(invite.$id); }}>
@@ -168,6 +320,7 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
             if (!team) {
               return null;
             }
+            const isChildSelfInvite = Boolean(currentUser?.isMinor && invite.userId === userId && !invite.viewerCanAcceptForChild);
             return (
               <TeamCard
                 key={invite.$id}
@@ -176,10 +329,18 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
                 actions={(
                   <Stack gap={6}>
                     <Text size="xs" c="dimmed">{getTeamInviteRoleLabel(invite, team)}</Text>
+                    {invite.viewerCanAcceptForChild ? (
+                      <Text size="xs" c="dimmed">For {invite.childFullName || 'child'}</Text>
+                    ) : null}
+                    {isChildSelfInvite ? (
+                      <Text size="xs" c="dimmed">
+                        A parent or guardian must accept this invitation.
+                      </Text>
+                    ) : null}
                     <Button size="xs" loading={actingInviteId === invite.$id} onClick={(event) => {
                       event.stopPropagation();
-                      void acceptInvite(invite.$id);
-                    }}>
+                      void acceptInvite(invite);
+                    }} disabled={isChildSelfInvite}>
                       Accept Invite
                     </Button>
                     <Button size="xs" variant="default" onClick={(event) => {
@@ -216,7 +377,7 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
                       size="xs"
                       onClick={() => {
                         if (invite.type === 'STAFF') {
-                          void acceptInvite(invite.$id);
+                          void acceptInvite(invite);
                           return;
                         }
                         router.push(`/events/${event.$id}?tab=details`);
@@ -234,6 +395,60 @@ export default function ProfileInvitesSection({ userId }: ProfileInvitesSectionP
           })}
         </SimpleGrid>
       )}
+
+      <BillingAddressModal
+        opened={showBillingAddressModal}
+        onClose={() => {
+          setShowBillingAddressModal(false);
+          setPendingCheckoutTarget(null);
+        }}
+        onSaved={async (billingAddress) => {
+          if (!paymentTeam || !pendingCheckoutTarget) {
+            return;
+          }
+          await startAcceptedChildTeamCheckout(paymentTeam, pendingCheckoutTarget, billingAddress);
+        }}
+      />
+      {paymentTeam ? (
+        <PaymentModal
+          isOpen={showPaymentModal && Boolean(paymentData)}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setPaymentData(null);
+          }}
+          event={buildTeamPaymentSummary(paymentTeam)}
+          paymentData={paymentData}
+          payerName={buildUserFullName(currentUser)}
+          onPaymentSuccess={async () => {
+            const refreshed = await teamService.getTeamById(paymentTeam.$id, true);
+            if (refreshed) {
+              setTeamsById((current) => ({
+                ...current,
+                [refreshed.$id]: refreshed,
+              }));
+            }
+            await loadInvites();
+            notifications.show({
+              color: 'green',
+              message: `Payment complete for ${paymentTeam.name}.`,
+            });
+          }}
+          onPaymentPending={async () => {
+            const refreshed = await teamService.getTeamById(paymentTeam.$id, true);
+            if (refreshed) {
+              setTeamsById((current) => ({
+                ...current,
+                [refreshed.$id]: refreshed,
+              }));
+            }
+            await loadInvites();
+            notifications.show({
+              color: 'yellow',
+              message: `Payment submitted for ${paymentTeam.name}. Registration is pending until the bank payment clears.`,
+            });
+          }}
+        />
+      ) : null}
     </Stack>
   );
 }

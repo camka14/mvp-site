@@ -20,6 +20,7 @@ import { canManageEvent, canManageOrganization, hasOrgPermission } from '@/serve
 import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
 import { resolveDefaultOrganizationRoleIdForStaffTypes } from '@/server/organizationRoles';
 import { loadCanonicalTeamById, normalizeId, normalizeIdList } from '@/server/teams/teamMembership';
+import { listActiveChildIdsForParent } from '@/server/teams/teamGuardianInvites';
 import {
   removeCanonicalPendingInvitee,
   rollbackTeamInviteEventSyncs,
@@ -73,6 +74,10 @@ const mapInviteRecord = (invite: Record<string, any>) => withLegacyFields({
 
 const unionStrings = (left: string[] | null | undefined, right: string[] | null | undefined): string[] => Array.from(
   new Set([...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])].filter(Boolean)),
+);
+
+const formatFullName = (firstName?: string | null, lastName?: string | null): string => (
+  `${normalizeOptionalName(firstName) ?? ''} ${normalizeOptionalName(lastName) ?? ''}`.trim()
 );
 
 const canManageTeamInvites = async (
@@ -181,10 +186,29 @@ export async function GET(req: NextRequest) {
   }
 
   const where: any = {};
+  let includeChildTeamInvites = false;
+  let childInviteIdsForViewer: string[] = [];
   if (!session.isAdmin) {
     const canListTeamInvites = teamId ? await canManageTeamInvites(teamId, session, prisma) : false;
     if (userId || !canListTeamInvites) {
       where.userId = userId ?? session.userId;
+    }
+    includeChildTeamInvites = !teamId
+      && (userId === session.userId || (!userId && !canListTeamInvites))
+      && (!type || type === 'TEAM');
+    if (includeChildTeamInvites) {
+      childInviteIdsForViewer = await listActiveChildIdsForParent(prisma, session.userId);
+      if (childInviteIdsForViewer.length) {
+        delete where.userId;
+        where.OR = [
+          { userId: userId ?? session.userId },
+          {
+            type: 'TEAM',
+            userId: { in: childInviteIdsForViewer },
+            status: 'PENDING',
+          },
+        ];
+      }
     }
   } else if (userId) {
     where.userId = userId;
@@ -197,7 +221,31 @@ export async function GET(req: NextRequest) {
     orderBy: { createdAt: 'desc' },
   });
 
-  return NextResponse.json({ invites: invites.map((invite) => mapInviteRecord(invite)) }, { status: 200 });
+  const childProfiles = childInviteIdsForViewer.length
+    ? await prisma.userData.findMany({
+      where: { id: { in: childInviteIdsForViewer } },
+      select: { id: true, firstName: true, lastName: true },
+    })
+    : [];
+  const childById = new Map(childProfiles.map((child) => [child.id, child]));
+
+  return NextResponse.json({
+    invites: invites.map((invite) => {
+      const child = invite.userId ? childById.get(invite.userId) : null;
+      return mapInviteRecord({
+        ...invite,
+        ...(child
+          ? {
+            childUserId: invite.userId,
+            childFirstName: normalizeOptionalName(child.firstName),
+            childLastName: normalizeOptionalName(child.lastName),
+            childFullName: formatFullName(child.firstName, child.lastName) || 'Child',
+            viewerCanAcceptForChild: true,
+          }
+          : {}),
+      });
+    }),
+  }, { status: 200 });
 }
 
 export async function POST(req: NextRequest) {

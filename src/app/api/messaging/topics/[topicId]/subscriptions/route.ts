@@ -4,6 +4,11 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { registerPushDeviceTarget, unregisterPushDeviceTarget } from '@/server/pushNotifications';
+import {
+  getMinorChatParticipantIds,
+  loadChatParticipants,
+  normalizeChatParticipantIds,
+} from '@/server/chatSafety';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +19,6 @@ const schema = z.object({
   pushPlatform: z.string().optional().nullable(),
 }).passthrough();
 
-const uniqueIds = (ids: string[]) => Array.from(new Set(ids.filter(Boolean)));
 const normalizeOptional = (value?: string | null): string | null => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
@@ -100,15 +104,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ top
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
     }
-    const requestUserIds = uniqueIds(parsed.data.userIds.map((id) => id.trim()).filter(Boolean));
+    const requestUserIds = normalizeChatParticipantIds(parsed.data.userIds);
     if (!requestUserIds.length) {
       return NextResponse.json({ error: 'Invalid input', details: { userIds: ['At least one user id is required'] } }, { status: 400 });
     }
 
     const existing = await prisma.chatGroup.findUnique({ where: { id: topicId } });
     const now = new Date();
-    const mergedUserIds = uniqueIds([...(existing?.userIds ?? []), ...requestUserIds]);
+    const mergedUserIds = normalizeChatParticipantIds([...(existing?.userIds ?? []), ...requestUserIds]);
     const canCreateChatGroup = mergedUserIds.length >= 2;
+    if (canCreateChatGroup && !existing?.teamId) {
+      const users = await loadChatParticipants(prisma, mergedUserIds);
+      if (users.length !== mergedUserIds.length) {
+        return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+      }
+      if (getMinorChatParticipantIds(users).length > 0) {
+        return NextResponse.json({ error: 'Messaging minor accounts is only allowed in team chats.' }, { status: 403 });
+      }
+    }
 
     const record = existing
       ? await prisma.chatGroup.update({
@@ -156,7 +169,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ t
     if (!parsed.success) {
       return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
     }
-    const requestUserIds = uniqueIds(parsed.data.userIds.map((id) => id.trim()).filter(Boolean));
+    const requestUserIds = normalizeChatParticipantIds(parsed.data.userIds);
     if (!requestUserIds.length) {
       return NextResponse.json({ error: 'Invalid input', details: { userIds: ['At least one user id is required'] } }, { status: 400 });
     }

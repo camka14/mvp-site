@@ -16,6 +16,12 @@ const prismaMock = {
   sensitiveUserData: {
     findFirst: jest.fn(),
   },
+  parentChildLinks: {
+    findMany: jest.fn(),
+  },
+  userData: {
+    findMany: jest.fn(),
+  },
   teams: {
     findUnique: jest.fn(),
   },
@@ -78,6 +84,8 @@ describe('/api/invites', () => {
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock));
     prismaMock.authUser.findUnique.mockResolvedValue(null);
     prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+    prismaMock.parentChildLinks.findMany.mockResolvedValue([]);
+    prismaMock.userData.findMany.mockResolvedValue([]);
     prismaMock.invites.findFirst.mockResolvedValue(null);
     prismaMock.invites.findMany.mockResolvedValue([]);
     prismaMock.staffMembers.upsert.mockResolvedValue({});

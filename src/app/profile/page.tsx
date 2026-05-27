@@ -2464,7 +2464,7 @@ function ProfilePageContent() {
       </Paper>
 
       <Paper withBorder radius="lg" p="md" shadow="xs">
-        <ProfileInvitesSection userId={user.$id} />
+        <ProfileInvitesSection userId={user.$id} currentUser={user} />
       </Paper>
 
       <Paper withBorder radius="lg" p="md" shadow="xs">
@@ -3451,66 +3451,76 @@ function ProfilePageContent() {
           </Text>
         ) : (
           <div className="space-y-3">
-            {joinRequests.map((request) => (
-              <Paper
-                key={request.registrationId}
-                withBorder
-                radius="lg"
-                p="md"
-                shadow="xs"
-              >
-                <div className="space-y-1">
-                  <Text fw={600}>
-                    {request.childFullName || "Child"} requested to join{" "}
-                    {request.eventName || "event"}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    Requested:{" "}
-                    {formatDateTimeLabel(request.requestedAt || undefined)}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    Consent status:{" "}
-                    {request.consentStatus || "guardian_approval_required"}
-                  </Text>
-                  {!request.childHasEmail && (
-                    <Alert color="yellow" variant="light" mt="sm">
-                      Child email is missing. Approval can proceed, but
-                      child-signature document steps remain pending.
-                    </Alert>
-                  )}
-                </div>
-                <Group mt="sm" justify="flex-end">
-                  <Button
-                    size="xs"
-                    variant="light"
-                    color="green"
-                    loading={resolvingJoinRequestId === request.registrationId}
-                    onClick={() =>
-                      handleResolveJoinRequest(
-                        request.registrationId,
-                        "approve",
-                      )
-                    }
-                  >
-                    Approve
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="light"
-                    color="red"
-                    loading={resolvingJoinRequestId === request.registrationId}
-                    onClick={() =>
-                      handleResolveJoinRequest(
-                        request.registrationId,
-                        "decline",
-                      )
-                    }
-                  >
-                    Decline
-                  </Button>
-                </Group>
-              </Paper>
-            ))}
+            {joinRequests.map((request) => {
+              const isTeamRequest = request.requestType === "TEAM";
+              const targetName = isTeamRequest
+                ? request.teamName || request.eventName || "team"
+                : request.eventName || "event";
+              const actionText = request.requestSource === "TEAM_INVITE"
+                ? "was invited to join"
+                : "requested to join";
+
+              return (
+                <Paper
+                  key={request.registrationId}
+                  withBorder
+                  radius="lg"
+                  p="md"
+                  shadow="xs"
+                >
+                  <div className="space-y-1">
+                    <Text fw={600}>
+                      {request.childFullName || "Child"} {actionText}{" "}
+                      {targetName}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Requested:{" "}
+                      {formatDateTimeLabel(request.requestedAt || undefined)}
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Consent status:{" "}
+                      {request.consentStatus || "guardian_approval_required"}
+                    </Text>
+                    {!request.childHasEmail && !isTeamRequest && (
+                      <Alert color="yellow" variant="light" mt="sm">
+                        Child email is missing. Approval can proceed, but
+                        child-signature document steps remain pending.
+                      </Alert>
+                    )}
+                  </div>
+                  <Group mt="sm" justify="flex-end">
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="green"
+                      loading={resolvingJoinRequestId === request.registrationId}
+                      onClick={() =>
+                        handleResolveJoinRequest(
+                          request.registrationId,
+                          "approve",
+                        )
+                      }
+                    >
+                      {isTeamRequest ? "Accept" : "Approve"}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="light"
+                      color="red"
+                      loading={resolvingJoinRequestId === request.registrationId}
+                      onClick={() =>
+                        handleResolveJoinRequest(
+                          request.registrationId,
+                          "decline",
+                        )
+                      }
+                    >
+                      Decline
+                    </Button>
+                  </Group>
+                </Paper>
+              );
+            })}
           </div>
         )}
       </Paper>

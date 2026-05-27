@@ -227,4 +227,42 @@ describe('/api/chat/groups POST', () => {
     expect(json.error).toContain('blocked');
     expect(chatGroupCreateMock).not.toHaveBeenCalled();
   });
+
+  it('returns 403 when creating a non-team chat with a minor participant', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    userDataFindManyMock.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'minor_1', dateOfBirth: new Date('2012-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+
+    const response = await POST(createPostRequest({
+      id: 'chat_1',
+      hostId: 'user_1',
+      userIds: ['user_1', 'minor_1'],
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toContain('team chats');
+    expect(chatGroupCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when a placeholder-DOB session user creates a non-team chat', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'minor_like_user', isAdmin: false });
+    userDataFindManyMock.mockResolvedValue([
+      { id: 'minor_like_user', dateOfBirth: new Date('1970-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+
+    const response = await POST(createPostRequest({
+      id: 'chat_1',
+      hostId: 'minor_like_user',
+      userIds: ['minor_like_user', 'user_2'],
+    }));
+    const json = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(json.error).toContain('team chats');
+    expect(chatGroupCreateMock).not.toHaveBeenCalled();
+  });
 });

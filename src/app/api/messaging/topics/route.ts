@@ -3,7 +3,11 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
-import { isMinorAtUtcDate } from '@/server/userPrivacy';
+import {
+  getMinorChatParticipantIds,
+  loadChatParticipants,
+  normalizeChatParticipantIds,
+} from '@/server/chatSafety';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,8 +19,6 @@ const schema = z.object({
   userIds: z.array(z.string()).optional(),
 }).passthrough();
 
-const uniqueIds = (ids: string[]) => Array.from(new Set(ids.filter(Boolean)));
-
 export async function POST(req: NextRequest) {
   const session = await requireSession(req);
   const body = await req.json().catch(() => null);
@@ -27,24 +29,20 @@ export async function POST(req: NextRequest) {
 
   const topicId = parsed.data.topicId ?? parsed.data.id ?? crypto.randomUUID();
   const name = parsed.data.topicName ?? parsed.data.name ?? null;
-  const userIds = Array.isArray(parsed.data.userIds) ? uniqueIds(parsed.data.userIds) : [];
-  if (userIds.length > 0) {
-    const targetUserIds = userIds.filter((id) => id !== session.userId);
-    if (targetUserIds.length > 0) {
-      const targetUsers = await prisma.userData.findMany({
-        where: { id: { in: targetUserIds } },
-        select: { id: true, dateOfBirth: true },
-      });
-      const containsMinorTarget = targetUsers.some((user) => isMinorAtUtcDate(user.dateOfBirth));
-      if (containsMinorTarget) {
-        return NextResponse.json({ error: 'Messaging minor accounts is not allowed.' }, { status: 403 });
-      }
+  const userIds = Array.isArray(parsed.data.userIds) ? normalizeChatParticipantIds(parsed.data.userIds) : [];
+  const existing = await prisma.chatGroup.findUnique({ where: { id: topicId } });
+  const canCreateChatGroup = userIds.length >= 2;
+  if (userIds.length > 0 && (existing || canCreateChatGroup) && !existing?.teamId) {
+    const users = await loadChatParticipants(prisma, userIds);
+    if (users.length !== userIds.length) {
+      return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+    }
+    if (getMinorChatParticipantIds(users).length > 0) {
+      return NextResponse.json({ error: 'Messaging minor accounts is only allowed in team chats.' }, { status: 403 });
     }
   }
 
-  const existing = await prisma.chatGroup.findUnique({ where: { id: topicId } });
   const now = new Date();
-  const canCreateChatGroup = userIds.length >= 2;
 
   if (!existing && !canCreateChatGroup) {
     return NextResponse.json({ topicId, topic: null }, { status: 200 });

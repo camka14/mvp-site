@@ -3,8 +3,13 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyList, withLegacyFields } from '@/server/legacyFormat';
-import { isMinorAtUtcDate } from '@/server/userPrivacy';
 import { handleRouteError } from '@/server/http/routeErrors';
+import {
+  getMinorChatParticipantIds,
+  hasBlockingChatRelationship,
+  loadChatParticipants,
+  normalizeChatParticipantIds,
+} from '@/server/chatSafety';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,15 +19,6 @@ const createSchema = z.object({
   userIds: z.array(z.string().trim().min(1)).min(2),
   hostId: z.string().trim().min(1),
 }).passthrough();
-
-const normalizeIds = (value: string[] | null | undefined): string[] => (
-  Array.from(new Set((value ?? []).map((entry) => entry.trim()).filter(Boolean)))
-);
-
-const hasBlockingRelationship = (users: Array<{ id: string; blockedUserIds?: string[] | null }>): boolean => {
-  const participantIds = new Set(users.map((user) => user.id));
-  return users.some((user) => normalizeIds(user.blockedUserIds).some((blockedId) => participantIds.has(blockedId)));
-};
 
 export async function GET(req: NextRequest) {
   try {
@@ -98,7 +94,7 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedHostId = parsed.data.hostId.trim();
-    const requestedUserIds = Array.from(new Set(parsed.data.userIds.map((entry) => entry.trim()).filter(Boolean)));
+    const requestedUserIds = normalizeChatParticipantIds(parsed.data.userIds);
 
     if (!requestedUserIds.includes(session.userId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -115,23 +111,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const requestedUsers = await prisma.userData.findMany({
-      where: { id: { in: requestedUserIds } },
-      select: { id: true, dateOfBirth: true, blockedUserIds: true },
-    });
+    const requestedUsers = await loadChatParticipants(prisma, requestedUserIds);
     if (requestedUsers.length !== requestedUserIds.length) {
       return NextResponse.json({ error: 'User not found.' }, { status: 404 });
     }
 
-    const targetUserIds = requestedUserIds.filter((id) => id !== session.userId);
-    if (targetUserIds.length > 0) {
-      const targetUsers = requestedUsers.filter((user) => targetUserIds.includes(user.id));
-      const containsMinorTarget = targetUsers.some((user) => isMinorAtUtcDate(user.dateOfBirth));
-      if (containsMinorTarget) {
-        return NextResponse.json({ error: 'Messaging minor accounts is not allowed.' }, { status: 403 });
-      }
+    if (getMinorChatParticipantIds(requestedUsers).length > 0) {
+      return NextResponse.json({ error: 'Messaging minor accounts is only allowed in team chats.' }, { status: 403 });
     }
-    if (hasBlockingRelationship(requestedUsers)) {
+    if (hasBlockingChatRelationship(requestedUsers)) {
       return NextResponse.json(
         { error: 'Chat creation is unavailable because one of these users has blocked the other.' },
         { status: 403 },

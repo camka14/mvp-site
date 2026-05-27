@@ -361,10 +361,11 @@ describe('users list route', () => {
     expect(json.users).toHaveLength(3);
     expect(json.users[0].displayName).toBe('Minor One');
     expect(json.users[0].isIdentityHidden).toBe(false);
-    expect(json.users[1].displayName).toBe('Name Hidden');
-    expect(json.users[1].isIdentityHidden).toBe(true);
-    expect(json.users[2].displayName).toBe('Name Hidden');
-    expect(json.users[2].isIdentityHidden).toBe(true);
+    expect(json.users[1].displayName).toBe('Minor Two');
+    expect(json.users[1].isIdentityHidden).toBe(false);
+    expect(json.users[2].displayName).toBe('Minor Free');
+    expect(json.users[2].isIdentityHidden).toBe(false);
+    expect(json.users.map((user: any) => user.isMinor)).toEqual([true, true, true]);
   });
 
   it('limits event-scoped team member visibility to their own team members', async () => {
@@ -434,10 +435,11 @@ describe('users list route', () => {
     expect(json.users).toHaveLength(3);
     expect(json.users[0].displayName).toBe('Minor One');
     expect(json.users[0].isIdentityHidden).toBe(false);
-    expect(json.users[1].displayName).toBe('Name Hidden');
-    expect(json.users[1].isIdentityHidden).toBe(true);
-    expect(json.users[2].displayName).toBe('Name Hidden');
-    expect(json.users[2].isIdentityHidden).toBe(true);
+    expect(json.users[1].displayName).toBe('Minor Two');
+    expect(json.users[1].isIdentityHidden).toBe(false);
+    expect(json.users[2].displayName).toBe('Minor Free');
+    expect(json.users[2].isIdentityHidden).toBe(false);
+    expect(json.users.map((user: any) => user.isMinor)).toEqual([true, true, true]);
   });
 
   it('shows minor identity to team manager when scoped to their team', async () => {

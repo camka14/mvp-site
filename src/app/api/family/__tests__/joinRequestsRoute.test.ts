@@ -8,10 +8,20 @@ const prismaMock = {
     findFirst: jest.fn(),
     update: jest.fn(),
   },
+  invites: {
+    findMany: jest.fn(),
+    findUnique: jest.fn(),
+  },
+  parentChildLinks: {
+    findFirst: jest.fn(),
+  },
   events: {
     findMany: jest.fn(),
     findUnique: jest.fn(),
     update: jest.fn(),
+  },
+  canonicalTeams: {
+    findMany: jest.fn(),
   },
   userData: {
     findMany: jest.fn(),
@@ -26,12 +36,20 @@ const prismaMock = {
 const requireSessionMock = jest.fn();
 const withLegacyFieldsMock = jest.fn((row) => ({ ...row, $id: row.id }));
 const dispatchRequiredEventDocumentsMock = jest.fn();
+const listActiveChildIdsForParentMock = jest.fn();
+const acceptTeamInviteWithGuardianRulesMock = jest.fn();
+const declineTeamInviteWithGuardianRulesMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/legacyFormat', () => ({ withLegacyFields: withLegacyFieldsMock }));
 jest.mock('@/lib/eventConsentDispatch', () => ({
   dispatchRequiredEventDocuments: (...args: any[]) => dispatchRequiredEventDocumentsMock(...args),
+}));
+jest.mock('@/server/teams/teamGuardianInvites', () => ({
+  listActiveChildIdsForParent: (...args: any[]) => listActiveChildIdsForParentMock(...args),
+  acceptTeamInviteWithGuardianRules: (...args: any[]) => acceptTeamInviteWithGuardianRulesMock(...args),
+  declineTeamInviteWithGuardianRules: (...args: any[]) => declineTeamInviteWithGuardianRulesMock(...args),
 }));
 
 import { GET } from '@/app/api/family/join-requests/route';
@@ -48,12 +66,19 @@ describe('family join requests routes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'parent_1', isAdmin: false });
+    listActiveChildIdsForParentMock.mockResolvedValue([]);
+    acceptTeamInviteWithGuardianRulesMock.mockResolvedValue({ status: 200, body: { ok: true } });
+    declineTeamInviteWithGuardianRulesMock.mockResolvedValue({ status: 200, body: { ok: true } });
     dispatchRequiredEventDocumentsMock.mockResolvedValue({
       sentDocumentIds: [],
       firstDocumentId: null,
       missingChildEmail: false,
       errors: [],
     });
+    prismaMock.invites.findMany.mockResolvedValue([]);
+    prismaMock.invites.findUnique.mockResolvedValue(null);
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue(null);
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([]);
   });
 
   it('lists pending guardian approval requests', async () => {
@@ -93,6 +118,7 @@ describe('family join requests routes', () => {
     expect(response.status).toBe(200);
     expect(payload.requests).toHaveLength(1);
     expect(payload.requests[0]).toEqual(expect.objectContaining({
+      requestType: 'EVENT',
       registrationId: 'reg_1',
       eventId: 'event_1',
       childUserId: 'child_1',
@@ -207,6 +233,56 @@ describe('family join requests routes', () => {
     }));
   });
 
+  it('lists child team invites and open team join requests for linked children', async () => {
+    prismaMock.eventRegistrations.findMany.mockResolvedValue([]);
+    listActiveChildIdsForParentMock.mockResolvedValue(['child_1']);
+    prismaMock.invites.findMany.mockResolvedValue([
+      {
+        id: 'invite_team_1',
+        teamId: 'team_1',
+        userId: 'child_1',
+        createdBy: 'child_1',
+        status: 'PENDING',
+        createdAt: new Date('2026-02-18T10:00:00.000Z'),
+        updatedAt: new Date('2026-02-18T10:15:00.000Z'),
+      },
+    ]);
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'team_1',
+        name: 'Open Team',
+        registrationPriceCents: 2500,
+        openRegistration: true,
+      },
+    ]);
+    prismaMock.userData.findMany.mockResolvedValue([
+      {
+        id: 'child_1',
+        firstName: 'Alex',
+        lastName: 'Lee',
+        dateOfBirth: new Date('2014-05-20T00:00:00.000Z'),
+      },
+    ]);
+    prismaMock.sensitiveUserData.findMany.mockResolvedValue([{ userId: 'child_1', email: 'child@example.com' }]);
+
+    const response = await GET(new NextRequest('http://localhost/api/family/join-requests'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.requests).toHaveLength(1);
+    expect(payload.requests[0]).toEqual(expect.objectContaining({
+      requestType: 'TEAM',
+      requestSource: 'TEAM_JOIN_REQUEST',
+      registrationId: 'invite_team_1',
+      inviteId: 'invite_team_1',
+      teamId: 'team_1',
+      teamName: 'Open Team',
+      childUserId: 'child_1',
+      childFullName: 'Alex Lee',
+      childHasEmail: true,
+    }));
+  });
+
   it('declines a pending request', async () => {
     prismaMock.eventRegistrations.findFirst.mockResolvedValue({
       id: 'reg_2',
@@ -234,6 +310,40 @@ describe('family join requests routes', () => {
     expect(payload.registration).toEqual(expect.objectContaining({
       status: 'CANCELLED',
       consentStatus: 'guardian_declined',
+    }));
+  });
+
+  it('approves a child team request through guardian invite acceptance', async () => {
+    prismaMock.eventRegistrations.findFirst.mockResolvedValue(null);
+    prismaMock.invites.findUnique.mockResolvedValue({
+      id: 'invite_team_1',
+      type: 'TEAM',
+      teamId: 'team_1',
+      userId: 'child_1',
+      createdBy: 'child_1',
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ id: 'link_1' });
+    acceptTeamInviteWithGuardianRulesMock.mockResolvedValue({
+      status: 200,
+      body: {
+        ok: true,
+        registrationId: 'team_1__child_1',
+        status: 'ACTIVE',
+      },
+    });
+
+    const response = await PATCH(
+      jsonPatch('http://localhost/api/family/join-requests/invite_team_1', { action: 'approve' }),
+      { params: Promise.resolve({ registrationId: 'invite_team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.action).toBe('approved');
+    expect(payload.requestType).toBe('TEAM');
+    expect(acceptTeamInviteWithGuardianRulesMock).toHaveBeenCalledWith(expect.objectContaining({
+      invite: expect.objectContaining({ id: 'invite_team_1' }),
+      session: expect.objectContaining({ userId: 'parent_1' }),
     }));
   });
 });

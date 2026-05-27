@@ -5,6 +5,10 @@ import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { calculateAgeOnDate } from '@/lib/age';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
+import {
+  acceptTeamInviteWithGuardianRules,
+  declineTeamInviteWithGuardianRules,
+} from '@/server/teams/teamGuardianInvites';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,7 +43,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ re
   });
 
   if (!registration) {
-    return NextResponse.json({ error: 'Registration request not found.' }, { status: 404 });
+    const invite = await prisma.invites.findUnique({
+      where: { id: registrationId },
+    });
+    if (!invite || String(invite.type ?? '').toUpperCase() !== 'TEAM' || !invite.userId) {
+      return NextResponse.json({ error: 'Registration request not found.' }, { status: 404 });
+    }
+
+    const parentLink = await prisma.parentChildLinks.findFirst({
+      where: {
+        parentId: session.userId,
+        childId: invite.userId,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    if (!parentLink) {
+      return NextResponse.json({ error: 'Registration request not found.' }, { status: 404 });
+    }
+
+    const result = parsed.data.action === 'decline'
+      ? await declineTeamInviteWithGuardianRules({
+        invite,
+        session,
+        now: new Date(),
+      })
+      : await acceptTeamInviteWithGuardianRules({
+        invite,
+        session,
+        now: new Date(),
+      });
+
+    if (result.status >= 400) {
+      return NextResponse.json(result.body, { status: result.status });
+    }
+
+    return NextResponse.json({
+      ...result.body,
+      action: parsed.data.action === 'decline' ? 'declined' : 'approved',
+      requestType: 'TEAM',
+      inviteId: invite.id,
+    }, { status: result.status });
   }
 
   if (parsed.data.action === 'decline') {

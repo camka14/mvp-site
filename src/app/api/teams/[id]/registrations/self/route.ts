@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateAgeOnDate } from '@/lib/age';
+import { normalizeOptionalName } from '@/lib/nameCase';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
@@ -28,6 +29,14 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
   };
 };
 
+const normalizeEmail = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+};
+
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const session = await requireSession(req);
@@ -36,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       loadCanonicalTeamById(id),
       prisma.userData.findUnique({
         where: { id: session.userId },
-        select: { dateOfBirth: true },
+        select: { dateOfBirth: true, firstName: true, lastName: true },
       }),
     ]);
     if (!teamRow) {
@@ -51,27 +60,92 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Invalid date of birth' }, { status: 400 });
     }
 
-    let registrantId = session.userId;
-    let registrantType: 'SELF' | 'CHILD' = 'SELF';
-    let parentId: string | null = null;
     if (age < 18) {
-      const parentLink = await prisma.parentChildLinks.findFirst({
-        where: {
-          childId: session.userId,
-          status: 'ACTIVE',
-        },
-        orderBy: { updatedAt: 'desc' },
-        select: { parentId: true },
-      });
+      const [parentLink, authUser, sensitiveUser, existingInvite] = await Promise.all([
+        prisma.parentChildLinks.findFirst({
+          where: {
+            childId: session.userId,
+            status: 'ACTIVE',
+          },
+          orderBy: { updatedAt: 'desc' },
+          select: { parentId: true },
+        }),
+        prisma.authUser.findUnique({
+          where: { id: session.userId },
+          select: { email: true },
+        }),
+        prisma.sensitiveUserData.findFirst({
+          where: { userId: session.userId },
+          select: { email: true },
+        }),
+        prisma.invites.findFirst({
+          where: {
+            type: 'TEAM',
+            teamId: id,
+            userId: session.userId,
+            status: 'PENDING',
+          },
+        }),
+      ]);
       if (!parentLink?.parentId) {
         return NextResponse.json(
           { error: 'No linked parent/guardian found. Ask a parent to add you first.' },
           { status: 403 },
         );
       }
-      registrantType = 'CHILD';
-      parentId = parentLink.parentId;
+
+      const inviteEmail = normalizeEmail(authUser?.email)
+        ?? normalizeEmail(sensitiveUser?.email)
+        ?? normalizeEmail(existingInvite?.email);
+      if (!inviteEmail) {
+        return NextResponse.json({ error: 'Missing account email for team join request.' }, { status: 400 });
+      }
+
+      const now = new Date();
+      const isExistingManagerInvite = Boolean(existingInvite && existingInvite.createdBy !== session.userId);
+      const invite = isExistingManagerInvite
+        ? existingInvite
+        : existingInvite
+          ? await prisma.invites.update({
+            where: { id: existingInvite.id },
+            data: {
+              email: inviteEmail,
+              status: 'PENDING',
+              createdBy: session.userId,
+              firstName: normalizeOptionalName(userProfile.firstName) ?? existingInvite.firstName,
+              lastName: normalizeOptionalName(userProfile.lastName) ?? existingInvite.lastName,
+              updatedAt: now,
+            },
+          })
+          : await prisma.invites.create({
+            data: {
+              id: crypto.randomUUID(),
+              type: 'TEAM',
+              email: inviteEmail,
+              status: 'PENDING',
+              teamId: id,
+              userId: session.userId,
+              createdBy: session.userId,
+              firstName: normalizeOptionalName(userProfile.firstName),
+              lastName: normalizeOptionalName(userProfile.lastName),
+              createdAt: now,
+              updatedAt: now,
+            },
+          });
+
+      return NextResponse.json({
+        requiresParentApproval: true,
+        message: isExistingManagerInvite
+          ? 'A parent or guardian must accept the pending team invitation before you can join this team.'
+          : 'A parent or guardian must accept this team join request before you can be added to the team.',
+        invite: invite ? withLegacyFields(invite) : null,
+        team: withTeamRoleAliases(teamRow as Record<string, any>),
+      }, { status: 200 });
     }
+
+    const registrantId = session.userId;
+    const registrantType: 'SELF' = 'SELF';
+    const parentId: string | null = null;
 
     const signatureState = await getTeamRegistrationSignatureState({
       teamId: id,

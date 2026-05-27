@@ -3,43 +3,15 @@ import { z } from 'zod';
 import { calculateAgeOnDate } from '@/lib/age';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
-import { withLegacyFields } from '@/server/legacyFormat';
 import { handleApiRouteError } from '@/server/http/routeErrors';
 import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
-import { findTeamRegistration, reserveTeamRegistrationSlot } from '@/server/teams/teamOpenRegistration';
-import {
-  dispatchRequiredTeamDocuments,
-  getTeamRegistrationSignatureState,
-} from '@/server/teams/teamRegistrationDocuments';
+import { reserveChildTeamRegistrationForGuardian } from '@/server/teams/teamChildRegistration';
 
 export const dynamic = 'force-dynamic';
 
 const schema = z.object({
   childId: z.string().min(1),
 }).passthrough();
-
-const toUniqueStrings = (value: unknown): string[] => {
-  if (!Array.isArray(value)) return [];
-  return Array.from(new Set(value.map((entry) => String(entry).trim()).filter(Boolean)));
-};
-
-const withTeamRoleAliases = (team: Record<string, any>) => {
-  const formatted = withLegacyFields(team);
-  const assistantCoachIds = toUniqueStrings((formatted as any).assistantCoachIds ?? (formatted as any).coachIds);
-  return {
-    ...formatted,
-    assistantCoachIds,
-    coachIds: assistantCoachIds,
-  };
-};
-
-const normalizeEmail = (value: unknown): string | null => {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  return normalized.length > 0 ? normalized : null;
-};
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -74,100 +46,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const childId = parsed.data.childId;
-    const [parentLink, childSensitive] = await Promise.all([
-      prisma.parentChildLinks.findFirst({
-        where: {
-          parentId: session.userId,
-          childId,
-          status: 'ACTIVE',
-        },
-        select: { id: true },
-      }),
-      prisma.sensitiveUserData.findFirst({
-        where: { userId: childId },
-        select: { email: true },
-      }),
-    ]);
+    const parentLink = await prisma.parentChildLinks.findFirst({
+      where: {
+        parentId: session.userId,
+        childId,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
     if (!parentLink) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const signatureState = await getTeamRegistrationSignatureState({
+    const result = await reserveChildTeamRegistrationForGuardian({
       teamId: id,
-      registrantId: childId,
-      registrantType: 'CHILD',
       parentId: session.userId,
-    });
-    const needsConsent = signatureState.eligibleTemplateIds.length > 0 && !signatureState.hasCompletedRequiredSignatures;
-    const consentDispatch = needsConsent
-      ? await dispatchRequiredTeamDocuments({
-        teamId: id,
-        organizationId: signatureState.organizationId,
-        requiredTemplateIds: signatureState.missingTemplateIds,
-        parentUserId: session.userId,
-        childUserId: childId,
-      })
-      : null;
-
-    const existingRegistration = await findTeamRegistration({
-      teamId: id,
-      registrantId: childId,
-    });
-    const nextConsentStatus = signatureState.eligibleTemplateIds.length === 0
-      ? null
-      : signatureState.hasCompletedRequiredSignatures
-        ? 'completed'
-        : consentDispatch?.missingChildEmail
-          ? 'child_email_required'
-          : (consentDispatch?.errors.length ?? 0) > 0
-            ? 'send_failed'
-            : signatureState.consentStatus ?? 'sent';
-    const nextConsentDocumentId = consentDispatch?.firstDocumentId
-      ?? existingRegistration?.consentDocumentId
-      ?? null;
-    const requiresPayment = Math.max(0, Math.round(Number((teamRow as any).registrationPriceCents ?? 0))) > 0;
-    const nextStatus = (!requiresPayment && !needsConsent) ? 'ACTIVE' : 'STARTED';
-
-    const result = await reserveTeamRegistrationSlot({
-      teamId: id,
-      userId: childId,
+      childId,
       actorUserId: session.userId,
-      status: nextStatus,
-      registrantType: 'CHILD',
-      parentId: session.userId,
-      rosterRole: 'PARTICIPANT',
-      consentDocumentId: nextConsentDocumentId,
-      consentStatus: nextConsentStatus,
-      allowStartedWithoutPayment: !requiresPayment,
+      teamRow,
       now: new Date(),
     });
     if (!result.ok) {
       return NextResponse.json({ error: result.error }, { status: result.status });
     }
 
-    const team = await loadCanonicalTeamById(id);
-    const registration = await findTeamRegistration({
-      teamId: id,
-      registrantId: childId,
-    });
-    const childEmail = normalizeEmail(childSensitive?.email);
-    const warnings = consentDispatch?.errors.length ? consentDispatch.errors : undefined;
-
-    return NextResponse.json({
-      registrationId: result.registrationId,
-      status: result.status,
-      registration: registration ? withLegacyFields(registration) : null,
-      consent: signatureState.eligibleTemplateIds.length > 0
-        ? {
-          documentId: nextConsentDocumentId,
-          status: nextConsentStatus,
-          childEmail,
-          requiresChildEmail: consentDispatch?.missingChildEmail ?? false,
-        }
-        : undefined,
-      warnings,
-      team: team ? withTeamRoleAliases(team as Record<string, any>) : null,
-    }, { status: 200 });
+    return NextResponse.json(result.payload, { status: 200 });
   } catch (error) {
     return handleApiRouteError(error, 'Failed to register child for team');
   }

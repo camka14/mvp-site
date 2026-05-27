@@ -78,6 +78,16 @@ describe('Navigation', () => {
     expect(screen.queryByText('Taylor')).not.toBeInTheDocument();
   });
 
+  it('shows the mobile app link before the profile component for signed-in users', () => {
+    render(<Navigation />);
+
+    const mobileAppLink = screen.getByRole('link', { name: /get the mobile app/i });
+    const profileLink = screen.getByRole('link', { name: /profile name/i });
+
+    expect(mobileAppLink).toHaveAttribute('href', '/mobile-app');
+    expect(Boolean(mobileAppLink.compareDocumentPosition(profileLink) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
   it('shows the AI assistant trigger for signed-in users', () => {
     render(<Navigation />);
 

@@ -14,6 +14,11 @@ const prismaMock = {
   sensitiveUserData: {
     findFirst: jest.fn(),
   },
+  invites: {
+    findFirst: jest.fn(),
+    create: jest.fn(),
+    update: jest.fn(),
+  },
   canonicalTeams: {
     findUnique: jest.fn(),
   },
@@ -89,6 +94,15 @@ jest.mock('@/lib/templateSignerTypes', () => ({
 import { DELETE, POST as postSelf } from '@/app/api/teams/[id]/registrations/self/route';
 import { POST as postChild } from '@/app/api/teams/[id]/registrations/child/route';
 import { POST as postSign } from '@/app/api/teams/[id]/sign/route';
+import { calculateAgeOnDate } from '@/lib/age';
+
+const calculateAgeOnDateMock = calculateAgeOnDate as jest.Mock;
+const teamMembershipMock = jest.requireMock('@/server/teams/teamMembership') as {
+  loadCanonicalTeamById: jest.Mock;
+};
+const teamOpenRegistrationMock = jest.requireMock('@/server/teams/teamOpenRegistration') as {
+  reserveTeamRegistrationSlot: jest.Mock;
+};
 
 describe('team registration auth route handling', () => {
   beforeEach(() => {
@@ -142,5 +156,60 @@ describe('team registration auth route handling', () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' });
+  });
+
+  it('creates a parent approval request for minor self team registration without reserving a slot', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'child_1', isAdmin: false });
+    teamMembershipMock.loadCanonicalTeamById.mockResolvedValue({
+      id: 'team_1',
+      name: 'Open Team',
+      playerIds: [],
+      pending: [],
+      teamSize: 8,
+      registrationPriceCents: 0,
+    });
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('2014-05-20T00:00:00.000Z'),
+      firstName: 'Alex',
+      lastName: 'Lee',
+    });
+    calculateAgeOnDateMock.mockReturnValue(11);
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue({ parentId: 'parent_1' });
+    prismaMock.authUser.findUnique.mockResolvedValue({ email: 'child@example.com' });
+    prismaMock.sensitiveUserData.findFirst.mockResolvedValue(null);
+    prismaMock.invites.findFirst.mockResolvedValue(null);
+    prismaMock.invites.create.mockResolvedValue({
+      id: 'invite_1',
+      type: 'TEAM',
+      email: 'child@example.com',
+      status: 'PENDING',
+      teamId: 'team_1',
+      userId: 'child_1',
+      createdBy: 'child_1',
+    });
+
+    const response = await postSelf(
+      new NextRequest('http://localhost/api/teams/team_1/registrations/self', { method: 'POST' }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.requiresParentApproval).toBe(true);
+    expect(payload.invite).toEqual(expect.objectContaining({
+      id: 'invite_1',
+      type: 'TEAM',
+      userId: 'child_1',
+    }));
+    expect(prismaMock.invites.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        type: 'TEAM',
+        teamId: 'team_1',
+        userId: 'child_1',
+        createdBy: 'child_1',
+        status: 'PENDING',
+      }),
+    }));
+    expect(teamOpenRegistrationMock.reserveTeamRegistrationSlot).not.toHaveBeenCalled();
   });
 });

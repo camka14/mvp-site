@@ -8,6 +8,9 @@ const prismaMock = {
     update: jest.fn(),
     create: jest.fn(),
   },
+  userData: {
+    findMany: jest.fn(),
+  },
   pushDeviceTarget: {
     count: jest.fn(),
     findUnique: jest.fn(),
@@ -51,6 +54,10 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
     unregisterPushDeviceTargetMock.mockResolvedValue(undefined);
     prismaMock.pushDeviceTarget.count.mockResolvedValue(0);
     prismaMock.pushDeviceTarget.findUnique.mockResolvedValue(null);
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('1990-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
   });
 
   it('registers push token metadata when subscribing', async () => {
@@ -114,6 +121,27 @@ describe('/api/messaging/topics/[topicId]/subscriptions', () => {
       pushTarget: 'user_user_1',
       pushPlatform: 'android',
     });
+    expect(prismaMock.userData.findMany).not.toHaveBeenCalled();
+  });
+
+  it('does not subscribe a minor account into a non-team chat', async () => {
+    prismaMock.chatGroup.findUnique.mockResolvedValue({ id: 'user_user_1', userIds: ['user_2'], teamId: null });
+    prismaMock.userData.findMany.mockResolvedValue([
+      { id: 'user_1', dateOfBirth: new Date('2012-01-01T00:00:00.000Z'), blockedUserIds: [] },
+      { id: 'user_2', dateOfBirth: new Date('1991-01-01T00:00:00.000Z'), blockedUserIds: [] },
+    ]);
+
+    const res = await POST(postRequest({
+      userIds: ['user_1'],
+    }), {
+      params: Promise.resolve({ topicId: 'user_user_1' }),
+    });
+    const json = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(json.error).toContain('team chats');
+    expect(prismaMock.chatGroup.update).not.toHaveBeenCalled();
+    expect(registerPushDeviceTargetMock).not.toHaveBeenCalled();
   });
 
   it('removes push token metadata when unsubscribing', async () => {

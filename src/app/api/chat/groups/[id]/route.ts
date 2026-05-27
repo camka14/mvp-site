@@ -5,6 +5,10 @@ import { stripLegacyFieldsDeep, withLegacyFields } from '@/server/legacyFormat';
 import { findPresentKeys, findUnknownKeys, parseStrictEnvelope } from '@/server/http/strictPatch';
 import { handleRouteError } from '@/server/http/routeErrors';
 import { archiveChatGroup } from '@/server/moderation';
+import {
+  getMinorChatParticipantIds,
+  hasBlockingChatRelationship,
+} from '@/server/chatSafety';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,11 +35,6 @@ const normalizeIds = (value: unknown): string[] => (
     ),
   )
 );
-
-const hasBlockingRelationship = (users: Array<{ id: string; blockedUserIds?: string[] | null }>): boolean => {
-  const participantIds = new Set(users.map((user) => user.id));
-  return users.some((user) => (user.blockedUserIds ?? []).some((blockedId) => participantIds.has(blockedId)));
-};
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -149,13 +148,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const requestedUsers = normalizedUserIds.length > 0
         ? await prisma.userData.findMany({
             where: { id: { in: normalizedUserIds } },
-            select: { id: true, blockedUserIds: true },
+            select: { id: true, dateOfBirth: true, blockedUserIds: true },
           })
         : [];
       if (requestedUsers.length !== normalizedUserIds.length) {
         return NextResponse.json({ error: 'User not found.' }, { status: 404 });
       }
-      if (hasBlockingRelationship(requestedUsers)) {
+      if (!existing.teamId && getMinorChatParticipantIds(requestedUsers).length > 0) {
+        return NextResponse.json(
+          { error: 'Messaging minor accounts is only allowed in team chats.' },
+          { status: 403 },
+        );
+      }
+      if (hasBlockingChatRelationship(requestedUsers)) {
         return NextResponse.json(
           { error: 'Chat membership update is unavailable because one of these users has blocked the other.' },
           { status: 403 },

@@ -19,6 +19,7 @@ interface PaymentFormProps {
     paymentIntent: string;
     billingAddress?: BillingAddress | null;
     billingEmail?: string | null;
+    billingName?: string | null;
     onFeeBreakdownChange?: (feeBreakdown: FeeBreakdown) => void;
 }
 
@@ -31,6 +32,7 @@ export default function PaymentForm({
     paymentIntent,
     billingAddress,
     billingEmail,
+    billingName,
     onFeeBreakdownChange,
 }: PaymentFormProps) {
     const stripe = useStripe();
@@ -65,6 +67,12 @@ export default function PaymentForm({
         paymentService.updatePaymentIntentFeeForMethod(paymentIntent, selectedPaymentMethodType)
             .then(async (result) => {
                 if (cancelled) return;
+                if (elements && typeof elements.update === 'function') {
+                    elements.update({
+                        amount: Math.max(1, Math.round(result.feeBreakdown.totalCharge)),
+                        currency: 'usd',
+                    });
+                }
                 if (elements && typeof elements.fetchUpdates === 'function') {
                     await elements.fetchUpdates().catch(() => undefined);
                 }
@@ -112,8 +120,15 @@ export default function PaymentForm({
         setLoading(true);
 
         try {
+            const { error: submitError } = await elements.submit();
+            if (submitError) {
+                onError(submitError.message || 'Payment details are incomplete.');
+                return;
+            }
+
             const { error, paymentIntent: confirmedPaymentIntent } = await stripe.confirmPayment({
                 elements,
+                clientSecret: paymentIntent,
                 confirmParams: {
                     return_url: `${window.location.origin}/payment-success`,
                 },
@@ -155,9 +170,13 @@ export default function PaymentForm({
             <PaymentElement
                 onChange={handlePaymentElementChange}
                 options={{
-                    layout: 'tabs',
+                    layout: {
+                        type: 'tabs',
+                        defaultCollapsed: false,
+                    },
                     defaultValues: billingAddress ? {
                         billingDetails: {
+                            name: billingName ?? undefined,
                             email: billingEmail ?? undefined,
                             address: {
                                 line1: billingAddress.line1,

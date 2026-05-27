@@ -34,6 +34,12 @@ const prismaMock = {
   invites: {
     findUnique: jest.fn(),
   },
+  userData: {
+    findUnique: jest.fn(),
+  },
+  parentChildLinks: {
+    findFirst: jest.fn(),
+  },
   $transaction: jest.fn((callback: (tx: typeof txMock) => Promise<unknown>) => callback(txMock)),
 };
 
@@ -41,6 +47,12 @@ jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
 jest.mock('@/server/teams/teamMembership', () => ({
   loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
+  normalizeId: (value: unknown) => (typeof value === 'string' && value.trim().length > 0 ? value.trim() : null),
+  normalizeIdList: (value: unknown) => (
+    Array.isArray(value)
+      ? Array.from(new Set(value.map((entry) => (typeof entry === 'string' ? entry.trim() : '')).filter(Boolean)))
+      : []
+  ),
   syncCanonicalTeamRoster: (...args: any[]) => syncCanonicalTeamRosterMock(...args),
 }));
 jest.mock('@/server/teams/teamInviteEventSync', () => ({
@@ -66,6 +78,10 @@ describe('team invite event-team sync lifecycle routes', () => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'free_1', isAdmin: false });
     prismaMock.invites.findUnique.mockResolvedValue(invite);
+    prismaMock.userData.findUnique.mockResolvedValue({
+      dateOfBirth: new Date('2000-01-01T00:00:00.000Z'),
+    });
+    prismaMock.parentChildLinks.findFirst.mockResolvedValue(null);
     loadCanonicalTeamByIdMock.mockResolvedValue({
       id: 'team_1',
       playerIds: ['manager_1'],

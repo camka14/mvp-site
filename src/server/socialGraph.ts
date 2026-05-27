@@ -93,8 +93,11 @@ const getActorAndTarget = async (
   return { actor, target };
 };
 
-const assertTargetIsNotMinor = (target: Pick<PublicUser, 'dateOfBirth'>): void => {
-  if (isMinorAtUtcDate(target.dateOfBirth)) {
+const assertSocialUsersAreAdults = (
+  actor: Pick<PublicUser, 'dateOfBirth'>,
+  target: Pick<PublicUser, 'dateOfBirth'>,
+): void => {
+  if (isMinorAtUtcDate(actor.dateOfBirth) || isMinorAtUtcDate(target.dateOfBirth)) {
     throw new SocialGraphError(403, 'This action is not allowed for minor accounts.');
   }
 };
@@ -179,7 +182,7 @@ export const getSocialGraphForUser = async (userId: string): Promise<SocialGraph
 export const sendFriendRequest = async (actorUserId: string, targetUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
-    assertTargetIsNotMinor(target);
+    assertSocialUsersAreAdults(actor, target);
     assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
 
     const actorFriendIds = normalizeIds(actor.friendIds);
@@ -223,6 +226,7 @@ export const sendFriendRequest = async (actorUserId: string, targetUserId: strin
 export const acceptFriendRequest = async (actorUserId: string, requesterUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, requesterUserId);
+    assertSocialUsersAreAdults(actor, target);
     assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
 
     const actorFriends = normalizeIds(actor.friendIds);
@@ -324,7 +328,7 @@ export const removeFriend = async (actorUserId: string, friendUserId: string): P
 export const followUser = async (actorUserId: string, targetUserId: string): Promise<CurrentUserSocialUser> => {
   return prisma.$transaction(async (tx) => {
     const { actor, target } = await getActorAndTarget(tx, actorUserId, targetUserId);
-    assertTargetIsNotMinor(target);
+    assertSocialUsersAreAdults(actor, target);
     assertUsersAreNotBlocked(actor as CurrentUserSocialUser, target as CurrentUserSocialUser);
 
     if (normalizeIds(actor.followingIds).includes(target.id)) {

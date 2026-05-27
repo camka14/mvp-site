@@ -17,9 +17,16 @@ export type FamilyChild = {
 
 export type FamilyJoinRequest = {
   registrationId: string;
-  eventId: string;
+  requestType?: 'EVENT' | 'TEAM';
+  requestSource?: 'TEAM_JOIN_REQUEST' | 'TEAM_INVITE' | string;
+  inviteId?: string;
+  eventId?: string | null;
   eventName?: string;
   eventStart?: string | null;
+  teamId?: string | null;
+  teamName?: string;
+  teamRegistrationPriceCents?: number;
+  teamOpenRegistration?: boolean;
   childUserId: string;
   childFirstName?: string;
   childLastName?: string;
@@ -71,6 +78,9 @@ type JoinRequestActionResponse = {
     status?: string;
     consentStatus?: string | null;
   };
+  requestType?: 'EVENT' | 'TEAM';
+  inviteId?: string;
+  team?: unknown;
   action?: 'approved' | 'declined';
   consent?: {
     status?: string | null;

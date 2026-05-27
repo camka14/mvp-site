@@ -1,4 +1,4 @@
-import { UserData, getUserAvatarUrl, getUserFullName, getUserHandle } from '@/types';
+import { UserData, getUserAvatarUrl, getUserFullName, getUserHandle, isUserSocialInteractionRestricted } from '@/types';
 import { Card, Group, Avatar, Text } from '@mantine/core';
 
 interface UserCardProps {
@@ -22,9 +22,16 @@ export default function UserCard({
 }: UserCardProps) {
     const displayName = getUserFullName(user);
     const userHandle = getUserHandle(user);
+    const canClick = Boolean(onClick) && !isUserSocialInteractionRestricted(user);
 
     return (
-        <Card p="md" onClick={onClick} className={className} style={{ cursor: onClick ? 'pointer' : 'default' }}>
+        <Card
+            p="md"
+            onClick={canClick ? onClick : undefined}
+            className={className}
+            style={{ cursor: canClick ? 'pointer' : 'default' }}
+            aria-disabled={onClick && !canClick ? true : undefined}
+        >
             <Group wrap="nowrap" gap="sm">
                 <Avatar src={getUserAvatarUrl(user, 48)} radius="xl" size={48} alt={displayName} />
                 <div style={{ flex: 1, minWidth: 0 }}>

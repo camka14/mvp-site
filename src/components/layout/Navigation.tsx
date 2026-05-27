@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Bot } from 'lucide-react';
+import { Bot, Smartphone } from 'lucide-react';
 import { useApp } from '@/app/providers';
 import { useAgentContext } from '@/context/AgentContext';
 import { authService } from '@/lib/auth';
@@ -18,6 +18,7 @@ const baseNav: NavItem[] = [
   { label: 'My Organizations', href: '/organizations' },
   { label: 'My Schedule', href: '/my-schedule' },
 ];
+const mobileAppNavItem = { label: 'Get The Mobile App', href: '/mobile-app' } satisfies NavItem;
 
 export default function Navigation() {
   const { user, authUser, setUser, setAuthUser, isGuest } = useApp();
@@ -86,6 +87,7 @@ export default function Navigation() {
     );
   const homeHref = getHomePathForUser(user);
   const isProfileActive = pathname === '/profile' || pathname.startsWith('/profile/');
+  const isMobileAppActive = pathname === mobileAppNavItem.href || pathname.startsWith(`${mobileAppNavItem.href}/`);
   const fallbackName = authUser.email.split('@')[0];
   const userDisplayName = user ? getUserFullName(user) : authUser.name || fallbackName;
   const userInitial = userDisplayName.slice(0, 1).toUpperCase();
@@ -108,7 +110,7 @@ export default function Navigation() {
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-8">
+          <div className="hidden lg:flex items-center space-x-6 xl:space-x-8">
             {items.map((item) => (
               <Link
                 key={item.href}
@@ -127,10 +129,21 @@ export default function Navigation() {
           <div className="flex items-center space-x-4">
             {isGuest ? (
               <>
+                <Link
+                  href={mobileAppNavItem.href}
+                  className={`hidden lg:inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                    isMobileAppActive
+                      ? 'bg-blue-100 text-blue-900'
+                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-900'
+                  }`}
+                >
+                  <Smartphone size={16} aria-hidden="true" />
+                  {mobileAppNavItem.label}
+                </Link>
                 <Link href="/login" className="btn-ghost text-sm">Login / Signup</Link>
                 {/* Mobile Menu Button */}
                 <button
-                  className="md:hidden p-2"
+                  className="lg:hidden p-2"
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -141,8 +154,20 @@ export default function Navigation() {
             ) : (
               <>
                 <Link
+                  href={mobileAppNavItem.href}
+                  className={`hidden lg:inline-flex items-center gap-2 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-semibold transition-colors ${
+                    isMobileAppActive
+                      ? 'bg-blue-100 text-blue-900'
+                      : 'bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-900'
+                  }`}
+                >
+                  <Smartphone size={16} aria-hidden="true" />
+                  {mobileAppNavItem.label}
+                </Link>
+
+                <Link
                   href="/profile"
-                  className={`hidden md:flex items-center gap-2 rounded-full px-3 py-1.5 transition-colors ${
+                  className={`hidden lg:flex items-center gap-2 rounded-full px-3 py-1.5 transition-colors ${
                     isProfileActive
                       ? 'bg-blue-100 text-blue-900'
                       : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
@@ -175,7 +200,7 @@ export default function Navigation() {
 
                 {/* Mobile Menu Button */}
                 <button
-                  className="md:hidden p-2"
+                  className="lg:hidden p-2"
                   onClick={() => setIsMenuOpen(!isMenuOpen)}
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -189,7 +214,7 @@ export default function Navigation() {
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden border-t border-gray-200 py-2">
+          <div className="lg:hidden border-t border-gray-200 py-2">
             {!isGuest && (
               <Link
                 href="/profile"
@@ -211,6 +236,18 @@ export default function Navigation() {
                 </div>
               </Link>
             )}
+            <Link
+              href={mobileAppNavItem.href}
+              className={`mx-4 mb-2 flex items-center gap-3 rounded-2xl px-4 py-3 font-medium ${
+                isMobileAppActive
+                  ? 'bg-blue-50 text-blue-700'
+                  : 'bg-slate-100 text-slate-800'
+              }`}
+              onClick={() => setIsMenuOpen(false)}
+            >
+              <Smartphone size={18} aria-hidden="true" />
+              {mobileAppNavItem.label}
+            </Link>
             {items.map((item) => (
               <Link
                 key={item.href}

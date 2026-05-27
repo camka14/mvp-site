@@ -1,5 +1,5 @@
 // components/PaymentModal.tsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements } from '@stripe/react-stripe-js';
@@ -14,6 +14,23 @@ import { MOBILE_APP_THEME_TOKENS } from '@/app/theme/mobilePalette';
 
 // Initialize Stripe with publishable key from environment; may be overridden by payment response
 const envPublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+const stripePromiseByKey = new Map<string, ReturnType<typeof loadStripe>>();
+
+const getStripePromise = (publishableKey: string): ReturnType<typeof loadStripe> => {
+    const existing = stripePromiseByKey.get(publishableKey);
+    if (existing) {
+        return existing;
+    }
+    const next = loadStripe(publishableKey, {
+        developerTools: {
+            assistant: {
+                enabled: false,
+            },
+        },
+    });
+    stripePromiseByKey.set(publishableKey, next);
+    return next;
+};
 
 export type PaymentEventSummary = Partial<Event> & {
     name: string;
@@ -27,6 +44,7 @@ interface PaymentModalProps {
     onClose: () => void;
     event: PaymentEventSummary;
     paymentData: PaymentIntent | null;
+    payerName?: string | null;
     onPaymentSuccess: () => Promise<void> | void;
     onPaymentPending?: () => Promise<void> | void;
 }
@@ -36,6 +54,7 @@ export default function PaymentModal({
     onClose,
     event,
     paymentData,
+    payerName,
     onPaymentSuccess,
     onPaymentPending,
 }: PaymentModalProps) {
@@ -152,15 +171,29 @@ export default function PaymentModal({
         : 0;
     const totalWithVariableStripeFees = `${formatPrice(totalBeforeStripeFees)} + Stripe fees`;
 
-    const stripePromise = publishableKey
-        ? loadStripe(publishableKey, {
-            developerTools: {
-                assistant: {
-                    enabled: false,
+    const stripePromise = useMemo(() => (
+        publishableKey
+        ? getStripePromise(publishableKey)
+        : null
+    ), [publishableKey]);
+    const initialElementsAmount = feeBreakdown
+        ? Math.max(1, Math.round(feeBreakdown.totalCharge))
+        : 0;
+    const stripeElementsOptions = useMemo(() => (
+        hasValidClientSecret && initialElementsAmount > 0
+            ? {
+                mode: 'payment' as const,
+                amount: initialElementsAmount,
+                currency: 'usd',
+                appearance: {
+                    theme: 'stripe' as const,
+                    variables: {
+                        colorPrimary: MOBILE_APP_THEME_TOKENS.primary,
+                    },
                 },
-            },
-        })
-        : null;
+            }
+            : undefined
+    ), [clientSecret, hasValidClientSecret]);
 
     // Handle Stripe configuration error
     if (!stripePromise) {
@@ -262,17 +295,9 @@ export default function PaymentModal({
                 /* Payment Form - Only show when we have payment intent */
                 hasValidClientSecret && feeBreakdown ? (
                     <Elements
-                        key={clientSecret}
+                        key={`${publishableKey}:${clientSecret}`}
                         stripe={stripePromise}
-                        options={{
-                            clientSecret,
-                            appearance: {
-                                theme: 'stripe',
-                                variables: {
-                                    colorPrimary: MOBILE_APP_THEME_TOKENS.primary,
-                                },
-                            },
-                        }}
+                        options={stripeElementsOptions}
                     >
                         <PaymentForm
                             onSuccess={handlePaymentSuccess}
@@ -283,6 +308,7 @@ export default function PaymentModal({
                             paymentIntent={clientSecret}
                             billingAddress={billingAddress}
                             billingEmail={billingEmail}
+                            billingName={payerName}
                             onFeeBreakdownChange={(nextFeeBreakdown) => {
                                 setActivePaymentData((current) => current
                                     ? { ...current, feeBreakdown: nextFeeBreakdown }

@@ -1,6 +1,6 @@
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
-import { Team, UserData, getTeamAvatarUrl } from '@/types';
+import { Invite, Team, UserData, getTeamAvatarUrl } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
 import { userService, type UserVisibilityContext } from './userService';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
@@ -40,6 +40,9 @@ export type TeamRegistrationResult = {
     consent?: TeamRegistrationConsent;
     warnings?: string[];
     team?: Team | null;
+    requiresParentApproval?: boolean;
+    invite?: Invite | null;
+    message?: string;
 };
 
 export type TeamRegistrationCheckoutTarget = {
@@ -676,6 +679,9 @@ class TeamService {
                 consent?: TeamRegistrationConsent;
                 warnings?: string[];
                 team?: any;
+                requiresParentApproval?: boolean;
+                invite?: Invite | null;
+                message?: string;
                 error?: string;
             }>(`/api/teams/${teamId}/registrations/self`, {
                 method: 'POST',
@@ -692,6 +698,9 @@ class TeamService {
                 consent: response?.consent,
                 warnings: Array.isArray(response?.warnings) ? response.warnings : [],
                 team: response?.team ? this.mapRowToTeam(response.team) : null,
+                requiresParentApproval: Boolean(response?.requiresParentApproval),
+                invite: response?.invite ?? null,
+                message: typeof response?.message === 'string' ? response.message : undefined,
             };
         } catch (error) {
             console.error('Failed to register self for team:', error);

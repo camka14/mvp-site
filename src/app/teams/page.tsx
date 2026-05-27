@@ -74,19 +74,20 @@ function TeamsPageContent() {
       : division?.name || division?.skillLevel || 'Division';
 
   const getInviteRoleLabel = (invite: Invite, team: Team | null): string => {
-    if (!team || !user?.$id) {
+    const targetUserId = invite.userId ?? user?.$id;
+    if (!team || !targetUserId) {
       return 'Team Invite';
     }
-    if (Array.isArray(team.pending) && team.pending.includes(user.$id)) {
+    if (Array.isArray(team.pending) && team.pending.includes(targetUserId)) {
       return 'Player';
     }
-    if (team.managerId === user.$id) {
+    if (team.managerId === targetUserId) {
       return 'Manager';
     }
-    if (team.headCoachId === user.$id) {
+    if (team.headCoachId === targetUserId) {
       return 'Head Coach';
     }
-    if (Array.isArray(team.coachIds) && team.coachIds.includes(user.$id)) {
+    if (Array.isArray(team.coachIds) && team.coachIds.includes(targetUserId)) {
       return 'Assistant Coach';
     }
     return 'Team Invite';
@@ -332,28 +333,39 @@ function TeamsPageContent() {
             <div className="space-y-4">
               <Title order={4} mb="md">Pending Team Invitations</Title>
               <SimpleGrid cols={{ base: 1, md: 2, lg: 3 }} spacing="lg">
-                {teamInvitations.map(({ invite, team }) => (
-                  <Paper key={invite.$id} withBorder radius="md" p="md">
-                    <Group justify="space-between" mb="sm">
-                      <div>
-                        <Text fw={600}>{team?.name || 'Team Invitation'}</Text>
-                        {team && (
-                          <Text size="sm" c="dimmed">{getDivisionLabel(team.division)} Division</Text>
-                        )}
-                        <Text size="sm" c="dimmed">Role: {getInviteRoleLabel(invite, team)}</Text>
-                      </div>
-                      <Badge color="orange" variant="light">Invited</Badge>
-                    </Group>
-                    <Group justify="space-between" c="dimmed" mb="md">
-                      <Text size="sm">{team ? `${team.teamSize} members` : 'Pending invite'}</Text>
-                      <Text size="sm">{team ? `${team.currentSize} active` : 'Team loading unavailable'}</Text>
-                    </Group>
-                    <Group>
-                      <Button onClick={() => handleAcceptInvitation(invite.$id)} fullWidth>Accept</Button>
-                      <Button variant="default" onClick={() => handleRejectInvitation(invite.$id)} fullWidth>Decline</Button>
-                    </Group>
-                  </Paper>
-                ))}
+                {teamInvitations.map(({ invite, team }) => {
+                  const isChildSelfInvite = Boolean(user?.isMinor && invite.userId === user.$id && !invite.viewerCanAcceptForChild);
+                  return (
+                    <Paper key={invite.$id} withBorder radius="md" p="md">
+                      <Group justify="space-between" mb="sm">
+                        <div>
+                          <Text fw={600}>{team?.name || 'Team Invitation'}</Text>
+                          {team && (
+                            <Text size="sm" c="dimmed">{getDivisionLabel(team.division)} Division</Text>
+                          )}
+                          <Text size="sm" c="dimmed">Role: {getInviteRoleLabel(invite, team)}</Text>
+                          {invite.viewerCanAcceptForChild ? (
+                            <Text size="sm" c="dimmed">For {invite.childFullName || 'child'}</Text>
+                          ) : null}
+                        </div>
+                        <Badge color="orange" variant="light">Invited</Badge>
+                      </Group>
+                      <Group justify="space-between" c="dimmed" mb="md">
+                        <Text size="sm">{team ? `${team.teamSize} members` : 'Pending invite'}</Text>
+                        <Text size="sm">{team ? `${team.currentSize} active` : 'Team loading unavailable'}</Text>
+                      </Group>
+                      {isChildSelfInvite ? (
+                        <Text size="sm" c="dimmed" mb="sm">
+                          A parent or guardian must accept this invitation.
+                        </Text>
+                      ) : null}
+                      <Group>
+                        <Button onClick={() => handleAcceptInvitation(invite.$id)} disabled={isChildSelfInvite} fullWidth>Accept</Button>
+                        <Button variant="default" onClick={() => handleRejectInvitation(invite.$id)} fullWidth>Decline</Button>
+                      </Group>
+                    </Paper>
+                  );
+                })}
               </SimpleGrid>
             </div>
           ) : (

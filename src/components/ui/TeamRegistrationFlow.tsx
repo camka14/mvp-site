@@ -444,6 +444,19 @@ export default function TeamRegistrationFlow({
 
     notifyWarnings(result.warnings);
 
+    if (result.requiresParentApproval) {
+      const nextTeam = result.team ?? await refreshTeam();
+      if (nextTeam) {
+        setResolvedTeam(nextTeam);
+        onTeamUpdated?.(nextTeam);
+      }
+      notifications.show({
+        color: 'blue',
+        message: result.message || 'A parent or guardian must accept this team join request before you can be added to the team.',
+      });
+      return;
+    }
+
     const nextTeam = result.team ?? await refreshTeam();
     if (nextTeam) {
       setResolvedTeam(nextTeam);

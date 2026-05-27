@@ -532,6 +532,11 @@ export interface Invite {
   createdBy?: string | null;
   firstName?: string;
   lastName?: string;
+  childUserId?: string | null;
+  childFirstName?: string | null;
+  childLastName?: string | null;
+  childFullName?: string | null;
+  viewerCanAcceptForChild?: boolean;
   $createdAt?: string;
   $updatedAt?: string;
 }
