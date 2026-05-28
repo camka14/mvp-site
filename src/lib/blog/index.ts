@@ -36,6 +36,67 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const leagueRegistration: BlogPostEntry = {
+  slug: 'league-registration',
+  title: 'How to Set Up League Registration for Teams and Players',
+  description:
+    'Set up league registration in BracketIQ by confirming team signup settings, division capacity, team price, public registration controls, captain team selection, free-agent access, and organizer participant review.',
+  contentType: 'guide',
+  guideTopic: 'leagues',
+  createdAt: '2026-05-28',
+  publishedAt: '2026-05-28',
+  updatedAt: '2026-05-28',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'league registration for teams and players',
+  longTailKeywords: [
+    'sports league team registration',
+    'league registration software',
+    'recreational sports league signup',
+    'indoor soccer league registration',
+    'sports team signup software',
+    'league free agent registration',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/guides/league-registration',
+  ctas: [
+    {
+      label: 'Set up league registration',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Create the league first',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Manage registered teams',
+      href: '/guides/manage-league-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Should league registration be team-based or player-based?',
+      answer:
+        'Use team registration when captains are responsible for entering teams into the league. Use player registration when each person signs up independently and the organizer will place players onto teams later.',
+    },
+    {
+      question: 'When should I set league price and capacity?',
+      answer:
+        'Set price, division capacity, team size, registration cutoff, and refund rules before sharing the public league link so captains see the correct registration terms from the start.',
+    },
+    {
+      question: 'Can players without a full team still express interest?',
+      answer:
+        'Yes. When the free-agent path is available, players without a team can join the free-agent list while captains register full teams through the team-selection workflow.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ league registration guide preview',
+  load: () => import('@/content/blog/league-registration.mdx'),
+};
+
 const leagueStandingsPlayoffSeeding: BlogPostEntry = {
   slug: 'league-standings-playoff-seeding',
   title: 'How to Manage League Standings and Playoff Seeding',
@@ -773,6 +834,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  leagueRegistration,
   leagueSplitDivisions,
   leaguePlayoffs,
   leagueStandingsPlayoffSeeding,
@@ -802,6 +864,7 @@ const GUIDE_TOPIC_POST_ORDER = {
   ],
   leagues: [
     'create-league-in-bracketiq',
+    'league-registration',
     'manage-league-in-bracketiq',
     'multi-week-league-scheduling',
     'league-standings-playoff-seeding',

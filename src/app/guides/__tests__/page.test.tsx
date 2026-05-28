@@ -54,6 +54,7 @@ describe('GuidesPage', () => {
 
     const expectedLeagueGuideOrder = [
       'How to Create a League in BracketIQ',
+      'How to Set Up League Registration for Teams and Players',
       'How to Manage a League in BracketIQ',
       'How to Schedule a Multi-Week Sports League',
       'How to Manage League Standings and Playoff Seeding',
@@ -94,6 +95,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Create a League in BracketIQ' })
         .some((link) => link.getAttribute('href') === '/guides/create-league-in-bracketiq'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Set Up League Registration for Teams and Players' })
+        .some((link) => link.getAttribute('href') === '/guides/league-registration'),
     ).toBe(true);
     expect(
       screen.getAllByRole('link', { name: 'How to Manage a League in BracketIQ' })
