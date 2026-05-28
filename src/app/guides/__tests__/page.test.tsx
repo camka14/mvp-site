@@ -38,6 +38,17 @@ describe('GuidesPage', () => {
     expect(screen.getAllByText('Leagues').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Organizations').length).toBeGreaterThan(0);
 
+    const expectedEventGuideOrder = [
+      'How to Create a Paid Pickup Sports Event With BracketIQ',
+      'How to Set Up Online Registration for a League or Tournament',
+    ];
+    const renderedEventGuideOrder = screen
+      .getAllByRole('link')
+      .map((link) => link.textContent?.replace(/\s+/g, ' ').trim())
+      .filter((text): text is string => Boolean(text && expectedEventGuideOrder.includes(text)));
+
+    expect(renderedEventGuideOrder).toEqual(expectedEventGuideOrder);
+
     const expectedTournamentGuideOrder = [
       'How to Create a Tournament in BracketIQ',
       'How to Set Up Tournament Registration for Teams and Players',
@@ -92,6 +103,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Create a Paid Pickup Sports Event With BracketIQ' })
         .some((link) => link.getAttribute('href') === '/guides/paid-pickup-event-payments'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Set Up Online Registration for a League or Tournament' })
+        .some((link) => link.getAttribute('href') === '/guides/registration-league-tournament'),
     ).toBe(true);
     expect(
       screen.getAllByRole('link', { name: 'How to Create a League in BracketIQ' })

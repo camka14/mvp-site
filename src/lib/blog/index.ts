@@ -36,6 +36,67 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const registrationLeagueTournament: BlogPostEntry = {
+  slug: 'registration-league-tournament',
+  title: 'How to Set Up Online Registration for a League or Tournament',
+  description:
+    'Set up online registration for a sports league or tournament in BracketIQ by confirming team registration, cutoffs, capacity, pricing, public registration details, captain team selection, free-agent access, and organizer participant review.',
+  contentType: 'guide',
+  guideTopic: 'events',
+  createdAt: '2026-05-28',
+  publishedAt: '2026-05-28',
+  updatedAt: '2026-05-28',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'online registration for a league or tournament',
+  longTailKeywords: [
+    'sports league and tournament registration',
+    'online sports registration guide',
+    'team registration software',
+    'sports tournament registration setup',
+    'sports league signup software',
+    'collect sports registration payments',
+  ],
+  readingMinutes: 9,
+  canonicalPath: '/guides/registration-league-tournament',
+  ctas: [
+    {
+      label: 'Set up online registration',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Create the league first',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Create the tournament first',
+      href: '/guides/create-tournament-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Is team registration required for leagues and tournaments?',
+      answer:
+        'Yes. Leagues and tournaments are team events in BracketIQ. Captains register or select teams, while free-agent or individual interest can be collected as a supplemental path when organizers want to help players find teams.',
+    },
+    {
+      question: 'When should I set price and capacity?',
+      answer:
+        'Set price, capacity, division, registration cutoff, and refund rules before sharing the public registration link so captains and players see the correct terms from the start.',
+    },
+    {
+      question: 'What is different from the league and tournament registration guides?',
+      answer:
+        'This guide covers the shared online registration workflow across leagues and tournaments. The league and tournament registration guides go deeper on format-specific setup details for each event type.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ league and tournament online registration guide preview',
+  load: () => import('@/content/blog/registration-league-tournament.mdx'),
+};
+
 const leagueScheduleCommunication: BlogPostEntry = {
   slug: 'league-schedule-communication',
   title: 'How to Communicate Schedule Changes During a League Season',
@@ -139,9 +200,9 @@ const leagueRegistration: BlogPostEntry = {
   ],
   faq: [
     {
-      question: 'Should league registration be team-based or player-based?',
+      question: 'Is league registration team-based?',
       answer:
-        'Use team registration when captains are responsible for entering teams into the league. Use player registration when each person signs up independently and the organizer will place players onto teams later.',
+        'League registration is team-based in BracketIQ. Captains register teams for the league, while the free-agent path can collect individual player interest when organizers want to place players onto teams later.',
     },
     {
       question: 'When should I set league price and capacity?',
@@ -629,9 +690,9 @@ const tournamentRegistration: BlogPostEntry = {
   ],
   faq: [
     {
-      question: 'Should tournament registration be team-based or player-based?',
+      question: 'Is tournament registration team-based?',
       answer:
-        'Use team registration when captains are responsible for entering a team into the tournament. Use player registration when each person signs up independently and the organizer will build teams later.',
+        'Tournament registration is team-based in BracketIQ. Captains register teams for the tournament, while the free-agent path can collect individual player interest when organizers want to help players find or build teams later.',
     },
     {
       question: 'Can BracketIQ charge a team entry fee for a tournament?',
@@ -895,6 +956,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  registrationLeagueTournament,
   leagueScheduleCommunication,
   leagueRegistration,
   leagueSplitDivisions,
@@ -916,7 +978,7 @@ const sortByPublishDateDesc = (posts: BlogPostEntry[]) => (
 );
 
 const GUIDE_TOPIC_POST_ORDER = {
-  events: ['paid-pickup-event-payments'],
+  events: ['paid-pickup-event-payments', 'registration-league-tournament'],
   tournaments: [
     'create-tournament-in-bracketiq',
     'tournament-registration',

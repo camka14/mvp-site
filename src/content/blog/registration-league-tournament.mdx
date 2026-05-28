@@ -1,0 +1,167 @@
+export const metadata = {
+  description:
+    'A step-by-step BracketIQ guide to setting up online team registration for a sports league or tournament, including cutoffs, capacity, pricing, public registration review, captain team selection, free-agent access, and organizer participant follow-up.',
+}
+
+## Start with the event format already chosen
+
+This guide covers the shared online registration workflow for leagues and tournaments. If the event itself is not created yet, start with [How to Create a League in BracketIQ](/guides/create-league-in-bracketiq) or [How to Create a Tournament in BracketIQ](/guides/create-tournament-in-bracketiq), then return here when the basic details are ready.
+
+Use this guide when you want one registration process that works across common recreational sports such as indoor soccer, outdoor soccer, volleyball, pickleball, basketball, tennis, hockey, baseball, softball, and flag football.
+
+Before opening registration, decide:
+
+- How captains should register full teams, and whether free agents can express interest alongside team registration.
+- Whether players without a full team can join as free agents.
+- How many teams the event can accept, and how you want to monitor free-agent interest.
+- Whether each division has its own capacity and price.
+- Whether registration should close hours or days before the first match.
+- Whether refunds are allowed before a cutoff.
+- Whether required documents need to be completed before teams play.
+- How organizers will review teams, payments, documents, and late additions.
+
+BracketIQ connects those decisions to the organizer setup screen, public registration page, captain team-selection flow, free-agent path, participant list, and payment follow-up.
+
+## Confirm team registration and cutoffs
+
+Open the league or tournament in Manage mode, go to Details, and expand Event Details. Confirm the event type, team size, team registration, registration cutoff, refund cutoff, age range, and field or court count before anyone receives the public link.
+
+![BracketIQ league Event Details showing league type, team registration, team size, registration cutoff, refund cutoff, age limit, and field names](/blog/registration-league-tournament/01-league-registration-settings.png)
+
+In this league example:
+
+- Event Type is `League`.
+- Team Event is enabled.
+- Team Size is `5`.
+- Registration Cutoff is `48` hours before start.
+- Refund Cutoff is `24` hours before start.
+- Automatic Refunds are enabled.
+- Minimum Age is `18`.
+- Number of Fields is `2`.
+
+For a tournament, the same check matters before you publish. Event type changes the downstream management workflow, but registration still needs the same core decisions: which teams can sign up, when registration closes, what participants need to know, and whether payment or documents are required.
+
+If this is the first paid event you are setting up, review the simpler [paid pickup event payment guide](/guides/paid-pickup-event-payments) first. It shows how BracketIQ presents price, fees, and checkout in a smaller event format.
+
+## Set capacity, price, and divisions
+
+Open Divisions after the event-level registration settings look right. Capacity and price should be set before registration opens because captains and players will make decisions from the public page.
+
+![BracketIQ tournament Divisions section showing single division registration, max teams, tournament configuration, team price, fee preview, payment plans, and the saved division card](/blog/registration-league-tournament/02-tournament-division-price-capacity.png)
+
+In this tournament example:
+
+- Single Division is enabled.
+- Register by Division Type is off because the event has one visible division.
+- Max Teams is `12`.
+- Tournament Format is `Single Elimination`.
+- Match Duration is `30` minutes.
+- Rest Time Between Matches is `5` minutes.
+- Price is `$120.00`.
+- Payment Plans are disabled.
+- The saved division is `CoEd Open 18+`.
+
+Use a simple division when everyone belongs in the same group. Use separate divisions when age, gender, skill level, location, pool, or competitive level affects who can register and how teams are scheduled.
+
+For a deeper format-specific walkthrough, use [How to Set Up League Registration for Teams and Players](/guides/league-registration) for seasons or [How to Set Up Tournament Registration for Teams and Players](/guides/tournament-registration) for tournament-specific setup.
+
+## Review the public registration page
+
+After settings are saved, open the public event page as if you were a captain. This is the page people will use to decide whether they can register.
+
+![Public BracketIQ tournament page showing event details, participant capacity, division selector, team registration button, free-agent path, price, max teams, and registration cutoff](/blog/registration-league-tournament/03-public-registration-page.png)
+
+Check the public page for:
+
+- Event name, sport, type, start time, and location.
+- Registration type shows `Team`. Leagues and tournaments are team events in BracketIQ.
+- Entry fee and whether it is per team or per player.
+- Max teams or max players.
+- Team size.
+- Registration close timing.
+- Refund language.
+- Division selector and age or skill note.
+- Team count, free-agent count, and spots left.
+- The `View Team Options` button.
+- The free-agent button when you want players without a team to express interest.
+
+This check catches the mistakes participants notice first. If the price, capacity, age range, sport, date, or registration type is wrong, fix it before sending the link.
+
+## Test the captain registration path
+
+Click `View Team Options` and select a team. Captains should be able to choose a team they manage, verify the division, and see the correct paid join button.
+
+![BracketIQ public tournament registration showing Evergreen FC selected, Manage Teams, Join for 120 dollars, and Join as Free Agent](/blog/registration-league-tournament/04-captain-team-options.png)
+
+In this example, the captain selects `Evergreen FC (CoEd Open 18+)`, and the registration button shows `Join for $120.00`.
+
+Use this step to confirm:
+
+- The captain can find the team they manage.
+- The team is in the correct division.
+- The paid join amount matches the setup price.
+- `Manage Teams` gives captains somewhere to create or update a team before registering.
+- The free-agent path is available when you want to collect players without a full team.
+
+When you share the registration link, add a short note that matches the setup: "Captains should create or select their team before registering. Players without a team can use the free-agent option."
+
+## Monitor participants after registration opens
+
+Once teams or players begin registering, use the Participants tab to review who is actually in the event.
+
+![BracketIQ tournament Participants tab showing two registered teams, team size badges, no team bill yet, no required documents, and Refund, Send Bill, and Remove actions](/blog/registration-league-tournament/05-organizer-participants-review.png)
+
+In this tournament example, the organizer can see:
+
+- `2 teams are currently participating.`
+- `River City FC`
+- `Summit United`
+- Team size badges.
+- No team bill yet.
+- No required documents.
+- Refund, Send Bill, and Remove controls.
+
+Use this view before scheduling becomes final. You should know which teams are active, which teams still need payment follow-up, whether required documents are missing, and whether a late team should be added manually.
+
+Manual `Add Team` is useful for organizer-entered teams, late registrations, or teams that paid outside the normal checkout path. Use `Remove` carefully because it can affect capacity, bills, schedules, rosters, and captain expectations.
+
+## Repeat the public check for the other format
+
+Leagues and tournaments use the same registration foundation, but participants scan them differently. Tournament players usually focus on the day, bracket format, and team entry count. League captains usually focus on season dates, recurring schedule expectations, age range, and how many teams are already in.
+
+![Public BracketIQ league page showing team registration details, 3 of 10 teams registered, 180 dollar team entry fee, 48 hour registration cutoff, age-restricted note, division selector, and View Team Options](/blog/registration-league-tournament/06-league-registration-public-check.png)
+
+Before sharing a league registration page, confirm:
+
+- The season start and end dates are clear.
+- The registration type is correct.
+- The entry fee is shown per team or per player as intended.
+- Capacity and spots left are correct.
+- The division selector matches the actual league structure.
+- Age or eligibility notes are visible when they matter.
+- Captains can reach `View Team Options`.
+
+Before sharing a tournament registration page, confirm the event date, format, capacity, price, division, and team path. For tournaments that will use pool play or bracket advancement, continue into the relevant management guides after registration closes.
+
+## Online registration checklist
+
+Use this checklist before sending a league or tournament registration link:
+
+- Create the league or tournament first.
+- Confirm Event Type.
+- Confirm team registration is enabled. Leagues and tournaments are team events in BracketIQ.
+- Set team size when teams are registering.
+- Set registration cutoff.
+- Set refund cutoff and automatic refund behavior when refunds are allowed.
+- Add required documents before publishing if waivers or signatures are needed.
+- Add at least one division.
+- Set capacity for each division.
+- Set price before sharing the public page.
+- Open the public page and verify participant-facing details.
+- Test `View Team Options`.
+- Select a managed team and confirm the join amount.
+- Confirm the free-agent path if you want players without teams.
+- Review the Participants tab after registration opens.
+- Follow up on missing bills, documents, rosters, or eligibility before scheduling.
+
+Online registration should give organizers a clean participant list before the event gets hard to change. BracketIQ keeps the public page, team selection, free-agent access, payments, documents, and participant review connected so you can move into [league management](/guides/manage-league-in-bracketiq) or [tournament management](/guides/manage-tournament-in-bracketiq) without rebuilding the registration list in another tool.
