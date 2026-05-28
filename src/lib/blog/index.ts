@@ -36,6 +36,67 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const leagueScheduleCommunication: BlogPostEntry = {
+  slug: 'league-schedule-communication',
+  title: 'How to Communicate Schedule Changes During a League Season',
+  description:
+    'Communicate league schedule changes in BracketIQ by reviewing Agenda view, checking affected match details, using reschedule controls, sending event notifications, reviewing participant teams, and verifying the public schedule.',
+  contentType: 'guide',
+  guideTopic: 'leagues',
+  createdAt: '2026-05-28',
+  publishedAt: '2026-05-28',
+  updatedAt: '2026-05-28',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'communicate league schedule changes',
+  longTailKeywords: [
+    'sports league schedule change communication',
+    'notify teams about schedule changes',
+    'league schedule update guide',
+    'indoor soccer schedule change',
+    'sports league notifications',
+    'communicate rainouts and field changes',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/guides/league-schedule-communication',
+  ctas: [
+    {
+      label: 'Communicate schedule changes',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Schedule the league first',
+      href: '/guides/multi-week-league-scheduling',
+      variant: 'secondary',
+    },
+    {
+      label: 'Manage the league workflow',
+      href: '/guides/manage-league-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'When should I send a league schedule update?',
+      answer:
+        'Send a schedule update after the BracketIQ schedule has been saved and verified, especially when teams, players, officials, or staff need to know about a time, field, court, opponent, weather, or facility change.',
+    },
+    {
+      question: 'Should I use Reschedule or edit one match?',
+      answer:
+        'Edit one match when a single time, field, official, or team assignment needs a correction. Use Reschedule when broader league constraints changed, such as field availability, weekly windows, dropped teams, or makeup dates.',
+    },
+    {
+      question: 'Who should receive a league schedule notification?',
+      answer:
+        'Select the audience that needs to act on the change. Managers are usually enough for captain-led adult teams, while players, parents, officials, and hosts should be included when the change affects arrival time, staffing, youth teams, or field operations.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ league schedule communication guide preview',
+  load: () => import('@/content/blog/league-schedule-communication.mdx'),
+};
+
 const leagueRegistration: BlogPostEntry = {
   slug: 'league-registration',
   title: 'How to Set Up League Registration for Teams and Players',
@@ -834,6 +895,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  leagueScheduleCommunication,
   leagueRegistration,
   leagueSplitDivisions,
   leaguePlayoffs,
@@ -867,6 +929,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'league-registration',
     'manage-league-in-bracketiq',
     'multi-week-league-scheduling',
+    'league-schedule-communication',
     'league-standings-playoff-seeding',
     'league-playoffs',
     'league-split-divisions',

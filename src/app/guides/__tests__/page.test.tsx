@@ -57,6 +57,7 @@ describe('GuidesPage', () => {
       'How to Set Up League Registration for Teams and Players',
       'How to Manage a League in BracketIQ',
       'How to Schedule a Multi-Week Sports League',
+      'How to Communicate Schedule Changes During a League Season',
       'How to Manage League Standings and Playoff Seeding',
       'How to Run a League With Playoffs',
       'How to Run a League With Separate Regular Season and Playoff Divisions',
@@ -107,6 +108,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Schedule a Multi-Week Sports League' })
         .some((link) => link.getAttribute('href') === '/guides/multi-week-league-scheduling'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Communicate Schedule Changes During a League Season' })
+        .some((link) => link.getAttribute('href') === '/guides/league-schedule-communication'),
     ).toBe(true);
     expect(
       screen.getAllByRole('link', { name: 'How to Manage League Standings and Playoff Seeding' })
