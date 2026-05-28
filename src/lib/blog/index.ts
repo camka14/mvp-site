@@ -97,6 +97,67 @@ const leagueStandingsPlayoffSeeding: BlogPostEntry = {
   load: () => import('@/content/blog/league-standings-playoff-seeding.mdx'),
 };
 
+const leagueSplitDivisions: BlogPostEntry = {
+  slug: 'league-split-divisions',
+  title: 'How to Run a League With Separate Regular Season and Playoff Divisions',
+  description:
+    'Run a sports league with separate regular-season and playoff divisions in BracketIQ by mapping Gold and Silver playoff placements, reviewing team division columns, checking Agenda view, confirming standings, and verifying the participant-facing bracket.',
+  contentType: 'guide',
+  guideTopic: 'leagues',
+  createdAt: '2026-05-27',
+  publishedAt: '2026-05-27',
+  updatedAt: '2026-05-27',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'league split playoff divisions',
+  longTailKeywords: [
+    'separate regular season and playoff divisions',
+    'sports league gold silver playoffs',
+    'league playoff division mapping',
+    'split division league playoffs',
+    'indoor soccer league playoff divisions',
+    'sports league playoff seeding software',
+  ],
+  readingMinutes: 10,
+  canonicalPath: '/guides/league-split-divisions',
+  ctas: [
+    {
+      label: 'Run split league playoffs',
+      href: '/login',
+      variant: 'primary',
+    },
+    {
+      label: 'Run a simple playoff bracket first',
+      href: '/guides/league-playoffs',
+      variant: 'secondary',
+    },
+    {
+      label: 'Manage standings and seeding',
+      href: '/guides/league-standings-playoff-seeding',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'When should I use separate regular-season and playoff divisions?',
+      answer:
+        'Use separate divisions when teams start in groups such as East and West, then qualify into playoff groups such as Gold and Silver, A and B, competitive and recreational, or age and skill playoff brackets.',
+    },
+    {
+      question: 'What does playoff placement mapping do?',
+      answer:
+        'Placement mapping tells BracketIQ where each regular-season finishing position should go. For example, first and second place from East can map to Gold Playoffs while third place maps to Silver Playoffs.',
+    },
+    {
+      question: 'Can BracketIQ seed split league playoffs from confirmed standings?',
+      answer:
+        'Yes. When automatic playoff reassignment is enabled, BracketIQ can use confirmed standings and placement mapping to place teams into the correct playoff division matches.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ split league playoff divisions guide preview',
+  load: () => import('@/content/blog/league-split-divisions.mdx'),
+};
+
 const leaguePlayoffs: BlogPostEntry = {
   slug: 'league-playoffs',
   title: 'How to Run a League With Playoffs',
@@ -712,6 +773,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  leagueSplitDivisions,
   leaguePlayoffs,
   leagueStandingsPlayoffSeeding,
   multiWeekLeagueScheduling,
@@ -744,6 +806,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'multi-week-league-scheduling',
     'league-standings-playoff-seeding',
     'league-playoffs',
+    'league-split-divisions',
   ],
   organizations: [],
 } satisfies Record<GuideTopicId, string[]>;

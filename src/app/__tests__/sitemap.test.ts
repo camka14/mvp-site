@@ -8,6 +8,7 @@ describe('sitemap', () => {
     expect(urls).toContain('https://bracket-iq.com/blog');
     expect(urls).toContain('https://bracket-iq.com/guides');
     expect(urls).toContain('https://bracket-iq.com/mobile-app');
+    expect(urls).toContain('https://bracket-iq.com/guides/league-split-divisions');
     expect(urls).toContain('https://bracket-iq.com/guides/league-playoffs');
     expect(urls).toContain('https://bracket-iq.com/guides/league-standings-playoff-seeding');
     expect(urls).toContain('https://bracket-iq.com/guides/multi-week-league-scheduling');

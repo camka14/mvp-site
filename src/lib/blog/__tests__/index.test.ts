@@ -18,8 +18,9 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(11);
+    expect(posts).toHaveLength(12);
     expect(posts.map((post) => post.slug)).toEqual([
+      'league-split-divisions',
       'league-playoffs',
       'league-standings-playoff-seeding',
       'multi-week-league-scheduling',
@@ -32,12 +33,12 @@ describe('blog registry', () => {
       'create-tournament-in-bracketiq',
       'paid-pickup-event-payments',
     ]);
-    expect(posts[0]?.primaryKeyword).toBe('run a league with playoffs');
+    expect(posts[0]?.primaryKeyword).toBe('league split playoff divisions');
     expect(posts[0]?.createdAt).toBe('2026-05-27');
     expect(posts[0]?.updatedAt).toBe('2026-05-27');
     expect(posts[0]?.contentType).toBe('guide');
     expect(posts[0]?.guideTopic).toBe('leagues');
-    expect(posts[0]?.canonicalPath).toBe('/guides/league-playoffs');
+    expect(posts[0]?.canonicalPath).toBe('/guides/league-split-divisions');
     expect(posts[0]?.author).toEqual({
       name: 'Samuel Razumovskiy',
       image: '/blog/authors/samuel-razumovskiy.jpg',
@@ -81,11 +82,16 @@ describe('blog registry', () => {
       'multi-week-league-scheduling',
       'league-standings-playoff-seeding',
       'league-playoffs',
+      'league-split-divisions',
     ]);
   });
 
   it('returns sitemap entries for published content at canonical paths', () => {
     expect(getContentSitemapEntries()).toEqual([
+      {
+        url: 'https://bracket-iq.com/guides/league-split-divisions',
+        lastModified: '2026-05-27',
+      },
       {
         url: 'https://bracket-iq.com/guides/league-playoffs',
         lastModified: '2026-05-27',

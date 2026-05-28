@@ -58,6 +58,7 @@ describe('GuidesPage', () => {
       'How to Schedule a Multi-Week Sports League',
       'How to Manage League Standings and Playoff Seeding',
       'How to Run a League With Playoffs',
+      'How to Run a League With Separate Regular Season and Playoff Divisions',
     ];
     const renderedLeagueGuideOrder = screen
       .getAllByRole('link')
@@ -109,6 +110,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Run a League With Playoffs' })
         .some((link) => link.getAttribute('href') === '/guides/league-playoffs'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Run a League With Separate Regular Season and Playoff Divisions' })
+        .some((link) => link.getAttribute('href') === '/guides/league-split-divisions'),
     ).toBe(true);
   });
 });
