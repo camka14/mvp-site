@@ -36,6 +36,128 @@ export const GUIDE_TOPICS = [
   },
 ] satisfies GuideTopic[];
 
+const createOrganizationInBracketiq: BlogPostEntry = {
+  slug: 'create-organization-in-bracketiq',
+  title: 'How to Create and Set Up an Organization in BracketIQ',
+  description:
+    'Create a sports organization in BracketIQ by setting profile details, visibility, sports, location, tax and facility settings, the organization dashboard, public page, widgets, and staff access.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-05-28',
+  publishedAt: '2026-05-28',
+  updatedAt: '2026-05-28',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'create a sports organization in BracketIQ',
+  longTailKeywords: [
+    'sports organization setup guide',
+    'sports club management software setup',
+    'sports facility organization page',
+    'event organizer organization setup',
+    'sports organization public page',
+    'BracketIQ organization guide',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/guides/create-organization-in-bracketiq',
+  ctas: [
+    {
+      label: 'Create your organization',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Set up the public page next',
+      href: '/guides/create-public-page-for-sports-organization',
+      variant: 'secondary',
+    },
+    {
+      label: 'Create a league next',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'When should I create an organization instead of a personal event?',
+      answer:
+        'Create an organization when a club, facility, event organizer, or staff group needs a shared workspace for public pages, hosted events, teams, fields, rentals, payments, customer history, or staff access. A personal event is enough for a simple one-off event managed by one person.',
+    },
+    {
+      question: 'Should the organization be listed or unlisted?',
+      answer:
+        'Use Listed when the organization should appear in public discovery. Use Unlisted when you only want people to reach the organization from a direct link, embedded widget, or shared event page.',
+    },
+    {
+      question: 'What should I set up after creating the organization?',
+      answer:
+        'Most organizers should review the dashboard, enable the public page, invite staff, and then add the next operational workflow such as fields, teams, rentals, leagues, tournaments, or paid events.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ organization setup guide preview',
+  load: () => import('@/content/blog/create-organization-in-bracketiq.mdx'),
+};
+
+const createPublicPageForSportsOrganization: BlogPostEntry = {
+  slug: 'create-public-page-for-sports-organization',
+  title: 'How to Create a Public Page for Your Sports Organization',
+  description:
+    'Create a public BracketIQ organization page by setting the public slug, brand colors, page visibility, widgets, headline, intro text, preview links, and embed snippets.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-05-28',
+  publishedAt: '2026-05-28',
+  updatedAt: '2026-05-28',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'public page for a sports organization',
+  longTailKeywords: [
+    'sports organization public page',
+    'sports club public page setup',
+    'sports facility website widgets',
+    'embed sports event listings',
+    'club event registration page',
+    'BracketIQ public page guide',
+  ],
+  readingMinutes: 7,
+  canonicalPath: '/guides/create-public-page-for-sports-organization',
+  ctas: [
+    {
+      label: 'Set up your public page',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Create the organization first',
+      href: '/guides/create-organization-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Set up online registration',
+      href: '/guides/registration-league-tournament',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Do I need an organization before creating a public page?',
+      answer:
+        'Yes. The public page belongs to a BracketIQ organization, so create the organization first and then use its Public Page tab to set the slug, brand colors, visibility, widgets, headline, and intro text.',
+    },
+    {
+      question: 'What should I check before sharing the organization page?',
+      answer:
+        'Confirm the public slug, brand colors, headline, intro text, page enablement, preview URL, and the visitor-facing sections for events, teams, rentals, and products before sending the link to players or parents.',
+    },
+    {
+      question: 'When should I use BracketIQ widgets?',
+      answer:
+        'Use widgets when the organization already has its own website but wants BracketIQ events, rentals, teams, or products embedded there. Enable widgets, choose the filters, and copy the generated iframe or script snippet.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ public organization page guide preview',
+  load: () => import('@/content/blog/create-public-page-for-sports-organization.mdx'),
+};
+
 const registrationLeagueTournament: BlogPostEntry = {
   slug: 'registration-league-tournament',
   title: 'How to Set Up Online Registration for a League or Tournament',
@@ -956,6 +1078,8 @@ const paidPickupEventPayments: BlogPostEntry = {
 };
 
 const blogPosts = [
+  createOrganizationInBracketiq,
+  createPublicPageForSportsOrganization,
   registrationLeagueTournament,
   leagueScheduleCommunication,
   leagueRegistration,
@@ -996,7 +1120,10 @@ const GUIDE_TOPIC_POST_ORDER = {
     'league-playoffs',
     'league-split-divisions',
   ],
-  organizations: [],
+  organizations: [
+    'create-organization-in-bracketiq',
+    'create-public-page-for-sports-organization',
+  ],
 } satisfies Record<GuideTopicId, string[]>;
 
 const sortGuideTopicPosts = (topicId: GuideTopicId, posts: BlogPostEntry[]) => {

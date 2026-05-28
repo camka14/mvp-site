@@ -18,8 +18,10 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(15);
+    expect(posts).toHaveLength(17);
     expect(posts.map((post) => post.slug)).toEqual([
+      'create-organization-in-bracketiq',
+      'create-public-page-for-sports-organization',
       'registration-league-tournament',
       'league-schedule-communication',
       'league-registration',
@@ -36,12 +38,12 @@ describe('blog registry', () => {
       'create-tournament-in-bracketiq',
       'paid-pickup-event-payments',
     ]);
-    expect(posts[0]?.primaryKeyword).toBe('online registration for a league or tournament');
+    expect(posts[0]?.primaryKeyword).toBe('create a sports organization in BracketIQ');
     expect(posts[0]?.createdAt).toBe('2026-05-28');
     expect(posts[0]?.updatedAt).toBe('2026-05-28');
     expect(posts[0]?.contentType).toBe('guide');
-    expect(posts[0]?.guideTopic).toBe('events');
-    expect(posts[0]?.canonicalPath).toBe('/guides/registration-league-tournament');
+    expect(posts[0]?.guideTopic).toBe('organizations');
+    expect(posts[0]?.canonicalPath).toBe('/guides/create-organization-in-bracketiq');
     expect(posts[0]?.author).toEqual({
       name: 'Samuel Razumovskiy',
       image: '/blog/authors/samuel-razumovskiy.jpg',
@@ -68,6 +70,7 @@ describe('blog registry', () => {
     const tournamentTopic = topics.find((topic) => topic.id === 'tournaments');
     const eventTopic = topics.find((topic) => topic.id === 'events');
     const leagueTopic = topics.find((topic) => topic.id === 'leagues');
+    const organizationTopic = topics.find((topic) => topic.id === 'organizations');
 
     expect(tournamentTopic?.posts.map((post) => post.slug)).toEqual([
       'create-tournament-in-bracketiq',
@@ -90,10 +93,22 @@ describe('blog registry', () => {
       'league-playoffs',
       'league-split-divisions',
     ]);
+    expect(organizationTopic?.posts.map((post) => post.slug)).toEqual([
+      'create-organization-in-bracketiq',
+      'create-public-page-for-sports-organization',
+    ]);
   });
 
   it('returns sitemap entries for published content at canonical paths', () => {
     expect(getContentSitemapEntries()).toEqual([
+      {
+        url: 'https://bracket-iq.com/guides/create-organization-in-bracketiq',
+        lastModified: '2026-05-28',
+      },
+      {
+        url: 'https://bracket-iq.com/guides/create-public-page-for-sports-organization',
+        lastModified: '2026-05-28',
+      },
       {
         url: 'https://bracket-iq.com/guides/registration-league-tournament',
         lastModified: '2026-05-28',

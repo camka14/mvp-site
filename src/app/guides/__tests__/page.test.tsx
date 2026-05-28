@@ -80,6 +80,17 @@ describe('GuidesPage', () => {
 
     expect(renderedLeagueGuideOrder).toEqual(expectedLeagueGuideOrder);
 
+    const expectedOrganizationGuideOrder = [
+      'How to Create and Set Up an Organization in BracketIQ',
+      'How to Create a Public Page for Your Sports Organization',
+    ];
+    const renderedOrganizationGuideOrder = screen
+      .getAllByRole('link')
+      .map((link) => link.textContent?.replace(/\s+/g, ' ').trim())
+      .filter((text): text is string => Boolean(text && expectedOrganizationGuideOrder.includes(text)));
+
+    expect(renderedOrganizationGuideOrder).toEqual(expectedOrganizationGuideOrder);
+
     expect(
       screen.getAllByRole('link', { name: 'How to Set Up Tournament Registration for Teams and Players' })
         .some((link) => link.getAttribute('href') === '/guides/tournament-registration'),
@@ -139,6 +150,14 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Run a League With Separate Regular Season and Playoff Divisions' })
         .some((link) => link.getAttribute('href') === '/guides/league-split-divisions'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Create and Set Up an Organization in BracketIQ' })
+        .some((link) => link.getAttribute('href') === '/guides/create-organization-in-bracketiq'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Create a Public Page for Your Sports Organization' })
+        .some((link) => link.getAttribute('href') === '/guides/create-public-page-for-sports-organization'),
     ).toBe(true);
   });
 });

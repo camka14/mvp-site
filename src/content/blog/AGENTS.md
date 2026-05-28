@@ -9,6 +9,10 @@ This folder can contain MDX used by both the Blog and Guides surfaces. The regis
 
 BracketIQ guides are a subset of the broader content library and are surfaced from `/guides`. The guide home page groups guide links by Events, Tournaments, Leagues, and Organizations in the left guide navigation. For example, tournament creation and tournament management guides belong under the Tournaments topic.
 
+Organization guides should be tutorial-first. Start with concrete BracketIQ organization workflows such as creating the organization, public page setup, staff roles, fields/courts, rentals, teams, customers, payments, and organization-hosted events before writing broader organization strategy or buyer-intent articles.
+
+For Stripe payment-processing setup guides, screenshot only BracketIQ-controlled surfaces such as the organization payment card, Connect Stripe Account action, verification status, and paid workflow availability. Describe the Stripe-hosted onboarding flow at a high level and link to official Stripe documentation instead of recreating sensitive or change-prone third-party screens.
+
 Use the Blog for sport logistics and hosting advice such as indoor volleyball, outdoor volleyball, pickleball, indoor soccer, outdoor soccer, basketball, tennis, hockey, baseball/softball, and football articles. Sport-specific blog posts should depend on relevant generic guide content where useful, then focus on the sport's real-world logistics instead of repeating BracketIQ setup steps.
 
 The living blog and article roadmap belongs in `docs/blog-article-roadmap.md`. Keep roadmap updates there instead of adding editorial planning notes to this folder-level file.
