@@ -18,8 +18,9 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(17);
+    expect(posts).toHaveLength(18);
     expect(posts.map((post) => post.slug)).toEqual([
+      'organization-payment-processing',
       'create-organization-in-bracketiq',
       'create-public-page-for-sports-organization',
       'registration-league-tournament',
@@ -38,12 +39,12 @@ describe('blog registry', () => {
       'create-tournament-in-bracketiq',
       'paid-pickup-event-payments',
     ]);
-    expect(posts[0]?.primaryKeyword).toBe('create a sports organization in BracketIQ');
-    expect(posts[0]?.createdAt).toBe('2026-05-28');
-    expect(posts[0]?.updatedAt).toBe('2026-05-28');
+    expect(posts[0]?.primaryKeyword).toBe('set up payment processing for a sports organization');
+    expect(posts[0]?.createdAt).toBe('2026-05-29');
+    expect(posts[0]?.updatedAt).toBe('2026-05-29');
     expect(posts[0]?.contentType).toBe('guide');
     expect(posts[0]?.guideTopic).toBe('organizations');
-    expect(posts[0]?.canonicalPath).toBe('/guides/create-organization-in-bracketiq');
+    expect(posts[0]?.canonicalPath).toBe('/guides/organization-payment-processing');
     expect(posts[0]?.author).toEqual({
       name: 'Samuel Razumovskiy',
       image: '/blog/authors/samuel-razumovskiy.jpg',
@@ -96,11 +97,16 @@ describe('blog registry', () => {
     expect(organizationTopic?.posts.map((post) => post.slug)).toEqual([
       'create-organization-in-bracketiq',
       'create-public-page-for-sports-organization',
+      'organization-payment-processing',
     ]);
   });
 
   it('returns sitemap entries for published content at canonical paths', () => {
     expect(getContentSitemapEntries()).toEqual([
+      {
+        url: 'https://bracket-iq.com/guides/organization-payment-processing',
+        lastModified: '2026-05-29',
+      },
       {
         url: 'https://bracket-iq.com/guides/create-organization-in-bracketiq',
         lastModified: '2026-05-28',

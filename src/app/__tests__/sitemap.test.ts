@@ -8,6 +8,7 @@ describe('sitemap', () => {
     expect(urls).toContain('https://bracket-iq.com/blog');
     expect(urls).toContain('https://bracket-iq.com/guides');
     expect(urls).toContain('https://bracket-iq.com/mobile-app');
+    expect(urls).toContain('https://bracket-iq.com/guides/organization-payment-processing');
     expect(urls).toContain('https://bracket-iq.com/guides/create-organization-in-bracketiq');
     expect(urls).toContain('https://bracket-iq.com/guides/create-public-page-for-sports-organization');
     expect(urls).toContain('https://bracket-iq.com/guides/registration-league-tournament');

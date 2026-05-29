@@ -158,6 +158,67 @@ const createPublicPageForSportsOrganization: BlogPostEntry = {
   load: () => import('@/content/blog/create-public-page-for-sports-organization.mdx'),
 };
 
+const organizationPaymentProcessing: BlogPostEntry = {
+  slug: 'organization-payment-processing',
+  title: 'How to Set Up Payment Processing for Your BracketIQ Organization',
+  description:
+    'Set up organization payment processing in BracketIQ by connecting Stripe, completing hosted onboarding, checking verification status, and confirming paid registrations, rentals, and products are ready.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-05-29',
+  publishedAt: '2026-05-29',
+  updatedAt: '2026-05-29',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'set up payment processing for a sports organization',
+  longTailKeywords: [
+    'sports organization payment processing',
+    'sports facility Stripe onboarding',
+    'club registration payments setup',
+    'sports event payment processing guide',
+    'BracketIQ organization payments',
+    'collect payments for sports registrations',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/guides/organization-payment-processing',
+  ctas: [
+    {
+      label: 'Set up payment processing',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Create the organization first',
+      href: '/guides/create-organization-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Set up online registration',
+      href: '/guides/registration-league-tournament',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Does BracketIQ show the Stripe onboarding screens in the guide?',
+      answer:
+        'No. Stripe-hosted onboarding can include sensitive business, identity, and bank details, and the exact screens vary by account requirements. The guide screenshots only show BracketIQ-controlled setup and verification surfaces.',
+    },
+    {
+      question: 'What should I do if my organization still says unverified?',
+      answer:
+        'Reopen onboarding from the BracketIQ Payments card and finish any remaining Stripe requirements. Stripe may need more business, representative, tax, or bank information before payments and payouts are fully ready.',
+    },
+    {
+      question: 'Which organization workflows use payment processing?',
+      answer:
+        'A connected organization payment account supports paid event registration, league and tournament team registration, rentals, store products, customer payment records, refunds, and payout readiness for that organization.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ organization payment processing guide preview',
+  load: () => import('@/content/blog/organization-payment-processing.mdx'),
+};
+
 const registrationLeagueTournament: BlogPostEntry = {
   slug: 'registration-league-tournament',
   title: 'How to Set Up Online Registration for a League or Tournament',
@@ -1080,6 +1141,7 @@ const paidPickupEventPayments: BlogPostEntry = {
 const blogPosts = [
   createOrganizationInBracketiq,
   createPublicPageForSportsOrganization,
+  organizationPaymentProcessing,
   registrationLeagueTournament,
   leagueScheduleCommunication,
   leagueRegistration,
@@ -1123,6 +1185,7 @@ const GUIDE_TOPIC_POST_ORDER = {
   organizations: [
     'create-organization-in-bracketiq',
     'create-public-page-for-sports-organization',
+    'organization-payment-processing',
   ],
 } satisfies Record<GuideTopicId, string[]>;
 
