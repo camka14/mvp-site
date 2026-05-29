@@ -37,6 +37,8 @@ This guide covers best practices for developing a **full-stack web application**
 
 **Related app**: The mobile version of this product lives in `C:\Users\samue\StudioProjects\mvp-app`. When a request mentions `mvp-app` or mobile parity, inspect that repo directly and determine whether web-side behavior changes in `mvp-site` also need a corresponding mobile update.
 
+**Git remote standard**: Use the HTTPS GitHub remote for this repo when fetching or pushing: `https://github.com/camka14/mvp-site.git`. Do not use SSH remotes such as `git@github.com:camka14/mvp-site.git` or `git@ssh.github.com:camka14/mvp-site.git`, because SSH auth may not be available in this environment.
+
 # ExecPlans
 When writing complex features or significant refactors, use an ExecPlan (as described in `mvp-site/PLANS.md`) from design to implementation.
 

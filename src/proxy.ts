@@ -5,7 +5,7 @@ const WWW_HOST = `www.${CANONICAL_HOST}`;
 
 const normalizeHost = (host: string | null) => host?.split(':')[0]?.toLowerCase() ?? '';
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   if (normalizeHost(request.headers.get('host')) !== WWW_HOST) {
     return NextResponse.next();
   }
