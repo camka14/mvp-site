@@ -18,9 +18,10 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(19);
+    expect(posts).toHaveLength(20);
     expect(posts.map((post) => post.slug)).toEqual([
       'manage-sports-facility',
+      'manage-sports-club',
       'organization-payment-processing',
       'create-organization-in-bracketiq',
       'create-public-page-for-sports-organization',
@@ -100,6 +101,7 @@ describe('blog registry', () => {
       'create-public-page-for-sports-organization',
       'organization-payment-processing',
       'manage-sports-facility',
+      'manage-sports-club',
     ]);
   });
 
@@ -107,6 +109,10 @@ describe('blog registry', () => {
     expect(getContentSitemapEntries()).toEqual([
       {
         url: 'https://bracket-iq.com/guides/manage-sports-facility',
+        lastModified: '2026-05-31',
+      },
+      {
+        url: 'https://bracket-iq.com/guides/manage-sports-club',
         lastModified: '2026-05-31',
       },
       {

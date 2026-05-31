@@ -280,6 +280,67 @@ const manageSportsFacility: BlogPostEntry = {
   load: () => import('@/content/blog/manage-sports-facility.mdx'),
 };
 
+const manageSportsClub: BlogPostEntry = {
+  slug: 'manage-sports-club',
+  title: 'How to Manage a Sports Club With BracketIQ',
+  description:
+    'Manage a sports club in BracketIQ by organizing teams, players, parents, staff roles, permissions, registrations, payments, schedules, public pages, and mobile access.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-05-31',
+  publishedAt: '2026-05-31',
+  updatedAt: '2026-05-31',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'manage a sports club with BracketIQ',
+  longTailKeywords: [
+    'sports club management software guide',
+    'manage club teams and rosters',
+    'sports club staff permissions',
+    'parent and player communication software',
+    'club registration payments and schedules',
+    'BracketIQ sports club guide',
+  ],
+  readingMinutes: 9,
+  canonicalPath: '/guides/manage-sports-club',
+  ctas: [
+    {
+      label: 'Manage your club',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Set up club registration',
+      href: '/guides/registration-league-tournament',
+      variant: 'secondary',
+    },
+    {
+      label: 'Create the organization first',
+      href: '/guides/create-organization-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Can BracketIQ manage club teams and staff in one place?',
+      answer:
+        'Yes. A club organization can hold team lists, staff access, role-based permissions, events, registration workflows, customers, payments, public pages, and mobile access together.',
+    },
+    {
+      question: 'How should clubs assign permissions?',
+      answer:
+        'Assign permissions by responsibility. Club directors may need broad access, coaches may need teams and rosters, coordinators may need events and schedules, and finance staff may need payments, bills, products, and refunds.',
+    },
+    {
+      question: 'Are customers the same as team rosters?',
+      answer:
+        'No. Teams and rosters track who plays together. Customers help the club understand parents, guardians, payers, repeat participants, and billing or support relationships.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ sports club management guide preview',
+  load: () => import('@/content/blog/manage-sports-club.mdx'),
+};
+
 const registrationLeagueTournament: BlogPostEntry = {
   slug: 'registration-league-tournament',
   title: 'How to Set Up Online Registration for a League or Tournament',
@@ -1204,6 +1265,7 @@ const blogPosts = [
   createPublicPageForSportsOrganization,
   organizationPaymentProcessing,
   manageSportsFacility,
+  manageSportsClub,
   registrationLeagueTournament,
   leagueScheduleCommunication,
   leagueRegistration,
@@ -1249,6 +1311,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'create-public-page-for-sports-organization',
     'organization-payment-processing',
     'manage-sports-facility',
+    'manage-sports-club',
   ],
 } satisfies Record<GuideTopicId, string[]>;
 
