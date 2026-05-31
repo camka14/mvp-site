@@ -219,6 +219,67 @@ const organizationPaymentProcessing: BlogPostEntry = {
   load: () => import('@/content/blog/organization-payment-processing.mdx'),
 };
 
+const manageSportsFacility: BlogPostEntry = {
+  slug: 'manage-sports-facility',
+  title: 'How to Manage a Sports Facility With BracketIQ',
+  description:
+    'Manage a sports facility in BracketIQ by setting up organization workflows for fields or courts, rentals, events, products, payments, public pages, widgets, and staff access.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-05-31',
+  publishedAt: '2026-05-31',
+  updatedAt: '2026-05-31',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'manage a sports facility with BracketIQ',
+  longTailKeywords: [
+    'sports facility management software guide',
+    'manage sports facility rentals',
+    'sports facility event registration',
+    'court and field rental management',
+    'sports facility payments and public pages',
+    'BracketIQ facility management guide',
+  ],
+  readingMinutes: 9,
+  canonicalPath: '/guides/manage-sports-facility',
+  ctas: [
+    {
+      label: 'Manage your facility',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Create the organization first',
+      href: '/guides/create-organization-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Set up payment processing',
+      href: '/guides/organization-payment-processing',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Should a sports facility start with fields, events, or the public page?',
+      answer:
+        'Start with the organization profile, then add the fields, courts, or surfaces that determine what can be scheduled. After the facility inventory is clear, publish events, rentals, products, and the public page.',
+    },
+    {
+      question: 'Can one facility manage rentals and events in the same BracketIQ organization?',
+      answer:
+        'Yes. BracketIQ keeps fields or courts, rental availability, leagues, tournaments, pickup events, products, payments, staff, and public listings together under the facility organization.',
+    },
+    {
+      question: 'When should a facility connect Stripe?',
+      answer:
+        'Connect Stripe before publishing paid registrations, rentals, or products. That gives staff time to finish verification, review pricing, and test the public checkout path before customers arrive.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ sports facility management guide preview',
+  load: () => import('@/content/blog/manage-sports-facility.mdx'),
+};
+
 const registrationLeagueTournament: BlogPostEntry = {
   slug: 'registration-league-tournament',
   title: 'How to Set Up Online Registration for a League or Tournament',
@@ -1142,6 +1203,7 @@ const blogPosts = [
   createOrganizationInBracketiq,
   createPublicPageForSportsOrganization,
   organizationPaymentProcessing,
+  manageSportsFacility,
   registrationLeagueTournament,
   leagueScheduleCommunication,
   leagueRegistration,
@@ -1186,6 +1248,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'create-organization-in-bracketiq',
     'create-public-page-for-sports-organization',
     'organization-payment-processing',
+    'manage-sports-facility',
   ],
 } satisfies Record<GuideTopicId, string[]>;
 

@@ -84,6 +84,7 @@ describe('GuidesPage', () => {
       'How to Create and Set Up an Organization in BracketIQ',
       'How to Create a Public Page for Your Sports Organization',
       'How to Set Up Payment Processing for Your BracketIQ Organization',
+      'How to Manage a Sports Facility With BracketIQ',
     ];
     const renderedOrganizationGuideOrder = screen
       .getAllByRole('link')
@@ -163,6 +164,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Set Up Payment Processing for Your BracketIQ Organization' })
         .some((link) => link.getAttribute('href') === '/guides/organization-payment-processing'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Manage a Sports Facility With BracketIQ' })
+        .some((link) => link.getAttribute('href') === '/guides/manage-sports-facility'),
     ).toBe(true);
   });
 });
