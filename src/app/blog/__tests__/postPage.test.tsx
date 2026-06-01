@@ -20,6 +20,7 @@ describe('BlogPostPage', () => {
     expect(generateStaticParams()).toEqual([
       { slug: 'manage-sports-facility' },
       { slug: 'manage-sports-club' },
+      { slug: 'club-players-parents-teams' },
       { slug: 'organization-payment-processing' },
       { slug: 'create-organization-in-bracketiq' },
       { slug: 'create-public-page-for-sports-organization' },

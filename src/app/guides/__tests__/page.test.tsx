@@ -86,6 +86,7 @@ describe('GuidesPage', () => {
       'How to Set Up Payment Processing for Your BracketIQ Organization',
       'How to Manage a Sports Facility With BracketIQ',
       'How to Manage a Sports Club With BracketIQ',
+      'How Clubs Can Manage Players, Parents, Teams, and Events',
     ];
     const renderedOrganizationGuideOrder = screen
       .getAllByRole('link')
@@ -173,6 +174,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How to Manage a Sports Club With BracketIQ' })
         .some((link) => link.getAttribute('href') === '/guides/manage-sports-club'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How Clubs Can Manage Players, Parents, Teams, and Events' })
+        .some((link) => link.getAttribute('href') === '/guides/club-players-parents-teams'),
     ).toBe(true);
   });
 });

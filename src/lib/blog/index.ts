@@ -341,6 +341,67 @@ const manageSportsClub: BlogPostEntry = {
   load: () => import('@/content/blog/manage-sports-club.mdx'),
 };
 
+const clubPlayersParentsTeams: BlogPostEntry = {
+  slug: 'club-players-parents-teams',
+  title: 'How Clubs Can Manage Players, Parents, Teams, and Events',
+  description:
+    'Manage club players, parents, teams, rosters, tryouts, clinics, camps, registrations, staff permissions, schedules, payments, public pages, and mobile access in BracketIQ.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-05-31',
+  publishedAt: '2026-05-31',
+  updatedAt: '2026-05-31',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'manage club players parents and teams',
+  longTailKeywords: [
+    'sports club roster management',
+    'manage players and parents for a club',
+    'club team registration software',
+    'youth sports club management guide',
+    'sports club tryout registration workflow',
+    'BracketIQ club operations guide',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/guides/club-players-parents-teams',
+  ctas: [
+    {
+      label: 'Manage club operations',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Start with the club guide',
+      href: '/guides/manage-sports-club',
+      variant: 'secondary',
+    },
+    {
+      label: 'Set up registration',
+      href: '/guides/registration-league-tournament',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Are club customers the same as team rosters?',
+      answer:
+        'No. Team rosters show who plays together. Customers can include players, parents, guardians, captains, team managers, payers, or anyone with event, billing, document, or support history.',
+    },
+    {
+      question: 'When should a club review participants?',
+      answer:
+        'Review participants before tryout groups, clinic rosters, camp lists, invoices, and family communication become hard to change. This helps catch wrong sessions, duplicate records, missing payments, and parent questions early.',
+    },
+    {
+      question: 'Can coaches and staff have different BracketIQ access?',
+      answer:
+        'Yes. Club directors, coaches, coordinators, finance staff, and seasonal helpers can be given access based on the work they actually manage, instead of giving every staff member broad organization access.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ club players parents teams and events guide preview',
+  load: () => import('@/content/blog/club-players-parents-teams.mdx'),
+};
+
 const registrationLeagueTournament: BlogPostEntry = {
   slug: 'registration-league-tournament',
   title: 'How to Set Up Online Registration for a League or Tournament',
@@ -1266,6 +1327,7 @@ const blogPosts = [
   organizationPaymentProcessing,
   manageSportsFacility,
   manageSportsClub,
+  clubPlayersParentsTeams,
   registrationLeagueTournament,
   leagueScheduleCommunication,
   leagueRegistration,
@@ -1312,6 +1374,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'organization-payment-processing',
     'manage-sports-facility',
     'manage-sports-club',
+    'club-players-parents-teams',
   ],
 } satisfies Record<GuideTopicId, string[]>;
 
