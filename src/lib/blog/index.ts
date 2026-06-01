@@ -280,6 +280,67 @@ const manageSportsFacility: BlogPostEntry = {
   load: () => import('@/content/blog/manage-sports-facility.mdx'),
 };
 
+const facilityRentalsEventsPayments: BlogPostEntry = {
+  slug: 'facility-rentals-events-payments',
+  title: 'How Sports Facilities Can Manage Rentals, Events, and Payments in One Place',
+  description:
+    'Manage sports facility rentals, events, leagues, tournaments, products, payments, public pages, widgets, and staff workflows in one BracketIQ organization workspace.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-06-01',
+  publishedAt: '2026-06-01',
+  updatedAt: '2026-06-01',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'sports facilities manage rentals events and payments',
+  longTailKeywords: [
+    'sports facility rental management',
+    'court and field rental software',
+    'facility events and payments guide',
+    'sports facility public booking page',
+    'sports facility products and passes',
+    'BracketIQ facility revenue guide',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/guides/facility-rentals-events-payments',
+  ctas: [
+    {
+      label: 'Manage facility revenue',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Start with facility setup',
+      href: '/guides/manage-sports-facility',
+      variant: 'secondary',
+    },
+    {
+      label: 'Set up payments',
+      href: '/guides/organization-payment-processing',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Can a facility manage rentals and events in the same BracketIQ organization?',
+      answer:
+        'Yes. A facility organization can keep fields, courts, rentals, leagues, tournaments, pickup events, clinics, products, payments, public pages, widgets, and staff workflows connected.',
+    },
+    {
+      question: 'When should a facility use products instead of event registration?',
+      answer:
+        'Use products for purchases that are not tied to one event registration, such as passes, memberships, training packages, add-ons, merchandise, or other facility sales.',
+    },
+    {
+      question: 'Should payment processing be connected before publishing facility links?',
+      answer:
+        'Yes. Connect and verify organization payment processing before sharing paid rental, registration, product, or pass links so customers can complete checkout and staff can track payments correctly.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ facility rentals events and payments guide preview',
+  load: () => import('@/content/blog/facility-rentals-events-payments.mdx'),
+};
+
 const manageSportsClub: BlogPostEntry = {
   slug: 'manage-sports-club',
   title: 'How to Manage a Sports Club With BracketIQ',
@@ -1449,6 +1510,7 @@ const blogPosts = [
   organizationPaymentProcessing,
   eventOrganizersOnePlace,
   manageSportsFacility,
+  facilityRentalsEventsPayments,
   manageSportsClub,
   clubPlayersParentsTeams,
   clubCommunication,
@@ -1498,6 +1560,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'organization-payment-processing',
     'event-organizers-one-place',
     'manage-sports-facility',
+    'facility-rentals-events-payments',
     'manage-sports-club',
     'club-players-parents-teams',
     'club-communication',

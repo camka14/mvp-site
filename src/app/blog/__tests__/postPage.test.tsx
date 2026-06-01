@@ -19,6 +19,7 @@ describe('BlogPostPage', () => {
   it('keeps guide slugs in static params so old blog URLs can redirect', () => {
     expect(generateStaticParams()).toEqual([
       { slug: 'event-organizers-one-place' },
+      { slug: 'facility-rentals-events-payments' },
       { slug: 'club-communication' },
       { slug: 'manage-sports-facility' },
       { slug: 'manage-sports-club' },
