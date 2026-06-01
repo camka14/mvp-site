@@ -522,6 +522,66 @@ const indoorVolleyballTournament: BlogPostEntry = {
   load: () => import('@/content/blog/indoor-volleyball-tournament.mdx'),
 };
 
+const outdoorVolleyballLeague: BlogPostEntry = {
+  slug: 'outdoor-volleyball-league',
+  title: 'How to Run an Outdoor Volleyball League or Series',
+  description:
+    'Run an outdoor volleyball league or series with BracketIQ by planning beach or grass courts, team registration, daylight, weather, weekly schedules, standings, communication, and payments.',
+  contentType: 'blog',
+  createdAt: '2026-06-01',
+  publishedAt: '2026-06-01',
+  updatedAt: '2026-06-01',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'run an outdoor volleyball league',
+  longTailKeywords: [
+    'outdoor volleyball league management',
+    'beach volleyball league scheduling software',
+    'grass volleyball league registration',
+    'outdoor volleyball weather communication',
+    'volleyball series standings software',
+    'BracketIQ outdoor volleyball article',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/blog/outdoor-volleyball-league',
+  ctas: [
+    {
+      label: 'Create an outdoor volleyball league',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'primary',
+    },
+    {
+      label: 'Schedule the season',
+      href: '/guides/multi-week-league-scheduling',
+      variant: 'secondary',
+    },
+    {
+      label: 'Send schedule changes',
+      href: '/guides/league-schedule-communication',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Can BracketIQ run beach and grass volleyball leagues?',
+      answer:
+        'Yes. BracketIQ can support beach or grass volleyball leagues with team registration, divisions, court assignments, recurring schedules, standings, payments, public pages, and participant communication.',
+    },
+    {
+      question: 'How should outdoor volleyball leagues handle weather?',
+      answer:
+        'Set a weather policy before registration opens. Tell teams how delays, cancellations, shortened nights, makeup matches, standings, and playoff timing will be handled before the first scheduled match.',
+    },
+    {
+      question: 'Why use Agenda view for an outdoor volleyball league?',
+      answer:
+        'Agenda view shows match order, start times, teams, and court assignments in one list, which helps organizers spot daylight issues, court conflicts, and weather-related reschedule needs.',
+    },
+  ],
+  ogImageAlt: 'Outdoor volleyball league article preview',
+  load: () => import('@/content/blog/outdoor-volleyball-league.mdx'),
+};
+
 const manageSportsClub: BlogPostEntry = {
   slug: 'manage-sports-club',
   title: 'How to Manage a Sports Club With BracketIQ',
@@ -1695,6 +1755,7 @@ const blogPosts = [
   manageMultipleSportsFacility,
   indoorVolleyballLeague,
   indoorVolleyballTournament,
+  outdoorVolleyballLeague,
   manageSportsClub,
   clubPlayersParentsTeams,
   clubCommunication,

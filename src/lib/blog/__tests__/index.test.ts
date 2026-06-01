@@ -15,11 +15,14 @@ describe('blog registry', () => {
     expect(posts.map((post) => post.slug)).toEqual([
       'indoor-volleyball-league',
       'indoor-volleyball-tournament',
+      'outdoor-volleyball-league',
     ]);
     expect(posts[0]?.contentType).toBe('blog');
     expect(posts[0]?.canonicalPath).toBe('/blog/indoor-volleyball-league');
     expect(posts[1]?.contentType).toBe('blog');
     expect(posts[1]?.canonicalPath).toBe('/blog/indoor-volleyball-tournament');
+    expect(posts[2]?.contentType).toBe('blog');
+    expect(posts[2]?.canonicalPath).toBe('/blog/outdoor-volleyball-league');
   });
 
   it('returns published guides newest first', () => {
@@ -142,6 +145,10 @@ describe('blog registry', () => {
       },
       {
         url: 'https://bracket-iq.com/blog/indoor-volleyball-tournament',
+        lastModified: '2026-06-01',
+      },
+      {
+        url: 'https://bracket-iq.com/blog/outdoor-volleyball-league',
         lastModified: '2026-06-01',
       },
       {

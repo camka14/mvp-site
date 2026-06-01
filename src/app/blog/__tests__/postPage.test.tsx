@@ -23,6 +23,7 @@ describe('BlogPostPage', () => {
       { slug: 'manage-multiple-sports-facility' },
       { slug: 'indoor-volleyball-league' },
       { slug: 'indoor-volleyball-tournament' },
+      { slug: 'outdoor-volleyball-league' },
       { slug: 'club-communication' },
       { slug: 'manage-sports-facility' },
       { slug: 'manage-sports-club' },
