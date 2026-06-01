@@ -463,6 +463,67 @@ const clubCommunication: BlogPostEntry = {
   load: () => import('@/content/blog/club-communication.mdx'),
 };
 
+const eventOrganizersOnePlace: BlogPostEntry = {
+  slug: 'event-organizers-one-place',
+  title: 'How Event Organizers Can Run Leagues and Tournaments in One Place',
+  description:
+    'Run leagues and tournaments in BracketIQ from one organization workspace with registration, schedules, payments, staff coordination, public pages, and participant updates.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-06-01',
+  publishedAt: '2026-06-01',
+  updatedAt: '2026-06-01',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'event organizers run leagues and tournaments',
+  longTailKeywords: [
+    'sports event organizer software',
+    'run leagues and tournaments in one place',
+    'sports event registration scheduling payments',
+    'event organizer public page',
+    'league and tournament operations guide',
+    'BracketIQ event organizer guide',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/guides/event-organizers-one-place',
+  ctas: [
+    {
+      label: 'Run events from your organization',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Create a league',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'secondary',
+    },
+    {
+      label: 'Create a tournament',
+      href: '/guides/create-tournament-in-bracketiq',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Should an event organizer create events from a personal profile or an organization?',
+      answer:
+        'Use an organization when leagues, tournaments, payments, public pages, staff access, customer history, and repeat operations should stay connected to the organizer instead of one individual account.',
+    },
+    {
+      question: 'Can one BracketIQ organization run both leagues and tournaments?',
+      answer:
+        'Yes. A single organization can host leagues, tournaments, pickup sessions, clinics, products, rentals, staff workflows, payments, and public listings while keeping each event managed separately.',
+    },
+    {
+      question: 'Why should organizers review registration before scheduling?',
+      answer:
+        'Registration issues such as wrong divisions, duplicate teams, missing payments, and capacity problems are much easier to fix before schedules, invoices, and public communication depend on them.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ event organizer leagues and tournaments guide preview',
+  load: () => import('@/content/blog/event-organizers-one-place.mdx'),
+};
+
 const registrationLeagueTournament: BlogPostEntry = {
   slug: 'registration-league-tournament',
   title: 'How to Set Up Online Registration for a League or Tournament',
@@ -1386,6 +1447,7 @@ const blogPosts = [
   createOrganizationInBracketiq,
   createPublicPageForSportsOrganization,
   organizationPaymentProcessing,
+  eventOrganizersOnePlace,
   manageSportsFacility,
   manageSportsClub,
   clubPlayersParentsTeams,
@@ -1434,6 +1496,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'create-organization-in-bracketiq',
     'create-public-page-for-sports-organization',
     'organization-payment-processing',
+    'event-organizers-one-place',
     'manage-sports-facility',
     'manage-sports-club',
     'club-players-parents-teams',

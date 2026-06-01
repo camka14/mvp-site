@@ -18,8 +18,9 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(22);
+    expect(posts).toHaveLength(23);
     expect(posts.map((post) => post.slug)).toEqual([
+      'event-organizers-one-place',
       'club-communication',
       'manage-sports-facility',
       'manage-sports-club',
@@ -43,12 +44,12 @@ describe('blog registry', () => {
       'create-tournament-in-bracketiq',
       'paid-pickup-event-payments',
     ]);
-    expect(posts[0]?.primaryKeyword).toBe('club communication with players and parents');
+    expect(posts[0]?.primaryKeyword).toBe('event organizers run leagues and tournaments');
     expect(posts[0]?.createdAt).toBe('2026-06-01');
     expect(posts[0]?.updatedAt).toBe('2026-06-01');
     expect(posts[0]?.contentType).toBe('guide');
     expect(posts[0]?.guideTopic).toBe('organizations');
-    expect(posts[0]?.canonicalPath).toBe('/guides/club-communication');
+    expect(posts[0]?.canonicalPath).toBe('/guides/event-organizers-one-place');
     expect(posts[0]?.author).toEqual({
       name: 'Samuel Razumovskiy',
       image: '/blog/authors/samuel-razumovskiy.jpg',
@@ -102,6 +103,7 @@ describe('blog registry', () => {
       'create-organization-in-bracketiq',
       'create-public-page-for-sports-organization',
       'organization-payment-processing',
+      'event-organizers-one-place',
       'manage-sports-facility',
       'manage-sports-club',
       'club-players-parents-teams',
@@ -111,6 +113,10 @@ describe('blog registry', () => {
 
   it('returns sitemap entries for published content at canonical paths', () => {
     expect(getContentSitemapEntries()).toEqual([
+      {
+        url: 'https://bracket-iq.com/guides/event-organizers-one-place',
+        lastModified: '2026-06-01',
+      },
       {
         url: 'https://bracket-iq.com/guides/club-communication',
         lastModified: '2026-06-01',
