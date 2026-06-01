@@ -402,6 +402,67 @@ const clubPlayersParentsTeams: BlogPostEntry = {
   load: () => import('@/content/blog/club-players-parents-teams.mdx'),
 };
 
+const clubCommunication: BlogPostEntry = {
+  slug: 'club-communication',
+  title: 'How Clubs Can Communicate Better With Players, Parents, and Teams',
+  description:
+    'Improve club communication in BracketIQ by organizing player, parent, guardian, team, staff, registration, schedule, public page, and mobile update workflows.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-06-01',
+  publishedAt: '2026-06-01',
+  updatedAt: '2026-06-01',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'club communication with players and parents',
+  longTailKeywords: [
+    'sports club communication guide',
+    'communicate with players and parents',
+    'youth sports parent communication',
+    'club schedule update workflow',
+    'sports club staff communication permissions',
+    'BracketIQ club communication guide',
+  ],
+  readingMinutes: 7,
+  canonicalPath: '/guides/club-communication',
+  ctas: [
+    {
+      label: 'Manage club communication',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Organize teams and parents first',
+      href: '/guides/club-players-parents-teams',
+      variant: 'secondary',
+    },
+    {
+      label: 'Create the public page',
+      href: '/guides/create-public-page-for-sports-organization',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Should a club send every update as an event notification?',
+      answer:
+        'No. Clubs should use event or program notifications when a tryout, clinic, camp, evaluation, schedule, or registration workflow needs a specific update. Everyday team communication should stay tied to teams, rosters, parents, and staff responsibilities.',
+    },
+    {
+      question: 'Why separate players and parents in club communication?',
+      answer:
+        'Players may need roster or arrival details, while parents or guardians often handle payment, forms, transportation, and questions. BracketIQ customer context helps staff understand which person needs which update.',
+    },
+    {
+      question: 'Who should be allowed to send club updates?',
+      answer:
+        'Give communication access based on responsibility. Directors, coaches, coordinators, finance staff, and seasonal helpers should only manage the updates and workflows that match their role.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ club communication guide preview',
+  load: () => import('@/content/blog/club-communication.mdx'),
+};
+
 const registrationLeagueTournament: BlogPostEntry = {
   slug: 'registration-league-tournament',
   title: 'How to Set Up Online Registration for a League or Tournament',
@@ -1328,6 +1389,7 @@ const blogPosts = [
   manageSportsFacility,
   manageSportsClub,
   clubPlayersParentsTeams,
+  clubCommunication,
   registrationLeagueTournament,
   leagueScheduleCommunication,
   leagueRegistration,
@@ -1375,6 +1437,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'manage-sports-facility',
     'manage-sports-club',
     'club-players-parents-teams',
+    'club-communication',
   ],
 } satisfies Record<GuideTopicId, string[]>;
 

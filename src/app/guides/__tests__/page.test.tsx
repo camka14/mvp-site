@@ -87,6 +87,7 @@ describe('GuidesPage', () => {
       'How to Manage a Sports Facility With BracketIQ',
       'How to Manage a Sports Club With BracketIQ',
       'How Clubs Can Manage Players, Parents, Teams, and Events',
+      'How Clubs Can Communicate Better With Players, Parents, and Teams',
     ];
     const renderedOrganizationGuideOrder = screen
       .getAllByRole('link')
@@ -178,6 +179,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How Clubs Can Manage Players, Parents, Teams, and Events' })
         .some((link) => link.getAttribute('href') === '/guides/club-players-parents-teams'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How Clubs Can Communicate Better With Players, Parents, and Teams' })
+        .some((link) => link.getAttribute('href') === '/guides/club-communication'),
     ).toBe(true);
   });
 });
