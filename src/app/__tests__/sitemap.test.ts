@@ -11,6 +11,7 @@ describe('sitemap', () => {
     expect(urls).toContain('https://bracket-iq.com/guides/event-organizers-one-place');
     expect(urls).toContain('https://bracket-iq.com/guides/facility-rentals-events-payments');
     expect(urls).toContain('https://bracket-iq.com/guides/manage-multiple-sports-facility');
+    expect(urls).toContain('https://bracket-iq.com/blog/indoor-volleyball-league');
     expect(urls).toContain('https://bracket-iq.com/guides/club-communication');
     expect(urls).toContain('https://bracket-iq.com/guides/manage-sports-club');
     expect(urls).toContain('https://bracket-iq.com/guides/club-players-parents-teams');

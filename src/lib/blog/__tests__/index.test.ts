@@ -12,7 +12,11 @@ describe('blog registry', () => {
   it('returns only non-guide blog articles from the blog list', () => {
     const posts = getPublishedBlogPosts();
 
-    expect(posts).toEqual([]);
+    expect(posts.map((post) => post.slug)).toEqual([
+      'indoor-volleyball-league',
+    ]);
+    expect(posts[0]?.contentType).toBe('blog');
+    expect(posts[0]?.canonicalPath).toBe('/blog/indoor-volleyball-league');
   });
 
   it('returns published guides newest first', () => {
@@ -127,6 +131,10 @@ describe('blog registry', () => {
       },
       {
         url: 'https://bracket-iq.com/guides/manage-multiple-sports-facility',
+        lastModified: '2026-06-01',
+      },
+      {
+        url: 'https://bracket-iq.com/blog/indoor-volleyball-league',
         lastModified: '2026-06-01',
       },
       {

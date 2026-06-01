@@ -402,6 +402,66 @@ const manageMultipleSportsFacility: BlogPostEntry = {
   load: () => import('@/content/blog/manage-multiple-sports-facility.mdx'),
 };
 
+const indoorVolleyballLeague: BlogPostEntry = {
+  slug: 'indoor-volleyball-league',
+  title: 'How to Run an Indoor Volleyball League With BracketIQ',
+  description:
+    'Run an indoor volleyball league with BracketIQ by planning divisions, rosters, gym court blocks, weekly schedules, standings, playoffs, officiating duties, communication, and payments.',
+  contentType: 'blog',
+  createdAt: '2026-06-01',
+  publishedAt: '2026-06-01',
+  updatedAt: '2026-06-01',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'run an indoor volleyball league',
+  longTailKeywords: [
+    'indoor volleyball league management',
+    'volleyball league scheduling software',
+    'indoor volleyball standings and playoffs',
+    'volleyball team registration software',
+    'gym court scheduling for volleyball',
+    'BracketIQ volleyball league article',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/blog/indoor-volleyball-league',
+  ctas: [
+    {
+      label: 'Create a volleyball league',
+      href: '/guides/create-league-in-bracketiq',
+      variant: 'primary',
+    },
+    {
+      label: 'Schedule the league',
+      href: '/guides/multi-week-league-scheduling',
+      variant: 'secondary',
+    },
+    {
+      label: 'Manage standings and playoffs',
+      href: '/guides/league-standings-playoff-seeding',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Can BracketIQ run indoor volleyball leagues with multiple divisions?',
+      answer:
+        'Yes. BracketIQ can support indoor volleyball leagues with recreational, competitive, coed, youth, adult, or skill-based divisions while keeping registration, schedules, standings, and playoffs connected.',
+    },
+    {
+      question: 'Should volleyball teams provide officials or work teams?',
+      answer:
+        'Many recreational volleyball leagues use work teams, line judges, or scorekeepers. Decide that policy before publishing the schedule so teams know whether their duties continue after a match.',
+    },
+    {
+      question: 'Why review indoor volleyball schedules in Agenda view?',
+      answer:
+        'Agenda view shows match order, start times, team names, and court assignments in one list, which makes it easier to catch gym-time conflicts, back-to-back issues, and court assignment mistakes.',
+    },
+  ],
+  ogImageAlt: 'Indoor volleyball league guide preview',
+  load: () => import('@/content/blog/indoor-volleyball-league.mdx'),
+};
+
 const manageSportsClub: BlogPostEntry = {
   slug: 'manage-sports-club',
   title: 'How to Manage a Sports Club With BracketIQ',
@@ -1573,6 +1633,7 @@ const blogPosts = [
   manageSportsFacility,
   facilityRentalsEventsPayments,
   manageMultipleSportsFacility,
+  indoorVolleyballLeague,
   manageSportsClub,
   clubPlayersParentsTeams,
   clubCommunication,

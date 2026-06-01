@@ -21,6 +21,7 @@ describe('BlogPostPage', () => {
       { slug: 'event-organizers-one-place' },
       { slug: 'facility-rentals-events-payments' },
       { slug: 'manage-multiple-sports-facility' },
+      { slug: 'indoor-volleyball-league' },
       { slug: 'club-communication' },
       { slug: 'manage-sports-facility' },
       { slug: 'manage-sports-club' },
