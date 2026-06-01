@@ -87,6 +87,7 @@ describe('GuidesPage', () => {
       'How Event Organizers Can Run Leagues and Tournaments in One Place',
       'How to Manage a Sports Facility With BracketIQ',
       'How Sports Facilities Can Manage Rentals, Events, and Payments in One Place',
+      'How to Manage Multiple Sports at One Facility',
       'How to Manage a Sports Club With BracketIQ',
       'How Clubs Can Manage Players, Parents, Teams, and Events',
       'How Clubs Can Communicate Better With Players, Parents, and Teams',
@@ -181,6 +182,10 @@ describe('GuidesPage', () => {
     expect(
       screen.getAllByRole('link', { name: 'How Sports Facilities Can Manage Rentals, Events, and Payments in One Place' })
         .some((link) => link.getAttribute('href') === '/guides/facility-rentals-events-payments'),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole('link', { name: 'How to Manage Multiple Sports at One Facility' })
+        .some((link) => link.getAttribute('href') === '/guides/manage-multiple-sports-facility'),
     ).toBe(true);
     expect(
       screen.getAllByRole('link', { name: 'How to Manage a Sports Club With BracketIQ' })

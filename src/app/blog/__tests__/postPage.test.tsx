@@ -20,6 +20,7 @@ describe('BlogPostPage', () => {
     expect(generateStaticParams()).toEqual([
       { slug: 'event-organizers-one-place' },
       { slug: 'facility-rentals-events-payments' },
+      { slug: 'manage-multiple-sports-facility' },
       { slug: 'club-communication' },
       { slug: 'manage-sports-facility' },
       { slug: 'manage-sports-club' },

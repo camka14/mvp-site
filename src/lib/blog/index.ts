@@ -341,6 +341,67 @@ const facilityRentalsEventsPayments: BlogPostEntry = {
   load: () => import('@/content/blog/facility-rentals-events-payments.mdx'),
 };
 
+const manageMultipleSportsFacility: BlogPostEntry = {
+  slug: 'manage-multiple-sports-facility',
+  title: 'How to Manage Multiple Sports at One Facility',
+  description:
+    'Manage multiple sports at one facility in BracketIQ with shared courts, fields, rentals, leagues, tournaments, clinics, products, staff workflows, public pages, widgets, and payments.',
+  contentType: 'guide',
+  guideTopic: 'organizations',
+  createdAt: '2026-06-01',
+  publishedAt: '2026-06-01',
+  updatedAt: '2026-06-01',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'manage multiple sports at one facility',
+  longTailKeywords: [
+    'multi sport facility management',
+    'manage volleyball soccer and pickleball facility',
+    'sports facility scheduling across sports',
+    'multi sport court and field rentals',
+    'facility public page for multiple sports',
+    'BracketIQ multi sport facility guide',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/guides/manage-multiple-sports-facility',
+  ctas: [
+    {
+      label: 'Manage your multi-sport facility',
+      href: '/organizations',
+      variant: 'primary',
+    },
+    {
+      label: 'Review facility revenue workflows',
+      href: '/guides/facility-rentals-events-payments',
+      variant: 'secondary',
+    },
+    {
+      label: 'Set up the public page',
+      href: '/guides/create-public-page-for-sports-organization',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Can one BracketIQ facility support multiple sports?',
+      answer:
+        'Yes. A single facility organization can manage different sports with shared or sport-specific courts, fields, rentals, leagues, tournaments, clinics, products, public pages, payments, and staff access.',
+    },
+    {
+      question: 'How should a multi-sport facility name fields and courts?',
+      answer:
+        'Use names that match how staff schedule the surface. Dedicated volleyball courts can use court numbers, while shared turf or gym space may need neutral names that work across multiple sports.',
+    },
+    {
+      question: 'Why use Agenda view for multi-sport scheduling?',
+      answer:
+        'Agenda view makes the operational order clear by showing times, teams or participants, match order, and field or court assignments in one scannable list.',
+    },
+  ],
+  ogImageAlt: 'BracketIQ multi-sport facility guide preview',
+  load: () => import('@/content/blog/manage-multiple-sports-facility.mdx'),
+};
+
 const manageSportsClub: BlogPostEntry = {
   slug: 'manage-sports-club',
   title: 'How to Manage a Sports Club With BracketIQ',
@@ -1511,6 +1572,7 @@ const blogPosts = [
   eventOrganizersOnePlace,
   manageSportsFacility,
   facilityRentalsEventsPayments,
+  manageMultipleSportsFacility,
   manageSportsClub,
   clubPlayersParentsTeams,
   clubCommunication,
@@ -1561,6 +1623,7 @@ const GUIDE_TOPIC_POST_ORDER = {
     'event-organizers-one-place',
     'manage-sports-facility',
     'facility-rentals-events-payments',
+    'manage-multiple-sports-facility',
     'manage-sports-club',
     'club-players-parents-teams',
     'club-communication',

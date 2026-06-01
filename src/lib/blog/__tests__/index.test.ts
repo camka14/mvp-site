@@ -18,10 +18,11 @@ describe('blog registry', () => {
   it('returns published guides newest first', () => {
     const posts = getPublishedGuidePosts();
 
-    expect(posts).toHaveLength(24);
+    expect(posts).toHaveLength(25);
     expect(posts.map((post) => post.slug)).toEqual([
       'event-organizers-one-place',
       'facility-rentals-events-payments',
+      'manage-multiple-sports-facility',
       'club-communication',
       'manage-sports-facility',
       'manage-sports-club',
@@ -107,6 +108,7 @@ describe('blog registry', () => {
       'event-organizers-one-place',
       'manage-sports-facility',
       'facility-rentals-events-payments',
+      'manage-multiple-sports-facility',
       'manage-sports-club',
       'club-players-parents-teams',
       'club-communication',
@@ -121,6 +123,10 @@ describe('blog registry', () => {
       },
       {
         url: 'https://bracket-iq.com/guides/facility-rentals-events-payments',
+        lastModified: '2026-06-01',
+      },
+      {
+        url: 'https://bracket-iq.com/guides/manage-multiple-sports-facility',
         lastModified: '2026-06-01',
       },
       {
