@@ -462,6 +462,66 @@ const indoorVolleyballLeague: BlogPostEntry = {
   load: () => import('@/content/blog/indoor-volleyball-league.mdx'),
 };
 
+const indoorVolleyballTournament: BlogPostEntry = {
+  slug: 'indoor-volleyball-tournament',
+  title: 'How to Run an Indoor Volleyball Tournament With Pool Play',
+  description:
+    'Run an indoor volleyball tournament with pool play by planning divisions, team registration, court assignments, work teams, score tables, standings, bracket advancement, communication, and payments.',
+  contentType: 'blog',
+  createdAt: '2026-06-01',
+  publishedAt: '2026-06-01',
+  updatedAt: '2026-06-01',
+  author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
+  isPublished: true,
+  primaryKeyword: 'run an indoor volleyball tournament with pool play',
+  longTailKeywords: [
+    'indoor volleyball tournament management',
+    'volleyball pool play tournament software',
+    'indoor volleyball bracket advancement',
+    'volleyball tournament court scheduling',
+    'volleyball work team assignments',
+    'BracketIQ volleyball tournament article',
+  ],
+  readingMinutes: 8,
+  canonicalPath: '/blog/indoor-volleyball-tournament',
+  ctas: [
+    {
+      label: 'Create a volleyball tournament',
+      href: '/guides/create-tournament-in-bracketiq',
+      variant: 'primary',
+    },
+    {
+      label: 'Run pool play',
+      href: '/guides/tournament-pool-play',
+      variant: 'secondary',
+    },
+    {
+      label: 'Manage results and advancement',
+      href: '/guides/tournament-results-advancement',
+      variant: 'tertiary',
+    },
+  ],
+  faq: [
+    {
+      question: 'Can BracketIQ run indoor volleyball tournaments with pool play?',
+      answer:
+        'Yes. BracketIQ supports indoor volleyball tournaments with team registration, divisions, pool schedules, score entry, standings review, bracket advancement, public pages, payments, and participant updates.',
+    },
+    {
+      question: 'How should indoor volleyball tournaments handle work teams?',
+      answer:
+        'Decide the work-team policy before publishing the schedule. Many volleyball events assign the previous team, next team, or a separate listed team to handle scorekeeping, line judging, or officiating duties.',
+    },
+    {
+      question: 'Why use Agenda view for an indoor volleyball tournament?',
+      answer:
+        'Agenda view shows match order, times, teams, score controls, and court assignments in one list, which helps directors catch gym conflicts, score-table gaps, and pool-to-bracket timing issues.',
+    },
+  ],
+  ogImageAlt: 'Indoor volleyball tournament with pool play article preview',
+  load: () => import('@/content/blog/indoor-volleyball-tournament.mdx'),
+};
+
 const manageSportsClub: BlogPostEntry = {
   slug: 'manage-sports-club',
   title: 'How to Manage a Sports Club With BracketIQ',
@@ -1634,6 +1694,7 @@ const blogPosts = [
   facilityRentalsEventsPayments,
   manageMultipleSportsFacility,
   indoorVolleyballLeague,
+  indoorVolleyballTournament,
   manageSportsClub,
   clubPlayersParentsTeams,
   clubCommunication,

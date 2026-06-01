@@ -22,6 +22,7 @@ describe('BlogPostPage', () => {
       { slug: 'facility-rentals-events-payments' },
       { slug: 'manage-multiple-sports-facility' },
       { slug: 'indoor-volleyball-league' },
+      { slug: 'indoor-volleyball-tournament' },
       { slug: 'club-communication' },
       { slug: 'manage-sports-facility' },
       { slug: 'manage-sports-club' },
