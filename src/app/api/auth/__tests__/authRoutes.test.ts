@@ -46,6 +46,9 @@ const authEmailVerificationMock = {
   isInitialEmailVerificationAvailable: jest.fn(),
   sendInitialEmailVerification: jest.fn(),
 };
+const adminNotificationsMock = {
+  sendAdminAccountCreatedNotification: jest.fn(),
+};
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/authServer', () => authServerMock);
@@ -55,6 +58,9 @@ jest.mock('@/server/authSessions', () => authSessionsMock);
 jest.mock('@/server/authEmailVerification', () => ({
   isInitialEmailVerificationAvailable: () => authEmailVerificationMock.isInitialEmailVerificationAvailable(),
   sendInitialEmailVerification: (...args: any[]) => authEmailVerificationMock.sendInitialEmailVerification(...args),
+}));
+jest.mock('@/server/adminNotifications', () => ({
+  sendAdminAccountCreatedNotification: (...args: any[]) => adminNotificationsMock.sendAdminAccountCreatedNotification(...args),
 }));
 
 import { POST as REGISTER_POST } from '@/app/api/auth/register/route';
@@ -90,6 +96,7 @@ describe('auth routes', () => {
     authSessionsMock.isSessionTokenCurrent.mockReturnValue(true);
     authEmailVerificationMock.isInitialEmailVerificationAvailable.mockReturnValue(true);
     authEmailVerificationMock.sendInitialEmailVerification.mockResolvedValue({ sent: true });
+    adminNotificationsMock.sendAdminAccountCreatedNotification.mockResolvedValue(undefined);
     prismaMock.invites.findFirst.mockResolvedValue(null);
     prismaMock.staffMembers.findFirst.mockResolvedValue(null);
   });
@@ -151,6 +158,15 @@ describe('auth routes', () => {
         email: 'test@example.com',
         origin: 'http://localhost',
       });
+      expect(adminNotificationsMock.sendAdminAccountCreatedNotification).toHaveBeenCalledWith(expect.objectContaining({
+        userId: 'user_1',
+        email: 'test@example.com',
+        firstName: 'Test',
+        lastName: 'User',
+        userName: 'tester',
+        authProvider: 'password',
+        wasInviteClaim: false,
+      }));
       expect(prismaMock.userData.create).toHaveBeenCalled();
       expect(prismaMock.sensitiveUserData.upsert).toHaveBeenCalled();
     });
@@ -262,6 +278,12 @@ describe('auth routes', () => {
           }),
         }),
       );
+      expect(adminNotificationsMock.sendAdminAccountCreatedNotification).toHaveBeenCalledWith(expect.objectContaining({
+        userId: 'user_1',
+        email: 'test@example.com',
+        authProvider: 'password',
+        wasInviteClaim: true,
+      }));
     });
 
     it('sets the home organization when claiming an organization invite account', async () => {

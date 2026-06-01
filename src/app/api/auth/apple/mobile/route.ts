@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import {
   exchangeAppleAuthorizationCode,
   verifyAppleIdentityToken,
@@ -15,6 +16,7 @@ import {
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
+import { sendAdminAccountCreatedNotification } from '@/server/adminNotifications';
 
 const mobileAppleSchema = z.object({
   identityToken: z.string().min(1),
@@ -247,6 +249,26 @@ export async function POST(req: NextRequest) {
   };
   const token = signSessionToken(session);
   const [profileWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([profile], prisma);
+  const wasInviteClaim = Boolean(existingAuth && isInvitePlaceholderAuthUser(existingAuth));
+  if (!existingAuth || wasInviteClaim) {
+    await sendAdminAccountCreatedNotification({
+      userId: authUser.id,
+      email: authUser.email,
+      name: authUser.name,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      userName: profile.userName,
+      dateOfBirth: profile.dateOfBirth,
+      createdAt: authUser.createdAt ?? now,
+      authProvider: 'apple',
+      wasInviteClaim,
+    }).catch((error) => {
+      console.warn('Failed to send admin account creation notification', {
+        userId: authUser.id,
+        error,
+      });
+    });
+  }
   const res = NextResponse.json(
     {
       user: toPublicUser(authUser),

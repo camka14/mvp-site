@@ -41,6 +41,7 @@ import {
   normalizeSportOfficialPositionTemplates,
 } from '@/server/officials/config';
 import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
+import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -1035,6 +1036,15 @@ export async function POST(req: NextRequest) {
       baseUrl: req.nextUrl.origin,
     }).catch((notificationError) => {
       console.error('Post-create social notification failed', notificationError);
+    });
+    await sendAdminEventCreatedNotification({
+      event,
+      baseUrl: req.nextUrl.origin,
+    }).catch((notificationError) => {
+      console.warn('Failed to send admin event creation notification', {
+        eventId: event.id,
+        error: notificationError,
+      });
     });
     return NextResponse.json(
       { event: payload },

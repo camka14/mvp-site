@@ -21,6 +21,7 @@ import {
   releaseRentalCheckoutLocks,
   type RentalCheckoutWindow,
 } from '@/server/repositories/rentalCheckoutLocks';
+import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -90,6 +91,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      let createdEvent = false;
       if (eventDocument) {
         const eventPayload = eventDocument as Record<string, unknown>;
         const payloadEventId = String(eventPayload.id ?? eventPayload.$id ?? '').trim();
@@ -99,6 +101,7 @@ export async function POST(req: NextRequest) {
               select: { id: true },
             })
           : null;
+        createdEvent = !existingEvent;
         const payloadForUpsert = !existingEvent
           ? {
               ...eventPayload,
@@ -126,7 +129,7 @@ export async function POST(req: NextRequest) {
       const event = await loadEventWithRelations(eventId, tx);
 
       if (!['LEAGUE', 'TOURNAMENT'].includes(event.eventType)) {
-        return { preview: false, event, matches: Object.values(event.matches) };
+        return { preview: false, event, matches: Object.values(event.matches), createdEvent };
       }
 
       const scheduled = scheduleEvent({ event, participantCount, includePlaceholderTeams }, context);
@@ -138,7 +141,7 @@ export async function POST(req: NextRequest) {
       await deleteMatchesByEvent(eventId, tx);
       await saveMatches(eventId, scheduled.matches, tx);
       await saveEventSchedule(scheduled.event, tx);
-      return scheduled;
+      return { ...scheduled, createdEvent };
     }, SCHEDULE_TRANSACTION_OPTIONS);
 
     if (rentalLockWindowToRelease && eventId) {
@@ -159,6 +162,18 @@ export async function POST(req: NextRequest) {
           error,
         });
       }
+    }
+
+    if (result.createdEvent) {
+      await sendAdminEventCreatedNotification({
+        event: result.event,
+        baseUrl: req.nextUrl.origin,
+      }).catch((notificationError) => {
+        console.warn('Failed to send admin event creation notification', {
+          eventId,
+          error: notificationError,
+        });
+      });
     }
 
     return NextResponse.json(

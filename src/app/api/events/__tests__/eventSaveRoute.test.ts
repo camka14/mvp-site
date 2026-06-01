@@ -27,6 +27,7 @@ const deleteMatchesByEventMock = jest.fn();
 const saveMatchesMock = jest.fn();
 const saveEventScheduleMock = jest.fn();
 const notifySocialAudienceOfEventCreationMock = jest.fn();
+const sendAdminEventCreatedNotificationMock = jest.fn();
 const isEventFieldConflictErrorMock = jest.fn(() => false);
 const isLeaguePlayoffTeamCountValidationErrorMock = jest.fn(() => false);
 
@@ -43,6 +44,9 @@ jest.mock('@/server/repositories/events', () => ({
 }));
 jest.mock('@/server/eventCreationNotifications', () => ({
   notifySocialAudienceOfEventCreation: (...args: any[]) => notifySocialAudienceOfEventCreationMock(...args),
+}));
+jest.mock('@/server/adminNotifications', () => ({
+  sendAdminEventCreatedNotification: (...args: any[]) => sendAdminEventCreatedNotificationMock(...args),
 }));
 
 import { POST as eventsPost } from '@/app/api/events/route';
@@ -64,6 +68,7 @@ describe('event save route', () => {
     isEventFieldConflictErrorMock.mockReturnValue(false);
     isLeaguePlayoffTeamCountValidationErrorMock.mockReturnValue(false);
     prismaMock.authUser.findUnique.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+    sendAdminEventCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
   it('blocks event creation when the session user has not verified email', async () => {
@@ -184,6 +189,14 @@ describe('event save route', () => {
       hostId: 'host_1',
       eventName: 'Saved Event',
     }));
+    expect(sendAdminEventCreatedNotificationMock).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        id: 'event_1',
+        name: 'Saved Event',
+        hostId: 'host_1',
+      }),
+      baseUrl: 'http://localhost',
+    });
   });
 
   it('returns 500 when upsert fails and does not emit creation notifications', async () => {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
 import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/server/profileCompletion';
 import { isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
+import { sendAdminAccountCreatedNotification } from '@/server/adminNotifications';
 
 const STATE_COOKIE = 'google_oauth_state';
 const VERIFIER_COOKIE = 'google_oauth_verifier';
@@ -263,6 +265,27 @@ export async function GET(req: NextRequest) {
     const res = NextResponse.redirect(new URL('/login?oauth=google&error=account_suspended', origin), { status: 302 });
     clearOauthCookies(res);
     return res;
+  }
+
+  const wasInviteClaim = Boolean(existingAuth && isInvitePlaceholderAuthUser(existingAuth));
+  if (!existingAuth || wasInviteClaim) {
+    await sendAdminAccountCreatedNotification({
+      userId: authUser.id,
+      email: authUser.email,
+      name: authUser.name,
+      firstName: profile.firstName,
+      lastName: profile.lastName,
+      userName: profile.userName,
+      dateOfBirth: profile.dateOfBirth,
+      createdAt: authUser.createdAt ?? now,
+      authProvider: 'google',
+      wasInviteClaim,
+    }).catch((error) => {
+      console.warn('Failed to send admin account creation notification', {
+        userId: authUser.id,
+        error,
+      });
+    });
   }
 
   const session: SessionToken = {

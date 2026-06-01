@@ -17,12 +17,16 @@ const prismaMock = {
 
 const withLegacyListMock = jest.fn((rows: any[]) => rows.map((row) => ({ ...row, $id: row.id })));
 const requireSessionMock = jest.fn();
+const sendAdminOrganizationCreatedNotificationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({ requireSession: requireSessionMock }));
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
   withLegacyList: (rows: any[]) => withLegacyListMock(rows),
+}));
+jest.mock('@/server/adminNotifications', () => ({
+  sendAdminOrganizationCreatedNotification: (...args: any[]) => sendAdminOrganizationCreatedNotificationMock(...args),
 }));
 
 import { GET as organizationsGet, POST as organizationsPost } from '@/app/api/organizations/route';
@@ -31,6 +35,7 @@ describe('/api/organizations', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     authUserFindUniqueMock.mockResolvedValue({ emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z') });
+    sendAdminOrganizationCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
   it('supports query mode with relevance-ranked results', async () => {
@@ -133,6 +138,14 @@ describe('/api/organizations', () => {
         taxResponsibilityAcceptedByUserId: 'user_1',
         taxResponsibilityAgreementVersion: '2026-05-07',
       }),
+    });
+    expect(sendAdminOrganizationCreatedNotificationMock).toHaveBeenCalledWith({
+      organization: expect.objectContaining({
+        id: 'org_1',
+        name: 'New Org',
+        ownerId: 'user_1',
+      }),
+      baseUrl: 'http://localhost',
     });
     expect(payload.hasStripeAccount).toBe(false);
   });

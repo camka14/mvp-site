@@ -19,6 +19,7 @@ import {
   resolveTimeZone,
   resolveTimeZoneFromFieldOrOrganization,
 } from '@/server/timeZones';
+import { sendAdminEventCreatedNotification } from '@/server/adminNotifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -393,14 +394,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
   }
 
   try {
-    await (prisma as any).$transaction(async (tx: any) => {
+    const createdEvent = await (prisma as any).$transaction(async (tx: any) => {
       const existingEvent = await tx.events.findUnique({
         where: { id: parsed.data.eventId },
         select: { id: true, organizationId: true },
       });
       if (existingEvent) {
         if (existingEvent.organizationId === organization.id) {
-          return;
+          return null;
         }
         throw new Error('A different event already exists for this rental order.');
       }
@@ -444,7 +445,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         });
       }
 
-      await tx.events.create({
+      return tx.events.create({
         data: {
           id: parsed.data.eventId,
           createdAt: now,
@@ -520,6 +521,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ slu
         },
       });
     });
+
+    if (createdEvent) {
+      await sendAdminEventCreatedNotification({
+        event: createdEvent,
+        baseUrl: req.nextUrl.origin,
+      }).catch((notificationError) => {
+        console.warn('Failed to send admin event creation notification', {
+          eventId: parsed.data.eventId,
+          error: notificationError,
+        });
+      });
+    }
   } catch (error) {
     if (error instanceof EventFieldConflictError) {
       return NextResponse.json({ error: error.message, conflicts: error.conflicts }, { status: 409 });

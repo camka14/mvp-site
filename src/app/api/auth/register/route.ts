@@ -10,6 +10,7 @@ import {
   isInitialEmailVerificationAvailable,
   sendInitialEmailVerification,
 } from '@/server/authEmailVerification';
+import { sendAdminAccountCreatedNotification } from '@/server/adminNotifications';
 import {
   findUserNameConflictUserId,
   isPrismaUserNameUniqueError,
@@ -400,7 +401,29 @@ export async function POST(req: NextRequest) {
     throw error;
   }
 
+  const shouldNotifyAccountCreated = !existingAuth || isInvitePlaceholderAuthUser(existingAuth);
+  const adminNotificationPromise = shouldNotifyAccountCreated
+    ? sendAdminAccountCreatedNotification({
+        userId: authUser.id,
+        email: authUser.email,
+        name: authUser.name,
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        userName: profile.userName,
+        dateOfBirth: profile.dateOfBirth,
+        createdAt: authUser.createdAt ?? now,
+        authProvider: 'password',
+        wasInviteClaim: Boolean(existingAuth && isInvitePlaceholderAuthUser(existingAuth)),
+      }).catch((error) => {
+        console.warn('Failed to send admin account creation notification', {
+          userId: authUser.id,
+          error,
+        });
+      })
+    : Promise.resolve();
+
   if (!isInitialEmailVerificationAvailable()) {
+    await adminNotificationPromise;
     return NextResponse.json(
       { error: 'Email verification is unavailable because SMTP is not configured.', code: 'EMAIL_VERIFICATION_UNAVAILABLE' },
       { status: 503 },
@@ -415,11 +438,13 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error('Failed to send verification email during registration', error);
+    await adminNotificationPromise;
     return NextResponse.json(
       { error: 'Failed to send verification email. Please try again.', code: 'EMAIL_VERIFICATION_SEND_FAILED' },
       { status: 500 },
     );
   }
+  await adminNotificationPromise;
 
   const [profileWithDerivedTeamIds] = await withDerivedCanonicalTeamIds([profile], prisma);
 

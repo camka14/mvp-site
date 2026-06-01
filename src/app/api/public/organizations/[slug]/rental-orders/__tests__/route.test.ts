@@ -11,6 +11,7 @@ const assertNoEventFieldSchedulingConflictsMock = jest.fn();
 const txEventsFindUniqueMock = jest.fn();
 const txEventsCreateMock = jest.fn();
 const txTimeSlotsCreateMock = jest.fn();
+const sendAdminEventCreatedNotificationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({
   prisma: {
@@ -46,6 +47,9 @@ jest.mock('@/server/repositories/events', () => ({
     assertNoEventFieldSchedulingConflictsMock(...args)
   ),
 }));
+jest.mock('@/server/adminNotifications', () => ({
+  sendAdminEventCreatedNotification: (...args: any[]) => sendAdminEventCreatedNotificationMock(...args),
+}));
 
 import { POST } from '@/app/api/public/organizations/[slug]/rental-orders/route';
 
@@ -70,8 +74,14 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
     timeSlotsFindManyMock.mockResolvedValue([]);
     assertNoEventFieldSchedulingConflictsMock.mockResolvedValue(undefined);
     txEventsFindUniqueMock.mockResolvedValue(null);
-    txEventsCreateMock.mockResolvedValue({});
+    txEventsCreateMock.mockResolvedValue({
+      id: 'event_1',
+      name: 'Summit',
+      hostId: 'owner_1',
+      organizationId: 'org_1',
+    });
     txTimeSlotsCreateMock.mockResolvedValue({});
+    sendAdminEventCreatedNotificationMock.mockResolvedValue(undefined);
     prismaTransactionMock.mockImplementation(async (callback: any) => callback({
       events: {
         findUnique: txEventsFindUniqueMock,
@@ -216,5 +226,13 @@ describe('/api/public/organizations/[slug]/rental-orders POST', () => {
         endDate: new Date('2026-04-21T18:00:00.000Z'),
       }),
     }));
+    expect(sendAdminEventCreatedNotificationMock).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        id: 'event_1',
+        name: 'Summit',
+        organizationId: 'org_1',
+      }),
+      baseUrl: 'http://localhost',
+    });
   });
 });

@@ -26,9 +26,13 @@ const authServerMock = {
   signSessionToken: jest.fn(),
   setAuthCookie: jest.fn(),
 };
+const sendAdminAccountCreatedNotificationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/authServer', () => authServerMock);
+jest.mock('@/server/adminNotifications', () => ({
+  sendAdminAccountCreatedNotification: (...args: any[]) => sendAdminAccountCreatedNotificationMock(...args),
+}));
 
 import { GET as START_GET } from '@/app/api/auth/google/start/route';
 import { GET as CALLBACK_GET } from '@/app/api/auth/google/callback/route';
@@ -56,6 +60,7 @@ describe('google oauth routes', () => {
 
     authServerMock.hashPassword.mockResolvedValue('hashed');
     authServerMock.signSessionToken.mockReturnValue('signed-token');
+    sendAdminAccountCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
   afterAll(() => {
@@ -126,6 +131,12 @@ describe('google oauth routes', () => {
     expect(res.headers.get('location')).toBe('http://localhost/complete-profile?next=%2Fdiscover');
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
     expect(prismaMock.authUser.create).toHaveBeenCalled();
+    expect(sendAdminAccountCreatedNotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user_1',
+      email: 'test@example.com',
+      authProvider: 'google',
+      wasInviteClaim: false,
+    }));
   });
 
   it('GET /api/auth/google/callback falls back to /discover when next cookie is unsafe', async () => {

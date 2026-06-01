@@ -63,6 +63,7 @@ const isScheduleWindowExceededErrorMock = jest.fn();
 const sendPushToUsersMock = jest.fn();
 const isEmailEnabledMock = jest.fn();
 const sendEmailMock = jest.fn();
+const sendAdminEventCreatedNotificationMock = jest.fn();
 const extractRentalCheckoutWindowMock = jest.fn();
 const releaseRentalCheckoutLocksMock = jest.fn();
 
@@ -115,6 +116,9 @@ jest.mock('@/server/repositories/rentalCheckoutLocks', () => ({
   extractRentalCheckoutWindow: (...args: any[]) => extractRentalCheckoutWindowMock(...args),
   releaseRentalCheckoutLocks: (...args: any[]) => releaseRentalCheckoutLocksMock(...args),
 }));
+jest.mock('@/server/adminNotifications', () => ({
+  sendAdminEventCreatedNotification: (...args: any[]) => sendAdminEventCreatedNotificationMock(...args),
+}));
 
 import { POST as schedulePost } from '@/app/api/events/schedule/route';
 import { POST as scheduleByIdPost } from '@/app/api/events/[eventId]/schedule/route';
@@ -149,6 +153,7 @@ describe('schedule routes', () => {
     isEmailEnabledMock.mockReturnValue(false);
     sendPushToUsersMock.mockResolvedValue(undefined);
     sendEmailMock.mockResolvedValue(undefined);
+    sendAdminEventCreatedNotificationMock.mockResolvedValue(undefined);
     isScheduleWindowExceededErrorMock.mockImplementation(
       (error: unknown) =>
         error instanceof Error
@@ -319,6 +324,46 @@ describe('schedule routes', () => {
         timeout: 60_000,
       }),
     );
+  });
+
+  it('sends an admin notification when schedule creates a new event document', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'event_1',
+        hostId: 'host_1',
+        assistantHostIds: [],
+        organizationId: null,
+      });
+    upsertEventFromPayloadMock.mockResolvedValue('event_1');
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      name: 'New Scheduled Event',
+      eventType: 'EVENT',
+      hostId: 'host_1',
+      matches: {},
+    });
+    serializeEventLegacyMock.mockReturnValue({ $id: 'event_1' });
+    serializeMatchesLegacyMock.mockReturnValue([]);
+
+    const res = await schedulePost(jsonRequest('http://localhost/api/events/schedule', {
+      eventDocument: {
+        $id: 'event_1',
+        name: 'New Scheduled Event',
+        eventType: 'EVENT',
+      },
+    }));
+
+    expect(res.status).toBe(200);
+    expect(sendAdminEventCreatedNotificationMock).toHaveBeenCalledWith({
+      event: expect.objectContaining({
+        id: 'event_1',
+        name: 'New Scheduled Event',
+        hostId: 'host_1',
+      }),
+      baseUrl: 'http://localhost',
+    });
   });
 
   it('schedules an existing event id using the provided event document payload', async () => {

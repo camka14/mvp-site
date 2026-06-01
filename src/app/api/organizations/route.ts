@@ -15,6 +15,7 @@ import {
 } from '@/lib/organizationStatus';
 import { buildEmailVerificationRequiredResponse, isUserEmailVerified } from '@/server/emailVerificationGate';
 import { ensureDefaultOrganizationRoles } from '@/server/organizationRoles';
+import { sendAdminOrganizationCreatedNotification } from '@/server/adminNotifications';
 
 export const dynamic = 'force-dynamic';
 const UNKNOWN_PRISMA_ARGUMENT_PATTERN = /Unknown argument `([^`]+)`/i;
@@ -264,6 +265,15 @@ export async function POST(req: NextRequest) {
     updatedAt: new Date(),
   });
   await ensureDefaultOrganizationRoles(prisma, organization.id);
+  await sendAdminOrganizationCreatedNotification({
+    organization,
+    baseUrl: req.nextUrl.origin,
+  }).catch((error) => {
+    console.warn('Failed to send admin organization creation notification', {
+      organizationId: organization.id,
+      error,
+    });
+  });
 
   return NextResponse.json(withLegacyFields(organization), { status: 201 });
 }

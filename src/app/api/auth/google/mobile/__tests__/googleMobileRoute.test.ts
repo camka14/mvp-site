@@ -26,9 +26,13 @@ const authServerMock = {
   signSessionToken: jest.fn(),
   setAuthCookie: jest.fn(),
 };
+const sendAdminAccountCreatedNotificationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/authServer', () => authServerMock);
+jest.mock('@/server/adminNotifications', () => ({
+  sendAdminAccountCreatedNotification: (...args: any[]) => sendAdminAccountCreatedNotificationMock(...args),
+}));
 
 import { POST as MOBILE_POST } from '@/app/api/auth/google/mobile/route';
 
@@ -57,6 +61,7 @@ describe('google mobile oauth route', () => {
 
     authServerMock.hashPassword.mockResolvedValue('hashed');
     authServerMock.signSessionToken.mockReturnValue('signed-token');
+    sendAdminAccountCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
   afterAll(() => {
@@ -108,6 +113,12 @@ describe('google mobile oauth route', () => {
     expect(json.missingProfileFields).toContain('dateOfBirth');
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
     expect(prismaMock.authUser.create).toHaveBeenCalled();
+    expect(sendAdminAccountCreatedNotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user_1',
+      email: 'test@example.com',
+      authProvider: 'google',
+      wasInviteClaim: false,
+    }));
   });
 
   it('POST /api/auth/google/mobile rejects token with disallowed audience', async () => {

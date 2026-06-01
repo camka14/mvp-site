@@ -28,9 +28,13 @@ const authServerMock = {
   signSessionToken: jest.fn(),
   setAuthCookie: jest.fn(),
 };
+const sendAdminAccountCreatedNotificationMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/authServer', () => authServerMock);
+jest.mock('@/server/adminNotifications', () => ({
+  sendAdminAccountCreatedNotification: (...args: any[]) => sendAdminAccountCreatedNotificationMock(...args),
+}));
 
 import { POST as APPLE_POST } from '@/app/api/auth/apple/mobile/route';
 
@@ -91,6 +95,7 @@ describe('apple mobile oauth route', () => {
 
     authServerMock.hashPassword.mockResolvedValue('hashed');
     authServerMock.signSessionToken.mockReturnValue('signed-token');
+    sendAdminAccountCreatedNotificationMock.mockResolvedValue(undefined);
   });
 
   afterAll(() => {
@@ -200,6 +205,12 @@ describe('apple mobile oauth route', () => {
     expect(json.requiresProfileCompletion).toBe(true);
     expect(json.missingProfileFields).toContain('dateOfBirth');
     expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
+    expect(sendAdminAccountCreatedNotificationMock).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 'user_apple',
+      email: 'apple@example.com',
+      authProvider: 'apple',
+      wasInviteClaim: false,
+    }));
     expect(prismaMock.authUser.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         appleSubject: 'apple-user-1',
