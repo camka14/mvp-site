@@ -116,6 +116,15 @@ describe('TeamCard division label', () => {
     expect(screen.queryByText(/Skill/i)).not.toBeInTheDocument();
     expect(screen.queryByText('Division')).not.toBeInTheDocument();
   });
+
+  it('can hide team metadata for event participant cards', () => {
+    renderWithMantine(<TeamCard team={createTeam()} showTeamMetadata={false} />);
+
+    expect(screen.getByText('Falcons')).toBeInTheDocument();
+    expect(screen.queryByText('CoEd Open')).not.toBeInTheDocument();
+    expect(screen.queryByText('Indoor Volleyball')).not.toBeInTheDocument();
+    expect(screen.queryByText('Team')).not.toBeInTheDocument();
+  });
 });
 
 describe('TeamCard members visibility', () => {
@@ -193,21 +202,39 @@ describe('TeamCard members visibility', () => {
   });
 });
 
-describe('TeamCard player counts', () => {
-  it('falls back to zero when currentSize is missing', () => {
+describe('TeamCard registration capacity', () => {
+  it('does not render player counts while preserving open-registration capacity status', () => {
     const team = createTeam({
       currentSize: undefined as unknown as number,
       playerIds: [],
       players: [],
       teamSize: 2,
       isFull: false,
+      openRegistration: true,
     });
 
     renderWithMantine(<TeamCard team={team} />);
 
-    expect(screen.getByText('0/2')).toBeInTheDocument();
+    expect(screen.queryByText('0/2')).not.toBeInTheDocument();
+    expect(screen.queryByText('Players')).not.toBeInTheDocument();
     expect(screen.getByText('2 spots left')).toBeInTheDocument();
     expect(screen.queryByText(/NaN/i)).not.toBeInTheDocument();
+  });
+
+  it('hides capacity and fullness labels when registration is closed', () => {
+    const team = createTeam({
+      currentSize: 2,
+      teamSize: 2,
+      isFull: true,
+      openRegistration: false,
+    });
+
+    renderWithMantine(<TeamCard team={team} />);
+
+    expect(screen.queryByText('2/2')).not.toBeInTheDocument();
+    expect(screen.queryByText(/team full/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/spots left/i)).not.toBeInTheDocument();
+    expect(screen.queryByText('Players')).not.toBeInTheDocument();
   });
 
   it('can place dense actions below the team identity', () => {

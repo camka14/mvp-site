@@ -31,6 +31,7 @@ const createTeam = (overrides: Partial<Team> = {}): Team => ({
   matches: [],
   currentSize: 2,
   isFull: true,
+  openRegistration: true,
   avatarUrl: '',
   ...overrides,
 });
@@ -127,6 +128,32 @@ describe('DivisionTeamComplianceCard', () => {
     expect(screen.queryByText('No team bill yet')).not.toBeInTheDocument();
     expect(screen.queryByText(/players/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/rostered user/i)).not.toBeInTheDocument();
+  });
+
+  it('does not render player counts for team cards', () => {
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam({ openRegistration: true, currentSize: 2, teamSize: 2 })}
+        summary={createSummary()}
+      />,
+    );
+
+    expect(screen.getByText('Sandstorm Syndicate')).toBeInTheDocument();
+    expect(screen.queryByText('2/2 players')).not.toBeInTheDocument();
+    expect(screen.queryByText(/players/i)).not.toBeInTheDocument();
+  });
+
+  it('can hide sport metadata for event participant cards', () => {
+    renderWithMantine(
+      <DivisionTeamComplianceCard
+        team={createTeam()}
+        summary={createSummary()}
+        showTeamMetadata={false}
+      />,
+    );
+
+    expect(screen.getByText('Sandstorm Syndicate')).toBeInTheDocument();
+    expect(screen.queryByText('Beach Volleyball')).not.toBeInTheDocument();
   });
 
   it('shows pending payment before bill details when registration payment is processing', () => {

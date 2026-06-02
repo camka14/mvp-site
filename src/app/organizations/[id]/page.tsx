@@ -3483,7 +3483,7 @@ function OrganizationDetailContent() {
                     {org.teams && org.teams.length > 0 ? (
                       <div className="space-y-3">
                         {org.teams.slice(0, 3).map((t) => (
-                          <TeamCard key={t.$id} team={t} showStats={false} className="org-tab-item" />
+                          <TeamCard key={t.$id} team={t} className="org-tab-item" />
                         ))}
                       </div>
                     ) : (

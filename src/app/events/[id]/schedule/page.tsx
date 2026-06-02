@@ -6881,6 +6881,7 @@ function EventScheduleContent() {
     actions,
     className = '',
     showComplianceDetails = canUseTeamCompliance,
+    showTeamMetadata = false,
     enableDetailsView = true,
     fullWidth = false,
   }: {
@@ -6889,6 +6890,7 @@ function EventScheduleContent() {
     actions?: React.ReactNode;
     className?: string;
     showComplianceDetails?: boolean;
+    showTeamMetadata?: boolean;
     enableDetailsView?: boolean;
     fullWidth?: boolean;
   }) => {
@@ -6900,6 +6902,7 @@ function EventScheduleContent() {
           summary={showComplianceDetails ? teamComplianceById[team.$id] : undefined}
           loading={showComplianceDetails ? teamComplianceLoading : false}
           showComplianceDetails={showComplianceDetails}
+          showTeamMetadata={showTeamMetadata}
           className={className}
           fullWidth={fullWidth}
           onClick={showComplianceDetails ? () => {
@@ -6928,6 +6931,7 @@ function EventScheduleContent() {
         key={cardKey}
         team={team}
         className={className}
+        showTeamMetadata={showTeamMetadata}
         actions={teamCardActions}
         actionsPlacement="below"
         onClick={enableDetailsView
@@ -10212,9 +10216,9 @@ function EventScheduleContent() {
                                 ) : (
                                   <Stack gap="sm">
                                     {columnTeams.map((team) => {
-                                      const canMoveTeamBetweenDivisions = canManageEvent;
+                                      const canMoveTeamBetweenDivisions = isEditingEvent && canManageEvent;
                                       const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
-                                      const teamActions = canManageEvent && !isPlaceholderTeam
+                                      const teamActions = isEditingEvent && canManageEvent && !isPlaceholderTeam
                                         ? (
                                           participantsUpdatingTeamId === team.$id
                                             ? <Text size="xs" c="dimmed">Updating...</Text>
@@ -10279,7 +10283,7 @@ function EventScheduleContent() {
                                 <Stack gap="sm">
                                   {unassignedParticipantTeams.map((team) => {
                                     const isPlaceholderTeam = isPlaceholderParticipantTeam(team);
-                                    const teamActions = !isPlaceholderTeam
+                                    const teamActions = isEditingEvent && !isPlaceholderTeam
                                       ? (
                                         participantsUpdatingTeamId === team.$id
                                           ? <Text size="xs" c="dimmed">Updating...</Text>
@@ -10339,7 +10343,7 @@ function EventScheduleContent() {
                           className: isPlaceholderTeam ? '!bg-gray-100' : '',
                           enableDetailsView: !isPlaceholderTeam,
                           fullWidth: true,
-                          actions: canManageEvent && !isPlaceholderTeam
+                          actions: isEditingEvent && canManageEvent && !isPlaceholderTeam
                             ? (
                               participantsUpdatingTeamId === team.$id
                                 ? <Text size="xs" c="dimmed">Updating...</Text>
@@ -11028,6 +11032,7 @@ function EventScheduleContent() {
                       cardKey: `participant-roster-${team.$id}`,
                       team,
                       showComplianceDetails: false,
+                      showTeamMetadata: true,
                       enableDetailsView: false,
                       actions: participantsUpdatingTeamId === team.$id
                         ? <Text size="xs" c="dimmed">Adding roster...</Text>
@@ -11114,6 +11119,7 @@ function EventScheduleContent() {
                     cardKey: `org-team-${team.$id}`,
                     team,
                     showComplianceDetails: false,
+                    showTeamMetadata: true,
                     enableDetailsView: false,
                     actions: participantsUpdatingTeamId === team.$id
                       ? <Text size="xs" c="dimmed">Adding...</Text>
@@ -11162,6 +11168,7 @@ function EventScheduleContent() {
                     cardKey: `search-team-${team.$id}`,
                     team,
                     showComplianceDetails: false,
+                    showTeamMetadata: true,
                     enableDetailsView: false,
                     actions: participantsUpdatingTeamId === team.$id
                       ? <Text size="xs" c="dimmed">Adding...</Text>

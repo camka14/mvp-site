@@ -1,11 +1,11 @@
 import { extractDivisionTokenFromId, inferDivisionDetails, parseDivisionToken } from '@/lib/divisionTypes';
 import { Team, getUserAvatarUrl, getTeamAvatarUrl } from '@/types';
 import type { TeamPlayerRegistration } from '@/types';
-import { Box, Paper, Group, Avatar, Text, Badge, SimpleGrid } from '@mantine/core';
+import { Box, Paper, Group, Avatar, Text, Badge } from '@mantine/core';
 
 interface TeamCardProps {
   team: Team;
-  showStats?: boolean;
+  showTeamMetadata?: boolean;
   actions?: React.ReactNode;
   actionsPlacement?: 'header' | 'below';
   onClick?: () => void;
@@ -20,7 +20,7 @@ const isActivePlayerRegistration = (registration: TeamPlayerRegistration): boole
 
 export default function TeamCard({
   team,
-  showStats = true,
+  showTeamMetadata = true,
   actions,
   actionsPlacement = 'header',
   onClick,
@@ -40,6 +40,8 @@ export default function TeamCard({
   const hasCapacity = teamSize !== null && teamSize > 0;
   const isFull = team.isFull === true || (hasCapacity && currentSize >= teamSize);
   const spotsLeft = hasCapacity ? Math.max(teamSize - currentSize, 0) : null;
+  const showRegistrationCapacity = team.openRegistration === true && hasCapacity;
+  const hasPendingInvites = Array.isArray(team.pending) && team.pending.length > 0;
 
   const visibleMembers = (team.players ?? []).filter((player) => {
     if (player.isIdentityHidden) {
@@ -146,40 +148,33 @@ export default function TeamCard({
       {actions}
     </Box>
   ) : null;
+  const hasBelowActions = actionsPlacement === 'below' && Boolean(renderedActions);
+  const hasBodyContent = hasBelowActions || visibleMembers.length > 0 || hasPendingInvites || showRegistrationCapacity;
+  const headerMarginBottom = hasBodyContent ? (hasBelowActions ? 'xs' : 'sm') : 0;
 
   return (
     <Paper withBorder radius="md" p="md" className={className} onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
-      <Group align="flex-start" justify="space-between" mb={actionsPlacement === 'below' && renderedActions ? 'xs' : 'sm'} wrap="wrap">
-        <Group gap="sm" align="flex-start" wrap="nowrap" style={{ flex: '1 1 220px', minWidth: 0 }}>
+      <Group align="flex-start" justify="space-between" mb={headerMarginBottom} wrap="wrap">
+        <Group gap="sm" align={showTeamMetadata ? 'flex-start' : 'center'} wrap="nowrap" style={{ flex: '1 1 220px', minWidth: 0 }}>
           <Avatar src={getTeamAvatarUrl(team, 56)} alt={team.name || 'Team'} size={56} radius="xl" />
           <div style={{ flex: 1, minWidth: 0 }}>
             <Text fw={600} size="lg" truncate>{team.name || 'Unnamed Team'}</Text>
-            <Group gap={6} mt={4}>
-              <Text size="sm" c="dimmed">{divisionLabel}</Text>
-              {team.sport && <Badge variant="light" color="blue" size="xs">{team.sport}</Badge>}
-            </Group>
-            <Group gap={6} mt={6}>
-              <Badge size="xs" variant="light" color="gray">Team</Badge>
-            </Group>
+            {showTeamMetadata ? (
+              <Group gap={6} mt={4}>
+                <Text size="sm" c="dimmed">{divisionLabel}</Text>
+                {team.sport && <Badge variant="light" color="blue" size="xs">{team.sport}</Badge>}
+              </Group>
+            ) : null}
           </div>
         </Group>
         {actionsPlacement === 'header' ? renderedActions : null}
       </Group>
 
-      {actionsPlacement === 'below' && renderedActions ? (
+      {hasBelowActions ? (
         <Box mb="sm">
           {renderedActions}
         </Box>
       ) : null}
-
-      {showStats && (
-        <SimpleGrid cols={1} spacing="sm" mb="sm">
-          <div style={{ textAlign: 'center' }}>
-            <Text fw={600}>{hasCapacity ? `${currentSize}/${teamSize}` : currentSize}</Text>
-            <Text size="xs" c="dimmed">Players</Text>
-          </div>
-        </SimpleGrid>
-      )}
 
       {visibleMembers.length > 0 && (
         <Group justify="space-between" mb="xs">
@@ -203,20 +198,22 @@ export default function TeamCard({
         </Group>
       )}
 
-      <Group justify="space-between" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-        <Group gap={8}>
-          {team.pending && team.pending.length > 0 && (
-            <Text size="xs" c="orange" fw={600}>{team.pending.length} pending</Text>
-          )}
+      {(hasPendingInvites || showRegistrationCapacity) && (
+        <Group justify="space-between" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+          <Group gap={8}>
+            {hasPendingInvites && (
+              <Text size="xs" c="orange" fw={600}>{team.pending.length} pending</Text>
+            )}
+          </Group>
+          {showRegistrationCapacity ? (
+            <Text size="xs" c={isFull ? 'red' : 'green'} fw={600}>
+              {isFull
+                ? 'Team Full'
+                : `${spotsLeft ?? 0} ${(spotsLeft ?? 0) === 1 ? 'spot' : 'spots'} left`}
+            </Text>
+          ) : null}
         </Group>
-        <Text size="xs" c={isFull ? 'red' : 'green'} fw={600}>
-          {isFull
-            ? 'Team Full'
-            : spotsLeft === null
-              ? `${currentSize} ${currentSize === 1 ? 'player' : 'players'}`
-              : `${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left`}
-        </Text>
-      </Group>
+      )}
     </Paper>
   );
 }

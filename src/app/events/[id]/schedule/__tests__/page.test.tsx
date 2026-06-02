@@ -3693,6 +3693,95 @@ describe('League schedule page', () => {
     expect(divisionSelector!.compareDocumentPosition(removeButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('hides participant team division and remove controls outside edit mode', async () => {
+    useSearchParamsMock.mockReturnValue({
+      get: (key: string) => {
+        if (key === 'mode') return null;
+        if (key === 'preview') return null;
+        return null;
+      },
+      toString: () => '',
+    });
+
+    const team = {
+      $id: 'team_assigned',
+      id: 'team_assigned',
+      name: 'Sand Strikers',
+      division: 'Open',
+      sport: 'Volleyball',
+      playerIds: [],
+      captainId: '',
+      pending: [],
+      teamSize: 2,
+      currentSize: 0,
+      isFull: false,
+      avatarUrl: '',
+      parentTeamId: 'canonical_team_1',
+    };
+    const event = buildApiEvent({
+      hostId: 'host_1',
+      eventType: 'LEAGUE',
+      singleDivision: false,
+      teamSignup: true,
+      teamIds: [team.$id],
+      teams: [team],
+      divisions: ['division_open', 'division_advanced'],
+      divisionDetails: [
+        {
+          id: 'division_open',
+          key: 'open',
+          name: 'Open',
+          kind: 'LEAGUE',
+          teamIds: [team.$id],
+        },
+        {
+          id: 'division_advanced',
+          key: 'advanced',
+          name: 'Advanced',
+          kind: 'LEAGUE',
+          teamIds: [],
+        },
+      ],
+    });
+    delete (event as any).matches;
+
+    apiRequestMock.mockImplementation((path: string) => {
+      if (path === '/api/events/event_1') {
+        return Promise.resolve({ event });
+      }
+      if (path === '/api/events/event_1/matches') {
+        return Promise.resolve({ matches: [] });
+      }
+      return Promise.resolve({});
+    });
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      event,
+      participants: {
+        teamIds: [team.$id],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      teams: [team],
+      users: [],
+      participantCount: 1,
+      participantCapacity: null,
+      occurrence: null,
+    });
+
+    renderWithMantine(<LeagueSchedulePage />);
+
+    const divisionsTab = await screen.findByRole('tab', { name: /divisions/i });
+    fireEvent.click(divisionsTab);
+
+    expect(await screen.findByText('Sand Strikers')).toBeInTheDocument();
+    expect(screen.queryByLabelText(/move sand strikers to division/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^remove$/i })).not.toBeInTheDocument();
+    expect(screen.queryByText('Players')).not.toBeInTheDocument();
+    expect(screen.queryByText('Volleyball')).not.toBeInTheDocument();
+  });
+
   it('renders non-team participant user cards with billing and document status in manage mode', async () => {
     useSearchParamsMock.mockReturnValue({
       get: (key: string) => {

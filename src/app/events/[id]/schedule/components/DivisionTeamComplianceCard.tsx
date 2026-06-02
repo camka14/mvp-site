@@ -8,6 +8,7 @@ type DivisionTeamComplianceCardProps = {
   summary?: TeamComplianceSummary;
   loading?: boolean;
   showComplianceDetails?: boolean;
+  showTeamMetadata?: boolean;
   cardKind?: 'team' | 'participant';
   className?: string;
   fullWidth?: boolean;
@@ -82,6 +83,7 @@ export default function DivisionTeamComplianceCard({
   summary,
   loading = false,
   showComplianceDetails = true,
+  showTeamMetadata = true,
   cardKind = 'team',
   className = '',
   fullWidth = false,
@@ -109,10 +111,7 @@ export default function DivisionTeamComplianceCard({
         <Stack gap={6}>
           <Text fw={600} size="md" truncate>{team.name || (cardKind === 'participant' ? 'Unnamed Participant' : 'Unnamed Team')}</Text>
           <Group gap={6}>
-            {cardKind === 'team' ? (
-              <Badge variant="light" color="blue" size="sm">{team.currentSize}/{team.teamSize} players</Badge>
-            ) : null}
-            {team.sport ? <Badge variant="outline" color="gray" size="sm">{team.sport}</Badge> : null}
+            {showTeamMetadata && team.sport ? <Badge variant="outline" color="gray" size="sm">{team.sport}</Badge> : null}
             {loading && showComplianceDetails ? <Badge variant="light" color="gray" size="sm">Loading</Badge> : null}
           </Group>
           {showComplianceDetails ? (
