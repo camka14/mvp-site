@@ -167,7 +167,7 @@ const organizationPaymentProcessing: BlogPostEntry = {
   guideTopic: 'organizations',
   createdAt: '2026-05-29',
   publishedAt: '2026-05-29',
-  updatedAt: '2026-05-29',
+  updatedAt: '2026-06-03',
   author: BLOG_AUTHOR_SAMUEL_RAZUMOVSKIY,
   isPublished: true,
   primaryKeyword: 'set up payment processing for a sports organization',

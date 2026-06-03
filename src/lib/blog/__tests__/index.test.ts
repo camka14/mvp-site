@@ -169,7 +169,7 @@ describe('blog registry', () => {
       },
       {
         url: 'https://bracket-iq.com/guides/organization-payment-processing',
-        lastModified: '2026-05-29',
+        lastModified: '2026-06-03',
       },
       {
         url: 'https://bracket-iq.com/guides/create-organization-in-bracketiq',

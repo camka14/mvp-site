@@ -35,6 +35,7 @@ Publish an Organizations guide that explains how clubs, facilities, and event or
 - [x] 2026-05-29 Wrote and registered the guide.
 - [x] 2026-05-29 Updated roadmap, tests, and guide navigation order.
 - [x] 2026-05-29 Ran focused validation, rendered route checks, and production build.
+- [x] 2026-06-03 Replaced the setup screenshot with a clean unverified Payments card that uses `samuel.razumovsky@gmail.com` for the host payout email.
 
 ## Discoveries
 
