@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { createServer } from 'node:http';
+import { randomUUID } from 'node:crypto';
 
 const MATCH_REALTIME_PATH = '/api/realtime/matches';
 const MATCH_REALTIME_SCOPE = 'event-match-updates';
@@ -89,6 +90,16 @@ const { WebSocketServer } = wsModule;
 
 nextEnv.loadEnvConfig(process.cwd(), dev);
 
+const serverInstanceId = normalizeToken(process.env.MVP_REALTIME_ORIGIN_ID) || randomUUID();
+process.env.MVP_REALTIME_ORIGIN_ID = serverInstanceId;
+globalThis.__mvpMatchRealtimeOriginId = serverInstanceId;
+
+const redisUrl = process.env.REDIS_DISABLED === 'true'
+  ? null
+  : normalizeToken(process.env.REDIS_URL);
+const redisKeyPrefix = normalizeToken(process.env.REDIS_KEY_PREFIX) || 'bracketiq';
+const MATCH_REALTIME_REDIS_CHANNEL = `${redisKeyPrefix}:realtime:matches`;
+
 const app = next({
   dev,
   hostname,
@@ -99,6 +110,9 @@ const app = next({
 const handle = app.getRequestHandler();
 const matchSocketServer = new WebSocketServer({ noServer: true });
 const eventClients = new Map();
+let redisRealtimeSubscriber = null;
+let redisRealtimeReconnectTimer = null;
+let isShuttingDown = false;
 
 const removeClient = (eventId, socket) => {
   const clients = eventClients.get(eventId);
@@ -131,6 +145,89 @@ globalThis.__mvpMatchRealtimeBroadcast = (message) => {
   }
   return sent;
 };
+
+const normalizeMatchRealtimeMessage = (value) => {
+  if (!value || typeof value !== 'object') return null;
+  const eventId = normalizeToken(value.eventId);
+  if (value.type !== 'match.changed' || !eventId) return null;
+
+  return {
+    type: 'match.changed',
+    eventId,
+    matches: Array.isArray(value.matches) ? value.matches : [],
+    deleted: Array.from(
+      new Set((Array.isArray(value.deleted) ? value.deleted : [])
+        .map((id) => normalizeToken(id))
+        .filter(Boolean)),
+    ),
+    sentAt: normalizeToken(value.sentAt) || new Date().toISOString(),
+  };
+};
+
+const parseMatchRealtimeRedisEnvelope = (payload) => {
+  try {
+    const parsed = JSON.parse(payload);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const originId = normalizeToken(parsed.originId);
+    const message = normalizeMatchRealtimeMessage(parsed.message);
+    if (!originId || !message) return null;
+    return { originId, message };
+  } catch {
+    return null;
+  }
+};
+
+const scheduleRedisRealtimeReconnect = () => {
+  if (isShuttingDown || !redisUrl || redisRealtimeReconnectTimer) {
+    return;
+  }
+
+  redisRealtimeReconnectTimer = setTimeout(() => {
+    redisRealtimeReconnectTimer = null;
+    void startRedisRealtimeSubscriber();
+  }, 5_000);
+  redisRealtimeReconnectTimer.unref?.();
+};
+
+const startRedisRealtimeSubscriber = async () => {
+  if (!redisUrl || isShuttingDown || redisRealtimeSubscriber?.isOpen) {
+    return;
+  }
+
+  try {
+    const redisModule = await import('redis');
+    const client = redisModule.createClient({ url: redisUrl });
+
+    client.on('error', (error) => {
+      console.error('[server] match realtime Redis subscriber error', error);
+    });
+
+    client.on('end', () => {
+      if (redisRealtimeSubscriber === client) {
+        redisRealtimeSubscriber = null;
+      }
+      scheduleRedisRealtimeReconnect();
+    });
+
+    await client.connect();
+    await client.subscribe(MATCH_REALTIME_REDIS_CHANNEL, (payload) => {
+      const envelope = parseMatchRealtimeRedisEnvelope(payload);
+      if (!envelope || envelope.originId === serverInstanceId) {
+        return;
+      }
+      globalThis.__mvpMatchRealtimeBroadcast?.(envelope.message);
+    });
+
+    redisRealtimeSubscriber = client;
+    console.log(`[server] match realtime Redis subscriber listening on ${MATCH_REALTIME_REDIS_CHANNEL}`);
+  } catch (error) {
+    console.error('[server] failed to start match realtime Redis subscriber', error);
+    redisRealtimeSubscriber = null;
+    scheduleRedisRealtimeReconnect();
+  }
+};
+
+void startRedisRealtimeSubscriber();
 
 matchSocketServer.on('connection', (socket, request, context) => {
   const eventId = context?.eventId;
@@ -196,12 +293,42 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
+const closeRedisRealtimeSubscriber = async () => {
+  const client = redisRealtimeSubscriber;
+  redisRealtimeSubscriber = null;
+  if (!client) {
+    return;
+  }
+
+  try {
+    if (client.isOpen) {
+      await client.quit();
+    } else {
+      client.destroy();
+    }
+  } catch {
+    client.destroy();
+  }
+};
+
 const shutdown = () => {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
   clearInterval(heartbeat);
+  if (redisRealtimeReconnectTimer) {
+    clearTimeout(redisRealtimeReconnectTimer);
+    redisRealtimeReconnectTimer = null;
+  }
   delete globalThis.__mvpMatchRealtimeBroadcast;
+  delete globalThis.__mvpMatchRealtimeOriginId;
   matchSocketServer.close();
+  const redisClosePromise = closeRedisRealtimeSubscriber();
   server.close(() => {
-    void app.close().finally(() => process.exit(0));
+    void redisClosePromise
+      .finally(() => app.close())
+      .finally(() => process.exit(0));
   });
   setTimeout(() => process.exit(0), 5000).unref?.();
 };

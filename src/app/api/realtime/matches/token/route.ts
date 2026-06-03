@@ -5,6 +5,7 @@ import { requireSession } from '@/lib/permissions';
 import { prisma } from '@/lib/prisma';
 import { canManageEvent } from '@/server/accessControl';
 import { MATCH_REALTIME_SCOPE } from '@/server/realtime/matchRealtime';
+import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,6 +20,11 @@ const normalizeId = (value: unknown): string | null => {
 
 export async function GET(req: NextRequest) {
   try {
+    const rateLimited = await applyRateLimit(req, RATE_LIMIT_POLICIES.realtimeToken);
+    if (rateLimited) {
+      return rateLimited;
+    }
+
     const session = await requireSession(req);
     const eventId = normalizeId(req.nextUrl.searchParams.get('eventId'));
     if (!eventId) {

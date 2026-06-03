@@ -1,4 +1,5 @@
 import {
+  buildMatchRealtimeRedisEnvelope,
   buildMatchRealtimeMessage,
   publishEventMatchChanges,
   type MatchRealtimeMessage,
@@ -7,10 +8,22 @@ import {
 describe('match realtime broadcaster', () => {
   const realtimeGlobal = globalThis as typeof globalThis & {
     __mvpMatchRealtimeBroadcast?: (message: MatchRealtimeMessage) => number;
+    __mvpMatchRealtimeOriginId?: string;
   };
+  const originalRedisDisabled = process.env.REDIS_DISABLED;
+
+  beforeEach(() => {
+    process.env.REDIS_DISABLED = 'true';
+  });
 
   afterEach(() => {
     delete realtimeGlobal.__mvpMatchRealtimeBroadcast;
+    delete realtimeGlobal.__mvpMatchRealtimeOriginId;
+    if (originalRedisDisabled === undefined) {
+      delete process.env.REDIS_DISABLED;
+    } else {
+      process.env.REDIS_DISABLED = originalRedisDisabled;
+    }
   });
 
   it('builds a normalized match changed message', () => {
@@ -26,6 +39,22 @@ describe('match realtime broadcaster', () => {
       deleted: ['match_2'],
       sentAt: '2026-05-12T00:00:00.000Z',
     });
+  });
+
+  it('wraps match changed messages in a Redis envelope with an origin id', () => {
+    const message = buildMatchRealtimeMessage({
+      eventId: 'event_1',
+      matches: [{ id: 'match_1' }],
+      sentAt: '2026-05-12T00:00:00.000Z',
+    });
+    const envelope = buildMatchRealtimeRedisEnvelope(message, 'server_1');
+
+    expect(envelope).toMatchObject({
+      version: 1,
+      originId: 'server_1',
+      message,
+    });
+    expect(new Date(envelope.sentAt).toString()).not.toBe('Invalid Date');
   });
 
   it('publishes through the process-local websocket broadcaster when present', () => {

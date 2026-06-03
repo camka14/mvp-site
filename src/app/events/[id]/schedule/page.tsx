@@ -5198,6 +5198,7 @@ function EventScheduleContent() {
     let cancelled = false;
     let socket: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    const realtimeAbortController = new AbortController();
 
     const clearReconnectTimer = () => {
       if (reconnectTimer) {
@@ -5233,6 +5234,7 @@ function EventScheduleContent() {
       try {
         const nextSocket = await connectEventMatchSocket({
           eventId: realtimeEventId,
+          signal: realtimeAbortController.signal,
           onMessage: (message) => {
             if (message.type !== 'match.changed' || message.eventId !== realtimeEventId) {
               return;
@@ -5274,6 +5276,7 @@ function EventScheduleContent() {
 
     return () => {
       cancelled = true;
+      realtimeAbortController.abort();
       clearReconnectTimer();
       socket?.close(1000, 'Event changed');
     };

@@ -23,6 +23,7 @@ import {
   resolveRequiredProfileFieldsCompletedAt,
 } from '@/server/profileCompletion';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
+import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 
 const profileSelectionSchema = z.object({
   firstName: z.string().optional(),
@@ -207,6 +208,11 @@ const resolveInviteHomeOrganizationId = async (client: any, userId: string): Pro
 };
 
 export async function POST(req: NextRequest) {
+  const rateLimited = await applyRateLimit(req, RATE_LIMIT_POLICIES.authRegister);
+  if (rateLimited) {
+    return rateLimited;
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = registerSchema.safeParse(body);
   if (!parsed.success) {

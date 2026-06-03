@@ -6,12 +6,18 @@ import {
   isInitialEmailVerificationAvailable,
   sendInitialEmailVerification,
 } from '@/server/authEmailVerification';
+import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 
 const requestSchema = z.object({
   email: z.string().email(),
 });
 
 export async function POST(req: NextRequest) {
+  const rateLimited = await applyRateLimit(req, RATE_LIMIT_POLICIES.authEmailVerification);
+  if (rateLimited) {
+    return rateLimited;
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = requestSchema.safeParse(body);
   if (!parsed.success) {

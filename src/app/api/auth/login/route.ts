@@ -11,6 +11,7 @@ import {
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
 import { buildProfileCompletionState } from '@/server/profileCompletion';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
+import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -34,6 +35,11 @@ const toPublicUser = (user: {
 });
 
 export async function POST(req: NextRequest) {
+  const rateLimited = await applyRateLimit(req, RATE_LIMIT_POLICIES.authLogin);
+  if (rateLimited) {
+    return rateLimited;
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = loginSchema.safeParse(body);
   if (!parsed.success) {

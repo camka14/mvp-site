@@ -19,6 +19,7 @@ export type EventMatchSocketOptions = {
   onMessage: (message: MatchRealtimeMessage) => void;
   onClose?: (event: CloseEvent) => void;
   onError?: (event: Event) => void;
+  signal?: AbortSignal;
 };
 
 const buildMatchSocketUrl = (eventId: string, token: string): string => {
@@ -34,12 +35,21 @@ export const connectEventMatchSocket = async ({
   onMessage,
   onClose,
   onError,
+  signal,
 }: EventMatchSocketOptions): Promise<WebSocket> => {
+  if (signal?.aborted) {
+    throw new DOMException('Match realtime connection was aborted.', 'AbortError');
+  }
+
   const { token } = await apiRequest<MatchRealtimeTokenResponse>(
     `/api/realtime/matches/token?eventId=${encodeURIComponent(eventId)}`,
+    { signal },
   );
   if (!token || typeof token !== 'string') {
     throw new Error('Match realtime token response did not include a token.');
+  }
+  if (signal?.aborted) {
+    throw new DOMException('Match realtime connection was aborted.', 'AbortError');
   }
 
   const socket = new WebSocket(buildMatchSocketUrl(eventId, token));
@@ -51,6 +61,59 @@ export const connectEventMatchSocket = async ({
       console.warn('Ignoring malformed match realtime message:', parseError);
     }
   };
+  await new Promise<void>((resolve, reject) => {
+    let shouldCloseAfterOpen = signal?.aborted ?? false;
+
+    const cleanup = () => {
+      socket.removeEventListener('open', handleOpen);
+      socket.removeEventListener('error', handleOpenError);
+      socket.removeEventListener('close', handleOpenClose);
+      signal?.removeEventListener('abort', handleAbort);
+    };
+
+    const abortError = () => new DOMException('Match realtime connection was aborted.', 'AbortError');
+
+    const handleAbort = () => {
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.close(1000, 'Event changed');
+        return;
+      }
+      // Closing during CONNECTING emits a browser-level warning. Let it open,
+      // then close immediately so normal React cleanup stays quiet in dev.
+      shouldCloseAfterOpen = true;
+    };
+
+    function handleOpen() {
+      if (shouldCloseAfterOpen) {
+        cleanup();
+        socket.close(1000, 'Event changed');
+        reject(abortError());
+        return;
+      }
+      cleanup();
+      resolve();
+    }
+
+    function handleOpenError() {
+      cleanup();
+      reject(new Error('Match realtime socket failed to open.'));
+    }
+
+    function handleOpenClose() {
+      cleanup();
+      reject(new Error('Match realtime socket closed before opening.'));
+    }
+
+    socket.addEventListener('open', handleOpen);
+    socket.addEventListener('error', handleOpenError);
+    socket.addEventListener('close', handleOpenClose);
+    signal?.addEventListener('abort', handleAbort, { once: true });
+
+    if (signal?.aborted) {
+      handleAbort();
+    }
+  });
+
   if (onClose) socket.onclose = onClose;
   if (onError) socket.onerror = onError;
   return socket;

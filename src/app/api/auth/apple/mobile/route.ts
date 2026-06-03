@@ -17,6 +17,7 @@ import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState'
 import { reserveGeneratedUserName } from '@/server/userNames';
 import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 import { sendAdminAccountCreatedNotification } from '@/server/adminNotifications';
+import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
 
 const mobileAppleSchema = z.object({
   identityToken: z.string().min(1),
@@ -45,6 +46,11 @@ const UNKNOWN_DATE_OF_BIRTH = new Date(0);
 
 
 export async function POST(req: NextRequest) {
+  const rateLimited = await applyRateLimit(req, RATE_LIMIT_POLICIES.mobileOAuth);
+  if (rateLimited) {
+    return rateLimited;
+  }
+
   const body = await req.json().catch(() => null);
   const parsed = mobileAppleSchema.safeParse(body);
   if (!parsed.success) {
