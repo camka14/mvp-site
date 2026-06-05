@@ -6,14 +6,14 @@ This plan follows `PLANS.md` at the repository root. It covers the web and backe
 
 ## Purpose / Big Picture
 
-Event hosts need a quick way to show or download a scannable event link with BracketIQ branding. After this change, `mvp-site` can generate a PNG QR code for an event URL, place the BracketIQ shield in the center, and expose that image through a route that enforces the same visibility rules as event reads. The event management screen will show a QR Code action next to Manage, and the discover event sheet can reuse the same modal near its Manage Event action.
+Event hosts need a quick way to show or download a scannable event link with BracketIQ branding. After this change, `mvp-site` can generate a PNG QR code for an event URL, place the BIQ logo/icon in the center, and expose that image through a route that enforces the same visibility rules as event reads. The event management screen will show a QR Code action next to Manage, and the discover event sheet can reuse the same modal near its Manage Event action.
 
 ## Progress
 
 - [x] (2026-05-04 16:10Z) Created feature branch `codex/branded-event-qr-codes` for `mvp-site`.
 - [x] (2026-05-04 16:10Z) Read `AGENTS.md`, `PLANS.md`, and the React best-practices skill; created this web/backend ExecPlan.
 - [x] (2026-05-04 16:13Z) Added `qrcode` and `@types/qrcode`; confirmed the installed `qrcode` package is MIT licensed.
-- [x] (2026-05-04 16:15Z) Added `GET /api/events/[eventId]/qr` with high-error-correction QR generation and BracketIQ shield compositing.
+- [x] (2026-05-04 16:15Z) Added `GET /api/events/[eventId]/qr` with high-error-correction QR generation and BIQ logo/icon compositing.
 - [x] (2026-05-04 16:17Z) Added route tests for success, missing event, restricted-event denial, and restricted-event manager access.
 - [x] (2026-05-04 16:19Z) Added reusable `EventQrCodeModal` with Copy link and Download PNG actions.
 - [x] (2026-05-04 16:21Z) Wired QR actions next to Manage on the event management page and discover event details sheet.
@@ -42,7 +42,7 @@ Event hosts need a quick way to show or download a scannable event link with Bra
 
 ## Outcomes & Retrospective
 
-Implemented branded event QR generation and web UI entry points. The backend route returns a PNG QR code for `/events/{eventId}` with the BracketIQ shield centered on a white plate. Managers see a `QR Code` action next to `Manage` on the schedule/event management page, and host-facing Manage Event action groups in the discover detail sheet now include the same QR action. The reusable modal supports copying the event URL and downloading the generated PNG.
+Implemented branded event QR generation and web UI entry points. The backend route returns a PNG QR code for `/events/{eventId}` with the BIQ logo/icon centered on a white plate. Managers see a `QR Code` action next to `Manage` on the schedule/event management page, and host-facing Manage Event action groups in the discover detail sheet now include the same QR action. The reusable modal supports copying the event URL and downloading the generated PNG.
 
 ## Context and Orientation
 
@@ -54,7 +54,7 @@ Implemented branded event QR generation and web UI entry points. The backend rou
 
 ## Plan of Work
 
-First, install `qrcode` and its TypeScript declarations if needed. Add a route handler at `src/app/api/events/[eventId]/qr/route.ts`. The route will load the event, apply the same restricted-state permission check as the existing event GET route, build the public event URL from `getRequestOrigin(req)` plus `/events/{eventId}`, generate a high-error-correction QR PNG, and use `sharp` to composite `public/bracketiq-shield.svg` in the center with a white background plate. It should return `image/png` with a reasonable cache header.
+First, install `qrcode` and its TypeScript declarations if needed. Add a route handler at `src/app/api/events/[eventId]/qr/route.ts`. The route will load the event, apply the same restricted-state permission check as the existing event GET route, build the public event URL from `getRequestOrigin(req)` plus `/events/{eventId}`, generate a high-error-correction QR PNG, and use `sharp` to composite `public/BIQ_drawing.svg` in the center with a white background plate. It should return `image/png` with a reasonable cache header.
 
 Next, add route tests in `src/app/api/events/__tests__/eventQrRoute.test.ts`. Mock Prisma, permissions, and access control in the same style as existing event route tests. Assert that public events return PNG bytes, missing events return 404, and restricted events return 403 when the user lacks management permission.
 

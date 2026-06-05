@@ -154,7 +154,7 @@ export type PublicOrganizationTeamRegistrationData = {
 
 const DEFAULT_PRIMARY_COLOR = '#0f766e';
 const DEFAULT_ACCENT_COLOR = '#f59e0b';
-const FALLBACK_IMAGE_URL = '/bracketiq-shield.svg';
+const FALLBACK_IMAGE_URL = '/BIQ_drawing.svg';
 const PUBLIC_EVENT_STATES = ['PUBLISHED', null] as const;
 const PUBLIC_TEAM_ACTIVE_STATUS = 'ACTIVE';
 const PUBLIC_TEAM_PENDING_STATUS = 'PENDING';

@@ -1,4 +1,3 @@
-import type { Metadata, Viewport } from 'next';
 import { Archivo, IBM_Plex_Mono, Roboto_Flex } from 'next/font/google';
 import Script from 'next/script';
 import './globals.css';
@@ -15,9 +14,8 @@ import { AIAssistantDrawer } from '@/components/agent/AIAssistantDrawer';
 import ProfileCompletionGate from '@/components/auth/ProfileCompletionGate';
 import MobileAppPrompt from '@/components/layout/MobileAppPrompt';
 import SiteFooter from '@/components/layout/SiteFooter';
-import { getIosAppStoreId } from '@/lib/mobileAppLinks';
 import { MOBILE_APP_MANTINE_PRIMARY_SCALE } from './theme/mobilePalette';
-import { SITE_URL } from '@/lib/siteUrl';
+export { metadata, viewport } from './rootMetadata';
 
 const GOOGLE_ANALYTICS_ID = 'G-PXFLC9SY0D';
 
@@ -48,57 +46,6 @@ const theme = createTheme({
   },
   defaultRadius: 'md',
 });
-
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
-  title: 'BracketIQ | Sports Event Platform',
-  description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
-  keywords: ['sports', 'events', 'tournaments', 'leagues', 'pickup games', 'teams'],
-  alternates: {
-    canonical: SITE_URL,
-  },
-  icons: {
-    icon: [
-      { url: '/BIQ_drawing.svg', type: 'image/svg+xml' },
-    ],
-    shortcut: [
-      { url: '/BIQ_drawing.svg', type: 'image/svg+xml' },
-    ],
-    apple: [
-      { url: '/BIQ_drawing.svg', type: 'image/svg+xml' },
-    ],
-  },
-  openGraph: {
-    title: 'BracketIQ | Sports Event Platform',
-    description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
-    url: SITE_URL,
-    siteName: 'BracketIQ',
-    images: [
-      {
-        url: '/opengraph-image',
-        width: 1200,
-        height: 630,
-        alt: 'Preview of the BracketIQ multi-sport event platform.',
-      },
-    ],
-    locale: 'en_US',
-    type: 'website',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'BracketIQ | Sports Event Platform',
-    description: 'Find, organize, and join pickup games, leagues, and tournaments across any sport.',
-    images: ['/opengraph-image'],
-  },
-  itunes: {
-    appId: getIosAppStoreId(),
-  },
-};
-
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-};
 
 interface RootLayoutProps {
   children: ReactNode;
