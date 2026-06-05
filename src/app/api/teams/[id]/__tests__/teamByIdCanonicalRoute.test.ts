@@ -44,6 +44,7 @@ const isAdminOnlyCanonicalTeamMock = jest.fn();
 const loadCanonicalTeamByIdMock = jest.fn();
 const syncCanonicalTeamRosterMock = jest.fn();
 const applyCanonicalTeamRegistrationMetadataMock = jest.fn();
+const syncCanonicalTeamFutureEventSnapshotsMock = jest.fn();
 const syncTeamChatInTxMock = jest.fn();
 const getTeamChatBaseMemberIdsMock = jest.fn();
 
@@ -62,6 +63,10 @@ jest.mock('@/server/teams/teamMembership', () => ({
   isAdminOnlyCanonicalTeam: (...args: any[]) => isAdminOnlyCanonicalTeamMock(...args),
   loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
   syncCanonicalTeamRoster: (...args: any[]) => syncCanonicalTeamRosterMock(...args),
+}));
+jest.mock('@/server/teams/teamEventSnapshotSync', () => ({
+  findFutureRegisteredTeamRefs: jest.fn(),
+  syncCanonicalTeamFutureEventSnapshots: (...args: any[]) => syncCanonicalTeamFutureEventSnapshotsMock(...args),
 }));
 jest.mock('@/server/teamChatSync', () => ({
   getTeamChatBaseMemberIds: (...args: any[]) => getTeamChatBaseMemberIdsMock(...args),
@@ -88,6 +93,7 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
     organizationFindFirstMock.mockResolvedValue(null);
     syncCanonicalTeamRosterMock.mockResolvedValue(undefined);
     applyCanonicalTeamRegistrationMetadataMock.mockResolvedValue(undefined);
+    syncCanonicalTeamFutureEventSnapshotsMock.mockResolvedValue([]);
     syncTeamChatInTxMock.mockResolvedValue(undefined);
     getTeamChatBaseMemberIdsMock.mockImplementation((team: any) => team?.playerIds ?? []);
     teamFindManyMock.mockResolvedValue([
@@ -201,23 +207,14 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
       where: { id: 'team_1' },
       data: expect.objectContaining({ name: 'Sandstorm' }),
     }));
-    expect(claimOrCreateEventTeamSnapshotMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(syncCanonicalTeamFutureEventSnapshotsMock).toHaveBeenCalledWith(expect.objectContaining({
       tx: txClientMock,
-      eventId: 'event_1',
       canonicalTeamId: 'team_1',
       createdBy: 'manager_1',
-      canonicalTeam: expect.objectContaining({
-        id: 'team_1',
-        name: 'Sandstorm',
-      }),
-      divisionId: 'division_1',
-      divisionTypeId: 'open',
-      divisionTypeKey: 'open',
-      registrationStatus: 'PENDING',
+      now: expect.any(Date),
     }));
     expect(teamUpdateMock).not.toHaveBeenCalled();
     expect(syncTeamChatInTxMock).toHaveBeenCalledWith(txClientMock, 'team_1', expect.any(Object));
-    expect(syncTeamChatInTxMock).toHaveBeenCalledWith(txClientMock, 'event_team_1', expect.any(Object));
     expect(payload.name).toBe('Sandstorm');
   });
 
@@ -265,13 +262,9 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
       teamId: 'team_1',
       playerIds: ['manager_1'],
     }), txClientMock);
-    expect(claimOrCreateEventTeamSnapshotMock).toHaveBeenCalledWith(expect.objectContaining({
-      eventId: 'event_1',
+    expect(syncCanonicalTeamFutureEventSnapshotsMock).toHaveBeenCalledWith(expect.objectContaining({
       canonicalTeamId: 'team_1',
-      canonicalTeam: expect.objectContaining({
-        playerIds: ['manager_1'],
-      }),
-      registrationStatus: 'PENDING',
+      tx: txClientMock,
     }));
     expect(payload.playerIds).toEqual(['manager_1']);
   });

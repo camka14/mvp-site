@@ -79,25 +79,35 @@ describe('listTeamsByIds', () => {
   });
 
   it('prefers canonical teams over event-team snapshots when the same id exists in both tables', async () => {
-    const canonicalFindManyMock = jest.fn().mockResolvedValue([
-      {
-        id: 'team_1',
-        name: 'Canonical Team',
-        division: 'Open',
-        divisionTypeId: 'open',
-        wins: null,
-        losses: null,
-        teamSize: 6,
-        profileImageId: null,
-        sport: 'Indoor Volleyball',
-        organizationId: null,
-        createdBy: 'user_1',
-        openRegistration: true,
-        registrationPriceCents: 2500,
-        createdAt: new Date('2026-04-20T00:00:00.000Z'),
-        updatedAt: new Date('2026-04-20T01:00:00.000Z'),
-      },
-    ]);
+    const canonicalFindManyMock = jest.fn()
+      .mockResolvedValueOnce([
+        {
+          id: 'team_1',
+          name: 'Canonical Team',
+          division: 'Open',
+          divisionTypeId: 'open',
+          wins: null,
+          losses: null,
+          teamSize: 6,
+          profileImageId: null,
+          sport: 'Indoor Volleyball',
+          organizationId: null,
+          createdBy: 'user_1',
+          openRegistration: true,
+          registrationPriceCents: 2500,
+          requiredTemplateIds: [],
+          createdAt: new Date('2026-04-20T00:00:00.000Z'),
+          updatedAt: new Date('2026-04-20T01:00:00.000Z'),
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'team_2',
+          openRegistration: true,
+          registrationPriceCents: 1500,
+          requiredTemplateIds: ['template_1'],
+        },
+      ]);
     const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([
       {
         id: 'team_1__player_1',
@@ -178,10 +188,22 @@ describe('listTeamsByIds', () => {
       $id: 'event_team_1',
       name: 'Event Snapshot',
       parentTeamId: 'team_2',
+      openRegistration: true,
+      registrationPriceCents: 1500,
+      requiredTemplateIds: ['template_1'],
     });
 
     expect(canonicalFindManyMock).toHaveBeenCalledWith({
       where: { id: { in: ['team_1', 'event_team_1'] } },
+    });
+    expect(canonicalFindManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['team_2'] } },
+      select: {
+        id: true,
+        openRegistration: true,
+        registrationPriceCents: true,
+        requiredTemplateIds: true,
+      },
     });
     expect(teamRegistrationsFindManyMock).toHaveBeenCalledWith({
       where: { teamId: { in: ['team_1'] } },
@@ -205,22 +227,10 @@ describe('listTeamsByIds', () => {
   it('prefers event-scoped teams over canonical teams when an event id is supplied', async () => {
     const canonicalFindManyMock = jest.fn().mockResolvedValue([
       {
-        id: 'shadow_id',
-        name: 'Canonical Shadow',
-        division: 'Open',
-        divisionTypeId: 'open',
-        wins: null,
-        losses: null,
-        teamSize: 2,
-        profileImageId: null,
-        sport: 'Beach Volleyball',
-        organizationId: null,
-        createdBy: 'user_1',
-        openRegistration: false,
-        registrationPriceCents: 0,
-        requiredTemplateIds: [],
-        createdAt: new Date('2026-04-20T00:00:00.000Z'),
-        updatedAt: new Date('2026-04-20T01:00:00.000Z'),
+        id: 'canonical_team_1',
+        openRegistration: true,
+        registrationPriceCents: 1750,
+        requiredTemplateIds: ['template_event'],
       },
     ]);
     const teamRegistrationsFindManyMock = jest.fn().mockResolvedValue([]);
@@ -274,6 +284,9 @@ describe('listTeamsByIds', () => {
       name: 'Event Team',
       eventId: 'event_1',
       parentTeamId: 'canonical_team_1',
+      openRegistration: true,
+      registrationPriceCents: 1750,
+      requiredTemplateIds: ['template_event'],
     });
     expect(eventTeamsFindManyMock).toHaveBeenCalledWith({
       where: {
@@ -281,7 +294,15 @@ describe('listTeamsByIds', () => {
         eventId: 'event_1',
       },
     });
-    expect(canonicalFindManyMock).not.toHaveBeenCalled();
+    expect(canonicalFindManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['canonical_team_1'] } },
+      select: {
+        id: true,
+        openRegistration: true,
+        registrationPriceCents: true,
+        requiredTemplateIds: true,
+      },
+    });
     expect(teamRegistrationsFindManyMock).not.toHaveBeenCalled();
     expect(teamStaffAssignmentsFindManyMock).not.toHaveBeenCalled();
   });

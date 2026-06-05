@@ -5,6 +5,7 @@ const prismaMock = {
 };
 
 const syncTeamChatInTxMock = jest.fn();
+const syncCanonicalTeamFutureEventSnapshotsMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/stripeConnectAccounts', () => ({
@@ -21,6 +22,9 @@ jest.mock('@/server/teams/teamMembership', () => {
     loadCanonicalTeamById: jest.fn(),
   };
 });
+jest.mock('@/server/teams/teamEventSnapshotSync', () => ({
+  syncCanonicalTeamFutureEventSnapshots: (...args: any[]) => syncCanonicalTeamFutureEventSnapshotsMock(...args),
+}));
 
 import {
   activateStartedTeamRegistration,
@@ -31,6 +35,7 @@ import {
 describe('reserveTeamRegistrationSlot', () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    syncCanonicalTeamFutureEventSnapshotsMock.mockResolvedValue([]);
   });
 
   it('reuses an existing STARTED team registration when checkout is retried', async () => {
@@ -94,6 +99,7 @@ describe('reserveTeamRegistrationSlot', () => {
       }),
     );
     expect(syncTeamChatInTxMock).not.toHaveBeenCalled();
+    expect(syncCanonicalTeamFutureEventSnapshotsMock).not.toHaveBeenCalled();
   });
 
   it('marks a started team registration as pending when async payment is processing', async () => {
@@ -130,6 +136,12 @@ describe('reserveTeamRegistrationSlot', () => {
       }),
     );
     expect(syncTeamChatInTxMock).toHaveBeenCalledTimes(1);
+    expect(syncCanonicalTeamFutureEventSnapshotsMock).toHaveBeenCalledWith({
+      tx,
+      canonicalTeamId: 'team_1',
+      createdBy: 'user_1',
+      now: new Date('2026-04-21T18:03:00.000Z'),
+    });
   });
 
   it('activates a pending team registration when async payment succeeds', async () => {
@@ -177,5 +189,11 @@ describe('reserveTeamRegistrationSlot', () => {
     );
     expect(teamRegistrationsDeleteManyMock).not.toHaveBeenCalled();
     expect(syncTeamChatInTxMock).toHaveBeenCalledTimes(1);
+    expect(syncCanonicalTeamFutureEventSnapshotsMock).toHaveBeenCalledWith({
+      tx,
+      canonicalTeamId: 'team_1',
+      createdBy: 'user_1',
+      now: new Date('2026-04-21T18:04:00.000Z'),
+    });
   });
 });
