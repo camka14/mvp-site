@@ -13,11 +13,13 @@ import { asRecord, findPresentKeys } from '@/server/http/strictPatch';
 import {
   applyCanonicalTeamRegistrationMetadata,
   canManageCanonicalTeam,
+  claimOrCreateEventTeamSnapshot,
   isAdminOnlyCanonicalTeam,
   loadCanonicalTeamById,
   syncCanonicalTeamRoster,
 } from '@/server/teams/teamMembership';
 import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
+import type { RegistrationLifecycleStatus } from '@/server/events/eventRegistrations';
 
 export const dynamic = 'force-dynamic';
 
@@ -354,25 +356,50 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
 
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
 const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] as const;
+const ACTIVE_EVENT_REGISTRATION_STATUS_SET = new Set<string>(ACTIVE_EVENT_REGISTRATION_STATUSES);
 
-const findFutureRegisteredTeamIds = async (
+type FutureRegisteredTeamRef = {
+  eventId: string;
+  teamId: string;
+  status: RegistrationLifecycleStatus;
+  divisionId: string | null;
+  divisionTypeId: string | null;
+  divisionTypeKey: string | null;
+};
+
+const normalizeActiveEventRegistrationStatus = (value: unknown): RegistrationLifecycleStatus => {
+  const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  return ACTIVE_EVENT_REGISTRATION_STATUS_SET.has(normalized)
+    ? normalized as RegistrationLifecycleStatus
+    : 'ACTIVE';
+};
+
+const findFutureRegisteredTeamRefs = async (
   client: any,
   teamIds: string[],
   now: Date,
-): Promise<string[]> => {
+): Promise<FutureRegisteredTeamRef[]> => {
   const registrationRows = teamIds.length && typeof client.eventRegistrations?.findMany === 'function'
     ? await client.eventRegistrations.findMany({
       where: {
         registrantType: 'TEAM',
         rosterRole: 'PARTICIPANT',
         status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
-        registrantId: { in: teamIds },
+        OR: [
+          { registrantId: { in: teamIds } },
+          { eventTeamId: { in: teamIds } },
+        ],
         slotId: null,
         occurrenceDate: null,
       },
       select: {
         eventId: true,
         registrantId: true,
+        eventTeamId: true,
+        status: true,
+        divisionId: true,
+        divisionTypeId: true,
+        divisionTypeKey: true,
       },
     })
     : [];
@@ -398,15 +425,33 @@ const findFutureRegisteredTeamIds = async (
       .filter((eventId: string | undefined): eventId is string => Boolean(eventId)),
   );
 
-  return Array.from(new Set(
-    registrationRows
-      .filter((row: { eventId?: unknown }) => {
-        const eventId = normalizeText(row.eventId);
-        return Boolean(eventId && futureEventIds.has(eventId));
-      })
-      .map((row: { registrantId?: unknown }) => normalizeText(row.registrantId))
-      .filter((teamId: string | undefined): teamId is string => Boolean(teamId)),
-  ));
+  const requestedTeamIds = new Set(teamIds);
+  const refsByKey = new Map<string, FutureRegisteredTeamRef>();
+  registrationRows.forEach((row: {
+    eventId?: unknown;
+    registrantId?: unknown;
+    eventTeamId?: unknown;
+    status?: unknown;
+    divisionId?: unknown;
+    divisionTypeId?: unknown;
+    divisionTypeKey?: unknown;
+  }) => {
+    const eventId = normalizeText(row.eventId);
+    const teamId = normalizeText(row.eventTeamId) ?? normalizeText(row.registrantId);
+    if (!eventId || !futureEventIds.has(eventId) || !teamId || !requestedTeamIds.has(teamId)) {
+      return;
+    }
+    refsByKey.set(`${eventId}:${teamId}`, {
+      eventId,
+      teamId,
+      status: normalizeActiveEventRegistrationStatus(row.status),
+      divisionId: normalizeText(row.divisionId),
+      divisionTypeId: normalizeText(row.divisionTypeId),
+      divisionTypeKey: normalizeText(row.divisionTypeKey),
+    });
+  });
+
+  return Array.from(refsByKey.values());
 };
 const UNKNOWN_ARGUMENT_REGEX = /Unknown argument `([^`]+)`/i;
 
@@ -647,33 +692,32 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
         const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
         if (derivedTeamIds.length) {
-          const teamIdsToUpdate = new Set(await findFutureRegisteredTeamIds(tx, derivedTeamIds, now));
+          const teamRefsToUpdate = await findFutureRegisteredTeamRefs(tx, derivedTeamIds, now);
 
-          if (teamIdsToUpdate.size) {
-            const updatePayload = {
-              name: nextState.name,
-              playerIds: nextState.playerIds,
-              captainId: nextState.captainId,
-              managerId: nextState.managerId,
-              headCoachId: nextState.headCoachId,
-              coachIds: nextState.coachIds,
-              teamSize: nextState.teamSize,
-              profileImageId: nextState.profileImageId,
-              sport: nextState.sport,
-              divisionTypeId: nextState.divisionTypeId,
-              updatedAt: now,
-            };
+          if (teamRefsToUpdate.length) {
+            const canonicalSnapshot = await loadCanonicalTeamById(id, tx);
+            if (!canonicalSnapshot) {
+              throw new Error('Canonical team not found after roster update.');
+            }
 
-            for (const teamId of teamIdsToUpdate) {
-              const previousTeam = derivedTeamById.get(teamId);
-              if (previousTeam) {
-                previousMemberIdsByTeamId.set(teamId, getTeamChatBaseMemberIds(previousTeam));
-              }
-              await txTeams.update({
-                where: { id: teamId },
-                data: updatePayload,
+            for (const teamRef of teamRefsToUpdate) {
+              const previousTeam = derivedTeamById.get(teamRef.teamId);
+              const syncedEventTeam = await claimOrCreateEventTeamSnapshot({
+                tx,
+                eventId: teamRef.eventId,
+                canonicalTeamId: id,
+                createdBy: session.userId,
+                canonicalTeam: canonicalSnapshot as Record<string, any>,
+                divisionId: teamRef.divisionId,
+                divisionTypeId: teamRef.divisionTypeId,
+                divisionTypeKey: teamRef.divisionTypeKey,
+                registrationStatus: teamRef.status,
               });
-              teamsToSync.add(teamId);
+              const syncedTeamId = normalizeText((syncedEventTeam as any)?.id) ?? teamRef.teamId;
+              if (previousTeam) {
+                previousMemberIdsByTeamId.set(syncedTeamId, getTeamChatBaseMemberIds(previousTeam));
+              }
+              teamsToSync.add(syncedTeamId);
             }
           }
         }
@@ -777,8 +821,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
     const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
     if (derivedTeamIds.length) {
-      const teamIdsToUpdate = new Set(await findFutureRegisteredTeamIds(tx, derivedTeamIds, now));
-      if (teamIdsToUpdate.size) {
+      const teamRefsToUpdate = await findFutureRegisteredTeamRefs(tx, derivedTeamIds, now);
+      if (teamRefsToUpdate.length) {
         const updatePayload = {
           name: nextState.name,
           playerIds: nextState.playerIds,
@@ -795,7 +839,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           updatedAt: now,
         };
 
-        for (const teamId of teamIdsToUpdate) {
+        for (const { teamId } of teamRefsToUpdate) {
           const previousTeam = derivedTeamById.get(teamId);
           if (previousTeam) {
             previousMemberIdsByTeamId.set(teamId, getTeamChatBaseMemberIds(previousTeam));

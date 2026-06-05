@@ -39,6 +39,7 @@ const prismaMock = {
 const requireSessionMock = jest.fn();
 const getOptionalSessionMock = jest.fn();
 const canManageCanonicalTeamMock = jest.fn();
+const claimOrCreateEventTeamSnapshotMock = jest.fn();
 const isAdminOnlyCanonicalTeamMock = jest.fn();
 const loadCanonicalTeamByIdMock = jest.fn();
 const syncCanonicalTeamRosterMock = jest.fn();
@@ -57,6 +58,7 @@ jest.mock('@/server/legacyFormat', () => ({
 jest.mock('@/server/teams/teamMembership', () => ({
   applyCanonicalTeamRegistrationMetadata: (...args: any[]) => applyCanonicalTeamRegistrationMetadataMock(...args),
   canManageCanonicalTeam: (...args: any[]) => canManageCanonicalTeamMock(...args),
+  claimOrCreateEventTeamSnapshot: (...args: any[]) => claimOrCreateEventTeamSnapshotMock(...args),
   isAdminOnlyCanonicalTeam: (...args: any[]) => isAdminOnlyCanonicalTeamMock(...args),
   loadCanonicalTeamById: (...args: any[]) => loadCanonicalTeamByIdMock(...args),
   syncCanonicalTeamRoster: (...args: any[]) => syncCanonicalTeamRosterMock(...args),
@@ -81,6 +83,7 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
     getOptionalSessionMock.mockResolvedValue(null);
     requireSessionMock.mockResolvedValue({ userId: 'manager_1', isAdmin: false });
     canManageCanonicalTeamMock.mockResolvedValue(true);
+    claimOrCreateEventTeamSnapshotMock.mockResolvedValue({ id: 'event_team_1' });
     isAdminOnlyCanonicalTeamMock.mockReturnValue(false);
     organizationFindFirstMock.mockResolvedValue(null);
     syncCanonicalTeamRosterMock.mockResolvedValue(undefined);
@@ -98,44 +101,51 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
       },
     ]);
     eventRegistrationsFindManyMock.mockResolvedValue([
-      { eventId: 'event_1', registrantId: 'event_team_1' },
+      {
+        eventId: 'event_1',
+        registrantId: 'event_team_1',
+        eventTeamId: 'event_team_1',
+        status: 'PENDING',
+        divisionId: 'division_1',
+        divisionTypeId: 'open',
+        divisionTypeKey: 'open',
+      },
     ]);
     eventsFindManyMock.mockResolvedValue([
       { id: 'event_1' },
     ]);
     canonicalUpdateMock.mockResolvedValue({ id: 'team_1' });
     teamUpdateMock.mockResolvedValue({ id: 'event_team_1' });
-    loadCanonicalTeamByIdMock
-      .mockResolvedValueOnce({
-        id: 'team_1',
-        name: 'Team One',
-        division: 'Open',
-        divisionTypeId: 'open',
-        sport: 'Beach Volleyball',
-        playerIds: ['manager_1', 'user_2'],
-        captainId: 'manager_1',
-        managerId: 'manager_1',
-        headCoachId: null,
-        coachIds: [],
-        pending: [],
-        teamSize: 2,
-        profileImageId: null,
-      })
-      .mockResolvedValueOnce({
-        id: 'team_1',
-        name: 'Sandstorm',
-        division: 'Open',
-        divisionTypeId: 'open',
-        sport: 'Beach Volleyball',
-        playerIds: ['manager_1', 'user_2'],
-        captainId: 'manager_1',
-        managerId: 'manager_1',
-        headCoachId: null,
-        coachIds: [],
-        pending: [],
-        teamSize: 2,
-        profileImageId: null,
-      });
+    loadCanonicalTeamByIdMock.mockResolvedValue({
+      id: 'team_1',
+      name: 'Sandstorm',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'Beach Volleyball',
+      playerIds: ['manager_1', 'user_2'],
+      captainId: 'manager_1',
+      managerId: 'manager_1',
+      headCoachId: null,
+      coachIds: [],
+      pending: [],
+      teamSize: 2,
+      profileImageId: null,
+    });
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Team One',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'Beach Volleyball',
+      playerIds: ['manager_1', 'user_2'],
+      captainId: 'manager_1',
+      managerId: 'manager_1',
+      headCoachId: null,
+      coachIds: [],
+      pending: [],
+      teamSize: 2,
+      profileImageId: null,
+    });
   });
 
   it('hides admin-only canonical teams from non-admin direct reads', async () => {
@@ -191,17 +201,79 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
       where: { id: 'team_1' },
       data: expect.objectContaining({ name: 'Sandstorm' }),
     }));
-    expect(teamUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
-      where: { id: 'event_team_1' },
-      data: expect.objectContaining({
+    expect(claimOrCreateEventTeamSnapshotMock).toHaveBeenCalledWith(expect.objectContaining({
+      tx: txClientMock,
+      eventId: 'event_1',
+      canonicalTeamId: 'team_1',
+      createdBy: 'manager_1',
+      canonicalTeam: expect.objectContaining({
+        id: 'team_1',
         name: 'Sandstorm',
-        playerIds: ['manager_1', 'user_2'],
-        teamSize: 2,
       }),
+      divisionId: 'division_1',
+      divisionTypeId: 'open',
+      divisionTypeKey: 'open',
+      registrationStatus: 'PENDING',
     }));
+    expect(teamUpdateMock).not.toHaveBeenCalled();
     expect(syncTeamChatInTxMock).toHaveBeenCalledWith(txClientMock, 'team_1', expect.any(Object));
     expect(syncTeamChatInTxMock).toHaveBeenCalledWith(txClientMock, 'event_team_1', expect.any(Object));
     expect(payload.name).toBe('Sandstorm');
+  });
+
+  it('syncs canonical player removals through future event team snapshots', async () => {
+    loadCanonicalTeamByIdMock.mockReset();
+    loadCanonicalTeamByIdMock.mockResolvedValue({
+      id: 'team_1',
+      name: 'Team One',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'Beach Volleyball',
+      playerIds: ['manager_1'],
+      captainId: 'manager_1',
+      managerId: 'manager_1',
+      headCoachId: null,
+      coachIds: [],
+      pending: [],
+      teamSize: 2,
+      profileImageId: null,
+    });
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Team One',
+      division: 'Open',
+      divisionTypeId: 'open',
+      sport: 'Beach Volleyball',
+      playerIds: ['manager_1', 'user_2'],
+      captainId: 'manager_1',
+      managerId: 'manager_1',
+      headCoachId: null,
+      coachIds: [],
+      pending: [],
+      teamSize: 2,
+      profileImageId: null,
+    });
+
+    const response = await PATCH(
+      patchJson({ team: { playerIds: ['manager_1'] } }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(syncCanonicalTeamRosterMock).toHaveBeenCalledWith(expect.objectContaining({
+      teamId: 'team_1',
+      playerIds: ['manager_1'],
+    }), txClientMock);
+    expect(claimOrCreateEventTeamSnapshotMock).toHaveBeenCalledWith(expect.objectContaining({
+      eventId: 'event_1',
+      canonicalTeamId: 'team_1',
+      canonicalTeam: expect.objectContaining({
+        playerIds: ['manager_1'],
+      }),
+      registrationStatus: 'PENDING',
+    }));
+    expect(payload.playerIds).toEqual(['manager_1']);
   });
 
   it('accepts player registration jersey updates on canonical teams', async () => {
