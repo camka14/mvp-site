@@ -649,24 +649,24 @@ class TeamService {
         }
     }
 
-    async removePlayerFromTeam(teamId: string, userId: string): Promise<boolean> {
+    async removePlayerFromTeam(teamId: string, userId: string): Promise<Team | undefined> {
         try {
             const team = await this.getTeamById(teamId);
             if (!team) {
-                return false;
+                return undefined;
             }
 
             const nextPlayerIds = team.playerIds.filter(id => id !== userId);
 
-            await apiRequest(`/api/teams/${teamId}`, {
+            const response = await apiRequest<any>(`/api/teams/${teamId}`, {
                 method: 'PATCH',
                 body: { team: { playerIds: nextPlayerIds } },
             });
 
-            return true;
+            return this.mapRowToTeam(response);
         } catch (error) {
             console.error('Failed to remove player from team:', error);
-            return false;
+            return undefined;
         }
     }
 

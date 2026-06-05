@@ -531,7 +531,16 @@ describe('teamService', () => {
     });
 
     it('removes a player without patching the removed user profile', async () => {
-      apiRequestMock.mockResolvedValue({});
+      apiRequestMock.mockResolvedValue({
+        id: 'team_1',
+        name: 'Team One',
+        sport: 'Volleyball',
+        division: 'Open',
+        playerIds: ['captain_1'],
+        pending: [],
+        teamSize: 6,
+        captainId: 'captain_1',
+      });
       jest.spyOn(teamService, 'getTeamById').mockResolvedValueOnce({
         $id: 'team_1',
         name: 'Team One',
@@ -545,7 +554,7 @@ describe('teamService', () => {
 
       const result = await teamService.removePlayerFromTeam('team_1', 'user_2');
 
-      expect(result).toBe(true);
+      expect(result?.playerIds).toEqual(['captain_1']);
       expect(apiRequestMock).toHaveBeenCalledWith('/api/teams/team_1', {
         method: 'PATCH',
         body: { team: { playerIds: ['captain_1'] } },

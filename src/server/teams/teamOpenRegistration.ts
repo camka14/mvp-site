@@ -6,6 +6,7 @@ import {
   loadCanonicalTeamById,
   normalizeId,
 } from '@/server/teams/teamMembership';
+import { syncCanonicalTeamFutureEventSnapshots } from '@/server/teams/teamEventSnapshotSync';
 
 type PrismaLike = any;
 
@@ -488,6 +489,12 @@ export const reserveTeamRegistrationSlot = async ({
     }
 
     if (status === ACTIVE_MEMBER_STATUS || status === PENDING_MEMBER_STATUS) {
+      await syncCanonicalTeamFutureEventSnapshots({
+        tx,
+        canonicalTeamId: normalizedTeamId,
+        createdBy: actorUserId,
+        now,
+      });
       await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     }
 
@@ -545,6 +552,12 @@ export const markTeamRegistrationPaymentPending = async ({
         updatedAt: now,
       },
     });
+    await syncCanonicalTeamFutureEventSnapshots({
+      tx,
+      canonicalTeamId: normalizedTeamId,
+      createdBy: normalizedUserId,
+      now,
+    });
     await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     return { applied: true };
   });
@@ -598,6 +611,12 @@ export const cancelPendingTeamRegistration = async ({
       },
     });
     if (registration.status === PENDING_MEMBER_STATUS) {
+      await syncCanonicalTeamFutureEventSnapshots({
+        tx,
+        canonicalTeamId: normalizedTeamId,
+        createdBy: normalizedUserId,
+        now,
+      });
       await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     }
     return { applied: true };
@@ -747,6 +766,12 @@ export const activateStartedTeamRegistration = async ({
                 updatedAt: now,
               },
             });
+            await syncCanonicalTeamFutureEventSnapshots({
+              tx,
+              canonicalTeamId: normalizedTeamId,
+              createdBy: normalizedUserId,
+              now,
+            });
             await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
           } else if (registration.status === STARTED_MEMBER_STATUS) {
             await tx.teamRegistrations.deleteMany({
@@ -768,6 +793,12 @@ export const activateStartedTeamRegistration = async ({
         status: ACTIVE_MEMBER_STATUS as any,
         updatedAt: now,
       },
+    });
+    await syncCanonicalTeamFutureEventSnapshots({
+      tx,
+      canonicalTeamId: normalizedTeamId,
+      createdBy: normalizedUserId,
+      now,
     });
     await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     return { applied: true };
@@ -858,6 +889,12 @@ export const leaveTeam = async ({
         isCaptain: false,
         updatedAt: now,
       },
+    });
+    await syncCanonicalTeamFutureEventSnapshots({
+      tx,
+      canonicalTeamId: normalizedTeamId,
+      createdBy: normalizedUserId,
+      now,
     });
     await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     return { ok: true };
@@ -958,6 +995,12 @@ export const requestTeamRegistrationRefund = async ({
         isCaptain: false,
         updatedAt: now,
       },
+    });
+    await syncCanonicalTeamFutureEventSnapshots({
+      tx,
+      canonicalTeamId: normalizedTeamId,
+      createdBy: normalizedUserId,
+      now,
     });
     await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
 

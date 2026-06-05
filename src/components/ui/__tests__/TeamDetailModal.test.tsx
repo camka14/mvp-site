@@ -32,6 +32,29 @@ jest.mock('@/lib/teamService', () => ({
     inviteUserToTeamRole: jest.fn(),
     inviteEmailToTeamRole: jest.fn(),
     getTeamById: jest.fn(),
+    registerSelfForTeam: jest.fn(),
+    registerChildForTeam: jest.fn(),
+  },
+}));
+jest.mock('@/lib/familyService', () => ({
+  familyService: {
+    listChildren: jest.fn(),
+  },
+}));
+jest.mock('@/lib/paymentService', () => ({
+  paymentService: {
+    createTeamRegistrationPaymentIntent: jest.fn(),
+  },
+}));
+jest.mock('@/lib/boldsignService', () => ({
+  boldsignService: {
+    createSignLinks: jest.fn(),
+    getOperationStatus: jest.fn(),
+  },
+}));
+jest.mock('@/lib/signedDocumentService', () => ({
+  signedDocumentService: {
+    isDocumentSigned: jest.fn(),
   },
 }));
 
@@ -49,12 +72,18 @@ const teamServiceMock = jest.requireMock('@/lib/teamService').teamService as {
   inviteUserToTeamRole: jest.Mock;
   inviteEmailToTeamRole: jest.Mock;
   getTeamById: jest.Mock;
+  registerSelfForTeam: jest.Mock;
+  registerChildForTeam: jest.Mock;
+};
+const familyServiceMock = jest.requireMock('@/lib/familyService').familyService as {
+  listChildren: jest.Mock;
 };
 
 describe('TeamDetailModal', () => {
   beforeEach(() => {
     (useApp as jest.Mock).mockReturnValue({
       user: null,
+      authUser: null,
     });
     userServiceMock.getUsersByIds.mockReset();
     userServiceMock.listInvites.mockReset();
@@ -64,6 +93,9 @@ describe('TeamDetailModal', () => {
     teamServiceMock.inviteUserToTeamRole.mockReset();
     teamServiceMock.inviteEmailToTeamRole.mockReset();
     teamServiceMock.getTeamById.mockReset();
+    teamServiceMock.registerSelfForTeam.mockReset();
+    teamServiceMock.registerChildForTeam.mockReset();
+    familyServiceMock.listChildren.mockReset();
     userServiceMock.getUsersByIds.mockResolvedValue([]);
     userServiceMock.listInvites.mockResolvedValue([]);
     userServiceMock.searchUsers.mockResolvedValue([]);
@@ -79,6 +111,9 @@ describe('TeamDetailModal', () => {
     teamServiceMock.inviteUserToTeamRole.mockResolvedValue(true);
     teamServiceMock.inviteEmailToTeamRole.mockResolvedValue(true);
     teamServiceMock.getTeamById.mockResolvedValue(undefined);
+    teamServiceMock.registerSelfForTeam.mockResolvedValue({});
+    teamServiceMock.registerChildForTeam.mockResolvedValue({});
+    familyServiceMock.listChildren.mockResolvedValue([]);
   });
 
   it('renders safely when eventFreeAgents prop is omitted', () => {
@@ -143,13 +178,15 @@ describe('TeamDetailModal', () => {
   });
 
   it('allows a pending paid team registration to resume payment even when the team is full', async () => {
+    const currentUser = buildUser({
+      $id: 'player_1',
+      firstName: 'Alex',
+      lastName: 'Stone',
+      fullName: 'Alex Stone',
+    });
     (useApp as jest.Mock).mockReturnValue({
-      user: buildUser({
-        $id: 'player_1',
-        firstName: 'Alex',
-        lastName: 'Stone',
-        fullName: 'Alex Stone',
-      }),
+      user: currentUser,
+      authUser: { email: 'alex@example.com' },
     });
     const team = buildTeam({
       $id: 'team_1',
@@ -180,6 +217,70 @@ describe('TeamDetailModal', () => {
     expect(await screen.findByRole('button', { name: /resume payment/i })).toBeEnabled();
     expect(screen.getByText(/waiting for payment confirmation/i)).toBeInTheDocument();
     expect(screen.queryByText('This team is full.')).not.toBeInTheDocument();
+  });
+
+  it('registers an event team snapshot through its canonical parent team', async () => {
+    const currentUser = buildUser({
+      $id: 'player_1',
+      firstName: 'Alex',
+      lastName: 'Stone',
+      fullName: 'Alex Stone',
+    });
+    (useApp as jest.Mock).mockReturnValue({
+      user: currentUser,
+      authUser: { email: 'alex@example.com' },
+    });
+    const eventTeam = buildTeam({
+      $id: 'event_team_1',
+      parentTeamId: 'team_1',
+      name: 'Open Event Team',
+      captainId: 'captain_1',
+      managerId: 'manager_1',
+      playerIds: [],
+      pending: [],
+      openRegistration: true,
+      registrationPriceCents: 0,
+      requiredTemplateIds: [],
+      playerRegistrations: [],
+      teamSize: 6,
+    });
+    const canonicalTeam = buildTeam({
+      ...eventTeam,
+      $id: 'team_1',
+      parentTeamId: null,
+      openRegistration: true,
+    });
+    teamServiceMock.getTeamById.mockResolvedValue(canonicalTeam);
+    teamServiceMock.registerSelfForTeam.mockResolvedValue({
+      registrationId: 'team_1__player_1',
+      status: 'ACTIVE',
+      team: buildTeam({
+        ...canonicalTeam,
+        playerIds: ['player_1'],
+        playerRegistrations: [{
+          id: 'team_1__player_1',
+          teamId: 'team_1',
+          userId: 'player_1',
+          status: 'ACTIVE',
+        }],
+      }),
+    });
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={eventTeam}
+        isOpen
+        onClose={jest.fn()}
+        canManage={false}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /join team/i }));
+
+    await waitFor(() => {
+      expect(teamServiceMock.registerSelfForTeam).toHaveBeenCalledWith('team_1');
+    });
+    expect(teamServiceMock.registerSelfForTeam).not.toHaveBeenCalledWith('event_team_1');
   });
 
   it('prechecks source event teams when selecting a free-agent invite', async () => {

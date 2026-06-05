@@ -166,10 +166,49 @@ export default function TeamRegistrationFlow({
   const [childrenLoading, setChildrenLoading] = useState(false);
   const [childrenError, setChildrenError] = useState<string | null>(null);
   const [selectedChildId, setSelectedChildId] = useState('');
+  const registrationTeamId = useMemo(
+    () => normalizeText(team.parentTeamId) || normalizeText(team.$id),
+    [team.$id, team.parentTeamId],
+  );
+  const resolvedRegistrationTeamId = useMemo(
+    () => normalizeText(resolvedTeam.parentTeamId) || normalizeText(resolvedTeam.$id) || registrationTeamId,
+    [registrationTeamId, resolvedTeam.$id, resolvedTeam.parentTeamId],
+  );
+  const paymentRegistrationTeam = useMemo(
+    () => (
+      resolvedRegistrationTeamId && normalizeText(resolvedTeam.$id) !== resolvedRegistrationTeamId
+        ? { ...resolvedTeam, $id: resolvedRegistrationTeamId, parentTeamId: null }
+        : resolvedTeam
+    ),
+    [resolvedRegistrationTeamId, resolvedTeam],
+  );
 
   useEffect(() => {
     setResolvedTeam(team);
   }, [team]);
+
+  useEffect(() => {
+    if (!registrationTeamId || registrationTeamId === normalizeText(team.$id)) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    const loadCanonicalTeam = async () => {
+      try {
+        const canonicalTeam = await teamService.getTeamById(registrationTeamId, false);
+        if (!cancelled && canonicalTeam) {
+          setResolvedTeam(canonicalTeam);
+        }
+      } catch {
+        // The explicit refresh path surfaces errors when the user starts registration.
+      }
+    };
+
+    void loadCanonicalTeam();
+    return () => {
+      cancelled = true;
+    };
+  }, [registrationTeamId, team.$id]);
 
   useEffect(() => {
     onErrorChange?.(registrationError);
@@ -220,14 +259,17 @@ export default function TeamRegistrationFlow({
   }, [user?.$id]);
 
   const refreshTeam = useCallback(async (): Promise<Team | undefined> => {
-    const refreshed = await teamService.getTeamById(resolvedTeam.$id, false);
+    if (!registrationTeamId) {
+      return undefined;
+    }
+    const refreshed = await teamService.getTeamById(registrationTeamId, false);
     if (refreshed) {
       setResolvedTeam(refreshed);
       onTeamUpdated?.(refreshed);
       return refreshed;
     }
     return undefined;
-  }, [onTeamUpdated, resolvedTeam.$id]);
+  }, [onTeamUpdated, registrationTeamId]);
 
   const registrations = useMemo(
     () => (Array.isArray(resolvedTeam.playerRegistrations) ? resolvedTeam.playerRegistrations : []),
@@ -313,7 +355,7 @@ export default function TeamRegistrationFlow({
       ? 'parent_guardian'
       : 'participant';
     const parentLinks = await boldsignService.createSignLinks({
-      teamId: resolvedTeam.$id,
+      teamId: resolvedRegistrationTeamId,
       user,
       userEmail: authUser.email,
       signerContext,
@@ -333,7 +375,7 @@ export default function TeamRegistrationFlow({
     }
 
     const childLinks = await boldsignService.createSignLinks({
-      teamId: resolvedTeam.$id,
+      teamId: resolvedRegistrationTeamId,
       user,
       userEmail: authUser.email,
       signerContext: 'child',
@@ -342,7 +384,7 @@ export default function TeamRegistrationFlow({
       timeoutMs: TEAM_JOIN_TIMEOUT_MS,
     });
     return dedupeSignSteps([...parentLinks, ...childLinks], signerContext);
-  }, [authUser?.email, resolvedTeam.$id, user]);
+  }, [authUser?.email, resolvedRegistrationTeamId, user]);
 
   const beginSigningFlow = useCallback(async (intent: TeamRegistrationIntent): Promise<boolean> => {
     if (!requiredTemplateIds.length) {
@@ -374,7 +416,7 @@ export default function TeamRegistrationFlow({
     try {
       const paymentIntent = await paymentService.createTeamRegistrationPaymentIntent(
         user,
-        resolvedTeam,
+        paymentRegistrationTeam,
         checkoutTarget,
         organization ?? undefined,
         billingAddress,
@@ -398,7 +440,7 @@ export default function TeamRegistrationFlow({
       }
       throw error;
     }
-  }, [organization, resolvedTeam, user]);
+  }, [organization, paymentRegistrationTeam, user]);
 
   const handleSuccessfulJoin = useCallback(async (successTeam?: Team | null) => {
     const refreshed = successTeam ?? await refreshTeam();
@@ -439,8 +481,8 @@ export default function TeamRegistrationFlow({
     }
 
     const result = intent.mode === 'child'
-      ? await teamService.registerChildForTeam(resolvedTeam.$id, intent.childId ?? '')
-      : await teamService.registerSelfForTeam(resolvedTeam.$id);
+      ? await teamService.registerChildForTeam(resolvedRegistrationTeamId, intent.childId ?? '')
+      : await teamService.registerSelfForTeam(resolvedRegistrationTeamId);
 
     notifyWarnings(result.warnings);
 
@@ -480,7 +522,7 @@ export default function TeamRegistrationFlow({
 
     if (registrationPriceCents > 0) {
       const checkoutTarget = buildCheckoutTarget(
-        resolvedTeam.$id,
+        resolvedRegistrationTeamId,
         result,
         currentUserRegistration ?? undefined,
       );
@@ -499,7 +541,7 @@ export default function TeamRegistrationFlow({
     onTeamUpdated,
     refreshTeam,
     registrationPriceCents,
-    resolvedTeam.$id,
+    resolvedRegistrationTeamId,
     startCheckout,
     user,
   ]);
@@ -579,7 +621,7 @@ export default function TeamRegistrationFlow({
         body: {
           email: authUser.email,
           password,
-          teamId: resolvedTeam.$id,
+          teamId: resolvedRegistrationTeamId,
         },
       });
       const links = signLinks.length ? signLinks : await loadRequiredSignLinksForIntent(pendingIntent);
@@ -610,7 +652,7 @@ export default function TeamRegistrationFlow({
     loadRequiredSignLinksForIntent,
     password,
     pendingIntent,
-    resolvedTeam.$id,
+    resolvedRegistrationTeamId,
     signLinks,
   ]);
 
@@ -639,7 +681,7 @@ export default function TeamRegistrationFlow({
       body: JSON.stringify({
         templateId: payload.templateId,
         documentId: payload.documentId,
-        teamId: resolvedTeam.$id,
+        teamId: resolvedRegistrationTeamId,
         type: payload.type,
         userId: signingUserId,
         childUserId: pendingIntent?.childId,
@@ -655,7 +697,7 @@ export default function TeamRegistrationFlow({
       operationId: typeof result?.operationId === 'string' ? result.operationId : undefined,
       syncStatus: typeof result?.syncStatus === 'string' ? result.syncStatus : undefined,
     };
-  }, [pendingIntent, resolvedTeam.$id, user]);
+  }, [pendingIntent, resolvedRegistrationTeamId, user]);
 
   const handleSignedDocument = useCallback(async (messageDocumentId?: string) => {
     const currentLink = signLinks[currentSignIndex];

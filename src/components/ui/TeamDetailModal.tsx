@@ -212,6 +212,7 @@ export default function TeamDetailModal({
     const [cancellingInviteIds, setCancellingInviteIds] = useState<Set<string>>(new Set());
     const [pendingRoleInvites, setPendingRoleInvites] = useState<Array<{ invite: Invite; invitedUser?: UserData }>>([]);
     const [cancellingRoleInviteIds, setCancellingRoleInviteIds] = useState<Set<string>>(new Set());
+    const [removingPlayerIds, setRemovingPlayerIds] = useState<Set<string>>(new Set());
     const [managerUser, setManagerUser] = useState<UserData | null>(null);
     const [headCoachUser, setHeadCoachUser] = useState<UserData | null>(null);
     const [assistantCoachUsers, setAssistantCoachUsers] = useState<UserData[]>([]);
@@ -1205,6 +1206,11 @@ export default function TeamDetailModal({
     };
 
     const handleRemovePlayer = async (playerId: string) => {
+        if (removingPlayerIds.has(playerId)) {
+            return;
+        }
+        setRemovingPlayerIds((previous) => new Set(previous).add(playerId));
+        setError(null);
         try {
             if (playerId === currentTeam.captainId) {
                 const nextCaptainId = draftCaptainId.trim();
@@ -1222,24 +1228,24 @@ export default function TeamDetailModal({
                 onTeamUpdated?.(captainUpdated);
             }
 
-            const success = await teamService.removePlayerFromTeam(currentTeam.$id, playerId);
+            const updated = await teamService.removePlayerFromTeam(currentTeam.$id, playerId);
 
-            if (success) {
-                setTeamPlayers(prev => prev.filter(player => player.$id !== playerId));
-
-                const updatedTeam = {
-                    ...currentTeam,
-                    captainId:
-                        playerId === currentTeam.captainId
-                            ? draftCaptainId.trim()
-                            : currentTeam.captainId,
-                    playerIds: currentTeam.playerIds.filter(id => id !== playerId)
-                };
-                onTeamUpdated?.(updatedTeam);
+            if (!updated) {
+                setError('Failed to remove player');
+                return;
             }
+
+            setTeamPlayers(prev => prev.filter(player => player.$id !== playerId));
+            onTeamUpdated?.(updated);
         } catch (error) {
             console.error('Failed to remove player:', error);
             setError('Failed to remove player');
+        } finally {
+            setRemovingPlayerIds((previous) => {
+                const next = new Set(previous);
+                next.delete(playerId);
+                return next;
+            });
         }
     };
 
@@ -1662,6 +1668,7 @@ export default function TeamDetailModal({
                                                                     color="red"
                                                                     variant="subtle"
                                                                     size="xs"
+                                                                    loading={removingPlayerIds.has(player.$id)}
                                                                     onClick={(event) => {
                                                                         event.stopPropagation();
                                                                         void handleRemovePlayer(player.$id);

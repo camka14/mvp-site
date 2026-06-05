@@ -17,6 +17,10 @@ import {
   loadCanonicalTeamById,
   syncCanonicalTeamRoster,
 } from '@/server/teams/teamMembership';
+import {
+  findFutureRegisteredTeamRefs,
+  syncCanonicalTeamFutureEventSnapshots,
+} from '@/server/teams/teamEventSnapshotSync';
 import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
 
 export const dynamic = 'force-dynamic';
@@ -353,61 +357,6 @@ const withTeamRoleAliases = (team: Record<string, any>) => {
 };
 
 const getTeamsDelegate = (client: any) => client?.teams ?? client?.volleyBallTeams;
-const ACTIVE_EVENT_REGISTRATION_STATUSES = ['STARTED', 'PENDING', 'ACTIVE', 'BLOCKED'] as const;
-
-const findFutureRegisteredTeamIds = async (
-  client: any,
-  teamIds: string[],
-  now: Date,
-): Promise<string[]> => {
-  const registrationRows = teamIds.length && typeof client.eventRegistrations?.findMany === 'function'
-    ? await client.eventRegistrations.findMany({
-      where: {
-        registrantType: 'TEAM',
-        rosterRole: 'PARTICIPANT',
-        status: { in: [...ACTIVE_EVENT_REGISTRATION_STATUSES] },
-        registrantId: { in: teamIds },
-        slotId: null,
-        occurrenceDate: null,
-      },
-      select: {
-        eventId: true,
-        registrantId: true,
-      },
-    })
-    : [];
-  const eventIds = Array.from(new Set(
-    registrationRows
-      .map((row: { eventId?: unknown }) => normalizeText(row.eventId))
-      .filter((eventId: string | undefined): eventId is string => Boolean(eventId)),
-  ));
-  if (!eventIds.length) {
-    return [];
-  }
-
-  const futureEvents = await client.events.findMany({
-    where: {
-      id: { in: eventIds },
-      end: { gte: now },
-    },
-    select: { id: true },
-  });
-  const futureEventIds = new Set(
-    futureEvents
-      .map((event: { id?: unknown }) => normalizeText(event.id))
-      .filter((eventId: string | undefined): eventId is string => Boolean(eventId)),
-  );
-
-  return Array.from(new Set(
-    registrationRows
-      .filter((row: { eventId?: unknown }) => {
-        const eventId = normalizeText(row.eventId);
-        return Boolean(eventId && futureEventIds.has(eventId));
-      })
-      .map((row: { registrantId?: unknown }) => normalizeText(row.registrantId))
-      .filter((teamId: string | undefined): teamId is string => Boolean(teamId)),
-  ));
-};
 const UNKNOWN_ARGUMENT_REGEX = /Unknown argument `([^`]+)`/i;
 
 const extractUnknownArgument = (error: unknown): string | null => {
@@ -622,68 +571,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         playerRegistrations: payload.playerRegistrations,
         now,
       });
-      const teamsToSync = new Set<string>([id]);
-      const previousMemberIdsByTeamId = new Map<string, string[]>([
-        [id, getTeamChatBaseMemberIds(existingCanonical as Record<string, any>)],
-      ]);
+      const previousMemberIds = getTeamChatBaseMemberIds(existingCanonical as Record<string, any>);
 
       if (shouldSyncDerivedTeams) {
-        const txTeams = getTeamsDelegate(tx);
-        if (!txTeams?.findMany || !txTeams?.update || !tx.events?.findMany || !tx.eventRegistrations?.findMany) {
-          throw new Error('Team storage is unavailable in transaction.');
-        }
-
-        const derivedTeams = await txTeams.findMany({
-          where: { parentTeamId: id },
-          select: {
-            id: true,
-            captainId: true,
-            managerId: true,
-            headCoachId: true,
-            coachIds: true,
-            playerIds: true,
-          },
-        });
-        const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
-        const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
-        if (derivedTeamIds.length) {
-          const teamIdsToUpdate = new Set(await findFutureRegisteredTeamIds(tx, derivedTeamIds, now));
-
-          if (teamIdsToUpdate.size) {
-            const updatePayload = {
-              name: nextState.name,
-              playerIds: nextState.playerIds,
-              captainId: nextState.captainId,
-              managerId: nextState.managerId,
-              headCoachId: nextState.headCoachId,
-              coachIds: nextState.coachIds,
-              teamSize: nextState.teamSize,
-              profileImageId: nextState.profileImageId,
-              sport: nextState.sport,
-              divisionTypeId: nextState.divisionTypeId,
-              updatedAt: now,
-            };
-
-            for (const teamId of teamIdsToUpdate) {
-              const previousTeam = derivedTeamById.get(teamId);
-              if (previousTeam) {
-                previousMemberIdsByTeamId.set(teamId, getTeamChatBaseMemberIds(previousTeam));
-              }
-              await txTeams.update({
-                where: { id: teamId },
-                data: updatePayload,
-              });
-              teamsToSync.add(teamId);
-            }
-          }
-        }
-      }
-
-      for (const teamId of teamsToSync) {
-        await syncTeamChatInTx(tx, teamId, {
-          previousMemberIds: previousMemberIdsByTeamId.get(teamId),
+        await syncCanonicalTeamFutureEventSnapshots({
+          tx,
+          canonicalTeamId: id,
+          createdBy: session.userId,
+          now,
         });
       }
+
+      await syncTeamChatInTx(tx, id, { previousMemberIds });
     });
     const refreshed = await loadCanonicalTeamById(id, prisma);
     return NextResponse.json(withTeamRoleAliases((refreshed ?? updated) as any), { status: 200 });
@@ -777,8 +676,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const derivedTeamById = new Map(derivedTeams.map((team: any) => [team.id, team]));
     const derivedTeamIds = derivedTeams.map((team: { id: string }) => team.id).filter(Boolean);
     if (derivedTeamIds.length) {
-      const teamIdsToUpdate = new Set(await findFutureRegisteredTeamIds(tx, derivedTeamIds, now));
-      if (teamIdsToUpdate.size) {
+      const teamRefsToUpdate = await findFutureRegisteredTeamRefs(tx, derivedTeamIds, now);
+      if (teamRefsToUpdate.length) {
         const updatePayload = {
           name: nextState.name,
           playerIds: nextState.playerIds,
@@ -795,7 +694,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           updatedAt: now,
         };
 
-        for (const teamId of teamIdsToUpdate) {
+        for (const { teamId } of teamRefsToUpdate) {
           const previousTeam = derivedTeamById.get(teamId);
           if (previousTeam) {
             previousMemberIdsByTeamId.set(teamId, getTeamChatBaseMemberIds(previousTeam));
