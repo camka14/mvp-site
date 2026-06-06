@@ -6,6 +6,7 @@ import type {
   Organization,
   PaymentIntent,
   Product,
+  RegistrationQuestionAnswerInput,
   Team,
   TimeSlot,
   UserData,
@@ -121,6 +122,7 @@ class PaymentService {
     selection?: DivisionRegistrationSelection,
     billingAddress?: BillingAddress,
     occurrence?: WeeklyOccurrenceSelection,
+    answers?: RegistrationQuestionAnswerInput[],
   ): Promise<PaymentIntent> {
     try {
       if (!event) {
@@ -137,6 +139,7 @@ class PaymentService {
         ...selection,
         ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
         ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+        ...(answers ? { answers } : {}),
       };
 
       const result = await apiRequest<PaymentIntent & { error?: string }>('/api/billing/purchase-intent', {
@@ -272,6 +275,7 @@ class PaymentService {
     selection?: DivisionRegistrationSelection,
     timeoutMs?: number,
     occurrence?: WeeklyOccurrenceSelection,
+    answers?: RegistrationQuestionAnswerInput[],
   ): Promise<{ bill?: Bill | null } | undefined> {
     try {
       if (!event?.$id) {
@@ -288,6 +292,7 @@ class PaymentService {
         ...selection,
         ...(occurrence?.slotId ? { slotId: occurrence.slotId } : {}),
         ...(occurrence?.occurrenceDate ? { occurrenceDate: occurrence.occurrenceDate } : {}),
+        ...(answers ? { answers } : {}),
       };
 
       const result = await apiRequest<{ error?: string; bill?: Bill | null }>(`/api/events/${event.$id}/participants`, {

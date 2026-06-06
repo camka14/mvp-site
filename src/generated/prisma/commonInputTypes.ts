@@ -412,11 +412,28 @@ export type EnumEventTeamsKindEnumNullableWithAggregatesFilter<$PrismaModel = ne
   _max?: Prisma.NestedEnumEventTeamsKindEnumNullableFilter<$PrismaModel>
 }
 
+export type EnumTeamJoinPolicyEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinPolicyEnum | Prisma.EnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinPolicyEnum[] | Prisma.ListEnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinPolicyEnum[] | Prisma.ListEnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinPolicyEnumFilter<$PrismaModel> | $Enums.TeamJoinPolicyEnum
+}
+
 export type EnumTeamsVisibilityEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.TeamsVisibilityEnum | Prisma.EnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
   in?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
   notIn?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
   not?: Prisma.NestedEnumTeamsVisibilityEnumFilter<$PrismaModel> | $Enums.TeamsVisibilityEnum
+}
+
+export type EnumTeamJoinPolicyEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinPolicyEnum | Prisma.EnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinPolicyEnum[] | Prisma.ListEnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinPolicyEnum[] | Prisma.ListEnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinPolicyEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamJoinPolicyEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamJoinPolicyEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamJoinPolicyEnumFilter<$PrismaModel>
 }
 
 export type EnumTeamsVisibilityEnumWithAggregatesFilter<$PrismaModel = never> = {
@@ -478,6 +495,91 @@ export type EnumTeamMembershipStatusEnumWithAggregatesFilter<$PrismaModel = neve
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumTeamMembershipStatusEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumTeamMembershipStatusEnumFilter<$PrismaModel>
+}
+
+export type EnumRegistrationQuestionScopeTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionScopeTypeEnum | Prisma.EnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionScopeTypeEnum[] | Prisma.ListEnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionScopeTypeEnum[] | Prisma.ListEnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionScopeTypeEnumFilter<$PrismaModel> | $Enums.RegistrationQuestionScopeTypeEnum
+}
+
+export type EnumRegistrationQuestionAnswerTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionAnswerTypeEnum | Prisma.EnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionAnswerTypeEnum[] | Prisma.ListEnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionAnswerTypeEnum[] | Prisma.ListEnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionAnswerTypeEnumFilter<$PrismaModel> | $Enums.RegistrationQuestionAnswerTypeEnum
+}
+
+export type EnumRegistrationQuestionScopeTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionScopeTypeEnum | Prisma.EnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionScopeTypeEnum[] | Prisma.ListEnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionScopeTypeEnum[] | Prisma.ListEnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionScopeTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.RegistrationQuestionScopeTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumRegistrationQuestionScopeTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumRegistrationQuestionScopeTypeEnumFilter<$PrismaModel>
+}
+
+export type EnumRegistrationQuestionAnswerTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionAnswerTypeEnum | Prisma.EnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionAnswerTypeEnum[] | Prisma.ListEnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionAnswerTypeEnum[] | Prisma.ListEnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionAnswerTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.RegistrationQuestionAnswerTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumRegistrationQuestionAnswerTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumRegistrationQuestionAnswerTypeEnumFilter<$PrismaModel>
+}
+
+export type EnumRegistrationQuestionResponseSubjectTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionResponseSubjectTypeEnum | Prisma.EnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionResponseSubjectTypeEnum[] | Prisma.ListEnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionResponseSubjectTypeEnum[] | Prisma.ListEnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionResponseSubjectTypeEnumFilter<$PrismaModel> | $Enums.RegistrationQuestionResponseSubjectTypeEnum
+}
+
+export type EnumRegistrationQuestionResponseSubjectTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionResponseSubjectTypeEnum | Prisma.EnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionResponseSubjectTypeEnum[] | Prisma.ListEnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionResponseSubjectTypeEnum[] | Prisma.ListEnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionResponseSubjectTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.RegistrationQuestionResponseSubjectTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumRegistrationQuestionResponseSubjectTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumRegistrationQuestionResponseSubjectTypeEnumFilter<$PrismaModel>
+}
+
+export type EnumTeamJoinRequestRegistrantTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinRequestRegistrantTypeEnum | Prisma.EnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinRequestRegistrantTypeEnum[] | Prisma.ListEnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinRequestRegistrantTypeEnum[] | Prisma.ListEnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinRequestRegistrantTypeEnumFilter<$PrismaModel> | $Enums.TeamJoinRequestRegistrantTypeEnum
+}
+
+export type EnumTeamJoinRequestStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinRequestStatusEnum | Prisma.EnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinRequestStatusEnum[] | Prisma.ListEnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinRequestStatusEnum[] | Prisma.ListEnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinRequestStatusEnumFilter<$PrismaModel> | $Enums.TeamJoinRequestStatusEnum
+}
+
+export type EnumTeamJoinRequestRegistrantTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinRequestRegistrantTypeEnum | Prisma.EnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinRequestRegistrantTypeEnum[] | Prisma.ListEnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinRequestRegistrantTypeEnum[] | Prisma.ListEnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinRequestRegistrantTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamJoinRequestRegistrantTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamJoinRequestRegistrantTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamJoinRequestRegistrantTypeEnumFilter<$PrismaModel>
+}
+
+export type EnumTeamJoinRequestStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinRequestStatusEnum | Prisma.EnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinRequestStatusEnum[] | Prisma.ListEnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinRequestStatusEnum[] | Prisma.ListEnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinRequestStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamJoinRequestStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamJoinRequestStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamJoinRequestStatusEnumFilter<$PrismaModel>
 }
 
 export type EnumTeamStaffAssignmentsRoleEnumFilter<$PrismaModel = never> = {
@@ -1234,11 +1336,28 @@ export type NestedEnumEventTeamsKindEnumNullableWithAggregatesFilter<$PrismaMode
   _max?: Prisma.NestedEnumEventTeamsKindEnumNullableFilter<$PrismaModel>
 }
 
+export type NestedEnumTeamJoinPolicyEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinPolicyEnum | Prisma.EnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinPolicyEnum[] | Prisma.ListEnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinPolicyEnum[] | Prisma.ListEnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinPolicyEnumFilter<$PrismaModel> | $Enums.TeamJoinPolicyEnum
+}
+
 export type NestedEnumTeamsVisibilityEnumFilter<$PrismaModel = never> = {
   equals?: $Enums.TeamsVisibilityEnum | Prisma.EnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
   in?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
   notIn?: $Enums.TeamsVisibilityEnum[] | Prisma.ListEnumTeamsVisibilityEnumFieldRefInput<$PrismaModel>
   not?: Prisma.NestedEnumTeamsVisibilityEnumFilter<$PrismaModel> | $Enums.TeamsVisibilityEnum
+}
+
+export type NestedEnumTeamJoinPolicyEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinPolicyEnum | Prisma.EnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinPolicyEnum[] | Prisma.ListEnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinPolicyEnum[] | Prisma.ListEnumTeamJoinPolicyEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinPolicyEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamJoinPolicyEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamJoinPolicyEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamJoinPolicyEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumTeamsVisibilityEnumWithAggregatesFilter<$PrismaModel = never> = {
@@ -1300,6 +1419,91 @@ export type NestedEnumTeamMembershipStatusEnumWithAggregatesFilter<$PrismaModel 
   _count?: Prisma.NestedIntFilter<$PrismaModel>
   _min?: Prisma.NestedEnumTeamMembershipStatusEnumFilter<$PrismaModel>
   _max?: Prisma.NestedEnumTeamMembershipStatusEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumRegistrationQuestionScopeTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionScopeTypeEnum | Prisma.EnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionScopeTypeEnum[] | Prisma.ListEnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionScopeTypeEnum[] | Prisma.ListEnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionScopeTypeEnumFilter<$PrismaModel> | $Enums.RegistrationQuestionScopeTypeEnum
+}
+
+export type NestedEnumRegistrationQuestionAnswerTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionAnswerTypeEnum | Prisma.EnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionAnswerTypeEnum[] | Prisma.ListEnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionAnswerTypeEnum[] | Prisma.ListEnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionAnswerTypeEnumFilter<$PrismaModel> | $Enums.RegistrationQuestionAnswerTypeEnum
+}
+
+export type NestedEnumRegistrationQuestionScopeTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionScopeTypeEnum | Prisma.EnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionScopeTypeEnum[] | Prisma.ListEnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionScopeTypeEnum[] | Prisma.ListEnumRegistrationQuestionScopeTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionScopeTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.RegistrationQuestionScopeTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumRegistrationQuestionScopeTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumRegistrationQuestionScopeTypeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumRegistrationQuestionAnswerTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionAnswerTypeEnum | Prisma.EnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionAnswerTypeEnum[] | Prisma.ListEnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionAnswerTypeEnum[] | Prisma.ListEnumRegistrationQuestionAnswerTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionAnswerTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.RegistrationQuestionAnswerTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumRegistrationQuestionAnswerTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumRegistrationQuestionAnswerTypeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumRegistrationQuestionResponseSubjectTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionResponseSubjectTypeEnum | Prisma.EnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionResponseSubjectTypeEnum[] | Prisma.ListEnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionResponseSubjectTypeEnum[] | Prisma.ListEnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionResponseSubjectTypeEnumFilter<$PrismaModel> | $Enums.RegistrationQuestionResponseSubjectTypeEnum
+}
+
+export type NestedEnumRegistrationQuestionResponseSubjectTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.RegistrationQuestionResponseSubjectTypeEnum | Prisma.EnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.RegistrationQuestionResponseSubjectTypeEnum[] | Prisma.ListEnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.RegistrationQuestionResponseSubjectTypeEnum[] | Prisma.ListEnumRegistrationQuestionResponseSubjectTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumRegistrationQuestionResponseSubjectTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.RegistrationQuestionResponseSubjectTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumRegistrationQuestionResponseSubjectTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumRegistrationQuestionResponseSubjectTypeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumTeamJoinRequestRegistrantTypeEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinRequestRegistrantTypeEnum | Prisma.EnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinRequestRegistrantTypeEnum[] | Prisma.ListEnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinRequestRegistrantTypeEnum[] | Prisma.ListEnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinRequestRegistrantTypeEnumFilter<$PrismaModel> | $Enums.TeamJoinRequestRegistrantTypeEnum
+}
+
+export type NestedEnumTeamJoinRequestStatusEnumFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinRequestStatusEnum | Prisma.EnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinRequestStatusEnum[] | Prisma.ListEnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinRequestStatusEnum[] | Prisma.ListEnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinRequestStatusEnumFilter<$PrismaModel> | $Enums.TeamJoinRequestStatusEnum
+}
+
+export type NestedEnumTeamJoinRequestRegistrantTypeEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinRequestRegistrantTypeEnum | Prisma.EnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinRequestRegistrantTypeEnum[] | Prisma.ListEnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinRequestRegistrantTypeEnum[] | Prisma.ListEnumTeamJoinRequestRegistrantTypeEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinRequestRegistrantTypeEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamJoinRequestRegistrantTypeEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamJoinRequestRegistrantTypeEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamJoinRequestRegistrantTypeEnumFilter<$PrismaModel>
+}
+
+export type NestedEnumTeamJoinRequestStatusEnumWithAggregatesFilter<$PrismaModel = never> = {
+  equals?: $Enums.TeamJoinRequestStatusEnum | Prisma.EnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  in?: $Enums.TeamJoinRequestStatusEnum[] | Prisma.ListEnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  notIn?: $Enums.TeamJoinRequestStatusEnum[] | Prisma.ListEnumTeamJoinRequestStatusEnumFieldRefInput<$PrismaModel>
+  not?: Prisma.NestedEnumTeamJoinRequestStatusEnumWithAggregatesFilter<$PrismaModel> | $Enums.TeamJoinRequestStatusEnum
+  _count?: Prisma.NestedIntFilter<$PrismaModel>
+  _min?: Prisma.NestedEnumTeamJoinRequestStatusEnumFilter<$PrismaModel>
+  _max?: Prisma.NestedEnumTeamJoinRequestStatusEnumFilter<$PrismaModel>
 }
 
 export type NestedEnumTeamStaffAssignmentsRoleEnumFilter<$PrismaModel = never> = {

@@ -22,6 +22,14 @@ import {
   syncCanonicalTeamFutureEventSnapshots,
 } from '@/server/teams/teamEventSnapshotSync';
 import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
+import {
+  TEAM_JOIN_POLICY_OPEN_REGISTRATION,
+  TEAM_JOIN_POLICY_REQUEST_TO_JOIN,
+  inferTeamJoinPolicyFromOpenRegistration,
+  normalizeTeamJoinPolicy,
+  resolveSerializedTeamJoinPolicy,
+  type TeamJoinPolicy,
+} from '@/server/teams/teamJoinPolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -63,6 +71,7 @@ const teamPatchSchema = z.object({
   teamSize: z.number().optional(),
   profileImageId: z.string().optional(),
   profileImage: z.string().optional(),
+  joinPolicy: z.enum(['CLOSED', 'OPEN_REGISTRATION', 'REQUEST_TO_JOIN']).optional(),
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
@@ -88,6 +97,7 @@ const VERSIONED_PROFILE_FIELDS: ReadonlySet<string> = new Set([
   'divisionTypeId',
   'sport',
   'teamSize',
+  'joinPolicy',
   'openRegistration',
   'registrationPriceCents',
   'requiredTemplateIds',
@@ -203,6 +213,7 @@ type TeamState = {
   pending: string[];
   teamSize: number;
   profileImageId: string | null;
+  joinPolicy: TeamJoinPolicy;
   openRegistration: boolean;
   registrationPriceCents: number;
   requiredTemplateIds: string[];
@@ -254,6 +265,20 @@ const buildTeamState = (
   const nextProfileImage = normalizeText(payload.profileImageId ?? payload.profileImage)
     ?? normalizeText(existing.profileImageId)
     ?? null;
+  const existingJoinPolicy = resolveSerializedTeamJoinPolicy(existing);
+  const hasJoinPolicyPayload = hasOwn(payload, 'joinPolicy');
+  const hasOpenRegistrationPayload = hasOwn(payload, 'openRegistration');
+  const joinPolicy = hasJoinPolicyPayload
+    ? normalizeTeamJoinPolicy(payload.joinPolicy, existingJoinPolicy)
+    : hasOpenRegistrationPayload
+      ? (
+        payload.openRegistration === true
+          ? TEAM_JOIN_POLICY_OPEN_REGISTRATION
+          : existingJoinPolicy === TEAM_JOIN_POLICY_REQUEST_TO_JOIN
+            ? TEAM_JOIN_POLICY_REQUEST_TO_JOIN
+            : inferTeamJoinPolicyFromOpenRegistration(false)
+      )
+      : existingJoinPolicy;
 
   return {
     name: payload.name ?? resolvedExistingName,
@@ -268,9 +293,8 @@ const buildTeamState = (
     pending,
     teamSize: normalizeNumber(payload.teamSize, normalizeNumber(existing.teamSize, playerIds.length)),
     profileImageId: nextProfileImage,
-    openRegistration: hasOwn(payload, 'openRegistration')
-      ? Boolean(payload.openRegistration)
-      : Boolean(existing.openRegistration),
+    joinPolicy,
+    openRegistration: joinPolicy === TEAM_JOIN_POLICY_OPEN_REGISTRATION,
     registrationPriceCents: hasOwn(payload, 'registrationPriceCents')
       ? Math.max(0, Math.round(normalizeNumber(payload.registrationPriceCents, 0)))
       : Math.max(0, Math.round(normalizeNumber(existing.registrationPriceCents, 0))),
@@ -306,6 +330,9 @@ const hasVersionedProfileChanges = (
         break;
       case 'teamSize':
         if (normalizeNumber(existing.teamSize, 0) !== next.teamSize) return true;
+        break;
+      case 'joinPolicy':
+        if (resolveSerializedTeamJoinPolicy(existing) !== next.joinPolicy) return true;
         break;
       case 'openRegistration':
         if (Boolean(existing.openRegistration) !== next.openRegistration) return true;
@@ -509,18 +536,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const nextState = buildTeamState(existingCanonical as Record<string, any>, payload);
-    const registrationSettingsTouched = hasOwn(payload, 'openRegistration') || hasOwn(payload, 'registrationPriceCents');
+    const registrationSettingsTouched = hasOwn(payload, 'joinPolicy') || hasOwn(payload, 'openRegistration') || hasOwn(payload, 'registrationPriceCents');
     const registrationSettingsChanged = registrationSettingsTouched && (
-      Boolean((existingCanonical as Record<string, any>).openRegistration) !== nextState.openRegistration
+      resolveSerializedTeamJoinPolicy(existingCanonical as Record<string, any>) !== nextState.joinPolicy
+      || Boolean((existingCanonical as Record<string, any>).openRegistration) !== nextState.openRegistration
       || Math.max(0, Math.round(normalizeNumber((existingCanonical as Record<string, any>).registrationPriceCents, 0))) !== nextState.registrationPriceCents
     );
     if (registrationSettingsChanged) {
       try {
         const registrationSettings = await resolveTeamRegistrationSettings({
           teamId: id,
+          joinPolicy: nextState.joinPolicy,
           openRegistration: nextState.openRegistration,
           registrationPriceCents: nextState.registrationPriceCents,
         });
+        nextState.joinPolicy = registrationSettings.joinPolicy;
         nextState.openRegistration = registrationSettings.openRegistration;
         nextState.registrationPriceCents = registrationSettings.registrationPriceCents;
       } catch (error) {
@@ -548,6 +578,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           sport: nextState.sport,
           teamSize: nextState.teamSize,
           profileImageId: nextState.profileImageId,
+          joinPolicy: nextState.joinPolicy,
           openRegistration: nextState.openRegistration,
           registrationPriceCents: nextState.registrationPriceCents,
           requiredTemplateIds: nextState.requiredTemplateIds,
@@ -608,18 +639,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   const nextState = buildTeamState(existing as Record<string, any>, payload);
-  const registrationSettingsTouched = hasOwn(payload, 'openRegistration') || hasOwn(payload, 'registrationPriceCents');
+  const registrationSettingsTouched = hasOwn(payload, 'joinPolicy') || hasOwn(payload, 'openRegistration') || hasOwn(payload, 'registrationPriceCents');
   const registrationSettingsChanged = registrationSettingsTouched && (
-    Boolean((existing as Record<string, any>).openRegistration) !== nextState.openRegistration
+    resolveSerializedTeamJoinPolicy(existing as Record<string, any>) !== nextState.joinPolicy
+    || Boolean((existing as Record<string, any>).openRegistration) !== nextState.openRegistration
     || Math.max(0, Math.round(normalizeNumber((existing as Record<string, any>).registrationPriceCents, 0))) !== nextState.registrationPriceCents
   );
   if (registrationSettingsChanged) {
     try {
       const registrationSettings = await resolveTeamRegistrationSettings({
         teamId: id,
+        joinPolicy: nextState.joinPolicy,
         openRegistration: nextState.openRegistration,
         registrationPriceCents: nextState.registrationPriceCents,
       });
+      nextState.joinPolicy = registrationSettings.joinPolicy;
       nextState.openRegistration = registrationSettings.openRegistration;
       nextState.registrationPriceCents = registrationSettings.registrationPriceCents;
     } catch (error) {
@@ -689,6 +723,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           profileImageId: nextState.profileImageId,
           sport: nextState.sport,
           divisionTypeId: nextState.divisionTypeId,
+          joinPolicy: nextState.joinPolicy,
           openRegistration: nextState.openRegistration,
           registrationPriceCents: nextState.registrationPriceCents,
           updatedAt: now,

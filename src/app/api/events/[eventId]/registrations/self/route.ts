@@ -19,6 +19,10 @@ import {
 } from '@/server/events/weeklyOccurrences';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 import { normalizeRequiredSignerType } from '@/lib/templateSignerTypes';
+import {
+  loadAndBuildRegistrationAnswerSnapshot,
+  upsertRegistrationQuestionResponse,
+} from '@/server/registrationQuestions';
 
 export const dynamic = 'force-dynamic';
 
@@ -101,6 +105,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   if (!divisionSelection.ok) {
     return NextResponse.json({ error: divisionSelection.error ?? 'Invalid division selection' }, { status: 400 });
   }
+  const eventAnswersSnapshot = await loadAndBuildRegistrationAnswerSnapshot({
+    scopeType: 'EVENT',
+    scopeId: eventId,
+    answers: parsed.data.answers,
+  });
 
   const ageCheck = validateRegistrantAgeForSelection({
     dateOfBirth: user.dateOfBirth,
@@ -171,6 +180,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
       createdBy: session.userId,
       occurrence: resolvedOccurrence,
     });
+    if (eventAnswersSnapshot.length) {
+      await upsertRegistrationQuestionResponse({
+        scopeType: 'EVENT',
+        scopeId: eventId,
+        subjectType: 'EVENT_REGISTRATION',
+        subjectId: registration.id,
+        responderUserId: session.userId,
+        registrantUserId: session.userId,
+        registrantType: 'CHILD',
+        answersSnapshot: eventAnswersSnapshot,
+      });
+    }
 
     return NextResponse.json(
       {
@@ -303,6 +324,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     createdBy: session.userId,
     occurrence: resolvedOccurrence,
   });
+  if (eventAnswersSnapshot.length) {
+    await upsertRegistrationQuestionResponse({
+      scopeType: 'EVENT',
+      scopeId: eventId,
+      subjectType: 'EVENT_REGISTRATION',
+      subjectId: registration.id,
+      responderUserId: session.userId,
+      registrantUserId: session.userId,
+      registrantType: 'SELF',
+      answersSnapshot: eventAnswersSnapshot,
+    });
+  }
 
   await prisma.invites?.deleteMany?.({
     where: {

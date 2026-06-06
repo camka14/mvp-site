@@ -119,6 +119,41 @@ enum TeamsVisibilityEnum {
   ADMIN_ONLY
 }
 
+enum TeamJoinPolicyEnum {
+  CLOSED
+  OPEN_REGISTRATION
+  REQUEST_TO_JOIN
+}
+
+enum RegistrationQuestionScopeTypeEnum {
+  TEAM
+  EVENT
+}
+
+enum RegistrationQuestionAnswerTypeEnum {
+  TEXT
+  LONG_TEXT
+}
+
+enum RegistrationQuestionResponseSubjectTypeEnum {
+  TEAM_JOIN_REQUEST
+  TEAM_REGISTRATION
+  EVENT_REGISTRATION
+}
+
+enum TeamJoinRequestStatusEnum {
+  PENDING
+  APPROVED
+  DECLINED
+  WITHDRAWN
+  CANCELLED
+}
+
+enum TeamJoinRequestRegistrantTypeEnum {
+  SELF
+  CHILD
+}
+
 enum StripeAccountsAccountOriginEnum {
   LEGACY_OAUTH
   PLATFORM_ONBOARDING
@@ -600,12 +635,14 @@ model CanonicalTeams {
   organizationId   String?
   createdBy        String?
   openRegistration Boolean   @default(false)
+  joinPolicy       TeamJoinPolicyEnum @default(CLOSED)
   registrationPriceCents Int @default(0)
   requiredTemplateIds String[] @default([])
   visibility       TeamsVisibilityEnum @default(PUBLIC)
 
   @@index([organizationId])
   @@index([createdBy])
+  @@index([joinPolicy])
   @@index([visibility])
   @@map("Teams")
 }
@@ -630,6 +667,67 @@ model TeamRegistrations {
   @@unique([teamId, userId])
   @@index([teamId, status])
   @@index([userId, status])
+}
+
+model RegistrationQuestions {
+  id         String                             @id
+  scopeType  RegistrationQuestionScopeTypeEnum
+  scopeId    String
+  prompt     String
+  answerType RegistrationQuestionAnswerTypeEnum @default(TEXT)
+  required   Boolean                            @default(false)
+  sortOrder  Int                                @default(0)
+  isActive   Boolean                            @default(true)
+  createdAt  DateTime                           @default(now())
+  updatedAt  DateTime                           @updatedAt
+  createdBy  String?
+  updatedBy  String?
+
+  @@index([scopeType, scopeId, isActive])
+  @@index([scopeType, scopeId, sortOrder])
+  @@index([createdBy])
+  @@map("RegistrationQuestions")
+}
+
+model RegistrationQuestionResponses {
+  id               String                                      @id
+  scopeType        RegistrationQuestionScopeTypeEnum
+  scopeId          String
+  subjectType      RegistrationQuestionResponseSubjectTypeEnum
+  subjectId        String
+  responderUserId  String
+  registrantUserId String
+  registrantType   String
+  answersSnapshot  Json
+  createdAt        DateTime                                    @default(now())
+  updatedAt        DateTime                                    @updatedAt
+
+  @@unique([subjectType, subjectId])
+  @@index([scopeType, scopeId])
+  @@index([responderUserId])
+  @@index([registrantUserId])
+  @@map("RegistrationQuestionResponses")
+}
+
+model TeamJoinRequests {
+  id                     String                             @id
+  teamId                 String
+  requesterUserId        String
+  registrantUserId       String
+  parentId               String?
+  registrantType         TeamJoinRequestRegistrantTypeEnum @default(SELF)
+  status                 TeamJoinRequestStatusEnum         @default(PENDING)
+  reviewedByUserId       String?
+  reviewedAt             DateTime?
+  reviewNote             String?
+  approvedRegistrationId String?
+  createdAt              DateTime                           @default(now())
+  updatedAt              DateTime                           @updatedAt
+
+  @@index([teamId, status])
+  @@index([registrantUserId, status])
+  @@index([requesterUserId, status])
+  @@map("TeamJoinRequests")
 }
 
 model TeamStaffAssignments {

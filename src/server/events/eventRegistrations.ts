@@ -792,6 +792,47 @@ export const buildEventParticipantSnapshot = async (params: {
       })
       : Promise.resolve([]),
   ]);
+  const parentTeamIds = Array.from(new Set(
+    (teams as Array<{ parentTeamId?: unknown }>)
+      .map((team) => normalizeId(team.parentTeamId))
+      .filter((teamId): teamId is string => Boolean(teamId)),
+  ));
+  const parentTeams = parentTeamIds.length
+    && typeof (client as any).canonicalTeams?.findMany === 'function'
+    ? await client.canonicalTeams.findMany({
+      where: { id: { in: parentTeamIds } },
+      select: {
+        id: true,
+        organizationId: true,
+        createdBy: true,
+        openRegistration: true,
+        joinPolicy: true,
+        registrationPriceCents: true,
+        requiredTemplateIds: true,
+        visibility: true,
+      },
+    })
+    : [];
+  const parentTeamsById = new Map(
+    parentTeams.map((team) => [team.id, team]),
+  );
+  const enrichEventTeamRegistrationMetadata = (team: any) => {
+    const parentTeamId = normalizeId(team?.parentTeamId);
+    const parentTeam = parentTeamId ? parentTeamsById.get(parentTeamId) : null;
+    if (!parentTeam) {
+      return team;
+    }
+    return {
+      ...team,
+      organizationId: parentTeam.organizationId ?? team.organizationId ?? null,
+      createdBy: parentTeam.createdBy ?? team.createdBy ?? null,
+      openRegistration: parentTeam.openRegistration,
+      joinPolicy: parentTeam.joinPolicy,
+      registrationPriceCents: parentTeam.registrationPriceCents,
+      requiredTemplateIds: parentTeam.requiredTemplateIds ?? [],
+      visibility: parentTeam.visibility,
+    };
+  };
   const placeholderTeamIds = new Set<string>(
     (teams as Array<{ id?: unknown; kind?: unknown; captainId?: unknown; parentTeamId?: unknown }>)
       .filter(isPlaceholderTeamRow)
@@ -1074,7 +1115,7 @@ export const buildEventParticipantSnapshot = async (params: {
       return (teams as any[]).filter((team) => {
         const teamId = normalizeIdKey(team.id);
         return Boolean(teamId && displayableTeamIds.has(teamId) && !placeholderTeamIds.has(teamId));
-      });
+      }).map(enrichEventTeamRegistrationMetadata);
     })(),
     users,
     participantCount,

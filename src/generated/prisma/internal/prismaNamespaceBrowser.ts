@@ -68,6 +68,9 @@ export const ModelName = {
   Teams: 'Teams',
   CanonicalTeams: 'CanonicalTeams',
   TeamRegistrations: 'TeamRegistrations',
+  RegistrationQuestions: 'RegistrationQuestions',
+  RegistrationQuestionResponses: 'RegistrationQuestionResponses',
+  TeamJoinRequests: 'TeamJoinRequests',
   TeamStaffAssignments: 'TeamStaffAssignments',
   EventTeamStaffAssignments: 'EventTeamStaffAssignments',
   Messages: 'Messages',
@@ -475,6 +478,7 @@ export const CanonicalTeamsScalarFieldEnum = {
   organizationId: 'organizationId',
   createdBy: 'createdBy',
   openRegistration: 'openRegistration',
+  joinPolicy: 'joinPolicy',
   registrationPriceCents: 'registrationPriceCents',
   requiredTemplateIds: 'requiredTemplateIds',
   visibility: 'visibility'
@@ -502,6 +506,60 @@ export const TeamRegistrationsScalarFieldEnum = {
 } as const
 
 export type TeamRegistrationsScalarFieldEnum = (typeof TeamRegistrationsScalarFieldEnum)[keyof typeof TeamRegistrationsScalarFieldEnum]
+
+
+export const RegistrationQuestionsScalarFieldEnum = {
+  id: 'id',
+  scopeType: 'scopeType',
+  scopeId: 'scopeId',
+  prompt: 'prompt',
+  answerType: 'answerType',
+  required: 'required',
+  sortOrder: 'sortOrder',
+  isActive: 'isActive',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type RegistrationQuestionsScalarFieldEnum = (typeof RegistrationQuestionsScalarFieldEnum)[keyof typeof RegistrationQuestionsScalarFieldEnum]
+
+
+export const RegistrationQuestionResponsesScalarFieldEnum = {
+  id: 'id',
+  scopeType: 'scopeType',
+  scopeId: 'scopeId',
+  subjectType: 'subjectType',
+  subjectId: 'subjectId',
+  responderUserId: 'responderUserId',
+  registrantUserId: 'registrantUserId',
+  registrantType: 'registrantType',
+  answersSnapshot: 'answersSnapshot',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type RegistrationQuestionResponsesScalarFieldEnum = (typeof RegistrationQuestionResponsesScalarFieldEnum)[keyof typeof RegistrationQuestionResponsesScalarFieldEnum]
+
+
+export const TeamJoinRequestsScalarFieldEnum = {
+  id: 'id',
+  teamId: 'teamId',
+  requesterUserId: 'requesterUserId',
+  registrantUserId: 'registrantUserId',
+  parentId: 'parentId',
+  registrantType: 'registrantType',
+  status: 'status',
+  reviewedByUserId: 'reviewedByUserId',
+  reviewedAt: 'reviewedAt',
+  reviewNote: 'reviewNote',
+  approvedRegistrationId: 'approvedRegistrationId',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+} as const
+
+export type TeamJoinRequestsScalarFieldEnum = (typeof TeamJoinRequestsScalarFieldEnum)[keyof typeof TeamJoinRequestsScalarFieldEnum]
 
 
 export const TeamStaffAssignmentsScalarFieldEnum = {

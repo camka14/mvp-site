@@ -80,11 +80,17 @@ function TeamItem({ team }: { team: PublicOrganizationTeamCard }) {
           ) : null}
         </div>
         <p className={styles.itemMeta}>
-          {team.openRegistration
+          {team.joinPolicy === 'REQUEST_TO_JOIN'
+            ? `Request to join - ${formatPrice(team.registrationPriceCents)}`
+            : team.openRegistration
             ? `Open registration - ${formatPrice(team.registrationPriceCents)}`
             : 'Registration closed'}
         </p>
-        {team.registrationUrl ? <span className={styles.itemAction}>Join team</span> : null}
+        {team.registrationUrl ? (
+          <span className={styles.itemAction}>
+            {team.joinPolicy === 'REQUEST_TO_JOIN' ? 'Request to join' : 'Join team'}
+          </span>
+        ) : null}
         {team.openRegistration && team.isFull ? (
           <button type="button" className={styles.itemButtonDisabled} disabled>
             Team full

@@ -1,4 +1,8 @@
 import { prisma } from '@/lib/prisma';
+import {
+  upsertRegistrationQuestionResponse,
+  type RegistrationQuestionAnswerSnapshotItem,
+} from '@/server/registrationQuestions';
 import { resolveConnectedAccountId } from '@/lib/stripeConnectAccounts';
 import { buildTeamRegistrationRefundEventId } from '@/server/refunds/refundExecution';
 import { getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
@@ -6,6 +10,14 @@ import {
   loadCanonicalTeamById,
   normalizeId,
 } from '@/server/teams/teamMembership';
+import {
+  TEAM_JOIN_POLICY_OPEN_REGISTRATION,
+  TEAM_JOIN_POLICY_REQUEST_TO_JOIN,
+  type TeamJoinPolicy,
+  inferTeamJoinPolicyFromOpenRegistration,
+  normalizeTeamJoinPolicy,
+  resolveSerializedTeamJoinPolicy,
+} from '@/server/teams/teamJoinPolicy';
 import { syncCanonicalTeamFutureEventSnapshots } from '@/server/teams/teamEventSnapshotSync';
 
 type PrismaLike = any;
@@ -22,6 +34,7 @@ type LockedTeamRow = {
   id: string;
   teamSize: number | null;
   openRegistration: boolean | null;
+  joinPolicy?: string | null;
   registrationPriceCents: number | null;
   organizationId: string | null;
   createdBy: string | null;
@@ -222,6 +235,7 @@ export const resolveTeamRegistrationSettings = async ({
   organizationId,
   hostUserId,
   createdBy,
+  joinPolicy,
   openRegistration,
   registrationPriceCents,
   client = prisma,
@@ -230,16 +244,26 @@ export const resolveTeamRegistrationSettings = async ({
   organizationId?: string | null;
   hostUserId?: string | null;
   createdBy?: string | null;
+  joinPolicy?: unknown;
   openRegistration: unknown;
   registrationPriceCents: unknown;
   client?: PrismaLike;
-}): Promise<{ openRegistration: boolean; registrationPriceCents: number }> => {
-  const nextOpenRegistration = Boolean(openRegistration);
-  const nextRegistrationPriceCents = nextOpenRegistration ? normalizeCents(registrationPriceCents) : 0;
+}): Promise<{ joinPolicy: TeamJoinPolicy; openRegistration: boolean; registrationPriceCents: number }> => {
+  const normalizedJoinPolicy = normalizeTeamJoinPolicy(
+    joinPolicy,
+    inferTeamJoinPolicyFromOpenRegistration(openRegistration),
+  );
+  const nextOpenRegistration = normalizedJoinPolicy === TEAM_JOIN_POLICY_OPEN_REGISTRATION;
+  const nextRegistrationPriceCents = (
+    nextOpenRegistration || normalizedJoinPolicy === TEAM_JOIN_POLICY_REQUEST_TO_JOIN
+  )
+    ? normalizeCents(registrationPriceCents)
+    : 0;
   if (!nextOpenRegistration || nextRegistrationPriceCents <= 0) {
     return {
+      joinPolicy: normalizedJoinPolicy,
       openRegistration: nextOpenRegistration,
-      registrationPriceCents: 0,
+      registrationPriceCents: nextRegistrationPriceCents,
     };
   }
 
@@ -255,9 +279,28 @@ export const resolveTeamRegistrationSettings = async ({
   }
 
   return {
+    joinPolicy: normalizedJoinPolicy,
     openRegistration: nextOpenRegistration,
     registrationPriceCents: nextRegistrationPriceCents,
   };
+};
+
+const deleteQuestionResponsesForRegistrations = async (
+  tx: PrismaLike,
+  registrationIds: string[],
+) => {
+  const ids = registrationIds
+    .map((registrationId) => normalizeId(registrationId))
+    .filter((registrationId): registrationId is string => Boolean(registrationId));
+  if (!ids.length || !tx.registrationQuestionResponses?.deleteMany) {
+    return;
+  }
+  await tx.registrationQuestionResponses.deleteMany({
+    where: {
+      subjectType: 'TEAM_REGISTRATION' as any,
+      subjectId: { in: ids },
+    },
+  });
 };
 
 const readTeamBeforeChatSync = async (tx: PrismaLike, teamId: string): Promise<string[]> => {
@@ -275,6 +318,7 @@ export const reserveTeamRegistrationSlot = async ({
   rosterRole = 'PARTICIPANT',
   consentDocumentId,
   consentStatus,
+  answersSnapshot,
   allowStartedWithoutPayment = false,
   now,
 }: {
@@ -287,6 +331,7 @@ export const reserveTeamRegistrationSlot = async ({
   rosterRole?: TeamRegistrationRosterRole;
   consentDocumentId?: string | null;
   consentStatus?: string | null;
+  answersSnapshot?: RegistrationQuestionAnswerSnapshotItem[];
   allowStartedWithoutPayment?: boolean;
   now: Date;
 }): Promise<RegistrationResult> => {
@@ -311,6 +356,7 @@ export const reserveTeamRegistrationSlot = async ({
         "id",
         "teamSize",
         "openRegistration",
+        "joinPolicy",
         "registrationPriceCents",
         "organizationId",
         "createdBy"
@@ -322,7 +368,10 @@ export const reserveTeamRegistrationSlot = async ({
     if (!team) {
       return { ok: false, status: 404, error: 'Team not found.' };
     }
-    if (!team.openRegistration) {
+    if (
+      resolveSerializedTeamJoinPolicy(team) !== TEAM_JOIN_POLICY_OPEN_REGISTRATION
+      || !team.openRegistration
+    ) {
       return { ok: false, status: 409, error: 'This team is not open for registration.' };
     }
 
@@ -346,6 +395,7 @@ export const reserveTeamRegistrationSlot = async ({
       select: { id: true },
     });
     if (staleStartedRows.length) {
+      await deleteQuestionResponsesForRegistrations(tx, staleStartedRows.map((row: { id: string }) => row.id));
       await tx.teamRegistrations.deleteMany({
         where: { id: { in: staleStartedRows.map((row: { id: string }) => row.id) } },
       });
@@ -443,7 +493,23 @@ export const reserveTeamRegistrationSlot = async ({
       });
     }
 
+    const responseRegistrationId = existing?.id ?? registrationId;
+    if (Array.isArray(answersSnapshot) && answersSnapshot.length) {
+      await upsertRegistrationQuestionResponse({
+        scopeType: 'TEAM',
+        scopeId: normalizedTeamId,
+        subjectType: 'TEAM_REGISTRATION',
+        subjectId: responseRegistrationId,
+        responderUserId: actorUserId,
+        registrantUserId: normalizedUserId,
+        registrantType: normalizedRegistrantType,
+        answersSnapshot,
+        client: tx,
+      });
+    }
+
     const releaseCurrentRegistration = async () => {
+      await deleteQuestionResponsesForRegistrations(tx, [responseRegistrationId]);
       if (!existing) {
         await tx.teamRegistrations.deleteMany({
           where: { id: registrationId },
@@ -667,12 +733,15 @@ export const releaseStartedTeamRegistration = async ({
   const normalizedTeamId = normalizeId(teamId);
   if (!normalizedRegistrationId || !normalizedTeamId) return;
   try {
-    await prisma.teamRegistrations.deleteMany({
-      where: {
-        id: normalizedRegistrationId,
-        teamId: normalizedTeamId,
-        status: STARTED_MEMBER_STATUS as any,
-      },
+    await prisma.$transaction(async (tx) => {
+      await deleteQuestionResponsesForRegistrations(tx, [normalizedRegistrationId]);
+      await tx.teamRegistrations.deleteMany({
+        where: {
+          id: normalizedRegistrationId,
+          teamId: normalizedTeamId,
+          status: STARTED_MEMBER_STATUS as any,
+        },
+      });
     });
   } catch (error) {
     console.warn('Failed to release started team registration after checkout intent failure.', {
@@ -774,6 +843,7 @@ export const activateStartedTeamRegistration = async ({
             });
             await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
           } else if (registration.status === STARTED_MEMBER_STATUS) {
+            await deleteQuestionResponsesForRegistrations(tx, [normalizedRegistrationId]);
             await tx.teamRegistrations.deleteMany({
               where: {
                 id: normalizedRegistrationId,
@@ -927,6 +997,7 @@ export const requestTeamRegistrationRefund = async ({
         "id",
         "teamSize",
         "openRegistration",
+        "joinPolicy",
         "registrationPriceCents",
         "organizationId",
         "createdBy"
@@ -938,7 +1009,11 @@ export const requestTeamRegistrationRefund = async ({
     if (!team) {
       return { ok: false, status: 404, error: 'Team not found.' };
     }
-    if (!team.openRegistration || normalizeCents(team.registrationPriceCents) <= 0) {
+    if (
+      resolveSerializedTeamJoinPolicy(team) !== TEAM_JOIN_POLICY_OPEN_REGISTRATION
+      || !team.openRegistration
+      || normalizeCents(team.registrationPriceCents) <= 0
+    ) {
       return { ok: false, status: 409, error: 'Refund requests are only available for paid open registrations.' };
     }
 

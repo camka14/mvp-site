@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { withLegacyFields } from '@/server/legacyFormat';
+import type { RegistrationQuestionAnswerSnapshotItem } from '@/server/registrationQuestions';
 import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
 import { findTeamRegistration, reserveTeamRegistrationSlot } from '@/server/teams/teamOpenRegistration';
 import {
@@ -55,6 +56,7 @@ export const reserveChildTeamRegistrationForGuardian = async ({
   parentId,
   actorUserId,
   teamRow,
+  answersSnapshot,
   now = new Date(),
 }: {
   teamId: string;
@@ -62,6 +64,7 @@ export const reserveChildTeamRegistrationForGuardian = async ({
   parentId: string;
   actorUserId: string;
   teamRow?: Record<string, any> | null;
+  answersSnapshot?: RegistrationQuestionAnswerSnapshotItem[];
   now?: Date;
 }): Promise<ChildTeamRegistrationResult> => {
   const resolvedTeamRow = teamRow ?? await loadCanonicalTeamById(teamId);
@@ -121,6 +124,7 @@ export const reserveChildTeamRegistrationForGuardian = async ({
     rosterRole: 'PARTICIPANT',
     consentDocumentId: nextConsentDocumentId,
     consentStatus: nextConsentStatus,
+    answersSnapshot,
     allowStartedWithoutPayment: !requiresPayment,
     now,
   });

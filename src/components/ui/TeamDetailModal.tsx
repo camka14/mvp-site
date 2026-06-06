@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
 import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Tabs, Loader, Stack } from '@mantine/core';
 import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice, formatBillAmount } from '@/types';
-import type { TeamPlayerRegistration } from '@/types';
+import type { RegistrationQuestionDraft, TeamJoinPolicy, TeamJoinRequest, TeamPlayerRegistration } from '@/types';
 import type { TeamComplianceSummary, TeamComplianceUserSummary, TeamMemberComplianceResponse } from '@/lib/eventTeamCompliance';
 import { useApp } from '@/app/providers';
 import { apiRequest } from '@/lib/apiClient';
@@ -50,6 +50,8 @@ const EMPTY_INVITE_FREE_AGENT_CONTEXT: TeamInviteFreeAgentContext = {
     freeAgentEventsByUserId: {},
     freeAgentEventTeamIdsByUserId: {},
 };
+const EMPTY_REGISTRATION_QUESTIONS: RegistrationQuestionDraft[] = [];
+const EMPTY_JOIN_REQUESTS: TeamJoinRequest[] = [];
 
 const normalizeDivisionToken = (value: unknown): string => String(value ?? '')
     .trim()
@@ -189,10 +191,15 @@ export default function TeamDetailModal({
     const [draftSkillDivisionTypeId, setDraftSkillDivisionTypeId] = useState('open');
     const [draftAgeDivisionTypeId, setDraftAgeDivisionTypeId] = useState(DEFAULT_AGE_DIVISION_FALLBACK);
     const [draftTeamSize, setDraftTeamSize] = useState(currentTeam.teamSize || 0);
-    const [draftOpenRegistration, setDraftOpenRegistration] = useState(Boolean(currentTeam.openRegistration));
+    const [draftJoinPolicy, setDraftJoinPolicy] = useState<TeamJoinPolicy>(currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'));
     const [draftRegistrationPriceDollars, setDraftRegistrationPriceDollars] = useState(
         ((currentTeam.registrationPriceCents ?? 0) / 100),
     );
+    const [draftRegistrationQuestions, setDraftRegistrationQuestions] = useState<RegistrationQuestionDraft[]>(EMPTY_REGISTRATION_QUESTIONS);
+    const [questionsLoading, setQuestionsLoading] = useState(false);
+    const [joinRequests, setJoinRequests] = useState<TeamJoinRequest[]>(EMPTY_JOIN_REQUESTS);
+    const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
+    const [reviewingRequestIds, setReviewingRequestIds] = useState<Set<string>>(new Set());
     const [draftRequiredTemplateIds, setDraftRequiredTemplateIds] = useState<string[]>(
         Array.isArray(currentTeam.requiredTemplateIds)
             ? currentTeam.requiredTemplateIds.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
@@ -213,6 +220,7 @@ export default function TeamDetailModal({
     const [pendingRoleInvites, setPendingRoleInvites] = useState<Array<{ invite: Invite; invitedUser?: UserData }>>([]);
     const [cancellingRoleInviteIds, setCancellingRoleInviteIds] = useState<Set<string>>(new Set());
     const [removingPlayerIds, setRemovingPlayerIds] = useState<Set<string>>(new Set());
+    const [billingPlayerIds, setBillingPlayerIds] = useState<Set<string>>(new Set());
     const [managerUser, setManagerUser] = useState<UserData | null>(null);
     const [headCoachUser, setHeadCoachUser] = useState<UserData | null>(null);
     const [assistantCoachUsers, setAssistantCoachUsers] = useState<UserData[]>([]);
@@ -227,6 +235,9 @@ export default function TeamDetailModal({
     const canManageTeam = canManage ?? isTeamCaptain;
     const canChargeForTeamRegistration = canChargeRegistration ?? Boolean(user?.hasStripeAccount || (currentTeam.registrationPriceCents ?? 0) > 0);
     const registrationPriceCents = Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0));
+    const effectiveJoinPolicy = currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED');
+    const draftRegistrationEnabled = draftJoinPolicy === 'OPEN_REGISTRATION' || draftJoinPolicy === 'REQUEST_TO_JOIN';
+    const draftRequestOnly = draftJoinPolicy === 'REQUEST_TO_JOIN';
     const normalizedInviteEmail = emailInviteInput.trim().toLowerCase();
     const inviteEmailValid = EMAIL_REGEX.test(normalizedInviteEmail);
     const assistantCoachIds = useMemo(() => (
@@ -474,6 +485,45 @@ export default function TeamDetailModal({
         );
     }, [currentTeam.$id, currentTeam.pending]);
 
+    const fetchRegistrationQuestions = useCallback(async () => {
+        if (!currentTeam.$id || !canManageTeam) {
+            setDraftRegistrationQuestions(EMPTY_REGISTRATION_QUESTIONS);
+            return;
+        }
+        setQuestionsLoading(true);
+        try {
+            const questions = await teamService.getRegistrationQuestions('TEAM', currentTeam.$id, 'edit');
+            setDraftRegistrationQuestions(questions.map((question) => ({
+                id: question.id,
+                prompt: question.prompt,
+                answerType: question.answerType,
+                required: question.required,
+                sortOrder: question.sortOrder,
+            })));
+        } catch (loadError) {
+            console.error('Failed to load team registration questions:', loadError);
+            setDraftRegistrationQuestions(EMPTY_REGISTRATION_QUESTIONS);
+        } finally {
+            setQuestionsLoading(false);
+        }
+    }, [canManageTeam, currentTeam.$id]);
+
+    const fetchJoinRequests = useCallback(async () => {
+        if (!currentTeam.$id || !canManageTeam) {
+            setJoinRequests(EMPTY_JOIN_REQUESTS);
+            return;
+        }
+        setJoinRequestsLoading(true);
+        try {
+            setJoinRequests(await teamService.listTeamJoinRequests(currentTeam.$id));
+        } catch (loadError) {
+            console.error('Failed to load team join requests:', loadError);
+            setJoinRequests(EMPTY_JOIN_REQUESTS);
+        } finally {
+            setJoinRequestsLoading(false);
+        }
+    }, [canManageTeam, currentTeam.$id]);
+
     const isRoleInvitePending = useCallback((userId: string, roleType: TeamInviteRoleType): boolean => {
         if (roleType === 'player') {
             return currentTeam.pending.includes(userId);
@@ -636,6 +686,13 @@ export default function TeamDetailModal({
     }, [isOpen, fetchTeamDetails]);
 
     useEffect(() => {
+        if (isOpen && canManageTeam) {
+            void fetchRegistrationQuestions();
+            void fetchJoinRequests();
+        }
+    }, [canManageTeam, fetchJoinRequests, fetchRegistrationQuestions, isOpen]);
+
+    useEffect(() => {
         setDraftCaptainId(currentTeam.captainId || '');
     }, [currentTeam.$id, currentTeam.captainId]);
 
@@ -698,12 +755,13 @@ export default function TeamDetailModal({
         setDraftAgeDivisionTypeId(ageDivisionTypeId);
         setDraftDivision(resolveDraftDivisionDisplayName(gender, skillDivisionTypeId, ageDivisionTypeId, sportInput));
         setDraftTeamSize(currentTeam.teamSize || 0);
-        setDraftOpenRegistration(Boolean(currentTeam.openRegistration));
+        setDraftJoinPolicy(currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'));
         setDraftRegistrationPriceDollars((Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0)) / 100));
     }, [
         currentTeam.$id,
         currentTeam.division,
         currentTeam.divisionTypeId,
+        currentTeam.joinPolicy,
         currentTeam.openRegistration,
         currentTeam.registrationPriceCents,
         currentTeam.requiredTemplateIds,
@@ -923,7 +981,9 @@ export default function TeamDetailModal({
         });
         const nextTeamSize = Number(draftTeamSize) || 0;
         const nextCaptainId = draftCaptainId.trim();
-        const nextRegistrationPriceCents = draftOpenRegistration && canChargeForTeamRegistration
+        const nextRegistrationPriceCents = draftJoinPolicy === 'REQUEST_TO_JOIN'
+            ? Math.max(0, Math.round((Number(draftRegistrationPriceDollars) || 0) * 100))
+            : draftJoinPolicy === 'OPEN_REGISTRATION' && canChargeForTeamRegistration
             ? Math.max(0, Math.round((Number(draftRegistrationPriceDollars) || 0) * 100))
             : 0;
 
@@ -952,13 +1012,29 @@ export default function TeamDetailModal({
             return;
         }
 
+        const nextQuestions = draftRegistrationEnabled
+            ? draftRegistrationQuestions
+                .map((question, index) => ({
+                    ...question,
+                    prompt: String(question.prompt ?? '').trim(),
+                    answerType: question.answerType ?? 'TEXT',
+                    sortOrder: index,
+                }))
+                .filter((question) => question.prompt.length > 0)
+            : [];
+        if (draftRegistrationEnabled && draftRegistrationQuestions.some((question) => String(question.prompt ?? '').trim().length === 0)) {
+            setError('Registration questions cannot be blank.');
+            return;
+        }
+
         const updated = await teamService.updateTeamDetails(currentTeam.$id, {
             sport: nextSport,
             division: nextDivision,
             divisionTypeId: nextDivisionTypeId,
             teamSize: nextTeamSize,
             captainId: nextCaptainId,
-            openRegistration: draftOpenRegistration,
+            joinPolicy: draftJoinPolicy,
+            openRegistration: draftJoinPolicy === 'OPEN_REGISTRATION',
             registrationPriceCents: nextRegistrationPriceCents,
             requiredTemplateIds: currentTeam.organizationId ? draftRequiredTemplateIds : [],
             playerRegistrations: teamPlayers.map((player) => {
@@ -978,6 +1054,8 @@ export default function TeamDetailModal({
             setError('Failed to update team details');
             return;
         }
+        await teamService.saveRegistrationQuestions('TEAM', currentTeam.$id, nextQuestions);
+        await fetchRegistrationQuestions();
 
         onTeamUpdated?.(updated);
         setEditingDetails(false);
@@ -1249,6 +1327,71 @@ export default function TeamDetailModal({
         }
     };
 
+    const handleReviewJoinRequest = async (requestId: string, action: 'APPROVE' | 'DECLINE') => {
+        if (reviewingRequestIds.has(requestId)) {
+            return;
+        }
+        setReviewingRequestIds((previous) => new Set(previous).add(requestId));
+        setError(null);
+        try {
+            await teamService.reviewTeamJoinRequest(currentTeam.$id, requestId, action);
+            await fetchJoinRequests();
+            const refreshed = await teamService.getTeamById(currentTeam.$id, true, { teamId: currentTeam.$id });
+            if (refreshed) {
+                onTeamUpdated?.(refreshed);
+            }
+            notifications.show({
+                color: action === 'APPROVE' ? 'green' : 'blue',
+                message: action === 'APPROVE'
+                    ? 'Request approved. Use the player actions to send a bill.'
+                    : 'Request declined.',
+            });
+        } catch (reviewError) {
+            const message = reviewError instanceof Error ? reviewError.message : 'Failed to review join request.';
+            setError(message);
+            notifications.show({ color: 'red', message });
+        } finally {
+            setReviewingRequestIds((previous) => {
+                const next = new Set(previous);
+                next.delete(requestId);
+                return next;
+            });
+        }
+    };
+
+    const handleSendTeamMemberBill = async (playerId: string) => {
+        if (billingPlayerIds.has(playerId)) {
+            return;
+        }
+        const amountCents = Math.max(0, Math.round(currentTeam.registrationPriceCents ?? 0));
+        if (amountCents <= 0) {
+            setError('Set a team registration cost before sending a bill.');
+            return;
+        }
+        setBillingPlayerIds((previous) => new Set(previous).add(playerId));
+        setError(null);
+        try {
+            await teamService.createTeamMemberBill(currentTeam.$id, {
+                userId: playerId,
+                amountCents,
+                label: `Team registration - ${currentTeam.name}`,
+            });
+            notifications.show({ color: 'green', message: 'Bill sent.' });
+            const response = await apiRequest<TeamMemberComplianceResponse>(`/api/teams/${currentTeam.$id}/compliance`);
+            setMemberCompliance(response.team ?? null);
+        } catch (billError) {
+            const message = billError instanceof Error ? billError.message : 'Failed to send bill.';
+            setError(message);
+            notifications.show({ color: 'red', message });
+        } finally {
+            setBillingPlayerIds((previous) => {
+                const next = new Set(previous);
+                next.delete(playerId);
+                return next;
+            });
+        }
+    };
+
     const handleLeaveTeam = async () => {
         if (!user || leavingTeam) {
             return;
@@ -1480,16 +1623,32 @@ export default function TeamDetailModal({
                                     disabled={teamPlayers.length === 0}
                                     allowDeselect={false}
                                 />
-                                <Checkbox
-                                    label="Open registration"
-                                    description="Allow players to register from the readonly team view."
-                                    checked={draftOpenRegistration}
-                                    onChange={(event) => setDraftOpenRegistration(event.currentTarget.checked)}
-                                />
+                                <div>
+                                    <Text size="sm" fw={500} mb={4}>Registration policy</Text>
+                                    <SegmentedControl
+                                        fullWidth
+                                        data={[
+                                            { value: 'CLOSED', label: 'Closed' },
+                                            { value: 'OPEN_REGISTRATION', label: 'Open' },
+                                            { value: 'REQUEST_TO_JOIN', label: 'Request' },
+                                        ]}
+                                        value={draftJoinPolicy}
+                                        onChange={(value) => setDraftJoinPolicy(value as TeamJoinPolicy)}
+                                    />
+                                    <Text size="xs" c="dimmed" mt={4}>
+                                        {draftRequestOnly
+                                            ? 'Players submit a request and wait for manager approval.'
+                                            : draftJoinPolicy === 'OPEN_REGISTRATION'
+                                                ? 'Players can join immediately from the team view.'
+                                                : 'Players cannot join from the team view.'}
+                                    </Text>
+                                </div>
                                 <NumberInput
                                     label="Registration cost"
                                     description={
-                                        canChargeForTeamRegistration
+                                        draftRequestOnly
+                                            ? 'Shown as an expected cost and default bill amount. Players are not prompted to pay when requesting.'
+                                            : canChargeForTeamRegistration
                                             ? 'Leave at $0 for free registration.'
                                             : 'Connect Stripe to charge for registration. Free registration is still available.'
                                     }
@@ -1502,9 +1661,86 @@ export default function TeamDetailModal({
                                         const numeric = typeof value === 'number' ? value : Number(value);
                                         setDraftRegistrationPriceDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
                                     }}
-                                    disabled={!draftOpenRegistration || !canChargeForTeamRegistration}
+                                    disabled={!draftRegistrationEnabled || (draftJoinPolicy === 'OPEN_REGISTRATION' && !canChargeForTeamRegistration)}
                                 />
                             </SimpleGrid>
+                            {draftRequestOnly && (
+                                <Alert color="yellow" variant="light" mt="sm">
+                                    Players will not be prompted for payment during request submission. Use player actions after approval to send a bill.
+                                </Alert>
+                            )}
+                            {draftRegistrationEnabled && (
+                                <Paper withBorder radius="md" p="sm" mt="sm">
+                                    <Group justify="space-between" mb="xs">
+                                        <div>
+                                            <Text fw={500} size="sm">Registration questions</Text>
+                                            <Text size="xs" c="dimmed">Players answer these before joining or requesting to join.</Text>
+                                        </div>
+                                        <Button
+                                            size="xs"
+                                            variant="light"
+                                            onClick={() => setDraftRegistrationQuestions((current) => [
+                                                ...current,
+                                                {
+                                                    prompt: '',
+                                                    answerType: 'TEXT',
+                                                    required: false,
+                                                    sortOrder: current.length,
+                                                },
+                                            ])}
+                                        >
+                                            Add Question
+                                        </Button>
+                                    </Group>
+                                    {questionsLoading ? (
+                                        <Group gap={6}>
+                                            <Loader size="xs" />
+                                            <Text size="xs" c="dimmed">Loading questions</Text>
+                                        </Group>
+                                    ) : draftRegistrationQuestions.length > 0 ? (
+                                        <Stack gap="xs">
+                                            {draftRegistrationQuestions.map((question, index) => (
+                                                <Paper key={question.id ?? `draft-${index}`} withBorder radius="sm" p="xs">
+                                                    <Stack gap={6}>
+                                                        <TextInput
+                                                            label={`Question ${index + 1}`}
+                                                            value={question.prompt}
+                                                            onChange={(event) => {
+                                                                const value = event.currentTarget.value;
+                                                                setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
+                                                                    entryIndex === index ? { ...entry, prompt: value } : entry
+                                                                )));
+                                                            }}
+                                                        />
+                                                        <Group justify="space-between">
+                                                            <Checkbox
+                                                                label="Required"
+                                                                checked={Boolean(question.required)}
+                                                                onChange={(event) => {
+                                                                    const checked = event.currentTarget.checked;
+                                                                    setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
+                                                                        entryIndex === index ? { ...entry, required: checked } : entry
+                                                                    )));
+                                                                }}
+                                                            />
+                                                            <Button
+                                                                size="xs"
+                                                                variant="subtle"
+                                                                color="red"
+                                                                onClick={() => setDraftRegistrationQuestions((current) => current.filter((_, entryIndex) => entryIndex !== index))}
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </Group>
+                                                    </Stack>
+                                                </Paper>
+                                            ))}
+                                        </Stack>
+                                    ) : (
+                                        <Text size="xs" c="dimmed">No registration questions yet.</Text>
+                                    )}
+                                </Paper>
+                            )}
                             {currentTeam.organizationId && (
                                 <div className="mt-3">
                                     <MultiSelect
@@ -1565,6 +1801,75 @@ export default function TeamDetailModal({
                             <Text c="dimmed">Pending Invites</Text>
                         </Paper>
                     </SimpleGrid>
+
+                    {canManageTeam && (
+                        <div className="mb-6">
+                            <Group justify="space-between" mb="sm">
+                                <Title order={5}>Join Requests ({joinRequests.filter((request) => request.status === 'PENDING').length})</Title>
+                                {joinRequestsLoading ? (
+                                    <Group gap={6}>
+                                        <Loader size="xs" />
+                                        <Text size="xs" c="dimmed">Loading requests</Text>
+                                    </Group>
+                                ) : null}
+                            </Group>
+                            {joinRequests.filter((request) => request.status === 'PENDING').length > 0 ? (
+                                <Stack gap="sm">
+                                    {joinRequests.filter((request) => request.status === 'PENDING').map((request) => {
+                                        const applicant = request.registrant
+                                            ? ({ ...request.registrant, $id: request.registrantUserId } as UserData)
+                                            : null;
+                                        return (
+                                            <Paper key={request.id} withBorder radius="md" p="sm">
+                                                <Stack gap="sm">
+                                                    <Group justify="space-between" align="flex-start">
+                                                        <div>
+                                                            <Text fw={600}>{applicant ? getUserFullName(applicant) : request.registrantUserId}</Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                {request.registrantType === 'CHILD' ? 'Child player request' : 'Player request'}
+                                                            </Text>
+                                                        </div>
+                                                        <Badge variant="light" color="yellow">Pending</Badge>
+                                                    </Group>
+                                                    <Stack gap={6}>
+                                                        {(request.answers ?? []).length > 0 ? request.answers?.map((answer) => (
+                                                            <Paper key={answer.questionId} withBorder radius="sm" p="xs" bg="gray.0">
+                                                                <Text size="xs" fw={600}>{answer.prompt}</Text>
+                                                                <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                                                                    {answer.answer.trim() || 'No answer'}
+                                                                </Text>
+                                                            </Paper>
+                                                        )) : (
+                                                            <Text size="xs" c="dimmed">No answers submitted.</Text>
+                                                        )}
+                                                    </Stack>
+                                                    <Group justify="flex-end">
+                                                        <Button
+                                                            size="xs"
+                                                            variant="light"
+                                                            loading={reviewingRequestIds.has(request.id)}
+                                                            onClick={() => { void handleReviewJoinRequest(request.id, 'DECLINE'); }}
+                                                        >
+                                                            Decline
+                                                        </Button>
+                                                        <Button
+                                                            size="xs"
+                                                            loading={reviewingRequestIds.has(request.id)}
+                                                            onClick={() => { void handleReviewJoinRequest(request.id, 'APPROVE'); }}
+                                                        >
+                                                            Approve
+                                                        </Button>
+                                                    </Group>
+                                                </Stack>
+                                            </Paper>
+                                        );
+                                    })}
+                                </Stack>
+                            ) : (
+                                <Text size="sm" c="dimmed">No pending join requests.</Text>
+                            )}
+                        </div>
+                    )}
 
                     {/* Team Members */}
                     <div className="mb-6">
@@ -1684,9 +1989,23 @@ export default function TeamDetailModal({
                                                             <Stack gap="xs">
                                                                 <Group justify="space-between" wrap="wrap">
                                                                     <Text size="sm" fw={600}>Billing</Text>
-                                                                    <Text size="sm" c={compliance.payment.isPaidInFull ? 'green' : 'yellow'}>
-                                                                        {formatCompliancePaymentLabel(compliance.payment)}
-                                                                    </Text>
+                                                                    <Group gap="xs">
+                                                                        <Text size="sm" c={compliance.payment.isPaidInFull ? 'green' : 'yellow'}>
+                                                                            {formatCompliancePaymentLabel(compliance.payment)}
+                                                                        </Text>
+                                                                        <Button
+                                                                            size="xs"
+                                                                            variant="light"
+                                                                            loading={billingPlayerIds.has(player.$id)}
+                                                                            disabled={registrationPriceCents <= 0}
+                                                                            onClick={(event) => {
+                                                                                event.stopPropagation();
+                                                                                void handleSendTeamMemberBill(player.$id);
+                                                                            }}
+                                                                        >
+                                                                            Send Bill
+                                                                        </Button>
+                                                                    </Group>
                                                                 </Group>
                                                                 <Group justify="space-between" wrap="wrap">
                                                                     <Text size="sm" fw={600}>Documents</Text>
@@ -1713,6 +2032,21 @@ export default function TeamDetailModal({
                                                                     </Stack>
                                                                 ) : (
                                                                     <Text size="xs" c="dimmed">No required documents for this user.</Text>
+                                                                )}
+                                                                {(compliance.registrationAnswers ?? []).length > 0 ? (
+                                                                    <Stack gap={6}>
+                                                                        <Text size="sm" fw={600}>Registration answers</Text>
+                                                                        {(compliance.registrationAnswers ?? []).map((answer) => (
+                                                                            <div key={answer.questionId} className="rounded-md border border-gray-200 bg-white p-2">
+                                                                                <Text size="xs" c="dimmed">{answer.prompt}</Text>
+                                                                                <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                                                                                    {answer.answer || 'No answer'}
+                                                                                </Text>
+                                                                            </div>
+                                                                        ))}
+                                                                    </Stack>
+                                                                ) : (
+                                                                    <Text size="xs" c="dimmed">No registration answers submitted.</Text>
                                                                 )}
                                                             </Stack>
                                                         </Paper>

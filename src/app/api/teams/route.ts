@@ -20,6 +20,7 @@ import {
   syncCanonicalTeamRoster,
 } from '@/server/teams/teamMembership';
 import { resolveTeamRegistrationSettings } from '@/server/teams/teamOpenRegistration';
+import { inferTeamJoinPolicyFromOpenRegistration } from '@/server/teams/teamJoinPolicy';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,6 +63,7 @@ const createSchema = z.object({
   teamSize: z.coerce.number().int().min(2, TEAM_SIZE_WARNING).default(6),
   profileImageId: z.string().optional(),
   organizationId: z.string().nullable().optional(),
+  joinPolicy: z.enum(['CLOSED', 'OPEN_REGISTRATION', 'REQUEST_TO_JOIN']).optional(),
   openRegistration: z.boolean().optional(),
   registrationPriceCents: z.number().int().nonnegative().optional(),
   requiredTemplateIds: z.array(z.string()).optional(),
@@ -272,11 +274,12 @@ export async function POST(req: NextRequest) {
     const message = error instanceof Error ? error.message : 'Invalid required team documents.';
     return NextResponse.json({ error: message }, { status: 400 });
   }
-  let registrationSettings: { openRegistration: boolean; registrationPriceCents: number };
+  let registrationSettings: { joinPolicy: 'CLOSED' | 'OPEN_REGISTRATION' | 'REQUEST_TO_JOIN'; openRegistration: boolean; registrationPriceCents: number };
   try {
     registrationSettings = await resolveTeamRegistrationSettings({
       organizationId,
       createdBy: session.userId,
+      joinPolicy: data.joinPolicy ?? inferTeamJoinPolicyFromOpenRegistration(data.openRegistration === true),
       openRegistration: data.openRegistration === true,
       registrationPriceCents: data.registrationPriceCents ?? 0,
     });
@@ -309,6 +312,7 @@ export async function POST(req: NextRequest) {
           profileImageId: data.profileImageId ?? null,
           organizationId,
           createdBy: session.userId,
+          joinPolicy: registrationSettings.joinPolicy,
           openRegistration: registrationSettings.openRegistration,
           registrationPriceCents: registrationSettings.registrationPriceCents,
           requiredTemplateIds,
@@ -353,6 +357,7 @@ export async function POST(req: NextRequest) {
       teamSize: data.teamSize,
       profileImageId: data.profileImageId ?? null,
       openRegistration: registrationSettings.openRegistration,
+      joinPolicy: registrationSettings.joinPolicy,
       registrationPriceCents: registrationSettings.registrationPriceCents,
       requiredTemplateIds,
       createdAt: new Date(),

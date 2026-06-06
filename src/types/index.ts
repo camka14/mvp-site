@@ -285,6 +285,80 @@ export interface TeamPlayerRegistration {
   createdBy?: string | null;
 }
 
+export type TeamJoinPolicy = 'CLOSED' | 'OPEN_REGISTRATION' | 'REQUEST_TO_JOIN';
+export type TeamJoinRequestStatus = 'PENDING' | 'APPROVED' | 'DECLINED' | 'WITHDRAWN' | 'CANCELLED';
+export type RegistrationQuestionScopeType = 'TEAM' | 'EVENT';
+export type RegistrationQuestionAnswerType = 'TEXT' | 'LONG_TEXT';
+export type RegistrationQuestionResponseSubjectType = 'TEAM_JOIN_REQUEST' | 'TEAM_REGISTRATION' | 'EVENT_REGISTRATION';
+
+export interface RegistrationQuestion {
+  id: string;
+  scopeType: RegistrationQuestionScopeType;
+  scopeId: string;
+  prompt: string;
+  answerType: RegistrationQuestionAnswerType;
+  required: boolean;
+  sortOrder: number;
+  isActive?: boolean;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+}
+
+export interface RegistrationQuestionDraft {
+  id?: string | null;
+  prompt: string;
+  answerType?: RegistrationQuestionAnswerType;
+  required?: boolean;
+  sortOrder?: number;
+}
+
+export interface RegistrationQuestionAnswerInput {
+  questionId: string;
+  answer: string;
+}
+
+export interface RegistrationQuestionAnswerSnapshotItem {
+  questionId: string;
+  prompt: string;
+  answerType: RegistrationQuestionAnswerType;
+  required: boolean;
+  sortOrder: number;
+  answer: string;
+}
+
+export interface RegistrationQuestionResponse {
+  id: string;
+  scopeType: RegistrationQuestionScopeType;
+  scopeId: string;
+  subjectType: RegistrationQuestionResponseSubjectType;
+  subjectId: string;
+  responderUserId: string;
+  registrantUserId: string;
+  registrantType: string;
+  answersSnapshot: RegistrationQuestionAnswerSnapshotItem[];
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+}
+
+export interface TeamJoinRequest {
+  id: string;
+  teamId: string;
+  requesterUserId: string;
+  registrantUserId: string;
+  parentId?: string | null;
+  registrantType: 'SELF' | 'CHILD';
+  status: TeamJoinRequestStatus;
+  reviewedByUserId?: string | null;
+  reviewedAt?: string | Date | null;
+  reviewNote?: string | null;
+  approvedRegistrationId?: string | null;
+  answers?: RegistrationQuestionAnswerSnapshotItem[];
+  requester?: UserData | null;
+  registrant?: UserData | null;
+  createdAt?: string | Date | null;
+  updatedAt?: string | Date | null;
+}
+
 export interface Sport {
   $id: string;
   name: string;
@@ -609,6 +683,7 @@ export interface Team {
   profileImageId?: string;
   organizationId?: string | null;
   createdBy?: string | null;
+  joinPolicy?: TeamJoinPolicy;
   openRegistration?: boolean;
   registrationPriceCents?: number;
   requiredTemplateIds?: string[];

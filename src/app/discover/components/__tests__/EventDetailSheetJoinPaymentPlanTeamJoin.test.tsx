@@ -25,6 +25,7 @@ jest.mock('@/lib/eventService', () => ({
   eventService: {
     getEventWithRelations: jest.fn(),
     getEvent: jest.fn(),
+    getEventParticipants: jest.fn(),
     addToWaitlist: jest.fn(),
     removeFromWaitlist: jest.fn(),
     addFreeAgent: jest.fn(),
@@ -117,6 +118,27 @@ describe('EventDetailSheet payment-plan team join', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (userService.getUserById as jest.Mock).mockResolvedValue(undefined);
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      participants: {
+        teamIds: [],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      registrations: {
+        teams: [],
+        users: [],
+        children: [],
+        waitlist: [],
+        freeAgents: [],
+      },
+      teams: [],
+      users: [],
+      participantCount: 0,
+      participantCapacity: null,
+      divisionWarnings: [],
+    });
   });
 
   it('lists tournament bracket divisions, not generated pools, for tournament pool registration', async () => {
@@ -346,6 +368,7 @@ describe('EventDetailSheet payment-plan team join', () => {
       expect.objectContaining({ divisionId: 'u17' }),
       5000,
       undefined,
+      undefined,
     );
   });
 
@@ -392,6 +415,27 @@ describe('EventDetailSheet payment-plan team join', () => {
     (familyService.listChildren as jest.Mock).mockResolvedValue([]);
     (eventService.getEventWithRelations as jest.Mock).mockResolvedValue(event);
     (eventService.getEvent as jest.Mock).mockResolvedValue(event);
+    (eventService.getEventParticipants as jest.Mock).mockResolvedValue({
+      participants: {
+        teamIds: ['slot_1'],
+        userIds: [],
+        waitListIds: [],
+        freeAgentIds: [],
+        divisions: [],
+      },
+      registrations: {
+        teams: [],
+        users: [],
+        children: [],
+        waitlist: [],
+        freeAgents: [],
+      },
+      teams: event.teams,
+      users: [],
+      participantCount: 1,
+      participantCapacity: 24,
+      divisionWarnings: [],
+    });
     (teamService.getTeamsByIds as jest.Mock).mockResolvedValue([managedTeam]);
 
     renderWithMantine(

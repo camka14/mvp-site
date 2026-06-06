@@ -61,6 +61,7 @@ const buildCheckoutTeam = (
   teamSize: team.teamSize,
   organizationId,
   openRegistration: team.openRegistration,
+  joinPolicy: team.joinPolicy as Team['joinPolicy'],
   registrationPriceCents: team.registrationPriceCents,
   currentSize: team.currentSize,
   isFull: team.isFull,
@@ -128,7 +129,9 @@ export default function PublicTeamRegistrationClient({
 
               <Group justify="space-between">
                 <div>
-                  <Text fw={600}>Registration</Text>
+                  <Text fw={600}>
+                    {team.joinPolicy === 'REQUEST_TO_JOIN' ? 'Request' : 'Registration'}
+                  </Text>
                   <Text size="sm" c="dimmed">
                     {team.teamSize > 0 ? `Roster limit ${team.teamSize}` : 'Open roster'}
                   </Text>

@@ -10,6 +10,10 @@ import {
 } from '@/app/api/events/[eventId]/registrationDivisionUtils';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 import {
+  loadAndBuildRegistrationAnswerSnapshot,
+  upsertRegistrationQuestionResponse,
+} from '@/server/registrationQuestions';
+import {
   findEventRegistration,
   upsertEventRegistration,
 } from '@/server/events/eventRegistrations';
@@ -91,6 +95,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
   if (!divisionSelection.ok) {
     return NextResponse.json({ error: divisionSelection.error ?? 'Invalid division selection' }, { status: 400 });
   }
+  const eventAnswersSnapshot = await loadAndBuildRegistrationAnswerSnapshot({
+    scopeType: 'EVENT',
+    scopeId: eventId,
+    answers: parsed.data.answers,
+  });
 
   const parent = await prisma.userData.findUnique({
     where: { id: session.userId },
@@ -217,6 +226,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
     createdBy: session.userId,
     occurrence: resolvedOccurrence,
   });
+  if (eventAnswersSnapshot.length) {
+    await upsertRegistrationQuestionResponse({
+      scopeType: 'EVENT',
+      scopeId: eventId,
+      subjectType: 'EVENT_REGISTRATION',
+      subjectId: registration.id,
+      responderUserId: session.userId,
+      registrantUserId: childId,
+      registrantType: 'CHILD',
+      answersSnapshot: eventAnswersSnapshot,
+    });
+  }
 
   const warnings = [
     ...(!childEmail && childAgeAtEvent < 13

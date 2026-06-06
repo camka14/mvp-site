@@ -12,6 +12,10 @@ import { canManageEvent } from '@/server/accessControl';
 import { extractDivisionTokenFromId } from '@/lib/divisionTypes';
 import { dispatchRequiredEventDocuments } from '@/lib/eventConsentDispatch';
 import {
+  loadAndBuildRegistrationAnswerSnapshot,
+  upsertRegistrationQuestionResponse,
+} from '@/server/registrationQuestions';
+import {
   buildEventParticipantSnapshot,
   deleteEventRegistration,
   findEventRegistration,
@@ -62,6 +66,7 @@ const payloadSchema = z.object({
   occurrenceDate: z.string().optional(),
   refundMode: z.enum(['auto', 'request']).optional(),
   refundReason: z.string().optional(),
+  answers: z.any().optional(),
 }).strict();
 
 const withLegacyEvent = (row: any) => {
@@ -1055,6 +1060,13 @@ async function updateParticipants(
   const divisionSelection = mode === 'add' && divisionSelectionResult?.ok
     ? divisionSelectionResult.selection
     : { divisionId: null, divisionTypeId: null, divisionTypeKey: null };
+  const eventAnswersSnapshot = mode === 'add'
+    ? await loadAndBuildRegistrationAnswerSnapshot({
+      scopeType: 'EVENT',
+      scopeId: event.id,
+      answers: parsed.data.answers,
+    })
+    : [];
 
   const requiredTemplateIds = normalizeRequiredTemplateIds(event.requiredTemplateIds);
   const warnings: string[] = [];
@@ -1124,6 +1136,18 @@ async function updateParticipants(
         createdBy: session.userId,
         occurrence: resolvedOccurrence,
       });
+      if (eventAnswersSnapshot.length) {
+        await upsertRegistrationQuestionResponse({
+          scopeType: 'EVENT',
+          scopeId: event.id,
+          subjectType: 'EVENT_REGISTRATION',
+          subjectId: requestRegistration.id,
+          responderUserId: session.userId,
+          registrantUserId: userId,
+          registrantType: 'CHILD',
+          answersSnapshot: eventAnswersSnapshot,
+        });
+      }
 
       await prisma.invites?.deleteMany?.({
         where: {
@@ -1318,6 +1342,26 @@ async function updateParticipants(
               placeholderDivisionIds: tournamentPoolIds,
               occurrence: resolvedOccurrence,
             });
+            const registeredEventTeamId = normalizeId((eventTeam as any)?.id) ?? teamId;
+            const eventRegistration = await findEventRegistration({
+              eventId: event.id,
+              registrantType: 'TEAM',
+              registrantId: registeredEventTeamId,
+              occurrence: resolvedOccurrence,
+            }, tx);
+            if (eventAnswersSnapshot.length && eventRegistration?.id) {
+              await upsertRegistrationQuestionResponse({
+                scopeType: 'EVENT',
+                scopeId: event.id,
+                subjectType: 'EVENT_REGISTRATION',
+                subjectId: eventRegistration.id,
+                responderUserId: session.userId,
+                registrantUserId: session.userId,
+                registrantType: 'TEAM',
+                answersSnapshot: eventAnswersSnapshot,
+                client: tx,
+              });
+            }
             if (isTournamentPoolPlayEnabled(event)) {
               await assignRegisteredTeamToTournamentPool({
                 eventId: event.id,
@@ -1641,6 +1685,19 @@ async function updateParticipants(
         createdBy: session.userId,
         occurrence: resolvedOccurrence,
       }, tx);
+      if (eventAnswersSnapshot.length) {
+        await upsertRegistrationQuestionResponse({
+          scopeType: 'EVENT',
+          scopeId: event.id,
+          subjectType: 'EVENT_REGISTRATION',
+          subjectId: registration.id,
+          responderUserId: session.userId,
+          registrantUserId: userId!,
+          registrantType,
+          answersSnapshot: eventAnswersSnapshot,
+          client: tx,
+        });
+      }
 
       await tx.invites?.deleteMany?.({
         where: {

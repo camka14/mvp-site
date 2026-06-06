@@ -835,7 +835,7 @@ describe('publicOrganizationCatalog', () => {
     }));
   });
 
-  it('loads only open-registration public teams for registration pages', async () => {
+  it('loads public teams that accept immediate registration or join requests for registration pages', async () => {
     prismaMock.organizations.findUnique.mockResolvedValue({
       id: 'org_1',
       name: 'SCSoccer',
@@ -853,6 +853,7 @@ describe('publicOrganizationCatalog', () => {
       profileImageId: null,
       teamSize: 10,
       openRegistration: true,
+      joinPolicy: 'OPEN_REGISTRATION',
       registrationPriceCents: 2500,
       organizationId: 'org_1',
     });
@@ -868,7 +869,10 @@ describe('publicOrganizationCatalog', () => {
       where: {
         id: 'team_open',
         organizationId: 'org_1',
-        openRegistration: true,
+        OR: [
+          { openRegistration: true },
+          { joinPolicy: 'REQUEST_TO_JOIN' },
+        ],
         visibility: 'PUBLIC',
       },
     });
@@ -882,8 +886,42 @@ describe('publicOrganizationCatalog', () => {
         currentSize: 3,
         teamSize: 10,
         isFull: false,
+        joinPolicy: 'OPEN_REGISTRATION',
         registrationPriceCents: 2500,
       }),
     });
+  });
+
+  it('links request-to-join public teams to the registration page', async () => {
+    prismaMock.canonicalTeams.findMany.mockResolvedValue([
+      {
+        id: 'team_request',
+        name: 'Request Team',
+        division: 'Open',
+        sport: 'Indoor Volleyball',
+        profileImageId: null,
+        teamSize: 6,
+        openRegistration: false,
+        joinPolicy: 'REQUEST_TO_JOIN',
+        registrationPriceCents: 2500,
+        organizationId: 'org_1',
+      },
+    ]);
+    prismaMock.teamRegistrations.findMany.mockResolvedValue([
+      { teamId: 'team_request' },
+    ]);
+
+    const teams = await listPublicOrganizationTeams(publicOrganization, { limit: 6 });
+
+    expect(teams).toEqual([
+      expect.objectContaining({
+        id: 'team_request',
+        openRegistration: false,
+        joinPolicy: 'REQUEST_TO_JOIN',
+        currentSize: 1,
+        registrationPriceCents: 2500,
+        registrationUrl: '/o/scsoccer/teams/team_request',
+      }),
+    ]);
   });
 });

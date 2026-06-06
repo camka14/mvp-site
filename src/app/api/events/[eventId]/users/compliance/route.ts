@@ -7,6 +7,7 @@ import {
   buildRequiredSignatureTasks,
   buildSignatureCompletionKey,
   isSignedDocumentStatus,
+  normalizeRegistrationAnswersSnapshot,
   normalizeSignerRoleContext,
   pickPrimaryBill,
   type ComplianceTemplate,
@@ -166,6 +167,7 @@ export async function GET(
       ...occurrenceWhere,
     },
     select: {
+      id: true,
       registrantId: true,
       registrantType: true,
       parentId: true,
@@ -239,6 +241,7 @@ export async function GET(
   const latestRegistrationByUserId = new Map<
     string,
     {
+      id: string;
       registrantType: string;
       parentId: string | null;
       status: string | null;
@@ -256,6 +259,7 @@ export async function GET(
       return;
     }
     latestRegistrationByUserId.set(userId, {
+      id: registration.id,
       registrantType: registration.registrantType,
       parentId: normalizeId(registration.parentId),
       status: registration.status ? String(registration.status) : null,
@@ -271,6 +275,24 @@ export async function GET(
     ),
   );
   const signerUserIds = Array.from(new Set([...participantUserIds, ...parentUserIds]));
+  const responseRows = latestRegistrationByUserId.size
+    ? await prisma.registrationQuestionResponses.findMany({
+      where: {
+        subjectType: 'EVENT_REGISTRATION' as any,
+        subjectId: { in: Array.from(latestRegistrationByUserId.values()).map((registration) => registration.id) },
+      },
+      select: {
+        subjectId: true,
+        answersSnapshot: true,
+      },
+    })
+    : [];
+  const answersByRegistrationId = new Map(
+    responseRows.map((response) => [
+      response.subjectId,
+      normalizeRegistrationAnswersSnapshot(response.answersSnapshot),
+    ]),
+  );
   const canQuerySignedDocuments = templates.length > 0 && (signerUserIds.length > 0 || participantUserIds.length > 0);
   const signOnceTemplateIds = templates
     .filter((template) => Boolean(template.signOnce))
@@ -424,6 +446,7 @@ export async function GET(
           left.title.localeCompare(right.title, undefined, { sensitivity: 'base' })
           || left.signerLabel.localeCompare(right.signerLabel, undefined, { sensitivity: 'base' })
         )),
+        registrationAnswers: registration?.id ? answersByRegistrationId.get(registration.id) ?? [] : [],
       };
       return userSummary;
     })

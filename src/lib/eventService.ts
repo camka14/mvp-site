@@ -20,7 +20,7 @@ import {
   getTeamAvatarUrl,
   toEventPayload,
 } from "@/types";
-import type { TeamPlayerRegistration } from "@/types";
+import type { RegistrationQuestionAnswerInput, TeamPlayerRegistration } from "@/types";
 import { ensureLocalDateTimeString } from "@/lib/dateUtils";
 import { sportsService } from "@/lib/sportsService";
 import { userService } from "@/lib/userService";
@@ -535,6 +535,7 @@ class EventService {
       divisionId?: string | null;
       slotId?: string | null;
       occurrenceDate?: string | null;
+      answers?: RegistrationQuestionAnswerInput[];
     },
   ): Promise<Event> {
     try {
@@ -547,6 +548,7 @@ class EventService {
           ...(params.occurrenceDate
             ? { occurrenceDate: params.occurrenceDate }
             : {}),
+          ...(params.answers ? { answers: params.answers } : {}),
         },
       });
       const hydrated = await this.getEventById(eventId);

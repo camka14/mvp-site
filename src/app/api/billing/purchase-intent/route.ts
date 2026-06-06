@@ -61,6 +61,11 @@ import {
   WEEKLY_OCCURRENCE_JOIN_CLOSED_ERROR,
 } from '@/server/events/weeklyOccurrences';
 import { loadBillingTaxPolicyContext } from '@/server/billingTaxContext';
+import {
+  deleteRegistrationQuestionResponsesForSubjects,
+  loadAndBuildRegistrationAnswerSnapshot,
+  upsertRegistrationQuestionResponse,
+} from '@/server/registrationQuestions';
 
 export const dynamic = 'force-dynamic';
 
@@ -235,6 +240,7 @@ const reserveEventRegistrationSlot = async ({
   actorUserId,
   actorIsAdmin,
   divisionSelectionInput,
+  answers,
   slotId,
   occurrenceDate,
   now,
@@ -245,6 +251,7 @@ const reserveEventRegistrationSlot = async ({
   actorUserId: string;
   actorIsAdmin?: boolean;
   divisionSelectionInput: RegistrationDivisionSelectionInput;
+  answers?: unknown;
   slotId?: string | null;
   occurrenceDate?: string | null;
   now: Date;
@@ -381,6 +388,12 @@ const reserveEventRegistrationSlot = async ({
       };
     }
     const divisionSelection = divisionSelectionResult.selection;
+    const answersSnapshot = await loadAndBuildRegistrationAnswerSnapshot({
+      scopeType: 'EVENT',
+      scopeId: eventId,
+      answers,
+      client: tx,
+    });
 
     let participantTeamId = teamId;
     let parentTeamId: string | null = null;
@@ -445,6 +458,11 @@ const reserveEventRegistrationSlot = async ({
       select: { id: true },
     });
     if (staleStartedRows.length > 0) {
+      await deleteRegistrationQuestionResponsesForSubjects({
+        subjectType: 'EVENT_REGISTRATION',
+        subjectIds: staleStartedRows.map((row) => row.id),
+        client: tx,
+      });
       await tx.eventRegistrations.deleteMany({
         where: { id: { in: staleStartedRows.map((row) => row.id) } },
       });
@@ -546,10 +564,29 @@ const reserveEventRegistrationSlot = async ({
       });
     }
 
+    if (answersSnapshot.length > 0) {
+      await upsertRegistrationQuestionResponse({
+        scopeType: 'EVENT',
+        scopeId: eventId,
+        subjectType: 'EVENT_REGISTRATION',
+        subjectId: registrationId,
+        responderUserId: actorUserId,
+        registrantUserId: userId ?? actorUserId,
+        registrantType: participantTeamId ? 'TEAM' : 'SELF',
+        answersSnapshot,
+        client: tx,
+      });
+    }
+
     const registrantScope = teamId
       ? { registrantType: 'TEAM' as any }
       : { registrantType: { in: ['SELF', 'CHILD'] as any[] } };
     const releaseStartedReservation = async () => {
+      await deleteRegistrationQuestionResponsesForSubjects({
+        subjectType: 'EVENT_REGISTRATION',
+        subjectIds: [registrationId],
+        client: tx,
+      });
       await tx.eventRegistrations.deleteMany({
         where: {
           id: registrationId,
@@ -1103,6 +1140,7 @@ export async function POST(req: NextRequest) {
       actorUserId,
       actorIsAdmin: Boolean(session.isAdmin),
       divisionSelectionInput,
+      answers: payloadRow.answers,
       slotId,
       occurrenceDate,
       now: new Date(),

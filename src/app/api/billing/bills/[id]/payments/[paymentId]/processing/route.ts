@@ -30,7 +30,8 @@ export async function POST(
   if (!loaded) {
     return NextResponse.json({ error: 'Bill payment not found' }, { status: 404 });
   }
-  if (!(await canManageBillPayment(session, loaded.bill))) {
+  const isAssignedPayer = loaded.payment.payerUserId === session.userId;
+  if (!isAssignedPayer && !(await canManageBillPayment(session, loaded.bill))) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

@@ -8,6 +8,7 @@ import {
   buildRequiredSignatureTasks,
   buildSignatureCompletionKey,
   isSignedDocumentStatus,
+  normalizeRegistrationAnswersSnapshot,
   normalizeSignerRoleContext,
   type ComplianceTemplate,
   type TeamCompliancePaymentSummary,
@@ -151,6 +152,7 @@ export async function GET(
       status: { in: [...ACTIVE_REGISTRATION_STATUSES] },
     },
     select: {
+      id: true,
       userId: true,
       parentId: true,
       registrantType: true,
@@ -230,6 +232,24 @@ export async function GET(
     existing.push(payment);
     paymentsByPayerUserId.set(payerUserId, existing);
   });
+  const registrationResponses = registrations.length
+    ? await prisma.registrationQuestionResponses.findMany({
+      where: {
+        subjectType: 'TEAM_REGISTRATION' as any,
+        subjectId: { in: registrations.map((registration) => registration.id) },
+      },
+      select: {
+        subjectId: true,
+        answersSnapshot: true,
+      },
+    })
+    : [];
+  const answersByRegistrationId = new Map(
+    registrationResponses.map((response) => [
+      response.subjectId,
+      normalizeRegistrationAnswersSnapshot(response.answersSnapshot),
+    ]),
+  );
 
   const signerUserIds = Array.from(new Set([...userIds, ...parentUserIds]));
   const signedDocuments = templates.length
@@ -327,7 +347,9 @@ export async function GET(
       });
       const paymentPending = String(registration.status ?? '').toUpperCase() === 'PENDING'
         || (String(registration.status ?? '').toUpperCase() === 'STARTED' && Math.max(0, team.registrationPriceCents) > 0);
-      const payment = paymentSummaryFromPayments(paymentsByPayerUserId.get(userId) ?? [], paymentPending);
+      const payerIds = Array.from(new Set([userId, normalizeId(registration.parentId)].filter((entry): entry is string => Boolean(entry))));
+      const memberPayments = payerIds.flatMap((payerId) => paymentsByPayerUserId.get(payerId) ?? []);
+      const payment = paymentSummaryFromPayments(memberPayments, paymentPending);
 
       summaries.push({
         userId,
@@ -341,6 +363,7 @@ export async function GET(
           requiredCount: requiredDocuments.length,
         },
         requiredDocuments: requiredDocuments.sort((left, right) => left.title.localeCompare(right.title)),
+        registrationAnswers: answersByRegistrationId.get(registration.id) ?? [],
       });
       return summaries;
     }, [])

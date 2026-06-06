@@ -1,4 +1,7 @@
 import {
+  type RegistrationQuestionAnswerSnapshotItem,
+} from '@/types';
+import {
   getSignerContextLabel,
   normalizeRequiredSignerType,
   normalizeSignerContext,
@@ -66,6 +69,7 @@ export type TeamComplianceUserSummary = {
     requiredCount: number;
   };
   requiredDocuments: TeamComplianceRequiredDocument[];
+  registrationAnswers?: RegistrationQuestionAnswerSnapshotItem[];
 };
 
 export type TeamComplianceSummary = {
@@ -76,6 +80,7 @@ export type TeamComplianceSummary = {
     signedCount: number;
     requiredCount: number;
   };
+  registrationAnswers?: RegistrationQuestionAnswerSnapshotItem[];
   users: TeamComplianceUserSummary[];
 };
 
@@ -97,6 +102,37 @@ const normalizeString = (value: unknown): string | null => {
   }
   const trimmed = value.trim();
   return trimmed.length ? trimmed : null;
+};
+
+export const normalizeRegistrationAnswersSnapshot = (value: unknown): RegistrationQuestionAnswerSnapshotItem[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return null;
+      }
+      const row = entry as Record<string, unknown>;
+      const questionId = normalizeString(row.questionId);
+      const prompt = normalizeString(row.prompt);
+      if (!questionId || !prompt) {
+        return null;
+      }
+      const answerType = normalizeString(row.answerType);
+      const sortOrder = Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : 0;
+      return {
+        questionId,
+        prompt,
+        answerType: answerType === 'LONG_TEXT' ? 'LONG_TEXT' : 'TEXT',
+        required: Boolean(row.required),
+        sortOrder,
+        answer: typeof row.answer === 'string' || typeof row.answer === 'number'
+          ? String(row.answer)
+          : '',
+      } satisfies RegistrationQuestionAnswerSnapshotItem;
+    })
+    .filter((entry): entry is RegistrationQuestionAnswerSnapshotItem => Boolean(entry));
 };
 
 export const isSignedDocumentStatus = (value: unknown): boolean => {

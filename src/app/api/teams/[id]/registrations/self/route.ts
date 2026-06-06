@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { handleApiRouteError } from '@/server/http/routeErrors';
+import { loadAndBuildRegistrationAnswerSnapshot } from '@/server/registrationQuestions';
 import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
 import { leaveTeam, findTeamRegistration, reserveTeamRegistrationSlot } from '@/server/teams/teamOpenRegistration';
 import {
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const session = await requireSession(req);
     const { id } = await params;
+    const body = await req.json().catch(() => null) as Record<string, unknown> | null;
     const [teamRow, userProfile] = await Promise.all([
       loadCanonicalTeamById(id),
       prisma.userData.findUnique({
@@ -146,6 +148,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const registrantId = session.userId;
     const registrantType: 'SELF' = 'SELF';
     const parentId: string | null = null;
+    const answersSnapshot = await loadAndBuildRegistrationAnswerSnapshot({
+      scopeType: 'TEAM',
+      scopeId: id,
+      answers: body?.answers,
+    });
 
     const signatureState = await getTeamRegistrationSignatureState({
       teamId: id,
@@ -197,6 +204,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       rosterRole: 'PARTICIPANT',
       consentDocumentId: nextConsentDocumentId,
       consentStatus: nextConsentStatus,
+      answersSnapshot,
       allowStartedWithoutPayment: !requiresPayment,
       now: new Date(),
     });

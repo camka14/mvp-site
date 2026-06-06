@@ -13,6 +13,7 @@ import {
   Select as MantineSelect,
   Stack,
   Text,
+  Textarea,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useApp } from '@/app/providers';
@@ -29,7 +30,16 @@ import {
   type TeamRegistrationCheckoutTarget,
   type TeamRegistrationResult,
 } from '@/lib/teamService';
-import type { BillingAddress, PaymentIntent, Team, TeamPlayerRegistration, UserData } from '@/types';
+import type {
+  BillingAddress,
+  PaymentIntent,
+  RegistrationQuestion,
+  RegistrationQuestionAnswerInput,
+  Team,
+  TeamJoinRequest,
+  TeamPlayerRegistration,
+  UserData,
+} from '@/types';
 import { formatPrice } from '@/types';
 
 const TEAM_JOIN_TIMEOUT_MS = 5_000;
@@ -41,6 +51,7 @@ type TeamRegistrationIntent = {
   childId?: string;
   childEmail?: string | null;
   reviewOnly?: boolean;
+  answers?: RegistrationQuestionAnswerInput[];
 };
 
 export type TeamRegistrationFlowRenderState = {
@@ -150,6 +161,13 @@ export default function TeamRegistrationFlow({
   const [pendingBillingIntent, setPendingBillingIntent] = useState<TeamRegistrationIntent | null>(null);
   const [pendingCheckoutTarget, setPendingCheckoutTarget] = useState<TeamRegistrationCheckoutTarget | null>(null);
   const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
+  const [showQuestionsModal, setShowQuestionsModal] = useState(false);
+  const [questionsIntent, setQuestionsIntent] = useState<TeamRegistrationIntent | null>(null);
+  const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
+  const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({});
+  const [joinContextLoading, setJoinContextLoading] = useState(false);
+  const [joinContextError, setJoinContextError] = useState<string | null>(null);
+  const [currentJoinRequest, setCurrentJoinRequest] = useState<TeamJoinRequest | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [password, setPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
@@ -209,6 +227,59 @@ export default function TeamRegistrationFlow({
       cancelled = true;
     };
   }, [registrationTeamId, team.$id]);
+
+  useEffect(() => {
+    if (!registrationTeamId) {
+      setRegistrationQuestions([]);
+      setCurrentJoinRequest(null);
+      setQuestionAnswers({});
+      setJoinContextLoading(false);
+      setJoinContextError(null);
+      return undefined;
+    }
+    let cancelled = false;
+    const loadJoinContext = async () => {
+      setJoinContextLoading(true);
+      setJoinContextError(null);
+      try {
+        const context = await teamService.getTeamJoinRequestContext(registrationTeamId);
+        if (cancelled) {
+          return;
+        }
+        setRegistrationQuestions(context.questions ?? []);
+        setCurrentJoinRequest(context.currentRequest ?? null);
+        setQuestionAnswers((current) => {
+          const next = { ...current };
+          (context.questions ?? []).forEach((question) => {
+            if (!(question.id in next)) {
+              next[question.id] = '';
+            }
+          });
+          return next;
+        });
+        setResolvedTeam((current) => ({
+          ...current,
+          joinPolicy: context.joinPolicy,
+          openRegistration: context.openRegistration,
+          registrationPriceCents: context.registrationPriceCents,
+        }));
+      } catch (error) {
+        if (!cancelled) {
+          setRegistrationQuestions([]);
+          setCurrentJoinRequest(null);
+          setJoinContextError(error instanceof Error ? error.message : 'Unable to load team registration settings.');
+        }
+      } finally {
+        if (!cancelled) {
+          setJoinContextLoading(false);
+        }
+      }
+    };
+    void loadJoinContext();
+    return () => {
+      cancelled = true;
+    };
+  }, [registrationTeamId, user?.$id]);
 
   useEffect(() => {
     onErrorChange?.(registrationError);
@@ -302,6 +373,9 @@ export default function TeamRegistrationFlow({
     : [];
   const shouldOfferDocumentReview = currentUserActiveMember && requiredTemplateIds.length > 0;
   const registrationPriceCents = Math.max(0, Math.round(resolvedTeam.registrationPriceCents ?? 0));
+  const joinPolicy = resolvedTeam.joinPolicy ?? (resolvedTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED');
+  const requestOnly = joinPolicy === 'REQUEST_TO_JOIN';
+  const currentJoinRequestPending = normalizeText(currentJoinRequest?.status).toUpperCase() === 'PENDING';
   const activeChildren = useMemo(() => (
     childrenData.filter((child) => normalizeText(child.linkStatus).toLowerCase() === ACTIVE_CHILD_LINK_STATUS)
   ), [childrenData]);
@@ -311,13 +385,26 @@ export default function TeamRegistrationFlow({
   const actionVisible = currentUserPaymentPending
     || currentUserPendingRegistration
     || shouldOfferDocumentReview
-    || Boolean(resolvedTeam.openRegistration);
+    || Boolean(resolvedTeam.openRegistration)
+    || requestOnly
+    || currentJoinRequestPending;
+  const combinedRegistrationError = registrationError ?? joinContextError;
   const actionDisabled = actionLoading
+    || joinContextLoading
+    || Boolean(joinContextError)
     || currentUserPaymentPending
-    || (!currentUserPendingRegistration && !shouldOfferDocumentReview && (!resolvedTeam.openRegistration || (!teamHasCapacity && !hasActiveChildren)));
+    || currentJoinRequestPending
+    || (!currentUserPendingRegistration && !shouldOfferDocumentReview && !requestOnly && (!resolvedTeam.openRegistration || (!teamHasCapacity && !hasActiveChildren)))
+    || (requestOnly && !teamHasCapacity);
   const actionLabel = (() => {
+    if (joinContextLoading) {
+      return 'Loading registration...';
+    }
     if (currentUserPaymentPending) {
       return 'Payment Pending';
+    }
+    if (currentJoinRequestPending) {
+      return 'Request Pending';
     }
     if (currentUserPendingRegistration) {
       return isConsentIncomplete(currentUserRegistration?.consentStatus)
@@ -328,6 +415,11 @@ export default function TeamRegistrationFlow({
     }
     if (shouldOfferDocumentReview) {
       return 'Review Documents';
+    }
+    if (requestOnly) {
+      return registrationPriceCents > 0
+        ? `Request to Join - ${formatPrice(registrationPriceCents)}`
+        : 'Request to Join';
     }
     return registrationPriceCents > 0
       ? `Join for ${formatPrice(registrationPriceCents)}`
@@ -458,6 +550,28 @@ export default function TeamRegistrationFlow({
     });
   }, [onCompleted, refreshTeam, resolvedTeam.name]);
 
+  const buildQuestionAnswerInputs = useCallback((): RegistrationQuestionAnswerInput[] => (
+    registrationQuestions.map((question) => ({
+      questionId: question.id,
+      answer: questionAnswers[question.id] ?? '',
+    }))
+  ), [questionAnswers, registrationQuestions]);
+
+  const validateQuestionAnswers = useCallback((): string | null => {
+    const missingRequired = registrationQuestions.find((question) => (
+      Boolean(question.required) && normalizeText(questionAnswers[question.id]).length === 0
+    ));
+    if (missingRequired) {
+      return `Answer "${missingRequired.prompt}" before continuing.`;
+    }
+    return null;
+  }, [questionAnswers, registrationQuestions]);
+
+  const openQuestionsStep = useCallback((intent: TeamRegistrationIntent) => {
+    setQuestionsIntent(intent);
+    setShowQuestionsModal(true);
+  }, []);
+
   const continueIntent = useCallback(async (
     intent: TeamRegistrationIntent,
     billingAddress?: BillingAddress,
@@ -481,8 +595,8 @@ export default function TeamRegistrationFlow({
     }
 
     const result = intent.mode === 'child'
-      ? await teamService.registerChildForTeam(resolvedRegistrationTeamId, intent.childId ?? '')
-      : await teamService.registerSelfForTeam(resolvedRegistrationTeamId);
+      ? await teamService.registerChildForTeam(resolvedRegistrationTeamId, intent.childId ?? '', intent.answers)
+      : await teamService.registerSelfForTeam(resolvedRegistrationTeamId, intent.answers);
 
     notifyWarnings(result.warnings);
 
@@ -546,6 +660,73 @@ export default function TeamRegistrationFlow({
     user,
   ]);
 
+  const submitQuestionsStep = useCallback(async () => {
+    if (!questionsIntent) {
+      return;
+    }
+    if (!user) {
+      onRequireAuth?.();
+      return;
+    }
+
+    const validationError = validateQuestionAnswers();
+    if (validationError) {
+      setRegistrationError(validationError);
+      return;
+    }
+
+    const answers = buildQuestionAnswerInputs();
+    setActionLoading(true);
+    setRegistrationError(null);
+    try {
+      setShowQuestionsModal(false);
+      if (requestOnly) {
+        const submittedRequest = await teamService.requestToJoinTeam(
+          resolvedRegistrationTeamId,
+          answers,
+          questionsIntent.mode === 'child'
+            ? {
+              registrantUserId: questionsIntent.childId,
+              parentId: user.$id,
+              registrantType: 'CHILD',
+            }
+            : { registrantUserId: user.$id, parentId: null, registrantType: 'SELF' },
+        );
+        setCurrentJoinRequest(submittedRequest);
+        notifications.show({
+          color: 'green',
+          message: 'Your request was sent to the team manager.',
+        });
+        await refreshTeam();
+        setQuestionsIntent(null);
+        return;
+      }
+
+      const intentWithAnswers: TeamRegistrationIntent = {
+        ...questionsIntent,
+        answers,
+      };
+      setQuestionsIntent(null);
+      await continueIntent(intentWithAnswers);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to submit answers.';
+      setRegistrationError(message);
+      setShowQuestionsModal(true);
+    } finally {
+      setActionLoading(false);
+    }
+  }, [
+    buildQuestionAnswerInputs,
+    continueIntent,
+    onRequireAuth,
+    questionsIntent,
+    refreshTeam,
+    requestOnly,
+    resolvedRegistrationTeamId,
+    user,
+    validateQuestionAnswers,
+  ]);
+
   const handleStartFlow = useCallback(async (intent?: TeamRegistrationIntent) => {
     if (!user) {
       onRequireAuth?.();
@@ -555,12 +736,22 @@ export default function TeamRegistrationFlow({
     setActionLoading(true);
     setRegistrationError(null);
     try {
+      if (joinContextLoading) {
+        throw new Error('Team registration settings are still loading. Try again in a moment.');
+      }
+      if (joinContextError) {
+        throw new Error(joinContextError);
+      }
       const latestTeam = await refreshTeam();
       if (latestTeam) {
         setResolvedTeam(latestTeam);
       }
 
       if (intent) {
+        if (!intent.reviewOnly && !intent.answers && !currentUserPendingRegistration && (requestOnly || registrationQuestions.length > 0)) {
+          openQuestionsStep(intent);
+          return;
+        }
         await continueIntent(intent);
         return;
       }
@@ -573,7 +764,10 @@ export default function TeamRegistrationFlow({
       if (currentUserPaymentPending) {
         throw new Error('Payment is pending for this team registration.');
       }
-      if (!resolvedTeam.openRegistration && !currentUserPendingRegistration) {
+      if (currentJoinRequestPending) {
+        throw new Error('Your join request is pending manager approval.');
+      }
+      if (!resolvedTeam.openRegistration && !requestOnly && !currentUserPendingRegistration) {
         throw new Error('Registration is not open for this team.');
       }
       if (!teamHasCapacity && !currentUserPendingRegistration) {
@@ -581,6 +775,10 @@ export default function TeamRegistrationFlow({
       }
       if (hasActiveChildren && !currentUserPendingRegistration) {
         setShowJoinChoiceModal(true);
+        return;
+      }
+      if (!currentUserPendingRegistration && (requestOnly || registrationQuestions.length > 0)) {
+        openQuestionsStep({ mode: 'self' });
         return;
       }
       await continueIntent({ mode: 'self' });
@@ -592,12 +790,18 @@ export default function TeamRegistrationFlow({
     }
   }, [
     continueIntent,
+    currentJoinRequestPending,
     currentUserPendingRegistration,
     currentUserPaymentPending,
     hasActiveChildren,
+    joinContextError,
+    joinContextLoading,
     onRequireAuth,
+    openQuestionsStep,
     refreshTeam,
+    registrationQuestions.length,
     resolvedTeam.openRegistration,
+    requestOnly,
     shouldOfferDocumentReview,
     teamHasCapacity,
     user,
@@ -953,9 +1157,9 @@ export default function TeamRegistrationFlow({
     teamHasCapacity,
     actionLabel,
     actionDisabled,
-    actionLoading,
+    actionLoading: actionLoading || joinContextLoading,
     actionVisible,
-    registrationError,
+    registrationError: combinedRegistrationError,
     currentUserActiveMember,
     currentUserPendingRegistration,
     currentUserPaymentPending,
@@ -1034,6 +1238,84 @@ export default function TeamRegistrationFlow({
             </Button>
           </Group>
         </Stack>
+      </Modal>
+
+      <Modal
+        opened={showQuestionsModal}
+        onClose={() => {
+          setShowQuestionsModal(false);
+          setQuestionsIntent(null);
+        }}
+        centered
+        size="lg"
+        title={requestOnly ? 'Request to join' : 'Registration questions'}
+        zIndex={TEAM_SIGN_MODAL_Z_INDEX}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitQuestionsStep();
+          }}
+        >
+          <Stack gap="sm">
+            {requestOnly ? (
+              <Alert color="blue" variant="light">
+                {registrationPriceCents > 0
+                  ? `The manager listed this team at ${formatPrice(registrationPriceCents)}. No payment is collected with this request.`
+                  : 'No payment is collected with this request.'}
+              </Alert>
+            ) : null}
+            {questionsIntent?.mode === 'child' && selectedChild ? (
+              <Text size="sm" c="dimmed">
+                Registrant: {`${normalizeText(selectedChild.firstName)} ${normalizeText(selectedChild.lastName)}`.trim() || selectedChild.userId}
+              </Text>
+            ) : null}
+            {registrationQuestions.length > 0 ? (
+              <Stack gap="md">
+                {registrationQuestions.map((question) => (
+                  <Textarea
+                    key={question.id}
+                    label={question.prompt}
+                    required={Boolean(question.required)}
+                    autosize
+                    minRows={question.answerType === 'LONG_TEXT' ? 4 : 2}
+                    value={questionAnswers[question.id] ?? ''}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      setQuestionAnswers((current) => ({
+                        ...current,
+                        [question.id]: value,
+                      }));
+                    }}
+                  />
+                ))}
+              </Stack>
+            ) : (
+              <Text size="sm" c="dimmed">
+                Submit your request and the team manager will review it.
+              </Text>
+            )}
+            {registrationError ? (
+              <Alert color="red" variant="light">
+                {registrationError}
+              </Alert>
+            ) : null}
+            <Group justify="flex-end" wrap="wrap">
+              <Button
+                variant="default"
+                onClick={() => {
+                  setShowQuestionsModal(false);
+                  setQuestionsIntent(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" loading={actionLoading}>
+                {requestOnly ? 'Submit Request' : 'Continue'}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
       </Modal>
 
       <Modal

@@ -172,6 +172,59 @@ export const TeamsVisibilityEnum = {
 export type TeamsVisibilityEnum = (typeof TeamsVisibilityEnum)[keyof typeof TeamsVisibilityEnum]
 
 
+export const TeamJoinPolicyEnum = {
+  CLOSED: 'CLOSED',
+  OPEN_REGISTRATION: 'OPEN_REGISTRATION',
+  REQUEST_TO_JOIN: 'REQUEST_TO_JOIN'
+} as const
+
+export type TeamJoinPolicyEnum = (typeof TeamJoinPolicyEnum)[keyof typeof TeamJoinPolicyEnum]
+
+
+export const RegistrationQuestionScopeTypeEnum = {
+  TEAM: 'TEAM',
+  EVENT: 'EVENT'
+} as const
+
+export type RegistrationQuestionScopeTypeEnum = (typeof RegistrationQuestionScopeTypeEnum)[keyof typeof RegistrationQuestionScopeTypeEnum]
+
+
+export const RegistrationQuestionAnswerTypeEnum = {
+  TEXT: 'TEXT',
+  LONG_TEXT: 'LONG_TEXT'
+} as const
+
+export type RegistrationQuestionAnswerTypeEnum = (typeof RegistrationQuestionAnswerTypeEnum)[keyof typeof RegistrationQuestionAnswerTypeEnum]
+
+
+export const RegistrationQuestionResponseSubjectTypeEnum = {
+  TEAM_JOIN_REQUEST: 'TEAM_JOIN_REQUEST',
+  TEAM_REGISTRATION: 'TEAM_REGISTRATION',
+  EVENT_REGISTRATION: 'EVENT_REGISTRATION'
+} as const
+
+export type RegistrationQuestionResponseSubjectTypeEnum = (typeof RegistrationQuestionResponseSubjectTypeEnum)[keyof typeof RegistrationQuestionResponseSubjectTypeEnum]
+
+
+export const TeamJoinRequestStatusEnum = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  DECLINED: 'DECLINED',
+  WITHDRAWN: 'WITHDRAWN',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type TeamJoinRequestStatusEnum = (typeof TeamJoinRequestStatusEnum)[keyof typeof TeamJoinRequestStatusEnum]
+
+
+export const TeamJoinRequestRegistrantTypeEnum = {
+  SELF: 'SELF',
+  CHILD: 'CHILD'
+} as const
+
+export type TeamJoinRequestRegistrantTypeEnum = (typeof TeamJoinRequestRegistrantTypeEnum)[keyof typeof TeamJoinRequestRegistrantTypeEnum]
+
+
 export const StripeAccountsAccountOriginEnum = {
   LEGACY_OAUTH: 'LEGACY_OAUTH',
   PLATFORM_ONBOARDING: 'PLATFORM_ONBOARDING'

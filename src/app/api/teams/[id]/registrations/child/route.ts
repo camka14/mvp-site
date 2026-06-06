@@ -4,6 +4,7 @@ import { calculateAgeOnDate } from '@/lib/age';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { handleApiRouteError } from '@/server/http/routeErrors';
+import { loadAndBuildRegistrationAnswerSnapshot } from '@/server/registrationQuestions';
 import { loadCanonicalTeamById } from '@/server/teams/teamMembership';
 import { reserveChildTeamRegistrationForGuardian } from '@/server/teams/teamChildRegistration';
 
@@ -57,6 +58,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!parentLink) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    const answersSnapshot = await loadAndBuildRegistrationAnswerSnapshot({
+      scopeType: 'TEAM',
+      scopeId: id,
+      answers: parsed.data.answers,
+    });
 
     const result = await reserveChildTeamRegistrationForGuardian({
       teamId: id,
@@ -64,6 +70,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       childId,
       actorUserId: session.userId,
       teamRow,
+      answersSnapshot,
       now: new Date(),
     });
     if (!result.ok) {

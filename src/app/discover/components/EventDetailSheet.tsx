@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Image from 'next/image';
-import { Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput } from '@mantine/core';
+import { Button, Select as MantineSelect, Paper, Alert, Text, ActionIcon, Group, Modal, Checkbox, PasswordInput, Stack, Collapse, Progress, TextInput, Textarea } from '@mantine/core';
 import { useRouter } from 'next/navigation';
 import { QrCode } from 'lucide-react';
 import {
@@ -19,6 +19,8 @@ import {
     getEventImageUrl,
     formatEventDivisionPriceRange,
     formatPrice,
+    RegistrationQuestion,
+    RegistrationQuestionAnswerInput,
 } from '@/types';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { ApiError, authService } from '@/lib/auth';
@@ -60,6 +62,7 @@ import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import PaymentModal from '@/components/ui/PaymentModal';
 import RefundSection from '@/components/ui/RefundSection';
 import UserCard from '@/components/ui/UserCard';
+import TeamRegistrationFlow from '@/components/ui/TeamRegistrationFlow';
 // Replaced shadcn Select with Mantine Select
 
 interface EventDetailSheetProps {
@@ -92,6 +95,7 @@ type JoinIntent = {
     team?: Team | null;
     childId?: string;
     childEmail?: string | null;
+    answers?: RegistrationQuestionAnswerInput[];
 };
 
 type PaymentPlanPreviewState = {
@@ -103,6 +107,7 @@ type PendingEventCheckoutState = {
     event: Event;
     team?: Team;
     selection?: DivisionRegistrationSelection;
+    answers?: RegistrationQuestionAnswerInput[];
 };
 
 type LoadEventDetailsOptions = {
@@ -1199,6 +1204,10 @@ export default function EventDetailSheet({
     const [childConsent, setChildConsent] = useState<ConsentLinks | null>(null);
     const [childRegistrationChildId, setChildRegistrationChildId] = useState<string | null>(null);
     const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
+    const [showRegistrationQuestionsModal, setShowRegistrationQuestionsModal] = useState(false);
+    const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
+    const [registrationQuestionAnswers, setRegistrationQuestionAnswers] = useState<Record<string, string>>({});
+    const [registrationQuestionsIntent, setRegistrationQuestionsIntent] = useState<JoinIntent | null>(null);
     const [paymentPlanPreview, setPaymentPlanPreview] = useState<PaymentPlanPreviewState | null>(null);
     const [showAuthModal, setShowAuthModal] = useState(false);
     const [authModalMode, setAuthModalMode] = useState<AuthModalMode>('login');
@@ -1222,6 +1231,43 @@ export default function EventDetailSheet({
     const [selectedDivisionTypeKey, setSelectedDivisionTypeKey] = useState('');
 
     const currentEvent = detailedEvent || event;
+    useEffect(() => {
+        if (!currentEvent?.$id || (!isOpen && !renderInline)) {
+            setRegistrationQuestions([]);
+            setRegistrationQuestionAnswers({});
+            return undefined;
+        }
+
+        let cancelled = false;
+        const loadQuestions = async () => {
+            try {
+                const questions = await teamService.getRegistrationQuestions('EVENT', currentEvent.$id);
+                if (cancelled) {
+                    return;
+                }
+                setRegistrationQuestions(questions);
+                setRegistrationQuestionAnswers((current) => {
+                    const next = { ...current };
+                    questions.forEach((question) => {
+                        if (!(question.id in next)) {
+                            next[question.id] = '';
+                        }
+                    });
+                    return next;
+                });
+            } catch {
+                if (!cancelled) {
+                    setRegistrationQuestions([]);
+                    setRegistrationQuestionAnswers({});
+                }
+            }
+        };
+        void loadQuestions();
+        return () => {
+            cancelled = true;
+        };
+    }, [currentEvent?.$id, isOpen, renderInline]);
+
     const currentEventPublicUrl = React.useMemo(
         () => (currentEvent?.$id ? buildEventPublicUrl(currentEvent.$id) : ''),
         [currentEvent?.$id],
@@ -2154,6 +2200,10 @@ export default function EventDetailSheet({
             setChildRegistration(null);
             setChildConsent(null);
             setChildRegistrationChildId(null);
+            setShowRegistrationQuestionsModal(false);
+            setRegistrationQuestions([]);
+            setRegistrationQuestionAnswers({});
+            setRegistrationQuestionsIntent(null);
             setPaymentPlanPreview(null);
             setSelectedDivisionId('');
             setSelectedDivisionTypeKey('');
@@ -2268,7 +2318,11 @@ export default function EventDetailSheet({
         });
     }, [currentEvent, selectedDivisionBilling, selectedWeeklyOccurrence, user]);
 
-    const registerChildForEvent = useCallback(async (childId: string, selection: DivisionSelectionPayload = {}) => {
+    const registerChildForEvent = useCallback(async (
+        childId: string,
+        selection: DivisionSelectionPayload = {},
+        answers?: RegistrationQuestionAnswerInput[],
+    ) => {
         if (!currentEvent) {
             throw new Error('Event is not loaded.');
         }
@@ -2282,7 +2336,7 @@ export default function EventDetailSheet({
 
         setRegisteringChild(true);
         try {
-            const result = await registrationService.registerChildForEvent(currentEvent.$id, childId, resolvedSelection);
+            const result = await registrationService.registerChildForEvent(currentEvent.$id, childId, resolvedSelection, answers);
             setChildRegistration(result.registration ?? null);
             setChildConsent(result.consent ?? null);
             setChildRegistrationChildId(childId);
@@ -2403,6 +2457,7 @@ export default function EventDetailSheet({
         event: checkoutEvent,
         team,
         selection,
+        answers,
         billingAddress,
     }: PendingEventCheckoutState & {
         billingAddress?: BillingAddress;
@@ -2421,6 +2476,7 @@ export default function EventDetailSheet({
                 selection,
                 billingAddress,
                 selectedWeeklyOccurrence,
+                answers,
             );
             setPaymentData(paymentIntent);
             setShowPaymentModal(true);
@@ -2435,10 +2491,11 @@ export default function EventDetailSheet({
                 && Boolean((error.data as { billingAddressRequired?: boolean }).billingAddressRequired)
             ) {
                 setPendingEventCheckout({
-                    event: checkoutEvent,
-                    team,
-                    selection,
-                });
+                event: checkoutEvent,
+                team,
+                selection,
+                answers,
+            });
                 setShowBillingAddressModal(true);
                 return;
             }
@@ -2473,7 +2530,7 @@ export default function EventDetailSheet({
             if (!intent.childId) {
                 throw new Error('Select a child to register.');
             }
-            await registerChildForEvent(intent.childId, selection);
+            await registerChildForEvent(intent.childId, selection, intent.answers);
             return;
         }
         if (intent.mode === 'child_free_agent') {
@@ -2536,7 +2593,7 @@ export default function EventDetailSheet({
         let registrationResult: EventRegistration | null = null;
 
         if (shouldRegisterSelf) {
-            const result = await registrationService.registerSelfForEvent(currentEvent.$id, selection);
+            const result = await registrationService.registerSelfForEvent(currentEvent.$id, selection, intent.answers);
             registrationResult = result.registration ?? null;
             if (registrationResult?.status && registrationResult.status !== 'active') {
                 setJoinNotice(`Registration status: ${registrationResult.status}`);
@@ -2577,6 +2634,7 @@ export default function EventDetailSheet({
                     selection,
                     JOIN_API_TIMEOUT_MS,
                     selectedWeeklyOccurrence,
+                    intent.answers,
                 );
                 billCreatedDuringJoin = Boolean(joinResult?.bill);
             } catch (error) {
@@ -2642,6 +2700,7 @@ export default function EventDetailSheet({
                     selection,
                     JOIN_API_TIMEOUT_MS,
                     selectedWeeklyOccurrence,
+                    intent.answers,
                 );
             }
             await loadEventDetails();
@@ -2658,6 +2717,7 @@ export default function EventDetailSheet({
                 event: checkoutEvent ?? currentEvent,
                 team: resolvedTeam,
                 selection,
+                answers: intent.answers,
             });
         }
     }, [
@@ -2681,6 +2741,94 @@ export default function EventDetailSheet({
         teams.length,
         user,
         userTeams,
+    ]);
+
+    const buildRegistrationQuestionAnswers = useCallback((): RegistrationQuestionAnswerInput[] => (
+        registrationQuestions.map((question) => ({
+            questionId: question.id,
+            answer: registrationQuestionAnswers[question.id] ?? '',
+        }))
+    ), [registrationQuestionAnswers, registrationQuestions]);
+
+    const validateRegistrationQuestionAnswers = useCallback((): string | null => {
+        const missingRequired = registrationQuestions.find((question) => (
+            Boolean(question.required) && String(registrationQuestionAnswers[question.id] ?? '').trim().length === 0
+        ));
+        if (missingRequired) {
+            return `Answer "${missingRequired.prompt}" before continuing.`;
+        }
+        return null;
+    }, [registrationQuestionAnswers, registrationQuestions]);
+
+    const shouldAskRegistrationQuestions = useCallback((intent: JoinIntent): boolean => (
+        registrationQuestions.length > 0
+        && !intent.answers
+        && (intent.mode === 'user' || intent.mode === 'team' || intent.mode === 'child')
+    ), [registrationQuestions.length]);
+
+    const openRegistrationQuestionsStep = useCallback((intent: JoinIntent) => {
+        setJoinError(null);
+        setRegistrationQuestionsIntent(intent);
+        setShowRegistrationQuestionsModal(true);
+    }, []);
+
+    const submitRegistrationQuestionsStep = useCallback(async () => {
+        if (!registrationQuestionsIntent || !currentEvent || !user) {
+            return;
+        }
+        const validationError = validateRegistrationQuestionAnswers();
+        if (validationError) {
+            setJoinError(validationError);
+            return;
+        }
+
+        const intent: JoinIntent = {
+            ...registrationQuestionsIntent,
+            answers: buildRegistrationQuestionAnswers(),
+        };
+        setShowRegistrationQuestionsModal(false);
+        setRegistrationQuestionsIntent(null);
+        setJoining(true);
+        setJoinError(null);
+        setJoinNotice(null);
+
+        let signingStarted = false;
+        try {
+            if (intent.mode === 'user' && isMinor) {
+                const result = await registrationService.registerSelfForEvent(currentEvent.$id, resolvedDivisionSelectionPayload, intent.answers);
+                if (result.requiresParentApproval) {
+                    setJoinNotice('Join request sent. A parent/guardian can approve it from their child management page.');
+                } else {
+                    setJoinNotice(`Registration status: ${result.registration?.status ?? 'pendingConsent'}`);
+                }
+                await loadEventDetails();
+                return;
+            }
+            signingStarted = await beginSigningFlow(intent);
+            if (signingStarted) {
+                return;
+            }
+            await finalizeJoin(intent);
+        } catch (error) {
+            setJoinError(error instanceof Error ? error.message : 'Failed to continue registration.');
+            setShowRegistrationQuestionsModal(true);
+            setRegistrationQuestionsIntent(intent);
+        } finally {
+            if (!signingStarted) {
+                setJoining(false);
+            }
+        }
+    }, [
+        beginSigningFlow,
+        buildRegistrationQuestionAnswers,
+        currentEvent,
+        finalizeJoin,
+        isMinor,
+        loadEventDetails,
+        registrationQuestionsIntent,
+        resolvedDivisionSelectionPayload,
+        user,
+        validateRegistrationQuestionAnswers,
     ]);
 
     const cancelPasswordConfirmation = useCallback(() => {
@@ -3165,20 +3313,25 @@ export default function EventDetailSheet({
             );
             return;
         }
+        const childIntent: JoinIntent = {
+            mode: 'child',
+            childId: selectedChildId,
+            childEmail: selectedChild?.email ?? null,
+        };
+        if (shouldAskRegistrationQuestions(childIntent)) {
+            openRegistrationQuestionsStep(childIntent);
+            return;
+        }
         setJoinError(null);
         setJoinNotice(null);
 
         let signingStarted = false;
         try {
-            signingStarted = await beginSigningFlow({
-                mode: 'child',
-                childId: selectedChildId,
-                childEmail: selectedChild?.email ?? null,
-            });
+            signingStarted = await beginSigningFlow(childIntent);
             if (signingStarted) {
                 return;
             }
-            await registerChildForEvent(selectedChildId, resolvedDivisionSelectionPayload);
+            await registerChildForEvent(selectedChildId, resolvedDivisionSelectionPayload, childIntent.answers);
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to register child.');
         }
@@ -3246,6 +3399,12 @@ export default function EventDetailSheet({
             return;
         }
 
+        const joinIntent: JoinIntent = { mode: 'user' };
+        if (shouldAskRegistrationQuestions(joinIntent)) {
+            openRegistrationQuestionsStep(joinIntent);
+            return;
+        }
+
         setJoining(true);
         setJoinError(null);
         setJoinNotice(null);
@@ -3262,11 +3421,11 @@ export default function EventDetailSheet({
                 await loadEventDetails();
                 return;
             }
-            signingStarted = await beginSigningFlow({ mode: 'user' });
+            signingStarted = await beginSigningFlow(joinIntent);
             if (signingStarted) {
                 return;
             }
-            await finalizeJoin({ mode: 'user' });
+            await finalizeJoin(joinIntent);
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to join event');
         } finally {
@@ -3295,6 +3454,11 @@ export default function EventDetailSheet({
                     ? 'Select a division type before joining the waitlist.'
                     : 'Select a division before joining the waitlist.',
             );
+            return;
+        }
+        const waitlistMinorIntent: JoinIntent = { mode: 'user' };
+        if (isMinor && shouldAskRegistrationQuestions(waitlistMinorIntent)) {
+            openRegistrationQuestionsStep(waitlistMinorIntent);
             return;
         }
 
@@ -3395,6 +3559,7 @@ export default function EventDetailSheet({
         const team = teamOverride
             ?? userTeams.find((t) => t.$id === selectedTeamId)
             ?? ({ $id: selectedTeamId } as Team);
+        const joinIntent: JoinIntent = { mode: 'team', team };
         if (
             !skipPaymentPlanPreview
             && selectedDivisionBilling.allowPaymentPlans
@@ -3409,17 +3574,21 @@ export default function EventDetailSheet({
             });
             return;
         }
+        if (shouldAskRegistrationQuestions(joinIntent)) {
+            openRegistrationQuestionsStep(joinIntent);
+            return;
+        }
 
         setJoining(true);
         setJoinError(null);
         setJoinNotice(null);
         let signingStarted = false;
         try {
-            signingStarted = await beginSigningFlow({ mode: 'team', team });
+            signingStarted = await beginSigningFlow(joinIntent);
             if (signingStarted) {
                 return;
             }
-            await finalizeJoin({ mode: 'team', team });
+            await finalizeJoin(joinIntent);
         } catch (error) {
             setJoinError(error instanceof Error ? error.message : 'Failed to join as team');
         } finally {
@@ -5125,6 +5294,13 @@ export default function EventDetailSheet({
                                                                 setJoinError(freeAgentJoinBlockedReason);
                                                                 return;
                                                             }
+                                                            if (isMinor) {
+                                                                const minorIntent: JoinIntent = { mode: 'user' };
+                                                                if (shouldAskRegistrationQuestions(minorIntent)) {
+                                                                    openRegistrationQuestionsStep(minorIntent);
+                                                                    return;
+                                                                }
+                                                            }
                                                             setJoining(true);
                                                             setJoinError(null);
                                                             try {
@@ -5208,6 +5384,93 @@ export default function EventDetailSheet({
         </div>
     );
 
+    const renderEventTeamParticipant = (team: Team | UserData) => {
+        const teamRow = team as Team;
+        const organizationName = getOrganizationName(currentEvent.organization) ?? currentEvent.location ?? 'Event';
+        const sportInput = typeof currentEvent?.sport === 'string'
+            ? currentEvent.sport
+            : currentEvent?.sport?.name ?? currentEvent?.sportId ?? null;
+        const divisionLabel = resolveDivisionDisplayName({
+            division: teamRow.division,
+            divisionNameIndex: divisionDisplayNameIndex,
+            sportInput,
+        }) ?? 'Division';
+        const divisionSuffix = /\bdivision\b/i.test(divisionLabel) ? '' : ' Division';
+
+        return (
+            <TeamRegistrationFlow
+                team={teamRow}
+                user={user}
+                paymentSummary={{
+                    name: teamRow.name || 'Team',
+                    location: organizationName,
+                    eventType: currentEvent.eventType,
+                    price: Math.max(0, Math.round(Number(teamRow.registrationPriceCents ?? 0))),
+                }}
+                organization={{
+                    $id: currentEvent.organizationId ?? undefined,
+                    name: organizationName,
+                }}
+                onRequireAuth={openAuthModal}
+                onTeamUpdated={() => {
+                    void loadEventDetails(currentEvent.$id, { automatic: false });
+                }}
+                onCompleted={async () => {
+                    setJoinNotice(`You joined ${teamRow.name || 'this team'}.`);
+                    await loadEventDetails(currentEvent.$id, { automatic: false });
+                }}
+            >
+                {(flow) => (
+                    <div className="space-y-2 rounded-lg p-3 hover:bg-gray-50">
+                        <div className="flex items-center gap-3">
+                            <Image
+                                src={getTeamAvatarUrl(teamRow, 40)}
+                                alt={teamRow.name || 'Team'}
+                                width={40}
+                                height={40}
+                                unoptimized
+                                className="w-10 h-10 rounded-full object-cover"
+                            />
+                            <div className="flex-1">
+                                <div className="font-medium text-gray-900">{teamRow.name || 'Unnamed Team'}</div>
+                                <div className="text-sm text-gray-500">
+                                    {teamRow.currentSize} members &bull; {divisionLabel}{divisionSuffix}
+                                </div>
+                            </div>
+                            <div className="text-xs text-gray-400">
+                                Team
+                            </div>
+                        </div>
+                        {flow.registrationError ? (
+                            <Alert color="red" variant="light" py="xs">
+                                <Text size="xs">{flow.registrationError}</Text>
+                            </Alert>
+                        ) : null}
+                        {flow.currentUserActiveMember && !flow.shouldOfferDocumentReview ? (
+                            <Text size="xs" c="green" fw={600}>
+                                Already on this team
+                            </Text>
+                        ) : null}
+                        {flow.actionVisible ? (
+                            <Button
+                                size="xs"
+                                fullWidth
+                                loading={flow.actionLoading}
+                                disabled={flow.actionDisabled}
+                                onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+                                    event.stopPropagation();
+                                    flow.openFlow();
+                                }}
+                            >
+                                {flow.actionLabel}
+                            </Button>
+                        ) : null}
+                    </div>
+                )}
+            </TeamRegistrationFlow>
+        );
+    };
+
     return (
         <>
             {content}
@@ -5268,39 +5531,7 @@ export default function EventDetailSheet({
                     title="Event Teams"
                     participants={teams}
                     isLoading={isLoadingEvent}
-                    renderParticipant={(team) => {
-                        const teamRow = team as Team;
-                        const sportInput = typeof currentEvent?.sport === 'string'
-                            ? currentEvent.sport
-                            : currentEvent?.sport?.name ?? currentEvent?.sportId ?? null;
-                        const divisionLabel = resolveDivisionDisplayName({
-                            division: teamRow.division,
-                            divisionNameIndex: divisionDisplayNameIndex,
-                            sportInput,
-                        }) ?? 'Division';
-                        const divisionSuffix = /\\bdivision\\b/i.test(divisionLabel) ? '' : ' Division';
-                        return (
-                            <div className="flex items-center space-x-3 p-3 hover:bg-gray-50 rounded-lg">
-                            <Image
-                                src={getTeamAvatarUrl(teamRow, 40)}
-                                alt={teamRow.name || 'Team'}
-                                width={40}
-                                height={40}
-                                unoptimized
-                                className="w-10 h-10 rounded-full object-cover"
-                            />
-                            <div className="flex-1">
-                                <div className="font-medium text-gray-900">{teamRow.name || 'Unnamed Team'}</div>
-                                <div className="text-sm text-gray-500">
-                                    {teamRow.currentSize} members • {divisionLabel}{divisionSuffix}
-                                </div>
-                            </div>
-                            <div className="text-xs text-gray-400">
-                                Team
-                            </div>
-                        </div>
-                        );
-                    }}
+                    renderParticipant={renderEventTeamParticipant}
                     emptyMessage="No teams have registered for this event yet."
                 />
             )}
@@ -5495,6 +5726,72 @@ export default function EventDetailSheet({
                         </Button>
                     </Group>
                 </Stack>
+            </Modal>
+
+            <Modal
+                opened={showRegistrationQuestionsModal}
+                onClose={() => {
+                    setShowRegistrationQuestionsModal(false);
+                    setRegistrationQuestionsIntent(null);
+                }}
+                centered
+                size="lg"
+                title="Registration questions"
+                zIndex={SIGN_MODAL_Z_INDEX}
+            >
+                <form
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        void submitRegistrationQuestionsStep();
+                    }}
+                >
+                    <Stack gap="sm">
+                        {registrationQuestions.length > 0 ? (
+                            <Stack gap="md">
+                                {registrationQuestions.map((question) => (
+                                    <Textarea
+                                        key={question.id}
+                                        label={question.prompt}
+                                        required={Boolean(question.required)}
+                                        autosize
+                                        minRows={question.answerType === 'LONG_TEXT' ? 4 : 2}
+                                        value={registrationQuestionAnswers[question.id] ?? ''}
+                                        onChange={(event) => {
+                                            const value = event.currentTarget.value;
+                                            setRegistrationQuestionAnswers((current) => ({
+                                                ...current,
+                                                [question.id]: value,
+                                            }));
+                                        }}
+                                    />
+                                ))}
+                            </Stack>
+                        ) : (
+                            <Text size="sm" c="dimmed">
+                                Continue to finish registration.
+                            </Text>
+                        )}
+                        {joinError ? (
+                            <Alert color="red" variant="light">
+                                {joinError}
+                            </Alert>
+                        ) : null}
+                        <Group justify="flex-end" wrap="wrap">
+                            <Button
+                                variant="default"
+                                onClick={() => {
+                                    setShowRegistrationQuestionsModal(false);
+                                    setRegistrationQuestionsIntent(null);
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button type="submit" loading={joining || registeringChild}>
+                                Continue
+                            </Button>
+                        </Group>
+                    </Stack>
+                </form>
             </Modal>
 
             <Modal

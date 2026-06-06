@@ -1,7 +1,15 @@
 import { apiRequest } from '@/lib/apiClient';
 import { createId } from '@/lib/id';
-import { Invite, Team, UserData, getTeamAvatarUrl } from '@/types';
-import type { TeamPlayerRegistration } from '@/types';
+import { Bill, Invite, Team, UserData, getTeamAvatarUrl } from '@/types';
+import type {
+    RegistrationQuestion,
+    RegistrationQuestionAnswerInput,
+    RegistrationQuestionDraft,
+    RegistrationQuestionResponse,
+    TeamJoinPolicy,
+    TeamJoinRequest,
+    TeamPlayerRegistration,
+} from '@/types';
 import { userService, type UserVisibilityContext } from './userService';
 import { inferDivisionDetails } from '@/lib/divisionTypes';
 
@@ -55,6 +63,15 @@ export type TeamRegistrationCheckoutTarget = {
     rosterRole?: string;
     consentDocumentId?: string | null;
     consentStatus?: string | null;
+};
+
+export type TeamJoinRequestContext = {
+    teamId: string;
+    joinPolicy: TeamJoinPolicy;
+    openRegistration: boolean;
+    registrationPriceCents: number;
+    questions: RegistrationQuestion[];
+    currentRequest?: TeamJoinRequest | null;
 };
 
 class TeamService {
@@ -175,6 +192,7 @@ class TeamService {
               divisionTypeId?: string;
               addSelfAsPlayer?: boolean;
               organizationId?: string;
+              joinPolicy?: TeamJoinPolicy;
               openRegistration?: boolean;
               registrationPriceCents?: number;
               requiredTemplateIds?: string[];
@@ -203,8 +221,11 @@ class TeamService {
                 profileImageId: profileImageId || '',
                 addSelfAsPlayer,
                   organizationId: options?.organizationId,
-                  openRegistration: options?.openRegistration ?? false,
-                  registrationPriceCents: options?.openRegistration ? Math.max(0, Math.round(options?.registrationPriceCents ?? 0)) : 0,
+                  joinPolicy: options?.joinPolicy ?? (options?.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
+                  openRegistration: (options?.joinPolicy ?? (options?.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED')) === 'OPEN_REGISTRATION',
+                  registrationPriceCents: (options?.joinPolicy === 'REQUEST_TO_JOIN' || options?.openRegistration)
+                      ? Math.max(0, Math.round(options?.registrationPriceCents ?? 0))
+                      : 0,
                   requiredTemplateIds: Array.isArray(options?.requiredTemplateIds) ? options.requiredTemplateIds : [],
               };
 
@@ -397,6 +418,9 @@ class TeamService {
                   ? row.createdBy
                   : null,
               openRegistration: Boolean(row.openRegistration),
+              joinPolicy: typeof row.joinPolicy === 'string' && ['CLOSED', 'OPEN_REGISTRATION', 'REQUEST_TO_JOIN'].includes(row.joinPolicy)
+                  ? row.joinPolicy
+                  : (row.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
               registrationPriceCents: typeof row.registrationPriceCents === 'number'
                   ? Math.max(0, Math.round(row.registrationPriceCents))
                   : 0,
@@ -572,7 +596,7 @@ class TeamService {
 
     async updateTeamDetails(
         teamId: string,
-        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'teamSize' | 'captainId' | 'openRegistration' | 'registrationPriceCents' | 'requiredTemplateIds' | 'playerRegistrations'>>,
+        updates: Partial<Pick<Team, 'name' | 'sport' | 'division' | 'divisionTypeId' | 'teamSize' | 'captainId' | 'joinPolicy' | 'openRegistration' | 'registrationPriceCents' | 'requiredTemplateIds' | 'playerRegistrations'>>,
       ): Promise<Team | undefined> {
         try {
             const response = await apiRequest<any>(`/api/teams/${teamId}`, {
@@ -670,7 +694,7 @@ class TeamService {
         }
     }
 
-    async registerSelfForTeam(teamId: string): Promise<TeamRegistrationResult> {
+    async registerSelfForTeam(teamId: string, answers?: RegistrationQuestionAnswerInput[]): Promise<TeamRegistrationResult> {
         try {
             const response = await apiRequest<{
                 registrationId?: string;
@@ -685,6 +709,7 @@ class TeamService {
                 error?: string;
             }>(`/api/teams/${teamId}/registrations/self`, {
                 method: 'POST',
+                body: answers ? { answers } : undefined,
             });
             if (response?.error) {
                 throw new Error(response.error);
@@ -708,7 +733,7 @@ class TeamService {
         }
     }
 
-    async registerChildForTeam(teamId: string, childId: string): Promise<TeamRegistrationResult> {
+    async registerChildForTeam(teamId: string, childId: string, answers?: RegistrationQuestionAnswerInput[]): Promise<TeamRegistrationResult> {
         try {
             const response = await apiRequest<{
                 registrationId?: string;
@@ -720,7 +745,7 @@ class TeamService {
                 error?: string;
             }>(`/api/teams/${teamId}/registrations/child`, {
                 method: 'POST',
-                body: { childId },
+                body: { childId, ...(answers ? { answers } : {}) },
             });
             if (response?.error) {
                 throw new Error(response.error);
@@ -747,6 +772,116 @@ class TeamService {
             return result.team;
         }
         return this.getTeamById(teamId);
+    }
+
+    async getRegistrationQuestions(scopeType: 'TEAM' | 'EVENT', scopeId: string, mode?: 'edit'): Promise<RegistrationQuestion[]> {
+        const params = new URLSearchParams();
+        params.set('scopeType', scopeType);
+        params.set('scopeId', scopeId);
+        if (mode) {
+            params.set('mode', mode);
+        }
+        const response = await apiRequest<{ questions?: RegistrationQuestion[] }>(`/api/registration-questions?${params.toString()}`);
+        return response.questions ?? [];
+    }
+
+    async saveRegistrationQuestions(
+        scopeType: 'TEAM' | 'EVENT',
+        scopeId: string,
+        questions: RegistrationQuestionDraft[],
+    ): Promise<RegistrationQuestion[]> {
+        const response = await apiRequest<{ questions?: RegistrationQuestion[] }>('/api/registration-questions', {
+            method: 'PUT',
+            body: { scopeType, scopeId, questions },
+        });
+        return response.questions ?? [];
+    }
+
+    async getRegistrationQuestionResponse(
+        subjectType: 'TEAM_JOIN_REQUEST' | 'TEAM_REGISTRATION' | 'EVENT_REGISTRATION',
+        subjectId: string,
+    ): Promise<RegistrationQuestionResponse | null> {
+        const params = new URLSearchParams();
+        params.set('subjectType', subjectType);
+        params.set('subjectId', subjectId);
+        const response = await apiRequest<{ response?: RegistrationQuestionResponse | null }>(`/api/registration-question-responses?${params.toString()}`);
+        return response.response ?? null;
+    }
+
+    async getTeamJoinRequestContext(teamId: string): Promise<TeamJoinRequestContext> {
+        const response = await apiRequest<Partial<TeamJoinRequestContext>>(`/api/teams/${encodeURIComponent(teamId)}/join-request-context`);
+        return {
+            teamId: response.teamId ?? teamId,
+            joinPolicy: response.joinPolicy ?? 'CLOSED',
+            openRegistration: Boolean(response.openRegistration),
+            registrationPriceCents: Math.max(0, Math.round(response.registrationPriceCents ?? 0)),
+            questions: response.questions ?? [],
+            currentRequest: response.currentRequest ?? null,
+        };
+    }
+
+    async requestToJoinTeam(
+        teamId: string,
+        answers: RegistrationQuestionAnswerInput[],
+        options: { registrantUserId?: string; parentId?: string | null; registrantType?: 'SELF' | 'CHILD' } = {},
+    ): Promise<TeamJoinRequest> {
+        const response = await apiRequest<{ request?: TeamJoinRequest; error?: string }>(`/api/teams/${encodeURIComponent(teamId)}/join-requests`, {
+            method: 'POST',
+            body: { answers, ...options },
+        });
+        if (response.error) {
+            throw new Error(response.error);
+        }
+        if (!response.request) {
+            throw new Error('Failed to submit join request.');
+        }
+        return response.request;
+    }
+
+    async listTeamJoinRequests(teamId: string): Promise<TeamJoinRequest[]> {
+        const response = await apiRequest<{ requests?: TeamJoinRequest[] }>(`/api/teams/${encodeURIComponent(teamId)}/join-requests`);
+        return response.requests ?? [];
+    }
+
+    async reviewTeamJoinRequest(
+        teamId: string,
+        requestId: string,
+        action: 'APPROVE' | 'DECLINE',
+        note?: string | null,
+    ): Promise<TeamJoinRequest> {
+        const response = await apiRequest<{ request?: TeamJoinRequest; error?: string }>(
+            `/api/teams/${encodeURIComponent(teamId)}/join-requests/${encodeURIComponent(requestId)}`,
+            {
+                method: 'PATCH',
+                body: { action, note },
+            },
+        );
+        if (response.error) {
+            throw new Error(response.error);
+        }
+        if (!response.request) {
+            throw new Error('Failed to review join request.');
+        }
+        return response.request;
+    }
+
+    async createTeamMemberBill(teamId: string, input: {
+        userId: string;
+        amountCents?: number;
+        label?: string;
+        dueDate?: string;
+    }): Promise<Bill> {
+        const response = await apiRequest<{ bill?: Bill; error?: string }>(`/api/teams/${encodeURIComponent(teamId)}/billing/bills`, {
+            method: 'POST',
+            body: input,
+        });
+        if (response.error) {
+            throw new Error(response.error);
+        }
+        if (!response.bill) {
+            throw new Error('Failed to create bill.');
+        }
+        return response.bill;
     }
 
     async leaveTeam(teamId: string): Promise<Team | undefined> {

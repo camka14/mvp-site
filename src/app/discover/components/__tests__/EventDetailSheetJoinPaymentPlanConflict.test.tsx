@@ -287,6 +287,7 @@ describe('EventDetailSheet payment-plan join conflicts', () => {
         expect.objectContaining({ divisionId: 'open' }),
         undefined,
         undefined,
+        undefined,
       );
     });
 

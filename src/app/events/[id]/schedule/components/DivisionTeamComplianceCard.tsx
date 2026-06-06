@@ -92,6 +92,9 @@ export default function DivisionTeamComplianceCard({
 }: DivisionTeamComplianceCardProps) {
   const payment = getPaymentLabel(summary, cardKind);
   const documents = getDocumentLabel(summary);
+  const participantAnswers = cardKind === 'participant'
+    ? summary?.users?.[0]?.registrationAnswers ?? []
+    : [];
 
   return (
     <Paper
@@ -122,6 +125,19 @@ export default function DivisionTeamComplianceCard({
                 <Text size="xs" c="dimmed">
                   {summary.users.length === 1 ? '1 rostered user' : `${summary.users.length} rostered users`}
                 </Text>
+              ) : null}
+              {participantAnswers.length > 0 ? (
+                <Stack gap={4} mt={4}>
+                  <Text size="xs" fw={600}>Registration answers</Text>
+                  {participantAnswers.map((answer) => (
+                    <div key={answer.questionId}>
+                      <Text size="xs" c="dimmed">{answer.prompt}</Text>
+                      <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                        {answer.answer || 'No answer'}
+                      </Text>
+                    </div>
+                  ))}
+                </Stack>
               ) : null}
             </>
           ) : null}

@@ -2,6 +2,10 @@ import { prisma } from '@/lib/prisma';
 import type { Prisma, PrismaClient } from '@/generated/prisma/client';
 import { withLegacyFields } from '@/server/legacyFormat';
 import { upsertEventRegistration, type RegistrationLifecycleStatus } from '@/server/events/eventRegistrations';
+import {
+  TEAM_JOIN_POLICY_CLOSED,
+  resolveSerializedTeamJoinPolicy,
+} from '@/server/teams/teamJoinPolicy';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient | any;
 
@@ -63,6 +67,7 @@ type CanonicalTeamRow = {
   createdBy?: string | null;
   parentTeamId?: string | null;
   openRegistration?: boolean | null;
+  joinPolicy?: string | null;
   registrationPriceCents?: number | null;
   requiredTemplateIds?: string[] | null;
   visibility?: string | null;
@@ -96,6 +101,7 @@ type EventTeamRow = {
 type TeamRegistrationSettingsSource = {
   id?: string | null;
   openRegistration?: boolean | null;
+  joinPolicy?: string | null;
   registrationPriceCents?: number | null;
   requiredTemplateIds?: string[] | null;
 };
@@ -169,6 +175,7 @@ const loadRegistrationSettingsByTeamId = async (
     select: {
       id: true,
       openRegistration: true,
+      joinPolicy: true,
       registrationPriceCents: true,
       requiredTemplateIds: true,
     },
@@ -298,6 +305,7 @@ export const serializeCanonicalTeam = (params: {
   playerRegistrations: CanonicalPlayerRegistration[];
   staffAssignments: CanonicalStaffAssignment[];
 }) => {
+  const joinPolicy = resolveSerializedTeamJoinPolicy(params.team);
   const activePlayerRegistrations = params.playerRegistrations.filter(isActiveRegistration);
   const invitedPlayerRegistrations = params.playerRegistrations.filter(isInvitedRegistration);
   const assistantCoachAssignments = params.staffAssignments.filter((row) => (
@@ -316,7 +324,8 @@ export const serializeCanonicalTeam = (params: {
   return withLegacyFields({
     ...params.team,
     visibility: normalizeTeamVisibility(params.team.visibility),
-    openRegistration: Boolean(params.team.openRegistration),
+    joinPolicy,
+    openRegistration: joinPolicy === 'OPEN_REGISTRATION',
     registrationPriceCents: Math.max(0, Math.round(params.team.registrationPriceCents ?? 0)),
     requiredTemplateIds: normalizeIdList(params.team.requiredTemplateIds),
     playerIds: activePlayerRegistrations.map((row) => row.userId),
@@ -350,7 +359,10 @@ const serializeLegacyEventTeam = (
   registrationSettings?: TeamRegistrationSettingsSource | null,
 ) => withLegacyFields({
   ...team,
-  openRegistration: Boolean(registrationSettings?.openRegistration),
+  joinPolicy: registrationSettings ? resolveSerializedTeamJoinPolicy(registrationSettings) : TEAM_JOIN_POLICY_CLOSED,
+  openRegistration: registrationSettings
+    ? resolveSerializedTeamJoinPolicy(registrationSettings) === 'OPEN_REGISTRATION'
+    : false,
   registrationPriceCents: normalizeRegistrationPriceCents(registrationSettings?.registrationPriceCents),
   requiredTemplateIds: normalizeIdList(registrationSettings?.requiredTemplateIds),
   kind: normalizeId(team.kind) ?? 'REGISTERED',
@@ -467,6 +479,7 @@ const buildFallbackCanonicalTeam = (team: EventTeamRow): ReturnType<typeof seria
       parentTeamId: normalizeId(team.parentTeamId),
       createdBy: normalizeId(team.managerId),
       openRegistration: false,
+      joinPolicy: TEAM_JOIN_POLICY_CLOSED,
       registrationPriceCents: 0,
       requiredTemplateIds: [],
     },

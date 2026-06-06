@@ -5,10 +5,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { AnimatePresence, motion } from 'motion/react';
 
 import { eventService } from '@/lib/eventService';
+import { teamService } from '@/lib/teamService';
 import LocationSelector from '@/components/location/LocationSelector';
 import TournamentFields from '@/app/discover/components/TournamentFields';
 import { ImageUploader } from '@/components/ui/ImageUploader';
-import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice } from '@/types';
+import { getEventImageUrl, Event, EventState, Division as CoreDivision, UserData, Team, LeagueConfig, Field, TimeSlot, Organization, LeagueScoringConfig, MatchRulesConfig, Sport, TournamentConfig, TemplateDocument, Invite, StaffMemberType, OfficialSchedulingMode, EventOfficial, EventOfficialPosition, SportOfficialPositionTemplate, formatBillAmount, formatPrice, RegistrationQuestionDraft } from '@/types';
 import { createLeagueScoringConfig } from '@/types/defaults';
 import LeagueScoringConfigPanel from '@/app/discover/components/LeagueScoringConfigPanel';
 import { useSports } from '@/app/hooks/useSports';
@@ -103,6 +104,7 @@ interface EventFormProps {
 
 export type EventFormHandle = {
     getDraft: () => Partial<Event>;
+    getRegistrationQuestionDrafts: () => RegistrationQuestionDraft[];
     validate: () => Promise<boolean>;
     getValidationErrors: () => Array<{ path: string; message: string }>;
     validatePendingStaffAssignments: () => Promise<void>;
@@ -208,6 +210,7 @@ const DIVISION_LAYOUT_TRANSITION = {
 const SECTION_COLLAPSE_DEFAULTS: Record<string, boolean> = {
     'section-basic-information': false,
     'section-event-details': true,
+    'section-registration-questions': true,
     'section-match-rules': true,
     'section-officials': true,
     'section-division-settings': true,
@@ -4024,10 +4027,55 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const [templateDocuments, setTemplateDocuments] = useState<TemplateDocument[]>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [templatesError, setTemplatesError] = useState<string | null>(null);
+    const [registrationQuestionDrafts, setRegistrationQuestionDrafts] = useState<RegistrationQuestionDraft[]>([]);
+    const [registrationQuestionsLoading, setRegistrationQuestionsLoading] = useState(false);
+    const [registrationQuestionsError, setRegistrationQuestionsError] = useState<string | null>(null);
 
     const activeEditingEvent = incomingEvent ?? null;
 
     const isEditMode = Boolean(activeEditingEvent && !isCreateMode);
+
+    useEffect(() => {
+        const eventId = activeEditingEvent?.$id;
+        if (!open || !eventId || isCreateMode) {
+            setRegistrationQuestionDrafts([]);
+            setRegistrationQuestionsLoading(false);
+            setRegistrationQuestionsError(null);
+            return undefined;
+        }
+
+        let cancelled = false;
+        setRegistrationQuestionsLoading(true);
+        setRegistrationQuestionsError(null);
+        teamService.getRegistrationQuestions('EVENT', eventId, 'edit')
+            .then((questions) => {
+                if (cancelled) {
+                    return;
+                }
+                setRegistrationQuestionDrafts(questions.map((question, index) => ({
+                    id: question.id,
+                    prompt: question.prompt,
+                    answerType: question.answerType,
+                    required: question.required,
+                    sortOrder: question.sortOrder ?? index,
+                })));
+            })
+            .catch((error) => {
+                if (cancelled) {
+                    return;
+                }
+                setRegistrationQuestionDrafts([]);
+                setRegistrationQuestionsError(error instanceof Error ? error.message : 'Failed to load registration questions.');
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setRegistrationQuestionsLoading(false);
+                }
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [activeEditingEvent?.$id, isCreateMode, open]);
 
     const { sports, sportsById, loading: sportsLoading, error: sportsError } = useSports();
     const sportOptions = useMemo(() => sports.map((sport) => ({ value: sport.$id, label: sport.name })), [sports]);
@@ -10133,6 +10181,17 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => buildDraftEvent(getValues()),
         [buildDraftEvent, getValues],
     );
+    const getRegistrationQuestionDrafts = useCallback((): RegistrationQuestionDraft[] => (
+        registrationQuestionDrafts
+            .map((question, index) => ({
+                id: question.id,
+                prompt: String(question.prompt ?? '').trim(),
+                answerType: question.answerType ?? 'TEXT',
+                required: Boolean(question.required),
+                sortOrder: Number.isFinite(Number(question.sortOrder)) ? Number(question.sortOrder) : index,
+            }))
+            .filter((question) => question.prompt.length > 0)
+    ), [registrationQuestionDrafts]);
 
     const validateDraft = useCallback(async () => {
         const isFormValid = await trigger();
@@ -10196,13 +10255,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         ref,
         () => ({
             getDraft: getDraftSnapshot,
+            getRegistrationQuestionDrafts,
             validate: validateDraft,
             getValidationErrors: () => lastValidationErrorsRef.current,
             validatePendingStaffAssignments,
             commitDirtyBaseline,
             submitPendingStaffInvites,
         }),
-        [commitDirtyBaseline, getDraftSnapshot, submitPendingStaffInvites, validateDraft, validatePendingStaffAssignments],
+        [commitDirtyBaseline, getDraftSnapshot, getRegistrationQuestionDrafts, submitPendingStaffInvites, validateDraft, validatePendingStaffAssignments],
     );
 
     // Syncs the selected event image with component state after uploads or picker changes.
@@ -10233,6 +10293,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => [
             { id: 'section-basic-information', label: 'Basic Information', visible: true },
             { id: 'section-event-details', label: 'Event Details', visible: true },
+            { id: 'section-registration-questions', label: 'Questions', visible: true },
             { id: 'section-match-rules', label: 'Match Rules', visible: showMatchRulesSection },
             { id: 'section-officials', label: 'Officials', visible: true },
             { id: 'section-division-settings', label: 'Divisions', visible: true },
@@ -11122,6 +11183,119 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </Collapse>
                                 </div>
                             )}
+                            </Collapse>
+                        </Paper>
+
+                        <Paper
+                            id="section-registration-questions"
+                            shadow="xs"
+                            radius="md"
+                            withBorder
+                            p="lg"
+                            className="scroll-mt-20 bg-gray-50"
+                        >
+                            <div className="flex items-center justify-between gap-3">
+                                <h3 className="text-lg font-semibold">Registration Questions</h3>
+                                <Button
+                                    type="button"
+                                    variant="subtle"
+                                    size="xs"
+                                    aria-expanded={!collapsedSections['section-registration-questions']}
+                                    aria-controls="section-registration-questions-content"
+                                    onClick={() => toggleSectionCollapse('section-registration-questions')}
+                                >
+                                    {collapsedSections['section-registration-questions'] ? 'Expand' : 'Collapse'}
+                                </Button>
+                            </div>
+                            <Collapse in={!collapsedSections['section-registration-questions']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                                <Stack id="section-registration-questions-content" gap="sm" mt="md">
+                                    {registrationQuestionsError ? (
+                                        <Alert color="red" variant="light">
+                                            {registrationQuestionsError}
+                                        </Alert>
+                                    ) : null}
+                                    {registrationQuestionsLoading ? (
+                                        <Group gap="sm">
+                                            <Loader size="sm" />
+                                            <Text size="sm" c="dimmed">Loading questions...</Text>
+                                        </Group>
+                                    ) : null}
+                                    <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
+                                        <Text size="sm" c="dimmed">
+                                            Players answer these during event registration.
+                                        </Text>
+                                        <Button
+                                            type="button"
+                                            size="xs"
+                                            onClick={() => setRegistrationQuestionDrafts((current) => [
+                                                ...current,
+                                                {
+                                                    id: createClientId(),
+                                                    prompt: '',
+                                                    answerType: 'TEXT',
+                                                    required: false,
+                                                    sortOrder: current.length,
+                                                },
+                                            ])}
+                                        >
+                                            Add Question
+                                        </Button>
+                                    </Group>
+                                    {registrationQuestionDrafts.length > 0 ? (
+                                        <Stack gap="sm">
+                                            {registrationQuestionDrafts.map((question, index) => (
+                                                <div key={question.id ?? index} className="rounded-md border border-gray-200 bg-white p-3">
+                                                    <Stack gap="xs">
+                                                        <Textarea
+                                                            label={`Question ${index + 1}`}
+                                                            value={question.prompt ?? ''}
+                                                            autosize
+                                                            minRows={2}
+                                                            maxLength={500}
+                                                            onChange={(event) => {
+                                                                const value = event.currentTarget.value;
+                                                                setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
+                                                                    entryIndex === index
+                                                                        ? { ...entry, prompt: value, sortOrder: index }
+                                                                        : entry
+                                                                )));
+                                                            }}
+                                                        />
+                                                        <Group justify="space-between" align="center" gap="sm" wrap="wrap">
+                                                            <Checkbox
+                                                                label="Required"
+                                                                checked={Boolean(question.required)}
+                                                                onChange={(event) => {
+                                                                    const checked = event.currentTarget.checked;
+                                                                    setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
+                                                                        entryIndex === index
+                                                                            ? { ...entry, required: checked, sortOrder: index }
+                                                                            : entry
+                                                                    )));
+                                                                }}
+                                                            />
+                                                            <Button
+                                                                type="button"
+                                                                variant="subtle"
+                                                                color="red"
+                                                                size="xs"
+                                                                onClick={() => setRegistrationQuestionDrafts((current) => current
+                                                                    .filter((_, entryIndex) => entryIndex !== index)
+                                                                    .map((entry, entryIndex) => ({ ...entry, sortOrder: entryIndex })))}
+                                                            >
+                                                                Remove
+                                                            </Button>
+                                                        </Group>
+                                                    </Stack>
+                                                </div>
+                                            ))}
+                                        </Stack>
+                                    ) : (
+                                        <Text size="sm" c="dimmed">
+                                            No registration questions configured.
+                                        </Text>
+                                    )}
+                                </Stack>
                             </Collapse>
                         </Paper>
 

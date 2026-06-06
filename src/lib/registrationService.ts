@@ -1,4 +1,5 @@
 import { apiRequest } from '@/lib/apiClient';
+import type { RegistrationQuestionAnswerInput } from '@/types';
 
 export type RegistrationStatus =
   | 'pendingConsent'
@@ -56,10 +57,11 @@ class RegistrationService {
   async registerSelfForEvent(
     eventId: string,
     selection: DivisionRegistrationSelection = {},
+    answers?: RegistrationQuestionAnswerInput[],
   ): Promise<RegistrationResponse> {
     const result = await apiRequest<RegistrationResponse>(`/api/events/${eventId}/registrations/self`, {
       method: 'POST',
-      body: { eventId, ...selection },
+      body: { eventId, ...selection, ...(answers ? { answers } : {}) },
     });
     if (result?.error) {
       throw new Error(result.error);
@@ -71,10 +73,11 @@ class RegistrationService {
     eventId: string,
     childId: string,
     selection: DivisionRegistrationSelection = {},
+    answers?: RegistrationQuestionAnswerInput[],
   ): Promise<RegistrationResponse> {
     const result = await apiRequest<RegistrationResponse>(`/api/events/${eventId}/registrations/child`, {
       method: 'POST',
-      body: { eventId, childId, ...selection },
+      body: { eventId, childId, ...selection, ...(answers ? { answers } : {}) },
     });
     if (result?.error) {
       throw new Error(result.error);

@@ -7220,6 +7220,15 @@ function EventScheduleContent() {
     [setSubmitError],
   );
 
+  const saveEventRegistrationQuestions = useCallback(async (savedEventId?: string | null) => {
+    const eventId = typeof savedEventId === 'string' ? savedEventId.trim() : '';
+    const formApi = eventFormRef.current;
+    if (!eventId || !formApi) {
+      return;
+    }
+    await teamService.saveRegistrationQuestions('EVENT', eventId, formApi.getRegistrationQuestionDrafts());
+  }, []);
+
   const handlePreviewEventUpdate = useCallback((preview: Event) => {
     const normalizedPreview = normalizeApiEvent(preview) ?? preview;
     const previewClone = cloneValue(normalizedPreview) as Event;
@@ -7441,6 +7450,7 @@ function EventScheduleContent() {
         if (!result?.event) {
           throw new Error('Failed to apply schedule changes.');
         }
+        await saveEventRegistrationQuestions(result.event.$id);
 
         handlePreviewEventUpdate(result.event);
 
@@ -7459,7 +7469,7 @@ function EventScheduleContent() {
         setPublishing(false);
       }
     },
-    [buildSchedulePayload, eventId, handlePreviewEventUpdate, isCreateMode, pathname, router, searchParams],
+    [buildSchedulePayload, eventId, handlePreviewEventUpdate, isCreateMode, pathname, router, saveEventRegistrationQuestions, searchParams],
   );
 
   const scheduleRegularEvent = useCallback(
@@ -7479,6 +7489,7 @@ function EventScheduleContent() {
         if (!result?.event) {
           throw new Error('Failed to create event.');
         }
+        await saveEventRegistrationQuestions(result.event.$id);
 
         handlePreviewEventUpdate(result.event);
 
@@ -7503,7 +7514,7 @@ function EventScheduleContent() {
         setPublishing(false);
       }
     },
-    [buildSchedulePayload, eventId, handlePreviewEventUpdate, pathname, router, searchParams],
+    [buildSchedulePayload, eventId, handlePreviewEventUpdate, pathname, router, saveEventRegistrationQuestions, searchParams],
   );
 
   const resetRentalSignFlowState = useCallback(() => {
@@ -8177,6 +8188,7 @@ function EventScheduleContent() {
           updatedEvent.matches = nextMatches;
         }
 
+        await saveEventRegistrationQuestions(updatedEvent.$id);
         updatedEvent = await syncPendingEventFormInvites(updatedEvent);
 
         hasUnsavedChangesRef.current = false;
@@ -8239,6 +8251,7 @@ function EventScheduleContent() {
       loadSchedule,
       pathname,
       router,
+      saveEventRegistrationQuestions,
       selectedLifecycleStatus,
       searchParams,
       stagedMatchCreates,
@@ -11510,6 +11523,21 @@ function EventScheduleContent() {
                   </Text>
                 </Stack>
               </Group>
+              {(selectedComplianceSummary.registrationAnswers ?? []).length > 0 ? (
+                <Paper withBorder radius="md" p="sm">
+                  <Stack gap={6}>
+                    <Text size="sm" fw={600}>Registration answers</Text>
+                    {(selectedComplianceSummary.registrationAnswers ?? []).map((answer) => (
+                      <div key={answer.questionId}>
+                        <Text size="xs" c="dimmed">{answer.prompt}</Text>
+                        <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                          {answer.answer || 'No answer'}
+                        </Text>
+                      </div>
+                    ))}
+                  </Stack>
+                </Paper>
+              ) : null}
 
               {selectedComplianceSummary.users.length === 0 ? (
                 <Paper withBorder radius="md" p="md">
@@ -11568,10 +11596,11 @@ function EventScheduleContent() {
                             {expanded && (
                               <Table.Tr>
                                 <Table.Td colSpan={4}>
-                                  {userSummary.requiredDocuments.length === 0 ? (
-                                    <Text size="xs" c="dimmed">No required documents for this user.</Text>
-                                  ) : (
-                                    <Stack gap={6}>
+                                  <Stack gap="sm">
+                                    {userSummary.requiredDocuments.length === 0 ? (
+                                      <Text size="xs" c="dimmed">No required documents for this user.</Text>
+                                    ) : (
+                                      <Stack gap={6}>
                                       {userSummary.requiredDocuments.map((document) => (
                                         <Group key={document.key} justify="space-between" align="center" wrap="wrap">
                                           <Stack gap={0}>
@@ -11597,8 +11626,24 @@ function EventScheduleContent() {
                                           </Group>
                                         </Group>
                                       ))}
-                                    </Stack>
-                                  )}
+                                      </Stack>
+                                    )}
+                                    {(userSummary.registrationAnswers ?? []).length > 0 ? (
+                                      <Stack gap={6}>
+                                        <Text size="sm" fw={600}>Registration answers</Text>
+                                        {(userSummary.registrationAnswers ?? []).map((answer) => (
+                                          <div key={answer.questionId} className="rounded-md border border-gray-200 p-2">
+                                            <Text size="xs" c="dimmed">{answer.prompt}</Text>
+                                            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                                              {answer.answer || 'No answer'}
+                                            </Text>
+                                          </div>
+                                        ))}
+                                      </Stack>
+                                    ) : (
+                                      <Text size="xs" c="dimmed">No registration answers submitted.</Text>
+                                    )}
+                                  </Stack>
                                 </Table.Td>
                               </Table.Tr>
                             )}

@@ -7,6 +7,7 @@ import {
   buildRequiredSignatureTasks,
   buildSignatureCompletionKey,
   isSignedDocumentStatus,
+  normalizeRegistrationAnswersSnapshot,
   normalizeSignerRoleContext,
   pickPrimaryBill,
   type ComplianceTemplate,
@@ -169,6 +170,7 @@ export async function GET(
       ...occurrenceWhere,
     },
     select: {
+      id: true,
       registrantId: true,
       status: true,
       updatedAt: true,
@@ -191,7 +193,7 @@ export async function GET(
     return NextResponse.json(payload, { status: 200 });
   }
 
-  const registrationByTeamId = new Map<string, { status: string | null; updatedAt: Date | null; createdAt: Date | null }>();
+  const registrationByTeamId = new Map<string, { id: string; status: string | null; updatedAt: Date | null; createdAt: Date | null }>();
   teamRegistrationRows.forEach((registration) => {
     const teamId = normalizeId(registration.registrantId);
     if (!teamId) {
@@ -202,6 +204,7 @@ export async function GET(
     const nextTs = Math.max(toTimestamp(registration.updatedAt), toTimestamp(registration.createdAt));
     if (!existing || nextTs >= existingTs) {
       registrationByTeamId.set(teamId, {
+        id: registration.id,
         status: registration.status ? String(registration.status) : null,
         updatedAt: registration.updatedAt ?? null,
         createdAt: registration.createdAt ?? null,
@@ -236,6 +239,24 @@ export async function GET(
       });
     })(),
   ]);
+  const answerResponses = registrationByTeamId.size
+    ? await prisma.registrationQuestionResponses.findMany({
+      where: {
+        subjectType: 'EVENT_REGISTRATION' as any,
+        subjectId: { in: Array.from(registrationByTeamId.values()).map((registration) => registration.id) },
+      },
+      select: {
+        subjectId: true,
+        answersSnapshot: true,
+      },
+    })
+    : [];
+  const answersByRegistrationId = new Map(
+    answerResponses.map((response) => [
+      response.subjectId,
+      normalizeRegistrationAnswersSnapshot(response.answersSnapshot),
+    ]),
+  );
   const teamOwnerIds = Array.from(
     new Set(
       teamIds.concat(
@@ -488,7 +509,8 @@ export async function GET(
       const slotTeamBills = teamBillsByOwnerId.get(teamId) ?? [];
       const selectedTeamBills = parentTeamBills.length > 0 ? parentTeamBills : slotTeamBills;
       const teamBill = pickPrimaryBill(selectedTeamBills);
-      const teamPaymentPending = String(registrationByTeamId.get(teamId)?.status ?? '').toUpperCase() === 'PENDING';
+      const teamRegistration = registrationByTeamId.get(teamId);
+      const teamPaymentPending = String(teamRegistration?.status ?? '').toUpperCase() === 'PENDING';
       const teamPayment = toPaymentSummary(
         teamBill,
         Boolean(teamBill && parentTeamId && parentTeamBills.length > 0),
@@ -582,6 +604,7 @@ export async function GET(
           signedCount: teamDocumentSignedCount,
           requiredCount: teamDocumentRequiredCount,
         },
+        registrationAnswers: teamRegistration?.id ? answersByRegistrationId.get(teamRegistration.id) ?? [] : [],
         users: usersForTeam,
       };
     })

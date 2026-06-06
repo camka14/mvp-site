@@ -69,6 +69,7 @@ export type PublicOrganizationTeamCard = {
   teamSize: number;
   isFull: boolean;
   openRegistration: boolean;
+  joinPolicy: string;
   registrationPriceCents: number;
   requiredTemplateIds: string[];
   registrationUrl: string | null;
@@ -147,6 +148,7 @@ export type PublicOrganizationTeamRegistrationData = {
     teamSize: number;
     isFull: boolean;
     openRegistration: boolean;
+    joinPolicy: string;
     registrationPriceCents: number;
     requiredTemplateIds: string[];
   };
@@ -1044,6 +1046,7 @@ export const listPublicOrganizationTeams = async (
   });
   const occupancyByTeamId = await getPublicTeamOccupancyByTeamId(rows.map((row: Record<string, any>) => String(row.id)));
   return rows.map((team: Record<string, any>): PublicOrganizationTeamCard => ({
+    joinPolicy: typeof team.joinPolicy === 'string' ? team.joinPolicy : (team.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
     id: String(team.id),
     name: String(team.name ?? 'Unnamed team'),
     sport: typeof team.sport === 'string' ? team.sport : null,
@@ -1055,7 +1058,10 @@ export const listPublicOrganizationTeams = async (
     openRegistration: Boolean(team.openRegistration),
     registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
     requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
-    registrationUrl: team.openRegistration && !(normalizeNumber(team.teamSize) > 0 && (occupancyByTeamId.get(String(team.id)) ?? 0) >= normalizeNumber(team.teamSize))
+    registrationUrl: (
+      (team.openRegistration || String(team.joinPolicy ?? '').toUpperCase() === 'REQUEST_TO_JOIN')
+      && !(normalizeNumber(team.teamSize) > 0 && (occupancyByTeamId.get(String(team.id)) ?? 0) >= normalizeNumber(team.teamSize))
+    )
       ? formatTeamRegistrationUrl(organization.slug, String(team.id))
       : null,
   }));
@@ -1077,6 +1083,7 @@ const mapPublicTeamCard = (
     teamSize,
     isFull,
     openRegistration: Boolean(team.openRegistration),
+    joinPolicy: typeof team.joinPolicy === 'string' ? team.joinPolicy : (team.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED'),
     registrationPriceCents: normalizePriceCents(team.registrationPriceCents),
     requiredTemplateIds: normalizeIdList(team.requiredTemplateIds),
   };
@@ -1586,7 +1593,10 @@ export const getPublicOrganizationTeamForRegistration = async (
     where: {
       id: teamId,
       organizationId: organization.id,
-      openRegistration: true,
+      OR: [
+        { openRegistration: true },
+        { joinPolicy: 'REQUEST_TO_JOIN' },
+      ],
       visibility: PUBLIC_TEAM_VISIBILITY,
     },
   });
