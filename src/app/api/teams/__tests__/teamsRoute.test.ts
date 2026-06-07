@@ -217,6 +217,14 @@ describe('/api/teams route', () => {
         sport: 'Beach Volleyball',
       },
     ]);
+    canonicalTeamsFindManyMock.mockResolvedValue([
+      {
+        id: 'sea_glass_canonical',
+        openRegistration: true,
+        registrationPriceCents: 2500,
+        requiredTemplateIds: ['waiver_1'],
+      },
+    ]);
 
     const response = await GET(new NextRequest('http://localhost/api/teams?ids=shared_id&eventId=event_1&limit=200'));
     const payload = await response.json();
@@ -229,6 +237,9 @@ describe('/api/teams route', () => {
         name: 'Sea Glass Smash',
         eventId: 'event_1',
         parentTeamId: 'sea_glass_canonical',
+        openRegistration: true,
+        registrationPriceCents: 2500,
+        requiredTemplateIds: ['waiver_1'],
       }),
     ]);
     expect(findManyMock).toHaveBeenCalledWith({
@@ -237,7 +248,15 @@ describe('/api/teams route', () => {
         eventId: 'event_1',
       },
     });
-    expect(canonicalTeamsFindManyMock).not.toHaveBeenCalled();
+    expect(canonicalTeamsFindManyMock).toHaveBeenCalledWith({
+      where: { id: { in: ['sea_glass_canonical'] } },
+      select: {
+        id: true,
+        openRegistration: true,
+        registrationPriceCents: true,
+        requiredTemplateIds: true,
+      },
+    });
     expect(teamRegistrationsFindManyMock).not.toHaveBeenCalled();
     expect(teamStaffAssignmentsFindManyMock).not.toHaveBeenCalled();
   });

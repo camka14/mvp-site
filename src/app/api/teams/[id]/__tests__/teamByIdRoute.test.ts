@@ -10,6 +10,7 @@ const teamRegistrationsUpdateManyMock = jest.fn();
 const organizationFindFirstMock = jest.fn();
 const staffMemberFindUniqueMock = jest.fn();
 const inviteFindFirstMock = jest.fn();
+const evaluateRazumlyAdminAccessMock = jest.fn();
 
 const txClientMock = {
   teams: {
@@ -49,6 +50,9 @@ jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requ
 jest.mock('@/server/legacyFormat', () => ({
   withLegacyFields: (row: any) => ({ ...row, $id: row.id }),
 }));
+jest.mock('@/server/razumlyAdmin', () => ({
+  evaluateRazumlyAdminAccess: (...args: any[]) => evaluateRazumlyAdminAccessMock(...args),
+}));
 
 import { PATCH } from '@/app/api/teams/[id]/route';
 
@@ -62,6 +66,7 @@ describe('/api/teams/[id] PATCH', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     requireSessionMock.mockResolvedValue({ userId: 'captain_1', isAdmin: false });
+    evaluateRazumlyAdminAccessMock.mockResolvedValue({ allowed: false, email: null, verified: false });
     organizationFindFirstMock.mockResolvedValue(null);
     staffMemberFindUniqueMock.mockResolvedValue(null);
     inviteFindFirstMock.mockResolvedValue(null);

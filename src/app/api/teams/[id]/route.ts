@@ -7,7 +7,9 @@ import {
   inferDivisionDetails,
   normalizeDivisionIdToken,
 } from '@/lib/divisionTypes';
-import { canManageOrganization } from '@/server/accessControl';
+import { hasOrgPermission } from '@/server/accessControl';
+import { ORG_PERMISSIONS } from '@/lib/organizationPermissions';
+import { evaluateRazumlyAdminAccess } from '@/server/razumlyAdmin';
 import { deleteTeamChatInTx, getTeamChatBaseMemberIds, syncTeamChatInTx } from '@/server/teamChatSync';
 import { asRecord, findPresentKeys } from '@/server/http/strictPatch';
 import {
@@ -425,7 +427,11 @@ const hasOrganizationTeamManagementAccess = async (
   session: { userId: string; isAdmin: boolean },
 ): Promise<boolean> => {
   if (!teamId || !session.userId) return false;
-  const team = await prisma.canonicalTeams.findUnique({
+  const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
+  if (!canonicalTeamsDelegate?.findUnique) {
+    return false;
+  }
+  const team = await canonicalTeamsDelegate.findUnique({
     where: { id: teamId },
     select: { organizationId: true },
   });
@@ -440,7 +446,17 @@ const hasOrganizationTeamManagementAccess = async (
   if (!organization) {
     return false;
   }
-  return canManageOrganization(session, organization);
+  return hasOrgPermission(session, organization, ORG_PERMISSIONS.TEAMS_MANAGE);
+};
+
+const hasGlobalTeamAdminAccess = async (
+  session: { userId: string; isAdmin: boolean },
+): Promise<boolean> => {
+  if (session.isAdmin) {
+    return true;
+  }
+  const status = await evaluateRazumlyAdminAccess(session.userId);
+  return status.allowed;
 };
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -451,7 +467,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
   if (isAdminOnlyCanonicalTeam(team as Record<string, unknown>)) {
     const session = await getOptionalSession(req);
-    if (session?.isAdmin !== true) {
+    const canReadHiddenTeam = session
+      ? await hasGlobalTeamAdminAccess(session) || await hasOrganizationTeamManagementAccess(id, session)
+      : false;
+    if (!canReadHiddenTeam) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
   }
@@ -460,6 +479,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
+  const isGlobalAdmin = await hasGlobalTeamAdminAccess(session);
   const body = await req.json().catch(() => null);
   const envelope = patchEnvelopeSchema.safeParse(body ?? {});
   if (!envelope.success) {
@@ -476,7 +496,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     );
   }
   const adminOverrideKeys = findPresentKeys(payloadRecord, TEAM_ADMIN_OVERRIDABLE_FIELDS);
-  if (adminOverrideKeys.length && !session.isAdmin) {
+  if (adminOverrideKeys.length && !isGlobalAdmin) {
     return NextResponse.json(
       { error: 'Immutable team fields cannot be updated.', fields: adminOverrideKeys },
       { status: 403 },
@@ -498,11 +518,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (!existingCanonical) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-    const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session);
+    const isOrganizationManager = isGlobalAdmin ? true : await hasOrganizationTeamManagementAccess(id, session);
     const canManage = await canManageCanonicalTeam({
       teamId: id,
       userId: session.userId,
-      isAdmin: session.isAdmin,
+      isAdmin: isGlobalAdmin,
     }, prisma);
     if (!canManage && !isOrganizationManager) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -600,10 +620,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const isCaptain = existing.captainId === session.userId;
   const isManager = normalizeText((existing as any).managerId) === session.userId;
-  const isOrganizationManager = (!session.isAdmin && !isCaptain && !isManager)
+  const isOrganizationManager = (!isGlobalAdmin && !isCaptain && !isManager)
     ? await hasOrganizationTeamManagementAccess(id, session)
     : false;
-  if (!session.isAdmin && !isCaptain && !isManager && !isOrganizationManager) {
+  if (!isGlobalAdmin && !isCaptain && !isManager && !isOrganizationManager) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -719,6 +739,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession(req);
+  const isGlobalAdmin = await hasGlobalTeamAdminAccess(session);
   const { id } = await params;
   const canonicalTeamsDelegate: any = (prisma as any).canonicalTeams;
   if (canonicalTeamsDelegate?.findUnique && canonicalTeamsDelegate?.delete) {
@@ -726,11 +747,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (!existingCanonical) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
-    const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session);
+    const isOrganizationManager = isGlobalAdmin ? true : await hasOrganizationTeamManagementAccess(id, session);
     const canManage = await canManageCanonicalTeam({
       teamId: id,
       userId: session.userId,
-      isAdmin: session.isAdmin,
+      isAdmin: isGlobalAdmin,
     }, prisma);
     if (!canManage && !isOrganizationManager) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -768,8 +789,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
   const isCaptain = existing.captainId === session.userId;
   const isManager = normalizeText((existing as any).managerId) === session.userId;
-  const isOrganizationManager = await hasOrganizationTeamManagementAccess(id, session);
-  if (!session.isAdmin && !isCaptain && !isManager && !isOrganizationManager) {
+  const isOrganizationManager = isGlobalAdmin ? true : await hasOrganizationTeamManagementAccess(id, session);
+  if (!isGlobalAdmin && !isCaptain && !isManager && !isOrganizationManager) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
