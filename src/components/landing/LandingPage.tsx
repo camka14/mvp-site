@@ -917,16 +917,14 @@ export default function LandingPage({
           <div className="landing-hero-copy mx-auto max-w-5xl space-y-7 text-center" data-reveal>
             <p className="landing-kicker inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase">
               <Radio aria-hidden="true" className="h-4 w-4" />
-              Facility operations platform
+              Sports event operations
             </p>
             <div className="space-y-5">
               <h1 className="landing-title mx-auto max-w-5xl text-5xl font-semibold leading-none sm:text-6xl lg:text-7xl">
-                Bring your facility operations into one command center.
+                Run every event from one home.
               </h1>
               <p className="landing-copy mx-auto max-w-2xl text-base sm:text-lg">
-                BracketIQ is a sports event platform that brings facility operations into one command center: create
-                events, assign courts and fields, collect payments, publish schedules, and support teams across web and
-                mobile.
+                BracketIQ gives organizers one place to publish events, manage schedules, collect payments, and keep every participant updated.
               </p>
             </div>
 
@@ -960,7 +958,7 @@ export default function LandingPage({
             </div>
 
             <div className="landing-support-grid" aria-label="Included platform capabilities">
-              {['Payments', 'Chat', 'Notifications', 'Waivers'].map((label) => (
+              {['Registration', 'Scheduling', 'Payments', 'Updates'].map((label) => (
                 <span key={label} className="landing-support-chip">
                   <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
                   {label}

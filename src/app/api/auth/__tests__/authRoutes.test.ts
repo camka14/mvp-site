@@ -32,8 +32,11 @@ const authServerMock = {
   verifyPassword: jest.fn(),
   signSessionToken: jest.fn(),
   verifySessionToken: jest.fn(),
+  signWatchSetupToken: jest.fn(),
+  verifyWatchSetupToken: jest.fn(),
   getTokenFromRequest: jest.fn(),
   setAuthCookie: jest.fn(),
+  WATCH_SETUP_TOKEN_TTL_SECONDS: 300,
 };
 
 const requireSessionMock = jest.fn();
@@ -68,6 +71,8 @@ import { POST as LOGIN_POST } from '@/app/api/auth/login/route';
 import { GET as ME_GET } from '@/app/api/auth/me/route';
 import { POST as LOGOUT_POST } from '@/app/api/auth/logout/route';
 import { POST as PASSWORD_POST } from '@/app/api/auth/password/route';
+import { POST as WATCH_SETUP_POST } from '@/app/api/auth/watch/setup/route';
+import { POST as WATCH_EXCHANGE_POST } from '@/app/api/auth/watch/exchange/route';
 
 const buildJsonRequest = (url: string, body: unknown, method = 'POST'): NextRequest => {
   return new NextRequest(url, {
@@ -91,6 +96,13 @@ describe('auth routes', () => {
     authServerMock.hashPassword.mockResolvedValue('hashed');
     authServerMock.verifyPassword.mockResolvedValue(true);
     authServerMock.signSessionToken.mockReturnValue('signed-token');
+    authServerMock.signWatchSetupToken.mockReturnValue('watch-setup-token');
+    authServerMock.verifyWatchSetupToken.mockReturnValue({
+      userId: 'user_1',
+      sessionVersion: 0,
+      purpose: 'watch_setup',
+      issuedAtSeconds: 1,
+    });
     getRequestOriginMock.mockReturnValue('http://localhost');
     authSessionsMock.revokeAuthUserSessions.mockResolvedValue(1);
     authSessionsMock.isSessionTokenCurrent.mockReturnValue(true);
@@ -666,6 +678,128 @@ describe('auth routes', () => {
       expect(json.user).toBeNull();
       expect(json.code).toBe('ACCOUNT_SUSPENDED');
       expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, '');
+    });
+  });
+
+  describe('POST /api/auth/watch/setup', () => {
+    it('returns a short-lived watch setup token for the current session', async () => {
+      requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false, sessionVersion: 2 });
+
+      const res = await WATCH_SETUP_POST(new NextRequest('http://localhost/api/auth/watch/setup', { method: 'POST' }));
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.setupToken).toBe('watch-setup-token');
+      expect(json.expiresInSeconds).toBe(300);
+      expect(authServerMock.signWatchSetupToken).toHaveBeenCalledWith({
+        userId: 'user_1',
+        sessionVersion: 2,
+      });
+    });
+  });
+
+  describe('POST /api/auth/watch/exchange', () => {
+    it('exchanges a valid setup token for a watch-scoped session token', async () => {
+      authServerMock.signSessionToken.mockReturnValue('watch-session-token');
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        emailVerifiedAt: new Date(),
+        sessionVersion: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      prismaMock.userData.findUnique.mockResolvedValue({ id: 'user_1' });
+
+      const req = buildJsonRequest('http://localhost/api/auth/watch/exchange', {
+        setupToken: 'watch-setup-token',
+      });
+
+      const res = await WATCH_EXCHANGE_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.user.id).toBe('user_1');
+      expect(json.session).toEqual({
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 0,
+        device: 'watch',
+      });
+      expect(json.token).toBe('watch-session-token');
+      expect(authServerMock.verifyWatchSetupToken).toHaveBeenCalledWith('watch-setup-token');
+      expect(authServerMock.signSessionToken).toHaveBeenCalledWith({
+        userId: 'user_1',
+        isAdmin: false,
+        sessionVersion: 0,
+        device: 'watch',
+      });
+      expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'watch-session-token');
+    });
+
+    it('rejects an invalid setup token', async () => {
+      authServerMock.verifyWatchSetupToken.mockReturnValue(null);
+
+      const req = buildJsonRequest('http://localhost/api/auth/watch/exchange', {
+        setupToken: 'bad-token',
+      });
+
+      const res = await WATCH_EXCHANGE_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(401);
+      expect(json.error).toBe('Invalid watch setup token');
+      expect(prismaMock.authUser.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('rejects a setup token after session version changes', async () => {
+      authSessionsMock.isSessionTokenCurrent.mockReturnValue(false);
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        emailVerifiedAt: new Date(),
+        sessionVersion: 1,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const req = buildJsonRequest('http://localhost/api/auth/watch/exchange', {
+        setupToken: 'watch-setup-token',
+      });
+
+      const res = await WATCH_EXCHANGE_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(401);
+      expect(json.error).toBe('Invalid watch setup token');
+      expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
+    });
+
+    it('rejects setup exchange for suspended users', async () => {
+      prismaMock.authUser.findUnique.mockResolvedValue({
+        id: 'user_1',
+        email: 'test@example.com',
+        name: 'Tester',
+        emailVerifiedAt: new Date(),
+        disabledAt: new Date('2026-04-14T00:00:00.000Z'),
+        disabledReason: 'abuse',
+        sessionVersion: 0,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const req = buildJsonRequest('http://localhost/api/auth/watch/exchange', {
+        setupToken: 'watch-setup-token',
+      });
+
+      const res = await WATCH_EXCHANGE_POST(req);
+      const json = await res.json();
+
+      expect(res.status).toBe(403);
+      expect(json.code).toBe('ACCOUNT_SUSPENDED');
+      expect(authServerMock.signSessionToken).not.toHaveBeenCalled();
     });
   });
 

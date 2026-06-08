@@ -159,9 +159,6 @@ export default function PaymentModal({
         };
     }, [isOpen]);
 
-    // Early return if modal shouldn't be shown
-    if (!isOpen) return null;
-
     const clientSecret = activePaymentData?.paymentIntent;
     const hasValidClientSecret = isStripePaymentIntentClientSecret(clientSecret);
     const publishableKey = activePaymentData?.publishableKey || envPublishableKey;
@@ -194,6 +191,9 @@ export default function PaymentModal({
             }
             : undefined
     ), [clientSecret, hasValidClientSecret]);
+
+    // Early return after hooks so opening the modal does not change hook order.
+    if (!isOpen) return null;
 
     // Handle Stripe configuration error
     if (!stripePromise) {

@@ -35,7 +35,7 @@ describe('LandingPage', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: /bring your facility operations into one command center/i,
+        name: /run every event from one home/i,
       }),
     ).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /sign up/i }).length).toBeGreaterThan(0);
@@ -71,7 +71,7 @@ describe('LandingPage', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: /bring your facility operations into one command center/i,
+        name: /run every event from one home/i,
       }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/^Loading\.\.\.$/i)).not.toBeInTheDocument();
@@ -106,7 +106,7 @@ describe('LandingPage', () => {
 
     expect(
       screen.getByRole('heading', {
-        name: /bring your facility operations into one command center/i,
+        name: /run every event from one home/i,
       }),
     ).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();

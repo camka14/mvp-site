@@ -1472,6 +1472,136 @@ describe('ScoreUpdateModal', () => {
     }));
   });
 
+  it('starts added-time sport segments at the cumulative regulation clock', async () => {
+    const rules = buildRules({
+      pointIncidentRequiresParticipant: true,
+      timekeeping: {
+        timerMode: 'COUNT_UP',
+        segmentDurationMinutes: 45,
+        segmentDurationMinutesBySequence: [],
+        canUseAddedTime: true,
+        addedTimeEnabled: true,
+        stopAtRegulationEnd: false,
+      },
+    });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: teamWithPlayer,
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [1, 0],
+          team2Points: [0, 0],
+          setResults: [1, 0],
+          matchRulesSnapshot: rules,
+          segments: [
+            {
+              id: 'match_1_segment_1',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 1,
+              status: 'COMPLETE',
+              scores: { team_a: 1, team_b: 0 },
+              winnerEventTeamId: 'team_a',
+            },
+            {
+              id: 'match_1_segment_2',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 2,
+              status: 'IN_PROGRESS',
+              scores: { team_a: 0, team_b: 0 },
+              winnerEventTeamId: null,
+            },
+          ],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          resolvedMatchRules: rules,
+        })}
+        canManage
+        onClose={jest.fn()}
+        isOpen
+        defaultShowDetails
+      />,
+    );
+
+    expect(await screen.findByText('45:00')).toBeInTheDocument();
+    expect(screen.getByText(/45 minute regulation half with added time/i)).toBeInTheDocument();
+  });
+
+  it('records first-half added-time incidents with added-time notation', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-04-19T10:45:30.000Z'));
+    const onScoreChange = jest.fn().mockResolvedValue(undefined);
+    const rules = buildRules({
+      pointIncidentRequiresParticipant: true,
+      timekeeping: {
+        timerMode: 'COUNT_UP',
+        segmentDurationMinutes: 45,
+        segmentDurationMinutesBySequence: [],
+        canUseAddedTime: true,
+        addedTimeEnabled: true,
+        stopAtRegulationEnd: false,
+      },
+    });
+
+    renderWithMantine(
+      <ScoreUpdateModal
+        match={buildMatch({
+          team1Id: 'team_a',
+          team2Id: 'team_b',
+          team1: teamWithPlayer,
+          team2: { $id: 'team_b', name: 'Diggers' } as Match['team2'],
+          team1Points: [0, 0],
+          team2Points: [0, 0],
+          setResults: [0, 0],
+          matchRulesSnapshot: rules,
+          segments: [{
+            id: 'match_1_segment_1',
+            eventId: 'event_1',
+            matchId: 'match_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            scores: { team_a: 0, team_b: 0 },
+            winnerEventTeamId: null,
+            startedAt: '2026-04-19T10:00:00.000Z',
+          }],
+          incidents: [],
+        })}
+        tournament={buildEvent({
+          autoCreatePointMatchIncidents: true,
+          resolvedMatchRules: rules,
+        })}
+        participantTeams={[teamWithPlayer as Team]}
+        canManage
+        onScoreChange={onScoreChange}
+        onClose={jest.fn()}
+        isOpen
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Incident' })[0]);
+
+    expect(await screen.findByRole('dialog', { name: 'Record Incident' })).toBeInTheDocument();
+    expect(screen.getAllByLabelText('Minute')[0]).toHaveValue('45+1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Incident' }));
+
+    await waitFor(() => {
+      expect(onScoreChange).toHaveBeenCalledTimes(1);
+    });
+    expect(onScoreChange.mock.calls[0][0].incidentOperations).toEqual([expect.objectContaining({
+      incidentType: 'GOAL',
+      minute: 46,
+      clock: '45+1',
+      clockSeconds: 2730,
+    })]);
+    expect(await screen.findByText('Aces | Alex Morgan #9 | 45+1')).toBeInTheDocument();
+  });
+
   it('shows actual time edit controls for officials', async () => {
     renderWithMantine(
       <ScoreUpdateModal

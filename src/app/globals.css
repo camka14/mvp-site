@@ -3214,8 +3214,8 @@ summary::-webkit-details-marker {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center top;
+  object-fit: contain;
+  object-position: center center;
 }
 
 .landing-macbook-base {
@@ -3664,9 +3664,10 @@ summary::-webkit-details-marker {
 }
 
 .landing-static-operations-title {
-  max-width: 20rem;
+  max-width: none;
   font-size: clamp(2.55rem, 8vw, 4.25rem);
   line-height: 0.94;
+  white-space: nowrap;
 }
 
 .landing-static-operations-copy {
@@ -3880,6 +3881,7 @@ summary::-webkit-details-marker {
   .landing-static-operations-title {
     max-width: 19rem;
     font-size: clamp(2.55rem, 12vw, 3.05rem);
+    white-space: normal;
   }
 
   .landing-static-operations-copy {
@@ -3986,22 +3988,29 @@ summary::-webkit-details-marker {
 
 @media (min-width: 1024px) {
   .landing-command-console .landing-hero-stack {
+    grid-template-columns: minmax(0, 1fr);
     min-height: 36rem;
+    justify-items: center;
   }
 
   .landing-command-console .landing-command-screen {
     width: min(100%, 58rem);
+    justify-self: center;
   }
 
   .landing-command-console .landing-hero-phone-wrap {
+    --landing-command-phone-width: clamp(11rem, 16vw, 17rem);
     position: absolute;
-    right: clamp(1rem, 8vw, 7rem);
+    right: auto;
+    left: 50%;
     bottom: 1.2rem;
+    width: var(--landing-command-phone-width);
     z-index: 2;
+    transform: translateX(-50%);
   }
 
   .landing-command-console .landing-phone-frame-hero {
-    --landing-phone-frame-width: clamp(11rem, 16vw, 17rem);
+    --landing-phone-frame-width: var(--landing-command-phone-width);
     transform: rotate(-5deg);
   }
 }

@@ -5,15 +5,26 @@ import { promisify } from 'util';
 const scrypt = promisify(_scrypt);
 
 const AUTH_COOKIE_NAME = 'auth_token';
-const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 7; // 7 days
+const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 400; // Browser-friendly persistent session cap.
+export const WATCH_SETUP_TOKEN_TTL_SECONDS = 60 * 5;
+
+export type SessionDevice = 'web' | 'mobile' | 'watch';
 
 export type SessionToken = {
   userId: string;
   isAdmin: boolean;
   sessionVersion: number;
+  device?: SessionDevice;
 };
 
 export type VerifiedSessionToken = SessionToken & {
+  issuedAtSeconds: number | null;
+};
+
+export type WatchSetupToken = {
+  userId: string;
+  sessionVersion: number;
+  purpose: 'watch_setup';
   issuedAtSeconds: number | null;
 };
 
@@ -41,7 +52,7 @@ export const verifyPassword = async (plain: string, stored: string): Promise<boo
 };
 
 export const signSessionToken = (payload: SessionToken): string => {
-  return jwt.sign(payload, getAuthSecret(), { expiresIn: TOKEN_TTL_SECONDS });
+  return jwt.sign(payload, getAuthSecret());
 };
 
 export const verifySessionToken = (token: string): VerifiedSessionToken | null => {
@@ -51,6 +62,35 @@ export const verifySessionToken = (token: string): VerifiedSessionToken | null =
       userId: decoded.userId as string,
       isAdmin: Boolean(decoded.isAdmin),
       sessionVersion: Number.isInteger(decoded.sessionVersion) ? Number(decoded.sessionVersion) : 0,
+      device: isSessionDevice(decoded.device) ? decoded.device : undefined,
+      issuedAtSeconds: Number.isInteger(decoded.iat) ? Number(decoded.iat) : null,
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const signWatchSetupToken = (payload: Pick<SessionToken, 'userId' | 'sessionVersion'>): string => {
+  return jwt.sign(
+    {
+      userId: payload.userId,
+      sessionVersion: payload.sessionVersion,
+      purpose: 'watch_setup',
+    },
+    getAuthSecret(),
+    { expiresIn: WATCH_SETUP_TOKEN_TTL_SECONDS },
+  );
+};
+
+export const verifyWatchSetupToken = (token: string): WatchSetupToken | null => {
+  try {
+    const decoded = jwt.verify(token, getAuthSecret()) as JwtPayload;
+    if (decoded.purpose !== 'watch_setup') return null;
+    if (typeof decoded.userId !== 'string' || decoded.userId.trim().length === 0) return null;
+    return {
+      userId: decoded.userId,
+      sessionVersion: Number.isInteger(decoded.sessionVersion) ? Number(decoded.sessionVersion) : 0,
+      purpose: 'watch_setup',
       issuedAtSeconds: Number.isInteger(decoded.iat) ? Number(decoded.iat) : null,
     };
   } catch {
@@ -66,7 +106,7 @@ export const setAuthCookie = (res: Response | import('next/server').NextResponse
       sameSite: 'lax',
       secure: process.env.NODE_ENV === 'production',
       path: '/',
-      maxAge: token ? TOKEN_TTL_SECONDS : 0,
+      maxAge: token ? SESSION_COOKIE_MAX_AGE_SECONDS : 0,
     });
   }
 };
@@ -84,3 +124,6 @@ export const getTokenFromRequest = (req: Request): string | null => {
   if (match) return decodeURIComponent(match.split('=')[1]);
   return null;
 };
+
+const isSessionDevice = (value: unknown): value is SessionDevice =>
+  value === 'web' || value === 'mobile' || value === 'watch';

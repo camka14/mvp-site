@@ -395,7 +395,88 @@ const formatClockSeconds = (seconds: number): string => {
   return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
 };
 
+const formatClockSecondsAsMinutes = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.trunc(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
 const formatIncidentClock = (seconds: number): string => formatClockSeconds(seconds);
+
+const durationSecondsForSegmentSequence = (rules: ResolvedMatchRules, sequence: number): number | null => {
+  const durationMinutes = rules.timekeeping.segmentDurationMinutesBySequence[sequence - 1]
+    ?? rules.timekeeping.segmentDurationMinutes;
+  return durationMinutes && durationMinutes > 0 ? durationMinutes * 60 : null;
+};
+
+const regulationOffsetSecondsForSegment = (segment: MatchSegment | undefined, rules: ResolvedMatchRules): number => {
+  if (!segment || !rules.timekeeping.addedTimeEnabled) return 0;
+  const sequence = Math.max(1, Math.trunc(Number(segment.sequence) || 1));
+  let offsetSeconds = 0;
+  for (let index = 1; index < sequence; index += 1) {
+    offsetSeconds += durationSecondsForSegmentSequence(rules, index) ?? 0;
+  }
+  return offsetSeconds;
+};
+
+const formatAddedTimeIncidentClock = (regulationEndSeconds: number, addedSeconds: number): string => {
+  const regulationMinute = Math.max(0, Math.trunc(regulationEndSeconds / 60));
+  const addedMinute = Math.max(1, Math.ceil(Math.max(1, addedSeconds) / 60));
+  return `${regulationMinute}+${addedMinute}`;
+};
+
+const parseIncidentClockInput = (
+  value: string,
+  options: { allowAddedTimeNotation: boolean },
+): { minute: number; clock: string | null; clockSeconds: number } | null => {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const addedTimeMatch = trimmed.match(/^(\d+)\s*\+\s*(\d+)$/);
+  if (addedTimeMatch && options.allowAddedTimeNotation) {
+    const regulationMinute = Number(addedTimeMatch[1]);
+    const addedMinute = Number(addedTimeMatch[2]);
+    if (
+      Number.isInteger(regulationMinute)
+      && regulationMinute >= 0
+      && Number.isInteger(addedMinute)
+      && addedMinute > 0
+    ) {
+      const minute = regulationMinute + addedMinute;
+      return {
+        minute,
+        clock: `${regulationMinute}+${addedMinute}`,
+        clockSeconds: minute * 60,
+      };
+    }
+    return null;
+  }
+  if (addedTimeMatch) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  const minute = Math.trunc(parsed);
+  return {
+    minute,
+    clock: null,
+    clockSeconds: minute * 60,
+  };
+};
+
+const incidentInputValue = (incident: { minute?: number | null; clock?: string | null }): string => {
+  const clock = normalizeToken(incident.clock);
+  if (clock && /^\d+\+\d+$/.test(clock)) return clock;
+  return typeof incident.minute === 'number' ? String(incident.minute) : '';
+};
+
+const incidentInputValueFromClock = (clockDetails: { minute: number | null; clock: string | null }): string => {
+  const clock = normalizeToken(clockDetails.clock);
+  if (clock && /^\d+\+\d+$/.test(clock)) return clock;
+  return clockDetails.minute === null ? '' : String(clockDetails.minute);
+};
+
+const incidentTimeLabel = (incident: { minute?: number | null; clock?: string | null }): string | null => (
+  normalizeToken(incident.clock) ?? (typeof incident.minute === 'number' ? `${incident.minute}'` : null)
+);
 
 const existingSegmentCount = (match: Match): number => Math.max(
   Array.isArray(match.segments) ? match.segments.length : 0,
@@ -1048,6 +1129,9 @@ export default function ScoreUpdateModal({
     : rules.timekeeping.segmentDurationMinutes;
   const activeSegmentDurationSeconds = activeSegmentDurationMinutes ? activeSegmentDurationMinutes * 60 : null;
   const hasMatchClock = rules.timekeeping.timerMode !== 'NONE' && Boolean(activeSegmentDurationSeconds);
+  const useCumulativeClock = rules.timekeeping.addedTimeEnabled === true;
+  const activeSegmentRegulationOffsetSeconds = regulationOffsetSecondsForSegment(activeSegment, rules);
+  const activeSegmentRegulationEndSeconds = activeSegmentRegulationOffsetSeconds + (activeSegmentDurationSeconds ?? 0);
   const activeSegmentStartDate = coerceActualDate(activeSegment?.startedAt ?? null);
   const activeSegmentEndDate = coerceActualDate(activeSegment?.endedAt ?? null);
   const rawTimerElapsedSeconds = activeSegmentStartDate
@@ -1080,12 +1164,18 @@ export default function ScoreUpdateModal({
     && rawTimerElapsedSeconds >= activeSegmentDurationSeconds,
   );
   const clockDisplay = (() => {
+    const formatDisplayClock = useCumulativeClock ? formatClockSecondsAsMinutes : formatClockSeconds;
     if (!hasMatchClock) return 'No match clock';
-    if (!activeSegmentStartDate) return formatClockSeconds(0);
-    if (clockInAddedTime && activeSegmentDurationSeconds) {
-      return `${formatClockSeconds(activeSegmentDurationSeconds)} +${formatClockSeconds(rawTimerElapsedSeconds - activeSegmentDurationSeconds)}`;
+    if (!activeSegmentStartDate) {
+      return formatDisplayClock(useCumulativeClock ? activeSegmentRegulationOffsetSeconds : 0);
     }
-    return formatClockSeconds(clockElapsedSeconds);
+    if (clockInAddedTime && activeSegmentDurationSeconds) {
+      const regulationEndSeconds = useCumulativeClock ? activeSegmentRegulationEndSeconds : activeSegmentDurationSeconds;
+      return `${formatDisplayClock(regulationEndSeconds)} +${formatClockSeconds(rawTimerElapsedSeconds - activeSegmentDurationSeconds)}`;
+    }
+    return formatDisplayClock(useCumulativeClock
+      ? activeSegmentRegulationOffsetSeconds + clockElapsedSeconds
+      : clockElapsedSeconds);
   })();
   const timerSegmentKey = `${match.$id}:${activeSegment?.id ?? activeSegment?.sequence ?? activeIndex}`;
   const matchSegmentSnapshot = useMemo(() => ({
@@ -1186,8 +1276,7 @@ export default function ScoreUpdateModal({
     [
       teamLabelForId(incident.eventTeamId),
       participantLabelForIncident(incident),
-      incident.clock,
-      typeof incident.minute === 'number' ? `${incident.minute}'` : null,
+      incidentTimeLabel(incident),
     ].filter(Boolean).join(' | ')
   );
   const officialPositionLabel = (assignment: { positionId?: string | null; slotIndex?: number | null }) => {
@@ -1211,31 +1300,37 @@ export default function ScoreUpdateModal({
     || (resultStatus.length > 0 && !['PENDING', 'OFFICIAL'].includes(resultStatus))
     || (resultType.length > 0 && resultType !== 'REGULATION')
     || ['CANCELLED', 'FORFEIT', 'SUSPENDED'].includes(lifecycleStatus);
-  const parseIncidentMinute = () => {
-    const trimmed = incidentMinute.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
-  };
   const currentClockDetails = (): { minute: number | null; clock: string | null; clockSeconds: number | null } => {
     if (!hasMatchClock || !activeSegmentStartDate) {
       return { minute: null, clock: null, clockSeconds: null };
     }
-    const clockSeconds = Math.max(0, Math.trunc(clockElapsedSeconds));
+    const segmentClockSeconds = Math.max(0, Math.trunc(clockElapsedSeconds));
+    const clockSeconds = useCumulativeClock
+      ? activeSegmentRegulationOffsetSeconds + segmentClockSeconds
+      : segmentClockSeconds;
     return {
       minute: Math.max(0, Math.ceil(clockSeconds / 60)),
-      clock: formatIncidentClock(clockSeconds),
+      clock: useCumulativeClock && clockInAddedTime && activeSegmentDurationSeconds
+        ? formatAddedTimeIncidentClock(activeSegmentRegulationEndSeconds, rawTimerElapsedSeconds - activeSegmentDurationSeconds)
+        : useCumulativeClock ? formatClockSecondsAsMinutes(clockSeconds) : formatIncidentClock(clockSeconds),
       clockSeconds,
     };
   };
   const incidentClockDetails = () => {
     const clockDetails = currentClockDetails();
-    const minute = parseIncidentMinute() ?? clockDetails.minute;
-    return {
-      minute,
-      clock: clockDetails.clock,
-      clockSeconds: clockDetails.clockSeconds,
-    };
+    const manualClockDetails = parseIncidentClockInput(incidentMinute, {
+      allowAddedTimeNotation: rules.timekeeping.addedTimeEnabled === true,
+    });
+    if (manualClockDetails) {
+      const clockMatchesCurrent = manualClockDetails.clock !== null
+        && manualClockDetails.clock === normalizeToken(clockDetails.clock);
+      return {
+        minute: manualClockDetails.minute,
+        clock: manualClockDetails.clock ?? clockDetails.clock,
+        clockSeconds: clockMatchesCurrent ? clockDetails.clockSeconds : manualClockDetails.clockSeconds,
+      };
+    }
+    return clockDetails;
   };
   const resetIncidentForm = () => {
     const clockDetails = currentClockDetails();
@@ -1243,7 +1338,7 @@ export default function ScoreUpdateModal({
     setIncidentType(defaultIncidentType);
     setIncidentTeamId(team1Id ?? team2Id ?? null);
     setIncidentParticipantId((team1Id && participantOptionsByTeam[team1Id]?.[0]?.value) ?? (team2Id && participantOptionsByTeam[team2Id]?.[0]?.value) ?? null);
-    setIncidentMinute(clockDetails.minute === null ? '' : String(clockDetails.minute));
+    setIncidentMinute(incidentInputValueFromClock(clockDetails));
     setIncidentNote('');
   };
   const nextIncidentId = () => {
@@ -1491,7 +1586,7 @@ export default function ScoreUpdateModal({
     }
     const clockDetails = currentClockDetails();
     if (clockDetails.minute !== null) {
-      setIncidentMinute(String(clockDetails.minute));
+      setIncidentMinute(incidentInputValueFromClock(clockDetails));
     }
   }, [activeSegment?.startedAt, activeSegment?.endedAt, editingIncidentId, incidentMinute, isOpen, pendingPoint, timerSegmentKey]);
 
@@ -1812,7 +1907,7 @@ export default function ScoreUpdateModal({
     setIncidentType(incident.incidentType || defaultIncidentType);
     setIncidentTeamId(incident.eventTeamId ?? null);
     setIncidentParticipantId(participantValueForIncident(incident));
-    setIncidentMinute(typeof incident.minute === 'number' ? String(incident.minute) : '');
+    setIncidentMinute(incidentInputValue(incident));
     setIncidentNote(incident.note ?? '');
   };
 
@@ -1915,7 +2010,7 @@ export default function ScoreUpdateModal({
       setIncidentType(scoringIncidentType);
       setIncidentTeamId(eventTeamId);
       setIncidentParticipantId(participantOptionsByTeam[eventTeamId]?.[0]?.value ?? null);
-      setIncidentMinute(clockDetails.minute === null ? '' : String(clockDetails.minute));
+      setIncidentMinute(incidentInputValueFromClock(clockDetails));
       setIncidentNote('');
       return;
     }
@@ -2458,10 +2553,7 @@ export default function ScoreUpdateModal({
                           <Text size="sm" c="dimmed">
                             {[
                               teamLabelForId(incident.eventTeamId),
-                              incident.clock,
-                              typeof incident.minute === "number"
-                                ? `${incident.minute}'`
-                                : null,
+                              incidentTimeLabel(incident),
                             ]
                               .filter(Boolean)
                               .join(" | ")}
@@ -2572,8 +2664,8 @@ export default function ScoreUpdateModal({
             />
             <TextInput
               label="Minute"
-              placeholder="Optional"
-              inputMode="numeric"
+              placeholder={rules.timekeeping.addedTimeEnabled ? "45+1" : "Optional"}
+              inputMode={rules.timekeeping.addedTimeEnabled ? "text" : "numeric"}
               value={incidentMinute}
               onChange={(event) => setIncidentMinute(event.currentTarget.value)}
             />
@@ -3297,8 +3389,8 @@ export default function ScoreUpdateModal({
         />
         <TextInput
           label="Minute"
-          placeholder="Optional"
-          inputMode="numeric"
+          placeholder={rules.timekeeping.addedTimeEnabled ? "45+1" : "Optional"}
+          inputMode={rules.timekeeping.addedTimeEnabled ? "text" : "numeric"}
           value={incidentMinute}
           onChange={(event) => setIncidentMinute(event.currentTarget.value)}
         />
