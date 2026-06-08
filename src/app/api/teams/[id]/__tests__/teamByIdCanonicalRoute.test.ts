@@ -7,7 +7,9 @@ const teamFindManyMock = jest.fn();
 const teamUpdateMock = jest.fn();
 const eventsFindManyMock = jest.fn();
 const eventRegistrationsFindManyMock = jest.fn();
+const canonicalFindUniqueMock = jest.fn();
 const organizationFindFirstMock = jest.fn();
+const organizationFindUniqueMock = jest.fn();
 
 const txClientMock = {
   canonicalTeams: {
@@ -27,11 +29,12 @@ const txClientMock = {
 
 const prismaMock = {
   canonicalTeams: {
-    findUnique: jest.fn(),
+    findUnique: (...args: any[]) => canonicalFindUniqueMock(...args),
     update: (...args: any[]) => canonicalUpdateMock(...args),
   },
   organizations: {
     findFirst: (...args: any[]) => organizationFindFirstMock(...args),
+    findUnique: (...args: any[]) => organizationFindUniqueMock(...args),
   },
   $transaction: jest.fn(async (handler: any) => handler(txClientMock)),
 };
@@ -47,6 +50,8 @@ const applyCanonicalTeamRegistrationMetadataMock = jest.fn();
 const syncCanonicalTeamFutureEventSnapshotsMock = jest.fn();
 const syncTeamChatInTxMock = jest.fn();
 const getTeamChatBaseMemberIdsMock = jest.fn();
+const hasOrgPermissionMock = jest.fn();
+const evaluateRazumlyAdminAccessMock = jest.fn();
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/permissions', () => ({
@@ -73,6 +78,12 @@ jest.mock('@/server/teamChatSync', () => ({
   syncTeamChatInTx: (...args: any[]) => syncTeamChatInTxMock(...args),
   deleteTeamChatInTx: jest.fn(),
 }));
+jest.mock('@/server/accessControl', () => ({
+  hasOrgPermission: (...args: any[]) => hasOrgPermissionMock(...args),
+}));
+jest.mock('@/server/razumlyAdmin', () => ({
+  evaluateRazumlyAdminAccess: (...args: any[]) => evaluateRazumlyAdminAccessMock(...args),
+}));
 
 import { GET, PATCH } from '@/app/api/teams/[id]/route';
 
@@ -90,7 +101,11 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
     canManageCanonicalTeamMock.mockResolvedValue(true);
     claimOrCreateEventTeamSnapshotMock.mockResolvedValue({ id: 'event_team_1' });
     isAdminOnlyCanonicalTeamMock.mockReturnValue(false);
+    canonicalFindUniqueMock.mockResolvedValue(null);
     organizationFindFirstMock.mockResolvedValue(null);
+    organizationFindUniqueMock.mockResolvedValue(null);
+    hasOrgPermissionMock.mockResolvedValue(false);
+    evaluateRazumlyAdminAccessMock.mockResolvedValue({ allowed: false, email: null, verified: false });
     syncCanonicalTeamRosterMock.mockResolvedValue(undefined);
     applyCanonicalTeamRegistrationMetadataMock.mockResolvedValue(undefined);
     syncCanonicalTeamFutureEventSnapshotsMock.mockResolvedValue([]);
@@ -195,6 +210,69 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
     });
   });
 
+  it('allows verified Razumly admins to directly read admin-only canonical teams', async () => {
+    loadCanonicalTeamByIdMock.mockReset();
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Admin Only Team',
+      visibility: 'ADMIN_ONLY',
+    });
+    isAdminOnlyCanonicalTeamMock.mockReturnValue(true);
+    getOptionalSessionMock.mockResolvedValue({ userId: 'raz_admin_1', isAdmin: false });
+    evaluateRazumlyAdminAccessMock.mockResolvedValueOnce({
+      allowed: true,
+      email: 'admin@razumly.com',
+      verified: true,
+    });
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/teams/team_1'),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(evaluateRazumlyAdminAccessMock).toHaveBeenCalledWith('raz_admin_1');
+    expect(hasOrgPermissionMock).not.toHaveBeenCalled();
+    expect(payload).toMatchObject({
+      id: 'team_1',
+      visibility: 'ADMIN_ONLY',
+    });
+  });
+
+  it('allows organization team managers to directly read admin-only canonical teams', async () => {
+    const session = { userId: 'staff_1', isAdmin: false };
+    loadCanonicalTeamByIdMock.mockReset();
+    loadCanonicalTeamByIdMock.mockResolvedValueOnce({
+      id: 'team_1',
+      name: 'Admin Only Team',
+      organizationId: 'org_1',
+      visibility: 'ADMIN_ONLY',
+    });
+    canonicalFindUniqueMock.mockResolvedValueOnce({ organizationId: 'org_1' });
+    organizationFindUniqueMock.mockResolvedValueOnce({ id: 'org_1', ownerId: 'owner_1' });
+    hasOrgPermissionMock.mockResolvedValueOnce(true);
+    isAdminOnlyCanonicalTeamMock.mockReturnValue(true);
+    getOptionalSessionMock.mockResolvedValue(session);
+
+    const response = await GET(
+      new NextRequest('http://localhost/api/teams/team_1'),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(hasOrgPermissionMock).toHaveBeenCalledWith(
+      session,
+      { id: 'org_1', ownerId: 'owner_1' },
+      'teams.manage',
+    );
+    expect(payload).toMatchObject({
+      id: 'team_1',
+      visibility: 'ADMIN_ONLY',
+    });
+  });
+
   it('propagates versioned changes to future derived event teams', async () => {
     const response = await PATCH(
       patchJson({ team: { name: 'Sandstorm' } }),
@@ -267,6 +345,31 @@ describe('/api/teams/[id] PATCH canonical team sync', () => {
       tx: txClientMock,
     }));
     expect(payload.playerIds).toEqual(['manager_1']);
+  });
+
+  it('treats verified Razumly admins as admins for canonical roster patches', async () => {
+    requireSessionMock.mockResolvedValueOnce({ userId: 'raz_admin_1', isAdmin: false });
+    evaluateRazumlyAdminAccessMock.mockResolvedValueOnce({
+      allowed: true,
+      email: 'admin@razumly.com',
+      verified: true,
+    });
+
+    const response = await PATCH(
+      patchJson({ team: { playerIds: ['manager_1'] } }),
+      { params: Promise.resolve({ id: 'team_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(canManageCanonicalTeamMock).toHaveBeenCalledWith({
+      teamId: 'team_1',
+      userId: 'raz_admin_1',
+      isAdmin: true,
+    }, prismaMock);
+    expect(syncCanonicalTeamRosterMock).toHaveBeenCalledWith(expect.objectContaining({
+      teamId: 'team_1',
+      playerIds: ['manager_1'],
+    }), txClientMock);
   });
 
   it('accepts player registration jersey updates on canonical teams', async () => {
