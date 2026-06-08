@@ -149,6 +149,39 @@ export type MatchLifecycleStatus = 'SCHEDULED' | 'READY' | 'IN_PROGRESS' | 'COMP
 export type MatchResultStatus = 'PENDING' | 'OFFICIAL' | 'OVERRIDDEN' | 'DISPUTED';
 export type MatchResultType = 'REGULATION' | 'OVERTIME' | 'SHOOTOUT' | 'FORFEIT' | 'NO_CONTEST' | 'DRAW';
 export type MatchSegmentStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETE' | 'VOID';
+export type MatchTimerMode = 'NONE' | 'COUNT_UP';
+export type MatchIncidentDefinitionKind = 'SCORING' | 'DISCIPLINE' | 'NOTE' | 'ADMIN';
+export type MatchIncidentCardColor = 'yellow' | 'red' | 'blue';
+
+export interface MatchIncidentTypeDefinition {
+  code: string;
+  label: string;
+  kind: MatchIncidentDefinitionKind;
+  cardColor?: MatchIncidentCardColor | null;
+  requiresTeam?: boolean;
+  requiresParticipant?: boolean;
+  defaultEnabled?: boolean;
+  linkedPointDelta?: number | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface MatchTimekeepingConfig {
+  timerMode?: MatchTimerMode;
+  segmentDurationMinutes?: number | null;
+  segmentDurationMinutesBySequence?: number[];
+  canUseAddedTime?: boolean;
+  addedTimeEnabled?: boolean;
+  stopAtRegulationEnd?: boolean;
+}
+
+export interface ResolvedMatchTimekeepingConfig {
+  timerMode: MatchTimerMode;
+  segmentDurationMinutes: number | null;
+  segmentDurationMinutesBySequence: number[];
+  canUseAddedTime: boolean;
+  addedTimeEnabled: boolean;
+  stopAtRegulationEnd: boolean;
+}
 
 export interface MatchRulesConfig {
   scoringModel?: MatchScoringModel;
@@ -161,8 +194,10 @@ export interface MatchRulesConfig {
   canUseShootout?: boolean;
   officialRoles?: string[];
   supportedIncidentTypes?: string[];
+  incidentTypeDefinitions?: MatchIncidentTypeDefinition[];
   autoCreatePointIncidentType?: string;
   pointIncidentRequiresParticipant?: boolean;
+  timekeeping?: MatchTimekeepingConfig;
 }
 
 export interface ResolvedMatchRules {
@@ -176,8 +211,10 @@ export interface ResolvedMatchRules {
   canUseShootout: boolean;
   officialRoles: string[];
   supportedIncidentTypes: string[];
+  incidentTypeDefinitions: MatchIncidentTypeDefinition[];
   autoCreatePointIncidentType: string | null;
   pointIncidentRequiresParticipant: boolean;
+  timekeeping: ResolvedMatchTimekeepingConfig;
 }
 
 export interface MatchSegment {

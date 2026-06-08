@@ -39,6 +39,155 @@ const POINT_INCIDENT_TYPES = ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'];
 const GOAL_INCIDENT_TYPES = ['GOAL', 'DISCIPLINE', 'NOTE', 'ADMIN'];
 const RUN_INCIDENT_TYPES = ['RUN', 'DISCIPLINE', 'NOTE', 'ADMIN'];
 
+const scoringIncident = (code: string, label: string) => ({
+  code,
+  label,
+  kind: 'SCORING' as const,
+  requiresTeam: true,
+  requiresParticipant: false,
+  defaultEnabled: true,
+  linkedPointDelta: 1,
+});
+
+const disciplineIncident = (
+  code: string,
+  label: string,
+  options: { cardColor?: 'yellow' | 'red' | 'blue'; requiresTeam?: boolean; requiresParticipant?: boolean } = {},
+) => ({
+  code,
+  label,
+  kind: 'DISCIPLINE' as const,
+  requiresTeam: options.requiresTeam ?? true,
+  requiresParticipant: options.requiresParticipant ?? false,
+  defaultEnabled: true,
+  ...(options.cardColor ? { cardColor: options.cardColor } : {}),
+});
+
+const noteIncident = { code: 'NOTE', label: 'Match note', kind: 'NOTE' as const, defaultEnabled: true };
+const adminIncident = { code: 'ADMIN', label: 'Admin note', kind: 'ADMIN' as const, defaultEnabled: true };
+
+const baseIncidentDefinitions = (scoringCode = 'POINT', scoringLabel = 'Point') => [
+  scoringIncident(scoringCode, scoringLabel),
+  disciplineIncident('DISCIPLINE', 'Penalty or card'),
+  noteIncident,
+  adminIncident,
+];
+
+const volleyballIncidentDefinitions = [
+  scoringIncident('POINT', 'Point'),
+  disciplineIncident('YELLOW_CARD', 'Yellow card', { cardColor: 'yellow' }),
+  disciplineIncident('RED_CARD', 'Red card', { cardColor: 'red' }),
+  disciplineIncident('RED_YELLOW_CARD', 'Red/yellow card', { cardColor: 'red' }),
+  disciplineIncident('DELAY_WARNING', 'Delay warning'),
+  disciplineIncident('DELAY_PENALTY', 'Delay penalty', { cardColor: 'red' }),
+  disciplineIncident('EXPULSION', 'Expulsion', { cardColor: 'red' }),
+  disciplineIncident('DISQUALIFICATION', 'Disqualification', { cardColor: 'red' }),
+  noteIncident,
+  adminIncident,
+];
+
+const soccerIncidentDefinitions = [
+  scoringIncident('GOAL', 'Goal'),
+  disciplineIncident('YELLOW_CARD', 'Yellow card', { cardColor: 'yellow', requiresParticipant: true }),
+  disciplineIncident('RED_CARD', 'Red card', { cardColor: 'red', requiresParticipant: true }),
+  disciplineIncident('SECOND_YELLOW_CARD', 'Second yellow card', { cardColor: 'yellow', requiresParticipant: true }),
+  disciplineIncident('FOUL', 'Foul'),
+  noteIncident,
+  adminIncident,
+];
+
+const basketballIncidentDefinitions = [
+  scoringIncident('POINT', 'Point'),
+  disciplineIncident('PERSONAL_FOUL', 'Personal foul', { requiresParticipant: true }),
+  disciplineIncident('TECHNICAL_FOUL', 'Technical foul', { requiresParticipant: true }),
+  disciplineIncident('UNSPORTSMANLIKE_FOUL', 'Unsportsmanlike foul', { requiresParticipant: true }),
+  disciplineIncident('FLAGRANT_FOUL', 'Flagrant foul', { requiresParticipant: true }),
+  disciplineIncident('DISQUALIFYING_FOUL', 'Disqualifying foul', { cardColor: 'red', requiresParticipant: true }),
+  disciplineIncident('EJECTION', 'Ejection', { cardColor: 'red', requiresParticipant: true }),
+  noteIncident,
+  adminIncident,
+];
+
+const footballIncidentDefinitions = [
+  scoringIncident('POINT', 'Point'),
+  disciplineIncident('PERSONAL_FOUL', 'Personal foul'),
+  disciplineIncident('UNSPORTSMANLIKE_CONDUCT', 'Unsportsmanlike conduct'),
+  disciplineIncident('DELAY_OF_GAME', 'Delay of game'),
+  disciplineIncident('TARGETING', 'Targeting', { cardColor: 'red', requiresParticipant: true }),
+  disciplineIncident('EJECTION', 'Ejection', { cardColor: 'red' }),
+  noteIncident,
+  adminIncident,
+];
+
+const hockeyIncidentDefinitions = [
+  scoringIncident('GOAL', 'Goal'),
+  disciplineIncident('MINOR_PENALTY', 'Minor penalty', { requiresParticipant: true }),
+  disciplineIncident('MAJOR_PENALTY', 'Major penalty', { requiresParticipant: true }),
+  disciplineIncident('MISCONDUCT', 'Misconduct', { requiresParticipant: true }),
+  disciplineIncident('GAME_MISCONDUCT', 'Game misconduct', { cardColor: 'red', requiresParticipant: true }),
+  disciplineIncident('MATCH_PENALTY', 'Match penalty', { cardColor: 'red', requiresParticipant: true }),
+  noteIncident,
+  adminIncident,
+];
+
+const baseballIncidentDefinitions = [
+  scoringIncident('RUN', 'Run'),
+  disciplineIncident('WARNING', 'Warning'),
+  disciplineIncident('EJECTION', 'Ejection', { cardColor: 'red' }),
+  noteIncident,
+  adminIncident,
+];
+
+const tennisIncidentDefinitions = [
+  scoringIncident('POINT', 'Point'),
+  disciplineIncident('WARNING', 'Warning'),
+  disciplineIncident('POINT_PENALTY', 'Point penalty'),
+  disciplineIncident('GAME_PENALTY', 'Game penalty'),
+  disciplineIncident('DEFAULT', 'Default', { cardColor: 'red' }),
+  noteIncident,
+  adminIncident,
+];
+
+const pickleballIncidentDefinitions = [
+  scoringIncident('POINT', 'Point'),
+  disciplineIncident('VERBAL_WARNING', 'Verbal warning'),
+  disciplineIncident('TECHNICAL_WARNING', 'Technical warning'),
+  disciplineIncident('TECHNICAL_FOUL', 'Technical foul'),
+  disciplineIncident('EJECTION', 'Ejection', { cardColor: 'red' }),
+  disciplineIncident('FORFEIT', 'Forfeit', { cardColor: 'red' }),
+  noteIncident,
+  adminIncident,
+];
+
+const noTimer = {
+  timerMode: 'NONE' as const,
+  segmentDurationMinutes: null,
+  segmentDurationMinutesBySequence: [],
+  canUseAddedTime: false,
+  addedTimeEnabled: false,
+  stopAtRegulationEnd: true,
+};
+
+const fixedTimer = (segmentDurationMinutes: number) => ({
+  timerMode: 'COUNT_UP' as const,
+  segmentDurationMinutes,
+  segmentDurationMinutesBySequence: [],
+  canUseAddedTime: false,
+  addedTimeEnabled: false,
+  stopAtRegulationEnd: true,
+});
+
+const addedTimeTimer = (segmentDurationMinutes: number) => ({
+  timerMode: 'COUNT_UP' as const,
+  segmentDurationMinutes,
+  segmentDurationMinutesBySequence: [],
+  canUseAddedTime: true,
+  addedTimeEnabled: true,
+  stopAtRegulationEnd: false,
+});
+
+const incidentCodes = (definitions: Array<{ code: string }>) => definitions.map((definition) => definition.code);
+
 const setBasedRules = (
   overrides: Partial<MatchRulesConfig> = {},
 ): MatchRulesConfig => ({
@@ -50,14 +199,17 @@ const setBasedRules = (
   canUseOvertime: false,
   canUseShootout: false,
   officialRoles: [],
-  supportedIncidentTypes: POINT_INCIDENT_TYPES,
+  supportedIncidentTypes: incidentCodes(volleyballIncidentDefinitions),
+  incidentTypeDefinitions: volleyballIncidentDefinitions,
   autoCreatePointIncidentType: 'POINT',
+  timekeeping: noTimer,
   ...overrides,
 });
 
 const periodRules = (
   segmentCount: number,
   segmentLabel: string,
+  segmentDurationMinutes: number,
   overrides: Partial<MatchRulesConfig> = {},
 ): MatchRulesConfig => ({
   scoringModel: 'PERIODS',
@@ -69,8 +221,10 @@ const periodRules = (
   canUseOvertime: false,
   canUseShootout: false,
   officialRoles: [],
-  supportedIncidentTypes: POINT_INCIDENT_TYPES,
+  supportedIncidentTypes: incidentCodes(baseIncidentDefinitions('POINT', 'Point')),
+  incidentTypeDefinitions: baseIncidentDefinitions('POINT', 'Point'),
   autoCreatePointIncidentType: 'POINT',
+  timekeeping: fixedTimer(segmentDurationMinutes),
   ...overrides,
 });
 
@@ -86,8 +240,10 @@ const pointsOnlyRules = (
   canUseOvertime: false,
   canUseShootout: false,
   officialRoles: [],
-  supportedIncidentTypes: POINT_INCIDENT_TYPES,
+  supportedIncidentTypes: incidentCodes(baseIncidentDefinitions('POINT', 'Point')),
+  incidentTypeDefinitions: baseIncidentDefinitions('POINT', 'Point'),
   autoCreatePointIncidentType: 'POINT',
+  timekeeping: noTimer,
   ...overrides,
 });
 
@@ -95,45 +251,64 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
   'Indoor Volleyball': setBasedRules(),
   'Beach Volleyball': setBasedRules(),
   'Grass Volleyball': setBasedRules(),
-  Basketball: periodRules(4, 'Quarter', {
+  Basketball: periodRules(4, 'Quarter', 10, {
     supportsOvertime: true,
     canUseOvertime: true,
+    incidentTypeDefinitions: basketballIncidentDefinitions,
+    supportedIncidentTypes: incidentCodes(basketballIncidentDefinitions),
   }),
-  'Indoor Soccer': periodRules(2, 'Half', {
+  'Indoor Soccer': periodRules(2, 'Half', 25, {
     supportsDraw: true,
     canUseOvertime: true,
     canUseShootout: true,
-    supportedIncidentTypes: GOAL_INCIDENT_TYPES,
+    supportedIncidentTypes: incidentCodes(soccerIncidentDefinitions),
+    incidentTypeDefinitions: soccerIncidentDefinitions,
     autoCreatePointIncidentType: 'GOAL',
+    timekeeping: addedTimeTimer(25),
   }),
-  'Grass Soccer': periodRules(2, 'Half', {
+  'Grass Soccer': periodRules(2, 'Half', 45, {
     supportsDraw: true,
     canUseOvertime: true,
     canUseShootout: true,
-    supportedIncidentTypes: GOAL_INCIDENT_TYPES,
+    supportedIncidentTypes: incidentCodes(soccerIncidentDefinitions),
+    incidentTypeDefinitions: soccerIncidentDefinitions,
     autoCreatePointIncidentType: 'GOAL',
+    timekeeping: addedTimeTimer(45),
   }),
-  'Beach Soccer': periodRules(2, 'Half', {
-    supportsDraw: true,
+  'Beach Soccer': periodRules(3, 'Period', 12, {
+    supportsDraw: false,
+    supportsOvertime: true,
+    supportsShootout: true,
     canUseOvertime: true,
     canUseShootout: true,
-    supportedIncidentTypes: GOAL_INCIDENT_TYPES,
+    supportedIncidentTypes: incidentCodes(soccerIncidentDefinitions),
+    incidentTypeDefinitions: soccerIncidentDefinitions,
     autoCreatePointIncidentType: 'GOAL',
   }),
-  Tennis: setBasedRules(),
-  Pickleball: setBasedRules({ segmentLabel: 'Game' }),
-  Football: periodRules(4, 'Quarter', {
+  Tennis: setBasedRules({
+    incidentTypeDefinitions: tennisIncidentDefinitions,
+    supportedIncidentTypes: incidentCodes(tennisIncidentDefinitions),
+  }),
+  Pickleball: setBasedRules({
+    segmentLabel: 'Game',
+    incidentTypeDefinitions: pickleballIncidentDefinitions,
+    supportedIncidentTypes: incidentCodes(pickleballIncidentDefinitions),
+  }),
+  Football: periodRules(4, 'Quarter', 15, {
     supportsDraw: true,
     supportsOvertime: true,
     canUseOvertime: true,
+    incidentTypeDefinitions: footballIncidentDefinitions,
+    supportedIncidentTypes: incidentCodes(footballIncidentDefinitions),
   }),
-  Hockey: periodRules(3, 'Period', {
+  Hockey: periodRules(3, 'Period', 20, {
     supportsDraw: true,
     supportsOvertime: true,
     supportsShootout: true,
     canUseOvertime: true,
     canUseShootout: true,
-    supportedIncidentTypes: GOAL_INCIDENT_TYPES,
+    supportedIncidentTypes: incidentCodes(hockeyIncidentDefinitions),
+    incidentTypeDefinitions: hockeyIncidentDefinitions,
     autoCreatePointIncidentType: 'GOAL',
   }),
   Baseball: {
@@ -146,8 +321,10 @@ const MATCH_RULE_TEMPLATES_BY_SPORT: Record<string, MatchRulesConfig> = {
     canUseOvertime: false,
     canUseShootout: false,
     officialRoles: [],
-    supportedIncidentTypes: RUN_INCIDENT_TYPES,
+    supportedIncidentTypes: incidentCodes(baseballIncidentDefinitions),
+    incidentTypeDefinitions: baseballIncidentDefinitions,
     autoCreatePointIncidentType: 'RUN',
+    timekeeping: noTimer,
   },
   Other: pointsOnlyRules({
     supportsDraw: true,
@@ -389,6 +566,79 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 );
 
+const incidentDefinitionCode = (value: unknown): string | null => {
+  if (!isRecord(value) || typeof value.code !== 'string') return null;
+  const normalized = value.code.trim().toUpperCase();
+  return normalized.length ? normalized : null;
+};
+
+const mergeIncidentDefinitionList = (
+  defaults: unknown,
+  current: unknown,
+): { value?: unknown[]; changed: boolean } => {
+  if (!Array.isArray(defaults)) {
+    return { changed: false };
+  }
+  if (!Array.isArray(current)) {
+    return { value: defaults, changed: true };
+  }
+  const merged = [...current];
+  const existingCodes = new Set(
+    current
+      .map(incidentDefinitionCode)
+      .filter((code): code is string => Boolean(code)),
+  );
+  defaults.forEach((definition) => {
+    const code = incidentDefinitionCode(definition);
+    if (code && !existingCodes.has(code)) {
+      merged.push(definition);
+      existingCodes.add(code);
+    }
+  });
+  return { value: merged, changed: merged.length !== current.length };
+};
+
+const mergeStringList = (
+  defaults: unknown,
+  current: unknown,
+): { value?: string[]; changed: boolean } => {
+  if (!Array.isArray(defaults)) return { changed: false };
+  if (!Array.isArray(current)) {
+    return { value: defaults.map((entry) => String(entry)).filter(Boolean), changed: true };
+  }
+  const merged = current.map((entry) => String(entry)).filter(Boolean);
+  const existing = new Set(merged);
+  defaults.forEach((entry) => {
+    const value = String(entry ?? '').trim();
+    if (value && !existing.has(value)) {
+      merged.push(value);
+      existing.add(value);
+    }
+  });
+  return { value: merged, changed: merged.length !== current.length };
+};
+
+const mergeTimekeepingConfig = (
+  defaults: unknown,
+  current: unknown,
+): { value?: Record<string, unknown>; changed: boolean } => {
+  if (!isRecord(defaults)) {
+    return { changed: false };
+  }
+  if (!isRecord(current)) {
+    return { value: { ...defaults }, changed: true };
+  }
+  const merged: Record<string, unknown> = { ...current };
+  let changed = false;
+  Object.entries(defaults).forEach(([key, value]) => {
+    if (merged[key] == null) {
+      merged[key] = value;
+      changed = true;
+    }
+  });
+  return changed ? { value: merged, changed } : { changed: false };
+};
+
 const mergeMissingMatchRulesTemplate = (
   defaults: MatchRulesConfig,
   current: unknown,
@@ -400,6 +650,30 @@ const mergeMissingMatchRulesTemplate = (
   const merged: Record<string, unknown> = { ...current };
   let changed = false;
   Object.entries(defaults).forEach(([key, value]) => {
+    if (key === 'incidentTypeDefinitions') {
+      const result = mergeIncidentDefinitionList(value, merged[key]);
+      if (result.changed && result.value) {
+        merged[key] = result.value;
+        changed = true;
+      }
+      return;
+    }
+    if (key === 'supportedIncidentTypes') {
+      const result = mergeStringList(value, merged[key]);
+      if (result.changed && result.value) {
+        merged[key] = result.value;
+        changed = true;
+      }
+      return;
+    }
+    if (key === 'timekeeping') {
+      const result = mergeTimekeepingConfig(value, merged[key]);
+      if (result.changed && result.value) {
+        merged[key] = result.value;
+        changed = true;
+      }
+      return;
+    }
     if (merged[key] == null) {
       merged[key] = value;
       changed = true;

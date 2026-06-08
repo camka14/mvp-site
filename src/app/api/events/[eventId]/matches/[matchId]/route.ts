@@ -491,6 +491,16 @@ const sanitizeIncidentOperationsOrThrow = (params: {
       return operation;
     }
 
+    if (typeof operation.clockSeconds === 'number' && operation.clockSeconds < 0) {
+      throw new Response('Incident clock seconds must be zero or greater.', { status: 400 });
+    }
+    if (typeof operation.minute === 'number' && operation.minute < 0) {
+      throw new Response('Incident minute must be zero or greater.', { status: 400 });
+    }
+    if (typeof operation.clock === 'string' && operation.clock.length > 32) {
+      throw new Response('Incident clock is too long.', { status: 400 });
+    }
+
     const linkedPointDelta = typeof operation.linkedPointDelta === 'number' ? operation.linkedPointDelta : null;
     const scoringIncident = linkedPointDelta !== null && linkedPointDelta !== 0;
     const requiresParticipant = scoringIncident && params.matchRules?.pointIncidentRequiresParticipant === true;
@@ -1249,10 +1259,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ ev
           const requestedStatus = typeof parsed.data.lifecycle.status === 'string'
             ? parsed.data.lifecycle.status.trim().toUpperCase()
             : null;
+          const officialAllowedStatuses = new Set(['SCHEDULED', 'READY', 'IN_PROGRESS']);
           const allowedOfficialLifecycleUpdate = isOfficial
             && lifecycleKeys.every((key) => officialAllowedKeys.has(key))
-            && (!requestedStatus || requestedStatus === 'IN_PROGRESS')
-            && (!requestedStatus || Boolean(parsed.data.lifecycle.actualStart ?? targetMatch.actualStart));
+            && (!requestedStatus || officialAllowedStatuses.has(requestedStatus));
           if (!allowedOfficialLifecycleUpdate) {
             throw new Response('Only hosts can update match lifecycle status.', { status: 403 });
           }

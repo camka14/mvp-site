@@ -102,6 +102,18 @@ describe('GET /api/sports', () => {
     const baseball = Array.isArray(createPayload?.data)
       ? createPayload.data.find((row: any) => row.id === 'Baseball')
       : null;
+    const beachSoccer = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Beach Soccer')
+      : null;
+    const football = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Football')
+      : null;
+    const tennis = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Tennis')
+      : null;
+    const pickleball = Array.isArray(createPayload?.data)
+      ? createPayload.data.find((row: any) => row.id === 'Pickleball')
+      : null;
     expect(createdNames).not.toContain('Soccer');
     expect(createdNames).not.toContain('Volleyball');
     expect(basketball?.usePointsPerGoalScored).toBe(false);
@@ -134,6 +146,40 @@ describe('GET /api/sports', () => {
         segmentCount: 9,
         segmentLabel: 'Inning',
         autoCreatePointIncidentType: 'RUN',
+      }),
+    );
+    expect(beachSoccer?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        scoringModel: 'PERIODS',
+        segmentCount: 3,
+        segmentLabel: 'Period',
+        supportsDraw: false,
+        supportsOvertime: true,
+        supportsShootout: true,
+        timekeeping: expect.objectContaining({
+          timerMode: 'COUNT_UP',
+          segmentDurationMinutes: 12,
+          canUseAddedTime: false,
+          addedTimeEnabled: false,
+        }),
+      }),
+    );
+    expect(football?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        segmentCount: 4,
+        segmentLabel: 'Quarter',
+        timekeeping: expect.objectContaining({ segmentDurationMinutes: 15 }),
+        supportedIncidentTypes: expect.arrayContaining(['TARGETING', 'EJECTION']),
+      }),
+    );
+    expect(tennis?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        supportedIncidentTypes: expect.arrayContaining(['WARNING', 'POINT_PENALTY', 'GAME_PENALTY', 'DEFAULT']),
+      }),
+    );
+    expect(pickleball?.matchRulesTemplate).toEqual(
+      expect.objectContaining({
+        supportedIncidentTypes: expect.arrayContaining(['TECHNICAL_WARNING', 'TECHNICAL_FOUL', 'FORFEIT']),
       }),
     );
     expect(baseball?.officialPositionTemplates).toEqual([
@@ -206,7 +252,37 @@ describe('GET /api/sports', () => {
     const response = await GET(new NextRequest('http://localhost/api/sports'));
 
     expect(response.status).toBe(200);
-    expect(prismaMock.sports.update).not.toHaveBeenCalled();
+    expect(prismaMock.sports.update).toHaveBeenCalledWith({
+      where: { id: 'Basketball' },
+      data: {
+        matchRulesTemplate: expect.objectContaining({
+          scoringModel: 'PERIODS',
+          supportedIncidentTypes: expect.arrayContaining([
+            'POINT',
+            'PERSONAL_FOUL',
+            'TECHNICAL_FOUL',
+            'FLAGRANT_FOUL',
+            'EJECTION',
+            'NOTE',
+            'ADMIN',
+          ]),
+          incidentTypeDefinitions: expect.arrayContaining([
+            expect.objectContaining({ code: 'TECHNICAL_FOUL', label: 'Technical foul' }),
+            expect.objectContaining({ code: 'EJECTION', cardColor: 'red' }),
+          ]),
+          timekeeping: expect.objectContaining({
+            timerMode: 'COUNT_UP',
+            segmentDurationMinutes: 10,
+            canUseAddedTime: false,
+          }),
+        }),
+      },
+    });
+    const updateData = prismaMock.sports.update.mock.calls[0]?.[0]?.data ?? {};
+    expect(updateData).not.toHaveProperty('usePointsForWin');
+    expect(updateData).not.toHaveProperty('usePointsForLoss');
+    expect(updateData).not.toHaveProperty('usePointsPerGoalScored');
+    expect(updateData).not.toHaveProperty('usePointsPerGoalConceded');
   });
 
   it('backfills null scoring flags using default sport settings', async () => {
@@ -240,12 +316,18 @@ describe('GET /api/sports', () => {
     expect(response.status).toBe(200);
     expect(prismaMock.sports.update).toHaveBeenCalledWith({
       where: { id: 'Basketball' },
-      data: {
+      data: expect.objectContaining({
         usePointsForWin: true,
         usePointsForLoss: true,
         usePointsPerGoalScored: false,
         usePointsPerGoalConceded: false,
-      },
+        matchRulesTemplate: expect.objectContaining({
+          incidentTypeDefinitions: expect.arrayContaining([
+            expect.objectContaining({ code: 'PERSONAL_FOUL' }),
+          ]),
+          timekeeping: expect.objectContaining({ timerMode: 'COUNT_UP' }),
+        }),
+      }),
     });
   });
 
@@ -277,9 +359,15 @@ describe('GET /api/sports', () => {
     expect(response.status).toBe(200);
     expect(prismaMock.sports.update).toHaveBeenCalledWith({
       where: { id: 'Basketball' },
-      data: {
+      data: expect.objectContaining({
         officialPositionTemplates: basketballOfficialPositionTemplates,
-      },
+        matchRulesTemplate: expect.objectContaining({
+          incidentTypeDefinitions: expect.arrayContaining([
+            expect.objectContaining({ code: 'TECHNICAL_FOUL' }),
+          ]),
+          timekeeping: expect.objectContaining({ segmentDurationMinutes: 10 }),
+        }),
+      }),
     });
   });
 
@@ -317,8 +405,46 @@ describe('GET /api/sports', () => {
             canUseOvertime: false,
             canUseShootout: false,
             officialRoles: [],
-            supportedIncidentTypes: ['RUN', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+            supportedIncidentTypes: ['RUN', 'WARNING', 'EJECTION', 'NOTE', 'ADMIN'],
+            incidentTypeDefinitions: [
+              {
+                code: 'RUN',
+                label: 'Run',
+                kind: 'SCORING',
+                requiresTeam: true,
+                requiresParticipant: false,
+                defaultEnabled: true,
+                linkedPointDelta: 1,
+              },
+              {
+                code: 'WARNING',
+                label: 'Warning',
+                kind: 'DISCIPLINE',
+                requiresTeam: true,
+                requiresParticipant: false,
+                defaultEnabled: true,
+              },
+              {
+                code: 'EJECTION',
+                label: 'Ejection',
+                kind: 'DISCIPLINE',
+                requiresTeam: true,
+                requiresParticipant: false,
+                defaultEnabled: true,
+                cardColor: 'red',
+              },
+              { code: 'NOTE', label: 'Match note', kind: 'NOTE', defaultEnabled: true },
+              { code: 'ADMIN', label: 'Admin note', kind: 'ADMIN', defaultEnabled: true },
+            ],
             autoCreatePointIncidentType: 'RUN',
+            timekeeping: {
+              timerMode: 'NONE',
+              segmentDurationMinutes: null,
+              segmentDurationMinutesBySequence: [],
+              canUseAddedTime: false,
+              addedTimeEnabled: false,
+              stopAtRegulationEnd: true,
+            },
           },
         },
       ]);
@@ -329,7 +455,7 @@ describe('GET /api/sports', () => {
     expect(prismaMock.sports.update).toHaveBeenCalledWith({
       where: { id: 'Baseball' },
       data: {
-        matchRulesTemplate: {
+        matchRulesTemplate: expect.objectContaining({
           scoringModel: 'INNINGS',
           segmentCount: 9,
           segmentLabel: 'Inning',
@@ -339,9 +465,21 @@ describe('GET /api/sports', () => {
           canUseOvertime: false,
           canUseShootout: false,
           officialRoles: [],
-          supportedIncidentTypes: ['RUN', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+          supportedIncidentTypes: ['RUN', 'WARNING', 'EJECTION', 'NOTE', 'ADMIN'],
+          incidentTypeDefinitions: expect.arrayContaining([
+            expect.objectContaining({ code: 'RUN', kind: 'SCORING' }),
+            expect.objectContaining({ code: 'WARNING', kind: 'DISCIPLINE' }),
+            expect.objectContaining({ code: 'EJECTION', cardColor: 'red' }),
+          ]),
           autoCreatePointIncidentType: 'RUN',
-        },
+          timekeeping: expect.objectContaining({
+            timerMode: 'NONE',
+            segmentDurationMinutes: null,
+            canUseAddedTime: false,
+            addedTimeEnabled: false,
+            stopAtRegulationEnd: true,
+          }),
+        }),
       },
     });
   });

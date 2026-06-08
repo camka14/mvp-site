@@ -1,13 +1,21 @@
 import type {
   EventOfficialPosition,
+  MatchIncidentCardColor,
+  MatchIncidentDefinitionKind,
+  MatchIncidentTypeDefinition,
   MatchIncident,
   MatchRulesConfig,
   MatchSegment,
   MatchSegmentStatus,
+  MatchTimekeepingConfig,
+  MatchTimerMode,
+  ResolvedMatchTimekeepingConfig,
   ResolvedMatchRules,
 } from '@/types';
 
 const DEFAULT_POINT_INCIDENT_TYPE = 'POINT';
+const DEFAULT_INCIDENT_CODES = [DEFAULT_POINT_INCIDENT_TYPE, 'DISCIPLINE', 'NOTE', 'ADMIN'];
+const SCORING_INCIDENT_CODES = new Set(['POINT', 'GOAL', 'RUN', 'SCORE']);
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -30,6 +38,201 @@ const normalizeStringList = (value: unknown): string[] => (
 const normalizeRulesConfig = (value: unknown): MatchRulesConfig => (
   isRecord(value) ? { ...(value as MatchRulesConfig) } : {}
 );
+
+const normalizeIncidentCode = (value: unknown): string | null => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return normalized || null;
+};
+
+const incidentLabelForCode = (code: string): string => {
+  switch (code) {
+    case 'POINT':
+      return 'Point';
+    case 'GOAL':
+      return 'Goal';
+    case 'RUN':
+      return 'Run';
+    case 'DISCIPLINE':
+      return 'Penalty or card';
+    case 'NOTE':
+      return 'Match note';
+    case 'ADMIN':
+      return 'Admin note';
+    default:
+      return code
+        .toLowerCase()
+        .split(/[_\s-]+/)
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+  }
+};
+
+const incidentKindForCode = (code: string): MatchIncidentDefinitionKind => {
+  if (SCORING_INCIDENT_CODES.has(code)) return 'SCORING';
+  if (code === 'NOTE') return 'NOTE';
+  if (code === 'ADMIN') return 'ADMIN';
+  return 'DISCIPLINE';
+};
+
+const normalizeIncidentKind = (
+  value: unknown,
+  fallback: MatchIncidentDefinitionKind,
+): MatchIncidentDefinitionKind => {
+  const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  if (normalized === 'SCORING' || normalized === 'DISCIPLINE' || normalized === 'NOTE' || normalized === 'ADMIN') {
+    return normalized;
+  }
+  return fallback;
+};
+
+const normalizeCardColor = (value: unknown): MatchIncidentCardColor | null => {
+  const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  if (normalized === 'yellow' || normalized === 'red' || normalized === 'blue') {
+    return normalized;
+  }
+  return null;
+};
+
+const incidentDefinitionForCode = (
+  code: string,
+  overrides: Partial<MatchIncidentTypeDefinition> = {},
+): MatchIncidentTypeDefinition => {
+  const normalizedCode = normalizeIncidentCode(code) ?? DEFAULT_POINT_INCIDENT_TYPE;
+  const fallbackKind = incidentKindForCode(normalizedCode);
+  const kind = normalizeIncidentKind(overrides.kind, fallbackKind);
+  const cardColor = normalizeCardColor(overrides.cardColor);
+  return {
+    code: normalizedCode,
+    label: typeof overrides.label === 'string' && overrides.label.trim()
+      ? overrides.label.trim()
+      : incidentLabelForCode(normalizedCode),
+    kind,
+    ...(cardColor ? { cardColor } : {}),
+    requiresTeam: typeof overrides.requiresTeam === 'boolean'
+      ? overrides.requiresTeam
+      : kind === 'SCORING',
+    requiresParticipant: overrides.requiresParticipant === true,
+    defaultEnabled: overrides.defaultEnabled !== false,
+    linkedPointDelta: typeof overrides.linkedPointDelta === 'number' && Number.isFinite(overrides.linkedPointDelta)
+      ? Math.trunc(overrides.linkedPointDelta)
+      : kind === 'SCORING'
+        ? 1
+        : null,
+    metadata: isRecord(overrides.metadata) ? { ...overrides.metadata } : null,
+  };
+};
+
+const normalizeIncidentDefinition = (value: unknown): MatchIncidentTypeDefinition | null => {
+  if (!isRecord(value)) return null;
+  const code = normalizeIncidentCode(value.code);
+  if (!code) return null;
+  return incidentDefinitionForCode(code, value as Partial<MatchIncidentTypeDefinition>);
+};
+
+const mergeIncidentDefinitions = (
+  ...sources: unknown[]
+): MatchIncidentTypeDefinition[] => {
+  const byCode = new Map<string, MatchIncidentTypeDefinition>();
+  const addDefinition = (definition: MatchIncidentTypeDefinition) => {
+    const previous = byCode.get(definition.code);
+    byCode.set(definition.code, previous ? { ...previous, ...definition, code: previous.code } : definition);
+  };
+  DEFAULT_INCIDENT_CODES.forEach((code) => addDefinition(incidentDefinitionForCode(code)));
+  sources.forEach((source) => {
+    if (!Array.isArray(source)) return;
+    source.forEach((entry) => {
+      const definition = normalizeIncidentDefinition(entry);
+      if (definition) addDefinition(definition);
+    });
+  });
+  return Array.from(byCode.values());
+};
+
+const normalizeIncidentCodeList = (value: unknown): string[] => (
+  normalizeStringList(value)
+    .map((entry) => normalizeIncidentCode(entry))
+    .filter((entry): entry is string => Boolean(entry))
+);
+
+const normalizeTimerMode = (value: unknown, fallback: MatchTimerMode): MatchTimerMode => {
+  const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  return normalized === 'COUNT_UP' || normalized === 'NONE' ? normalized : fallback;
+};
+
+const normalizePositiveNullableInt = (value: unknown): number | null => {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return Math.trunc(numeric);
+};
+
+const normalizeTimekeepingConfig = (value: unknown): MatchTimekeepingConfig => {
+  if (!isRecord(value)) return {};
+  const segmentDurationMinutes = normalizePositiveNullableInt(value.segmentDurationMinutes);
+  const sequenceDurations = Array.isArray(value.segmentDurationMinutesBySequence)
+    ? value.segmentDurationMinutesBySequence
+        .map((entry) => normalizePositiveNullableInt(entry))
+        .filter((entry): entry is number => entry !== null)
+    : [];
+  return {
+    ...(typeof value.timerMode === 'string' ? { timerMode: normalizeTimerMode(value.timerMode, 'NONE') } : {}),
+    ...(segmentDurationMinutes ? { segmentDurationMinutes } : value.segmentDurationMinutes === null ? { segmentDurationMinutes: null } : {}),
+    ...(sequenceDurations.length ? { segmentDurationMinutesBySequence: sequenceDurations } : {}),
+    ...(typeof value.canUseAddedTime === 'boolean' ? { canUseAddedTime: value.canUseAddedTime } : {}),
+    ...(typeof value.addedTimeEnabled === 'boolean' ? { addedTimeEnabled: value.addedTimeEnabled } : {}),
+    ...(typeof value.stopAtRegulationEnd === 'boolean' ? { stopAtRegulationEnd: value.stopAtRegulationEnd } : {}),
+  };
+};
+
+const resolveTimekeeping = (params: {
+  scoringModel: ResolvedMatchRules['scoringModel'];
+  segmentCount: number;
+  matchDurationMinutes?: number | null;
+  sportTemplate: MatchRulesConfig;
+  eventOverride: MatchRulesConfig;
+}): ResolvedMatchTimekeepingConfig => {
+  const sportTimekeeping = normalizeTimekeepingConfig(params.sportTemplate.timekeeping);
+  const eventTimekeeping = normalizeTimekeepingConfig(params.eventOverride.timekeeping);
+  const merged = { ...sportTimekeeping, ...eventTimekeeping };
+  const fallbackMode: MatchTimerMode = sportTimekeeping.timerMode
+    ?? (params.scoringModel === 'PERIODS' ? 'COUNT_UP' : 'NONE');
+  const timerMode = normalizeTimerMode(merged.timerMode, fallbackMode);
+  const fallbackSegmentDuration = (() => {
+    const fromMatchDuration = normalizePositiveNullableInt(params.matchDurationMinutes);
+    if (fromMatchDuration && params.segmentCount > 0 && timerMode !== 'NONE') {
+      return Math.max(1, Math.round(fromMatchDuration / params.segmentCount));
+    }
+    return null;
+  })();
+  const segmentDurationMinutes = normalizePositiveNullableInt(merged.segmentDurationMinutes)
+    ?? fallbackSegmentDuration;
+  const sequenceDurations = Array.isArray(merged.segmentDurationMinutesBySequence)
+    ? merged.segmentDurationMinutesBySequence
+        .map((entry) => normalizePositiveNullableInt(entry))
+        .filter((entry): entry is number => entry !== null)
+    : [];
+  const sportAllowsAddedTime = sportTimekeeping.canUseAddedTime === true;
+  const canUseAddedTime = sportAllowsAddedTime || (!Object.keys(params.sportTemplate).length && eventTimekeeping.canUseAddedTime === true);
+  const addedTimeEnabled = timerMode !== 'NONE'
+    && canUseAddedTime
+    && merged.addedTimeEnabled === true;
+  const stopAtRegulationEnd = timerMode === 'NONE'
+    ? true
+    : addedTimeEnabled
+      ? false
+      : typeof merged.stopAtRegulationEnd === 'boolean'
+        ? merged.stopAtRegulationEnd
+        : true;
+  return {
+    timerMode,
+    segmentDurationMinutes,
+    segmentDurationMinutesBySequence: sequenceDurations,
+    canUseAddedTime: timerMode !== 'NONE' && canUseAddedTime,
+    addedTimeEnabled,
+    stopAtRegulationEnd,
+  };
+};
 
 const resolveScoringModel = (value: unknown, fallback: ResolvedMatchRules['scoringModel']): ResolvedMatchRules['scoringModel'] => {
   const normalized = typeof value === 'string' ? value.trim().toUpperCase() : '';
@@ -76,6 +279,20 @@ export const resolveMatchRules = (params: {
   const officialRolesFromPositions = (params.officialPositions ?? [])
     .map((position) => position.name.trim())
     .filter(Boolean);
+  const autoCreatePointIncidentType = typeof merged.autoCreatePointIncidentType === 'string' && merged.autoCreatePointIncidentType.trim()
+    ? normalizeIncidentCode(merged.autoCreatePointIncidentType) ?? DEFAULT_POINT_INCIDENT_TYPE
+    : DEFAULT_POINT_INCIDENT_TYPE;
+  const incidentTypeDefinitions = mergeIncidentDefinitions(
+    sportTemplate.incidentTypeDefinitions,
+    eventOverride.incidentTypeDefinitions,
+    [incidentDefinitionForCode(autoCreatePointIncidentType, { kind: 'SCORING', requiresTeam: true, linkedPointDelta: 1 })],
+  );
+  const configuredIncidentTypes = normalizeIncidentCodeList(merged.supportedIncidentTypes);
+  const supportedIncidentTypes = configuredIncidentTypes.length
+    ? configuredIncidentTypes
+    : incidentTypeDefinitions
+        .filter((definition) => definition.defaultEnabled !== false)
+        .map((definition) => definition.code);
   const canUseOvertime = hasSportTemplate
     ? sportTemplate.canUseOvertime === true || sportTemplate.supportsOvertime === true
     : eventOverride.canUseOvertime === true || eventOverride.supportsOvertime === true;
@@ -99,14 +316,20 @@ export const resolveMatchRules = (params: {
     officialRoles: normalizeStringList(merged.officialRoles).length
       ? normalizeStringList(merged.officialRoles)
       : officialRolesFromPositions,
-    supportedIncidentTypes: normalizeStringList(merged.supportedIncidentTypes).length
-      ? normalizeStringList(merged.supportedIncidentTypes)
-      : [DEFAULT_POINT_INCIDENT_TYPE, 'DISCIPLINE', 'NOTE', 'ADMIN'],
-    autoCreatePointIncidentType: typeof merged.autoCreatePointIncidentType === 'string' && merged.autoCreatePointIncidentType.trim()
-      ? merged.autoCreatePointIncidentType.trim()
-      : DEFAULT_POINT_INCIDENT_TYPE,
+    supportedIncidentTypes: supportedIncidentTypes.length ? supportedIncidentTypes : [...DEFAULT_INCIDENT_CODES],
+    incidentTypeDefinitions: incidentTypeDefinitions.length
+      ? incidentTypeDefinitions
+      : DEFAULT_INCIDENT_CODES.map((code) => incidentDefinitionForCode(code)),
+    autoCreatePointIncidentType,
     // Automatic point/goal incident capture is now the single source of truth.
     pointIncidentRequiresParticipant: params.autoCreatePointMatchIncidents === true,
+    timekeeping: resolveTimekeeping({
+      scoringModel,
+      segmentCount,
+      matchDurationMinutes: params.matchDurationMinutes,
+      sportTemplate,
+      eventOverride,
+    }),
   };
 };
 
@@ -220,7 +443,11 @@ export const resolveMatchRulesForContext = (params: {
 };
 
 export const shouldFreezeMatchRulesSnapshot = (params: {
-  segmentOperations?: Array<{ scores?: Record<string, number> | null | undefined }>;
+  segmentOperations?: Array<{
+    scores?: Record<string, number> | null | undefined;
+    startedAt?: string | null | undefined;
+    endedAt?: string | null | undefined;
+  }>;
   incidentOperations?: unknown[];
 }): boolean => {
   if (Array.isArray(params.incidentOperations) && params.incidentOperations.length > 0) {
@@ -228,7 +455,11 @@ export const shouldFreezeMatchRulesSnapshot = (params: {
   }
   return Array.isArray(params.segmentOperations) && params.segmentOperations.some((operation) => {
     const scores = operation?.scores;
-    return Boolean(scores && Object.keys(scores).length > 0);
+    return Boolean(
+      (scores && Object.keys(scores).length > 0)
+      || operation?.startedAt !== undefined
+      || operation?.endedAt !== undefined,
+    );
   });
 };
 

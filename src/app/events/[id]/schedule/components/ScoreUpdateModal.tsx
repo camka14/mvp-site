@@ -42,11 +42,13 @@ import {
   getTeamAvatarUrl,
   Match,
   MatchIncident,
+  MatchIncidentTypeDefinition,
   MatchIncidentOperation,
   MatchLifecycleOperation,
   MatchOfficialCheckInOperation,
   MatchSegment,
   MatchSegmentOperation,
+  ResolvedMatchTimekeepingConfig,
   ResolvedMatchRules,
   Team,
   TeamPlayerRegistration,
@@ -382,6 +384,19 @@ const dateLabel = (value?: string | null): string => {
     : date.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 };
 
+const formatClockSeconds = (seconds: number): string => {
+  const safeSeconds = Math.max(0, Math.trunc(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+};
+
+const formatIncidentClock = (seconds: number): string => formatClockSeconds(seconds);
+
 const existingSegmentCount = (match: Match): number => Math.max(
   Array.isArray(match.segments) ? match.segments.length : 0,
   Array.isArray(match.team1Points) ? match.team1Points.length : 0,
@@ -389,6 +404,119 @@ const existingSegmentCount = (match: Match): number => Math.max(
   Array.isArray(match.setResults) ? match.setResults.length : 0,
   0,
 );
+
+const DEFAULT_TIMEKEEPING: ResolvedMatchTimekeepingConfig = {
+  timerMode: 'NONE',
+  segmentDurationMinutes: null,
+  segmentDurationMinutesBySequence: [],
+  canUseAddedTime: false,
+  addedTimeEnabled: false,
+  stopAtRegulationEnd: true,
+};
+
+const incidentDefinitionLabel = (type: string): string => {
+  const normalized = normalizedIncidentType(type);
+  if (normalized === 'POINT') return 'Point';
+  if (normalized === 'GOAL') return 'Goal';
+  if (normalized === 'RUN') return 'Run';
+  if (normalized === 'DISCIPLINE') return 'Penalty or card';
+  if (normalized === 'NOTE') return 'Match note';
+  if (normalized === 'ADMIN') return 'Admin note';
+  return type
+    .toLowerCase()
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+};
+
+const incidentDefinitionForType = (type: string): MatchIncidentTypeDefinition => {
+  const code = normalizedIncidentType(type) || 'NOTE';
+  const isScoring = ['POINT', 'GOAL', 'RUN', 'SCORE'].includes(code);
+  return {
+    code,
+    label: incidentDefinitionLabel(code),
+    kind: isScoring ? 'SCORING' : code === 'NOTE' ? 'NOTE' : code === 'ADMIN' ? 'ADMIN' : 'DISCIPLINE',
+    requiresTeam: isScoring,
+    requiresParticipant: false,
+    defaultEnabled: true,
+    linkedPointDelta: isScoring ? 1 : null,
+    metadata: null,
+  };
+};
+
+const normalizeIncidentDefinitionsForRules = (
+  definitions: unknown,
+  supportedIncidentTypes: string[],
+): MatchIncidentTypeDefinition[] => {
+  const byCode = new Map<string, MatchIncidentTypeDefinition>();
+  const add = (definition: MatchIncidentTypeDefinition) => {
+    const code = normalizedIncidentType(definition.code);
+    if (!code) return;
+    byCode.set(code, { ...definition, code });
+  };
+  if (Array.isArray(definitions)) {
+    definitions.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return;
+      const definition = entry as Partial<MatchIncidentTypeDefinition>;
+      const code = normalizedIncidentType(definition.code);
+      if (!code) return;
+      add({
+        ...incidentDefinitionForType(code),
+        ...definition,
+        code,
+        label: typeof definition.label === 'string' && definition.label.trim()
+          ? definition.label.trim()
+          : incidentDefinitionLabel(code),
+      });
+    });
+  }
+  supportedIncidentTypes.forEach((type) => {
+    const code = normalizedIncidentType(type);
+    if (code && !byCode.has(code)) add(incidentDefinitionForType(code));
+  });
+  return Array.from(byCode.values());
+};
+
+const normalizeTimekeepingForRules = (
+  source: Partial<ResolvedMatchRules>,
+  scoringModel: ResolvedMatchRules['scoringModel'],
+  segmentCount: number,
+  event: Event,
+): ResolvedMatchTimekeepingConfig => {
+  const raw = (source.timekeeping && typeof source.timekeeping === 'object'
+    ? source.timekeeping
+    : {}) as Partial<ResolvedMatchTimekeepingConfig>;
+  const timerMode = raw.timerMode === 'COUNT_UP'
+    ? 'COUNT_UP'
+    : raw.timerMode === 'NONE'
+      ? 'NONE'
+      : scoringModel === 'PERIODS'
+        ? 'COUNT_UP'
+        : 'NONE';
+  const eventMatchDuration = positiveIntOrNull(event.matchDurationMinutes);
+  const fallbackDuration = eventMatchDuration && segmentCount > 0 && timerMode !== 'NONE'
+    ? Math.max(1, Math.round(eventMatchDuration / segmentCount))
+    : null;
+  const segmentDurationMinutes = positiveIntOrNull(raw.segmentDurationMinutes) ?? fallbackDuration;
+  const sequenceDurations = Array.isArray(raw.segmentDurationMinutesBySequence)
+    ? raw.segmentDurationMinutesBySequence
+        .map((entry) => positiveIntOrNull(entry))
+        .filter((entry): entry is number => entry !== null)
+    : [];
+  return {
+    timerMode,
+    segmentDurationMinutes,
+    segmentDurationMinutesBySequence: sequenceDurations,
+    canUseAddedTime: timerMode !== 'NONE' && raw.canUseAddedTime === true,
+    addedTimeEnabled: timerMode !== 'NONE' && raw.canUseAddedTime === true && raw.addedTimeEnabled === true,
+    stopAtRegulationEnd: timerMode === 'NONE'
+      ? true
+      : raw.canUseAddedTime === true && raw.addedTimeEnabled === true
+        ? false
+        : raw.stopAtRegulationEnd !== false,
+  };
+};
 
 const activeRules = (match: Match, event: Event, usesSets: boolean, configuredSegmentCount: number): ResolvedMatchRules => {
   const eventRules = (event.resolvedMatchRules || {}) as Partial<ResolvedMatchRules>;
@@ -407,6 +535,9 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, configuredSe
   const usesPlayerRecordedScoring = matchResolvedRules.pointIncidentRequiresParticipant === true
     || eventRules.pointIncidentRequiresParticipant === true
     || matchSnapshotRules.pointIncidentRequiresParticipant === true;
+  const supportedIncidentTypes = Array.isArray(source.supportedIncidentTypes) && source.supportedIncidentTypes.length
+    ? source.supportedIncidentTypes
+    : ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'];
   return {
     scoringModel,
     segmentCount,
@@ -417,11 +548,11 @@ const activeRules = (match: Match, event: Event, usesSets: boolean, configuredSe
     canUseOvertime: source.canUseOvertime === true || source.supportsOvertime === true,
     canUseShootout: source.canUseShootout === true || source.supportsShootout === true,
     officialRoles: Array.isArray(source.officialRoles) ? source.officialRoles : [],
-    supportedIncidentTypes: Array.isArray(source.supportedIncidentTypes) && source.supportedIncidentTypes.length
-      ? source.supportedIncidentTypes
-      : ['POINT', 'DISCIPLINE', 'NOTE', 'ADMIN'],
+    supportedIncidentTypes,
+    incidentTypeDefinitions: normalizeIncidentDefinitionsForRules(source.incidentTypeDefinitions, supportedIncidentTypes),
     autoCreatePointIncidentType: source.autoCreatePointIncidentType ?? 'POINT',
     pointIncidentRequiresParticipant: usesPlayerRecordedScoring,
+    timekeeping: normalizeTimekeepingForRules(source, scoringModel, segmentCount, event),
   };
 };
 
@@ -434,7 +565,12 @@ const rulesSummary = (rules: ResolvedMatchRules): string => {
     return `Best of ${rules.segmentCount}`;
   }
   const label = rules.segmentLabel.toLowerCase();
-  return `${rules.segmentCount} ${label}${rules.segmentCount === 1 ? '' : 's'}`;
+  const pluralLabel = label === 'half'
+    ? 'halves'
+    : label.endsWith('y')
+      ? `${label.slice(0, -1)}ies`
+      : `${label}${label.endsWith('s') ? 'es' : 's'}`;
+  return `${rules.segmentCount} ${rules.segmentCount === 1 ? label : pluralLabel}`;
 };
 
 const scoreForSegment = (
@@ -803,6 +939,8 @@ export default function ScoreUpdateModal({
   const [activeIndex, setActiveIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [actualTimesSaving, setActualTimesSaving] = useState(false);
+  const [timerSaving, setTimerSaving] = useState(false);
+  const [timerNow, setTimerNow] = useState(() => Date.now());
   const [segmentConfirming, setSegmentConfirming] = useState(false);
   const [showFieldMap, setShowFieldMap] = useState(false);
   const [showDetails, setShowDetails] = useState(defaultShowDetails);
@@ -828,6 +966,8 @@ export default function ScoreUpdateModal({
   const directScoreEditVersionRef = useRef(0);
   const directScoreInvalidatedThroughVersionRef = useRef(0);
   const pendingDirectScoreSyncRef = useRef<PendingDirectScoreSync | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const regulationBeepKeyRef = useRef<string | null>(null);
 
   const team1Id = match.team1Id ?? entityId(match.team1);
   const team2Id = match.team2Id ?? entityId(match.team2);
@@ -883,11 +1023,71 @@ export default function ScoreUpdateModal({
   const rules = useMemo(() => activeRules(match, tournament, usesSets, fallbackSegmentCount), [fallbackSegmentCount, match, tournament, usesSets]);
   const totalSegments = Math.max(1, rules.segmentCount);
   const scoringIncidentType = rules.autoCreatePointIncidentType ?? 'POINT';
-  const scoringIncidentLabel = matchLogTypeLabel(scoringIncidentType);
+  const incidentDefinitionsByCode = useMemo(() => (
+    new Map(rules.incidentTypeDefinitions.map((definition) => [normalizedIncidentType(definition.code), definition]))
+  ), [rules.incidentTypeDefinitions]);
+  const incidentLabelForType = (type: string): string => (
+    incidentDefinitionsByCode.get(normalizedIncidentType(type))?.label ?? matchLogTypeLabel(type)
+  );
+  const incidentBadgeColorForType = (type: string, scoring: boolean): string => {
+    if (scoring) return 'blue';
+    const cardColor = incidentDefinitionsByCode.get(normalizedIncidentType(type))?.cardColor;
+    if (cardColor === 'yellow') return 'yellow';
+    if (cardColor === 'red') return 'red';
+    if (cardColor === 'blue') return 'blue';
+    return 'gray';
+  };
+  const scoringIncidentLabel = incidentLabelForType(scoringIncidentType);
   const scoringActionLabel = normalizedIncidentType(scoringIncidentType) === 'POINT' ? 'Point' : scoringIncidentLabel;
   const activeSegment = segments[activeIndex] ?? segments[0];
   const team1Score = scoreForSegment(activeSegment, activeIndex, team1Id, match.team1Points);
   const team2Score = scoreForSegment(activeSegment, activeIndex, team2Id, match.team2Points);
+  const activeSegmentDurationMinutes = activeSegment
+    ? rules.timekeeping.segmentDurationMinutesBySequence[activeSegment.sequence - 1]
+      ?? rules.timekeeping.segmentDurationMinutes
+    : rules.timekeeping.segmentDurationMinutes;
+  const activeSegmentDurationSeconds = activeSegmentDurationMinutes ? activeSegmentDurationMinutes * 60 : null;
+  const hasMatchClock = rules.timekeeping.timerMode !== 'NONE' && Boolean(activeSegmentDurationSeconds);
+  const activeSegmentStartDate = coerceActualDate(activeSegment?.startedAt ?? null);
+  const activeSegmentEndDate = coerceActualDate(activeSegment?.endedAt ?? null);
+  const rawTimerElapsedSeconds = activeSegmentStartDate
+    ? Math.max(
+        0,
+        Math.floor(((activeSegmentEndDate?.getTime() ?? timerNow) - activeSegmentStartDate.getTime()) / 1000),
+      )
+    : 0;
+  const clockElapsedSeconds = hasMatchClock && activeSegmentDurationSeconds && rules.timekeeping.stopAtRegulationEnd
+    ? Math.min(rawTimerElapsedSeconds, activeSegmentDurationSeconds)
+    : rawTimerElapsedSeconds;
+  const clockInAddedTime = Boolean(
+    hasMatchClock
+    && activeSegmentDurationSeconds
+    && rules.timekeeping.addedTimeEnabled
+    && rawTimerElapsedSeconds > activeSegmentDurationSeconds,
+  );
+  const activeTimerRunning = Boolean(
+    hasMatchClock
+    && activeSegmentStartDate
+    && !activeSegmentEndDate
+    && (!rules.timekeeping.stopAtRegulationEnd || !activeSegmentDurationSeconds || rawTimerElapsedSeconds < activeSegmentDurationSeconds),
+  );
+  const regulationClockEnded = Boolean(
+    hasMatchClock
+    && activeSegmentStartDate
+    && !activeSegmentEndDate
+    && activeSegmentDurationSeconds
+    && rules.timekeeping.stopAtRegulationEnd
+    && rawTimerElapsedSeconds >= activeSegmentDurationSeconds,
+  );
+  const clockDisplay = (() => {
+    if (!hasMatchClock) return 'No match clock';
+    if (!activeSegmentStartDate) return formatClockSeconds(0);
+    if (clockInAddedTime && activeSegmentDurationSeconds) {
+      return `${formatClockSeconds(activeSegmentDurationSeconds)} +${formatClockSeconds(rawTimerElapsedSeconds - activeSegmentDurationSeconds)}`;
+    }
+    return formatClockSeconds(clockElapsedSeconds);
+  })();
+  const timerSegmentKey = `${match.$id}:${activeSegment?.id ?? activeSegment?.sequence ?? activeIndex}`;
   const matchSegmentSnapshot = useMemo(() => ({
     $id: match.$id,
     eventId: match.eventId,
@@ -982,10 +1182,11 @@ export default function ScoreUpdateModal({
     }
     return incident.participantUserId ? participantLabelsByUserId.get(incident.participantUserId) ?? null : null;
   };
-  const scoringIncidentDescription = (incident: { eventTeamId?: string | null; eventRegistrationId?: string | null; participantUserId?: string | null; minute?: number | null }) => (
+  const scoringIncidentDescription = (incident: { eventTeamId?: string | null; eventRegistrationId?: string | null; participantUserId?: string | null; minute?: number | null; clock?: string | null }) => (
     [
       teamLabelForId(incident.eventTeamId),
       participantLabelForIncident(incident),
+      incident.clock,
       typeof incident.minute === 'number' ? `${incident.minute}'` : null,
     ].filter(Boolean).join(' | ')
   );
@@ -1016,12 +1217,33 @@ export default function ScoreUpdateModal({
     const parsed = Number(trimmed);
     return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : null;
   };
+  const currentClockDetails = (): { minute: number | null; clock: string | null; clockSeconds: number | null } => {
+    if (!hasMatchClock || !activeSegmentStartDate) {
+      return { minute: null, clock: null, clockSeconds: null };
+    }
+    const clockSeconds = Math.max(0, Math.trunc(clockElapsedSeconds));
+    return {
+      minute: Math.max(0, Math.ceil(clockSeconds / 60)),
+      clock: formatIncidentClock(clockSeconds),
+      clockSeconds,
+    };
+  };
+  const incidentClockDetails = () => {
+    const clockDetails = currentClockDetails();
+    const minute = parseIncidentMinute() ?? clockDetails.minute;
+    return {
+      minute,
+      clock: clockDetails.clock,
+      clockSeconds: clockDetails.clockSeconds,
+    };
+  };
   const resetIncidentForm = () => {
+    const clockDetails = currentClockDetails();
     setEditingIncidentId(null);
     setIncidentType(defaultIncidentType);
     setIncidentTeamId(team1Id ?? team2Id ?? null);
     setIncidentParticipantId((team1Id && participantOptionsByTeam[team1Id]?.[0]?.value) ?? (team2Id && participantOptionsByTeam[team2Id]?.[0]?.value) ?? null);
-    setIncidentMinute('');
+    setIncidentMinute(clockDetails.minute === null ? '' : String(clockDetails.minute));
     setIncidentNote('');
   };
   const nextIncidentId = () => {
@@ -1076,6 +1298,40 @@ export default function ScoreUpdateModal({
     if (directScoreSyncTimerRef.current) {
       window.clearTimeout(directScoreSyncTimerRef.current);
       directScoreSyncTimerRef.current = null;
+    }
+  };
+
+  const ensureAudioContext = (): AudioContext | null => {
+    if (typeof window === 'undefined') return null;
+    const AudioContextCtor = window.AudioContext
+      ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return null;
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextCtor();
+    }
+    if (audioContextRef.current.state === 'suspended') {
+      void audioContextRef.current.resume();
+    }
+    return audioContextRef.current;
+  };
+
+  const playRegulationBeep = () => {
+    const context = ensureAudioContext();
+    if (!context) return;
+    const now = context.currentTime;
+    for (let index = 0; index < 3; index += 1) {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const startAt = now + index * 0.32;
+      oscillator.type = 'square';
+      oscillator.frequency.setValueAtTime(880, startAt);
+      gain.gain.setValueAtTime(0.0001, startAt);
+      gain.gain.exponentialRampToValueAtTime(0.5, startAt + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, startAt + 0.24);
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(startAt);
+      oscillator.stop(startAt + 0.26);
     }
   };
 
@@ -1194,6 +1450,25 @@ export default function ScoreUpdateModal({
     segmentsRef.current = segments;
   }, [segments]);
 
+  useEffect(() => {
+    if (!isOpen || !activeTimerRunning) {
+      return undefined;
+    }
+    const intervalId = window.setInterval(() => setTimerNow(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [activeTimerRunning, isOpen, timerSegmentKey]);
+
+  useEffect(() => {
+    if (!regulationClockEnded) {
+      return;
+    }
+    if (regulationBeepKeyRef.current === timerSegmentKey) {
+      return;
+    }
+    regulationBeepKeyRef.current = timerSegmentKey;
+    playRegulationBeep();
+  }, [regulationClockEnded, timerSegmentKey]);
+
   useEffect(() => () => {
     clearIncidentQueueTimer();
     clearDirectScoreSyncTimer();
@@ -1209,6 +1484,16 @@ export default function ScoreUpdateModal({
       setIncidentParticipantId(options[0]?.value ?? null);
     }
   }, [incidentParticipantId, incidentTeamId, participantOptionsByTeam]);
+
+  useEffect(() => {
+    if (!isOpen || editingIncidentId || pendingPoint || incidentMinute.trim()) {
+      return;
+    }
+    const clockDetails = currentClockDetails();
+    if (clockDetails.minute !== null) {
+      setIncidentMinute(String(clockDetails.minute));
+    }
+  }, [activeSegment?.startedAt, activeSegment?.endedAt, editingIncidentId, incidentMinute, isOpen, pendingPoint, timerSegmentKey]);
 
   const legacyFromSegments = (source: MatchSegment[]) => {
     const team1Points = source.map((segment, index) => scoreForSegment(segment, index, team1Id, match.team1Points));
@@ -1407,6 +1692,8 @@ export default function ScoreUpdateModal({
     details: {
       participant?: MatchRosterParticipantOption | null;
       minute?: number | null;
+      clock?: string | null;
+      clockSeconds?: number | null;
       note?: string | null;
     } = {},
   ) => {
@@ -1422,6 +1709,8 @@ export default function ScoreUpdateModal({
       incidentType: scoringIncidentType,
       linkedPointDelta: 1,
       minute: details.minute ?? null,
+      clock: details.clock ?? null,
+      clockSeconds: details.clockSeconds ?? null,
       note: details.note?.trim() || null,
     };
     const optimisticIncident: MatchIncident = {
@@ -1438,8 +1727,8 @@ export default function ScoreUpdateModal({
         ? Math.max(...allIncidents.map((incident) => Number(incident.sequence) || 0)) + 1
         : 1,
       minute: incidentOperation.minute ?? null,
-      clock: null,
-      clockSeconds: null,
+      clock: incidentOperation.clock ?? null,
+      clockSeconds: incidentOperation.clockSeconds ?? null,
       linkedPointDelta: 1,
       note: incidentOperation.note ?? null,
       metadata: null,
@@ -1553,7 +1842,7 @@ export default function ScoreUpdateModal({
       eventRegistrationId: selectedParticipant?.eventRegistrationId ?? null,
       participantUserId: selectedParticipant?.participantUserId ?? null,
       incidentType,
-      minute: parseIncidentMinute(),
+      ...incidentClockDetails(),
       linkedPointDelta: nextIsScoring ? nextDelta : null,
       note: incidentNote.trim() || null,
     };
@@ -1565,6 +1854,8 @@ export default function ScoreUpdateModal({
       participantUserId: incidentOperation.participantUserId ?? null,
       incidentType: incidentOperation.incidentType ?? existing.incidentType,
       minute: incidentOperation.minute ?? null,
+      clock: incidentOperation.clock ?? null,
+      clockSeconds: incidentOperation.clockSeconds ?? null,
       linkedPointDelta: incidentOperation.linkedPointDelta ?? null,
       note: incidentOperation.note ?? null,
     };
@@ -1619,11 +1910,12 @@ export default function ScoreUpdateModal({
     if (!eventTeamId) return;
     if (delta > 0 && !canIncreaseTeamScore(eventTeamId)) return;
     if (delta > 0 && scoringUsesIncidentWorkflow) {
+      const clockDetails = currentClockDetails();
       setPendingPoint({ teamId: eventTeamId, delta });
       setIncidentType(scoringIncidentType);
       setIncidentTeamId(eventTeamId);
       setIncidentParticipantId(participantOptionsByTeam[eventTeamId]?.[0]?.value ?? null);
-      setIncidentMinute('');
+      setIncidentMinute(clockDetails.minute === null ? '' : String(clockDetails.minute));
       setIncidentNote('');
       return;
     }
@@ -1746,6 +2038,7 @@ export default function ScoreUpdateModal({
     const next = isScoring && incidentTeamId
       ? applyLocalSegmentState(applyScoreDelta(segmentsRef.current, incidentTeamId, 1))
       : segmentsRef.current;
+    const clockDetails = incidentClockDetails();
     const incidentOperation: MatchIncidentOperation = {
       action: 'CREATE',
       id: nextIncidentId(),
@@ -1754,7 +2047,9 @@ export default function ScoreUpdateModal({
       eventRegistrationId: selectedParticipant?.eventRegistrationId ?? null,
       participantUserId: selectedParticipant?.participantUserId ?? null,
       incidentType,
-      minute: parseIncidentMinute(),
+      minute: clockDetails.minute,
+      clock: clockDetails.clock,
+      clockSeconds: clockDetails.clockSeconds,
       linkedPointDelta: isScoring ? 1 : null,
       note: incidentNote.trim() || null,
     };
@@ -1772,8 +2067,8 @@ export default function ScoreUpdateModal({
         ? Math.max(...allIncidents.map((incident) => Number(incident.sequence) || 0)) + 1
         : 1,
       minute: incidentOperation.minute ?? null,
-      clock: null,
-      clockSeconds: null,
+      clock: incidentOperation.clock ?? null,
+      clockSeconds: incidentOperation.clockSeconds ?? null,
       linkedPointDelta: incidentOperation.linkedPointDelta ?? null,
       note: incidentOperation.note ?? null,
       metadata: null,
@@ -1826,8 +2121,96 @@ export default function ScoreUpdateModal({
   };
 
   const startMatch = () => {
+    void startActiveSegmentTimer();
+  };
+
+  const startActiveSegmentTimer = async () => {
+    if (!canManage || !activeSegment || !hasMatchClock || activeSegmentStartDate) return;
     const now = new Date();
-    void saveActualTimes(now, actualEndValue, { markInProgress: true });
+    const nowIso = now.toISOString();
+    const next = segmentsRef.current.map((segment, index) => (
+      index === activeIndex
+        ? {
+            ...segment,
+            status: segment.status === 'COMPLETE' ? segment.status : 'IN_PROGRESS',
+            startedAt: nowIso,
+            endedAt: null,
+          } satisfies MatchSegment
+        : segment
+    ));
+    const activeNext = next[activeIndex] ?? activeSegment;
+    const shouldSetActualStart = !actualStartValue;
+    const lifecycle: MatchLifecycleOperation | undefined = shouldSetActualStart
+      ? { status: 'IN_PROGRESS', actualStart: nowIso, actualEnd: null }
+      : { status: 'IN_PROGRESS' };
+    setTimerSaving(true);
+    ensureAudioContext();
+    const success = await emit(payload(next, {
+      lifecycle,
+      segmentOperations: [{
+        id: activeNext.id ?? activeNext.$id,
+        sequence: activeNext.sequence,
+        status: activeNext.status,
+        scores: activeNext.scores,
+        winnerEventTeamId: activeNext.winnerEventTeamId ?? null,
+        startedAt: nowIso,
+        endedAt: null,
+      }],
+    }));
+    setTimerSaving(false);
+    if (!success) return;
+    regulationBeepKeyRef.current = null;
+    setTimerNow(now.getTime());
+    if (shouldSetActualStart) {
+      setActualStartValue(now);
+      setActualEndValue(null);
+    }
+    applyLocalSegmentState(next);
+  };
+
+  const resetActiveSegmentTimer = async () => {
+    if (!canManage || !activeSegment || !hasMatchClock) return;
+    const activeScores = activeSegment.scores ?? {};
+    const hasScore = Object.values(activeScores).some((value) => score(value) > 0);
+    const nextStatus = hasScore ? 'IN_PROGRESS' : 'NOT_STARTED';
+    const next = segmentsRef.current.map((segment, index) => (
+      index === activeIndex
+        ? {
+            ...segment,
+            status: segment.status === 'COMPLETE' ? segment.status : nextStatus,
+            startedAt: null,
+            endedAt: null,
+          } satisfies MatchSegment
+        : segment
+    ));
+    const activeNext = next[activeIndex] ?? activeSegment;
+    const isFirstOpenSegment = activeNext.sequence === 1
+      && !next.some((segment) => segment.sequence < activeNext.sequence && segment.status === 'COMPLETE');
+    const lifecycle: MatchLifecycleOperation | undefined = isFirstOpenSegment
+      ? { status: 'SCHEDULED', actualStart: null, actualEnd: null }
+      : undefined;
+    setTimerSaving(true);
+    const success = await emit(payload(next, {
+      ...(lifecycle ? { lifecycle } : {}),
+      segmentOperations: [{
+        id: activeNext.id ?? activeNext.$id,
+        sequence: activeNext.sequence,
+        status: activeNext.status,
+        scores: activeNext.scores,
+        winnerEventTeamId: activeNext.winnerEventTeamId ?? null,
+        startedAt: null,
+        endedAt: null,
+      }],
+    }));
+    setTimerSaving(false);
+    if (!success) return;
+    regulationBeepKeyRef.current = null;
+    setTimerNow(Date.now());
+    if (lifecycle) {
+      setActualStartValue(null);
+      setActualEndValue(null);
+    }
+    applyLocalSegmentState(next);
   };
 
   const closePendingIncidentModal = () => {
@@ -1839,9 +2222,12 @@ export default function ScoreUpdateModal({
   const savePendingIncident = () => {
     if (!pendingPoint) return;
     if (selectedIncidentIsScoring) {
+      const clockDetails = incidentClockDetails();
       createScoringIncident(pendingPoint.teamId, {
         participant: selectedParticipant,
-        minute: parseIncidentMinute(),
+        minute: clockDetails.minute,
+        clock: clockDetails.clock,
+        clockSeconds: clockDetails.clockSeconds,
         note: incidentNote,
       });
     } else {
@@ -2043,7 +2429,7 @@ export default function ScoreUpdateModal({
             );
             const incidentLabel = isScoringIncident
               ? scoringIncidentLabel
-              : matchLogTypeLabel(incident.incidentType);
+              : incidentLabelForType(incident.incidentType);
             return (
               <Paper key={incident.id} withBorder p="sm" radius="sm">
                 <Group
@@ -2055,7 +2441,7 @@ export default function ScoreUpdateModal({
                   <Group gap="sm" align="flex-start" style={{ minWidth: 0 }}>
                     <Badge
                       variant="light"
-                      color={isScoringIncident ? "blue" : "gray"}
+                      color={incidentBadgeColorForType(incident.incidentType, isScoringIncident)}
                     >
                       {incidentLabel}
                     </Badge>
@@ -2067,11 +2453,12 @@ export default function ScoreUpdateModal({
                       ) : (
                         <>
                           <Text fw={600} size="sm">
-                            {matchLogTypeLabel(incident.incidentType)}
+                            {incidentLabelForType(incident.incidentType)}
                           </Text>
                           <Text size="sm" c="dimmed">
                             {[
                               teamLabelForId(incident.eventTeamId),
+                              incident.clock,
                               typeof incident.minute === "number"
                                 ? `${incident.minute}'`
                                 : null,
@@ -2144,7 +2531,7 @@ export default function ScoreUpdateModal({
               label="Log type"
               data={manualIncidentTypes.map((type) => ({
                 value: type,
-                label: matchLogTypeLabel(type),
+                label: incidentLabelForType(type),
               }))}
               value={incidentType}
               onChange={(value) =>
@@ -2331,6 +2718,72 @@ export default function ScoreUpdateModal({
       </Stack>
     </Paper>
   );
+
+  const renderTimerCard = () => {
+    if (!hasMatchClock) return null;
+    const timerStarted = Boolean(activeSegmentStartDate);
+    const timerActionLabel = timerStarted
+      ? 'Reset Timer'
+      : activeSegment?.sequence === 1 && !actualStartValue
+        ? 'Start Match'
+        : `Start ${activeSegmentLabel}`;
+    return (
+      <Paper withBorder p="md" radius="md" h="100%">
+        <Stack gap="sm">
+          <Group justify="space-between" align="center" gap="xs">
+            <Group gap="xs">
+              <Timer size={16} />
+              <Text fw={700} size="sm">
+                Match Clock
+              </Text>
+            </Group>
+            <Badge
+              color={activeTimerRunning ? 'green' : regulationClockEnded ? 'red' : timerStarted ? 'gray' : 'blue'}
+              variant="light"
+            >
+              {activeTimerRunning ? 'Running' : regulationClockEnded ? 'Regulation ended' : timerStarted ? 'Stopped' : 'Ready'}
+            </Badge>
+          </Group>
+          <div>
+            <Text size="xs" c="dimmed" fw={700}>
+              {activeSegmentLabel}
+            </Text>
+            <Text
+              fw={800}
+              lh={1}
+              style={{ fontVariantNumeric: 'tabular-nums', fontSize: 42 }}
+              c={clockInAddedTime ? 'orange' : regulationClockEnded ? 'red' : undefined}
+            >
+              {clockDisplay}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {activeSegmentDurationMinutes
+                ? `${activeSegmentDurationMinutes} minute regulation ${rules.segmentLabel.toLowerCase()}`
+                : 'No regulation length configured'}
+              {rules.timekeeping.addedTimeEnabled ? ' with added time' : ''}
+            </Text>
+          </div>
+          {canManage ? (
+            <Group gap="xs">
+              <Button
+                size="xs"
+                loading={timerSaving}
+                disabled={activeSegment?.status === 'COMPLETE'}
+                onClick={timerStarted ? resetActiveSegmentTimer : startMatch}
+              >
+                {timerActionLabel}
+              </Button>
+              {regulationClockEnded ? (
+                <Text size="xs" c="red" fw={600}>
+                  Regulation time reached.
+                </Text>
+              ) : null}
+            </Group>
+          ) : null}
+        </Stack>
+      </Paper>
+    );
+  };
 
   const renderOfficialsCard = () => (
     <Paper withBorder p="md" radius="md" h="100%">
@@ -2749,8 +3202,9 @@ export default function ScoreUpdateModal({
 
       {canManage && (
         <Stack gap="md">
-          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
+          <SimpleGrid cols={{ base: 1, sm: hasMatchClock ? 3 : 2 }} spacing="md">
             {renderStatusCard()}
+            {renderTimerCard()}
             {renderActualTimesCard(true)}
           </SimpleGrid>
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
@@ -2771,8 +3225,8 @@ export default function ScoreUpdateModal({
             )}
             {!hideStatusControls && (
               <Group>
-                {canManage && !actualStartValue && (
-                  <Button onClick={startMatch} loading={actualTimesSaving}>
+                {canManage && !actualStartValue && !hasMatchClock && (
+                  <Button onClick={() => void saveActualTimes(new Date(), actualEndValue, { markInProgress: true })} loading={actualTimesSaving}>
                     Start Match
                   </Button>
                 )}
@@ -2819,7 +3273,7 @@ export default function ScoreUpdateModal({
           label="Log type"
           data={manualIncidentTypes.map((type) => ({
             value: type,
-            label: matchLogTypeLabel(type),
+            label: incidentLabelForType(type),
           }))}
           value={incidentType}
           onChange={(value) =>

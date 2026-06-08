@@ -1,4 +1,5 @@
 import { fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { renderWithMantine } from '../../../../../../../test/utils/renderWithMantine';
 import type { Sport } from '@/types';
 import MatchRulesSection from '../MatchRulesSection';
@@ -64,5 +65,33 @@ describe('MatchRulesSection', () => {
 
     expect(handleAutoCreateChange).toHaveBeenLastCalledWith(true);
     expect(handleChange).toHaveBeenLastCalledWith(null);
+  });
+
+  it('adds custom incident types from typed tags', async () => {
+    const user = userEvent.setup();
+    const handleChange = jest.fn();
+
+    renderWithMantine(
+      <MatchRulesSection
+        sport={soccerSport}
+        value={null}
+        onChange={handleChange}
+        autoCreatePointMatchIncidents={false}
+        onAutoCreatePointMatchIncidentsChange={jest.fn()}
+      />,
+    );
+
+    await user.type(screen.getByRole('textbox', { name: /incident types available in matches/i }), 'Blue card{enter}');
+
+    expect(handleChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      supportedIncidentTypes: expect.arrayContaining(['BLUE_CARD']),
+      incidentTypeDefinitions: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'BLUE_CARD',
+          label: 'Blue card',
+          kind: 'DISCIPLINE',
+        }),
+      ]),
+    }));
   });
 });

@@ -3327,7 +3327,26 @@ const matchRulesConfigSchema = z.object({
     canUseShootout: z.boolean().optional(),
     officialRoles: z.array(z.string()).optional(),
     supportedIncidentTypes: z.array(z.string()).optional(),
+    incidentTypeDefinitions: z.array(z.object({
+        code: z.string().trim(),
+        label: z.string().trim(),
+        kind: z.enum(['SCORING', 'DISCIPLINE', 'NOTE', 'ADMIN']),
+        cardColor: z.enum(['yellow', 'red', 'blue']).nullable().optional(),
+        requiresTeam: z.boolean().optional(),
+        requiresParticipant: z.boolean().optional(),
+        defaultEnabled: z.boolean().optional(),
+        linkedPointDelta: z.number().int().nullable().optional(),
+        metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+    })).optional(),
     autoCreatePointIncidentType: z.string().trim().optional(),
+    timekeeping: z.object({
+        timerMode: z.enum(['NONE', 'COUNT_UP']).optional(),
+        segmentDurationMinutes: z.number().int().positive().nullable().optional(),
+        segmentDurationMinutesBySequence: z.array(z.number().int().positive()).optional(),
+        canUseAddedTime: z.boolean().optional(),
+        addedTimeEnabled: z.boolean().optional(),
+        stopAtRegulationEnd: z.boolean().optional(),
+    }).optional(),
 }).nullable().optional();
 
 const tournamentConfigSchema = z.object({
@@ -11334,7 +11353,40 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                             winnerSetCount={eventData.eventType === 'TOURNAMENT' ? tournamentData.winnerSetCount : undefined}
                                             officialPositions={eventData.officialPositions}
                                             value={eventData.matchRulesOverride}
-                                            onChange={(nextValue) => setValue('matchRulesOverride', sanitizeMatchRulesOverrideForEditor(nextValue), { shouldDirty: true, shouldValidate: false })}
+                                            onChange={(nextValue) => {
+                                                const sanitized = sanitizeMatchRulesOverrideForEditor(nextValue);
+                                                setValue('matchRulesOverride', sanitized, { shouldDirty: true, shouldValidate: false });
+                                                const template = (selectedSportForOfficials?.matchRulesTemplate ?? null) as MatchRulesConfig | null;
+                                                const templateTimekeeping = template?.timekeeping ?? null;
+                                                const overrideTimekeeping = sanitized?.timekeeping ?? null;
+                                                const timerMode = overrideTimekeeping?.timerMode ?? templateTimekeeping?.timerMode;
+                                                const segmentDuration = normalizeNumber(
+                                                    overrideTimekeeping?.segmentDurationMinutes
+                                                    ?? templateTimekeeping?.segmentDurationMinutes,
+                                                );
+                                                const segmentCount = normalizeNumber(template?.segmentCount)
+                                                    ?? (eventData.eventType === 'TOURNAMENT'
+                                                        ? normalizeNumber(tournamentData.winnerSetCount)
+                                                        : normalizeNumber(leagueData.setsPerMatch))
+                                                    ?? 1;
+                                                if (timerMode === 'COUNT_UP' && segmentDuration && segmentCount > 0) {
+                                                    const totalMatchDuration = Math.max(1, Math.trunc(segmentDuration * segmentCount));
+                                                    if (eventData.eventType === 'LEAGUE') {
+                                                        setLeagueData((previous) => ({
+                                                            ...previous,
+                                                            usesSets: false,
+                                                            matchDurationMinutes: totalMatchDuration,
+                                                            setDurationMinutes: undefined,
+                                                        }));
+                                                    } else if (eventData.eventType === 'TOURNAMENT') {
+                                                        setTournamentData((previous) => ({
+                                                            ...previous,
+                                                            matchDurationMinutes: totalMatchDuration,
+                                                            setDurationMinutes: undefined,
+                                                        }));
+                                                    }
+                                                }
+                                            }}
                                             autoCreatePointMatchIncidents={eventData.autoCreatePointMatchIncidents}
                                             onAutoCreatePointMatchIncidentsChange={(checked) => setValue('autoCreatePointMatchIncidents', checked, { shouldDirty: true, shouldValidate: false })}
                                             disabled={isImmutableField('matchRulesOverride')}
