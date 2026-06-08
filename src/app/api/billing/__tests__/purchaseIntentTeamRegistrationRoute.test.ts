@@ -161,6 +161,7 @@ describe('POST /api/billing/purchase-intent team registration reuse', () => {
       ok: true,
       registrationId: 'team_1__user_1',
       status: 'STARTED',
+      registrationHoldExpiresAt: new Date('2026-04-21T18:10:00.000Z'),
     });
     stripePaymentIntentCreateMock.mockResolvedValue({
       id: 'pi_team_1',
@@ -192,6 +193,9 @@ describe('POST /api/billing/purchase-intent team registration reuse', () => {
 
     expect(response.status).toBe(200);
     expect(payload.paymentIntent).toBe('pi_existing_secret');
+    expect(payload.registrationId).toBe('team_1__user_1');
+    expect(payload.registrationHoldExpiresAt).toBe('2026-04-21T18:10:00.000Z');
+    expect(payload.registrationHoldTtlSeconds).toBe(600);
     expect(findReusableIncompleteTeamRegistrationPaymentIntentMock).toHaveBeenCalledWith(
       expect.objectContaining({
         customerId: 'cus_1',
@@ -219,6 +223,9 @@ describe('POST /api/billing/purchase-intent team registration reuse', () => {
 
     expect(response.status).toBe(200);
     expect(payload.paymentIntent).toBe('pi_team_1_secret');
+    expect(payload.registrationId).toBe('team_1__user_1');
+    expect(payload.registrationHoldExpiresAt).toBe('2026-04-21T18:10:00.000Z');
+    expect(payload.registrationHoldTtlSeconds).toBe(600);
     expect(stripePaymentIntentCreateMock).toHaveBeenCalledWith(expect.objectContaining({
       metadata: expect.objectContaining({
         purchase_type: 'team_registration',

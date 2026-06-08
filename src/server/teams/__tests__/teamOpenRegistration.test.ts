@@ -83,6 +83,7 @@ describe('reserveTeamRegistrationSlot', () => {
       ok: true,
       registrationId: 'team_1__user_1',
       status: 'STARTED',
+      registrationHoldExpiresAt: new Date('2026-04-21T18:10:00.000Z'),
     });
     expect(teamRegistrationsCreateMock).not.toHaveBeenCalled();
     expect(teamRegistrationsUpdateMock).toHaveBeenCalledWith(

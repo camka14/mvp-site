@@ -377,6 +377,9 @@ describe('POST /api/billing/purchase-intent', () => {
 
     expect(res.status).toBe(200);
     expect(data.paymentIntent).toBe('pi_123_secret_456');
+    expect(data.registrationId).toBe('event_1__self__user_1');
+    expect(data.registrationHoldExpiresAt).toEqual(expect.any(String));
+    expect(data.registrationHoldTtlSeconds).toBe(600);
     expect(prismaMock.eventRegistrations.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -607,7 +610,7 @@ describe('POST /api/billing/purchase-intent', () => {
     }
   });
 
-  it('rejects purchase-intent creation when a STARTED reservation already exists', async () => {
+  it('reuses an existing STARTED reservation when purchase-intent creation is retried', async () => {
     const now = new Date('2026-03-18T12:00:00.000Z');
     prismaMock.eventRegistrations.findUnique.mockResolvedValueOnce({
       id: 'event_1__self__user_1',
@@ -629,10 +632,12 @@ describe('POST /api/billing/purchase-intent', () => {
     }));
     const payload = await res.json();
 
-    expect(res.status).toBe(409);
-    expect(payload.error).toBe('Participant is already registered for this event.');
+    expect(res.status).toBe(200);
+    expect(payload.paymentIntent).toBe('pi_123_secret_456');
+    expect(payload.registrationId).toBe('event_1__self__user_1');
+    expect(payload.registrationHoldExpiresAt).toBe('2026-03-18T12:10:00.000Z');
+    expect(payload.registrationHoldTtlSeconds).toBe(600);
     expect(prismaMock.eventRegistrations.create).not.toHaveBeenCalled();
-    expect(prismaMock.eventRegistrations.update).not.toHaveBeenCalled();
   });
 
   it('rejects event checkout when reservation queue position exceeds capacity', async () => {

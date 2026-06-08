@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Tabs, Loader, Stack } from '@mantine/core';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Tabs, Loader, Stack, Collapse } from '@mantine/core';
 import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice, formatBillAmount } from '@/types';
 import type { RegistrationQuestionDraft, TeamJoinPolicy, TeamJoinRequest, TeamPlayerRegistration } from '@/types';
 import type { TeamComplianceSummary, TeamComplianceUserSummary, TeamMemberComplianceResponse } from '@/lib/eventTeamCompliance';
@@ -196,6 +196,7 @@ export default function TeamDetailModal({
         ((currentTeam.registrationPriceCents ?? 0) / 100),
     );
     const [draftRegistrationQuestions, setDraftRegistrationQuestions] = useState<RegistrationQuestionDraft[]>(EMPTY_REGISTRATION_QUESTIONS);
+    const [registrationQuestionsCollapsed, setRegistrationQuestionsCollapsed] = useState(true);
     const [questionsLoading, setQuestionsLoading] = useState(false);
     const [joinRequests, setJoinRequests] = useState<TeamJoinRequest[]>(EMPTY_JOIN_REQUESTS);
     const [joinRequestsLoading, setJoinRequestsLoading] = useState(false);
@@ -1676,69 +1677,85 @@ export default function TeamDetailModal({
                                             <Text fw={500} size="sm">Registration questions</Text>
                                             <Text size="xs" c="dimmed">Players answer these before joining or requesting to join.</Text>
                                         </div>
-                                        <Button
-                                            size="xs"
-                                            variant="light"
-                                            onClick={() => setDraftRegistrationQuestions((current) => [
-                                                ...current,
-                                                {
-                                                    prompt: '',
-                                                    answerType: 'TEXT',
-                                                    required: false,
-                                                    sortOrder: current.length,
-                                                },
-                                            ])}
-                                        >
-                                            Add Question
-                                        </Button>
-                                    </Group>
-                                    {questionsLoading ? (
-                                        <Group gap={6}>
-                                            <Loader size="xs" />
-                                            <Text size="xs" c="dimmed">Loading questions</Text>
+                                        <Group gap="xs">
+                                            <Button
+                                                size="xs"
+                                                variant="subtle"
+                                                aria-expanded={!registrationQuestionsCollapsed}
+                                                aria-controls="team-registration-questions-content"
+                                                onClick={() => setRegistrationQuestionsCollapsed((current) => !current)}
+                                            >
+                                                {registrationQuestionsCollapsed ? 'Expand' : 'Collapse'}
+                                            </Button>
+                                            <Button
+                                                size="xs"
+                                                variant="light"
+                                                onClick={() => {
+                                                    setRegistrationQuestionsCollapsed(false);
+                                                    setDraftRegistrationQuestions((current) => [
+                                                        ...current,
+                                                        {
+                                                            prompt: '',
+                                                            answerType: 'TEXT',
+                                                            required: false,
+                                                            sortOrder: current.length,
+                                                        },
+                                                    ]);
+                                                }}
+                                            >
+                                                Add Question
+                                            </Button>
                                         </Group>
-                                    ) : draftRegistrationQuestions.length > 0 ? (
-                                        <Stack gap="xs">
-                                            {draftRegistrationQuestions.map((question, index) => (
-                                                <Paper key={question.id ?? `draft-${index}`} withBorder radius="sm" p="xs">
-                                                    <Stack gap={6}>
-                                                        <TextInput
-                                                            label={`Question ${index + 1}`}
-                                                            value={question.prompt}
-                                                            onChange={(event) => {
-                                                                const value = event.currentTarget.value;
-                                                                setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
-                                                                    entryIndex === index ? { ...entry, prompt: value } : entry
-                                                                )));
-                                                            }}
-                                                        />
-                                                        <Group justify="space-between">
-                                                            <Checkbox
-                                                                label="Required"
-                                                                checked={Boolean(question.required)}
+                                    </Group>
+                                    <Collapse in={!registrationQuestionsCollapsed}>
+                                        <Stack id="team-registration-questions-content" gap="xs">
+                                            {questionsLoading ? (
+                                                <Group gap={6}>
+                                                    <Loader size="xs" />
+                                                    <Text size="xs" c="dimmed">Loading questions</Text>
+                                                </Group>
+                                            ) : draftRegistrationQuestions.length > 0 ? (
+                                                <Stack gap="xs">
+                                                    {draftRegistrationQuestions.map((question, index) => (
+                                                        <Stack key={question.id ?? `draft-${index}`} gap={6}>
+                                                            <TextInput
+                                                                label={`Question ${index + 1}`}
+                                                                value={question.prompt}
                                                                 onChange={(event) => {
-                                                                    const checked = event.currentTarget.checked;
+                                                                    const value = event.currentTarget.value;
                                                                     setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
-                                                                        entryIndex === index ? { ...entry, required: checked } : entry
+                                                                        entryIndex === index ? { ...entry, prompt: value } : entry
                                                                     )));
                                                                 }}
                                                             />
-                                                            <Button
-                                                                size="xs"
-                                                                variant="subtle"
-                                                                color="red"
-                                                                onClick={() => setDraftRegistrationQuestions((current) => current.filter((_, entryIndex) => entryIndex !== index))}
-                                                            >
-                                                                Remove
-                                                            </Button>
-                                                        </Group>
-                                                    </Stack>
-                                                </Paper>
-                                            ))}
+                                                            <Group justify="space-between">
+                                                                <Checkbox
+                                                                    label="Required"
+                                                                    checked={Boolean(question.required)}
+                                                                    onChange={(event) => {
+                                                                        const checked = event.currentTarget.checked;
+                                                                        setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
+                                                                            entryIndex === index ? { ...entry, required: checked } : entry
+                                                                        )));
+                                                                    }}
+                                                                />
+                                                                <Button
+                                                                    size="xs"
+                                                                    variant="subtle"
+                                                                    color="red"
+                                                                    onClick={() => setDraftRegistrationQuestions((current) => current.filter((_, entryIndex) => entryIndex !== index))}
+                                                                >
+                                                                    Remove
+                                                                </Button>
+                                                            </Group>
+                                                        </Stack>
+                                                    ))}
+                                                </Stack>
+                                            ) : (
+                                                <Text size="xs" c="dimmed">No registration questions yet.</Text>
+                                            )}
                                         </Stack>
-                                    ) : (
-                                        <Text size="xs" c="dimmed">No registration questions yet.</Text>
-                                    )}
+                                    </Collapse>
                                 </Paper>
                             )}
                             {currentTeam.organizationId && (

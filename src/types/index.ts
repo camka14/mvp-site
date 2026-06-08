@@ -1974,6 +1974,9 @@ export interface PaymentIntent {
   checkoutMode?: 'PAYMENT_INTENT' | 'CHECKOUT_SESSION';
   checkoutUrl?: string | null;
   checkoutSessionId?: string | null;
+  registrationId?: string | null;
+  registrationHoldExpiresAt?: string | null;
+  registrationHoldTtlSeconds?: number | null;
   feeBreakdown: FeeBreakdown;
   taxCalculationId?: string;
   taxCategory?: string;

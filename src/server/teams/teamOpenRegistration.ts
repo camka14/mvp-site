@@ -22,7 +22,7 @@ import { syncCanonicalTeamFutureEventSnapshots } from '@/server/teams/teamEventS
 
 type PrismaLike = any;
 
-export const TEAM_REGISTRATION_STARTED_TTL_MS = 5 * 60 * 1000;
+export const TEAM_REGISTRATION_STARTED_TTL_MS = 10 * 60 * 1000;
 
 const ACTIVE_CAPACITY_STATUSES = ['ACTIVE', 'INVITED', 'STARTED', 'PENDING'] as const;
 const ACTIVE_MEMBER_STATUS = 'ACTIVE';
@@ -51,7 +51,12 @@ export type TeamRegistrationRegistrantType = 'SELF' | 'CHILD';
 export type TeamRegistrationRosterRole = 'PARTICIPANT' | 'WAITLIST' | 'FREE_AGENT';
 
 type RegistrationResult =
-  | { ok: true; registrationId: string; status: 'ACTIVE' | 'STARTED' | 'PENDING' }
+  | {
+      ok: true;
+      registrationId: string;
+      status: 'ACTIVE' | 'STARTED' | 'PENDING';
+      registrationHoldExpiresAt?: Date | null;
+    }
   | { ok: false; status: number; error: string };
 
 type TeamRegistrationRefundResult =
@@ -134,6 +139,10 @@ const sortRegistrationRows = <T extends { id: string; createdAt: Date | null }>(
     if (leftTime !== rightTime) return leftTime - rightTime;
     return left.id.localeCompare(right.id);
   })
+);
+
+const buildStartedRegistrationHoldExpiresAt = (createdAt: Date | null | undefined, now: Date): Date => (
+  new Date((createdAt?.getTime() ?? now.getTime()) + TEAM_REGISTRATION_STARTED_TTL_MS)
 );
 
 const findOrganizationIdForTeam = async (client: PrismaLike, team: { id: string; organizationId?: string | null }) => {
@@ -432,6 +441,7 @@ export const reserveTeamRegistrationSlot = async ({
       return { ok: false, status: 409, error: 'Payment is pending for this team registration.' };
     }
     if (existing && existingStatus === STARTED_MEMBER_STATUS && status === STARTED_MEMBER_STATUS) {
+      const existingCreatedAt = existing.createdAt ?? now;
       await tx.teamRegistrations.update({
         where: { id: existing.id },
         data: {
@@ -445,7 +455,12 @@ export const reserveTeamRegistrationSlot = async ({
           createdBy: existing.createdBy ?? actorUserId,
         },
       });
-      return { ok: true, registrationId: existing?.id ?? registrationId, status };
+      return {
+        ok: true,
+        registrationId: existing?.id ?? registrationId,
+        status,
+        registrationHoldExpiresAt: buildStartedRegistrationHoldExpiresAt(existingCreatedAt, now),
+      };
     }
     if (existing && existingStatus === STARTED_MEMBER_STATUS) {
       return { ok: false, status: 409, error: 'You are already registered for this team.' };
@@ -454,6 +469,11 @@ export const reserveTeamRegistrationSlot = async ({
     const previousMemberIds = status === ACTIVE_MEMBER_STATUS || status === PENDING_MEMBER_STATUS
       ? await readTeamBeforeChatSync(tx, normalizedTeamId)
       : [];
+
+    const responseRegistrationId = existing?.id ?? registrationId;
+    const registrationHoldCreatedAt = existingStatus === STARTED_MEMBER_STATUS
+      ? existing?.createdAt ?? now
+      : now;
 
     if (!existing) {
       await tx.teamRegistrations.create({
@@ -487,13 +507,12 @@ export const reserveTeamRegistrationSlot = async ({
           consentDocumentId: normalizedConsentDocumentId,
           consentStatus: normalizedConsentStatus,
           updatedAt: now,
-          createdAt: existing.createdAt ?? now,
+          createdAt: status === STARTED_MEMBER_STATUS ? registrationHoldCreatedAt : existing.createdAt ?? now,
           createdBy: existing.createdBy ?? actorUserId,
         },
       });
     }
 
-    const responseRegistrationId = existing?.id ?? registrationId;
     if (Array.isArray(answersSnapshot) && answersSnapshot.length) {
       await upsertRegistrationQuestionResponse({
         scopeType: 'TEAM',
@@ -564,7 +583,14 @@ export const reserveTeamRegistrationSlot = async ({
       await syncTeamChatInTx(tx, normalizedTeamId, { previousMemberIds });
     }
 
-    return { ok: true, registrationId: existing?.id ?? registrationId, status };
+    return {
+      ok: true,
+      registrationId: existing?.id ?? registrationId,
+      status,
+      registrationHoldExpiresAt: status === STARTED_MEMBER_STATUS
+        ? buildStartedRegistrationHoldExpiresAt(registrationHoldCreatedAt, now)
+        : null,
+    };
   });
 };
 

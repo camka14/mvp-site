@@ -5,6 +5,7 @@ import {
   Alert,
   Button,
   Checkbox,
+  Collapse,
   Group,
   Loader,
   Modal,
@@ -20,6 +21,7 @@ import { useApp } from '@/app/providers';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { boldsignService, type SignStep } from '@/lib/boldsignService';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
+import RegistrationHoldTimer from '@/components/ui/RegistrationHoldTimer';
 import { familyService, type FamilyChild } from '@/lib/familyService';
 import { createId } from '@/lib/id';
 import { paymentService } from '@/lib/paymentService';
@@ -41,6 +43,13 @@ import type {
   UserData,
 } from '@/types';
 import { formatPrice } from '@/types';
+import {
+  buildRegistrationProgressKey,
+  clearRegistrationProgress,
+  loadRegistrationProgress,
+  saveRegistrationProgress,
+  type RegistrationProgressStep,
+} from '@/lib/registrationProgressStorage';
 
 const TEAM_JOIN_TIMEOUT_MS = 5_000;
 const ACTIVE_CHILD_LINK_STATUS = 'active';
@@ -156,6 +165,7 @@ export default function TeamRegistrationFlow({
   const [registrationError, setRegistrationError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
+  const [registrationHoldExpiresAt, setRegistrationHoldExpiresAt] = useState<string | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
   const [pendingBillingIntent, setPendingBillingIntent] = useState<TeamRegistrationIntent | null>(null);
@@ -163,6 +173,7 @@ export default function TeamRegistrationFlow({
   const [showJoinChoiceModal, setShowJoinChoiceModal] = useState(false);
   const [showQuestionsModal, setShowQuestionsModal] = useState(false);
   const [questionsIntent, setQuestionsIntent] = useState<TeamRegistrationIntent | null>(null);
+  const [questionsCollapsed, setQuestionsCollapsed] = useState(false);
   const [registrationQuestions, setRegistrationQuestions] = useState<RegistrationQuestion[]>([]);
   const [questionAnswers, setQuestionAnswers] = useState<Record<string, string>>({});
   const [joinContextLoading, setJoinContextLoading] = useState(false);
@@ -200,6 +211,50 @@ export default function TeamRegistrationFlow({
     ),
     [resolvedRegistrationTeamId, resolvedTeam],
   );
+  const teamRegistrationProgressKey = useMemo(() => buildRegistrationProgressKey({
+    scope: 'team',
+    userId: user?.$id,
+    subjectId: resolvedRegistrationTeamId,
+  }), [resolvedRegistrationTeamId, user?.$id]);
+  const saveTeamRegistrationProgress = useCallback((patch: {
+    step?: RegistrationProgressStep;
+    answers?: Record<string, string>;
+    registrationId?: string | null;
+    holdExpiresAt?: string | null;
+  } = {}) => {
+    if (!teamRegistrationProgressKey || !user?.$id || !resolvedRegistrationTeamId) {
+      return;
+    }
+    saveRegistrationProgress(teamRegistrationProgressKey, {
+      scope: 'team',
+      userId: user.$id,
+      subjectId: resolvedRegistrationTeamId,
+      step: patch.step ?? 'questions',
+      answers: patch.answers ?? questionAnswers,
+      registrationId: patch.registrationId ?? paymentData?.registrationId ?? null,
+      holdExpiresAt: patch.holdExpiresAt ?? registrationHoldExpiresAt,
+    });
+  }, [
+    paymentData?.registrationId,
+    questionAnswers,
+    registrationHoldExpiresAt,
+    resolvedRegistrationTeamId,
+    teamRegistrationProgressKey,
+    user?.$id,
+  ]);
+  const clearTeamRegistrationProgress = useCallback(() => {
+    clearRegistrationProgress(teamRegistrationProgressKey);
+    setRegistrationHoldExpiresAt(null);
+  }, [teamRegistrationProgressKey]);
+  const handleTeamRegistrationHoldExpired = useCallback(() => {
+    clearTeamRegistrationProgress();
+    setShowPaymentModal(false);
+    setPaymentData(null);
+    setPendingBillingIntent(null);
+    setPendingCheckoutTarget(null);
+    setShowBillingAddressModal(false);
+    setRegistrationError('Registration hold expired. Start registration again to reserve a new spot.');
+  }, [clearTeamRegistrationProgress]);
 
   useEffect(() => {
     setResolvedTeam(team);
@@ -280,6 +335,21 @@ export default function TeamRegistrationFlow({
       cancelled = true;
     };
   }, [registrationTeamId, user?.$id]);
+
+  useEffect(() => {
+    const draft = loadRegistrationProgress(teamRegistrationProgressKey);
+    if (!draft) {
+      setRegistrationHoldExpiresAt(null);
+      return;
+    }
+    if (draft.answers) {
+      setQuestionAnswers((current) => ({
+        ...current,
+        ...draft.answers,
+      }));
+    }
+    setRegistrationHoldExpiresAt(draft.holdExpiresAt ?? null);
+  }, [teamRegistrationProgressKey]);
 
   useEffect(() => {
     onErrorChange?.(registrationError);
@@ -513,6 +583,14 @@ export default function TeamRegistrationFlow({
         organization ?? undefined,
         billingAddress,
       );
+      const holdExpiresAt = paymentIntent.registrationHoldExpiresAt ?? null;
+      setRegistrationHoldExpiresAt(holdExpiresAt);
+      saveTeamRegistrationProgress({
+        step: 'checkout',
+        answers: questionAnswers,
+        registrationId: paymentIntent.registrationId ?? null,
+        holdExpiresAt,
+      });
       setPaymentData(paymentIntent);
       setShowPaymentModal(true);
       setShowBillingAddressModal(false);
@@ -532,9 +610,10 @@ export default function TeamRegistrationFlow({
       }
       throw error;
     }
-  }, [organization, paymentRegistrationTeam, user]);
+  }, [organization, paymentRegistrationTeam, questionAnswers, saveTeamRegistrationProgress, user]);
 
   const handleSuccessfulJoin = useCallback(async (successTeam?: Team | null) => {
+    clearTeamRegistrationProgress();
     const refreshed = successTeam ?? await refreshTeam();
     if (refreshed) {
       notifications.show({
@@ -548,7 +627,7 @@ export default function TeamRegistrationFlow({
       color: 'green',
       message: `You are registered for ${resolvedTeam.name}.`,
     });
-  }, [onCompleted, refreshTeam, resolvedTeam.name]);
+  }, [clearTeamRegistrationProgress, onCompleted, refreshTeam, resolvedTeam.name]);
 
   const buildQuestionAnswerInputs = useCallback((): RegistrationQuestionAnswerInput[] => (
     registrationQuestions.map((question) => ({
@@ -568,6 +647,7 @@ export default function TeamRegistrationFlow({
   }, [questionAnswers, registrationQuestions]);
 
   const openQuestionsStep = useCallback((intent: TeamRegistrationIntent) => {
+    setQuestionsCollapsed(false);
     setQuestionsIntent(intent);
     setShowQuestionsModal(true);
   }, []);
@@ -671,11 +751,16 @@ export default function TeamRegistrationFlow({
 
     const validationError = validateQuestionAnswers();
     if (validationError) {
+      setQuestionsCollapsed(false);
       setRegistrationError(validationError);
       return;
     }
 
     const answers = buildQuestionAnswerInputs();
+    saveTeamRegistrationProgress({
+      step: 'signing',
+      answers: questionAnswers,
+    });
     setActionLoading(true);
     setRegistrationError(null);
     try {
@@ -697,6 +782,7 @@ export default function TeamRegistrationFlow({
           color: 'green',
           message: 'Your request was sent to the team manager.',
         });
+        clearTeamRegistrationProgress();
         await refreshTeam();
         setQuestionsIntent(null);
         return;
@@ -722,7 +808,10 @@ export default function TeamRegistrationFlow({
     questionsIntent,
     refreshTeam,
     requestOnly,
+    clearTeamRegistrationProgress,
+    questionAnswers,
     resolvedRegistrationTeamId,
+    saveTeamRegistrationProgress,
     user,
     validateQuestionAnswers,
   ]);
@@ -1271,25 +1360,47 @@ export default function TeamRegistrationFlow({
               </Text>
             ) : null}
             {registrationQuestions.length > 0 ? (
-              <Stack gap="md">
-                {registrationQuestions.map((question) => (
-                  <Textarea
-                    key={question.id}
-                    label={question.prompt}
-                    required={Boolean(question.required)}
-                    autosize
-                    minRows={question.answerType === 'LONG_TEXT' ? 4 : 2}
-                    value={questionAnswers[question.id] ?? ''}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value;
-                      setQuestionAnswers((current) => ({
-                        ...current,
-                        [question.id]: value,
-                      }));
-                    }}
-                  />
-                ))}
-              </Stack>
+              <Paper withBorder radius="md" p="sm">
+                <Group justify="space-between" mb="xs">
+                  <Text size="sm" fw={600}>Registration questions</Text>
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="subtle"
+                    aria-expanded={!questionsCollapsed}
+                    aria-controls="team-registration-flow-questions"
+                    onClick={() => setQuestionsCollapsed((current) => !current)}
+                  >
+                    {questionsCollapsed ? 'Expand' : 'Collapse'}
+                  </Button>
+                </Group>
+                <Collapse in={!questionsCollapsed}>
+                  <Stack id="team-registration-flow-questions" gap="md">
+                    {registrationQuestions.map((question) => (
+                      <Textarea
+                        key={question.id}
+                        label={question.prompt}
+                        required={Boolean(question.required)}
+                        autosize
+                        minRows={question.answerType === 'LONG_TEXT' ? 4 : 2}
+                        value={questionAnswers[question.id] ?? ''}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          const nextAnswers = {
+                            ...questionAnswers,
+                            [question.id]: value,
+                          };
+                          setQuestionAnswers(nextAnswers);
+                          saveTeamRegistrationProgress({
+                            step: 'questions',
+                            answers: nextAnswers,
+                          });
+                        }}
+                      />
+                    ))}
+                  </Stack>
+                </Collapse>
+              </Paper>
             ) : (
               <Text size="sm" c="dimmed">
                 Submit your request and the team manager will review it.
@@ -1480,6 +1591,7 @@ export default function TeamRegistrationFlow({
         onPaymentSuccess={async () => {
           setShowPaymentModal(false);
           setPaymentData(null);
+          clearTeamRegistrationProgress();
           const refreshed = await refreshTeam();
           if (refreshed) {
             await handleSuccessfulJoin(refreshed);
@@ -1493,12 +1605,17 @@ export default function TeamRegistrationFlow({
         onPaymentPending={async () => {
           setShowPaymentModal(false);
           setPaymentData(null);
+          clearTeamRegistrationProgress();
           const refreshed = await refreshTeam();
           notifications.show({
             color: 'yellow',
             message: `Payment submitted for ${refreshed?.name ?? resolvedTeam.name}. Registration is pending until the bank payment clears.`,
           });
         }}
+      />
+      <RegistrationHoldTimer
+        expiresAt={registrationHoldExpiresAt}
+        onExpire={handleTeamRegistrationHoldExpired}
       />
     </>
   );

@@ -188,7 +188,26 @@ const isSignedStatus = (value: unknown): boolean => {
   return normalized === 'signed' || normalized === 'completed';
 };
 
-const STARTED_REGISTRATION_TTL_MS = 5 * 60 * 1000;
+const STARTED_REGISTRATION_TTL_MS = 10 * 60 * 1000;
+
+type RegistrationHoldResponseFields = {
+  registrationId?: string;
+  registrationHoldExpiresAt?: string;
+  registrationHoldTtlSeconds?: number;
+};
+
+const buildRegistrationHoldResponseFields = (
+  registrationId: string | null,
+  registrationHoldExpiresAt: Date | null | undefined,
+): RegistrationHoldResponseFields => (
+  registrationId && registrationHoldExpiresAt
+    ? {
+        registrationId,
+        registrationHoldExpiresAt: registrationHoldExpiresAt.toISOString(),
+        registrationHoldTtlSeconds: Math.floor(STARTED_REGISTRATION_TTL_MS / 1000),
+      }
+    : {}
+);
 
 const buildFeeBreakdown = (taxQuote: TaxQuote) => ({
   eventPrice: taxQuote.subtotalCents,
@@ -255,7 +274,12 @@ const reserveEventRegistrationSlot = async ({
   slotId?: string | null;
   occurrenceDate?: string | null;
   now: Date;
-}): Promise<{ ok: true; registrationId: string; teamId: string | null } | { ok: false; status: number; error: string }> => {
+}): Promise<{
+  ok: true;
+  registrationId: string;
+  teamId: string | null;
+  registrationHoldExpiresAt: Date;
+} | { ok: false; status: number; error: string }> => {
   if (!eventId) {
     return { ok: false, status: 400, error: 'Event id is required for event checkout.' };
   }
@@ -479,7 +503,7 @@ const reserveEventRegistrationSlot = async ({
         divisionTypeKey: true,
       },
     });
-    if (existing && (existing.status === 'ACTIVE' || existing.status === 'STARTED' || existing.status === 'PENDING')) {
+    if (existing && (existing.status === 'ACTIVE' || existing.status === 'PENDING')) {
       return {
         ok: false,
         status: 409,
@@ -514,6 +538,11 @@ const reserveEventRegistrationSlot = async ({
         return { ok: false, status: 400, error: 'Set max participants for this division before checkout.' };
       }
     }
+
+    const existingStatus = String(existing?.status ?? '').trim().toUpperCase();
+    const registrationHoldCreatedAt = existingStatus === 'STARTED'
+      ? existing?.createdAt ?? now
+      : now;
 
     if (!existing) {
       await tx.eventRegistrations.create({
@@ -559,6 +588,7 @@ const reserveEventRegistrationSlot = async ({
           divisionId: divisionSelection.divisionId,
           divisionTypeId: divisionSelection.divisionTypeId,
           divisionTypeKey: divisionSelection.divisionTypeKey,
+          createdAt: registrationHoldCreatedAt,
           updatedAt: now,
         },
       });
@@ -655,7 +685,12 @@ const reserveEventRegistrationSlot = async ({
       }
     }
 
-    return { ok: true, registrationId, teamId: participantTeamId };
+    return {
+      ok: true,
+      registrationId,
+      teamId: participantTeamId,
+      registrationHoldExpiresAt: new Date(registrationHoldCreatedAt.getTime() + STARTED_REGISTRATION_TTL_MS),
+    };
   });
 };
 
@@ -1130,6 +1165,7 @@ export async function POST(req: NextRequest) {
     ? (teamCheckoutTarget.registrantId ?? userId ?? session.userId)
     : (userId ?? session.userId);
   let reservedRegistrationId: string | null = null;
+  let reservedRegistrationHoldExpiresAt: Date | null = null;
   let reservedRentalWindow: RentalCheckoutWindow | null = null;
 
   if (resolvedPurchase.purchaseType === 'event') {
@@ -1149,6 +1185,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: reservationResult.error }, { status: reservationResult.status });
     }
     reservedRegistrationId = reservationResult.registrationId;
+    reservedRegistrationHoldExpiresAt = reservationResult.registrationHoldExpiresAt;
     checkoutTeamId = reservationResult.teamId ?? checkoutTeamId;
   } else if (resolvedPurchase.purchaseType === 'team_registration') {
     const reservationResult = await reserveTeamRegistrationSlot({
@@ -1169,6 +1206,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: reservationResult.error }, { status: reservationResult.status });
     }
     reservedRegistrationId = reservationResult.registrationId;
+    reservedRegistrationHoldExpiresAt = reservationResult.registrationHoldExpiresAt ?? null;
   } else if (resolvedPurchase.purchaseType === 'rental') {
     const rentalWindowResult = extractRentalCheckoutWindow({
       event: payload.event,
@@ -1197,6 +1235,11 @@ export async function POST(req: NextRequest) {
     reservedRentalWindow = rentalWindowResult.window;
   }
 
+  const registrationHoldResponseFields = buildRegistrationHoldResponseFields(
+    reservedRegistrationId,
+    reservedRegistrationHoldExpiresAt,
+  );
+
   if (
     resolvedPurchase.purchaseType === 'team_registration'
     && reservedRegistrationId
@@ -1222,6 +1265,7 @@ export async function POST(req: NextRequest) {
         taxCategory: getCheckoutTaxCategoryFromMetadata(reusableIntent.metadata) ?? taxQuote.taxCategory,
         ...taxPolicyResponseFields(taxPolicy),
         feeBreakdown,
+        ...registrationHoldResponseFields,
       }, { status: 200 });
     }
   }
@@ -1320,6 +1364,7 @@ export async function POST(req: NextRequest) {
       taxCategory: taxQuote.taxCategory,
       ...taxPolicyResponseFields(taxPolicy),
       feeBreakdown,
+      ...registrationHoldResponseFields,
     }, { status: 200 });
   } catch (error) {
     console.error('Stripe payment intent failed', error);

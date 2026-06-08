@@ -10312,7 +10312,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         () => [
             { id: 'section-basic-information', label: 'Basic Information', visible: true },
             { id: 'section-event-details', label: 'Event Details', visible: true },
-            { id: 'section-registration-questions', label: 'Questions', visible: true },
             { id: 'section-match-rules', label: 'Match Rules', visible: showMatchRulesSection },
             { id: 'section-officials', label: 'Officials', visible: true },
             { id: 'section-division-settings', label: 'Divisions', visible: true },
@@ -10430,6 +10429,115 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
             sectionNavSettleTimerRef.current = null;
         }, settleMs);
     }, [expandSection]);
+
+    const registrationQuestionsEditor = (
+        <Paper id="section-registration-questions" withBorder radius="md" p="sm" className="scroll-mt-20 bg-white sm:col-span-2">
+            <div className="flex items-center justify-between gap-3">
+                <div>
+                    <Text fw={600} size="sm">Registration questions</Text>
+                    <Text size="xs" c="dimmed">Players answer these during event registration.</Text>
+                </div>
+                <Group gap="xs" wrap="nowrap">
+                    <Button
+                        type="button"
+                        variant="subtle"
+                        size="xs"
+                        aria-expanded={!collapsedSections['section-registration-questions']}
+                        aria-controls="section-registration-questions-content"
+                        onClick={() => toggleSectionCollapse('section-registration-questions')}
+                    >
+                        {collapsedSections['section-registration-questions'] ? 'Expand' : 'Collapse'}
+                    </Button>
+                    <Button
+                        type="button"
+                        size="xs"
+                        onClick={() => {
+                            expandSection('section-registration-questions');
+                            setRegistrationQuestionDrafts((current) => [
+                                ...current,
+                                {
+                                    id: createClientId(),
+                                    prompt: '',
+                                    answerType: 'TEXT',
+                                    required: false,
+                                    sortOrder: current.length,
+                                },
+                            ]);
+                        }}
+                    >
+                        Add Question
+                    </Button>
+                </Group>
+            </div>
+            <Collapse in={!collapsedSections['section-registration-questions']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
+                <Stack id="section-registration-questions-content" gap="sm" mt="md">
+                    {registrationQuestionsError ? (
+                        <Alert color="red" variant="light">
+                            {registrationQuestionsError}
+                        </Alert>
+                    ) : null}
+                    {registrationQuestionsLoading ? (
+                        <Group gap="sm">
+                            <Loader size="sm" />
+                            <Text size="sm" c="dimmed">Loading questions...</Text>
+                        </Group>
+                    ) : null}
+                    {registrationQuestionDrafts.length > 0 ? (
+                        <Stack gap="sm">
+                            {registrationQuestionDrafts.map((question, index) => (
+                                <Stack key={question.id ?? index} gap="xs">
+                                    <Textarea
+                                        label={`Question ${index + 1}`}
+                                        value={question.prompt ?? ''}
+                                        autosize
+                                        minRows={2}
+                                        maxLength={500}
+                                        onChange={(event) => {
+                                            const value = event.currentTarget.value;
+                                            setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
+                                                entryIndex === index
+                                                    ? { ...entry, prompt: value, sortOrder: index }
+                                                    : entry
+                                            )));
+                                        }}
+                                    />
+                                    <Group justify="space-between" align="center" gap="sm" wrap="wrap">
+                                        <Checkbox
+                                            label="Required"
+                                            checked={Boolean(question.required)}
+                                            onChange={(event) => {
+                                                const checked = event.currentTarget.checked;
+                                                setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
+                                                    entryIndex === index
+                                                        ? { ...entry, required: checked, sortOrder: index }
+                                                        : entry
+                                                )));
+                                            }}
+                                        />
+                                        <Button
+                                            type="button"
+                                            variant="subtle"
+                                            color="red"
+                                            size="xs"
+                                            onClick={() => setRegistrationQuestionDrafts((current) => current
+                                                .filter((_, entryIndex) => entryIndex !== index)
+                                                .map((entry, entryIndex) => ({ ...entry, sortOrder: entryIndex })))}
+                                        >
+                                            Remove
+                                        </Button>
+                                    </Group>
+                                </Stack>
+                            ))}
+                        </Stack>
+                    ) : (
+                        <Text size="sm" c="dimmed">
+                            No registration questions configured.
+                        </Text>
+                    )}
+                </Stack>
+            </Collapse>
+        </Paper>
+    );
 
     const sheetContent = (
         <div className="w-full space-y-6">
@@ -11115,6 +11223,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                                 </Text>
                                             </Alert>
                                         </AnimatedSection>
+                                        {registrationQuestionsEditor}
                                     </div>
                                 </div>
 
@@ -11202,119 +11311,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
                                     </Collapse>
                                 </div>
                             )}
-                            </Collapse>
-                        </Paper>
-
-                        <Paper
-                            id="section-registration-questions"
-                            shadow="xs"
-                            radius="md"
-                            withBorder
-                            p="lg"
-                            className="scroll-mt-20 bg-gray-50"
-                        >
-                            <div className="flex items-center justify-between gap-3">
-                                <h3 className="text-lg font-semibold">Registration Questions</h3>
-                                <Button
-                                    type="button"
-                                    variant="subtle"
-                                    size="xs"
-                                    aria-expanded={!collapsedSections['section-registration-questions']}
-                                    aria-controls="section-registration-questions-content"
-                                    onClick={() => toggleSectionCollapse('section-registration-questions')}
-                                >
-                                    {collapsedSections['section-registration-questions'] ? 'Expand' : 'Collapse'}
-                                </Button>
-                            </div>
-                            <Collapse in={!collapsedSections['section-registration-questions']} transitionDuration={SECTION_ANIMATION_DURATION_MS} animateOpacity>
-                                <Stack id="section-registration-questions-content" gap="sm" mt="md">
-                                    {registrationQuestionsError ? (
-                                        <Alert color="red" variant="light">
-                                            {registrationQuestionsError}
-                                        </Alert>
-                                    ) : null}
-                                    {registrationQuestionsLoading ? (
-                                        <Group gap="sm">
-                                            <Loader size="sm" />
-                                            <Text size="sm" c="dimmed">Loading questions...</Text>
-                                        </Group>
-                                    ) : null}
-                                    <Group justify="space-between" align="flex-end" gap="sm" wrap="wrap">
-                                        <Text size="sm" c="dimmed">
-                                            Players answer these during event registration.
-                                        </Text>
-                                        <Button
-                                            type="button"
-                                            size="xs"
-                                            onClick={() => setRegistrationQuestionDrafts((current) => [
-                                                ...current,
-                                                {
-                                                    id: createClientId(),
-                                                    prompt: '',
-                                                    answerType: 'TEXT',
-                                                    required: false,
-                                                    sortOrder: current.length,
-                                                },
-                                            ])}
-                                        >
-                                            Add Question
-                                        </Button>
-                                    </Group>
-                                    {registrationQuestionDrafts.length > 0 ? (
-                                        <Stack gap="sm">
-                                            {registrationQuestionDrafts.map((question, index) => (
-                                                <div key={question.id ?? index} className="rounded-md border border-gray-200 bg-white p-3">
-                                                    <Stack gap="xs">
-                                                        <Textarea
-                                                            label={`Question ${index + 1}`}
-                                                            value={question.prompt ?? ''}
-                                                            autosize
-                                                            minRows={2}
-                                                            maxLength={500}
-                                                            onChange={(event) => {
-                                                                const value = event.currentTarget.value;
-                                                                setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
-                                                                    entryIndex === index
-                                                                        ? { ...entry, prompt: value, sortOrder: index }
-                                                                        : entry
-                                                                )));
-                                                            }}
-                                                        />
-                                                        <Group justify="space-between" align="center" gap="sm" wrap="wrap">
-                                                            <Checkbox
-                                                                label="Required"
-                                                                checked={Boolean(question.required)}
-                                                                onChange={(event) => {
-                                                                    const checked = event.currentTarget.checked;
-                                                                    setRegistrationQuestionDrafts((current) => current.map((entry, entryIndex) => (
-                                                                        entryIndex === index
-                                                                            ? { ...entry, required: checked, sortOrder: index }
-                                                                            : entry
-                                                                    )));
-                                                                }}
-                                                            />
-                                                            <Button
-                                                                type="button"
-                                                                variant="subtle"
-                                                                color="red"
-                                                                size="xs"
-                                                                onClick={() => setRegistrationQuestionDrafts((current) => current
-                                                                    .filter((_, entryIndex) => entryIndex !== index)
-                                                                    .map((entry, entryIndex) => ({ ...entry, sortOrder: entryIndex })))}
-                                                            >
-                                                                Remove
-                                                            </Button>
-                                                        </Group>
-                                                    </Stack>
-                                                </div>
-                                            ))}
-                                        </Stack>
-                                    ) : (
-                                        <Text size="sm" c="dimmed">
-                                            No registration questions configured.
-                                        </Text>
-                                    )}
-                                </Stack>
                             </Collapse>
                         </Paper>
 

@@ -63,6 +63,14 @@ import PaymentModal from '@/components/ui/PaymentModal';
 import RefundSection from '@/components/ui/RefundSection';
 import UserCard from '@/components/ui/UserCard';
 import TeamRegistrationFlow from '@/components/ui/TeamRegistrationFlow';
+import RegistrationHoldTimer from '@/components/ui/RegistrationHoldTimer';
+import {
+    buildRegistrationProgressKey,
+    clearRegistrationProgress,
+    loadRegistrationProgress,
+    saveRegistrationProgress,
+    type RegistrationProgressStep,
+} from '@/lib/registrationProgressStorage';
 // Replaced shadcn Select with Mantine Select
 
 interface EventDetailSheetProps {
@@ -1179,6 +1187,7 @@ export default function EventDetailSheet({
     const [joinError, setJoinError] = useState<string | null>(null);
     const [joinNotice, setJoinNotice] = useState<string | null>(null);
     const [paymentData, setPaymentData] = useState<PaymentIntent | null>(null);
+    const [registrationHoldExpiresAt, setRegistrationHoldExpiresAt] = useState<string | null>(null);
     const [showBillingAddressModal, setShowBillingAddressModal] = useState(false);
     const [pendingEventCheckout, setPendingEventCheckout] = useState<PendingEventCheckoutState | null>(null);
     const [confirmingPurchase, setConfirmingPurchase] = useState(false);
@@ -1318,6 +1327,87 @@ export default function EventDetailSheet({
     const selectedWeeklyOccurrenceSlotId = selectedWeeklyOccurrence?.slotId ?? null;
     const selectedWeeklyOccurrenceDate = selectedWeeklyOccurrence?.occurrenceDate ?? null;
     const weeklySelectionRequired = isWeeklyParentEvent && !selectedWeeklyOccurrence;
+    const eventRegistrationProgressKey = React.useMemo(() => buildRegistrationProgressKey({
+        scope: 'event',
+        userId: user?.$id,
+        subjectId: currentEvent?.$id,
+        slotId: selectedWeeklyOccurrenceSlotId,
+        occurrenceDate: selectedWeeklyOccurrenceDate,
+    }), [currentEvent?.$id, selectedWeeklyOccurrenceDate, selectedWeeklyOccurrenceSlotId, user?.$id]);
+    const saveEventRegistrationProgress = useCallback((patch: {
+        step?: RegistrationProgressStep;
+        answers?: Record<string, string>;
+        selectedTeamId?: string | null;
+        selectedDivisionId?: string | null;
+        selectedDivisionTypeKey?: string | null;
+        registrationId?: string | null;
+        holdExpiresAt?: string | null;
+    } = {}) => {
+        if (!eventRegistrationProgressKey || !user?.$id || !currentEvent?.$id) {
+            return;
+        }
+        saveRegistrationProgress(eventRegistrationProgressKey, {
+            scope: 'event',
+            userId: user.$id,
+            subjectId: currentEvent.$id,
+            step: patch.step ?? 'questions',
+            answers: patch.answers ?? registrationQuestionAnswers,
+            selectedTeamId: (patch.selectedTeamId ?? selectedTeamId) || null,
+            selectedDivisionId: (patch.selectedDivisionId ?? selectedDivisionId) || null,
+            selectedDivisionTypeKey: (patch.selectedDivisionTypeKey ?? selectedDivisionTypeKey) || null,
+            slotId: selectedWeeklyOccurrenceSlotId,
+            occurrenceDate: selectedWeeklyOccurrenceDate,
+            registrationId: patch.registrationId ?? paymentData?.registrationId ?? null,
+            holdExpiresAt: patch.holdExpiresAt ?? registrationHoldExpiresAt,
+        });
+    }, [
+        currentEvent?.$id,
+        eventRegistrationProgressKey,
+        paymentData?.registrationId,
+        registrationHoldExpiresAt,
+        registrationQuestionAnswers,
+        selectedDivisionId,
+        selectedDivisionTypeKey,
+        selectedTeamId,
+        selectedWeeklyOccurrenceDate,
+        selectedWeeklyOccurrenceSlotId,
+        user?.$id,
+    ]);
+    const clearEventRegistrationProgress = useCallback(() => {
+        clearRegistrationProgress(eventRegistrationProgressKey);
+        setRegistrationHoldExpiresAt(null);
+    }, [eventRegistrationProgressKey]);
+    const handleEventRegistrationHoldExpired = useCallback(() => {
+        clearEventRegistrationProgress();
+        setShowPaymentModal(false);
+        setPaymentData(null);
+        setPendingEventCheckout(null);
+        setShowBillingAddressModal(false);
+        setJoinError('Registration hold expired. Start registration again to reserve a new spot.');
+    }, [clearEventRegistrationProgress]);
+    useEffect(() => {
+        const draft = loadRegistrationProgress(eventRegistrationProgressKey);
+        if (!draft) {
+            setRegistrationHoldExpiresAt(null);
+            return;
+        }
+        if (draft.answers) {
+            setRegistrationQuestionAnswers((current) => ({
+                ...current,
+                ...draft.answers,
+            }));
+        }
+        if (draft.selectedTeamId) {
+            setSelectedTeamId(draft.selectedTeamId);
+        }
+        if (draft.selectedDivisionId) {
+            setSelectedDivisionId(draft.selectedDivisionId);
+        }
+        if (draft.selectedDivisionTypeKey) {
+            setSelectedDivisionTypeKey(draft.selectedDivisionTypeKey);
+        }
+        setRegistrationHoldExpiresAt(draft.holdExpiresAt ?? null);
+    }, [eventRegistrationProgressKey]);
     const effectiveEventStartDate = selectedWeeklyOccurrenceOption?.start ?? parseDateValue(currentEvent?.start ?? null);
     const eventImageFallbackUrl = React.useMemo(
         () => getEventImageFallbackUrl({ event: currentEvent, width: 800, height: 200 }),
@@ -2252,6 +2342,7 @@ export default function EventDetailSheet({
     }, [currentEvent, onClose, onWeeklyOccurrenceChange, openAuthModal, router, user]);
 
     const navigateToPublicEventCompletion = useCallback(() => {
+        clearEventRegistrationProgress();
         if (!publicCompletion?.slug) {
             return;
         }
@@ -2261,7 +2352,7 @@ export default function EventDetailSheet({
             kind: 'event',
             redirectUrl: publicCompletion.redirectUrl,
         });
-    }, [publicCompletion?.redirectUrl, publicCompletion?.slug, router]);
+    }, [clearEventRegistrationProgress, publicCompletion?.redirectUrl, publicCompletion?.slug, router]);
 
     const createBillForOwner = useCallback(async (ownerType: 'USER' | 'TEAM', ownerId: string) => {
         if (!currentEvent) {
@@ -2478,6 +2569,20 @@ export default function EventDetailSheet({
                 selectedWeeklyOccurrence,
                 answers,
             );
+            const holdExpiresAt = paymentIntent.registrationHoldExpiresAt ?? null;
+            setRegistrationHoldExpiresAt(holdExpiresAt);
+            saveEventRegistrationProgress({
+                step: 'checkout',
+                answers: answers?.reduce<Record<string, string>>((acc, answer) => {
+                    acc[answer.questionId] = answer.answer;
+                    return acc;
+                }, {}) ?? registrationQuestionAnswers,
+                selectedTeamId: (team?.$id ?? selectedTeamId) || null,
+                selectedDivisionId: (selection?.divisionId ?? selectedDivisionId) || null,
+                selectedDivisionTypeKey: (selection?.divisionTypeKey ?? selectedDivisionTypeKey) || null,
+                registrationId: paymentIntent.registrationId ?? null,
+                holdExpiresAt,
+            });
             setPaymentData(paymentIntent);
             setShowPaymentModal(true);
             setPendingEventCheckout(null);
@@ -2501,7 +2606,15 @@ export default function EventDetailSheet({
             }
             throw error;
         }
-    }, [selectedWeeklyOccurrence, user]);
+    }, [
+        registrationQuestionAnswers,
+        saveEventRegistrationProgress,
+        selectedDivisionId,
+        selectedDivisionTypeKey,
+        selectedTeamId,
+        selectedWeeklyOccurrence,
+        user,
+    ]);
 
     const ensureWeeklyOccurrenceSelected = useCallback((message: string = 'Select a weekly session before continuing.') => {
         if (!weeklySelectionRequired) {
@@ -2782,9 +2895,15 @@ export default function EventDetailSheet({
             return;
         }
 
+        const answers = buildRegistrationQuestionAnswers();
+        saveEventRegistrationProgress({
+            step: 'signing',
+            answers: registrationQuestionAnswers,
+        });
+
         const intent: JoinIntent = {
             ...registrationQuestionsIntent,
-            answers: buildRegistrationQuestionAnswers(),
+            answers,
         };
         setShowRegistrationQuestionsModal(false);
         setRegistrationQuestionsIntent(null);
@@ -2826,7 +2945,9 @@ export default function EventDetailSheet({
         isMinor,
         loadEventDetails,
         registrationQuestionsIntent,
+        registrationQuestionAnswers,
         resolvedDivisionSelectionPayload,
+        saveEventRegistrationProgress,
         user,
         validateRegistrationQuestionAnswers,
     ]);
@@ -4975,10 +5096,18 @@ export default function EventDetailSheet({
                                                 : (selectedDivisionId || null)}
                                             onChange={(value) => {
                                                 if (registrationByDivisionType) {
-                                                    setSelectedDivisionTypeKey(value || '');
+                                                    const nextValue = value || '';
+                                                    setSelectedDivisionTypeKey(nextValue);
+                                                    saveEventRegistrationProgress({
+                                                        selectedDivisionTypeKey: nextValue || null,
+                                                    });
                                                     return;
                                                 }
-                                                setSelectedDivisionId(value || '');
+                                                const nextValue = value || '';
+                                                setSelectedDivisionId(nextValue);
+                                                saveEventRegistrationProgress({
+                                                    selectedDivisionId: nextValue || null,
+                                                });
                                             }}
                                             comboboxProps={sharedComboboxProps}
                                         />
@@ -5153,7 +5282,13 @@ export default function EventDetailSheet({
                                                                             label: `${t.name || 'Team'} (${typeof t.division === 'string' ? t.division : (t.division as any)?.name || 'Division'})`
                                                                         }))}
                                                                         value={selectedTeamId}
-                                                                        onChange={(value) => setSelectedTeamId(value || '')}
+                                                                        onChange={(value) => {
+                                                                            const nextValue = value || '';
+                                                                            setSelectedTeamId(nextValue);
+                                                                            saveEventRegistrationProgress({
+                                                                                selectedTeamId: nextValue || null,
+                                                                            });
+                                                                        }}
                                                                         searchable
                                                                         comboboxProps={sharedComboboxProps}
                                                                     />
@@ -5758,10 +5893,15 @@ export default function EventDetailSheet({
                                         value={registrationQuestionAnswers[question.id] ?? ''}
                                         onChange={(event) => {
                                             const value = event.currentTarget.value;
-                                            setRegistrationQuestionAnswers((current) => ({
-                                                ...current,
+                                            const nextAnswers = {
+                                                ...registrationQuestionAnswers,
                                                 [question.id]: value,
-                                            }));
+                                            };
+                                            setRegistrationQuestionAnswers(nextAnswers);
+                                            saveEventRegistrationProgress({
+                                                step: 'questions',
+                                                answers: nextAnswers,
+                                            });
                                         }}
                                     />
                                 ))}
@@ -5986,12 +6126,18 @@ export default function EventDetailSheet({
                 paymentData={paymentData} // Pass the already-created payment intent
                 onPaymentSuccess={async () => {
                     setPaymentData(null);
+                    clearEventRegistrationProgress();
                     await confirmRegistrationAfterPayment();
                 }}
                 onPaymentPending={async () => {
                     setPaymentData(null);
+                    clearEventRegistrationProgress();
                     await confirmRegistrationAfterPayment({ pendingPayment: true });
                 }}
+            />
+            <RegistrationHoldTimer
+                expiresAt={registrationHoldExpiresAt}
+                onExpire={handleEventRegistrationHoldExpired}
             />
         </>
     );
