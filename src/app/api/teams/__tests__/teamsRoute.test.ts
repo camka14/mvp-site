@@ -252,6 +252,7 @@ describe('/api/teams route', () => {
       where: { id: { in: ['sea_glass_canonical'] } },
       select: {
         id: true,
+        joinPolicy: true,
         openRegistration: true,
         registrationPriceCents: true,
         requiredTemplateIds: true,
