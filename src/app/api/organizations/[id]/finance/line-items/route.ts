@@ -17,6 +17,8 @@ const lineItemSchema = z.object({
   unitLabel: z.string().trim().max(40).optional().nullable(),
   status: z.enum(['ESTIMATED', 'APPROVED', 'ACTUAL', 'PAID', 'VOID']).optional().nullable(),
   occurredAt: z.string().optional().nullable(),
+  serviceStartAt: z.string().optional().nullable(),
+  serviceEndAt: z.string().optional().nullable(),
   eventId: z.string().trim().min(1).optional().nullable(),
   teamId: z.string().trim().min(1).optional().nullable(),
   eventTeamId: z.string().trim().min(1).optional().nullable(),

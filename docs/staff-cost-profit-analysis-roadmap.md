@@ -24,11 +24,13 @@ The first user-visible goal is an event finance tab that explains actual profit,
 - [x] (2026-06-09 20:14Z) Added focused route tests for event and team finance access and payload handoff.
 - [x] (2026-06-09 20:43Z) Added create endpoints and mutation helpers for staff/role compensation rates, event staff labor, team staff labor, and custom organization/event/team/event-team finance line items.
 - [x] (2026-06-09 20:43Z) Added focused Jest coverage for compensation history writes, labor entry validation, custom line item scope attachment, and finance write route permissions.
+- [x] (2026-06-09 22:19Z) Added service start/end dates to custom financial line items and updated local Prisma migration/generation so costs can be classified as actual or future by date.
+- [x] (2026-06-09 22:19Z) Added the event finance tab with summary cards, profit/loss/potential/future-cost analysis, responsive line item views, and custom dated event cost creation.
+- [x] (2026-06-09 22:19Z) Added focused tests, typecheck validation, local migration validation, and browser smoke screenshots for the event finance/date-range slice.
 - [ ] Extend generated line item calculation for rental sales and organization-level rollups.
-- [ ] Add event finance UI with summary cards, line item table, and chart states for profit, loss, and potential profit.
 - [ ] Add team finance UI with team profit/loss, team event-registration costs, team staff costs, and custom team costs.
 - [ ] Add organization finance UI for cross-event and rental analysis.
-- [ ] Add tests, migration validation, type checks, and browser smoke tests.
+- [ ] Add broader team and organization finance tests, migration validation, type checks, and browser smoke tests.
 
 ## Surprises & Discoveries
 
@@ -99,11 +101,17 @@ The first user-visible goal is an event finance tab that explains actual profit,
   Rationale: Compensation rates are sensitive staff data, so they should be stricter than ordinary finance ledger edits. This uses existing permissions without introducing new role-permission names before the UI clarifies the final access model.
   Date/Author: 2026-06-09 / Codex
 
+- Decision: Use service start/end dates to classify manually entered costs as actual or future, independent of whether the event itself has started.
+  Rationale: A past-dated line item should affect current losses even for a future event, while future-dated custom costs and planned staff labor should be visible as future costs that reduce projected profit but do not inflate current losses.
+  Date/Author: 2026-06-09 / Codex
+
 ## Outcomes & Retrospective
 
 The initial roadmap established that the feature should extend the current organization role, team, and payment systems instead of duplicating them. The first implementation pass now provides the data foundation and pure accounting helpers. The main remaining risk is defining the exact event and team staff labor user workflows, because the current UI has officials, team staff assignments, and event-team staff assignments but not a single labor-entry surface with hours and compensation-rate resolution.
 
 2026-06-09 implementation outcome: The data foundation, first calculation layer, local migration, repository loaders, read-only event/team finance routes, and create endpoints now exist. `prisma/schema.prisma` and `prisma/migrations/20260609194200_add_staff_team_finance_analysis/migration.sql` add compensation rates, event labor, team labor, and custom line item tables. `src/server/finance/financeAnalysis.ts` returns event and team summaries from plain objects. `src/server/finance/financeRepository.ts` loads bills, bill payments, compensation rates, labor entries, participant counts, and custom line items into those helpers. `src/server/finance/financeAccess.ts` centralizes finance access checks. `src/server/finance/financeMutations.ts` creates compensation history, event staff labor, team staff labor, and scoped custom line items with same-organization validation. `src/app/api/events/[eventId]/finance/route.ts` and `src/app/api/teams/[id]/finance/route.ts` expose read-only summaries. `src/app/api/organizations/[id]/finance/compensation/route.ts`, `src/app/api/organizations/[id]/finance/line-items/route.ts`, `src/app/api/events/[eventId]/finance/staff/route.ts`, and `src/app/api/teams/[id]/finance/staff/route.ts` expose the first write APIs. Focused tests prove the classification rules, missing wage warning behavior, compensation history behavior, labor entry validation, custom line item scope attachment, and route access handoff. Remaining work is UI, organization/rental rollups, update/delete workflows for finance records, compensation management workflows, and broader browser tests.
+
+2026-06-09 event finance/date-range outcome: The event schedule page now exposes a manager-only Finance tab for organization events. `src/app/events/[id]/schedule/components/EventFinancePanel.tsx` renders actual revenue, actual costs, actual profit/loss, future costs, potential open-spot profit, projected outcome, desktop table rows, mobile line item cards, and a custom event cost form with service start/end dates. `prisma/migrations/20260609213000_add_finance_line_item_service_dates/migration.sql` adds service dates to custom line items and backfills the start date from `occurredAt` where available. `src/server/finance/financeAnalysis.ts` classifies dated costs into actual, future, potential, or warning rows. Past/current costs affect current profit or loss; future costs reduce projected profit; potential open-spot revenue remains a yellow projected value. Validation passed with targeted finance Jest tests, `npx tsc --noEmit`, `npx prisma migrate status`, Browser interaction checks, and refreshed screenshots in `output/finance-event-summary-desktop.png` and `output/finance-event-mobile-line-items.png`. Remaining work is compensation UI, event/team labor-entry UI, team finance UI, organization rollups, line-item edit/delete workflows, and broader browser tests.
 
 ## Context and Orientation
 

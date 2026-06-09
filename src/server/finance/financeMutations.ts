@@ -71,6 +71,8 @@ type FinancialLineItemInput = {
   unitLabel?: string | null;
   status?: FinancialLineItemStatus | null;
   occurredAt?: string | Date | null;
+  serviceStartAt?: string | Date | null;
+  serviceEndAt?: string | Date | null;
   eventId?: string | null;
   teamId?: string | null;
   eventTeamId?: string | null;
@@ -602,6 +604,11 @@ export const createFinancialLineItem = async (
   }
 
   const occurredAt = parseDate(input.occurredAt, 'occurredAt');
+  const serviceStartAt = parseDate(input.serviceStartAt, 'serviceStartAt') ?? occurredAt;
+  const serviceEndAt = parseDate(input.serviceEndAt, 'serviceEndAt');
+  if (serviceStartAt && serviceEndAt && serviceEndAt.getTime() < serviceStartAt.getTime()) {
+    throw new FinanceMutationError(400, 'serviceEndAt must be on or after serviceStartAt.');
+  }
   const now = new Date();
   return client.financialLineItems.create({
     data: {
@@ -616,6 +623,8 @@ export const createFinancialLineItem = async (
       unitLabel: normalizeOptionalText(input.unitLabel),
       status: input.status ?? 'ACTUAL',
       occurredAt,
+      serviceStartAt,
+      serviceEndAt,
       eventId,
       teamId,
       eventTeamId,

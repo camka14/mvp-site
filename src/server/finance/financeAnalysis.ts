@@ -9,11 +9,15 @@ export type FinanceLineItemClassification =
   | 'custom_cost'
   | 'potential_revenue'
   | 'warning';
+export type FinanceLineItemTiming = 'ACTUAL' | 'FUTURE' | 'POTENTIAL' | 'WARNING';
 
 export type FinanceBillPayment = {
   id?: string | null;
+  createdAt?: Date | string | null;
+  updatedAt?: Date | string | null;
   amountCents?: number | null;
   status?: string | null;
+  paidAt?: Date | string | null;
   refundedAmountCents?: number | null;
   stripeProcessingFeeCents?: number | null;
   stripeTaxServiceFeeCents?: number | null;
@@ -21,6 +25,7 @@ export type FinanceBillPayment = {
 
 export type FinanceBill = {
   id: string;
+  createdAt?: Date | string | null;
   ownerType?: FinanceBillOwnerType | null;
   ownerId?: string | null;
   eventId?: string | null;
@@ -62,6 +67,9 @@ export type CustomFinanceLineItem = {
   eventTeamId?: string | null;
   scope?: string | null;
   status?: string | null;
+  occurredAt?: Date | string | null;
+  serviceStartAt?: Date | string | null;
+  serviceEndAt?: Date | string | null;
 };
 
 export type FinanceLineItem = {
@@ -74,6 +82,9 @@ export type FinanceLineItem = {
   amountCents: number;
   classification: FinanceLineItemClassification;
   status: string;
+  timing: FinanceLineItemTiming;
+  serviceStartAt?: string | null;
+  serviceEndAt?: string | null;
   isGenerated: boolean;
 };
 
@@ -89,6 +100,7 @@ export type EventFinanceSummary = {
   actualRevenueCents: number;
   actualCostCents: number;
   actualProfitCents: number;
+  futureCostCents: number;
   potentialRevenueCents: number;
   projectedProfitCents: number;
   lineItems: FinanceLineItem[];
@@ -101,6 +113,8 @@ export type TeamFinanceSummary = {
   actualRevenueCents: number;
   actualCostCents: number;
   actualProfitCents: number;
+  futureCostCents: number;
+  projectedProfitCents: number;
   eventRegistrationCostCents: number;
   staffCostCents: number;
   lineItems: FinanceLineItem[];
@@ -149,6 +163,48 @@ const toDate = (value: Date | string | null | undefined): Date | null => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
   return null;
+};
+
+const toIsoString = (value: Date | string | null | undefined): string | null => {
+  const date = toDate(value);
+  return date ? date.toISOString() : null;
+};
+
+const normalizeAsOf = (value: Date | string | null | undefined): Date => (
+  toDate(value) ?? new Date()
+);
+
+const lineItemTiming = ({
+  classification,
+  status,
+  serviceStartAt,
+  serviceEndAt,
+  amountCents,
+  asOf,
+}: {
+  classification: FinanceLineItemClassification;
+  status?: string | null;
+  serviceStartAt?: Date | string | null;
+  serviceEndAt?: Date | string | null;
+  amountCents: number;
+  asOf: Date;
+}): FinanceLineItemTiming => {
+  if (classification === 'warning') {
+    return 'WARNING';
+  }
+  if (classification === 'potential_revenue') {
+    return 'POTENTIAL';
+  }
+  if (normalizeStatus(status, '') === 'VOID') {
+    return 'WARNING';
+  }
+  if (amountCents < 0) {
+    const recognitionDate = toDate(serviceStartAt) ?? toDate(serviceEndAt);
+    if (recognitionDate && recognitionDate.getTime() > asOf.getTime()) {
+      return 'FUTURE';
+    }
+  }
+  return 'ACTUAL';
 };
 
 const minutesBetween = (
@@ -254,12 +310,39 @@ const summarizePaidBill = (bill: FinanceBill): {
   );
 };
 
+const billRecognitionDate = (bill: FinanceBill): Date | string | null | undefined => {
+  const paidPayment = (bill.payments ?? []).find(isPaidPayment);
+  return paidPayment?.paidAt ?? paidPayment?.createdAt ?? bill.createdAt;
+};
+
+const buildFinanceLineItem = (item: Omit<FinanceLineItem, 'timing' | 'serviceStartAt' | 'serviceEndAt'> & {
+  serviceStartAt?: Date | string | null;
+  serviceEndAt?: Date | string | null;
+}, asOf: Date): FinanceLineItem => {
+  const serviceStartAt = toIsoString(item.serviceStartAt);
+  const serviceEndAt = toIsoString(item.serviceEndAt);
+  return {
+    ...item,
+    serviceStartAt,
+    serviceEndAt,
+    timing: lineItemTiming({
+      classification: item.classification,
+      status: item.status,
+      serviceStartAt,
+      serviceEndAt,
+      amountCents: item.amountCents,
+      asOf,
+    }),
+  };
+};
+
 const customCostLineItem = (
   item: CustomFinanceLineItem,
   scope: FinanceLineItem['scope'],
+  asOf: Date,
 ): FinanceLineItem => {
   const costCents = Math.abs(normalizeSignedCents(item.amountCents));
-  return {
+  return buildFinanceLineItem({
     id: `custom:${item.id}`,
     sourceType: 'custom_line_item',
     sourceId: item.id,
@@ -270,22 +353,28 @@ const customCostLineItem = (
     classification: 'custom_cost',
     status: normalizeStatus(item.status),
     isGenerated: false,
-  };
+    serviceStartAt: item.serviceStartAt ?? item.occurredAt,
+    serviceEndAt: item.serviceEndAt,
+  }, asOf);
 };
 
 const laborLineItems = (
   entries: FinanceLaborEntry[],
   scope: FinanceLineItem['scope'],
+  asOf: Date,
 ): {
   lineItems: FinanceLineItem[];
   warnings: FinanceWarning[];
   costCents: number;
+  futureCostCents: number;
 } => entries.reduce(
   (result, entry) => {
     const resolved = resolveLaborCostCents(entry);
+    const serviceStartAt = entry.actualStart ?? entry.plannedStart;
+    const serviceEndAt = entry.actualEnd ?? entry.plannedEnd;
     if (resolved.warning) {
       result.warnings.push(resolved.warning);
-      result.lineItems.push({
+      result.lineItems.push(buildFinanceLineItem({
         id: `warning:labor:${entry.id}`,
         sourceType: 'labor',
         sourceId: entry.id,
@@ -296,14 +385,15 @@ const laborLineItems = (
         classification: 'warning',
         status: 'WARNING',
         isGenerated: true,
-      });
+        serviceStartAt,
+        serviceEndAt,
+      }, asOf));
       return result;
     }
 
     const costCents = normalizeCents(resolved.costCents);
     if (costCents > 0) {
-      result.costCents += costCents;
-      result.lineItems.push({
+      const lineItem = buildFinanceLineItem({
         id: `labor:${entry.id}`,
         sourceType: 'labor',
         sourceId: entry.id,
@@ -314,43 +404,58 @@ const laborLineItems = (
         classification: 'labor_cost',
         status: normalizeStatus(entry.status, 'ACTUAL'),
         isGenerated: true,
-      });
+        serviceStartAt,
+        serviceEndAt,
+      }, asOf);
+      if (lineItem.timing === 'FUTURE') {
+        result.futureCostCents += costCents;
+      } else {
+        result.costCents += costCents;
+      }
+      result.lineItems.push(lineItem);
     }
 
     return result;
   },
-  { lineItems: [] as FinanceLineItem[], warnings: [] as FinanceWarning[], costCents: 0 },
+  { lineItems: [] as FinanceLineItem[], warnings: [] as FinanceWarning[], costCents: 0, futureCostCents: 0 },
 );
 
 export const buildEventFinanceSummary = ({
   eventId,
+  eventStart,
   eventPriceCents,
   maxParticipants,
   confirmedParticipantCount,
   bills = [],
   staffLabor = [],
   customLineItems = [],
+  asOf: asOfInput,
 }: {
   eventId: string;
+  eventStart?: Date | string | null;
   eventPriceCents?: number | null;
   maxParticipants?: number | null;
   confirmedParticipantCount?: number | null;
   bills?: FinanceBill[];
   staffLabor?: FinanceLaborEntry[];
   customLineItems?: CustomFinanceLineItem[];
+  asOf?: Date | string | null;
 }): EventFinanceSummary => {
+  const asOf = normalizeAsOf(asOfInput);
   const lineItems: FinanceLineItem[] = [];
   const warnings: FinanceWarning[] = [];
   let actualRevenueCents = 0;
   let actualCostCents = 0;
+  let futureCostCents = 0;
 
   bills
     .filter((bill) => bill.eventId === eventId)
     .forEach((bill) => {
       const billTotals = summarizePaidBill(bill);
+      const recognitionDate = billRecognitionDate(bill);
       if (billTotals.paidCents > 0) {
         actualRevenueCents += billTotals.paidCents;
-        lineItems.push({
+        lineItems.push(buildFinanceLineItem({
           id: `bill:${bill.id}:paid`,
           sourceType: 'bill',
           sourceId: bill.id,
@@ -361,11 +466,12 @@ export const buildEventFinanceSummary = ({
           classification: 'revenue',
           status: 'PAID',
           isGenerated: true,
-        });
+          serviceStartAt: recognitionDate,
+        }, asOf));
       }
       if (billTotals.refundedCents > 0) {
         actualRevenueCents -= billTotals.refundedCents;
-        lineItems.push({
+        lineItems.push(buildFinanceLineItem({
           id: `bill:${bill.id}:refund`,
           sourceType: 'bill',
           sourceId: bill.id,
@@ -376,11 +482,12 @@ export const buildEventFinanceSummary = ({
           classification: 'refund',
           status: 'ACTUAL',
           isGenerated: true,
-        });
+          serviceStartAt: recognitionDate,
+        }, asOf));
       }
       if (billTotals.feeCents > 0) {
         actualRevenueCents -= billTotals.feeCents;
-        lineItems.push({
+        lineItems.push(buildFinanceLineItem({
           id: `bill:${bill.id}:fees`,
           sourceType: 'bill',
           sourceId: bill.id,
@@ -391,21 +498,27 @@ export const buildEventFinanceSummary = ({
           classification: 'fee',
           status: 'ACTUAL',
           isGenerated: true,
-        });
+          serviceStartAt: recognitionDate,
+        }, asOf));
       }
     });
 
-  const labor = laborLineItems(staffLabor.filter((entry) => entry.eventId === eventId), 'EVENT');
+  const labor = laborLineItems(staffLabor.filter((entry) => entry.eventId === eventId), 'EVENT', asOf);
   lineItems.push(...labor.lineItems);
   warnings.push(...labor.warnings);
   actualCostCents += labor.costCents;
+  futureCostCents += labor.futureCostCents;
 
   customLineItems
     .filter((item) => item.eventId === eventId)
     .forEach((item) => {
-      const lineItem = customCostLineItem(item, 'EVENT');
+      const lineItem = customCostLineItem(item, 'EVENT', asOf);
       lineItems.push(lineItem);
-      actualCostCents += Math.abs(lineItem.amountCents);
+      if (lineItem.timing === 'FUTURE') {
+        futureCostCents += Math.abs(lineItem.amountCents);
+      } else {
+        actualCostCents += Math.abs(lineItem.amountCents);
+      }
     });
 
   const openSpots = Math.max(
@@ -414,7 +527,7 @@ export const buildEventFinanceSummary = ({
   );
   const potentialRevenueCents = openSpots * normalizeCents(eventPriceCents);
   if (potentialRevenueCents > 0) {
-    lineItems.push({
+    lineItems.push(buildFinanceLineItem({
       id: `potential:event:${eventId}:open-spots`,
       sourceType: 'event',
       sourceId: eventId,
@@ -425,7 +538,8 @@ export const buildEventFinanceSummary = ({
       classification: 'potential_revenue',
       status: 'PROJECTED',
       isGenerated: true,
-    });
+      serviceStartAt: eventStart,
+    }, asOf));
   }
 
   const actualProfitCents = actualRevenueCents - actualCostCents;
@@ -434,8 +548,9 @@ export const buildEventFinanceSummary = ({
     actualRevenueCents,
     actualCostCents,
     actualProfitCents,
+    futureCostCents,
     potentialRevenueCents,
-    projectedProfitCents: actualProfitCents + potentialRevenueCents,
+    projectedProfitCents: actualProfitCents + potentialRevenueCents - futureCostCents,
     lineItems,
     warnings,
   };
@@ -448,6 +563,7 @@ export const buildTeamFinanceSummary = ({
   bills = [],
   staffLabor = [],
   customLineItems = [],
+  asOf: asOfInput,
 }: {
   teamId: string;
   eventTeamId?: string | null;
@@ -455,23 +571,27 @@ export const buildTeamFinanceSummary = ({
   bills?: FinanceBill[];
   staffLabor?: FinanceLaborEntry[];
   customLineItems?: CustomFinanceLineItem[];
+  asOf?: Date | string | null;
 }): TeamFinanceSummary => {
+  const asOf = normalizeAsOf(asOfInput);
   const eventTeamIds = new Set([eventTeamId, ...relatedEventTeamIds].filter((value): value is string => Boolean(value)));
   const teamIds = new Set([teamId, ...eventTeamIds]);
   const lineItems: FinanceLineItem[] = [];
   const warnings: FinanceWarning[] = [];
   let actualRevenueCents = 0;
   let actualCostCents = 0;
+  let futureCostCents = 0;
   let eventRegistrationCostCents = 0;
 
   bills
     .filter((bill) => normalizeStatus(bill.ownerType, '') === 'TEAM' && Boolean(bill.ownerId && teamIds.has(bill.ownerId)))
     .forEach((bill) => {
       const billTotals = summarizePaidBill(bill);
+      const recognitionDate = billRecognitionDate(bill);
       if (billTotals.paidCents > 0) {
         actualCostCents += billTotals.paidCents;
         eventRegistrationCostCents += billTotals.paidCents;
-        lineItems.push({
+        lineItems.push(buildFinanceLineItem({
           id: `team-bill:${bill.id}:paid`,
           sourceType: 'bill',
           sourceId: bill.id,
@@ -482,12 +602,13 @@ export const buildTeamFinanceSummary = ({
           classification: 'team_registration_cost',
           status: 'PAID',
           isGenerated: true,
-        });
+          serviceStartAt: recognitionDate,
+        }, asOf));
       }
       if (billTotals.refundedCents > 0) {
         actualCostCents -= billTotals.refundedCents;
         eventRegistrationCostCents -= billTotals.refundedCents;
-        lineItems.push({
+        lineItems.push(buildFinanceLineItem({
           id: `team-bill:${bill.id}:refund`,
           sourceType: 'bill',
           sourceId: bill.id,
@@ -498,11 +619,12 @@ export const buildTeamFinanceSummary = ({
           classification: 'refund',
           status: 'ACTUAL',
           isGenerated: true,
-        });
+          serviceStartAt: recognitionDate,
+        }, asOf));
       }
       if (billTotals.feeCents > 0) {
         actualCostCents += billTotals.feeCents;
-        lineItems.push({
+        lineItems.push(buildFinanceLineItem({
           id: `team-bill:${bill.id}:fees`,
           sourceType: 'bill',
           sourceId: bill.id,
@@ -513,7 +635,8 @@ export const buildTeamFinanceSummary = ({
           classification: 'fee',
           status: 'ACTUAL',
           isGenerated: true,
-        });
+          serviceStartAt: recognitionDate,
+        }, asOf));
       }
     });
 
@@ -523,10 +646,12 @@ export const buildTeamFinanceSummary = ({
       || (entry.eventTeamId && teamIds.has(entry.eventTeamId))
     )),
     eventTeamIds.size ? 'EVENT_TEAM' : 'TEAM',
+    asOf,
   );
   lineItems.push(...labor.lineItems);
   warnings.push(...labor.warnings);
   actualCostCents += labor.costCents;
+  futureCostCents += labor.futureCostCents;
 
   customLineItems
     .filter((item) => (
@@ -534,17 +659,24 @@ export const buildTeamFinanceSummary = ({
       || (item.eventTeamId && teamIds.has(item.eventTeamId))
     ))
     .forEach((item) => {
-      const lineItem = customCostLineItem(item, item.eventTeamId && eventTeamIds.has(item.eventTeamId) ? 'EVENT_TEAM' : 'TEAM');
+      const lineItem = customCostLineItem(item, item.eventTeamId && eventTeamIds.has(item.eventTeamId) ? 'EVENT_TEAM' : 'TEAM', asOf);
       lineItems.push(lineItem);
-      actualCostCents += Math.abs(lineItem.amountCents);
+      if (lineItem.timing === 'FUTURE') {
+        futureCostCents += Math.abs(lineItem.amountCents);
+      } else {
+        actualCostCents += Math.abs(lineItem.amountCents);
+      }
     });
 
+  const actualProfitCents = actualRevenueCents - actualCostCents;
   return {
     teamId,
     eventTeamId,
     actualRevenueCents,
     actualCostCents,
-    actualProfitCents: actualRevenueCents - actualCostCents,
+    actualProfitCents,
+    futureCostCents,
+    projectedProfitCents: actualProfitCents - futureCostCents,
     eventRegistrationCostCents,
     staffCostCents: labor.costCents,
     lineItems,

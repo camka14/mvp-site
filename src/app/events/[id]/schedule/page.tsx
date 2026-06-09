@@ -110,6 +110,7 @@ import TeamCard from '@/components/ui/TeamCard';
 import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import UserCard from '@/components/ui/UserCard';
 import DivisionTeamComplianceCard from './components/DivisionTeamComplianceCard';
+import EventFinancePanel from './components/EventFinancePanel';
 
 const cloneValue = <T,>(value: T): T => {
   if (value === null || typeof value !== 'object') {
@@ -181,7 +182,7 @@ type ParticipantInviteRow = {
 
 type MatchCreateContext = 'schedule' | 'bracket';
 
-const EVENT_SCHEDULE_TABS = new Set(['details', 'participants', 'schedule', 'standings', 'bracket']);
+const EVENT_SCHEDULE_TABS = new Set(['details', 'participants', 'schedule', 'standings', 'bracket', 'finance']);
 
 type StagedMatchCreateMeta = {
   clientId: string;
@@ -6865,6 +6866,8 @@ function EventScheduleContent() {
       || participantTeamIds.length > 0
       || participantUserIds.length > 0,
     );
+  const financeOrganizationId = normalizeIdToken(activeEvent?.organizationId) ?? normalizeIdToken(activeOrganization?.$id);
+  const showFinanceTab = Boolean(!isCreateMode && !isTemplateEvent && canManageEvent && financeOrganizationId);
   const selectedComplianceSummary = selectedComplianceTeamId
     ? teamComplianceById[selectedComplianceTeamId] ?? null
     : null;
@@ -7075,10 +7078,13 @@ function EventScheduleContent() {
     if (shouldShowBracketTab) {
       allowed.add('bracket');
     }
+    if (showFinanceTab) {
+      allowed.add('finance');
+    }
 
     const desired = request && allowed.has(request) ? request : defaultTab;
     setActiveTab(desired);
-  }, [activeEvent?.$id, searchParams, shouldShowBracketTab, showParticipantsTab, showScheduleTab, showStandingsTab, defaultTab]);
+  }, [activeEvent?.$id, searchParams, shouldShowBracketTab, showFinanceTab, showParticipantsTab, showScheduleTab, showStandingsTab, defaultTab]);
 
   const handleTabChange = (value: string | null) => {
     if (!value) return;
@@ -7094,6 +7100,9 @@ function EventScheduleContent() {
     }
     if (shouldShowBracketTab) {
       allowed.add('bracket');
+    }
+    if (showFinanceTab) {
+      allowed.add('finance');
     }
 
     if (!allowed.has(value)) {
@@ -10056,6 +10065,7 @@ function EventScheduleContent() {
               {showScheduleTab && <Tabs.Tab value="schedule">Schedule</Tabs.Tab>}
               {showStandingsTab && <Tabs.Tab value="standings">Standings</Tabs.Tab>}
               {shouldShowBracketTab && <Tabs.Tab value="bracket">Bracket</Tabs.Tab>}
+              {showFinanceTab && <Tabs.Tab value="finance">Finance</Tabs.Tab>}
             </Tabs.List>
 
             <Tabs.Panel value="details" pt="md">
@@ -10792,6 +10802,17 @@ function EventScheduleContent() {
                     </Paper>
                   )}
                 </Stack>
+              </Tabs.Panel>
+            )}
+
+            {showFinanceTab && (
+              <Tabs.Panel value="finance" pt="md">
+                <EventFinancePanel
+                  eventId={activeEvent?.$id ?? eventId}
+                  organizationId={financeOrganizationId}
+                  isActive={activeTab === 'finance'}
+                  canManage={canManageEvent}
+                />
               </Tabs.Panel>
             )}
           </Tabs>

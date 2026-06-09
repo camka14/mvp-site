@@ -55,6 +55,7 @@ describe('buildEventFinanceSummary', () => {
     expect(summary.actualRevenueCents).toBe(14200);
     expect(summary.actualCostCents).toBe(7000);
     expect(summary.actualProfitCents).toBe(7200);
+    expect(summary.futureCostCents).toBe(0);
     expect(summary.potentialRevenueCents).toBe(15000);
     expect(summary.projectedProfitCents).toBe(22200);
     expect(summary.lineItems).toEqual(expect.arrayContaining([
@@ -83,6 +84,69 @@ describe('buildEventFinanceSummary', () => {
         id: 'potential:event:event_1:open-spots',
         amountCents: 15000,
         classification: 'potential_revenue',
+      }),
+    ]));
+  });
+
+  it('keeps future event costs separate while counting past-dated costs as actual losses', () => {
+    const summary = buildEventFinanceSummary({
+      eventId: 'event_future',
+      eventStart: '2026-07-01T18:00:00.000Z',
+      eventPriceCents: 1000,
+      maxParticipants: 10,
+      confirmedParticipantCount: 8,
+      asOf: '2026-06-09T12:00:00.000Z',
+      staffLabor: [
+        {
+          id: 'future_staff',
+          eventId: 'event_future',
+          label: 'Future Staff',
+          plannedStart: '2026-07-01T18:00:00.000Z',
+          plannedEnd: '2026-07-01T20:00:00.000Z',
+          rate: { wageType: 'HOURLY', amountCents: 3000 },
+          status: 'PLANNED',
+        },
+      ],
+      customLineItems: [
+        {
+          id: 'past_event_cost',
+          eventId: 'event_future',
+          title: 'Permit deposit',
+          category: 'permits',
+          amountCents: 2000,
+          serviceStartAt: '2026-06-01T00:00:00.000Z',
+        },
+        {
+          id: 'future_event_cost',
+          eventId: 'event_future',
+          title: 'Cleanup crew',
+          category: 'operations',
+          amountCents: 5000,
+          serviceStartAt: '2026-07-01T20:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(summary.actualCostCents).toBe(2000);
+    expect(summary.futureCostCents).toBe(11000);
+    expect(summary.actualProfitCents).toBe(-2000);
+    expect(summary.potentialRevenueCents).toBe(2000);
+    expect(summary.projectedProfitCents).toBe(-11000);
+    expect(summary.lineItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'custom:past_event_cost',
+        timing: 'ACTUAL',
+        amountCents: -2000,
+      }),
+      expect.objectContaining({
+        id: 'custom:future_event_cost',
+        timing: 'FUTURE',
+        amountCents: -5000,
+      }),
+      expect.objectContaining({
+        id: 'labor:future_staff',
+        timing: 'FUTURE',
+        amountCents: -6000,
       }),
     ]));
   });
@@ -124,8 +188,10 @@ describe('buildTeamFinanceSummary', () => {
     expect(summary.actualRevenueCents).toBe(0);
     expect(summary.eventRegistrationCostCents).toBe(15000);
     expect(summary.staffCostCents).toBe(13500);
+    expect(summary.futureCostCents).toBe(0);
     expect(summary.actualCostCents).toBe(31800);
     expect(summary.actualProfitCents).toBe(-31800);
+    expect(summary.projectedProfitCents).toBe(-31800);
     expect(summary.lineItems).toEqual(expect.arrayContaining([
       expect.objectContaining({
         id: 'team-bill:bill_team_registration:paid',
@@ -200,6 +266,7 @@ describe('buildTeamFinanceSummary', () => {
     });
 
     expect(summary.actualCostCents).toBe(0);
+    expect(summary.futureCostCents).toBe(0);
     expect(summary.warnings).toEqual([
       expect.objectContaining({
         code: 'missing_labor_rate',
@@ -213,5 +280,51 @@ describe('buildTeamFinanceSummary', () => {
         amountCents: 0,
       }),
     ]);
+  });
+
+  it('tracks future team staff and line item costs separately from actual costs', () => {
+    const summary = buildTeamFinanceSummary({
+      teamId: 'team_1',
+      asOf: '2026-06-09T12:00:00.000Z',
+      staffLabor: [
+        {
+          id: 'future_team_staff',
+          teamId: 'team_1',
+          label: 'Future Coach',
+          plannedStart: '2026-07-02T16:00:00.000Z',
+          plannedEnd: '2026-07-02T17:00:00.000Z',
+          rate: { wageType: 'HOURLY', amountCents: 4000 },
+          status: 'PLANNED',
+        },
+      ],
+      customLineItems: [
+        {
+          id: 'future_team_cost',
+          teamId: 'team_1',
+          title: 'Tournament lodging',
+          category: 'travel',
+          amountCents: 2500,
+          serviceStartAt: '2026-07-01T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(summary.actualCostCents).toBe(0);
+    expect(summary.futureCostCents).toBe(6500);
+    expect(summary.actualProfitCents).toBe(0);
+    expect(summary.projectedProfitCents).toBe(-6500);
+    expect(summary.staffCostCents).toBe(0);
+    expect(summary.lineItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'labor:future_team_staff',
+        timing: 'FUTURE',
+        amountCents: -4000,
+      }),
+      expect.objectContaining({
+        id: 'custom:future_team_cost',
+        timing: 'FUTURE',
+        amountCents: -2500,
+      }),
+    ]));
   });
 });

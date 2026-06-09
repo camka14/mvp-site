@@ -719,6 +719,8 @@ model FinancialLineItems {
   unitLabel      String?
   status         FinancialLineItemStatusEnum @default(ACTUAL)
   occurredAt     DateTime?
+  serviceStartAt DateTime?
+  serviceEndAt   DateTime?
   createdBy      String?
   updatedBy      String?
 
@@ -730,6 +732,8 @@ model FinancialLineItems {
   @@index([category])
   @@index([status])
   @@index([occurredAt])
+  @@index([serviceStartAt])
+  @@index([serviceEndAt])
 }
 
 model EventOfficials {

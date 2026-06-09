@@ -227,6 +227,8 @@ describe('financeMutations', () => {
       category: 'Travel',
       title: 'Coach mileage',
       amountCents: 4500,
+      serviceStartAt: '2026-07-01T00:00:00.000Z',
+      serviceEndAt: '2026-07-03T00:00:00.000Z',
       actingUserId: 'owner_1',
     }, client);
 
@@ -239,7 +241,30 @@ describe('financeMutations', () => {
       category: 'Travel',
       title: 'Coach mileage',
       amountCents: 4500,
+      serviceStartAt: new Date('2026-07-01T00:00:00.000Z'),
+      serviceEndAt: new Date('2026-07-03T00:00:00.000Z'),
     });
+  });
+
+  it('rejects reversed financial line item service date ranges', async () => {
+    const client = txClient();
+    client.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      organizationId: 'org_1',
+    });
+
+    await expect(createFinancialLineItem({
+      organizationId: 'org_1',
+      scope: 'EVENT',
+      eventId: 'event_1',
+      category: 'Operations',
+      title: 'Cleanup',
+      amountCents: 4500,
+      serviceStartAt: '2026-07-03T00:00:00.000Z',
+      serviceEndAt: '2026-07-01T00:00:00.000Z',
+      actingUserId: 'owner_1',
+    }, client)).rejects.toBeInstanceOf(FinanceMutationError);
+    expect(client.financialLineItems.create).not.toHaveBeenCalled();
   });
 
   it('rejects reversed labor time ranges', async () => {

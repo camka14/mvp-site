@@ -70,9 +70,12 @@ const displayName = (user: Record<string, unknown> | null | undefined, fallback:
 
 const paymentSelect = {
   id: true,
+  createdAt: true,
+  updatedAt: true,
   billId: true,
   amountCents: true,
   status: true,
+  paidAt: true,
   refundedAmountCents: true,
   stripeProcessingFeeCents: true,
   stripeTaxServiceFeeCents: true,
@@ -80,6 +83,7 @@ const paymentSelect = {
 
 const billSelect = {
   id: true,
+  createdAt: true,
   ownerType: true,
   ownerId: true,
   eventId: true,
@@ -103,8 +107,11 @@ const loadPaymentsByBillId = async (
     const current = byBillId.get(payment.billId) ?? [];
     current.push({
       id: payment.id,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt,
       amountCents: payment.amountCents,
       status: payment.status,
+      paidAt: payment.paidAt,
       refundedAmountCents: payment.refundedAmountCents,
       stripeProcessingFeeCents: payment.stripeProcessingFeeCents,
       stripeTaxServiceFeeCents: payment.stripeTaxServiceFeeCents,
@@ -122,6 +129,7 @@ const attachPayments = async (
   const paymentsByBillId = await loadPaymentsByBillId(client, billIds);
   return rows.map((row) => ({
     id: row.id,
+    createdAt: row.createdAt,
     ownerType: row.ownerType,
     ownerId: row.ownerId,
     eventId: row.eventId,
@@ -240,6 +248,11 @@ const assignmentReferenceDate = (entry: any, fallback: Date): Date => (
   ?? fallback
 );
 
+const isPlannedLabor = (entry: any): boolean => {
+  const status = String(entry.status ?? '').trim().toUpperCase();
+  return status === '' || status === 'PLANNED' || status === 'SCHEDULED';
+};
+
 const resolveRate = (
   entry: any,
   context: StaffMemberRateContext,
@@ -292,7 +305,7 @@ const loadEventStaffLabor = async (
       staffMemberId: row.staffMemberId,
       userId,
       label: displayName(userId ? usersById.get(userId) : null, `Staff ${row.staffMemberId}`),
-      plannedStart: row.plannedStart,
+      plannedStart: row.plannedStart ?? (isPlannedLabor(row) ? event.start : null),
       plannedEnd: row.plannedEnd,
       actualStart: row.actualStart,
       actualEnd: row.actualEnd,
@@ -325,9 +338,18 @@ const loadTeamStaffLabor = async (
   const userIds = normalizeIds(rows.map((row: any) => row.userId));
   const usersById = await loadUsersById(client, userIds);
   const fallbackDate = new Date();
+  const eventIds = normalizeIds(rows.map((row: any) => row.eventId));
+  const eventStartsById: Map<string, Date | null> = eventIds.length
+    ? new Map<string, Date | null>((await client.events.findMany({
+      where: { id: { in: eventIds } },
+      select: { id: true, start: true },
+    })).map((event: any) => [String(event.id), toDate(event.start)]))
+    : new Map<string, Date | null>();
 
   return rows.map((row: any) => {
-    const referenceDate = assignmentReferenceDate(row, fallbackDate);
+    const eventStart = row.eventId ? eventStartsById.get(row.eventId) : null;
+    const plannedStart = row.plannedStart ?? (isPlannedLabor(row) ? eventStart : null);
+    const referenceDate = assignmentReferenceDate({ ...row, plannedStart }, eventStart ?? fallbackDate);
     return {
       id: row.id,
       teamId: row.teamId,
@@ -336,7 +358,7 @@ const loadTeamStaffLabor = async (
       staffMemberId: row.staffMemberId,
       userId: row.userId,
       label: displayName(usersById.get(row.userId), `Team staff ${row.userId}`),
-      plannedStart: row.plannedStart,
+      plannedStart,
       plannedEnd: row.plannedEnd,
       actualStart: row.actualStart,
       actualEnd: row.actualEnd,
@@ -358,6 +380,9 @@ const customLineItemSelect = {
   eventTeamId: true,
   scope: true,
   status: true,
+  occurredAt: true,
+  serviceStartAt: true,
+  serviceEndAt: true,
 } as const;
 
 const toCustomLineItem = (row: any): CustomFinanceLineItem => ({
@@ -370,6 +395,9 @@ const toCustomLineItem = (row: any): CustomFinanceLineItem => ({
   eventTeamId: row.eventTeamId,
   scope: row.scope,
   status: row.status,
+  occurredAt: row.occurredAt,
+  serviceStartAt: row.serviceStartAt,
+  serviceEndAt: row.serviceEndAt,
 });
 
 export const loadEventFinanceSummary = async (
@@ -419,6 +447,7 @@ export const loadEventFinanceSummary = async (
   const bills = await attachPayments(client, billRows);
   return buildEventFinanceSummary({
     eventId,
+    eventStart: event.start,
     eventPriceCents: event.price,
     maxParticipants: event.maxParticipants,
     confirmedParticipantCount: participantCount,
