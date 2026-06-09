@@ -6,10 +6,17 @@ const prismaMock = {
   events: {
     findUnique: jest.fn(),
   },
+  staffMembers: {
+    findMany: jest.fn(),
+  },
+  userData: {
+    findMany: jest.fn(),
+  },
 };
 const requireSessionMock = jest.fn();
 const canManageEventMock = jest.fn();
 const createEventStaffAssignmentMock = jest.fn();
+const ensureDefaultOrganizationRolesMock = jest.fn();
 
 class MockFinanceMutationError extends Error {
   status: number;
@@ -29,8 +36,11 @@ jest.mock('@/server/finance/financeMutations', () => ({
   FinanceMutationError: MockFinanceMutationError,
   createEventStaffAssignment: (...args: any[]) => createEventStaffAssignmentMock(...args),
 }));
+jest.mock('@/server/organizationRoles', () => ({
+  ensureDefaultOrganizationRoles: (...args: any[]) => ensureDefaultOrganizationRolesMock(...args),
+}));
 
-import { POST } from '@/app/api/events/[eventId]/finance/staff/route';
+import { GET, POST } from '@/app/api/events/[eventId]/finance/staff/route';
 
 describe('POST /api/events/[eventId]/finance/staff', () => {
   beforeEach(() => {
@@ -49,6 +59,68 @@ describe('POST /api/events/[eventId]/finance/staff', () => {
       staffMemberId: 'staff_1',
       plannedMinutes: 120,
     });
+    prismaMock.staffMembers.findMany.mockResolvedValue([
+      {
+        id: 'staff_1',
+        userId: 'user_1',
+        roleId: 'role_staff',
+        types: ['STAFF'],
+      },
+    ]);
+    prismaMock.userData.findMany.mockResolvedValue([
+      {
+        id: 'user_1',
+        firstName: 'Alex',
+        lastName: 'Staff',
+        userName: 'alex.staff',
+      },
+    ]);
+    ensureDefaultOrganizationRolesMock.mockResolvedValue([
+      {
+        id: 'role_staff',
+        organizationId: 'org_1',
+        name: 'Staff',
+        kind: 'STAFF',
+        systemKey: 'STAFF',
+        isSystem: true,
+        isDefault: true,
+        permissions: [],
+      },
+    ]);
+  });
+
+  it('returns staff options for event managers', async () => {
+    const response = await GET(
+      new NextRequest('http://localhost/api/events/event_1/finance/staff'),
+      { params: Promise.resolve({ eventId: 'event_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(canManageEventMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'host_1' }),
+      expect.objectContaining({ id: 'event_1' }),
+      prismaMock,
+    );
+    expect(prismaMock.staffMembers.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org_1' },
+    }));
+    expect(ensureDefaultOrganizationRolesMock).toHaveBeenCalledWith(prismaMock, 'org_1');
+    expect(payload.staffMembers).toEqual([
+      expect.objectContaining({
+        id: 'staff_1',
+        userId: 'user_1',
+        roleId: 'role_staff',
+        roleName: 'Staff',
+        displayName: 'Alex Staff',
+      }),
+    ]);
+    expect(payload.staffRoles).toEqual([
+      expect.objectContaining({
+        id: 'role_staff',
+        name: 'Staff',
+      }),
+    ]);
   });
 
   it('creates event staff labor for event managers', async () => {

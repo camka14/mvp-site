@@ -150,6 +150,32 @@ describe('buildEventFinanceSummary', () => {
       }),
     ]));
   });
+
+  it('prorates salary labor using annual work hours', () => {
+    const summary = buildEventFinanceSummary({
+      eventId: 'event_salary',
+      staffLabor: [
+        {
+          id: 'salary_staff',
+          eventId: 'event_salary',
+          label: 'Salary Manager',
+          actualMinutes: 120,
+          rate: { wageType: 'SALARY', amountCents: 10400000 },
+          status: 'ACTUAL',
+        },
+      ],
+    });
+
+    expect(summary.actualCostCents).toBe(10000);
+    expect(summary.actualProfitCents).toBe(-10000);
+    expect(summary.lineItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'labor:salary_staff',
+        amountCents: -10000,
+        classification: 'labor_cost',
+      }),
+    ]));
+  });
 });
 
 describe('buildTeamFinanceSummary', () => {

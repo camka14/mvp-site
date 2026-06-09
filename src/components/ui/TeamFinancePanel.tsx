@@ -16,6 +16,7 @@ import {
   Table,
   Text,
   TextInput,
+  Title,
 } from '@mantine/core';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { formatBillAmount } from '@/types';
@@ -54,25 +55,27 @@ type FinanceWarning = {
   sourceId?: string | null;
 };
 
-type EventFinanceSummary = {
-  eventId: string;
+type TeamFinanceSummary = {
+  teamId: string;
+  eventTeamId?: string | null;
   actualRevenueCents: number;
   actualCostCents: number;
   actualProfitCents: number;
   futureCostCents: number;
-  potentialRevenueCents: number;
   projectedProfitCents: number;
+  eventRegistrationCostCents: number;
+  staffCostCents: number;
   lineItems: FinanceLineItem[];
   warnings: FinanceWarning[];
 };
 
-type EventFinanceResponse = {
-  finance: EventFinanceSummary;
+type TeamFinanceResponse = {
+  finance: TeamFinanceSummary;
 };
 
 type StaffLaborStatus = 'PLANNED' | 'ACTUAL';
 
-type EventFinanceStaffMemberOption = {
+type TeamFinanceStaffMemberOption = {
   id: string;
   userId?: string | null;
   roleId?: string | null;
@@ -81,31 +84,25 @@ type EventFinanceStaffMemberOption = {
   types: string[];
 };
 
-type EventFinanceStaffRoleOption = {
-  id: string;
-  name: string;
+type TeamFinanceStaffOptionsResponse = {
+  staffMembers: TeamFinanceStaffMemberOption[];
 };
 
-type EventFinanceStaffOptionsResponse = {
-  staffMembers: EventFinanceStaffMemberOption[];
-  staffRoles: EventFinanceStaffRoleOption[];
-};
-
-type EventFinancePanelProps = {
-  eventId: string;
+type TeamFinancePanelProps = {
+  teamId: string;
   organizationId?: string | null;
   isActive: boolean;
   canManage: boolean;
 };
 
-type MetricTone = 'green' | 'red' | 'yellow' | 'orange' | 'gray';
+type MetricTone = 'green' | 'red' | 'orange' | 'gray';
 
 const classificationLabels: Record<FinanceLineItemClassification, string> = {
   revenue: 'Revenue',
   refund: 'Refund',
   fee: 'Fee',
   labor_cost: 'Staff cost',
-  team_registration_cost: 'Team cost',
+  team_registration_cost: 'Registration cost',
   custom_cost: 'Custom cost',
   potential_revenue: 'Potential',
   warning: 'Warning',
@@ -226,7 +223,6 @@ function FinanceMetricCard({
   const toneClassName = {
     green: 'border-green-200 bg-green-50 text-green-800',
     red: 'border-red-200 bg-red-50 text-red-800',
-    yellow: 'border-yellow-200 bg-yellow-50 text-yellow-800',
     orange: 'border-orange-200 bg-orange-50 text-orange-800',
     gray: 'border-gray-200 bg-gray-50 text-gray-800',
   }[tone];
@@ -248,31 +244,40 @@ function FinanceMetricCard({
   );
 }
 
-function EventFinanceBar({ finance }: { finance: EventFinanceSummary }) {
+function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
   const maxValue = Math.max(
     finance.actualRevenueCents,
     finance.actualCostCents,
     Math.abs(finance.actualProfitCents),
+    finance.eventRegistrationCostCents,
+    finance.staffCostCents,
     finance.futureCostCents,
-    finance.potentialRevenueCents,
     1,
   );
   const rows = [
     {
-      label: 'Actual revenue',
+      label: 'Team revenue',
       amountCents: finance.actualRevenueCents,
+      displayCents: finance.actualRevenueCents,
       colorClassName: 'bg-green-500',
     },
     {
-      label: 'Actual costs',
+      label: 'Team costs',
       amountCents: finance.actualCostCents,
+      displayCents: -finance.actualCostCents,
       colorClassName: 'bg-red-500',
     },
     {
-      label: finance.actualProfitCents >= 0 ? 'Actual profit' : 'Actual loss',
-      amountCents: Math.abs(finance.actualProfitCents),
-      displayCents: finance.actualProfitCents,
-      colorClassName: finance.actualProfitCents >= 0 ? 'bg-green-600' : 'bg-red-600',
+      label: 'Event registrations',
+      amountCents: finance.eventRegistrationCostCents,
+      displayCents: -finance.eventRegistrationCostCents,
+      colorClassName: 'bg-red-500',
+    },
+    {
+      label: 'Staff costs',
+      amountCents: finance.staffCostCents,
+      displayCents: -finance.staffCostCents,
+      colorClassName: 'bg-red-600',
     },
     {
       label: 'Future costs',
@@ -281,9 +286,10 @@ function EventFinanceBar({ finance }: { finance: EventFinanceSummary }) {
       colorClassName: 'bg-orange-500',
     },
     {
-      label: 'Potential profit',
-      amountCents: finance.potentialRevenueCents,
-      colorClassName: 'bg-yellow-500',
+      label: finance.actualProfitCents >= 0 ? 'Actual profit' : 'Actual loss',
+      amountCents: Math.abs(finance.actualProfitCents),
+      displayCents: finance.actualProfitCents,
+      colorClassName: finance.actualProfitCents >= 0 ? 'bg-green-600' : 'bg-red-600',
     },
   ];
 
@@ -291,7 +297,7 @@ function EventFinanceBar({ finance }: { finance: EventFinanceSummary }) {
     <Paper withBorder radius="md" p="md">
       <Stack gap="sm">
         <Group justify="space-between" align="center">
-          <Text fw={700}>Profit analysis</Text>
+          <Text fw={700}>Team cost analysis</Text>
           <Badge color={finance.projectedProfitCents >= 0 ? 'green' : 'red'} variant="light">
             Projected {formatSignedAmount(finance.projectedProfitCents)}
           </Badge>
@@ -303,7 +309,7 @@ function EventFinanceBar({ finance }: { finance: EventFinanceSummary }) {
               <div key={row.label}>
                 <Group justify="space-between" mb={4}>
                   <Text size="xs" c="dimmed">{row.label}</Text>
-                  <Text size="xs" fw={700}>{formatSignedAmount(row.displayCents ?? row.amountCents)}</Text>
+                  <Text size="xs" fw={700}>{formatSignedAmount(row.displayCents)}</Text>
                 </Group>
                 <div className="h-2.5 w-full overflow-hidden rounded bg-gray-100">
                   <div className={`h-full rounded ${row.colorClassName}`} style={{ width }} />
@@ -322,10 +328,8 @@ function FinanceLineItemAmount({ item }: { item: FinanceLineItem }) {
     <Text
       fw={700}
       c={
-        item.classification === 'potential_revenue'
-          ? 'yellow.8'
-          : item.timing === 'FUTURE'
-            ? 'orange.7'
+        item.timing === 'FUTURE'
+          ? 'orange.7'
           : item.amountCents < 0
             ? 'red.7'
             : 'green.7'
@@ -336,13 +340,13 @@ function FinanceLineItemAmount({ item }: { item: FinanceLineItem }) {
   );
 }
 
-export default function EventFinancePanel({
-  eventId,
+export default function TeamFinancePanel({
+  teamId,
   organizationId,
   isActive,
   canManage,
-}: EventFinancePanelProps) {
-  const [finance, setFinance] = useState<EventFinanceSummary | null>(null);
+}: TeamFinancePanelProps) {
+  const [finance, setFinance] = useState<TeamFinanceSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [costCategory, setCostCategory] = useState('Operations');
@@ -355,12 +359,10 @@ export default function EventFinancePanel({
   const [savingCost, setSavingCost] = useState(false);
   const [costError, setCostError] = useState<string | null>(null);
   const [costInfo, setCostInfo] = useState<string | null>(null);
-  const [staffOptions, setStaffOptions] = useState<EventFinanceStaffMemberOption[]>([]);
-  const [staffRoleOptions, setStaffRoleOptions] = useState<EventFinanceStaffRoleOption[]>([]);
+  const [staffOptions, setStaffOptions] = useState<TeamFinanceStaffMemberOption[]>([]);
   const [staffOptionsLoading, setStaffOptionsLoading] = useState(false);
   const [staffOptionsError, setStaffOptionsError] = useState<string | null>(null);
   const [laborStaffMemberId, setLaborStaffMemberId] = useState<string | null>(null);
-  const [laborRoleId, setLaborRoleId] = useState<string | null>(null);
   const [laborStatus, setLaborStatus] = useState<StaffLaborStatus>('PLANNED');
   const [laborDate, setLaborDate] = useState(() => dateInputValue());
   const [laborStartTime, setLaborStartTime] = useState('09:00');
@@ -371,46 +373,43 @@ export default function EventFinancePanel({
   const [laborInfo, setLaborInfo] = useState<string | null>(null);
 
   const loadFinance = useCallback(async () => {
-    if (!eventId || !isActive) {
+    if (!teamId || !isActive || !organizationId) {
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const response = await apiRequest<EventFinanceResponse>(`/api/events/${eventId}/finance`);
+      const response = await apiRequest<TeamFinanceResponse>(`/api/teams/${teamId}/finance`);
       setFinance(response.finance);
     } catch (loadError) {
-      setError(messageForError(loadError, 'Failed to load event finance.'));
+      setError(messageForError(loadError, 'Failed to load team finance.'));
       setFinance(null);
     } finally {
       setLoading(false);
     }
-  }, [eventId, isActive]);
+  }, [isActive, organizationId, teamId]);
 
   useEffect(() => {
     void loadFinance();
   }, [loadFinance]);
 
   const loadStaffOptions = useCallback(async () => {
-    if (!eventId || !isActive || !canManage || !organizationId) {
+    if (!teamId || !isActive || !canManage || !organizationId) {
       return;
     }
     setStaffOptionsLoading(true);
     setStaffOptionsError(null);
     try {
-      const response = await apiRequest<EventFinanceStaffOptionsResponse>(`/api/events/${eventId}/finance/staff`);
+      const response = await apiRequest<TeamFinanceStaffOptionsResponse>(`/api/teams/${teamId}/finance/staff`);
       setStaffOptions(response.staffMembers);
-      setStaffRoleOptions(response.staffRoles);
       setLaborStaffMemberId((current) => current ?? response.staffMembers[0]?.id ?? null);
-      setLaborRoleId((current) => current ?? response.staffMembers[0]?.roleId ?? null);
     } catch (loadError) {
       setStaffOptionsError(messageForError(loadError, 'Failed to load staff options.'));
       setStaffOptions([]);
-      setStaffRoleOptions([]);
     } finally {
       setStaffOptionsLoading(false);
     }
-  }, [canManage, eventId, isActive, organizationId]);
+  }, [canManage, isActive, organizationId, teamId]);
 
   useEffect(() => {
     void loadStaffOptions();
@@ -427,11 +426,6 @@ export default function EventFinancePanel({
       staffMember.roleName ? `(${staffMember.roleName})` : '',
     ].filter(Boolean).join(' '),
   })), [staffOptions]);
-
-  const roleSelectData = useMemo(() => staffRoleOptions.map((role) => ({
-    value: role.id,
-    label: role.name,
-  })), [staffRoleOptions]);
 
   const sortedLineItems = useMemo(() => {
     if (!finance) {
@@ -458,7 +452,7 @@ export default function EventFinancePanel({
 
   const handleAddCost = async () => {
     if (!organizationId) {
-      setCostError('This event is not linked to an organization.');
+      setCostError('This team is not linked to an organization.');
       return;
     }
     const amountCents = centsFromDollars(costAmount);
@@ -480,8 +474,8 @@ export default function EventFinancePanel({
       await apiRequest(`/api/organizations/${organizationId}/finance/line-items`, {
         method: 'POST',
         body: {
-          scope: 'EVENT',
-          eventId,
+          scope: 'TEAM',
+          teamId,
           category: costCategory.trim(),
           title: costTitle.trim(),
           amountCents,
@@ -490,14 +484,14 @@ export default function EventFinancePanel({
           serviceEndAt,
         },
       });
-      setCostInfo('Cost added.');
+      setCostInfo('Team cost added.');
       setCostTitle('');
       setCostAmount('');
       setCostStartDate(dateInputValue());
       setCostEndDate('');
       await loadFinance();
     } catch (saveError) {
-      setCostError(messageForError(saveError, 'Failed to add cost.'));
+      setCostError(messageForError(saveError, 'Failed to add team cost.'));
     } finally {
       setSavingCost(false);
     }
@@ -507,7 +501,7 @@ export default function EventFinancePanel({
     const selectedStaffMember = selectedLaborStaffMember;
     const paidMinutes = positiveIntegerFromInput(laborMinutes);
     const serviceStart = dateTimeInputToIso(laborDate, laborStartTime);
-    if (!selectedStaffMember || paidMinutes <= 0 || !serviceStart) {
+    if (!selectedStaffMember || !selectedStaffMember.userId || paidMinutes <= 0 || !serviceStart) {
       setLaborError('Choose a staff member, date, start time, and paid minutes greater than 0.');
       return;
     }
@@ -517,12 +511,11 @@ export default function EventFinancePanel({
     setLaborError(null);
     setLaborInfo(null);
     try {
-      await apiRequest(`/api/events/${eventId}/finance/staff`, {
+      await apiRequest(`/api/teams/${teamId}/finance/staff`, {
         method: 'POST',
         body: {
           staffMemberId: selectedStaffMember.id,
-          organizationRoleId: laborRoleId || null,
-          userId: selectedStaffMember.userId ?? null,
+          userId: selectedStaffMember.userId,
           status: laborStatus,
           plannedStart: laborStatus === 'PLANNED' ? serviceStart : null,
           plannedEnd: laborStatus === 'PLANNED' ? serviceEnd : null,
@@ -533,12 +526,12 @@ export default function EventFinancePanel({
           notes: laborNotes.trim() || null,
         },
       });
-      setLaborInfo('Staff cost added.');
+      setLaborInfo('Team staff cost added.');
       setLaborMinutes('');
       setLaborNotes('');
       await loadFinance();
     } catch (saveError) {
-      setLaborError(messageForError(saveError, 'Failed to add staff cost.'));
+      setLaborError(messageForError(saveError, 'Failed to add team staff cost.'));
     } finally {
       setSavingLabor(false);
     }
@@ -551,9 +544,9 @@ export default function EventFinancePanel({
   if (!organizationId) {
     return (
       <Paper withBorder radius="md" p="xl" ta="center">
-        <Text fw={700}>Finance is available for organization events.</Text>
+        <Text fw={700}>Finance is available for organization teams.</Text>
         <Text size="sm" c="dimmed" mt={4}>
-          Link this event to an organization to track staff costs, custom costs, and profit analysis.
+          Link this team to an organization to track staff costs, event registration costs, and custom costs.
         </Text>
       </Paper>
     );
@@ -564,7 +557,7 @@ export default function EventFinancePanel({
       <Paper withBorder radius="md" p="xl">
         <Group justify="center" gap="sm">
           <Loader size="sm" />
-          <Text size="sm" c="dimmed">Loading finance analysis...</Text>
+          <Text size="sm" c="dimmed">Loading team finance...</Text>
         </Group>
       </Paper>
     );
@@ -587,24 +580,36 @@ export default function EventFinancePanel({
 
   return (
     <Stack gap="md">
+      <Group justify="space-between" align="flex-start">
+        <div>
+          <Title order={5}>Team Finance</Title>
+          <Text size="sm" c="dimmed">
+            Event registrations are treated as team costs. Staff labor and custom team costs update this analysis from dated records.
+          </Text>
+        </div>
+        <Button variant="light" onClick={() => void loadFinance()} loading={loading}>
+          Refresh
+        </Button>
+      </Group>
+
       {error && (
         <Alert color="red" radius="md" onClose={() => setError(null)} withCloseButton>
           {error}
         </Alert>
       )}
 
-      <SimpleGrid cols={{ base: 1, sm: 2, xl: 5 }} spacing="md">
+      <SimpleGrid cols={{ base: 1, sm: 2, xl: 6 }} spacing="md">
         <FinanceMetricCard
           label="Revenue"
           amountCents={finance.actualRevenueCents}
           tone="green"
-          description="Paid registration and event revenue after confirmed payments."
+          description="Confirmed team revenue attributed to this team."
         />
         <FinanceMetricCard
           label="Costs"
           amountCents={-finance.actualCostCents}
           tone="red"
-          description="Staff labor, payment fees, refunds, and custom costs."
+          description="Event registration costs, staff labor, fees, and custom costs."
         />
         <FinanceMetricCard
           label={finance.actualProfitCents >= 0 ? 'Profit' : 'Loss'}
@@ -613,27 +618,33 @@ export default function EventFinancePanel({
           description="Confirmed revenue minus actual costs."
         />
         <FinanceMetricCard
+          label="Event registrations"
+          amountCents={-finance.eventRegistrationCostCents}
+          tone="red"
+          description="Team registration bills net of refunds."
+        />
+        <FinanceMetricCard
+          label="Staff costs"
+          amountCents={-finance.staffCostCents}
+          tone="red"
+          description="Calculated from staff wage history and team labor records."
+        />
+        <FinanceMetricCard
           label="Future costs"
           amountCents={-finance.futureCostCents}
           tone="orange"
           description="Dated costs that have not started yet."
         />
-        <FinanceMetricCard
-          label="Potential profit"
-          amountCents={finance.potentialRevenueCents}
-          tone="yellow"
-          description="Open participant capacity valued at the current event price."
-        />
       </SimpleGrid>
 
-      <EventFinanceBar finance={finance} />
+      <TeamFinanceBar finance={finance} />
 
       <Paper withBorder radius="md" p="md">
         <Group justify="space-between" align="flex-start" mb="sm">
           <div>
             <Text fw={700}>Projected outcome</Text>
             <Text size="sm" c="dimmed">
-              Actual profit plus potential open-spot revenue, minus future costs.
+              Actual profit minus future team costs.
             </Text>
           </div>
           <Badge color={projectedProfitTone} variant="filled" size="lg">
@@ -656,21 +667,16 @@ export default function EventFinancePanel({
 
       <Paper withBorder radius="md" p="md">
         <Stack gap="md">
-          <Group justify="space-between" align="center">
-            <div>
-              <Text fw={700}>Line items</Text>
-              <Text size="sm" c="dimmed">
-                Generated rows update from registrations, refunds, fees, staff costs, and custom event costs.
-              </Text>
-            </div>
-            <Button variant="light" onClick={() => void loadFinance()} loading={loading}>
-              Refresh
-            </Button>
-          </Group>
+          <div>
+            <Text fw={700}>Line items</Text>
+            <Text size="sm" c="dimmed">
+              Generated rows update from team registration bills, refunds, fees, staff costs, and custom team costs.
+            </Text>
+          </div>
 
           {sortedLineItems.length === 0 ? (
             <Paper withBorder radius="md" p="xl" ta="center">
-              <Text>No finance line items yet.</Text>
+              <Text>No team finance line items yet.</Text>
             </Paper>
           ) : (
             <>
@@ -772,9 +778,9 @@ export default function EventFinancePanel({
           <Paper withBorder radius="md" p="md">
             <Stack gap="md">
               <div>
-                <Text fw={700}>Add staff cost</Text>
+                <Text fw={700}>Add team staff cost</Text>
                 <Text size="sm" c="dimmed">
-                  Assign organization staff to this event.
+                  Assign organization staff time to this team.
                 </Text>
               </div>
               {laborError && (
@@ -808,19 +814,8 @@ export default function EventFinancePanel({
                       label="Staff member"
                       data={staffSelectData}
                       value={laborStaffMemberId}
-                      onChange={(value) => {
-                        const nextStaffMember = staffOptions.find((staffMember) => staffMember.id === value);
-                        setLaborStaffMemberId(value);
-                        setLaborRoleId(nextStaffMember?.roleId ?? null);
-                      }}
+                      onChange={setLaborStaffMemberId}
                       searchable
-                    />
-                    <Select
-                      label="Role"
-                      data={roleSelectData}
-                      value={laborRoleId}
-                      onChange={setLaborRoleId}
-                      clearable
                     />
                     <Select
                       label="Status"
@@ -832,14 +827,14 @@ export default function EventFinancePanel({
                       onChange={(value) => setLaborStatus(value === 'ACTUAL' ? 'ACTUAL' : 'PLANNED')}
                       allowDeselect={false}
                     />
-                  </SimpleGrid>
-                  <SimpleGrid cols={{ base: 1, md: 4 }} spacing="md">
                     <TextInput
                       label="Labor date"
                       type="date"
                       value={laborDate}
                       onChange={(event) => setLaborDate(event.currentTarget.value)}
                     />
+                  </SimpleGrid>
+                  <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
                     <TextInput
                       label="Start time"
                       type="time"
@@ -872,9 +867,9 @@ export default function EventFinancePanel({
           <Paper withBorder radius="md" p="md">
             <Stack gap="md">
               <div>
-                <Text fw={700}>Add custom event cost</Text>
+                <Text fw={700}>Add custom team cost</Text>
                 <Text size="sm" c="dimmed">
-                  Use this for one-off costs such as supplies, awards, permits, external rentals, or cleanup.
+                  Use this for one-off team costs such as uniforms, training, travel, or equipment.
                 </Text>
               </div>
               {costError && (
@@ -890,13 +885,13 @@ export default function EventFinancePanel({
               <SimpleGrid cols={{ base: 1, md: 5 }} spacing="md">
                 <TextInput
                   label="Title"
-                  placeholder="Field rental"
+                  placeholder="Uniform order"
                   value={costTitle}
                   onChange={(event) => setCostTitle(event.currentTarget.value)}
                 />
                 <TextInput
                   label="Category"
-                  placeholder="Operations"
+                  placeholder="Equipment"
                   value={costCategory}
                   onChange={(event) => setCostCategory(event.currentTarget.value)}
                 />

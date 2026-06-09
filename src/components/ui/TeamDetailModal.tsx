@@ -16,6 +16,7 @@ import {
     inferDivisionDetails,
 } from '@/lib/divisionTypes';
 import { ImageSelectionModal } from './ImageSelectionModal';
+import TeamFinancePanel from './TeamFinancePanel';
 import TeamRegistrationFlow from './TeamRegistrationFlow';
 import { type PaymentEventSummary } from './PaymentModal';
 
@@ -1818,6 +1819,17 @@ export default function TeamDetailModal({
                             <Text c="dimmed">Pending Invites</Text>
                         </Paper>
                     </SimpleGrid>
+
+                    {canManageTeam && currentTeam.organizationId && (
+                        <div className="mb-6">
+                            <TeamFinancePanel
+                                teamId={currentTeam.$id}
+                                organizationId={currentTeam.organizationId}
+                                isActive={isOpen}
+                                canManage={canManageTeam}
+                            />
+                        </div>
+                    )}
 
                     {canManageTeam && (
                         <div className="mb-6">

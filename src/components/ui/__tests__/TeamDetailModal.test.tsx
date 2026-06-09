@@ -32,6 +32,10 @@ jest.mock('@/lib/teamService', () => ({
     inviteUserToTeamRole: jest.fn(),
     inviteEmailToTeamRole: jest.fn(),
     getTeamById: jest.fn(),
+    getRegistrationQuestions: jest.fn(),
+    getTeamJoinRequestContext: jest.fn(),
+    listTeamJoinRequests: jest.fn(),
+    requestToJoinTeam: jest.fn(),
     registerSelfForTeam: jest.fn(),
     registerChildForTeam: jest.fn(),
   },
@@ -72,6 +76,10 @@ const teamServiceMock = jest.requireMock('@/lib/teamService').teamService as {
   inviteUserToTeamRole: jest.Mock;
   inviteEmailToTeamRole: jest.Mock;
   getTeamById: jest.Mock;
+  getRegistrationQuestions: jest.Mock;
+  getTeamJoinRequestContext: jest.Mock;
+  listTeamJoinRequests: jest.Mock;
+  requestToJoinTeam: jest.Mock;
   registerSelfForTeam: jest.Mock;
   registerChildForTeam: jest.Mock;
 };
@@ -93,6 +101,10 @@ describe('TeamDetailModal', () => {
     teamServiceMock.inviteUserToTeamRole.mockReset();
     teamServiceMock.inviteEmailToTeamRole.mockReset();
     teamServiceMock.getTeamById.mockReset();
+    teamServiceMock.getRegistrationQuestions.mockReset();
+    teamServiceMock.getTeamJoinRequestContext.mockReset();
+    teamServiceMock.listTeamJoinRequests.mockReset();
+    teamServiceMock.requestToJoinTeam.mockReset();
     teamServiceMock.registerSelfForTeam.mockReset();
     teamServiceMock.registerChildForTeam.mockReset();
     familyServiceMock.listChildren.mockReset();
@@ -111,6 +123,19 @@ describe('TeamDetailModal', () => {
     teamServiceMock.inviteUserToTeamRole.mockResolvedValue(true);
     teamServiceMock.inviteEmailToTeamRole.mockResolvedValue(true);
     teamServiceMock.getTeamById.mockResolvedValue(undefined);
+    teamServiceMock.getRegistrationQuestions.mockResolvedValue([]);
+    teamServiceMock.getTeamJoinRequestContext.mockResolvedValue({
+      questions: [],
+      currentRequest: null,
+      joinPolicy: 'CLOSED',
+      openRegistration: false,
+      registrationPriceCents: 0,
+    });
+    teamServiceMock.listTeamJoinRequests.mockResolvedValue([]);
+    teamServiceMock.requestToJoinTeam.mockResolvedValue({
+      id: 'request_1',
+      status: 'PENDING',
+    });
     teamServiceMock.registerSelfForTeam.mockResolvedValue({});
     teamServiceMock.registerChildForTeam.mockResolvedValue({});
     familyServiceMock.listChildren.mockResolvedValue([]);
@@ -204,6 +229,13 @@ describe('TeamDetailModal', () => {
       }],
       teamSize: 1,
     });
+    teamServiceMock.getTeamJoinRequestContext.mockResolvedValueOnce({
+      questions: [],
+      currentRequest: null,
+      joinPolicy: 'OPEN_REGISTRATION',
+      openRegistration: true,
+      registrationPriceCents: 2500,
+    });
 
     renderWithMantine(
       <TeamDetailModal
@@ -251,6 +283,13 @@ describe('TeamDetailModal', () => {
       openRegistration: true,
     });
     teamServiceMock.getTeamById.mockResolvedValue(canonicalTeam);
+    teamServiceMock.getTeamJoinRequestContext.mockResolvedValueOnce({
+      questions: [],
+      currentRequest: null,
+      joinPolicy: 'OPEN_REGISTRATION',
+      openRegistration: true,
+      registrationPriceCents: 0,
+    });
     teamServiceMock.registerSelfForTeam.mockResolvedValue({
       registrationId: 'team_1__player_1',
       status: 'ACTIVE',
@@ -278,9 +317,9 @@ describe('TeamDetailModal', () => {
     fireEvent.click(await screen.findByRole('button', { name: /join team/i }));
 
     await waitFor(() => {
-      expect(teamServiceMock.registerSelfForTeam).toHaveBeenCalledWith('team_1');
+      expect(teamServiceMock.registerSelfForTeam.mock.calls.some(([teamId]) => teamId === 'team_1')).toBe(true);
     });
-    expect(teamServiceMock.registerSelfForTeam).not.toHaveBeenCalledWith('event_team_1');
+    expect(teamServiceMock.registerSelfForTeam.mock.calls.some(([teamId]) => teamId === 'event_team_1')).toBe(false);
   });
 
   it('prechecks source event teams when selecting a free-agent invite', async () => {
