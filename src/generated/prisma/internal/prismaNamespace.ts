@@ -397,6 +397,11 @@ export const ModelName = {
   StaffMembers: 'StaffMembers',
   OrganizationRoles: 'OrganizationRoles',
   OrganizationRolePermissions: 'OrganizationRolePermissions',
+  OrganizationRoleCompensationRates: 'OrganizationRoleCompensationRates',
+  StaffCompensationRates: 'StaffCompensationRates',
+  EventStaffAssignments: 'EventStaffAssignments',
+  TeamStaffLaborEntries: 'TeamStaffLaborEntries',
+  FinancialLineItems: 'FinancialLineItems',
   EventOfficials: 'EventOfficials',
   Teams: 'Teams',
   CanonicalTeams: 'CanonicalTeams',
@@ -448,7 +453,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1411,6 +1416,376 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.OrganizationRolePermissionsCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.OrganizationRolePermissionsCountAggregateOutputType> | number
+        }
+      }
+    }
+    OrganizationRoleCompensationRates: {
+      payload: Prisma.$OrganizationRoleCompensationRatesPayload<ExtArgs>
+      fields: Prisma.OrganizationRoleCompensationRatesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationRoleCompensationRatesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationRoleCompensationRatesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationRoleCompensationRatesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationRoleCompensationRatesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationRoleCompensationRatesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationRoleCompensationRatesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationRoleCompensationRatesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationRoleCompensationRatesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationRoleCompensationRatesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>
+        }
+        update: {
+          args: Prisma.OrganizationRoleCompensationRatesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationRoleCompensationRatesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationRoleCompensationRatesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationRoleCompensationRatesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationRoleCompensationRatesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationRoleCompensationRatesPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationRoleCompensationRatesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationRoleCompensationRates>
+        }
+        groupBy: {
+          args: Prisma.OrganizationRoleCompensationRatesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationRoleCompensationRatesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationRoleCompensationRatesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationRoleCompensationRatesCountAggregateOutputType> | number
+        }
+      }
+    }
+    StaffCompensationRates: {
+      payload: Prisma.$StaffCompensationRatesPayload<ExtArgs>
+      fields: Prisma.StaffCompensationRatesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.StaffCompensationRatesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.StaffCompensationRatesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>
+        }
+        findFirst: {
+          args: Prisma.StaffCompensationRatesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.StaffCompensationRatesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>
+        }
+        findMany: {
+          args: Prisma.StaffCompensationRatesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>[]
+        }
+        create: {
+          args: Prisma.StaffCompensationRatesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>
+        }
+        createMany: {
+          args: Prisma.StaffCompensationRatesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.StaffCompensationRatesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>[]
+        }
+        delete: {
+          args: Prisma.StaffCompensationRatesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>
+        }
+        update: {
+          args: Prisma.StaffCompensationRatesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>
+        }
+        deleteMany: {
+          args: Prisma.StaffCompensationRatesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.StaffCompensationRatesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.StaffCompensationRatesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>[]
+        }
+        upsert: {
+          args: Prisma.StaffCompensationRatesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$StaffCompensationRatesPayload>
+        }
+        aggregate: {
+          args: Prisma.StaffCompensationRatesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateStaffCompensationRates>
+        }
+        groupBy: {
+          args: Prisma.StaffCompensationRatesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StaffCompensationRatesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.StaffCompensationRatesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.StaffCompensationRatesCountAggregateOutputType> | number
+        }
+      }
+    }
+    EventStaffAssignments: {
+      payload: Prisma.$EventStaffAssignmentsPayload<ExtArgs>
+      fields: Prisma.EventStaffAssignmentsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.EventStaffAssignmentsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.EventStaffAssignmentsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>
+        }
+        findFirst: {
+          args: Prisma.EventStaffAssignmentsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.EventStaffAssignmentsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>
+        }
+        findMany: {
+          args: Prisma.EventStaffAssignmentsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>[]
+        }
+        create: {
+          args: Prisma.EventStaffAssignmentsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>
+        }
+        createMany: {
+          args: Prisma.EventStaffAssignmentsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.EventStaffAssignmentsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>[]
+        }
+        delete: {
+          args: Prisma.EventStaffAssignmentsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>
+        }
+        update: {
+          args: Prisma.EventStaffAssignmentsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>
+        }
+        deleteMany: {
+          args: Prisma.EventStaffAssignmentsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.EventStaffAssignmentsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.EventStaffAssignmentsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>[]
+        }
+        upsert: {
+          args: Prisma.EventStaffAssignmentsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$EventStaffAssignmentsPayload>
+        }
+        aggregate: {
+          args: Prisma.EventStaffAssignmentsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateEventStaffAssignments>
+        }
+        groupBy: {
+          args: Prisma.EventStaffAssignmentsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventStaffAssignmentsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.EventStaffAssignmentsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.EventStaffAssignmentsCountAggregateOutputType> | number
+        }
+      }
+    }
+    TeamStaffLaborEntries: {
+      payload: Prisma.$TeamStaffLaborEntriesPayload<ExtArgs>
+      fields: Prisma.TeamStaffLaborEntriesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.TeamStaffLaborEntriesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.TeamStaffLaborEntriesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>
+        }
+        findFirst: {
+          args: Prisma.TeamStaffLaborEntriesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.TeamStaffLaborEntriesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>
+        }
+        findMany: {
+          args: Prisma.TeamStaffLaborEntriesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>[]
+        }
+        create: {
+          args: Prisma.TeamStaffLaborEntriesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>
+        }
+        createMany: {
+          args: Prisma.TeamStaffLaborEntriesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.TeamStaffLaborEntriesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>[]
+        }
+        delete: {
+          args: Prisma.TeamStaffLaborEntriesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>
+        }
+        update: {
+          args: Prisma.TeamStaffLaborEntriesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>
+        }
+        deleteMany: {
+          args: Prisma.TeamStaffLaborEntriesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.TeamStaffLaborEntriesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.TeamStaffLaborEntriesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>[]
+        }
+        upsert: {
+          args: Prisma.TeamStaffLaborEntriesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$TeamStaffLaborEntriesPayload>
+        }
+        aggregate: {
+          args: Prisma.TeamStaffLaborEntriesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateTeamStaffLaborEntries>
+        }
+        groupBy: {
+          args: Prisma.TeamStaffLaborEntriesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamStaffLaborEntriesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.TeamStaffLaborEntriesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.TeamStaffLaborEntriesCountAggregateOutputType> | number
+        }
+      }
+    }
+    FinancialLineItems: {
+      payload: Prisma.$FinancialLineItemsPayload<ExtArgs>
+      fields: Prisma.FinancialLineItemsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.FinancialLineItemsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.FinancialLineItemsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>
+        }
+        findFirst: {
+          args: Prisma.FinancialLineItemsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.FinancialLineItemsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>
+        }
+        findMany: {
+          args: Prisma.FinancialLineItemsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>[]
+        }
+        create: {
+          args: Prisma.FinancialLineItemsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>
+        }
+        createMany: {
+          args: Prisma.FinancialLineItemsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.FinancialLineItemsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>[]
+        }
+        delete: {
+          args: Prisma.FinancialLineItemsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>
+        }
+        update: {
+          args: Prisma.FinancialLineItemsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>
+        }
+        deleteMany: {
+          args: Prisma.FinancialLineItemsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.FinancialLineItemsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.FinancialLineItemsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>[]
+        }
+        upsert: {
+          args: Prisma.FinancialLineItemsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$FinancialLineItemsPayload>
+        }
+        aggregate: {
+          args: Prisma.FinancialLineItemsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateFinancialLineItems>
+        }
+        groupBy: {
+          args: Prisma.FinancialLineItemsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FinancialLineItemsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.FinancialLineItemsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.FinancialLineItemsCountAggregateOutputType> | number
         }
       }
     }
@@ -4420,6 +4795,119 @@ export const OrganizationRolePermissionsScalarFieldEnum = {
 export type OrganizationRolePermissionsScalarFieldEnum = (typeof OrganizationRolePermissionsScalarFieldEnum)[keyof typeof OrganizationRolePermissionsScalarFieldEnum]
 
 
+export const OrganizationRoleCompensationRatesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  organizationRoleId: 'organizationRoleId',
+  wageType: 'wageType',
+  amountCents: 'amountCents',
+  effectiveFrom: 'effectiveFrom',
+  effectiveTo: 'effectiveTo',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type OrganizationRoleCompensationRatesScalarFieldEnum = (typeof OrganizationRoleCompensationRatesScalarFieldEnum)[keyof typeof OrganizationRoleCompensationRatesScalarFieldEnum]
+
+
+export const StaffCompensationRatesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  staffMemberId: 'staffMemberId',
+  wageType: 'wageType',
+  amountCents: 'amountCents',
+  effectiveFrom: 'effectiveFrom',
+  effectiveTo: 'effectiveTo',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type StaffCompensationRatesScalarFieldEnum = (typeof StaffCompensationRatesScalarFieldEnum)[keyof typeof StaffCompensationRatesScalarFieldEnum]
+
+
+export const EventStaffAssignmentsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  eventId: 'eventId',
+  staffMemberId: 'staffMemberId',
+  organizationRoleId: 'organizationRoleId',
+  userId: 'userId',
+  plannedStart: 'plannedStart',
+  plannedEnd: 'plannedEnd',
+  actualStart: 'actualStart',
+  actualEnd: 'actualEnd',
+  plannedMinutes: 'plannedMinutes',
+  actualMinutes: 'actualMinutes',
+  rateOverrideType: 'rateOverrideType',
+  rateOverrideCents: 'rateOverrideCents',
+  status: 'status',
+  notes: 'notes',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type EventStaffAssignmentsScalarFieldEnum = (typeof EventStaffAssignmentsScalarFieldEnum)[keyof typeof EventStaffAssignmentsScalarFieldEnum]
+
+
+export const TeamStaffLaborEntriesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  teamId: 'teamId',
+  eventTeamId: 'eventTeamId',
+  eventId: 'eventId',
+  staffMemberId: 'staffMemberId',
+  userId: 'userId',
+  teamStaffAssignmentId: 'teamStaffAssignmentId',
+  eventTeamStaffAssignmentId: 'eventTeamStaffAssignmentId',
+  plannedStart: 'plannedStart',
+  plannedEnd: 'plannedEnd',
+  actualStart: 'actualStart',
+  actualEnd: 'actualEnd',
+  plannedMinutes: 'plannedMinutes',
+  actualMinutes: 'actualMinutes',
+  rateOverrideType: 'rateOverrideType',
+  rateOverrideCents: 'rateOverrideCents',
+  status: 'status',
+  notes: 'notes',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type TeamStaffLaborEntriesScalarFieldEnum = (typeof TeamStaffLaborEntriesScalarFieldEnum)[keyof typeof TeamStaffLaborEntriesScalarFieldEnum]
+
+
+export const FinancialLineItemsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  eventId: 'eventId',
+  teamId: 'teamId',
+  eventTeamId: 'eventTeamId',
+  scope: 'scope',
+  category: 'category',
+  title: 'title',
+  description: 'description',
+  amountCents: 'amountCents',
+  quantity: 'quantity',
+  unitLabel: 'unitLabel',
+  status: 'status',
+  occurredAt: 'occurredAt',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type FinancialLineItemsScalarFieldEnum = (typeof FinancialLineItemsScalarFieldEnum)[keyof typeof FinancialLineItemsScalarFieldEnum]
+
+
 export const EventOfficialsScalarFieldEnum = {
   id: 'id',
   createdAt: 'createdAt',
@@ -5398,6 +5886,62 @@ export type ListEnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel> = F
 
 
 /**
+ * Reference to a field of type 'CompensationWageTypeEnum'
+ */
+export type EnumCompensationWageTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'CompensationWageTypeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'CompensationWageTypeEnum[]'
+ */
+export type ListEnumCompensationWageTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'CompensationWageTypeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'StaffLaborStatusEnum'
+ */
+export type EnumStaffLaborStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StaffLaborStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'StaffLaborStatusEnum[]'
+ */
+export type ListEnumStaffLaborStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StaffLaborStatusEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'FinancialLineItemScopeEnum'
+ */
+export type EnumFinancialLineItemScopeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FinancialLineItemScopeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'FinancialLineItemScopeEnum[]'
+ */
+export type ListEnumFinancialLineItemScopeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FinancialLineItemScopeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'FinancialLineItemStatusEnum'
+ */
+export type EnumFinancialLineItemStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FinancialLineItemStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'FinancialLineItemStatusEnum[]'
+ */
+export type ListEnumFinancialLineItemStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FinancialLineItemStatusEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'EventTeamsKindEnum'
  */
 export type EnumEventTeamsKindEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'EventTeamsKindEnum'>
@@ -5994,6 +6538,11 @@ export type GlobalOmitConfig = {
   staffMembers?: Prisma.StaffMembersOmit
   organizationRoles?: Prisma.OrganizationRolesOmit
   organizationRolePermissions?: Prisma.OrganizationRolePermissionsOmit
+  organizationRoleCompensationRates?: Prisma.OrganizationRoleCompensationRatesOmit
+  staffCompensationRates?: Prisma.StaffCompensationRatesOmit
+  eventStaffAssignments?: Prisma.EventStaffAssignmentsOmit
+  teamStaffLaborEntries?: Prisma.TeamStaffLaborEntriesOmit
+  financialLineItems?: Prisma.FinancialLineItemsOmit
   eventOfficials?: Prisma.EventOfficialsOmit
   teams?: Prisma.TeamsOmit
   canonicalTeams?: Prisma.CanonicalTeamsOmit

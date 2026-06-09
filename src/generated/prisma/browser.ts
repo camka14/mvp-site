@@ -83,6 +83,31 @@ export type OrganizationRoles = Prisma.OrganizationRolesModel
  */
 export type OrganizationRolePermissions = Prisma.OrganizationRolePermissionsModel
 /**
+ * Model OrganizationRoleCompensationRates
+ *
+ */
+export type OrganizationRoleCompensationRates = Prisma.OrganizationRoleCompensationRatesModel
+/**
+ * Model StaffCompensationRates
+ *
+ */
+export type StaffCompensationRates = Prisma.StaffCompensationRatesModel
+/**
+ * Model EventStaffAssignments
+ *
+ */
+export type EventStaffAssignments = Prisma.EventStaffAssignmentsModel
+/**
+ * Model TeamStaffLaborEntries
+ *
+ */
+export type TeamStaffLaborEntries = Prisma.TeamStaffLaborEntriesModel
+/**
+ * Model FinancialLineItems
+ *
+ */
+export type FinancialLineItems = Prisma.FinancialLineItemsModel
+/**
  * Model EventOfficials
  *
  */

@@ -213,6 +213,33 @@ enum EventTeamStaffAssignmentsStatusEnum {
   CANCELLED
 }
 
+enum CompensationWageTypeEnum {
+  HOURLY
+  SALARY
+  FLAT_PER_EVENT
+}
+
+enum StaffLaborStatusEnum {
+  PLANNED
+  ACTUAL
+  CANCELLED
+}
+
+enum FinancialLineItemScopeEnum {
+  ORGANIZATION
+  EVENT
+  TEAM
+  EVENT_TEAM
+}
+
+enum FinancialLineItemStatusEnum {
+  ESTIMATED
+  APPROVED
+  ACTUAL
+  PAID
+  VOID
+}
+
 enum DivisionsKindEnum {
   LEAGUE
   PLAYOFF
@@ -570,6 +597,139 @@ model OrganizationRolePermissions {
   @@unique([organizationRoleId, permission])
   @@index([organizationRoleId])
   @@index([permission])
+}
+
+model OrganizationRoleCompensationRates {
+  id                 String                   @id
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  organizationId     String
+  organizationRoleId String
+  wageType           CompensationWageTypeEnum
+  amountCents        Int
+  effectiveFrom      DateTime
+  effectiveTo        DateTime?
+  createdBy          String?
+  updatedBy          String?
+
+  @@index([organizationId])
+  @@index([organizationRoleId])
+  @@index([organizationRoleId, effectiveFrom], map: "OrgRoleCompRates_role_effectiveFrom_idx")
+  @@index([organizationRoleId, effectiveTo], map: "OrgRoleCompRates_role_effectiveTo_idx")
+}
+
+model StaffCompensationRates {
+  id             String                   @id
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+  organizationId String
+  staffMemberId  String
+  wageType       CompensationWageTypeEnum
+  amountCents    Int
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  createdBy      String?
+  updatedBy      String?
+
+  @@index([organizationId])
+  @@index([staffMemberId])
+  @@index([staffMemberId, effectiveFrom])
+  @@index([staffMemberId, effectiveTo])
+}
+
+model EventStaffAssignments {
+  id                 String                   @id
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  organizationId     String
+  eventId            String
+  staffMemberId      String
+  organizationRoleId String?
+  userId             String?
+  plannedStart       DateTime?
+  plannedEnd         DateTime?
+  actualStart        DateTime?
+  actualEnd          DateTime?
+  plannedMinutes     Int?
+  actualMinutes      Int?
+  rateOverrideType   CompensationWageTypeEnum?
+  rateOverrideCents  Int?
+  status             StaffLaborStatusEnum     @default(PLANNED)
+  notes              String?
+  createdBy          String?
+  updatedBy          String?
+
+  @@index([organizationId])
+  @@index([eventId])
+  @@index([staffMemberId])
+  @@index([organizationRoleId])
+  @@index([status])
+}
+
+model TeamStaffLaborEntries {
+  id                         String                   @id
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  organizationId             String
+  teamId                     String?
+  eventTeamId                String?
+  eventId                    String?
+  staffMemberId              String?
+  userId                     String
+  teamStaffAssignmentId      String?
+  eventTeamStaffAssignmentId String?
+  plannedStart               DateTime?
+  plannedEnd                 DateTime?
+  actualStart                DateTime?
+  actualEnd                  DateTime?
+  plannedMinutes             Int?
+  actualMinutes              Int?
+  rateOverrideType           CompensationWageTypeEnum?
+  rateOverrideCents          Int?
+  status                     StaffLaborStatusEnum     @default(PLANNED)
+  notes                      String?
+  createdBy                  String?
+  updatedBy                  String?
+
+  @@index([organizationId])
+  @@index([teamId])
+  @@index([eventTeamId])
+  @@index([eventId])
+  @@index([staffMemberId])
+  @@index([userId])
+  @@index([teamStaffAssignmentId])
+  @@index([eventTeamStaffAssignmentId])
+  @@index([status])
+}
+
+model FinancialLineItems {
+  id             String                      @id
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  organizationId String
+  eventId        String?
+  teamId         String?
+  eventTeamId    String?
+  scope          FinancialLineItemScopeEnum
+  category       String
+  title          String
+  description    String?
+  amountCents    Int
+  quantity       Float?
+  unitLabel      String?
+  status         FinancialLineItemStatusEnum @default(ACTUAL)
+  occurredAt     DateTime?
+  createdBy      String?
+  updatedBy      String?
+
+  @@index([organizationId])
+  @@index([eventId])
+  @@index([teamId])
+  @@index([eventTeamId])
+  @@index([scope])
+  @@index([category])
+  @@index([status])
+  @@index([occurredAt])
 }
 
 model EventOfficials {
