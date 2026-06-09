@@ -748,6 +748,7 @@ function OrganizationDetailContent() {
   const canManageStaff = viewerHasPermission(ORG_PERMISSIONS.STAFF_MANAGE);
   const canManageRoles = viewerHasPermission(ORG_PERMISSIONS.ROLES_MANAGE);
   const canManageStaffSurface = canManageStaff || canManageRoles;
+  const canManageStaffCompensation = canManageStaff && viewerHasPermission(ORG_PERMISSIONS.BILLING_MANAGE);
   const canManageTemplates = viewerHasPermission(ORG_PERMISSIONS.TEMPLATES_MANAGE);
   const canManageRefunds = viewerHasPermission(ORG_PERMISSIONS.REFUNDS_MANAGE);
   const canManagePublicPage = viewerHasPermission(ORG_PERMISSIONS.ORGANIZATION_MANAGE);
@@ -949,6 +950,7 @@ function OrganizationDetailContent() {
       seen.add(staffMember.userId);
       entries.push({
         id: staffMember.$id,
+        staffMemberId: staffMember.$id,
         userId: staffMember.userId,
         fullName: userDisplayName(userEntry, staffMember.userId),
         userName: userEntry?.userName || null,
@@ -3922,6 +3924,8 @@ function OrganizationDetailContent() {
                 onRoleChange={(entryUserId, roleId) => handleUpdateStaffRole(entryUserId, roleId)}
                 onCreateRole={(name, permissions) => handleCreateStaffRole(name, permissions)}
                 onUpdateRole={(roleId, data) => handleUpdateStaffRoleDefinition(roleId, data)}
+                organizationId={org.$id}
+                canManageCompensation={canManageStaffCompensation}
               />
             )}
 

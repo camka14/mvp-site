@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Badge,
   Button,
   Checkbox,
   Group,
   Loader,
+  NumberInput,
   Paper,
   Select,
   SegmentedControl,
@@ -19,9 +21,10 @@ import {
 } from '@mantine/core';
 import { Plus } from 'lucide-react';
 import UserCard from '@/components/ui/UserCard';
+import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { ORGANIZATION_PERMISSION_OPTIONS } from '@/lib/organizationPermissions';
 import { getStaffMemberTypesForOrganizationRole } from '@/lib/staff';
-import type { OrganizationRole, StaffMemberType, UserData } from '@/types';
+import { formatBillAmount, type OrganizationRole, type StaffMemberType, type UserData } from '@/types';
 
 export type RoleRosterStatus = 'active' | 'pending' | 'declined';
 
@@ -35,6 +38,7 @@ export type RoleInviteRow = {
 
 export type RoleRosterEntry = {
   id: string;
+  staffMemberId?: string | null;
   userId: string;
   fullName: string;
   userName: string | null;
@@ -67,9 +71,35 @@ type RoleRosterManagerProps = {
   onRoleChange: (userId: string, roleId: string) => Promise<void> | void;
   onCreateRole: (name: string, permissions: string[]) => Promise<void> | void;
   onUpdateRole: (roleId: string, data: { name?: string; permissions?: string[] }) => Promise<void> | void;
+  organizationId?: string | null;
+  canManageCompensation?: boolean;
 };
 
-type ManagerView = 'staff' | 'roles';
+type ManagerView = 'staff' | 'roles' | 'compensation';
+type CompensationWageType = 'HOURLY' | 'SALARY' | 'FLAT_PER_EVENT';
+
+type CompensationRate = {
+  id: string;
+  organizationId: string;
+  organizationRoleId?: string | null;
+  staffMemberId?: string | null;
+  wageType: CompensationWageType;
+  amountCents: number;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+};
+
+type CompensationRatesResponse = {
+  roleRates: CompensationRate[];
+  staffRates: CompensationRate[];
+};
+
+type CompensationDraft = {
+  wageType: CompensationWageType;
+  amount: string | number;
+  effectiveFrom: string;
+  effectiveTo: string;
+};
 
 type DraftRole = {
   clientId: string;
@@ -86,6 +116,12 @@ const STAFF_TYPE_OPTIONS = [
   { value: 'OFFICIAL', label: 'Official' },
   { value: 'STAFF', label: 'Staff' },
 ] satisfies Array<{ value: StaffMemberType; label: string }>;
+
+const WAGE_TYPE_OPTIONS = [
+  { value: 'HOURLY', label: 'Hourly' },
+  { value: 'SALARY', label: 'Salary' },
+  { value: 'FLAT_PER_EVENT', label: 'Flat per event' },
+] satisfies Array<{ value: CompensationWageType; label: string }>;
 
 const normalizeRoleKey = (role: Pick<OrganizationRole, 'kind' | 'name' | 'systemKey'> | null | undefined): string => (
   `${role?.systemKey ?? ''} ${role?.kind ?? ''} ${role?.name ?? ''}`.trim().toUpperCase()
@@ -133,6 +169,96 @@ const roleNameValidationMessage = (name: string): string | null => {
 
 const createDraftRoleId = (): string => `draft_role_${Date.now()}`;
 
+const compensationTargetKey = (targetType: 'ROLE' | 'STAFF', targetId: string): string => `${targetType}:${targetId}`;
+
+const dateInputValue = (date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const dateInputToIso = (value: string): string | null => {
+  if (!value.trim()) {
+    return null;
+  }
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const centsFromDollars = (value: string | number): number => {
+  const numericValue = typeof value === 'number' ? value : Number(String(value).replace(/^\$/, ''));
+  return Number.isFinite(numericValue) ? Math.round(numericValue * 100) : 0;
+};
+
+const dollarsFromCents = (amountCents: number | null | undefined): string => {
+  if (!Number.isFinite(amountCents)) {
+    return '';
+  }
+  return (Number(amountCents) / 100).toFixed(2);
+};
+
+const formatFinanceDate = (value?: string | null): string => {
+  if (!value) {
+    return 'No end date';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Invalid date';
+  }
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const compensationRateStatus = (rate: CompensationRate, now = new Date()): 'current' | 'scheduled' | 'expired' => {
+  const effectiveFrom = new Date(rate.effectiveFrom);
+  const effectiveTo = rate.effectiveTo ? new Date(rate.effectiveTo) : null;
+  if (!Number.isNaN(effectiveFrom.getTime()) && effectiveFrom.getTime() > now.getTime()) {
+    return 'scheduled';
+  }
+  if (effectiveTo && !Number.isNaN(effectiveTo.getTime()) && effectiveTo.getTime() <= now.getTime()) {
+    return 'expired';
+  }
+  return 'current';
+};
+
+const pickPrimaryCompensationRate = (rates: CompensationRate[]): CompensationRate | null => {
+  const now = new Date();
+  return rates.find((rate) => compensationRateStatus(rate, now) === 'current') ?? rates[0] ?? null;
+};
+
+const defaultCompensationDraft = (rate: CompensationRate | null): CompensationDraft => ({
+  wageType: rate?.wageType ?? 'HOURLY',
+  amount: rate ? dollarsFromCents(rate.amountCents) : '',
+  effectiveFrom: dateInputValue(),
+  effectiveTo: '',
+});
+
+const formatCompensationRate = (rate: CompensationRate | null): string => {
+  if (!rate) {
+    return 'No active rate';
+  }
+  const suffix = {
+    HOURLY: '/hr',
+    SALARY: '/yr',
+    FLAT_PER_EVENT: '/event',
+  }[rate.wageType];
+  return `${formatBillAmount(rate.amountCents)}${suffix}`;
+};
+
+const messageForError = (error: unknown, fallback: string): string => {
+  if (isApiRequestError(error)) {
+    return error.message;
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return fallback;
+};
+
 export default function RoleRosterManager({
   rosterEntries,
   searchValue,
@@ -151,6 +277,8 @@ export default function RoleRosterManager({
   onRoleChange,
   onCreateRole,
   onUpdateRole,
+  organizationId,
+  canManageCompensation = false,
 }: RoleRosterManagerProps) {
   const [managerView, setManagerView] = useState<ManagerView>('staff');
   const [inviteMode, setInviteMode] = useState<'existing' | 'email'>('existing');
@@ -166,6 +294,13 @@ export default function RoleRosterManager({
   const [savingRosterRoleUserIds, setSavingRosterRoleUserIds] = useState<string[]>([]);
   const [rosterRoleSelections, setRosterRoleSelections] = useState<Record<string, string | null>>({});
   const [draftRole, setDraftRole] = useState<DraftRole | null>(null);
+  const [compensationRates, setCompensationRates] = useState<CompensationRatesResponse>({ roleRates: [], staffRates: [] });
+  const [compensationLoading, setCompensationLoading] = useState(false);
+  const [compensationError, setCompensationError] = useState<string | null>(null);
+  const [compensationInfo, setCompensationInfo] = useState<string | null>(null);
+  const [compensationDrafts, setCompensationDrafts] = useState<Record<string, CompensationDraft>>({});
+  const [compensationTargetErrors, setCompensationTargetErrors] = useState<Record<string, string | null>>({});
+  const [savingCompensationKeys, setSavingCompensationKeys] = useState<string[]>([]);
   const rosterRoleSaveSequenceRef = useRef<Record<string, number>>({});
 
   const roleOptions = useMemo(
@@ -179,6 +314,20 @@ export default function RoleRosterManager({
 
   const permissionColumns = ORGANIZATION_PERMISSION_OPTIONS;
   const rolesTableMinWidth = 280 + permissionColumns.length * 150;
+  const managerViewOptions = useMemo(
+    () => [
+      { label: 'Staff', value: 'staff' },
+      { label: 'Roles', value: 'roles' },
+      ...(canManageCompensation ? [{ label: 'Compensation', value: 'compensation' }] : []),
+    ],
+    [canManageCompensation],
+  );
+
+  useEffect(() => {
+    if (!canManageCompensation && managerView === 'compensation') {
+      setManagerView('staff');
+    }
+  }, [canManageCompensation, managerView]);
 
   useEffect(() => {
     setRoleNameDrafts((current) => {
@@ -204,6 +353,32 @@ export default function RoleRosterManager({
         : defaultInviteRoleId
     ));
   }, [defaultInviteRoleId, staffRoles]);
+
+  const loadCompensationRates = useCallback(async () => {
+    if (!organizationId || !canManageCompensation) {
+      setCompensationRates({ roleRates: [], staffRates: [] });
+      return;
+    }
+    setCompensationLoading(true);
+    setCompensationError(null);
+    try {
+      const response = await apiRequest<CompensationRatesResponse>(`/api/organizations/${organizationId}/finance/compensation`);
+      setCompensationRates({
+        roleRates: Array.isArray(response.roleRates) ? response.roleRates : [],
+        staffRates: Array.isArray(response.staffRates) ? response.staffRates : [],
+      });
+    } catch (error) {
+      setCompensationError(messageForError(error, 'Failed to load compensation rates.'));
+    } finally {
+      setCompensationLoading(false);
+    }
+  }, [canManageCompensation, organizationId]);
+
+  useEffect(() => {
+    if (managerView === 'compensation') {
+      void loadCompensationRates();
+    }
+  }, [loadCompensationRates, managerView]);
 
   useEffect(() => {
     const sourceRoleByUserId = new Map(rosterEntries.map((entry) => [entry.userId, entry.roleId ?? null] as const));
@@ -238,6 +413,31 @@ export default function RoleRosterManager({
     });
   }, []);
 
+  const setCompensationSaving = useCallback((targetKey: string, saving: boolean) => {
+    setSavingCompensationKeys((current) => {
+      if (saving) {
+        return current.includes(targetKey) ? current : [...current, targetKey];
+      }
+      return current.filter((entry) => entry !== targetKey);
+    });
+  }, []);
+
+  const updateCompensationDraft = useCallback((
+    targetKey: string,
+    patch: Partial<CompensationDraft>,
+    currentRate: CompensationRate | null,
+  ) => {
+    setCompensationDrafts((current) => ({
+      ...current,
+      [targetKey]: {
+        ...(current[targetKey] ?? defaultCompensationDraft(currentRate)),
+        ...patch,
+      },
+    }));
+    setCompensationTargetErrors((current) => ({ ...current, [targetKey]: null }));
+    setCompensationInfo(null);
+  }, []);
+
   const updateRosterRole = useCallback(
     async (entry: RoleRosterEntry, roleId: string) => {
       const nextSequence = (rosterRoleSaveSequenceRef.current[entry.userId] ?? 0) + 1;
@@ -257,6 +457,76 @@ export default function RoleRosterManager({
       }
     },
     [onRoleChange, setRosterRoleSaving],
+  );
+
+  const saveCompensationRate = useCallback(
+    async ({
+      targetType,
+      targetId,
+      targetKey,
+      currentRate,
+    }: {
+      targetType: 'ROLE' | 'STAFF';
+      targetId: string;
+      targetKey: string;
+      currentRate: CompensationRate | null;
+    }) => {
+      if (!organizationId) {
+        setCompensationError('Missing organization id.');
+        return;
+      }
+      const draft = compensationDrafts[targetKey] ?? defaultCompensationDraft(currentRate);
+      const amountCents = centsFromDollars(draft.amount);
+      const effectiveFrom = dateInputToIso(draft.effectiveFrom);
+      const effectiveTo = dateInputToIso(draft.effectiveTo);
+      if (amountCents <= 0 || !effectiveFrom) {
+        setCompensationTargetErrors((current) => ({
+          ...current,
+          [targetKey]: 'Enter an amount greater than 0 and an effective start date.',
+        }));
+        return;
+      }
+      if (effectiveTo && new Date(effectiveTo).getTime() <= new Date(effectiveFrom).getTime()) {
+        setCompensationTargetErrors((current) => ({
+          ...current,
+          [targetKey]: 'End date must be after the start date.',
+        }));
+        return;
+      }
+
+      setCompensationSaving(targetKey, true);
+      setCompensationTargetErrors((current) => ({ ...current, [targetKey]: null }));
+      setCompensationError(null);
+      setCompensationInfo(null);
+      try {
+        await apiRequest(`/api/organizations/${organizationId}/finance/compensation`, {
+          method: 'POST',
+          body: {
+            targetType,
+            targetId,
+            wageType: draft.wageType,
+            amountCents,
+            effectiveFrom,
+            effectiveTo,
+          },
+        });
+        setCompensationInfo('Compensation rate saved.');
+        setCompensationDrafts((current) => {
+          const next = { ...current };
+          delete next[targetKey];
+          return next;
+        });
+        await loadCompensationRates();
+      } catch (error) {
+        setCompensationTargetErrors((current) => ({
+          ...current,
+          [targetKey]: messageForError(error, 'Failed to save compensation rate.'),
+        }));
+      } finally {
+        setCompensationSaving(targetKey, false);
+      }
+    },
+    [compensationDrafts, loadCompensationRates, organizationId, setCompensationSaving],
   );
 
   const updateRoleDefinition = useCallback(
@@ -371,6 +641,33 @@ export default function RoleRosterManager({
       pending: rosterEntries.filter((entry) => entry.status === 'pending').length,
       declined: rosterEntries.filter((entry) => entry.status === 'declined').length,
     }),
+    [rosterEntries],
+  );
+
+  const roleRatesByRoleId = useMemo(() => {
+    const grouped = new Map<string, CompensationRate[]>();
+    compensationRates.roleRates.forEach((rate) => {
+      if (!rate.organizationRoleId) {
+        return;
+      }
+      grouped.set(rate.organizationRoleId, [...(grouped.get(rate.organizationRoleId) ?? []), rate]);
+    });
+    return grouped;
+  }, [compensationRates.roleRates]);
+
+  const staffRatesByStaffMemberId = useMemo(() => {
+    const grouped = new Map<string, CompensationRate[]>();
+    compensationRates.staffRates.forEach((rate) => {
+      if (!rate.staffMemberId) {
+        return;
+      }
+      grouped.set(rate.staffMemberId, [...(grouped.get(rate.staffMemberId) ?? []), rate]);
+    });
+    return grouped;
+  }, [compensationRates.staffRates]);
+
+  const staffCompensationEntries = useMemo(
+    () => rosterEntries.filter((entry) => Boolean(entry.staffMemberId) && entry.status === 'active' && !entry.locked),
     [rosterEntries],
   );
 
@@ -649,6 +946,267 @@ export default function RoleRosterManager({
       </Stack>
     </Paper>
   );
+
+  const renderRateSummary = (rate: CompensationRate | null) => {
+    if (!rate) {
+      return (
+        <Stack gap={4}>
+          <Text size="sm" fw={600}>No active rate</Text>
+          <Text size="xs" c="dimmed">No compensation history</Text>
+        </Stack>
+      );
+    }
+    const status = compensationRateStatus(rate);
+    const statusColorMap = {
+      current: 'teal',
+      scheduled: 'blue',
+      expired: 'gray',
+    } satisfies Record<ReturnType<typeof compensationRateStatus>, string>;
+    return (
+      <Stack gap={4}>
+        <Group gap={6}>
+          <Text size="sm" fw={700}>{formatCompensationRate(rate)}</Text>
+          <Badge size="xs" variant="light" color={statusColorMap[status]}>
+            {status}
+          </Badge>
+        </Group>
+        <Text size="xs" c="dimmed">
+          {formatFinanceDate(rate.effectiveFrom)} - {formatFinanceDate(rate.effectiveTo)}
+        </Text>
+      </Stack>
+    );
+  };
+
+  const renderCompensationControls = ({
+    targetKey,
+    currentRate,
+    amountLabel,
+    saveLabel,
+    onSave,
+  }: {
+    targetKey: string;
+    currentRate: CompensationRate | null;
+    amountLabel: string;
+    saveLabel: string;
+    onSave: () => void;
+  }) => {
+    const draft = compensationDrafts[targetKey] ?? defaultCompensationDraft(currentRate);
+    const targetError = compensationTargetErrors[targetKey] ?? null;
+    const isSaving = savingCompensationKeys.includes(targetKey);
+
+    return (
+      <Stack gap="xs">
+        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="xs">
+          <Select
+            label="Type"
+            data={WAGE_TYPE_OPTIONS}
+            value={draft.wageType}
+            onChange={(value) => updateCompensationDraft(
+              targetKey,
+              { wageType: (value as CompensationWageType | null) ?? 'HOURLY' },
+              currentRate,
+            )}
+            allowDeselect={false}
+            aria-label={`${amountLabel} wage type`}
+          />
+          <NumberInput
+            label="Amount"
+            prefix="$"
+            decimalScale={2}
+            min={0}
+            value={draft.amount}
+            onChange={(value) => updateCompensationDraft(targetKey, { amount: value }, currentRate)}
+            aria-label={`${amountLabel} amount`}
+          />
+          <TextInput
+            label="Starts"
+            type="date"
+            value={draft.effectiveFrom}
+            onChange={(event) => updateCompensationDraft(
+              targetKey,
+              { effectiveFrom: event.currentTarget.value },
+              currentRate,
+            )}
+            aria-label={`${amountLabel} effective start`}
+          />
+          <TextInput
+            label="Ends"
+            type="date"
+            value={draft.effectiveTo}
+            onChange={(event) => updateCompensationDraft(
+              targetKey,
+              { effectiveTo: event.currentTarget.value },
+              currentRate,
+            )}
+            aria-label={`${amountLabel} effective end`}
+          />
+        </SimpleGrid>
+        <Group justify="space-between" align="center">
+          <Text size="xs" c={targetError ? 'red' : 'dimmed'}>
+            {targetError ?? 'Saving creates a new effective-dated history row.'}
+          </Text>
+          <Button size="xs" onClick={onSave} loading={isSaving}>
+            {saveLabel}
+          </Button>
+        </Group>
+      </Stack>
+    );
+  };
+
+  const renderCompensationView = () => {
+    if (!canManageCompensation) {
+      return (
+        <Alert color="yellow" radius="md">
+          Staff compensation requires staff management and billing management access.
+        </Alert>
+      );
+    }
+
+    return (
+      <Stack gap="md">
+        <Group justify="space-between" align="flex-end" gap="md">
+          <Stack gap={2}>
+            <Title order={6}>Compensation</Title>
+            <Text size="sm" c="dimmed">
+              Set role defaults and individual staff overrides with effective dates.
+            </Text>
+          </Stack>
+          <Button variant="light" onClick={() => void loadCompensationRates()} loading={compensationLoading}>
+            Refresh
+          </Button>
+        </Group>
+
+        {compensationError ? (
+          <Alert color="red" radius="md" onClose={() => setCompensationError(null)} withCloseButton>
+            {compensationError}
+          </Alert>
+        ) : null}
+        {compensationInfo ? (
+          <Alert color="green" radius="md" onClose={() => setCompensationInfo(null)} withCloseButton>
+            {compensationInfo}
+          </Alert>
+        ) : null}
+
+        {compensationLoading && compensationRates.roleRates.length === 0 && compensationRates.staffRates.length === 0 ? (
+          <Paper withBorder radius="md" p="xl" ta="center" className="org-tab-item">
+            <Group justify="center" gap="sm">
+              <Loader size="sm" />
+              <Text size="sm" c="dimmed">Loading compensation rates...</Text>
+            </Group>
+          </Paper>
+        ) : (
+          <>
+            <Paper withBorder radius="md" className="org-tab-item" style={{ overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <Table withColumnBorders highlightOnHover miw={940}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th style={{ minWidth: 200 }}>Role default</Table.Th>
+                      <Table.Th style={{ minWidth: 180 }}>Current rate</Table.Th>
+                      <Table.Th style={{ minWidth: 520 }}>New rate</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {staffRoles.map((role) => {
+                      const roleRates = roleRatesByRoleId.get(role.$id) ?? [];
+                      const currentRate = pickPrimaryCompensationRate(roleRates);
+                      const targetKey = compensationTargetKey('ROLE', role.$id);
+                      return (
+                        <Table.Tr key={role.$id}>
+                          <Table.Td>
+                            <Stack gap={4}>
+                              <Text size="sm" fw={700}>{role.name}</Text>
+                              <Text size="xs" c="dimmed">
+                                {role.kind.toLowerCase()}
+                              </Text>
+                            </Stack>
+                          </Table.Td>
+                          <Table.Td>{renderRateSummary(currentRate)}</Table.Td>
+                          <Table.Td>
+                            {renderCompensationControls({
+                              targetKey,
+                              currentRate,
+                              amountLabel: `${role.name} default`,
+                              saveLabel: 'Save default',
+                              onSave: () => void saveCompensationRate({
+                                targetType: 'ROLE',
+                                targetId: role.$id,
+                                targetKey,
+                                currentRate,
+                              }),
+                            })}
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
+                  </Table.Tbody>
+                </Table>
+              </div>
+            </Paper>
+
+            <Paper withBorder radius="md" className="org-tab-item" style={{ overflow: 'hidden' }}>
+              <div style={{ overflowX: 'auto' }}>
+                <Table withColumnBorders highlightOnHover miw={980}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th style={{ minWidth: 220 }}>Staff override</Table.Th>
+                      <Table.Th style={{ minWidth: 180 }}>Current override</Table.Th>
+                      <Table.Th style={{ minWidth: 540 }}>New override</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {staffCompensationEntries.length > 0 ? (
+                      staffCompensationEntries.map((entry) => {
+                        const staffMemberId = entry.staffMemberId as string;
+                        const staffRates = staffRatesByStaffMemberId.get(staffMemberId) ?? [];
+                        const currentRate = pickPrimaryCompensationRate(staffRates);
+                        const targetKey = compensationTargetKey('STAFF', staffMemberId);
+                        return (
+                          <Table.Tr key={entry.id}>
+                            <Table.Td>
+                              <Stack gap={4}>
+                                <Text size="sm" fw={700}>{entry.fullName}</Text>
+                                <Text size="xs" c="dimmed">
+                                  {entry.roleName ?? 'No role'}
+                                </Text>
+                              </Stack>
+                            </Table.Td>
+                            <Table.Td>{renderRateSummary(currentRate)}</Table.Td>
+                            <Table.Td>
+                              {renderCompensationControls({
+                                targetKey,
+                                currentRate,
+                                amountLabel: `${entry.fullName} override`,
+                                saveLabel: 'Save override',
+                                onSave: () => void saveCompensationRate({
+                                  targetType: 'STAFF',
+                                  targetId: staffMemberId,
+                                  targetKey,
+                                  currentRate,
+                                }),
+                              })}
+                            </Table.Td>
+                          </Table.Tr>
+                        );
+                      })
+                    ) : (
+                      <Table.Tr>
+                        <Table.Td colSpan={3}>
+                          <Text size="sm" c="dimmed" ta="center">
+                            Active staff members can receive individual overrides after they are added to the roster.
+                          </Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </div>
+            </Paper>
+          </>
+        )}
+      </Stack>
+    );
+  };
 
   const renderStaffView = () => (
     <div className="staff-roster-layout">
@@ -948,14 +1506,15 @@ export default function RoleRosterManager({
           <SegmentedControl
             value={managerView}
             onChange={(value) => setManagerView(value as ManagerView)}
-            data={[
-              { label: 'Staff', value: 'staff' },
-              { label: 'Roles', value: 'roles' },
-            ]}
+            data={managerViewOptions}
           />
         </Group>
 
-        {managerView === 'staff' ? renderStaffView() : renderRolesView()}
+        {managerView === 'staff'
+          ? renderStaffView()
+          : managerView === 'roles'
+            ? renderRolesView()
+            : renderCompensationView()}
       </Stack>
     </Paper>
   );

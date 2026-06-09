@@ -6,6 +6,12 @@ const prismaMock = {
   organizations: {
     findUnique: jest.fn(),
   },
+  organizationRoleCompensationRates: {
+    findMany: jest.fn(),
+  },
+  staffCompensationRates: {
+    findMany: jest.fn(),
+  },
 };
 const requireSessionMock = jest.fn();
 const canManageStaffCompensationMock = jest.fn();
@@ -34,7 +40,7 @@ jest.mock('@/server/finance/financeMutations', () => ({
   createFinancialLineItem: (...args: any[]) => createFinancialLineItemMock(...args),
 }));
 
-import { POST as postCompensation } from '@/app/api/organizations/[id]/finance/compensation/route';
+import { GET as getCompensation, POST as postCompensation } from '@/app/api/organizations/[id]/finance/compensation/route';
 import { POST as postLineItem } from '@/app/api/organizations/[id]/finance/line-items/route';
 
 describe('organization finance write routes', () => {
@@ -47,6 +53,28 @@ describe('organization finance write routes', () => {
     });
     canManageStaffCompensationMock.mockResolvedValue(true);
     canManageOrganizationFinanceMock.mockResolvedValue(true);
+    prismaMock.organizationRoleCompensationRates.findMany.mockResolvedValue([
+      {
+        id: 'role_rate_1',
+        organizationId: 'org_1',
+        organizationRoleId: 'role_1',
+        wageType: 'HOURLY',
+        amountCents: 2000,
+        effectiveFrom: new Date('2026-06-01T00:00:00.000Z'),
+        effectiveTo: null,
+      },
+    ]);
+    prismaMock.staffCompensationRates.findMany.mockResolvedValue([
+      {
+        id: 'staff_rate_1',
+        organizationId: 'org_1',
+        staffMemberId: 'staff_1',
+        wageType: 'SALARY',
+        amountCents: 6500000,
+        effectiveFrom: new Date('2026-06-01T00:00:00.000Z'),
+        effectiveTo: null,
+      },
+    ]);
     createCompensationRateMock.mockResolvedValue({
       id: 'rate_1',
       organizationId: 'org_1',
@@ -62,6 +90,29 @@ describe('organization finance write routes', () => {
       title: 'Field rental',
       amountCents: 15000,
     });
+  });
+
+  it('returns compensation rate history for authorized staff compensation managers', async () => {
+    const response = await getCompensation(
+      new NextRequest('http://localhost/api/organizations/org_1/finance/compensation'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(canManageStaffCompensationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'owner_1' }),
+      expect.objectContaining({ id: 'org_1' }),
+      prismaMock,
+    );
+    expect(prismaMock.organizationRoleCompensationRates.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org_1' },
+    }));
+    expect(prismaMock.staffCompensationRates.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { organizationId: 'org_1' },
+    }));
+    expect(payload.roleRates[0].id).toBe('role_rate_1');
+    expect(payload.staffRates[0].id).toBe('staff_rate_1');
   });
 
   it('creates staff compensation rates for authorized staff and billing managers', async () => {

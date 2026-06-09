@@ -23,6 +23,63 @@ const mutationErrorResponse = (error: unknown) => {
   throw error;
 };
 
+const selectRoleCompensationRate = {
+  id: true,
+  organizationId: true,
+  organizationRoleId: true,
+  wageType: true,
+  amountCents: true,
+  effectiveFrom: true,
+  effectiveTo: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
+const selectStaffCompensationRate = {
+  id: true,
+  organizationId: true,
+  staffMemberId: true,
+  wageType: true,
+  amountCents: true,
+  effectiveFrom: true,
+  effectiveTo: true,
+  createdAt: true,
+  updatedAt: true,
+};
+
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await requireSession(req);
+  const { id } = await params;
+  const organization = await prisma.organizations.findUnique({
+    where: { id },
+    select: { id: true, ownerId: true },
+  });
+  if (!organization) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+  }
+  if (!(await canManageStaffCompensation(session, organization, prisma))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  const [roleRates, staffRates] = await Promise.all([
+    prisma.organizationRoleCompensationRates.findMany({
+      where: { organizationId: id },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }],
+      select: selectRoleCompensationRate,
+    }),
+    prisma.staffCompensationRates.findMany({
+      where: { organizationId: id },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }],
+      select: selectStaffCompensationRate,
+    }),
+  ]);
+
+  return NextResponse.json({ roleRates, staffRates }, { status: 200 });
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },

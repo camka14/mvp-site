@@ -1,8 +1,14 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import type { ComponentProps } from 'react';
+import { apiRequest } from '@/lib/apiClient';
 import RoleRosterManager from '../RoleRosterManager';
 import type { OrganizationRole } from '@/types';
+
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(),
+  isApiRequestError: jest.fn(() => false),
+}));
 
 jest.mock('@/components/ui/UserCard', () => ({
   __esModule: true,
@@ -52,6 +58,8 @@ const renderManager = (overrides: Partial<ComponentProps<typeof RoleRosterManage
     onRoleChange: jest.fn(),
     onCreateRole: jest.fn().mockResolvedValue(undefined),
     onUpdateRole: jest.fn().mockResolvedValue(undefined),
+    organizationId: 'org_1',
+    canManageCompensation: false,
     ...overrides,
   };
 
@@ -67,6 +75,8 @@ const renderManager = (overrides: Partial<ComponentProps<typeof RoleRosterManage
 describe('RoleRosterManager', () => {
   beforeEach(() => {
     jest.useFakeTimers();
+    jest.clearAllMocks();
+    (apiRequest as jest.Mock).mockResolvedValue({ roleRates: [], staffRates: [] });
   });
 
   afterEach(() => {
@@ -178,6 +188,62 @@ describe('RoleRosterManager', () => {
 
     await waitFor(() => {
       expect(screen.queryByLabelText('Saving role')).not.toBeInTheDocument();
+    });
+  });
+
+  it('loads and saves effective-dated role compensation defaults', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce({
+        roleRates: [{
+          id: 'role_rate_1',
+          organizationId: 'org_1',
+          organizationRoleId: 'role_staff',
+          wageType: 'HOURLY',
+          amountCents: 2500,
+          effectiveFrom: '2026-06-01T00:00:00.000Z',
+          effectiveTo: null,
+        }],
+        staffRates: [],
+      })
+      .mockResolvedValueOnce({ rate: { id: 'role_rate_2' } })
+      .mockResolvedValueOnce({
+        roleRates: [{
+          id: 'role_rate_2',
+          organizationId: 'org_1',
+          organizationRoleId: 'role_staff',
+          wageType: 'HOURLY',
+          amountCents: 3000,
+          effectiveFrom: '2026-06-09T00:00:00.000Z',
+          effectiveTo: null,
+        }],
+        staffRates: [],
+      });
+
+    renderManager({ canManageCompensation: true });
+
+    fireEvent.click(screen.getByText('Compensation'));
+
+    expect(await screen.findByText('$25.00/hr')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Staff default amount'), {
+      target: { value: '30' },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save default' }));
+    });
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/compensation', {
+        method: 'POST',
+        body: expect.objectContaining({
+          targetType: 'ROLE',
+          targetId: 'role_staff',
+          wageType: 'HOURLY',
+          amountCents: 3000,
+          effectiveFrom: expect.any(String),
+          effectiveTo: null,
+        }),
+      });
     });
   });
 });
