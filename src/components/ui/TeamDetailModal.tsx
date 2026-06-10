@@ -2654,7 +2654,7 @@ export default function TeamDetailModal({
 
                     {/* Delete Team Section */}
                     {canManageTeam && (
-                        <div className={isPageMode ? 'team-detail-roster-main team-detail-roster-danger' : 'border-t pt-6'}>
+                        <div className={isPageMode ? 'team-detail-roster-side team-detail-roster-danger' : 'border-t pt-6'}>
                             <Paper withBorder radius="md" p="md" bg={'red.0'}>
                                 <Title order={5} c="red" mb={4}>Danger Zone</Title>
                                 <Text c="red" size="sm" mb="sm">Once you delete a team, there is no going back. Please be certain.</Text>
