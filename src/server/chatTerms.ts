@@ -1,12 +1,13 @@
-export const CHAT_TERMS_VERSION = '2026-04-14';
+export const CHAT_TERMS_VERSION = '2026-06-10';
 export const CHAT_TERMS_PATH = '/terms';
 export const CHAT_TERMS_REQUIRED_CODE = 'CHAT_TERMS_REQUIRED';
 
 export const CHAT_TERMS_SUMMARY = [
-  'Sending chat messages or creating events requires agreement to the Bracket IQ Terms and EULA.',
+  'Sending chat messages or creating events requires agreement to the BracketIQ Terms and EULA.',
   'There is no tolerance for objectionable content or abusive users.',
   'Users can report chats, events, and abusive users, and moderation acts on reports within 24 hours.',
   'Blocking a user can immediately remove shared chats from the blocker’s feed.',
+  'QuickBooks, payment, document, app store, and other external integrations are subject to the provider terms that apply to the products you connect or use.',
 ] as const;
 
 type ChatTermsUser = {

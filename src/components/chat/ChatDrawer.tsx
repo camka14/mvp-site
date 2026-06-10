@@ -158,7 +158,7 @@ export function ChatDrawer() {
                 loading={chatTermsLoading}
                 onAccept={() => { void handleAcceptChatTerms(); }}
                 onClose={closeChatTermsModal}
-                intro="Sending chat messages in Bracket IQ requires agreement to the Terms and EULA."
+                intro="Sending chat messages in BracketIQ requires agreement to the Terms and EULA."
                 allowClose
             />
         </div>

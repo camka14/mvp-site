@@ -432,17 +432,17 @@ describe('League schedule page', () => {
       if (path === '/api/chat/terms-consent') {
         if (options?.method === 'POST') {
           return Promise.resolve({
-            version: '2026-04-14',
+            version: '2026-06-10',
             url: '/terms',
-            summary: ['Sending chat messages or creating events requires agreement to the Bracket IQ Terms and EULA.'],
+            summary: ['Sending chat messages or creating events requires agreement to the BracketIQ Terms and EULA.'],
             accepted: true,
             acceptedAt: '2026-04-14T12:00:00.000Z',
           });
         }
         return Promise.resolve({
-          version: '2026-04-14',
+          version: '2026-06-10',
           url: '/terms',
-          summary: ['Sending chat messages or creating events requires agreement to the Bracket IQ Terms and EULA.'],
+          summary: ['Sending chat messages or creating events requires agreement to the BracketIQ Terms and EULA.'],
           accepted: true,
           acceptedAt: '2026-04-14T12:00:00.000Z',
         });
@@ -511,7 +511,7 @@ describe('League schedule page', () => {
       if (path === '/api/chat/terms-consent') {
         if (options?.method === 'POST') {
           return Promise.resolve({
-            version: '2026-04-14',
+            version: '2026-06-10',
             url: '/terms',
             summary: ['There is no tolerance for objectionable content or abusive users.'],
             accepted: true,
@@ -519,7 +519,7 @@ describe('League schedule page', () => {
           });
         }
         return Promise.resolve({
-          version: '2026-04-14',
+          version: '2026-06-10',
           url: '/terms',
           summary: ['There is no tolerance for objectionable content or abusive users.'],
           accepted: false,
@@ -550,7 +550,7 @@ describe('League schedule page', () => {
 
     expect(setUserMock).toHaveBeenCalledWith(expect.objectContaining({
       chatTermsAcceptedAt: '2026-04-14T12:00:00.000Z',
-      chatTermsVersion: '2026-04-14',
+      chatTermsVersion: '2026-06-10',
     }));
   });
 
@@ -818,7 +818,7 @@ describe('League schedule page', () => {
     apiRequestMock.mockImplementation((path: string) => {
       if (path === '/api/chat/terms-consent') {
         return Promise.resolve({
-          version: '2026-04-14',
+          version: '2026-06-10',
           url: '/terms',
           summary: [],
           accepted: true,
@@ -945,7 +945,7 @@ describe('League schedule page', () => {
     apiRequestMock.mockImplementation((path: string, options?: any) => {
       if (path === '/api/chat/terms-consent') {
         return Promise.resolve({
-          version: '2026-04-14',
+          version: '2026-06-10',
           url: '/terms',
           summary: [],
           accepted: true,
@@ -2981,7 +2981,7 @@ describe('League schedule page', () => {
       const requestPath = String(path);
       if (requestPath === '/api/chat/terms-consent') {
         return Promise.resolve({
-          version: '2026-04-14',
+          version: '2026-06-10',
           url: '/terms',
           summary: [],
           accepted: true,
@@ -3104,7 +3104,7 @@ describe('League schedule page', () => {
       const requestPath = String(path);
       if (requestPath === '/api/chat/terms-consent') {
         return Promise.resolve({
-          version: '2026-04-14',
+          version: '2026-06-10',
           url: '/terms',
           summary: [],
           accepted: true,
@@ -3278,9 +3278,9 @@ describe('League schedule page', () => {
     apiRequestMock.mockImplementation((path: string) => {
       if (path === '/api/chat/terms-consent') {
         return Promise.resolve({
-          version: '2026-04-14',
+          version: '2026-06-10',
           url: '/terms',
-          summary: ['Sending chat messages or creating events requires agreement to the Bracket IQ Terms and EULA.'],
+          summary: ['Sending chat messages or creating events requires agreement to the BracketIQ Terms and EULA.'],
           accepted: true,
           acceptedAt: '2026-04-14T12:00:00.000Z',
         });
