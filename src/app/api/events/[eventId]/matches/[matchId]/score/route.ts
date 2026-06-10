@@ -17,6 +17,11 @@ const scoreSetSchema = z.object({
   sequence: z.number().int().positive(),
   eventTeamId: z.string().min(1),
   points: z.number().int().nonnegative(),
+  clientOperationId: z.string().optional(),
+  clientDeviceId: z.string().optional(),
+  clientCreatedAt: z.string().optional(),
+  clientSequence: z.number().int().nonnegative().optional(),
+  sourceDevice: z.string().optional(),
 });
 
 const normalizeIdToken = (value: unknown): string | null => {
@@ -28,6 +33,55 @@ const normalizeIdToken = (value: unknown): string | null => {
 const nonNegativeScore = (value: unknown): number => {
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
+};
+
+type ClientOperationSource = {
+  clientOperationId?: string;
+  clientDeviceId?: string;
+  clientCreatedAt?: string;
+  clientSequence?: number;
+  sourceDevice?: string;
+};
+
+const clientOperationMetadataFor = (source: ClientOperationSource): Record<string, unknown> | null => {
+  const operationId = normalizeIdToken(source.clientOperationId);
+  const deviceId = normalizeIdToken(source.clientDeviceId);
+  const createdAt = typeof source.clientCreatedAt === 'string' && source.clientCreatedAt.trim().length > 0
+    ? source.clientCreatedAt.trim()
+    : null;
+  const sourceDevice = typeof source.sourceDevice === 'string' && source.sourceDevice.trim().length > 0
+    ? source.sourceDevice.trim()
+    : null;
+  const sequence = typeof source.clientSequence === 'number' && Number.isFinite(source.clientSequence)
+    ? Math.trunc(source.clientSequence)
+    : null;
+  if (!operationId && !deviceId && !createdAt && !sourceDevice && sequence === null) {
+    return null;
+  }
+  return {
+    ...(operationId ? { id: operationId } : {}),
+    ...(deviceId ? { deviceId } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(sequence !== null ? { sequence } : {}),
+    ...(sourceDevice ? { sourceDevice } : {}),
+  };
+};
+
+const mergeClientOperationMetadata = (
+  metadata: Record<string, unknown> | null | undefined,
+  source: ClientOperationSource,
+): Record<string, unknown> | null => {
+  const clientOperation = clientOperationMetadataFor(source);
+  if (!clientOperation) {
+    return metadata ?? null;
+  }
+  const baseMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? metadata
+    : {};
+  return {
+    ...baseMetadata,
+    clientOperation,
+  };
 };
 
 const isUserOnTeam = (team: unknown, userId: string): boolean => {
@@ -183,6 +237,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ eve
           ? segment.status
           : Object.values(nextScores).some((score) => Number(score) > 0) ? 'IN_PROGRESS' : 'NOT_STARTED',
         scores: nextScores,
+        metadata: mergeClientOperationMetadata(segment.metadata ?? null, parsed.data),
       };
       match.segments = segments.sort((left, right) => left.sequence - right.sequence);
       syncLegacyArraysFromSegments(match);

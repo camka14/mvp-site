@@ -8,6 +8,7 @@ import {
   Button,
   Group,
   Loader,
+  Modal,
   NumberInput,
   Paper,
   Select,
@@ -359,9 +360,11 @@ export default function TeamFinancePanel({
   const [savingCost, setSavingCost] = useState(false);
   const [costError, setCostError] = useState<string | null>(null);
   const [costInfo, setCostInfo] = useState<string | null>(null);
+  const [customCostModalOpen, setCustomCostModalOpen] = useState(false);
   const [staffOptions, setStaffOptions] = useState<TeamFinanceStaffMemberOption[]>([]);
   const [staffOptionsLoading, setStaffOptionsLoading] = useState(false);
   const [staffOptionsError, setStaffOptionsError] = useState<string | null>(null);
+  const [staffCostModalOpen, setStaffCostModalOpen] = useState(false);
   const [laborStaffMemberId, setLaborStaffMemberId] = useState<string | null>(null);
   const [laborStatus, setLaborStatus] = useState<StaffLaborStatus>('PLANNED');
   const [laborDate, setLaborDate] = useState(() => dateInputValue());
@@ -489,6 +492,7 @@ export default function TeamFinancePanel({
       setCostAmount('');
       setCostStartDate(dateInputValue());
       setCostEndDate('');
+      setCustomCostModalOpen(false);
       await loadFinance();
     } catch (saveError) {
       setCostError(messageForError(saveError, 'Failed to add team cost.'));
@@ -529,6 +533,7 @@ export default function TeamFinancePanel({
       setLaborInfo('Team staff cost added.');
       setLaborMinutes('');
       setLaborNotes('');
+      setStaffCostModalOpen(false);
       await loadFinance();
     } catch (saveError) {
       setLaborError(messageForError(saveError, 'Failed to add team staff cost.'));
@@ -667,12 +672,49 @@ export default function TeamFinancePanel({
 
       <Paper withBorder radius="md" p="md">
         <Stack gap="md">
-          <div>
-            <Text fw={700}>Line items</Text>
-            <Text size="sm" c="dimmed">
-              Generated rows update from team registration bills, refunds, fees, staff costs, and custom team costs.
-            </Text>
-          </div>
+          <Group justify="space-between" align="flex-start" gap="sm">
+            <div>
+              <Text fw={700}>Line items</Text>
+              <Text size="sm" c="dimmed">
+                Generated rows update from team registration bills, refunds, fees, staff costs, and custom team costs.
+              </Text>
+            </div>
+            {canManage && (
+              <Group gap="xs">
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setCostError(null);
+                    setCostInfo(null);
+                    setCustomCostModalOpen(true);
+                  }}
+                >
+                  Add custom cost
+                </Button>
+                <Button
+                  variant="light"
+                  onClick={() => {
+                    setLaborError(null);
+                    setLaborInfo(null);
+                    setStaffCostModalOpen(true);
+                  }}
+                >
+                  Add staff cost
+                </Button>
+              </Group>
+            )}
+          </Group>
+
+          {costInfo && (
+            <Alert color="green" radius="md" onClose={() => setCostInfo(null)} withCloseButton>
+              {costInfo}
+            </Alert>
+          )}
+          {laborInfo && (
+            <Alert color="green" radius="md" onClose={() => setLaborInfo(null)} withCloseButton>
+              {laborInfo}
+            </Alert>
+          )}
 
           {sortedLineItems.length === 0 ? (
             <Paper withBorder radius="md" p="xl" ta="center">
@@ -775,22 +817,25 @@ export default function TeamFinancePanel({
 
       {canManage && (
         <>
-          <Paper withBorder radius="md" p="md">
+          <Modal
+            opened={staffCostModalOpen}
+            onClose={() => {
+              if (!savingLabor) {
+                setStaffCostModalOpen(false);
+                setLaborError(null);
+              }
+            }}
+            title="Add team staff cost"
+            size="lg"
+            centered
+          >
             <Stack gap="md">
-              <div>
-                <Text fw={700}>Add team staff cost</Text>
-                <Text size="sm" c="dimmed">
-                  Assign organization staff time to this team.
-                </Text>
-              </div>
+              <Text size="sm" c="dimmed">
+                Assign organization staff time to this team.
+              </Text>
               {laborError && (
                 <Alert color="red" radius="md" onClose={() => setLaborError(null)} withCloseButton>
                   {laborError}
-                </Alert>
-              )}
-              {laborInfo && (
-                <Alert color="green" radius="md" onClose={() => setLaborInfo(null)} withCloseButton>
-                  {laborInfo}
                 </Alert>
               )}
               {staffOptionsError && (
@@ -855,6 +900,16 @@ export default function TeamFinancePanel({
                     />
                   </SimpleGrid>
                   <Group justify="flex-end">
+                    <Button
+                      variant="default"
+                      onClick={() => {
+                        setStaffCostModalOpen(false);
+                        setLaborError(null);
+                      }}
+                      disabled={savingLabor}
+                    >
+                      Cancel
+                    </Button>
                     <Button onClick={() => void handleAddLabor()} loading={savingLabor}>
                       Add staff cost
                     </Button>
@@ -862,24 +917,27 @@ export default function TeamFinancePanel({
                 </>
               )}
             </Stack>
-          </Paper>
+          </Modal>
 
-          <Paper withBorder radius="md" p="md">
+          <Modal
+            opened={customCostModalOpen}
+            onClose={() => {
+              if (!savingCost) {
+                setCustomCostModalOpen(false);
+                setCostError(null);
+              }
+            }}
+            title="Add custom team cost"
+            size="lg"
+            centered
+          >
             <Stack gap="md">
-              <div>
-                <Text fw={700}>Add custom team cost</Text>
-                <Text size="sm" c="dimmed">
-                  Use this for one-off team costs such as uniforms, training, travel, or equipment.
-                </Text>
-              </div>
+              <Text size="sm" c="dimmed">
+                Use this for one-off team costs such as uniforms, training, travel, or equipment.
+              </Text>
               {costError && (
                 <Alert color="red" radius="md" onClose={() => setCostError(null)} withCloseButton>
                   {costError}
-                </Alert>
-              )}
-              {costInfo && (
-                <Alert color="green" radius="md" onClose={() => setCostInfo(null)} withCloseButton>
-                  {costInfo}
                 </Alert>
               )}
               <SimpleGrid cols={{ base: 1, md: 5 }} spacing="md">
@@ -919,12 +977,22 @@ export default function TeamFinancePanel({
                 />
               </SimpleGrid>
               <Group justify="flex-end">
+                <Button
+                  variant="default"
+                  onClick={() => {
+                    setCustomCostModalOpen(false);
+                    setCostError(null);
+                  }}
+                  disabled={savingCost}
+                >
+                  Cancel
+                </Button>
                 <Button onClick={() => void handleAddCost()} loading={savingCost}>
                   Add cost
                 </Button>
               </Group>
             </Stack>
-          </Paper>
+          </Modal>
         </>
       )}
     </Stack>

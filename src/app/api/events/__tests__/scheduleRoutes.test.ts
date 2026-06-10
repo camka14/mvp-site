@@ -832,6 +832,127 @@ describe('schedule routes', () => {
     expect(res.status).toBe(403);
   });
 
+  it('stores client operation metadata on segment and incident operations', async () => {
+    requireSessionMock.mockResolvedValue({ userId: 'host_1', isAdmin: false });
+    prismaMock.events.findUnique.mockResolvedValue({
+      id: 'event_1',
+      hostId: 'host_1',
+      assistantHostIds: [],
+      organizationId: null,
+    });
+    const team1 = { id: 'team_1', captainId: 'captain_1', playerIds: ['player_1'] };
+    const team2 = { id: 'team_2', captainId: 'captain_2', playerIds: ['player_2'] };
+    loadEventWithRelationsMock.mockResolvedValue({
+      id: 'event_1',
+      eventType: 'TOURNAMENT',
+      hostId: 'host_1',
+      resolvedMatchRules: {
+        scoringModel: 'POINTS_ONLY',
+        segmentCount: 1,
+        pointIncidentRequiresParticipant: false,
+      },
+      matches: {
+        match_1: {
+          id: 'match_1',
+          eventId: 'event_1',
+          team1,
+          team2,
+          team1Points: [0],
+          team2Points: [0],
+          setResults: [0],
+          segments: [
+            {
+              id: 'match_1_segment_1',
+              eventId: 'event_1',
+              matchId: 'match_1',
+              sequence: 1,
+              status: 'NOT_STARTED',
+              scores: { team_1: 0, team_2: 0 },
+              winnerEventTeamId: null,
+              metadata: { existing: true },
+            },
+          ],
+          incidents: [],
+          matchRulesSnapshot: null,
+          resolvedMatchRules: {
+            scoringModel: 'POINTS_ONLY',
+            segmentCount: 1,
+            pointIncidentRequiresParticipant: false,
+          },
+        },
+      },
+      teams: {
+        team_1: team1,
+        team_2: team2,
+      },
+      officials: [],
+      officialPositions: [],
+      eventOfficials: [],
+      divisions: [],
+      fields: {},
+      timeSlots: [],
+    });
+    serializeMatchesLegacyMock.mockReturnValue([{ $id: 'match_1' }]);
+
+    const res = await matchPatch(
+      patchRequest('http://localhost/api/events/event_1/matches/match_1', {
+        segmentOperations: [
+          {
+            id: 'match_1_segment_1',
+            sequence: 1,
+            status: 'IN_PROGRESS',
+            startedAt: '2026-06-08T20:00:00.000Z',
+            clientOperationId: 'phone:match_1:1',
+            clientDeviceId: 'phone',
+            clientCreatedAt: '2026-06-08T20:00:00.000Z',
+            clientSequence: 1,
+            sourceDevice: 'PHONE',
+          },
+        ],
+        incidentOperations: [
+          {
+            action: 'CREATE',
+            id: 'phone:match_1:2',
+            segmentId: 'match_1_segment_1',
+            eventTeamId: 'team_1',
+            incidentType: 'NOTE',
+            note: 'Late start',
+            metadata: { source: 'watch-ui' },
+            clientOperationId: 'phone:match_1:2',
+            clientDeviceId: 'watch',
+            clientCreatedAt: '2026-06-08T20:01:00.000Z',
+            clientSequence: 2,
+            sourceDevice: 'WEAR_OS',
+          },
+        ],
+      }),
+      { params: Promise.resolve({ eventId: 'event_1', matchId: 'match_1' }) },
+    );
+
+    expect(res.status).toBe(200);
+    const savedMatch = saveMatchesMock.mock.calls[0][1][0];
+    expect(savedMatch.segments[0].metadata).toEqual({
+      existing: true,
+      clientOperation: {
+        id: 'phone:match_1:1',
+        deviceId: 'phone',
+        createdAt: '2026-06-08T20:00:00.000Z',
+        sequence: 1,
+        sourceDevice: 'PHONE',
+      },
+    });
+    expect(savedMatch.incidents[0].metadata).toEqual({
+      source: 'watch-ui',
+      clientOperation: {
+        id: 'phone:match_1:2',
+        deviceId: 'watch',
+        createdAt: '2026-06-08T20:01:00.000Z',
+        sequence: 2,
+        sourceDevice: 'WEAR_OS',
+      },
+    });
+  });
+
   it('allows an event team member to swap into official when enabled', async () => {
     requireSessionMock.mockResolvedValue({ userId: 'player_1', isAdmin: false });
     prismaMock.events.findUnique.mockResolvedValue({

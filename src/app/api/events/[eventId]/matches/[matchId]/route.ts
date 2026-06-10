@@ -45,6 +45,13 @@ const MATCH_UPDATE_TRANSACTION_OPTIONS = {
 } as const;
 
 const scoreMapSchema = z.record(z.string(), z.number());
+const clientOperationFields = {
+  clientOperationId: z.string().optional(),
+  clientDeviceId: z.string().optional(),
+  clientCreatedAt: z.string().optional(),
+  clientSequence: z.number().int().nonnegative().optional(),
+  sourceDevice: z.string().optional(),
+} as const;
 const lifecycleSchema = z.object({
   status: z.string().nullable().optional(),
   resultStatus: z.string().nullable().optional(),
@@ -65,6 +72,7 @@ const segmentOperationSchema = z.object({
   resultType: z.string().nullable().optional(),
   statusReason: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  ...clientOperationFields,
 });
 const incidentOperationSchema = z.object({
   action: z.enum(['CREATE', 'UPDATE', 'DELETE']),
@@ -82,6 +90,7 @@ const incidentOperationSchema = z.object({
   linkedPointDelta: z.number().int().nullable().optional(),
   note: z.string().nullable().optional(),
   metadata: z.record(z.string(), z.unknown()).nullable().optional(),
+  ...clientOperationFields,
 });
 const officialCheckInSchema = z.object({
   positionId: z.string().optional(),
@@ -114,6 +123,7 @@ const updateSchema = z.object({
   matchId: z.number().int().nullable().optional(),
   finalize: z.boolean().optional(),
   time: z.string().optional(),
+  ...clientOperationFields,
 });
 
 const buildContext = (): SchedulerContext => {
@@ -192,6 +202,55 @@ const parseNullableDate = (value: string | null | undefined): Date | null | unde
     throw new Response('Invalid date value', { status: 400 });
   }
   return parsed;
+};
+
+type ClientOperationSource = {
+  clientOperationId?: string;
+  clientDeviceId?: string;
+  clientCreatedAt?: string;
+  clientSequence?: number;
+  sourceDevice?: string;
+};
+
+const clientOperationMetadataFor = (source: ClientOperationSource): Record<string, unknown> | null => {
+  const operationId = normalizeIdToken(source.clientOperationId);
+  const deviceId = normalizeIdToken(source.clientDeviceId);
+  const createdAt = typeof source.clientCreatedAt === 'string' && source.clientCreatedAt.trim().length > 0
+    ? source.clientCreatedAt.trim()
+    : null;
+  const sourceDevice = typeof source.sourceDevice === 'string' && source.sourceDevice.trim().length > 0
+    ? source.sourceDevice.trim()
+    : null;
+  const sequence = typeof source.clientSequence === 'number' && Number.isFinite(source.clientSequence)
+    ? Math.trunc(source.clientSequence)
+    : null;
+  if (!operationId && !deviceId && !createdAt && !sourceDevice && sequence === null) {
+    return null;
+  }
+  return {
+    ...(operationId ? { id: operationId } : {}),
+    ...(deviceId ? { deviceId } : {}),
+    ...(createdAt ? { createdAt } : {}),
+    ...(sequence !== null ? { sequence } : {}),
+    ...(sourceDevice ? { sourceDevice } : {}),
+  };
+};
+
+const mergeClientOperationMetadata = (
+  metadata: Record<string, unknown> | null | undefined,
+  source: ClientOperationSource,
+): Record<string, unknown> | null => {
+  const clientOperation = clientOperationMetadataFor(source);
+  if (!clientOperation) {
+    return metadata ?? null;
+  }
+  const baseMetadata = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? metadata
+    : {};
+  return {
+    ...baseMetadata,
+    clientOperation,
+  };
 };
 
 const ACTIVE_EVENT_REGISTRATION_STATUSES = ['ACTIVE', 'PENDING', 'STARTED'] as const;
@@ -829,9 +888,12 @@ const applySegmentOperations = (
       statusReason: Object.prototype.hasOwnProperty.call(operation, 'statusReason')
         ? operation.statusReason ?? null
         : existing.statusReason ?? null,
-      metadata: Object.prototype.hasOwnProperty.call(operation, 'metadata')
-        ? operation.metadata ?? null
-        : existing.metadata ?? null,
+      metadata: mergeClientOperationMetadata(
+        Object.prototype.hasOwnProperty.call(operation, 'metadata')
+          ? operation.metadata ?? null
+          : existing.metadata ?? null,
+        operation,
+      ),
     };
     if (existingIndex >= 0) {
       segments[existingIndex] = next;
@@ -885,7 +947,7 @@ const applyIncidentOperations = (
         clockSeconds: operation.clockSeconds ?? null,
         linkedPointDelta: operation.linkedPointDelta ?? null,
         note: operation.note ?? null,
-        metadata: operation.metadata ?? null,
+        metadata: mergeClientOperationMetadata(operation.metadata ?? null, operation),
       };
       if (existingIndex >= 0) {
         applyIncidentScoreDelta(match, incidents[existingIndex], -1);
@@ -920,7 +982,12 @@ const applyIncidentOperations = (
       clockSeconds: Object.prototype.hasOwnProperty.call(operation, 'clockSeconds') ? operation.clockSeconds ?? null : incidents[index].clockSeconds,
       linkedPointDelta: Object.prototype.hasOwnProperty.call(operation, 'linkedPointDelta') ? operation.linkedPointDelta ?? null : incidents[index].linkedPointDelta,
       note: Object.prototype.hasOwnProperty.call(operation, 'note') ? operation.note ?? null : incidents[index].note,
-      metadata: Object.prototype.hasOwnProperty.call(operation, 'metadata') ? operation.metadata ?? null : incidents[index].metadata,
+      metadata: mergeClientOperationMetadata(
+        Object.prototype.hasOwnProperty.call(operation, 'metadata')
+          ? operation.metadata ?? null
+          : incidents[index].metadata,
+        operation,
+      ),
     };
     incidents[index] = updatedIncident;
     applyIncidentScoreDelta(match, updatedIncident, 1);

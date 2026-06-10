@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 import { apiRequest } from '@/lib/apiClient';
 import TeamFinancePanel from '../TeamFinancePanel';
@@ -148,7 +148,8 @@ describe('TeamFinancePanel', () => {
       />,
     );
 
-    await screen.findByText('Add custom team cost');
+    fireEvent.click(await screen.findByRole('button', { name: 'Add custom cost' }));
+    const customCostDialog = await screen.findByRole('dialog', { name: 'Add custom team cost' });
 
     fireEvent.change(screen.getByLabelText('Title'), {
       target: { value: 'Uniform order' },
@@ -162,7 +163,7 @@ describe('TeamFinancePanel', () => {
     fireEvent.change(screen.getByLabelText('Start date'), {
       target: { value: '2026-07-15' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Add cost' }));
+    fireEvent.click(within(customCostDialog).getByRole('button', { name: 'Add cost' }));
 
     await waitFor(() => {
       expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/line-items', {
@@ -224,7 +225,8 @@ describe('TeamFinancePanel', () => {
       />,
     );
 
-    await screen.findByRole('button', { name: 'Add staff cost' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Add staff cost' }));
+    const staffCostDialog = await screen.findByRole('dialog', { name: 'Add team staff cost' });
 
     fireEvent.change(screen.getByLabelText('Labor date'), {
       target: { value: '2026-07-01' },
@@ -235,7 +237,7 @@ describe('TeamFinancePanel', () => {
     fireEvent.change(screen.getByLabelText('Paid minutes'), {
       target: { value: '60' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Add staff cost' }));
+    fireEvent.click(within(staffCostDialog).getByRole('button', { name: 'Add staff cost' }));
 
     await waitFor(() => {
       expect(apiRequest).toHaveBeenCalledWith('/api/teams/team_1/finance/staff', {

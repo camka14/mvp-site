@@ -1450,29 +1450,38 @@ export default function OrganizationFinancePanel({
             aria-label="Payout provider"
             placeholder="Check, ACH, manual, Stripe"
             value={markPaidDraft.payoutProvider}
-            onChange={(event) => setMarkPaidDraft((current) => ({
-              ...current,
-              payoutProvider: event.currentTarget.value,
-            }))}
+            onChange={(event) => {
+              const nextValue = event.currentTarget.value;
+              setMarkPaidDraft((current) => ({
+                ...current,
+                payoutProvider: nextValue,
+              }));
+            }}
           />
           <TextInput
             label="Reference or batch ID"
             aria-label="Payout reference"
             placeholder="check-1024"
             value={markPaidDraft.payoutProviderBatchId}
-            onChange={(event) => setMarkPaidDraft((current) => ({
-              ...current,
-              payoutProviderBatchId: event.currentTarget.value,
-            }))}
+            onChange={(event) => {
+              const nextValue = event.currentTarget.value;
+              setMarkPaidDraft((current) => ({
+                ...current,
+                payoutProviderBatchId: nextValue,
+              }));
+            }}
           />
           <Textarea
             label="Notes"
             aria-label="Payout notes"
             value={markPaidDraft.notes}
-            onChange={(event) => setMarkPaidDraft((current) => ({
-              ...current,
-              notes: event.currentTarget.value,
-            }))}
+            onChange={(event) => {
+              const nextValue = event.currentTarget.value;
+              setMarkPaidDraft((current) => ({
+                ...current,
+                notes: nextValue,
+              }));
+            }}
             autosize
             minRows={3}
           />
