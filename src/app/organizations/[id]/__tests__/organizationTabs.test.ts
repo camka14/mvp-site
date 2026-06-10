@@ -1,4 +1,9 @@
-import { buildOrganizationTabs } from '../organizationTabs';
+import {
+  buildOrganizationCustomerPath,
+  buildOrganizationTabPath,
+  buildOrganizationTabs,
+  organizationTabFromPathSegment,
+} from '../organizationTabs';
 
 describe('buildOrganizationTabs', () => {
   it('hides empty teams, rentals, and store tabs for non-members', () => {
@@ -44,6 +49,7 @@ describe('buildOrganizationTabs', () => {
       { label: 'Event Templates', value: 'eventTemplates' },
       { label: 'Document Templates', value: 'templates' },
       { label: 'Staff', value: 'staff' },
+      { label: 'Finance', value: 'finance' },
       { label: 'Refunds', value: 'refunds' },
       { label: 'Public Page', value: 'publicPage' },
       { label: 'Fields', value: 'fields' },
@@ -68,5 +74,37 @@ describe('buildOrganizationTabs', () => {
       { label: 'Fields', value: 'fields' },
       { label: 'Store', value: 'store' },
     ]);
+  });
+
+  it('shows finance for staff with billing or payment management access', () => {
+    expect(buildOrganizationTabs({
+      isOrganizationRoleMember: true,
+      canManageFinance: true,
+      hasTeams: false,
+      hasRentals: false,
+      hasProducts: false,
+    })).toEqual([
+      { label: 'Overview', value: 'overview' },
+      { label: 'Events', value: 'events' },
+      { label: 'Teams', value: 'teams' },
+      { label: 'Finance', value: 'finance' },
+      { label: 'Fields', value: 'fields' },
+      { label: 'Store', value: 'store' },
+    ]);
+  });
+
+  it('maps organization tabs to shareable path segments', () => {
+    expect(buildOrganizationTabPath('org_1', 'overview')).toBe('/organizations/org_1');
+    expect(buildOrganizationTabPath('org_1', 'finance')).toBe('/organizations/org_1/finance');
+    expect(buildOrganizationTabPath('org_1', 'users')).toBe('/organizations/org_1/customers');
+    expect(buildOrganizationTabPath('org_1', 'publicPage')).toBe('/organizations/org_1/public-page');
+    expect(organizationTabFromPathSegment('customers')).toBe('users');
+    expect(organizationTabFromPathSegment('event-templates')).toBe('eventTemplates');
+    expect(organizationTabFromPathSegment('unknown')).toBeNull();
+  });
+
+  it('builds selected customer paths under the customers tab', () => {
+    expect(buildOrganizationCustomerPath('org_1', 'users', 'user_1')).toBe('/organizations/org_1/customers/users/user_1');
+    expect(buildOrganizationCustomerPath('org_1', 'teams', 'team_1')).toBe('/organizations/org_1/customers/teams/team_1');
   });
 });

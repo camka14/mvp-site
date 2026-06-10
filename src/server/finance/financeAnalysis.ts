@@ -18,6 +18,7 @@ export type FinanceBillPayment = {
   amountCents?: number | null;
   status?: string | null;
   paidAt?: Date | string | null;
+  payerUserId?: string | null;
   refundedAmountCents?: number | null;
   stripeProcessingFeeCents?: number | null;
   stripeTaxServiceFeeCents?: number | null;
@@ -26,9 +27,17 @@ export type FinanceBillPayment = {
 export type FinanceBill = {
   id: string;
   createdAt?: Date | string | null;
+  organizationId?: string | null;
   ownerType?: FinanceBillOwnerType | null;
   ownerId?: string | null;
   eventId?: string | null;
+  slotId?: string | null;
+  sourceName?: string | null;
+  sourceEntityType?: 'event' | 'rental' | 'organization' | null;
+  sourceEntityId?: string | null;
+  customerType?: 'users' | 'teams' | null;
+  customerId?: string | null;
+  customerName?: string | null;
   totalAmountCents?: number | null;
   paidAmountCents?: number | null;
   payments?: FinanceBillPayment[];
@@ -41,12 +50,17 @@ export type FinanceLaborRate = {
 
 export type FinanceLaborEntry = {
   id: string;
+  sourceType?: 'EVENT_STAFF_ASSIGNMENT' | 'TEAM_STAFF_LABOR';
   label: string;
   staffMemberId?: string | null;
   userId?: string | null;
+  userName?: string | null;
   eventId?: string | null;
+  eventName?: string | null;
   teamId?: string | null;
+  teamName?: string | null;
   eventTeamId?: string | null;
+  eventTeamName?: string | null;
   plannedStart?: Date | string | null;
   plannedEnd?: Date | string | null;
   actualStart?: Date | string | null;
@@ -60,8 +74,12 @@ export type FinanceLaborEntry = {
 export type CustomFinanceLineItem = {
   id: string;
   title: string;
+  description?: string | null;
   category?: string | null;
   amountCents: number;
+  quantity?: number | null;
+  unitLabel?: string | null;
+  organizationId?: string | null;
   eventId?: string | null;
   teamId?: string | null;
   eventTeamId?: string | null;
@@ -78,6 +96,12 @@ export type FinanceLineItem = {
   sourceId?: string | null;
   scope: 'EVENT' | 'TEAM' | 'ORGANIZATION' | 'EVENT_TEAM';
   label: string;
+  sourceName?: string | null;
+  sourceEntityType?: 'event' | 'rental' | 'organization' | 'team' | null;
+  sourceEntityId?: string | null;
+  customerType?: 'users' | 'teams' | null;
+  customerId?: string | null;
+  customerName?: string | null;
   category: string;
   amountCents: number;
   classification: FinanceLineItemClassification;
@@ -85,6 +109,9 @@ export type FinanceLineItem = {
   timing: FinanceLineItemTiming;
   serviceStartAt?: string | null;
   serviceEndAt?: string | null;
+  description?: string | null;
+  quantity?: number | null;
+  unitLabel?: string | null;
   isGenerated: boolean;
 };
 
@@ -117,6 +144,22 @@ export type TeamFinanceSummary = {
   projectedProfitCents: number;
   eventRegistrationCostCents: number;
   staffCostCents: number;
+  lineItems: FinanceLineItem[];
+  warnings: FinanceWarning[];
+};
+
+export type OrganizationFinanceSummary = {
+  organizationId: string;
+  grossRevenueCents: number;
+  refundCents: number;
+  feeCents: number;
+  actualRevenueCents: number;
+  actualCostCents: number;
+  actualProfitCents: number;
+  futureCostCents: number;
+  projectedProfitCents: number;
+  staffCostCents: number;
+  customCostCents: number;
   lineItems: FinanceLineItem[];
   warnings: FinanceWarning[];
 };
@@ -284,6 +327,10 @@ const resolveLaborCostCents = (
   return { costCents: Math.round(normalizeCents(rate.amountCents) * (minutes / 60)) };
 };
 
+export const resolveFinanceLaborCostCents = resolveLaborCostCents;
+
+export const resolveFinanceLaborMinutes = resolveLaborMinutes;
+
 const summarizePaidBill = (bill: FinanceBill): {
   paidCents: number;
   refundedCents: number;
@@ -313,6 +360,66 @@ const summarizePaidBill = (bill: FinanceBill): {
 const billRecognitionDate = (bill: FinanceBill): Date | string | null | undefined => {
   const paidPayment = (bill.payments ?? []).find(isPaidPayment);
   return paidPayment?.paidAt ?? paidPayment?.createdAt ?? bill.createdAt;
+};
+
+const namedBillLabel = (bill: FinanceBill, fallback: string): string => {
+  const sourceName = String(bill.sourceName ?? '').trim();
+  const customerName = String(bill.customerName ?? '').trim();
+  return sourceName && customerName ? `${sourceName} - ${customerName}` : fallback;
+};
+
+const billLineItemMetadata = (
+  bill: FinanceBill,
+): Pick<
+  FinanceLineItem,
+  'sourceName' | 'sourceEntityType' | 'sourceEntityId' | 'customerType' | 'customerId' | 'customerName'
+> => ({
+  sourceName: bill.sourceName ?? null,
+  sourceEntityType: bill.sourceEntityType ?? (bill.eventId ? 'event' : bill.slotId ? 'rental' : bill.organizationId ? 'organization' : null),
+  sourceEntityId: bill.sourceEntityId ?? bill.eventId ?? bill.slotId ?? bill.organizationId ?? null,
+  customerType: bill.customerType ?? null,
+  customerId: bill.customerId ?? null,
+  customerName: bill.customerName ?? null,
+});
+
+const laborLineItemMetadata = (
+  entry: FinanceLaborEntry,
+): Pick<
+  FinanceLineItem,
+  'sourceName' | 'sourceEntityType' | 'sourceEntityId' | 'customerType' | 'customerId' | 'customerName'
+> => {
+  const sourceName = entry.eventName ?? entry.teamName ?? entry.eventTeamName ?? null;
+  const sourceEntityType = entry.eventId ? 'event' : entry.teamId || entry.eventTeamId ? 'team' : null;
+  const sourceEntityId = entry.eventId ?? entry.teamId ?? entry.eventTeamId ?? null;
+  return {
+    sourceName,
+    sourceEntityType,
+    sourceEntityId,
+    customerType: entry.userId ? 'users' : null,
+    customerId: entry.userId ?? null,
+    customerName: entry.userName ?? entry.label ?? null,
+  };
+};
+
+const isWithinRange = (
+  value: Date | string | null | undefined,
+  from: Date | null,
+  to: Date | null,
+): boolean => {
+  if (!from && !to) {
+    return true;
+  }
+  const date = toDate(value);
+  if (!date) {
+    return true;
+  }
+  if (from && date.getTime() < from.getTime()) {
+    return false;
+  }
+  if (to && date.getTime() > to.getTime()) {
+    return false;
+  }
+  return true;
 };
 
 const buildFinanceLineItem = (item: Omit<FinanceLineItem, 'timing' | 'serviceStartAt' | 'serviceEndAt'> & {
@@ -352,6 +459,9 @@ const customCostLineItem = (
     amountCents: -costCents,
     classification: 'custom_cost',
     status: normalizeStatus(item.status),
+    description: item.description ?? null,
+    quantity: item.quantity ?? null,
+    unitLabel: item.unitLabel ?? null,
     isGenerated: false,
     serviceStartAt: item.serviceStartAt ?? item.occurredAt,
     serviceEndAt: item.serviceEndAt,
@@ -372,6 +482,7 @@ const laborLineItems = (
     const resolved = resolveLaborCostCents(entry);
     const serviceStartAt = entry.actualStart ?? entry.plannedStart;
     const serviceEndAt = entry.actualEnd ?? entry.plannedEnd;
+    const paidMinutes = resolveLaborMinutes(entry);
     if (resolved.warning) {
       result.warnings.push(resolved.warning);
       result.lineItems.push(buildFinanceLineItem({
@@ -380,10 +491,13 @@ const laborLineItems = (
         sourceId: entry.id,
         scope,
         label: resolved.warning.message,
+        ...laborLineItemMetadata(entry),
         category: 'labor',
         amountCents: 0,
         classification: 'warning',
         status: 'WARNING',
+        quantity: paidMinutes ? Number((paidMinutes / 60).toFixed(2)) : null,
+        unitLabel: paidMinutes ? 'hours' : null,
         isGenerated: true,
         serviceStartAt,
         serviceEndAt,
@@ -399,10 +513,13 @@ const laborLineItems = (
         sourceId: entry.id,
         scope,
         label: entry.label,
+        ...laborLineItemMetadata(entry),
         category: 'labor',
         amountCents: -costCents,
         classification: 'labor_cost',
         status: normalizeStatus(entry.status, 'ACTUAL'),
+        quantity: paidMinutes ? Number((paidMinutes / 60).toFixed(2)) : null,
+        unitLabel: paidMinutes ? 'hours' : null,
         isGenerated: true,
         serviceStartAt,
         serviceEndAt,
@@ -460,11 +577,14 @@ export const buildEventFinanceSummary = ({
           sourceType: 'bill',
           sourceId: bill.id,
           scope: 'EVENT',
-          label: bill.ownerType === 'TEAM' ? 'Team registration payment' : 'Registration payment',
+          label: namedBillLabel(bill, bill.ownerType === 'TEAM' ? 'Team registration payment' : 'Registration payment'),
+          ...billLineItemMetadata(bill),
           category: bill.ownerType === 'TEAM' ? 'team_registration' : 'registration',
           amountCents: billTotals.paidCents,
           classification: 'revenue',
           status: 'PAID',
+          quantity: 1,
+          unitLabel: bill.ownerType === 'TEAM' ? 'team registration' : 'registration',
           isGenerated: true,
           serviceStartAt: recognitionDate,
         }, asOf));
@@ -476,11 +596,14 @@ export const buildEventFinanceSummary = ({
           sourceType: 'bill',
           sourceId: bill.id,
           scope: 'EVENT',
-          label: 'Refunds',
+          label: namedBillLabel(bill, 'Refunds'),
+          ...billLineItemMetadata(bill),
           category: 'refunds',
           amountCents: -billTotals.refundedCents,
           classification: 'refund',
           status: 'ACTUAL',
+          quantity: 1,
+          unitLabel: 'refund',
           isGenerated: true,
           serviceStartAt: recognitionDate,
         }, asOf));
@@ -493,10 +616,13 @@ export const buildEventFinanceSummary = ({
           sourceId: bill.id,
           scope: 'EVENT',
           label: 'Payment processing fees',
+          ...billLineItemMetadata(bill),
           category: 'fees',
           amountCents: -billTotals.feeCents,
           classification: 'fee',
           status: 'ACTUAL',
+          quantity: 1,
+          unitLabel: 'payment',
           isGenerated: true,
           serviceStartAt: recognitionDate,
         }, asOf));
@@ -596,11 +722,14 @@ export const buildTeamFinanceSummary = ({
           sourceType: 'bill',
           sourceId: bill.id,
           scope: bill.ownerId && eventTeamIds.has(bill.ownerId) ? 'EVENT_TEAM' : 'TEAM',
-          label: 'Event registration cost',
+          label: namedBillLabel(bill, 'Event registration cost'),
+          ...billLineItemMetadata(bill),
           category: 'team_registration',
           amountCents: -billTotals.paidCents,
           classification: 'team_registration_cost',
           status: 'PAID',
+          quantity: 1,
+          unitLabel: 'registration',
           isGenerated: true,
           serviceStartAt: recognitionDate,
         }, asOf));
@@ -613,11 +742,14 @@ export const buildTeamFinanceSummary = ({
           sourceType: 'bill',
           sourceId: bill.id,
           scope: bill.ownerId && eventTeamIds.has(bill.ownerId) ? 'EVENT_TEAM' : 'TEAM',
-          label: 'Registration refunds',
+          label: namedBillLabel(bill, 'Registration refunds'),
+          ...billLineItemMetadata(bill),
           category: 'refunds',
           amountCents: billTotals.refundedCents,
           classification: 'refund',
           status: 'ACTUAL',
+          quantity: 1,
+          unitLabel: 'refund',
           isGenerated: true,
           serviceStartAt: recognitionDate,
         }, asOf));
@@ -630,10 +762,13 @@ export const buildTeamFinanceSummary = ({
           sourceId: bill.id,
           scope: bill.ownerId && eventTeamIds.has(bill.ownerId) ? 'EVENT_TEAM' : 'TEAM',
           label: 'Payment processing fees',
+          ...billLineItemMetadata(bill),
           category: 'fees',
           amountCents: -billTotals.feeCents,
           classification: 'fee',
           status: 'ACTUAL',
+          quantity: 1,
+          unitLabel: 'payment',
           isGenerated: true,
           serviceStartAt: recognitionDate,
         }, asOf));
@@ -679,6 +814,169 @@ export const buildTeamFinanceSummary = ({
     projectedProfitCents: actualProfitCents - futureCostCents,
     eventRegistrationCostCents,
     staffCostCents: labor.costCents,
+    lineItems,
+    warnings,
+  };
+};
+
+export const buildOrganizationFinanceSummary = ({
+  organizationId,
+  bills = [],
+  staffLabor = [],
+  customLineItems = [],
+  from,
+  to,
+  asOf: asOfInput,
+}: {
+  organizationId: string;
+  bills?: FinanceBill[];
+  staffLabor?: FinanceLaborEntry[];
+  customLineItems?: CustomFinanceLineItem[];
+  from?: Date | string | null;
+  to?: Date | string | null;
+  asOf?: Date | string | null;
+}): OrganizationFinanceSummary => {
+  const asOf = normalizeAsOf(asOfInput);
+  const fromDate = toDate(from);
+  const toDateValue = toDate(to);
+  const lineItems: FinanceLineItem[] = [];
+  const warnings: FinanceWarning[] = [];
+  let grossRevenueCents = 0;
+  let refundCents = 0;
+  let feeCents = 0;
+  let actualCostCents = 0;
+  let futureCostCents = 0;
+  let customCostCents = 0;
+
+  bills
+    .filter((bill) => !bill.organizationId || bill.organizationId === organizationId)
+    .forEach((bill) => {
+      const recognitionDate = billRecognitionDate(bill);
+      if (!isWithinRange(recognitionDate, fromDate, toDateValue)) {
+        return;
+      }
+      const billTotals = summarizePaidBill(bill);
+      const isTeamRegistration = normalizeStatus(bill.ownerType, '') === 'TEAM';
+      const isRental = Boolean(bill.slotId);
+      const baseLabel = isTeamRegistration
+        ? 'Team registration payment'
+        : isRental
+          ? 'Rental payment'
+          : bill.eventId
+            ? 'Event registration payment'
+            : 'Organization payment';
+      const category = isTeamRegistration
+        ? 'team_registration'
+        : isRental
+          ? 'rental'
+          : bill.eventId
+            ? 'event_registration'
+            : 'organization_sales';
+
+      if (billTotals.paidCents > 0) {
+        grossRevenueCents += billTotals.paidCents;
+        lineItems.push(buildFinanceLineItem({
+          id: `organization-bill:${bill.id}:paid`,
+          sourceType: 'bill',
+          sourceId: bill.id,
+          scope: 'ORGANIZATION',
+          label: namedBillLabel(bill, baseLabel),
+          ...billLineItemMetadata(bill),
+          category,
+          amountCents: billTotals.paidCents,
+          classification: 'revenue',
+          status: 'PAID',
+          quantity: 1,
+          unitLabel: isTeamRegistration
+            ? 'team registration'
+            : isRental
+              ? 'rental'
+              : bill.eventId
+                ? 'registration'
+                : 'payment',
+          isGenerated: true,
+          serviceStartAt: recognitionDate,
+        }, asOf));
+      }
+      if (billTotals.refundedCents > 0) {
+        refundCents += billTotals.refundedCents;
+        lineItems.push(buildFinanceLineItem({
+          id: `organization-bill:${bill.id}:refund`,
+          sourceType: 'bill',
+          sourceId: bill.id,
+          scope: 'ORGANIZATION',
+          label: namedBillLabel(bill, 'Refunds'),
+          ...billLineItemMetadata(bill),
+          category: 'refunds',
+          amountCents: -billTotals.refundedCents,
+          classification: 'refund',
+          status: 'ACTUAL',
+          quantity: 1,
+          unitLabel: 'refund',
+          isGenerated: true,
+          serviceStartAt: recognitionDate,
+        }, asOf));
+      }
+      if (billTotals.feeCents > 0) {
+        feeCents += billTotals.feeCents;
+        lineItems.push(buildFinanceLineItem({
+          id: `organization-bill:${bill.id}:fees`,
+          sourceType: 'bill',
+          sourceId: bill.id,
+          scope: 'ORGANIZATION',
+          label: 'Payment processing fees',
+          ...billLineItemMetadata(bill),
+          category: 'fees',
+          amountCents: -billTotals.feeCents,
+          classification: 'fee',
+          status: 'ACTUAL',
+          quantity: 1,
+          unitLabel: 'payment',
+          isGenerated: true,
+          serviceStartAt: recognitionDate,
+        }, asOf));
+      }
+    });
+
+  const labor = laborLineItems(
+    staffLabor.filter((entry) => isWithinRange(entry.actualStart ?? entry.plannedStart, fromDate, toDateValue)),
+    'ORGANIZATION',
+    asOf,
+  );
+  lineItems.push(...labor.lineItems);
+  warnings.push(...labor.warnings);
+  actualCostCents += labor.costCents;
+  futureCostCents += labor.futureCostCents;
+
+  customLineItems
+    .filter((item) => item.organizationId === undefined || item.organizationId === organizationId)
+    .filter((item) => isWithinRange(item.serviceStartAt ?? item.occurredAt, fromDate, toDateValue))
+    .forEach((item) => {
+      const lineItem = customCostLineItem(item, 'ORGANIZATION', asOf);
+      lineItems.push(lineItem);
+      if (lineItem.timing === 'FUTURE') {
+        futureCostCents += Math.abs(lineItem.amountCents);
+      } else {
+        const amount = Math.abs(lineItem.amountCents);
+        actualCostCents += amount;
+        customCostCents += amount;
+      }
+    });
+
+  const actualRevenueCents = grossRevenueCents - refundCents - feeCents;
+  const actualProfitCents = actualRevenueCents - actualCostCents;
+  return {
+    organizationId,
+    grossRevenueCents,
+    refundCents,
+    feeCents,
+    actualRevenueCents,
+    actualCostCents,
+    actualProfitCents,
+    futureCostCents,
+    projectedProfitCents: actualProfitCents - futureCostCents,
+    staffCostCents: labor.costCents,
+    customCostCents,
     lineItems,
     warnings,
   };

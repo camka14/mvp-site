@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 type EventSummary = {
   eventId: string;
   eventName: string;
+  imageId?: string | null;
   start: string;
   end: string;
   status?: string;
@@ -1076,6 +1077,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         summary.eventsById.set(event.id, {
           eventId: event.id,
           eventName: event.name,
+          imageId: event.imageId,
           start: event.start.toISOString(),
           end: event.end.toISOString(),
         });
@@ -1100,6 +1102,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         summary.eventsById.set(event.id, {
           eventId: event.id,
           eventName: event.name,
+          imageId: event.imageId,
           start: event.start.toISOString(),
           end: event.end.toISOString(),
         });
@@ -1124,6 +1127,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       summary.eventsById.set(event.id, {
         eventId: event.id,
         eventName: event.name,
+        imageId: event.imageId,
         start: event.start.toISOString(),
         end: event.end.toISOString(),
       });
@@ -1160,6 +1164,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 	        teamSummary.registrationsByEventTeamId.set(teamId, {
 	          eventId: event.id,
 	          eventName: event.name,
+	          imageId: event.imageId,
 	          eventTeamId: teamId,
 	          eventTeamName: typeof eventTeam?.name === 'string' && eventTeam.name.trim() ? eventTeam.name.trim() : teamId,
 	          start: event.start.toISOString(),
@@ -1186,6 +1191,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         summary.eventsById.set(event.id, {
           eventId: event.id,
           eventName: event.name,
+          imageId: event.imageId,
           start: event.start.toISOString(),
           end: event.end.toISOString(),
           status: teamStatus ?? existing?.status,
@@ -1210,6 +1216,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     summary.eventsById.set(event.id, {
       eventId: event.id,
       eventName: event.name,
+      imageId: event.imageId,
       start: event.start.toISOString(),
       end: event.end.toISOString(),
       status: normalizeStatus(registration.status) ?? existing?.status,

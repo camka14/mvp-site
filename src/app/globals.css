@@ -545,29 +545,43 @@ svg {
 }
 
 .org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-panel {
-  background: var(--mvp-neutral-0);
-  border-color: var(--mvp-neutral-200);
+  background: var(--mvp-neutral-200);
+  border-color: var(--mvp-neutral-300);
 }
 
-.org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-section {
-  background: var(--mvp-neutral-50);
-  border-color: var(--mvp-neutral-200);
-}
-
-.org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-section--grouped {
-  background: var(--mvp-neutral-100);
+.org-page-shell .org-customer-detail-section {
+  min-width: 0;
 }
 
 .org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-item {
   background: var(--mvp-neutral-0);
   border-color: var(--mvp-neutral-200);
+  box-shadow: 0 8px 18px -18px rgba(15, 23, 42, 0.35);
+}
+
+.org-page-shell .org-tab-content .mantine-Paper-root.org-customer-detail-item:hover {
+  border-color: var(--mvp-neutral-300);
 }
 
 .org-page-shell .org-customer-detail-subgroup {
   min-height: 100%;
-  border: 1px solid var(--mvp-neutral-200);
-  border-radius: 0.75rem;
-  background: var(--mvp-neutral-50);
+  min-width: 0;
+}
+
+.org-page-shell .org-customer-event-card {
+  cursor: pointer;
+}
+
+.org-page-shell .org-customer-event-card__avatar {
+  flex: 0 0 3rem;
+  background: var(--mvp-neutral-100);
+}
+
+.org-page-shell .org-customer-document-card {
+  cursor: pointer;
+}
+
+.org-page-shell .org-customer-team-card {
   padding: 0.75rem;
 }
 
@@ -631,8 +645,16 @@ svg {
   cursor: pointer;
 }
 
-.org-page-shell .org-customer-list-row[data-selected="true"] {
-  background: var(--ocean-surface-muted);
+.org-page-shell .org-customer-list-row:hover > td {
+  background: var(--mvp-neutral-100);
+}
+
+.org-page-shell .org-customer-list-row[data-selected="true"] > td {
+  background: var(--mvp-neutral-200);
+}
+
+.org-page-shell .org-customer-list-row[data-selected="true"]:hover > td {
+  background: var(--mvp-neutral-200);
 }
 
 .shared-calendar-layout {

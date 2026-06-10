@@ -278,6 +278,11 @@ export interface MatchSegmentOperation {
   resultType?: MatchResultType | string | null;
   statusReason?: string | null;
   metadata?: Record<string, unknown> | null;
+  clientOperationId?: string;
+  clientDeviceId?: string;
+  clientCreatedAt?: string;
+  clientSequence?: number;
+  sourceDevice?: string;
 }
 
 export interface MatchIncidentOperation {
@@ -296,6 +301,11 @@ export interface MatchIncidentOperation {
   linkedPointDelta?: number | null;
   note?: string | null;
   metadata?: Record<string, unknown> | null;
+  clientOperationId?: string;
+  clientDeviceId?: string;
+  clientCreatedAt?: string;
+  clientSequence?: number;
+  sourceDevice?: string;
 }
 
 export interface MatchOfficialCheckInOperation {

@@ -18,6 +18,7 @@ const canManageStaffCompensationMock = jest.fn();
 const canManageOrganizationFinanceMock = jest.fn();
 const createCompensationRateMock = jest.fn();
 const createFinancialLineItemMock = jest.fn();
+const updateFinancialLineItemMock = jest.fn();
 
 class MockFinanceMutationError extends Error {
   status: number;
@@ -38,10 +39,12 @@ jest.mock('@/server/finance/financeMutations', () => ({
   FinanceMutationError: MockFinanceMutationError,
   createCompensationRate: (...args: any[]) => createCompensationRateMock(...args),
   createFinancialLineItem: (...args: any[]) => createFinancialLineItemMock(...args),
+  updateFinancialLineItem: (...args: any[]) => updateFinancialLineItemMock(...args),
 }));
 
 import { GET as getCompensation, POST as postCompensation } from '@/app/api/organizations/[id]/finance/compensation/route';
 import { POST as postLineItem } from '@/app/api/organizations/[id]/finance/line-items/route';
+import { PATCH as patchLineItem } from '@/app/api/organizations/[id]/finance/line-items/[lineItemId]/route';
 
 describe('organization finance write routes', () => {
   beforeEach(() => {
@@ -89,6 +92,13 @@ describe('organization finance write routes', () => {
       eventId: 'event_1',
       title: 'Field rental',
       amountCents: 15000,
+    });
+    updateFinancialLineItemMock.mockResolvedValue({
+      id: 'line_1',
+      organizationId: 'org_1',
+      scope: 'ORGANIZATION',
+      title: 'Updated field rental',
+      amountCents: 17500,
     });
   });
 
@@ -229,5 +239,40 @@ describe('organization finance write routes', () => {
 
     expect(response.status).toBe(404);
     expect(payload.error).toBe('Event not found.');
+  });
+
+  it('updates custom finance line items for organization finance managers', async () => {
+    const response = await patchLineItem(
+      new NextRequest('http://localhost/api/organizations/org_1/finance/line-items/line_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          category: 'Rentals',
+          title: 'Updated field rental',
+          amountCents: 17500,
+          status: 'APPROVED',
+          serviceStartAt: '2026-06-20T00:00:00.000Z',
+          serviceEndAt: '2026-06-20T23:59:59.999Z',
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1', lineItemId: 'line_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(canManageOrganizationFinanceMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'owner_1' }),
+      expect.objectContaining({ id: 'org_1' }),
+      prismaMock,
+    );
+    expect(updateFinancialLineItemMock).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: 'org_1',
+      lineItemId: 'line_1',
+      category: 'Rentals',
+      title: 'Updated field rental',
+      amountCents: 17500,
+      actingUserId: 'owner_1',
+    }), prismaMock);
+    expect(payload.lineItem.title).toBe('Updated field rental');
   });
 });

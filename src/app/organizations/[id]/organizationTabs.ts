@@ -6,6 +6,7 @@ export type OrganizationTab =
   | 'users'
   | 'fields'
   | 'staff'
+  | 'finance'
   | 'refunds'
   | 'publicPage'
   | 'store'
@@ -16,6 +17,61 @@ export type OrganizationTabOption = {
   value: OrganizationTab;
 };
 
+export type OrganizationCustomerRouteType = 'users' | 'teams';
+
+const ORGANIZATION_TAB_TO_PATH_SEGMENT: Record<OrganizationTab, string> = {
+  overview: '',
+  events: 'events',
+  eventTemplates: 'event-templates',
+  teams: 'teams',
+  users: 'customers',
+  fields: 'fields',
+  staff: 'staff',
+  finance: 'finance',
+  refunds: 'refunds',
+  publicPage: 'public-page',
+  store: 'store',
+  templates: 'document-templates',
+};
+
+const ORGANIZATION_TAB_ALIASES: Record<string, OrganizationTab> = {
+  overview: 'overview',
+  events: 'events',
+  eventTemplates: 'eventTemplates',
+  'event-templates': 'eventTemplates',
+  teams: 'teams',
+  users: 'users',
+  customers: 'users',
+  fields: 'fields',
+  staff: 'staff',
+  finance: 'finance',
+  refunds: 'refunds',
+  publicPage: 'publicPage',
+  'public-page': 'publicPage',
+  store: 'store',
+  templates: 'templates',
+  'document-templates': 'templates',
+};
+
+export const organizationTabFromPathSegment = (segment?: string | null): OrganizationTab | null => {
+  const normalized = String(segment ?? '').trim();
+  return normalized ? ORGANIZATION_TAB_ALIASES[normalized] ?? null : null;
+};
+
+export const buildOrganizationTabPath = (organizationId: string, tab: OrganizationTab): string => {
+  const encodedOrganizationId = encodeURIComponent(organizationId);
+  const segment = ORGANIZATION_TAB_TO_PATH_SEGMENT[tab];
+  return segment ? `/organizations/${encodedOrganizationId}/${segment}` : `/organizations/${encodedOrganizationId}`;
+};
+
+export const buildOrganizationCustomerPath = (
+  organizationId: string,
+  customerType: OrganizationCustomerRouteType,
+  customerId: string,
+): string => (
+  `${buildOrganizationTabPath(organizationId, 'users')}/${customerType}/${encodeURIComponent(customerId)}`
+);
+
 type BuildOrganizationTabsParams = {
   viewerCanAccessUsers?: boolean;
   isOwner?: boolean;
@@ -23,6 +79,7 @@ type BuildOrganizationTabsParams = {
   canManageStaff?: boolean;
   canManageTemplates?: boolean;
   canManageRefunds?: boolean;
+  canManageFinance?: boolean;
   canManagePublicPage?: boolean;
   canManageTeams?: boolean;
   canManageFields?: boolean;
@@ -39,6 +96,7 @@ export const buildOrganizationTabs = ({
   canManageStaff = false,
   canManageTemplates = false,
   canManageRefunds = false,
+  canManageFinance = false,
   canManagePublicPage = false,
   canManageTeams = false,
   canManageFields = false,
@@ -67,6 +125,10 @@ export const buildOrganizationTabs = ({
 
   if (isOwner || canManageStaff) {
     tabs.push({ label: 'Staff', value: 'staff' });
+  }
+
+  if (isOwner || canManageFinance) {
+    tabs.push({ label: 'Finance', value: 'finance' });
   }
 
   if (isOwner || canManageRefunds) {

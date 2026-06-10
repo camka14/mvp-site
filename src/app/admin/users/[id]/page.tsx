@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
+import { buildTeamManagementPath } from '@/app/teams/teamRoutes';
 import { prisma } from '@/lib/prisma';
 import { applyNameCaseToUserFields } from '@/lib/nameCase';
 import { resolveRazumlyAdminFromToken } from '@/server/razumlyAdmin';
@@ -257,9 +258,7 @@ export default async function AdminUserProfilePage({ params }: AdminUserProfileP
                 <Table.Tbody>
                   {[...teamRegistrations, ...staffAssignments].map((row) => {
                     const team = teamsById.get(row.teamId);
-                    const href = team?.organizationId
-                      ? `/organizations/${team.organizationId}?tab=teams&teamId=${team.id}`
-                      : `/teams?teamId=${row.teamId}`;
+                    const href = buildTeamManagementPath(team?.id ?? row.teamId);
                     return (
                       <Table.Tr key={`${row.teamId}:${'role' in row ? row.role : row.rosterRole}`}>
                         <Table.Td>

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import {
+  buildOrganizationFinanceSummary,
   buildEventFinanceSummary,
   buildTeamFinanceSummary,
   type CustomFinanceLineItem,
@@ -8,6 +9,7 @@ import {
   type FinanceLaborEntry,
   type FinanceLaborRate,
   type FinanceWageType,
+  type OrganizationFinanceSummary,
   type TeamFinanceSummary,
 } from '@/server/finance/financeAnalysis';
 
@@ -76,6 +78,7 @@ const paymentSelect = {
   amountCents: true,
   status: true,
   paidAt: true,
+  payerUserId: true,
   refundedAmountCents: true,
   stripeProcessingFeeCents: true,
   stripeTaxServiceFeeCents: true,
@@ -84,9 +87,11 @@ const paymentSelect = {
 const billSelect = {
   id: true,
   createdAt: true,
+  organizationId: true,
   ownerType: true,
   ownerId: true,
   eventId: true,
+  slotId: true,
   totalAmountCents: true,
   paidAmountCents: true,
 } as const;
@@ -112,6 +117,7 @@ const loadPaymentsByBillId = async (
       amountCents: payment.amountCents,
       status: payment.status,
       paidAt: payment.paidAt,
+      payerUserId: payment.payerUserId,
       refundedAmountCents: payment.refundedAmountCents,
       stripeProcessingFeeCents: payment.stripeProcessingFeeCents,
       stripeTaxServiceFeeCents: payment.stripeTaxServiceFeeCents,
@@ -125,14 +131,155 @@ const attachPayments = async (
   client: PrismaLike,
   rows: any[],
 ): Promise<FinanceBill[]> => {
+  if (!rows.length) {
+    return [];
+  }
   const billIds = rows.map((row) => row.id);
   const paymentsByBillId = await loadPaymentsByBillId(client, billIds);
+  const payments = [...paymentsByBillId.values()].flat();
+  const eventIds = normalizeIds(rows.map((row) => row.eventId));
+  const slotIds = normalizeIds(rows.map((row) => row.slotId));
+  const teamOwnerIds = normalizeIds(rows
+    .filter((row) => String(row.ownerType ?? '').toUpperCase() === 'TEAM')
+    .map((row) => row.ownerId));
+  const userOwnerIds = normalizeIds(rows
+    .filter((row) => String(row.ownerType ?? '').toUpperCase() === 'USER')
+    .map((row) => row.ownerId));
+  const payerUserIds = normalizeIds(payments.map((payment) => payment?.payerUserId));
+
+  const [eventRows, userRows, canonicalTeamRows, eventTeamRows, slotRows] = await Promise.all([
+    eventIds.length
+      ? client.events.findMany({
+        where: { id: { in: eventIds } },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
+    normalizeIds([...userOwnerIds, ...payerUserIds]).length
+      ? client.userData.findMany({
+        where: { id: { in: normalizeIds([...userOwnerIds, ...payerUserIds]) } },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          userName: true,
+        },
+      })
+      : Promise.resolve([]),
+    teamOwnerIds.length
+      ? client.canonicalTeams.findMany({
+        where: { id: { in: teamOwnerIds } },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
+    teamOwnerIds.length
+      ? client.teams.findMany({
+        where: { id: { in: teamOwnerIds } },
+        select: { id: true, name: true, parentTeamId: true },
+      })
+      : Promise.resolve([]),
+    slotIds.length
+      ? client.timeSlots.findMany({
+        where: { id: { in: slotIds } },
+        select: {
+          id: true,
+          scheduledFieldId: true,
+          scheduledFieldIds: true,
+        },
+      })
+      : Promise.resolve([]),
+  ]);
+
+  const eventNamesById = new Map<string, string>(
+    eventRows.map((event: any) => [String(event.id), String(event.name ?? '').trim()]),
+  );
+  const usersById = new Map<string, Record<string, unknown>>(
+    userRows.map((user: Record<string, unknown>) => [String(user.id), user]),
+  );
+  const canonicalTeamsById = new Map<string, { name?: unknown; parentTeamId?: unknown }>(
+    canonicalTeamRows.map((team: any) => [String(team.id), team]),
+  );
+  const eventTeamsById = new Map<string, { name?: unknown; parentTeamId?: unknown }>(
+    eventTeamRows.map((team: any) => [String(team.id), team]),
+  );
+  const fieldIds = normalizeIds(slotRows.flatMap((slot: any) => [
+    slot.scheduledFieldId,
+    ...(Array.isArray(slot.scheduledFieldIds) ? slot.scheduledFieldIds : []),
+  ]));
+  const fieldRows = fieldIds.length
+    ? await client.fields.findMany({
+      where: { id: { in: fieldIds } },
+      select: { id: true, name: true },
+    })
+    : [];
+  const fieldNamesById = new Map<string, string>(
+    fieldRows.map((field: any) => [String(field.id), String(field.name ?? '').trim()]),
+  );
+  const sourceNameBySlotId = new Map<string, string>();
+  slotRows.forEach((slot: any) => {
+    const slotFieldIds = normalizeIds([
+      slot.scheduledFieldId,
+      ...(Array.isArray(slot.scheduledFieldIds) ? slot.scheduledFieldIds : []),
+    ]);
+    const fieldName = slotFieldIds.map((fieldId) => fieldNamesById.get(fieldId)).find(Boolean);
+    sourceNameBySlotId.set(String(slot.id), fieldName || 'Rental');
+  });
+
   return rows.map((row) => ({
     id: row.id,
     createdAt: row.createdAt,
+    organizationId: row.organizationId,
     ownerType: row.ownerType,
     ownerId: row.ownerId,
     eventId: row.eventId,
+    slotId: row.slotId,
+    sourceName: row.eventId
+      ? eventNamesById.get(String(row.eventId)) || 'Event'
+      : row.slotId
+        ? sourceNameBySlotId.get(String(row.slotId)) || 'Rental'
+        : 'Organization',
+    sourceEntityType: row.eventId ? 'event' : row.slotId ? 'rental' : row.organizationId ? 'organization' : null,
+    sourceEntityId: row.eventId ?? row.slotId ?? row.organizationId ?? null,
+    customerType: (() => {
+      const ownerType = String(row.ownerType ?? '').toUpperCase();
+      if (ownerType === 'TEAM') return 'teams' as const;
+      if (ownerType === 'USER') return 'users' as const;
+      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+      return payerUserId ? 'users' as const : null;
+    })(),
+    customerId: (() => {
+      const ownerType = String(row.ownerType ?? '').toUpperCase();
+      if (ownerType === 'TEAM') {
+        const eventTeam = eventTeamsById.get(String(row.ownerId));
+        return normalizeId(eventTeam?.parentTeamId) ?? normalizeId(row.ownerId);
+      }
+      if (ownerType === 'USER') {
+        return normalizeId(row.ownerId);
+      }
+      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+      return normalizeId(payerUserId);
+    })(),
+    customerName: (() => {
+      const ownerType = String(row.ownerType ?? '').toUpperCase();
+      if (ownerType === 'TEAM') {
+        const canonicalTeam = canonicalTeamsById.get(String(row.ownerId));
+        const eventTeam = eventTeamsById.get(String(row.ownerId));
+        if (canonicalTeam?.name) {
+          return String(canonicalTeam.name);
+        }
+        if (eventTeam?.parentTeamId) {
+          const parentTeam = canonicalTeamsById.get(String(eventTeam.parentTeamId));
+          if (parentTeam?.name) {
+            return String(parentTeam.name);
+          }
+        }
+        return eventTeam?.name ? String(eventTeam.name) : 'Team';
+      }
+      if (ownerType === 'USER') {
+        return displayName(usersById.get(String(row.ownerId)), 'Customer');
+      }
+      const payerUserId = (paymentsByBillId.get(row.id) ?? []).find((payment) => payment?.payerUserId)?.payerUserId;
+      return payerUserId ? displayName(usersById.get(String(payerUserId)), 'Customer') : null;
+    })(),
     totalAmountCents: row.totalAmountCents,
     paidAmountCents: row.paidAmountCents,
     payments: paymentsByBillId.get(row.id) ?? [],
@@ -279,7 +426,7 @@ const resolveRate = (
 
 const loadEventStaffLabor = async (
   client: PrismaLike,
-  event: { id: string; organizationId: string; start: Date },
+  event: { id: string; organizationId: string; start: Date; name?: string | null },
 ): Promise<FinanceLaborEntry[]> => {
   const rows = await client.eventStaffAssignments.findMany({
     where: {
@@ -301,9 +448,12 @@ const loadEventStaffLabor = async (
     const referenceDate = assignmentReferenceDate(row, event.start);
     return {
       id: row.id,
+      sourceType: 'EVENT_STAFF_ASSIGNMENT',
       eventId: row.eventId,
+      eventName: event.name ?? null,
       staffMemberId: row.staffMemberId,
       userId,
+      userName: displayName(userId ? usersById.get(userId) : null, `Staff ${row.staffMemberId}`),
       label: displayName(userId ? usersById.get(userId) : null, `Staff ${row.staffMemberId}`),
       plannedStart: row.plannedStart ?? (isPlannedLabor(row) ? event.start : null),
       plannedEnd: row.plannedEnd,
@@ -339,25 +489,50 @@ const loadTeamStaffLabor = async (
   const usersById = await loadUsersById(client, userIds);
   const fallbackDate = new Date();
   const eventIds = normalizeIds(rows.map((row: any) => row.eventId));
-  const eventStartsById: Map<string, Date | null> = eventIds.length
-    ? new Map<string, Date | null>((await client.events.findMany({
+  const eventsById: Map<string, { start: Date | null; name: string | null }> = eventIds.length
+    ? new Map<string, { start: Date | null; name: string | null }>((await client.events.findMany({
       where: { id: { in: eventIds } },
-      select: { id: true, start: true },
-    })).map((event: any) => [String(event.id), toDate(event.start)]))
-    : new Map<string, Date | null>();
+      select: { id: true, start: true, name: true },
+    })).map((event: any) => [String(event.id), { start: toDate(event.start), name: String(event.name ?? '').trim() || null }]))
+    : new Map<string, { start: Date | null; name: string | null }>();
+  const laborTeamIds = normalizeIds(rows.map((row: any) => row.teamId));
+  const laborEventTeamIds = normalizeIds(rows.map((row: any) => row.eventTeamId));
+  const [teamRows, eventTeamRows] = await Promise.all([
+    laborTeamIds.length
+      ? client.canonicalTeams.findMany({
+        where: { id: { in: laborTeamIds } },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
+    laborEventTeamIds.length
+      ? client.teams.findMany({
+        where: { id: { in: laborEventTeamIds } },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
+  ]);
+  const teamNamesById = new Map(teamRows.map((team: any) => [String(team.id), String(team.name ?? '').trim() || null]));
+  const eventTeamNamesById = new Map(eventTeamRows.map((team: any) => [String(team.id), String(team.name ?? '').trim() || null]));
 
   return rows.map((row: any) => {
-    const eventStart = row.eventId ? eventStartsById.get(row.eventId) : null;
+    const event = row.eventId ? eventsById.get(row.eventId) : null;
+    const eventStart = event?.start ?? null;
     const plannedStart = row.plannedStart ?? (isPlannedLabor(row) ? eventStart : null);
     const referenceDate = assignmentReferenceDate({ ...row, plannedStart }, eventStart ?? fallbackDate);
+    const userName = displayName(usersById.get(row.userId), `Team staff ${row.userId}`);
     return {
       id: row.id,
+      sourceType: 'TEAM_STAFF_LABOR',
       teamId: row.teamId,
+      teamName: row.teamId ? teamNamesById.get(row.teamId) ?? null : null,
       eventTeamId: row.eventTeamId,
+      eventTeamName: row.eventTeamId ? eventTeamNamesById.get(row.eventTeamId) ?? null : null,
       eventId: row.eventId,
+      eventName: event?.name ?? null,
       staffMemberId: row.staffMemberId,
       userId: row.userId,
-      label: displayName(usersById.get(row.userId), `Team staff ${row.userId}`),
+      userName,
+      label: userName,
       plannedStart,
       plannedEnd: row.plannedEnd,
       actualStart: row.actualStart,
@@ -373,8 +548,12 @@ const loadTeamStaffLabor = async (
 const customLineItemSelect = {
   id: true,
   title: true,
+  description: true,
   category: true,
   amountCents: true,
+  quantity: true,
+  unitLabel: true,
+  organizationId: true,
   eventId: true,
   teamId: true,
   eventTeamId: true,
@@ -388,8 +567,12 @@ const customLineItemSelect = {
 const toCustomLineItem = (row: any): CustomFinanceLineItem => ({
   id: row.id,
   title: row.title,
+  description: row.description,
   category: row.category,
   amountCents: row.amountCents,
+  quantity: row.quantity,
+  unitLabel: row.unitLabel,
+  organizationId: row.organizationId,
   eventId: row.eventId,
   teamId: row.teamId,
   eventTeamId: row.eventTeamId,
@@ -400,6 +583,133 @@ const toCustomLineItem = (row: any): CustomFinanceLineItem => ({
   serviceEndAt: row.serviceEndAt,
 });
 
+export const loadOrganizationStaffLaborEntries = async (
+  organizationId: string,
+  client: PrismaLike = prisma,
+): Promise<FinanceLaborEntry[]> => {
+  const [eventRows, teamRows] = await Promise.all([
+    client.eventStaffAssignments.findMany({
+      where: {
+        organizationId,
+        status: { not: 'CANCELLED' },
+      },
+    }),
+    client.teamStaffLaborEntries.findMany({
+      where: {
+        organizationId,
+        status: { not: 'CANCELLED' },
+      },
+    }),
+  ]);
+
+  const eventIds = normalizeIds([
+    ...eventRows.map((row: any) => row.eventId),
+    ...teamRows.map((row: any) => row.eventId),
+  ]);
+  const eventsById: Map<string, { start: Date | null; name: string | null }> = eventIds.length
+    ? new Map<string, { start: Date | null; name: string | null }>((await client.events.findMany({
+      where: {
+        id: { in: eventIds },
+        organizationId,
+      },
+      select: { id: true, start: true, name: true },
+    })).map((event: any) => [String(event.id), { start: toDate(event.start), name: String(event.name ?? '').trim() || null }]))
+    : new Map<string, { start: Date | null; name: string | null }>();
+
+  const staffMemberIds = normalizeIds([
+    ...eventRows.map((row: any) => row.staffMemberId),
+    ...teamRows.map((row: any) => row.staffMemberId),
+  ]);
+  const roleIds = normalizeIds(eventRows.map((row: any) => row.organizationRoleId));
+  const context = await loadStaffMemberRateContext(client, organizationId, staffMemberIds, roleIds);
+  const userIds = normalizeIds([
+    ...eventRows.map((row: any) => (
+      row.userId ?? context.staffMembersById.get(row.staffMemberId)?.userId
+    )),
+    ...teamRows.map((row: any) => row.userId),
+  ]);
+  const usersById = await loadUsersById(client, userIds);
+  const teamIds = normalizeIds(teamRows.map((row: any) => row.teamId));
+  const eventTeamIds = normalizeIds(teamRows.map((row: any) => row.eventTeamId));
+  const [canonicalTeamRows, eventTeamRows] = await Promise.all([
+    teamIds.length
+      ? client.canonicalTeams.findMany({
+        where: { id: { in: teamIds } },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
+    eventTeamIds.length
+      ? client.teams.findMany({
+        where: { id: { in: eventTeamIds } },
+        select: { id: true, name: true },
+      })
+      : Promise.resolve([]),
+  ]);
+  const teamNamesById = new Map(canonicalTeamRows.map((team: any) => [String(team.id), String(team.name ?? '').trim() || null]));
+  const eventTeamNamesById = new Map(eventTeamRows.map((team: any) => [String(team.id), String(team.name ?? '').trim() || null]));
+  const fallbackDate = new Date();
+
+  const eventLabor: FinanceLaborEntry[] = eventRows.map((row: any) => {
+    const staffMember = context.staffMembersById.get(row.staffMemberId);
+    const userId = normalizeId(row.userId) ?? normalizeId(staffMember?.userId);
+    const event = row.eventId ? eventsById.get(row.eventId) : null;
+    const eventStart = event?.start ?? null;
+    const plannedStart = row.plannedStart ?? (isPlannedLabor(row) ? eventStart : null);
+    const referenceDate = assignmentReferenceDate({ ...row, plannedStart }, eventStart ?? fallbackDate);
+    const userName = displayName(userId ? usersById.get(userId) : null, `Staff ${row.staffMemberId}`);
+    return {
+      id: row.id,
+      sourceType: 'EVENT_STAFF_ASSIGNMENT',
+      eventId: row.eventId,
+      eventName: event?.name ?? null,
+      staffMemberId: row.staffMemberId,
+      userId,
+      userName,
+      label: userName,
+      plannedStart,
+      plannedEnd: row.plannedEnd,
+      actualStart: row.actualStart,
+      actualEnd: row.actualEnd,
+      plannedMinutes: row.plannedMinutes,
+      actualMinutes: row.actualMinutes,
+      status: row.status,
+      rate: resolveRate(row, context, referenceDate),
+    };
+  });
+
+  const teamLabor: FinanceLaborEntry[] = teamRows.map((row: any) => {
+    const event = row.eventId ? eventsById.get(row.eventId) : null;
+    const eventStart = event?.start ?? null;
+    const plannedStart = row.plannedStart ?? (isPlannedLabor(row) ? eventStart : null);
+    const referenceDate = assignmentReferenceDate({ ...row, plannedStart }, eventStart ?? fallbackDate);
+    const userName = displayName(usersById.get(row.userId), `Team staff ${row.userId}`);
+    return {
+      id: row.id,
+      sourceType: 'TEAM_STAFF_LABOR',
+      teamId: row.teamId,
+      teamName: row.teamId ? teamNamesById.get(row.teamId) ?? null : null,
+      eventTeamId: row.eventTeamId,
+      eventTeamName: row.eventTeamId ? eventTeamNamesById.get(row.eventTeamId) ?? null : null,
+      eventId: row.eventId,
+      eventName: event?.name ?? null,
+      staffMemberId: row.staffMemberId,
+      userId: row.userId,
+      userName,
+      label: userName,
+      plannedStart,
+      plannedEnd: row.plannedEnd,
+      actualStart: row.actualStart,
+      actualEnd: row.actualEnd,
+      plannedMinutes: row.plannedMinutes,
+      actualMinutes: row.actualMinutes,
+      status: row.status,
+      rate: resolveRate(row, context, referenceDate),
+    };
+  });
+
+  return [...eventLabor, ...teamLabor];
+};
+
 export const loadEventFinanceSummary = async (
   eventId: string,
   client: PrismaLike = prisma,
@@ -408,6 +718,7 @@ export const loadEventFinanceSummary = async (
     where: { id: eventId },
     select: {
       id: true,
+      name: true,
       organizationId: true,
       start: true,
       price: true,
@@ -432,6 +743,7 @@ export const loadEventFinanceSummary = async (
     }),
     loadEventStaffLabor(client, {
       id: event.id,
+      name: event.name,
       organizationId: event.organizationId,
       start: event.start,
     }),
@@ -514,4 +826,85 @@ export const loadTeamFinanceSummary = async (
     staffLabor,
     customLineItems: customRows.map(toCustomLineItem),
   });
+};
+
+export const loadOrganizationFinanceSummary = async (
+  organizationId: string,
+  client: PrismaLike = prisma,
+  options: { from?: string | Date | null; to?: string | Date | null } = {},
+): Promise<OrganizationFinanceSummary | null> => {
+  const organization = await client.organizations.findUnique({
+    where: { id: organizationId },
+    select: {
+      id: true,
+    },
+  });
+  if (!organization) {
+    return null;
+  }
+
+  const eventRows = await client.events.findMany({
+    where: { organizationId },
+    select: { id: true },
+  });
+  const eventIds = normalizeIds(eventRows.map((event: any) => event.id));
+
+  const [billRows, staffLabor, customRows] = await Promise.all([
+    client.bills.findMany({
+      where: eventIds.length
+        ? {
+          OR: [
+            { organizationId },
+            { eventId: { in: eventIds } },
+          ],
+        }
+        : { organizationId },
+      select: billSelect,
+    }),
+    loadOrganizationStaffLaborEntries(organizationId, client),
+    client.financialLineItems.findMany({
+      where: {
+        organizationId,
+        status: { not: 'VOID' },
+      },
+      select: customLineItemSelect,
+    }),
+  ]);
+
+  const bills = await attachPayments(client, billRows);
+  return buildOrganizationFinanceSummary({
+    organizationId,
+    bills,
+    staffLabor,
+    customLineItems: customRows.map(toCustomLineItem),
+    from: options.from,
+    to: options.to,
+  });
+};
+
+export const listOrganizationFinancialLineItemCategories = async (
+  organizationId: string,
+  client: PrismaLike = prisma,
+): Promise<string[]> => {
+  const rows = await client.financialLineItems.findMany({
+    where: {
+      organizationId,
+      status: { not: 'VOID' },
+    },
+    select: { category: true },
+    orderBy: { category: 'asc' },
+  });
+
+  const categoriesByKey = new Map<string, string>();
+  rows.forEach((row: { category?: string | null }) => {
+    const category = row.category?.trim();
+    if (!category) {
+      return;
+    }
+    const key = category.toLowerCase();
+    if (!categoriesByKey.has(key)) {
+      categoriesByKey.set(key, category);
+    }
+  });
+  return [...categoriesByKey.values()].sort((a, b) => a.localeCompare(b));
 };

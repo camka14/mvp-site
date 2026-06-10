@@ -8,6 +8,7 @@ import {
   createFinancialLineItem,
   createTeamStaffLaborEntry,
   FinanceMutationError,
+  updateFinancialLineItem,
 } from '@/server/finance/financeMutations';
 
 const txClient = () => {
@@ -54,6 +55,8 @@ const txClient = () => {
     },
     financialLineItems: {
       create: jest.fn(),
+      findUnique: jest.fn(),
+      update: jest.fn(),
     },
   };
   return client;
@@ -265,6 +268,83 @@ describe('financeMutations', () => {
       actingUserId: 'owner_1',
     }, client)).rejects.toBeInstanceOf(FinanceMutationError);
     expect(client.financialLineItems.create).not.toHaveBeenCalled();
+  });
+
+  it('updates custom financial line items for their organization', async () => {
+    const client = txClient();
+    client.financialLineItems.findUnique.mockResolvedValue({
+      id: 'line_1',
+      organizationId: 'org_1',
+      occurredAt: new Date('2026-06-01T00:00:00.000Z'),
+      serviceStartAt: new Date('2026-06-01T00:00:00.000Z'),
+      serviceEndAt: null,
+    });
+    client.financialLineItems.update.mockImplementation(async ({ data }: any) => ({ id: 'line_1', ...data }));
+
+    const lineItem = await updateFinancialLineItem({
+      organizationId: 'org_1',
+      lineItemId: 'line_1',
+      category: 'Rentals',
+      title: 'Updated field rental',
+      amountCents: 17500,
+      serviceStartAt: '2026-06-15T00:00:00.000Z',
+      serviceEndAt: '2026-06-16T00:00:00.000Z',
+      actingUserId: 'owner_1',
+    }, client);
+
+    expect(client.financialLineItems.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'line_1' },
+      data: expect.objectContaining({
+        category: 'Rentals',
+        title: 'Updated field rental',
+        amountCents: 17500,
+        serviceStartAt: new Date('2026-06-15T00:00:00.000Z'),
+        serviceEndAt: new Date('2026-06-16T00:00:00.000Z'),
+        updatedBy: 'owner_1',
+      }),
+    }));
+    expect(lineItem.title).toBe('Updated field rental');
+  });
+
+  it('rejects financial line item edits from the wrong organization', async () => {
+    const client = txClient();
+    client.financialLineItems.findUnique.mockResolvedValue({
+      id: 'line_1',
+      organizationId: 'other_org',
+      occurredAt: null,
+      serviceStartAt: null,
+      serviceEndAt: null,
+    });
+
+    await expect(updateFinancialLineItem({
+      organizationId: 'org_1',
+      lineItemId: 'line_1',
+      title: 'Updated field rental',
+      actingUserId: 'owner_1',
+    }, client)).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(client.financialLineItems.update).not.toHaveBeenCalled();
+  });
+
+  it('rejects reversed financial line item service date edits', async () => {
+    const client = txClient();
+    client.financialLineItems.findUnique.mockResolvedValue({
+      id: 'line_1',
+      organizationId: 'org_1',
+      occurredAt: null,
+      serviceStartAt: new Date('2026-06-01T00:00:00.000Z'),
+      serviceEndAt: null,
+    });
+
+    await expect(updateFinancialLineItem({
+      organizationId: 'org_1',
+      lineItemId: 'line_1',
+      serviceStartAt: '2026-06-20T00:00:00.000Z',
+      serviceEndAt: '2026-06-19T00:00:00.000Z',
+      actingUserId: 'owner_1',
+    }, client)).rejects.toBeInstanceOf(FinanceMutationError);
+    expect(client.financialLineItems.update).not.toHaveBeenCalled();
   });
 
   it('rejects reversed labor time ranges', async () => {

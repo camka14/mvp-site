@@ -1,0 +1,55 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
+import { prisma } from '@/lib/prisma';
+import { requireSession } from '@/lib/permissions';
+import { canManageOrganizationFinance } from '@/server/finance/financeAccess';
+import { StaffPayRunError, updateStaffPayRunStatus } from '@/server/finance/staffPayRuns';
+
+export const dynamic = 'force-dynamic';
+
+const updatePayRunSchema = z.object({
+  action: z.enum(['APPROVE', 'MARK_PAID', 'VOID']),
+}).strict();
+
+const mutationErrorResponse = (error: unknown) => {
+  if (error instanceof StaffPayRunError) {
+    return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+  throw error;
+};
+
+export async function PATCH(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string; payRunId: string }> },
+) {
+  const session = await requireSession(req);
+  const { id, payRunId } = await params;
+  const body = await req.json().catch(() => null);
+  const parsed = updatePayRunSchema.safeParse(body ?? {});
+  if (!parsed.success) {
+    return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const organization = await prisma.organizations.findUnique({
+    where: { id },
+    select: { id: true, ownerId: true },
+  });
+  if (!organization) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404 });
+  }
+  if (!(await canManageOrganizationFinance(session, organization, prisma))) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+
+  try {
+    const payRun = await updateStaffPayRunStatus({
+      organizationId: id,
+      payRunId,
+      action: parsed.data.action,
+      actingUserId: session.userId,
+    }, prisma);
+    return NextResponse.json({ payRun }, { status: 200 });
+  } catch (error) {
+    return mutationErrorResponse(error);
+  }
+}

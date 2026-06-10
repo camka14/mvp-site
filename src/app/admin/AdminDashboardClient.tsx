@@ -8,6 +8,7 @@ import EventCard from '@/components/ui/EventCard';
 import OrganizationCard from '@/components/ui/OrganizationCard';
 import ResponsiveCardGrid from '@/components/ui/ResponsiveCardGrid';
 import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { buildTeamManagementPath } from '@/app/teams/teamRoutes';
 import {
   organizationVerificationStatusLabel,
   resolveOrganizationVerificationStatus,
@@ -636,13 +637,7 @@ export default function AdminDashboardClient({ initialAdminEmail }: AdminDashboa
   }, [router]);
 
   const openTeam = useCallback((team: AdminTeamRow) => {
-    const teamId = team.$id;
-    const organizationId = team.organizationId?.trim();
-    if (organizationId) {
-      router.push(`/organizations/${encodeURIComponent(organizationId)}?tab=teams&teamId=${encodeURIComponent(teamId)}`);
-      return;
-    }
-    router.push(`/teams?teamId=${encodeURIComponent(teamId)}`);
+    router.push(buildTeamManagementPath(team.$id));
   }, [router]);
 
   const openField = useCallback((field: AdminFieldRow) => {

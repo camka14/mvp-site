@@ -350,6 +350,38 @@ export const FinancialLineItemStatusEnum = {
 export type FinancialLineItemStatusEnum = (typeof FinancialLineItemStatusEnum)[keyof typeof FinancialLineItemStatusEnum]
 
 
+export const StaffPayRunStatusEnum = {
+  DRAFT: 'DRAFT',
+  APPROVED: 'APPROVED',
+  PAID: 'PAID',
+  VOID: 'VOID'
+} as const
+
+export type StaffPayRunStatusEnum = (typeof StaffPayRunStatusEnum)[keyof typeof StaffPayRunStatusEnum]
+
+
+export const StaffPayRunItemStatusEnum = {
+  DRAFT: 'DRAFT',
+  APPROVED: 'APPROVED',
+  PAID: 'PAID',
+  VOID: 'VOID'
+} as const
+
+export type StaffPayRunItemStatusEnum = (typeof StaffPayRunItemStatusEnum)[keyof typeof StaffPayRunItemStatusEnum]
+
+
+export const StaffPayoutStatusEnum = {
+  NOT_STARTED: 'NOT_STARTED',
+  PENDING: 'PENDING',
+  PROCESSING: 'PROCESSING',
+  PAID: 'PAID',
+  FAILED: 'FAILED',
+  CANCELLED: 'CANCELLED'
+} as const
+
+export type StaffPayoutStatusEnum = (typeof StaffPayoutStatusEnum)[keyof typeof StaffPayoutStatusEnum]
+
+
 export const DivisionsKindEnum = {
   LEAGUE: 'LEAGUE',
   PLAYOFF: 'PLAYOFF'

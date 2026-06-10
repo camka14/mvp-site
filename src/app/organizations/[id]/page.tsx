@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
@@ -14,14 +14,13 @@ import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import { useApp } from '@/app/providers';
 import type { BillingAddress, Event, Organization, OrganizationRole, Product, ProductType, Team, UserData, PaymentIntent, StaffMemberType, TemplateDocument } from '@/types';
-import { formatPrice } from '@/types';
+import { formatPrice, getEventImageFallbackUrl, getEventImageUrl } from '@/types';
 import { organizationService } from '@/lib/organizationService';
 import { eventService } from '@/lib/eventService';
 import { getStaffMemberTypesForOrganizationRole } from '@/lib/staff';
 import { createId } from '@/lib/id';
 import { buildOrganizationEventCreateUrl } from '@/lib/eventCreateNavigation';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
-import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateOrganizationModal from '@/components/ui/CreateOrganizationModal';
 import BillingAddressModal from '@/components/ui/BillingAddressModal';
 import RefundRequestsList from '@/components/ui/RefundRequestsList';
@@ -33,6 +32,7 @@ import { productService } from '@/lib/productService';
 import { boldsignService } from '@/lib/boldsignService';
 import PaymentModal from '@/components/ui/PaymentModal';
 import FieldsTabContent from './FieldsTabContent';
+import OrganizationFinancePanel from './OrganizationFinancePanel';
 import RoleRosterManager, { type RoleInviteRow, type RoleRosterEntry } from './RoleRosterManager';
 import { formatDisplayDateTime } from '@/lib/dateUtils';
 import { useLocation } from '@/app/hooks/useLocation';
@@ -57,10 +57,18 @@ import {
   resolveOrganizationVerificationStatus,
 } from '@/lib/organizationVerification';
 import PriceWithFeesPreview from '@/components/ui/PriceWithFeesPreview';
-import { buildOrganizationTabs, type OrganizationTab } from './organizationTabs';
+import {
+  buildOrganizationCustomerPath,
+  buildOrganizationTabPath,
+  buildOrganizationTabs,
+  organizationTabFromPathSegment,
+  type OrganizationCustomerRouteType,
+  type OrganizationTab,
+} from './organizationTabs';
 import { buildOrganizationUsersSubtitle } from './organizationUsersCopy';
 import OrganizationPublicSettingsPanel from './OrganizationPublicSettingsPanel';
 import { ORG_PERMISSIONS, type OrganizationPermission } from '@/lib/organizationPermissions';
+import { buildTeamManagementPath } from '@/app/teams/teamRoutes';
 
 export default function OrganizationDetailPage() {
   return (
@@ -212,6 +220,7 @@ type PendingTemplateCreateCard = {
 type OrganizationUserEventSummary = {
   eventId: string;
   eventName: string;
+  imageId?: string | null;
   start?: string;
   end?: string;
   status?: string;
@@ -378,6 +387,7 @@ const mapOrganizationUserRow = (row: Record<string, any>): OrganizationUserSumma
     .map((eventRow: Record<string, any>): OrganizationUserEventSummary => ({
       eventId: String(eventRow?.eventId ?? ''),
       eventName: String(eventRow?.eventName ?? 'Untitled Event').trim() || 'Untitled Event',
+      imageId: typeof eventRow?.imageId === 'string' && eventRow.imageId.trim() ? eventRow.imageId.trim() : null,
       start: typeof eventRow?.start === 'string' ? eventRow.start : undefined,
       end: typeof eventRow?.end === 'string' ? eventRow.end : undefined,
       status: typeof eventRow?.status === 'string' ? eventRow.status : undefined,
@@ -531,6 +541,7 @@ const mapOrganizationTeamCustomerRow = (row: Record<string, any>): OrganizationT
     .map((registrationRow: Record<string, any>): OrganizationTeamRegistrationSummary => ({
       eventId: String(registrationRow?.eventId ?? ''),
       eventName: String(registrationRow?.eventName ?? 'Untitled Event').trim() || 'Untitled Event',
+      imageId: typeof registrationRow?.imageId === 'string' && registrationRow.imageId.trim() ? registrationRow.imageId.trim() : null,
       eventTeamId: String(registrationRow?.eventTeamId ?? ''),
       eventTeamName: String(registrationRow?.eventTeamName ?? registrationRow?.eventTeamId ?? 'Event Team').trim() || 'Event Team',
       start: typeof registrationRow?.start === 'string' ? registrationRow.start : undefined,
@@ -608,6 +619,21 @@ const formatSummaryDateTime = (value?: string): string => {
   return formatted || 'Unknown date';
 };
 
+const formatSummaryDate = (value?: string): string => {
+  if (!value) {
+    return 'Unknown date';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Unknown date';
+  }
+  return parsed.toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
 const normalizeCustomerSearchValue = (value: unknown): string => (
   typeof value === 'string' ? value.trim().toLowerCase() : ''
 );
@@ -666,14 +692,31 @@ function OrganizationDetailContent() {
   const { user, authUser, loading: authLoading, isAuthenticated, updateUser } = useApp();
   const { location, requestLocation } = useLocation();
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
+  const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
+  const routeTabSegment = Array.isArray(params?.tab) ? params?.tab[0] : (params?.tab as string | undefined);
+  const routeCustomerType = Array.isArray(params?.customerType)
+    ? params?.customerType[0]
+    : (params?.customerType as string | undefined);
+  const routeCustomerId = Array.isArray(params?.customerId)
+    ? params?.customerId[0]
+    : (params?.customerId as string | undefined);
+  const requestedPathTab = organizationTabFromPathSegment(routeTabSegment);
+  const requestedQueryTab = organizationTabFromPathSegment(searchParams?.get('tab'));
+  const requestedTab = requestedPathTab ?? requestedQueryTab;
+  const requestedCustomerType: OrganizationCustomerRouteType | null = routeCustomerType === 'users' || routeCustomerType === 'teams'
+    ? routeCustomerType
+    : null;
+  const requestedCustomerId = typeof routeCustomerId === 'string' && routeCustomerId.trim()
+    ? routeCustomerId.trim()
+    : null;
+  const requestedCustomerKey = requestedCustomerType && requestedCustomerId
+    ? `${requestedCustomerType}:${requestedCustomerId}`
+    : null;
   const [org, setOrg] = useState<Organization | undefined>(undefined);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<OrganizationTab>('overview');
+  const [activeTab, setActiveTab] = useState<OrganizationTab>(() => requestedTab ?? 'overview');
   const [showCreateTeamModal, setShowCreateTeamModal] = useState(false);
-  const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
-  const [showTeamDetailModal, setShowTeamDetailModal] = useState(false);
   const [showEditOrganizationModal, setShowEditOrganizationModal] = useState(false);
-  const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
   const sportOptions = useMemo(() => sports.map((sport) => sport.name), [sports]);
   const [eventSearchTerm, setEventSearchTerm] = useState('');
   const debouncedEventSearch = useDebounce(eventSearchTerm, 500);
@@ -698,7 +741,6 @@ function OrganizationDetailContent() {
   const eventsTabSentinelRef = useRef<HTMLDivElement | null>(null);
   const locationRequestAttemptedRef = useRef(false);
   const handledStripeStateRef = useRef<string | null>(null);
-  const handledTeamDeepLinkRef = useRef<string | null>(null);
   const [updatingEventHostId, setUpdatingEventHostId] = useState<string | null>(null);
   const [staffSearch, setStaffSearch] = useState('');
   const [staffResults, setStaffResults] = useState<UserData[]>([]);
@@ -749,6 +791,8 @@ function OrganizationDetailContent() {
   const canManageRoles = viewerHasPermission(ORG_PERMISSIONS.ROLES_MANAGE);
   const canManageStaffSurface = canManageStaff || canManageRoles;
   const canManageStaffCompensation = canManageStaff && viewerHasPermission(ORG_PERMISSIONS.BILLING_MANAGE);
+  const canManageFinance = viewerHasPermission(ORG_PERMISSIONS.BILLING_MANAGE)
+    || viewerHasPermission(ORG_PERMISSIONS.PAYMENTS_MANAGE);
   const canManageTemplates = viewerHasPermission(ORG_PERMISSIONS.TEMPLATES_MANAGE);
   const canManageRefunds = viewerHasPermission(ORG_PERMISSIONS.REFUNDS_MANAGE);
   const canManagePublicPage = viewerHasPermission(ORG_PERMISSIONS.ORGANIZATION_MANAGE);
@@ -817,6 +861,7 @@ function OrganizationDetailContent() {
       canManageStaff: canManageStaffSurface,
       canManageTemplates,
       canManageRefunds,
+      canManageFinance,
       canManagePublicPage,
       canManageTeams,
       canManageFields,
@@ -833,6 +878,7 @@ function OrganizationDetailContent() {
       canManageProducts,
       canManagePublicPage,
       canManageRefunds,
+      canManageFinance,
       canManageStaffSurface,
       canManageTeams,
       canManageTemplates,
@@ -1816,6 +1862,20 @@ function OrganizationDetailContent() {
   }, [activeTab, org, user, loadOrganizationUsers]);
 
   useEffect(() => {
+    if (!requestedCustomerKey || !requestedCustomerType) {
+      return;
+    }
+    setActiveTab('users');
+    setCustomerSearch('');
+    setCustomerTypeFilters((current) => (
+      current.includes(requestedCustomerType)
+        ? current
+        : [...current, requestedCustomerType]
+    ));
+    setSelectedCustomerKey(requestedCustomerKey);
+  }, [requestedCustomerKey, requestedCustomerType]);
+
+  useEffect(() => {
     if (!availableTabs.some((tab) => tab.value === activeTab) && availableTabs.length > 0) {
       setActiveTab(availableTabs[0].value);
     }
@@ -1829,31 +1889,18 @@ function OrganizationDetailContent() {
   }, [eventTemplateCreateModalOpen, eventTemplates, selectedCreateEventTemplateId]);
 
   useEffect(() => {
-    const tabParam = searchParams?.get('tab');
-    if (tabParam && availableTabs.some((tab) => tab.value === tabParam)) {
-      setActiveTab(tabParam as typeof activeTab);
+    if (requestedTab && availableTabs.some((tab) => tab.value === requestedTab)) {
+      setActiveTab(requestedTab);
     }
-  }, [availableTabs, searchParams]);
+  }, [availableTabs, requestedTab]);
 
   useEffect(() => {
     const teamIdParam = searchParams?.get('teamId')?.trim();
     if (!teamIdParam) {
-      handledTeamDeepLinkRef.current = null;
       return;
     }
-    const team = (org?.teams ?? []).find((entry) => entry.$id === teamIdParam);
-    if (!team) {
-      return;
-    }
-    const handledKey = `${id}:${teamIdParam}`;
-    if (handledTeamDeepLinkRef.current === handledKey) {
-      return;
-    }
-    handledTeamDeepLinkRef.current = handledKey;
-    setActiveTab('teams');
-    setSelectedTeam(team);
-    setShowTeamDetailModal(true);
-  }, [id, org?.teams, searchParams]);
+    router.replace(buildTeamManagementPath(teamIdParam));
+  }, [router, searchParams]);
 
   const eventTemplateOptions = useMemo(
     () => eventTemplates
@@ -2073,6 +2120,21 @@ function OrganizationDetailContent() {
     setCustomerTypeFilters(['users', 'teams']);
     setCustomerSearch('');
   }, []);
+
+  const handleOrganizationTabChange = useCallback((value: string) => {
+    const nextTab = value as OrganizationTab;
+    setActiveTab(nextTab);
+    if (id) {
+      router.push(buildOrganizationTabPath(id, nextTab));
+    }
+  }, [id, router]);
+
+  const openOrganizationCustomer = useCallback((row: OrganizationCustomerRow) => {
+    setSelectedCustomerKey(row.key);
+    if (id) {
+      router.push(buildOrganizationCustomerPath(id, row.type, row.id));
+    }
+  }, [id, router]);
 
   const openOrganizationEvent = useCallback((eventId: string) => {
     const params = new URLSearchParams({ tab: 'details' });
@@ -2775,15 +2837,29 @@ function OrganizationDetailContent() {
       return;
     }
     if (!organizationCustomerRows.length) {
-      setSelectedCustomerKey(null);
+      if (!requestedCustomerKey) {
+        setSelectedCustomerKey(null);
+      }
       return;
     }
     setSelectedCustomerKey((current) => (
       current && organizationCustomerRows.some((row) => row.key === current)
         ? current
+        : requestedCustomerKey && organizationCustomerRows.some((row) => row.key === requestedCustomerKey)
+          ? requestedCustomerKey
         : organizationCustomerRows[0].key
     ));
-  }, [activeTab, organizationCustomerRows]);
+  }, [activeTab, organizationCustomerRows, requestedCustomerKey]);
+
+  useEffect(() => {
+    if (activeTab !== 'users' || !selectedCustomerKey) {
+      return;
+    }
+    const selectedIndex = organizationCustomerRows.findIndex((row) => row.key === selectedCustomerKey);
+    if (selectedIndex >= visibleCustomerCount) {
+      setVisibleCustomerCount(selectedIndex + 1);
+    }
+  }, [activeTab, organizationCustomerRows, selectedCustomerKey, visibleCustomerCount]);
 
   const refreshOrganizationCustomers = useCallback(async () => {
     if (!org?.$id) {
@@ -2877,29 +2953,103 @@ function OrganizationDetailContent() {
     }
   }, [refreshOrganizationCustomers]);
 
+  const buildCustomerTeamCardTeam = (
+    team: OrganizationTeamMembershipSummary | OrganizationTeamCustomerSummary,
+  ): Team => {
+    const teamId = 'canonicalTeamId' in team ? team.canonicalTeamId : team.teamId;
+    const teamName = 'name' in team ? team.name : team.teamName;
+    const memberCount = 'memberCount' in team ? team.memberCount : 0;
+    const teamSize = 'teamSize' in team && typeof team.teamSize === 'number' ? team.teamSize : 0;
+    const captainId = 'captainId' in team && team.captainId ? team.captainId : '';
+    return {
+      $id: teamId,
+      name: teamName,
+      division: team.division ?? 'Division',
+      sport: team.sport ?? '',
+      playerIds: [],
+      captainId,
+      pending: [],
+      teamSize,
+      profileImageId: 'profileImageId' in team ? team.profileImageId ?? undefined : undefined,
+      organizationId: id,
+      currentSize: memberCount,
+      isFull: teamSize > 0 && memberCount >= teamSize,
+      avatarUrl: '',
+    };
+  };
+
+  const renderCustomerDetailSection = (title: string, children: ReactNode) => (
+    <Stack gap="xs" className="org-customer-detail-section">
+      <Text fw={700}>{title}</Text>
+      {children}
+    </Stack>
+  );
+
+  const renderCustomerTeamCards = (
+    teams: Array<OrganizationTeamMembershipSummary | OrganizationTeamCustomerSummary>,
+    emptyText = 'No organization team registrations.',
+  ) => (
+    teams.length > 0 ? (
+      <Stack gap={8}>
+        {teams.map((team) => {
+          const teamId = 'canonicalTeamId' in team ? team.canonicalTeamId : team.teamId;
+          return (
+            <TeamCard
+              key={teamId}
+              team={buildCustomerTeamCardTeam(team)}
+              className="org-customer-detail-item org-customer-team-card"
+            />
+          );
+        })}
+      </Stack>
+    ) : (
+      <Text size="xs" c="dimmed">{emptyText}</Text>
+    )
+  );
+
   const renderCustomerEvents = (
     events: OrganizationUserEventSummary[],
     emptyText = 'No organization events.',
   ) => (
     events.length > 0 ? (
-      <Stack gap={6}>
+      <Stack gap={8}>
         {events.map((eventSummary) => (
-          <Group key={eventSummary.eventId} justify="space-between" align="flex-start" wrap="wrap">
-            <Stack gap={0} className="min-w-0">
-              <Button
-                size="xs"
-                variant="subtle"
-                styles={{ inner: { justifyContent: 'flex-start' }, label: { textAlign: 'left', whiteSpace: 'normal' } }}
-                onClick={() => openOrganizationEvent(eventSummary.eventId)}
+          <Paper
+            key={eventSummary.eventId}
+            withBorder
+            radius="md"
+            p="xs"
+            className="org-customer-detail-item org-customer-event-card"
+            onClick={() => openOrganizationEvent(eventSummary.eventId)}
+          >
+            <Group gap="sm" wrap="nowrap" align="center">
+              <Avatar
+                src={getEventImageUrl({
+                  imageId: eventSummary.imageId,
+                  width: 96,
+                  height: 96,
+                  placeholderUrl: getEventImageFallbackUrl({
+                    hostLabel: eventSummary.eventName,
+                    width: 96,
+                    height: 96,
+                  }),
+                })}
+                alt={eventSummary.eventName}
+                radius="md"
+                size={48}
+                className="org-customer-event-card__avatar"
               >
-                {eventSummary.eventName}
-              </Button>
-              <Text size="xs" c="dimmed">
-                {formatSummaryDateTime(eventSummary.start)}
-                {eventSummary.status ? ` • ${formatCustomerMetaToken(eventSummary.status) ?? eventSummary.status}` : ''}
-              </Text>
-            </Stack>
-          </Group>
+                {getCustomerInitials(eventSummary.eventName)}
+              </Avatar>
+              <Stack gap={2} className="min-w-0">
+                <Text size="sm" fw={700} lineClamp={2}>{eventSummary.eventName}</Text>
+                <Text size="xs" c="dimmed">
+                  {formatSummaryDateTime(eventSummary.start)}
+                  {eventSummary.status ? ` • ${formatCustomerMetaToken(eventSummary.status) ?? eventSummary.status}` : ''}
+                </Text>
+              </Stack>
+            </Group>
+          </Paper>
         ))}
       </Stack>
     ) : (
@@ -2935,10 +3085,12 @@ function OrganizationDetailContent() {
           );
 
           return (
-            <Stack
+            <Paper
               key={bill.billId}
-              gap="xs"
-              className="rounded-md border border-slate-200 bg-white/70 p-3"
+              withBorder
+              radius="md"
+              p="sm"
+              className="org-customer-detail-item org-customer-bill-card"
             >
               <Group justify="space-between" align="flex-start" gap="xs" wrap="wrap">
                 <Stack gap={0} className="min-w-0">
@@ -3052,7 +3204,7 @@ function OrganizationDetailContent() {
                   })}
                 </Stack>
               )}
-            </Stack>
+            </Paper>
           );
         })}
       </Stack>
@@ -3065,26 +3217,21 @@ function OrganizationDetailContent() {
     documents.length > 0 ? (
       <Stack gap={8}>
         {documents.map((documentSummary) => (
-          <Group key={documentSummary.signedDocumentRecordId} justify="space-between" align="flex-start" wrap="wrap">
+          <Paper
+            key={documentSummary.signedDocumentRecordId}
+            withBorder
+            radius="md"
+            p="sm"
+            className="org-customer-detail-item org-customer-document-card"
+            onClick={() => openSignedDocumentPreview(documentSummary)}
+          >
             <Stack gap={0} className="min-w-0">
-              <Text size="sm">{documentSummary.title}</Text>
+              <Text size="sm" fw={700}>{documentSummary.title}</Text>
               <Text size="xs" c="dimmed">
-                {documentSummary.type}
-                {documentSummary.status ? ` • ${formatCustomerMetaToken(documentSummary.status) ?? documentSummary.status}` : ''}
-                {documentSummary.signedAt ? ` • ${formatSummaryDateTime(documentSummary.signedAt)}` : ''}
+                Signed {formatSummaryDate(documentSummary.signedAt)}
               </Text>
-              {documentSummary.eventName && (
-                <Text size="xs" c="dimmed">Event: {documentSummary.eventName}</Text>
-              )}
             </Stack>
-            <Button
-              size="xs"
-              variant="light"
-              onClick={() => openSignedDocumentPreview(documentSummary)}
-            >
-              {documentSummary.type === 'PDF' ? 'View PDF' : 'Preview'}
-            </Button>
-          </Group>
+          </Paper>
         ))}
       </Stack>
     ) : (
@@ -3154,47 +3301,10 @@ function OrganizationDetailContent() {
             </Group>
           </Group>
           <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-            <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
-              <Text fw={600} mb="xs">Org teams</Text>
-              {summary.teams.length > 0 ? (
-                <Stack gap={8}>
-                  {summary.teams.map((team) => {
-                    const meta = [
-                      team.division,
-                      team.sport,
-                      formatCustomerMetaToken(team.status),
-                      formatCustomerMetaToken(team.rosterRole),
-                      team.isCaptain ? 'Captain' : null,
-                    ].filter(Boolean);
-                    return (
-                      <Stack key={team.teamId} gap={0}>
-                        <Text size="sm">{team.teamName}</Text>
-                        {meta.length > 0 && <Text size="xs" c="dimmed">{meta.join(' • ')}</Text>}
-                        {(team.jerseyNumber || team.position) && (
-                          <Text size="xs" c="dimmed">
-                            {[team.position, team.jerseyNumber ? `#${team.jerseyNumber}` : null].filter(Boolean).join(' • ')}
-                          </Text>
-                        )}
-                      </Stack>
-                    );
-                  })}
-                </Stack>
-              ) : (
-                <Text size="xs" c="dimmed">No organization team registrations.</Text>
-              )}
-            </Paper>
-            <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
-              <Text fw={600} mb="xs">Events</Text>
-              {renderCustomerEvents(summary.events)}
-            </Paper>
-            <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
-              <Text fw={600} mb="xs">Bills</Text>
-              {renderCustomerBills(summary.bills)}
-            </Paper>
-            <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
-              <Text fw={600} mb="xs">Signed documents</Text>
-              {renderCustomerDocuments(summary.documents)}
-            </Paper>
+            {renderCustomerDetailSection('Org teams', renderCustomerTeamCards(summary.teams))}
+            {renderCustomerDetailSection('Events', renderCustomerEvents(summary.events))}
+            {renderCustomerDetailSection('Bills', renderCustomerBills(summary.bills))}
+            {renderCustomerDetailSection('Signed documents', renderCustomerDocuments(summary.documents))}
           </SimpleGrid>
         </Stack>
       );
@@ -3231,29 +3341,26 @@ function OrganizationDetailContent() {
           </Group>
         </Group>
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-          <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
-            <Text fw={600} mb="xs">Team staff</Text>
-            {staffRows.length > 0 ? (
+          {renderCustomerDetailSection('Team staff', (
+            staffRows.length > 0 ? (
               <Stack gap={8}>
                 {staffRows.map((staff) => (
-                  <Group key={`${staff.role}-${staff.userId}`} justify="space-between" gap="sm">
-                    {renderPersonSummary(staff)}
-                    <Badge size="xs" variant="light" color="gray">{staff.label}</Badge>
-                  </Group>
+                  <Paper key={`${staff.role}-${staff.userId}`} withBorder p="sm" radius="md" className="org-customer-detail-item">
+                    <Group justify="space-between" gap="sm">
+                      {renderPersonSummary(staff)}
+                      <Badge size="xs" variant="light" color="gray">{staff.label}</Badge>
+                    </Group>
+                  </Paper>
                 ))}
               </Stack>
             ) : (
               <Text size="xs" c="dimmed">No manager or coach assignments.</Text>
-            )}
-          </Paper>
-          <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
-            <Text fw={600} mb="xs">Events</Text>
-            {renderCustomerEvents(summary.registrations, 'No organization event registrations.')}
-          </Paper>
+            )
+          ))}
+          {renderCustomerDetailSection('Events', renderCustomerEvents(summary.registrations, 'No organization event registrations.'))}
         </SimpleGrid>
-        <Paper withBorder p="sm" radius="md" className="org-customer-detail-section org-customer-detail-section--grouped">
-          <Text fw={600} mb="xs">Players</Text>
-          {summary.members.length > 0 ? (
+        {renderCustomerDetailSection('Players', (
+          summary.members.length > 0 ? (
             <Stack gap="sm">
               {summary.members.map((member) => {
                 const meta = [
@@ -3295,17 +3402,11 @@ function OrganizationDetailContent() {
             </Stack>
           ) : (
             <Text size="xs" c="dimmed">No players found for this team.</Text>
-          )}
-        </Paper>
+          )
+        ))}
         <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="md">
-          <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
-            <Text fw={600} mb="xs">Team bills</Text>
-            {renderCustomerBills(summary.bills)}
-          </Paper>
-          <Paper withBorder p="sm" radius="md" className="org-customer-detail-section">
-            <Text fw={600} mb="xs">Team documents</Text>
-            {renderCustomerDocuments(summary.documents)}
-          </Paper>
+          {renderCustomerDetailSection('Team bills', renderCustomerBills(summary.bills))}
+          {renderCustomerDetailSection('Team documents', renderCustomerDocuments(summary.documents))}
         </SimpleGrid>
       </Stack>
     );
@@ -3368,7 +3469,7 @@ function OrganizationDetailContent() {
             {/* Tabs */}
             <SegmentedControl
               value={activeTab}
-              onChange={(v: any) => setActiveTab(v)}
+              onChange={handleOrganizationTabChange}
               data={availableTabs}
               className="org-tab-segmented"
               radius="xl"
@@ -3600,10 +3701,7 @@ function OrganizationDetailContent() {
                         key={t.$id}
                         team={t}
                         className="org-tab-item"
-                        onClick={() => {
-                          setSelectedTeam(t);
-                          setShowTeamDetailModal(true);
-                        }}
+                        onClick={() => router.push(buildTeamManagementPath(t.$id))}
                       />
                     ))}
                   </SimpleGrid>
@@ -3721,7 +3819,7 @@ function OrganizationDetailContent() {
                                       key={row.key}
                                       className="org-customer-list-row"
                                       data-selected={selected ? 'true' : undefined}
-                                      onClick={() => setSelectedCustomerKey(row.key)}
+                                      onClick={() => openOrganizationCustomer(row)}
                                     >
                                       <Table.Td>
                                         <Group gap="sm" align="center" className="min-w-0">
@@ -3929,6 +4027,14 @@ function OrganizationDetailContent() {
               />
             )}
 
+            {(isOwner || canManageFinance) && activeTab === 'finance' && org && (
+              <OrganizationFinancePanel
+                organizationId={org.$id}
+                isActive={activeTab === 'finance'}
+                canManage={isOwner || canManageFinance}
+              />
+            )}
+
             {canManageRefunds && activeTab === 'refunds' && org && (
               <RefundRequestsList organizationId={org.$id} />
             )}
@@ -4111,37 +4217,6 @@ function OrganizationDetailContent() {
           }
         }}
       />
-      {selectedTeam && (
-        <TeamDetailModal
-          currentTeam={selectedTeam}
-          isOpen={showTeamDetailModal}
-          onClose={() => {
-            setShowTeamDetailModal(false);
-            setSelectedTeam(null);
-          }}
-          canManage={canManageTeams}
-          canChargeRegistration={Boolean(org?.hasStripeAccount)}
-          onTeamUpdated={(updatedTeam) => {
-            setSelectedTeam(updatedTeam);
-            setOrg((prev) => {
-              if (!prev) return prev;
-              const teams = (prev.teams ?? []).map((team) => (
-                team.$id === updatedTeam.$id ? updatedTeam : team
-              ));
-              return { ...prev, teams };
-            });
-          }}
-          onTeamDeleted={(teamId) => {
-            setOrg((prev) => {
-              if (!prev) return prev;
-              const nextTeams = (prev.teams ?? []).filter((team) => team.$id !== teamId);
-              return { ...prev, teams: nextTeams };
-            });
-            setShowTeamDetailModal(false);
-            setSelectedTeam(null);
-          }}
-        />
-      )}
       <CreateOrganizationModal
         isOpen={showEditOrganizationModal}
         onClose={() => setShowEditOrganizationModal(false)}

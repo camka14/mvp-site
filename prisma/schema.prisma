@@ -240,6 +240,29 @@ enum FinancialLineItemStatusEnum {
   VOID
 }
 
+enum StaffPayRunStatusEnum {
+  DRAFT
+  APPROVED
+  PAID
+  VOID
+}
+
+enum StaffPayRunItemStatusEnum {
+  DRAFT
+  APPROVED
+  PAID
+  VOID
+}
+
+enum StaffPayoutStatusEnum {
+  NOT_STARTED
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  CANCELLED
+}
+
 enum DivisionsKindEnum {
   LEAGUE
   PLAYOFF
@@ -734,6 +757,85 @@ model FinancialLineItems {
   @@index([occurredAt])
   @@index([serviceStartAt])
   @@index([serviceEndAt])
+}
+
+model StaffPayRun {
+  id                    String                 @id
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  organizationId        String
+  title                 String
+  periodStart           DateTime
+  periodEnd             DateTime
+  status                StaffPayRunStatusEnum  @default(DRAFT)
+  payoutStatus          StaffPayoutStatusEnum  @default(NOT_STARTED)
+  totalAmountCents      Int                    @default(0)
+  itemCount             Int                    @default(0)
+  approvedAt            DateTime?
+  approvedByUserId      String?
+  paidAt                DateTime?
+  paidByUserId          String?
+  payoutProvider        String?
+  payoutProviderBatchId String?
+  notes                 String?
+  createdBy             String?
+  updatedBy             String?
+
+  @@index([organizationId])
+  @@index([periodStart])
+  @@index([periodEnd])
+  @@index([status])
+  @@index([payoutStatus])
+  @@index([approvedByUserId])
+  @@index([paidByUserId])
+}
+
+model StaffPayRunItem {
+  id                         String                    @id
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  payRunId                   String
+  organizationId             String
+  staffMemberId              String?
+  userId                     String
+  eventId                    String?
+  teamId                     String?
+  eventTeamId                String?
+  eventStaffAssignmentId     String?                   @unique
+  teamStaffLaborEntryId      String?                   @unique
+  label                      String
+  description                String?
+  wageType                   CompensationWageTypeEnum?
+  rateCents                  Int?
+  paidMinutes                Int?
+  amountCents                Int
+  serviceStartAt             DateTime?
+  serviceEndAt               DateTime?
+  status                     StaffPayRunItemStatusEnum @default(DRAFT)
+  payoutStatus               StaffPayoutStatusEnum     @default(NOT_STARTED)
+  approvedAt                 DateTime?
+  approvedByUserId           String?
+  paidAt                     DateTime?
+  paidByUserId               String?
+  payoutProvider             String?
+  payoutProviderTransferId   String?
+  notes                      String?
+  createdBy                  String?
+  updatedBy                  String?
+
+  @@index([payRunId])
+  @@index([organizationId])
+  @@index([staffMemberId])
+  @@index([userId])
+  @@index([eventId])
+  @@index([teamId])
+  @@index([eventTeamId])
+  @@index([status])
+  @@index([payoutStatus])
+  @@index([serviceStartAt])
+  @@index([serviceEndAt])
+  @@index([approvedByUserId])
+  @@index([paidByUserId])
 }
 
 model EventOfficials {

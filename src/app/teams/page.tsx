@@ -10,9 +10,9 @@ import Navigation from '@/components/layout/Navigation';
 import TeamCard from '@/components/ui/TeamCard';
 import UserCard from '@/components/ui/UserCard';
 import Loading from '@/components/ui/Loading';
-import TeamDetailModal from '@/components/ui/TeamDetailModal';
 import CreateTeamModal from '@/components/ui/CreateTeamModal';
 import { Container, Title, Text, Group, Button, SegmentedControl, SimpleGrid, Paper, Badge } from '@mantine/core';
+import { buildTeamManagementPath } from './teamRoutes';
 
 type ManageTeamsProps = {
   showNavigation?: boolean;
@@ -49,24 +49,32 @@ export function ManageTeams({ showNavigation = true, withContainer = true }: Man
 }
 
 function TeamsPageContent() {
-  const { user, authUser, loading: authLoading, isAuthenticated } = useApp();
+  const { user, loading: authLoading, isAuthenticated } = useApp();
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamInvitations, setTeamInvitations] = useState<Array<{ invite: Invite; team: Team | null }>>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'my-teams' | 'invitations'>('my-teams');
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedTeamForDetails, setSelectedTeamForDetails] = useState<Team | null>(null);
-  const [showTeamDetailModal, setShowTeamDetailModal] = useState(false);
   const handledTeamDeepLinkRef = useRef<string | null>(null);
 
   const searchParams = useSearchParams();
   const [selectedFreeAgentId, setSelectedFreeAgentId] = useState<string | null>(null);
   const [selectedFreeAgent, setSelectedFreeAgent] = useState<UserData | null>(null);
 
-  // Local UI state for extracted modals
-  const [creating, setCreating] = useState(false);
-
   const router = useRouter();
+  const buildTeamDetailHref = useCallback((teamId: string): string => {
+    const nextParams = new URLSearchParams();
+    const freeAgentId = searchParams?.get('freeAgent')?.trim();
+    const eventId = searchParams?.get('event')?.trim();
+    if (freeAgentId) {
+      nextParams.set('freeAgent', freeAgentId);
+    }
+    if (eventId) {
+      nextParams.set('event', eventId);
+    }
+    const query = nextParams.toString();
+    return `${buildTeamManagementPath(teamId)}${query ? `?${query}` : ''}`;
+  }, [searchParams]);
 
   const getDivisionLabel = (division: Team['division']) =>
     typeof division === 'string'
@@ -135,7 +143,7 @@ function TeamsPageContent() {
 
   useEffect(() => {
     const teamIdParam = searchParams?.get('teamId')?.trim();
-    if (!teamIdParam || loading) {
+    if (!teamIdParam) {
       if (!teamIdParam) {
         handledTeamDeepLinkRef.current = null;
       }
@@ -144,28 +152,19 @@ function TeamsPageContent() {
     if (handledTeamDeepLinkRef.current === teamIdParam) {
       return;
     }
-
-    const existingTeam = teams.find((team) => team.$id === teamIdParam);
-    if (existingTeam) {
-      handledTeamDeepLinkRef.current = teamIdParam;
-      setSelectedTeamForDetails(existingTeam);
-      setShowTeamDetailModal(true);
-      return;
-    }
-
     handledTeamDeepLinkRef.current = teamIdParam;
-    void (async () => {
-      const team = await teamService.getTeamById(teamIdParam, true);
-      if (!team) {
-        return;
-      }
-      setTeams((previous) => (
-        previous.some((entry) => entry.$id === team.$id) ? previous : [team, ...previous]
-      ));
-      setSelectedTeamForDetails(team);
-      setShowTeamDetailModal(true);
-    })();
-  }, [loading, searchParams, teams]);
+    const nextParams = new URLSearchParams();
+    const freeAgentId = searchParams?.get('freeAgent')?.trim();
+    const eventId = searchParams?.get('event')?.trim();
+    if (freeAgentId) {
+      nextParams.set('freeAgent', freeAgentId);
+    }
+    if (eventId) {
+      nextParams.set('event', eventId);
+    }
+    const query = nextParams.toString();
+    router.replace(`${buildTeamManagementPath(teamIdParam)}${query ? `?${query}` : ''}`);
+  }, [router, searchParams]);
 
   // Preserve optional selected free-agent focus from navigation while free agents are loaded server-side per team.
   useEffect(() => {
@@ -190,13 +189,6 @@ function TeamsPageContent() {
     };
     void loadFocusedFreeAgent();
   }, [searchParams]);
-
-  // CreateTeamModal manages its own form state
-
-  const handleCreateTeam = async (e: React.FormEvent) => {
-    e.preventDefault();
-    return;
-  };
 
   const handleAcceptInvitation = async (inviteId: string) => {
     if (!user) return;
@@ -286,16 +278,14 @@ function TeamsPageContent() {
                   key={team.$id}
                   team={team}
                   onClick={() => {
-                    setSelectedTeamForDetails(team);
-                    setShowTeamDetailModal(true);
+                    router.push(buildTeamDetailHref(team.$id));
                   }}
                   actions={
                     (team.captainId === user.$id || team.managerId === user.$id) && (
                       <Button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedTeamForDetails(team);
-                          setShowTeamDetailModal(true);
+                          router.push(buildTeamDetailHref(team.$id));
                         }}
                         title="Invite Players"
                       >
@@ -392,29 +382,6 @@ function TeamsPageContent() {
         onTeamCreated={(team) => setTeams(prev => [...prev, team])}
       />
 
-      {/* Team Detail Modal */}
-      {selectedTeamForDetails && (
-        <TeamDetailModal
-          currentTeam={selectedTeamForDetails}
-          isOpen={showTeamDetailModal}
-          canManage={authUser?.isAdmin === true ? true : undefined}
-          onClose={() => {
-            setShowTeamDetailModal(false);
-            setSelectedTeamForDetails(null);
-          }}
-          onTeamUpdated={(updatedTeam) => {
-            setTeams(prev => prev.map(team => team.$id === updatedTeam.$id ? updatedTeam : team));
-            setSelectedTeamForDetails(updatedTeam);
-          }}
-          onTeamDeleted={(teamId) => {
-            setTeams(prev => prev.filter(team => team.$id !== teamId));
-            setShowTeamDetailModal(false);
-            setSelectedTeamForDetails(null);
-          }}
-          selectedFreeAgentId={selectedFreeAgentId ?? undefined}
-          selectedFreeAgentUser={selectedFreeAgent ?? undefined}
-        />
-      )}
     </div>
   );
 }

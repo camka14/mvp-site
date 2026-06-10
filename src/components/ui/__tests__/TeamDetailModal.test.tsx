@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 import { buildTeam, buildUser } from '../../../../test/factories';
@@ -40,6 +40,18 @@ jest.mock('@/lib/teamService', () => ({
     registerChildForTeam: jest.fn(),
   },
 }));
+jest.mock('@/lib/apiClient', () => ({
+  apiRequest: jest.fn(async (path: string) => {
+    if (path.includes('/templates')) {
+      return { templates: [] };
+    }
+    if (path.includes('/compliance')) {
+      return { team: null };
+    }
+    return {};
+  }),
+  isApiRequestError: jest.fn(() => false),
+}));
 jest.mock('@/lib/familyService', () => ({
   familyService: {
     listChildren: jest.fn(),
@@ -60,6 +72,14 @@ jest.mock('@/lib/signedDocumentService', () => ({
   signedDocumentService: {
     isDocumentSigned: jest.fn(),
   },
+}));
+jest.mock('../TeamFinancePanel', () => ({
+  __esModule: true,
+  default: ({ teamId, organizationId, isActive, canManage }: any) => (
+    <div data-testid="team-finance-panel">
+      {`${teamId}:${organizationId}:${isActive}:${canManage}`}
+    </div>
+  ),
 }));
 
 import TeamDetailModal from '../TeamDetailModal';
@@ -199,6 +219,79 @@ describe('TeamDetailModal', () => {
         'src',
         expect.stringContaining('name=12'),
       );
+    });
+  });
+
+  it('renders roster and finance as page tabs for organization teams', async () => {
+    const manager = buildUser({
+      $id: 'manager_1',
+      firstName: 'Morgan',
+      lastName: 'Manager',
+      fullName: 'Morgan Manager',
+    });
+    (useApp as jest.Mock).mockReturnValue({
+      user: manager,
+      authUser: { email: 'morgan@example.com' },
+    });
+    const team = buildTeam({
+      $id: 'team_1',
+      organizationId: 'org_1',
+      captainId: 'manager_1',
+      managerId: 'manager_1',
+      playerIds: [],
+      pending: [],
+      teamSize: 6,
+    });
+    const onActiveTabChange = jest.fn();
+    const { unmount } = renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage={false}
+        variant="page"
+        activeTab="roster"
+        onActiveTabChange={onActiveTabChange}
+      />,
+    );
+
+    expect(screen.getByText('Roster')).toBeInTheDocument();
+    expect(screen.getByText('Finance')).toBeInTheDocument();
+    expect(screen.getByText('Player Slots')).toBeInTheDocument();
+    expect(screen.queryByTestId('team-finance-panel')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(userServiceMock.listInvites).toHaveBeenCalled();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByText('Finance'));
+    expect(onActiveTabChange).toHaveBeenCalledWith('finance');
+
+    unmount();
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage={false}
+        variant="page"
+        activeTab="finance"
+        onActiveTabChange={onActiveTabChange}
+      />,
+    );
+
+    expect(screen.getByText('Finance is available to team managers.')).toBeInTheDocument();
+    expect(screen.queryByTestId('team-finance-panel')).not.toBeInTheDocument();
+    expect(screen.queryByText('Player Slots')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(userServiceMock.listInvites).toHaveBeenCalledTimes(2);
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
     });
   });
 

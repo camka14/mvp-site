@@ -69,6 +69,8 @@ export const ModelName = {
   EventStaffAssignments: 'EventStaffAssignments',
   TeamStaffLaborEntries: 'TeamStaffLaborEntries',
   FinancialLineItems: 'FinancialLineItems',
+  StaffPayRun: 'StaffPayRun',
+  StaffPayRunItem: 'StaffPayRunItem',
   EventOfficials: 'EventOfficials',
   Teams: 'Teams',
   CanonicalTeams: 'CanonicalTeams',
@@ -539,6 +541,69 @@ export const FinancialLineItemsScalarFieldEnum = {
 } as const
 
 export type FinancialLineItemsScalarFieldEnum = (typeof FinancialLineItemsScalarFieldEnum)[keyof typeof FinancialLineItemsScalarFieldEnum]
+
+
+export const StaffPayRunScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  title: 'title',
+  periodStart: 'periodStart',
+  periodEnd: 'periodEnd',
+  status: 'status',
+  payoutStatus: 'payoutStatus',
+  totalAmountCents: 'totalAmountCents',
+  itemCount: 'itemCount',
+  approvedAt: 'approvedAt',
+  approvedByUserId: 'approvedByUserId',
+  paidAt: 'paidAt',
+  paidByUserId: 'paidByUserId',
+  payoutProvider: 'payoutProvider',
+  payoutProviderBatchId: 'payoutProviderBatchId',
+  notes: 'notes',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type StaffPayRunScalarFieldEnum = (typeof StaffPayRunScalarFieldEnum)[keyof typeof StaffPayRunScalarFieldEnum]
+
+
+export const StaffPayRunItemScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  payRunId: 'payRunId',
+  organizationId: 'organizationId',
+  staffMemberId: 'staffMemberId',
+  userId: 'userId',
+  eventId: 'eventId',
+  teamId: 'teamId',
+  eventTeamId: 'eventTeamId',
+  eventStaffAssignmentId: 'eventStaffAssignmentId',
+  teamStaffLaborEntryId: 'teamStaffLaborEntryId',
+  label: 'label',
+  description: 'description',
+  wageType: 'wageType',
+  rateCents: 'rateCents',
+  paidMinutes: 'paidMinutes',
+  amountCents: 'amountCents',
+  serviceStartAt: 'serviceStartAt',
+  serviceEndAt: 'serviceEndAt',
+  status: 'status',
+  payoutStatus: 'payoutStatus',
+  approvedAt: 'approvedAt',
+  approvedByUserId: 'approvedByUserId',
+  paidAt: 'paidAt',
+  paidByUserId: 'paidByUserId',
+  payoutProvider: 'payoutProvider',
+  payoutProviderTransferId: 'payoutProviderTransferId',
+  notes: 'notes',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type StaffPayRunItemScalarFieldEnum = (typeof StaffPayRunItemScalarFieldEnum)[keyof typeof StaffPayRunItemScalarFieldEnum]
 
 
 export const EventOfficialsScalarFieldEnum = {

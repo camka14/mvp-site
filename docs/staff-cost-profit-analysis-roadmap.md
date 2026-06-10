@@ -28,10 +28,14 @@ The first user-visible goal is an event finance tab that explains actual profit,
 - [x] (2026-06-09 22:19Z) Added the event finance tab with summary cards, profit/loss/potential/future-cost analysis, responsive line item views, and custom dated event cost creation.
 - [x] (2026-06-09 22:19Z) Added focused tests, typecheck validation, local migration validation, and browser smoke screenshots for the event finance/date-range slice.
 - [x] (2026-06-09 22:32Z) Added the organization staff Compensation view for role default rates and individual staff override rates with wage type, amount, and effective date inputs.
-- [ ] Extend generated line item calculation for rental sales and organization-level rollups.
-- [ ] Add team finance UI with team profit/loss, team event-registration costs, team staff costs, and custom team costs.
-- [ ] Add organization finance UI for cross-event and rental analysis.
-- [ ] Add broader team and organization finance tests, migration validation, type checks, and browser smoke tests.
+- [x] (2026-06-09 23:20Z) Added the team finance UI in the organization team detail modal with team registration costs, team staff costs, custom team costs, focused tests, typecheck validation, and browser smoke checks for custom and staff costs.
+- [x] (2026-06-09 23:51Z) Add a dedicated organization Finance/Payroll tab with organization rollups, pay-run list, and pay-run creation entry points.
+- [x] (2026-06-09 23:51Z) Add Prisma pay-run models for `StaffPayRun` and `StaffPayRunItem`, including payout status, approval fields, and source links to event staff labor and team staff labor.
+- [x] (2026-06-10 00:38Z) Browser-test team registration payments and refunds changing team profit in the rendered team finance UI.
+- [x] (2026-06-10 00:38Z) Extend generated line item calculation for rental sales and organization-level rollups.
+- [x] (2026-06-10 00:38Z) Add organization finance UI for cross-event and rental analysis.
+- [x] (2026-06-10 00:38Z) Add focused team refund browser QA, organization finance/payroll browser QA, pay-run tests, migration validation, type checks, and targeted Jest coverage.
+- [x] (2026-06-10 02:52Z) Added generated finance line item source/customer metadata, `Source - Customer` labels for registrations and refunds when names are available, quantity/unit display in the organization finance table, generated-row source/customer action popovers, disappearing finance table scrollbars, path-backed organization tabs, and selected-customer URLs.
 
 ## Surprises & Discoveries
 
@@ -55,6 +59,15 @@ The first user-visible goal is an event finance tab that explains actual profit,
 
 - Observation: `npx prisma generate` introduced trailing whitespace in generated files.
   Evidence: `git diff --check` reported generated-file whitespace before the whitespace cleanup; it passed after mechanically stripping trailing whitespace from generated Prisma output.
+
+- Observation: Pay-run item source links follow the repo's ID-centric modeling, so `StaffPayRun` does not expose a Prisma relation named `items`.
+  Evidence: Browser QA of `/organizations/org_1?tab=finance` initially returned `Internal Server Error`; the server log showed `Unknown field items for include statement on model StaffPayRun`. `src/server/finance/staffPayRuns.ts` now loads pay runs and `StaffPayRunItem` rows separately and groups items by `payRunId`.
+
+- Observation: A single organization pay run correctly batches every unpaid event/team labor row in the selected date range, not just the labor row used for a team-specific browser fixture.
+  Evidence: Browser QA created `Browser QA payroll` for June 1-9, 2026 and the pay-run table showed 5 items totaling `$268.00`, then `PAID / PAID` after approval and mark-paid actions.
+
+- Observation: Generated organization finance rows needed source and customer metadata before the UI could link them reliably. The previous line item payload only carried the generated row source id, which was usually a bill id rather than the event, rental, organization, team, or customer destination.
+  Evidence: `src/server/finance/financeRepository.ts` now enriches bill rows with batched event, field, user, canonical team, and event-team lookups before calling `buildOrganizationFinanceSummary`.
 
 ## Decision Log
 
@@ -106,6 +119,22 @@ The first user-visible goal is an event finance tab that explains actual profit,
   Rationale: A past-dated line item should affect current losses even for a future event, while future-dated custom costs and planned staff labor should be visible as future costs that reduce projected profit but do not inflate current losses.
   Date/Author: 2026-06-09 / Codex
 
+- Decision: Implement staff payment operations first as internal pay runs, not direct provider payouts.
+  Rationale: A pay run lets an organization review, approve, and mark staff labor as paid while preserving wage, minute, and amount snapshots. Direct Gusto, Check, Dwolla, Stripe, or other payout-provider integrations can be added later without changing the core finance history.
+  Date/Author: 2026-06-09 / Codex
+
+- Decision: Store pay-run source links on each item rather than only on the pay run header.
+  Rationale: A single pay run can include multiple event and team labor rows from different dates, teams, and events. Item-level source links make it possible to trace every payable amount back to the event or team labor record that generated it.
+  Date/Author: 2026-06-09 / Codex
+
+- Decision: Keep generated finance rows read-only, but make their item names clickable action popovers when source or customer targets are known.
+  Rationale: Generated rows should continue to be edited through their true source records, not through the custom line-item editor. A popover with "Go to source" and "Go to customer" gives managers traceability without implying the generated row itself can be edited.
+  Date/Author: 2026-06-10 / Codex
+
+- Decision: Introduce path-backed organization tabs while preserving existing `?tab=` query compatibility.
+  Rationale: New links such as `/organizations/org_1/finance` and `/organizations/org_1/customers/teams/team_1` support browser back navigation and direct sharing. Existing links that use `?tab=finance` still resolve to the same active tab during the transition.
+  Date/Author: 2026-06-10 / Codex
+
 ## Outcomes & Retrospective
 
 The initial roadmap established that the feature should extend the current organization role, team, and payment systems instead of duplicating them. The first implementation pass now provides the data foundation and pure accounting helpers. The main remaining risk is defining the exact event and team staff labor user workflows, because the current UI has officials, team staff assignments, and event-team staff assignments but not a single labor-entry surface with hours and compensation-rate resolution.
@@ -115,6 +144,12 @@ The initial roadmap established that the feature should extend the current organ
 2026-06-09 event finance/date-range outcome: The event schedule page now exposes a manager-only Finance tab for organization events. `src/app/events/[id]/schedule/components/EventFinancePanel.tsx` renders actual revenue, actual costs, actual profit/loss, future costs, potential open-spot profit, projected outcome, desktop table rows, mobile line item cards, and a custom event cost form with service start/end dates. `prisma/migrations/20260609213000_add_finance_line_item_service_dates/migration.sql` adds service dates to custom line items and backfills the start date from `occurredAt` where available. `src/server/finance/financeAnalysis.ts` classifies dated costs into actual, future, potential, or warning rows. Past/current costs affect current profit or loss; future costs reduce projected profit; potential open-spot revenue remains a yellow projected value. Validation passed with targeted finance Jest tests, `npx tsc --noEmit`, `npx prisma migrate status`, Browser interaction checks, and refreshed screenshots in `output/finance-event-summary-desktop.png` and `output/finance-event-mobile-line-items.png`. Remaining work is compensation UI, event/team labor-entry UI, team finance UI, organization rollups, line-item edit/delete workflows, and broader browser tests.
 
 2026-06-09 compensation UI outcome: The organization staff surface now has a Compensation segmented view for users with both staff management and billing management access. `src/app/organizations/[id]/RoleRosterManager.tsx` loads compensation history through `GET /api/organizations/[id]/finance/compensation`, shows current role default rates and staff override rates, and saves new effective-dated rows through the existing compensation write endpoint. `src/app/api/organizations/[id]/finance/compensation/route.ts` now supports the read endpoint behind the same staff-compensation permission gate used for writes. Focused route and component tests cover the read payload and role-default save body, and a rendered Playwright smoke test created a local Staff role default of `$20.00/hr`. Remaining work for this area is richer history browsing, editing or voiding bad rate rows, and event/team labor-entry screens that consume these rates.
+
+2026-06-09 team finance UI outcome: The organization team detail modal now includes a team finance panel for manageable organization teams. `src/components/ui/TeamFinancePanel.tsx` loads `GET /api/teams/[id]/finance`, renders team registration costs, staff costs, future costs, custom team costs, and generated line items, and posts new custom costs and team staff labor through the existing finance write endpoints. Focused tests cover summary rendering, custom cost submission, staff cost submission, and team detail mounting. Browser smoke testing added a custom team cost and a staff labor cost and verified the rendered projected loss changed. Remaining work is a full browser payment/refund scenario for team registration bills and organization-level finance/payroll rollups.
+
+2026-06-10 organization finance/payroll outcome: The organization detail page now includes a Finance tab for owners and finance-capable staff. `src/app/organizations/[id]/OrganizationFinancePanel.tsx` renders date-filtered gross sales, refunds and fees, current profit, projected profit, staff costs, custom costs, warnings, organization line items, and an internal staff pay-run table with create, approve, mark-paid, and void actions. `prisma/migrations/20260609235100_add_staff_pay_runs/migration.sql` adds `StaffPayRun`, `StaffPayRunItem`, pay-run status enums, payout status enums, approval fields, paid fields, provider reference fields, and item-level source links to event staff assignments and team staff labor entries. `src/server/finance/staffPayRuns.ts` creates draft pay runs from unpaid staff labor and prevents duplicate pay-run items for already-linked labor rows. Browser QA verified a $100 team registration payment became a team cost, a $25 refund added a generated team refund row, and the rendered team loss changed from `-$172.00` to `-$147.00`. Browser QA also verified the organization Finance tab rendered rollups and that a `Browser QA payroll` pay run could be created, approved, and marked `PAID / PAID`. Validation passed with targeted Jest coverage, `npx prisma validate`, `npx prisma migrate status`, `npx tsc --noEmit`, and `git diff --check`.
+
+2026-06-10 generated line item navigation outcome: Generated organization finance rows now carry source and customer metadata when the underlying bill or labor source can be resolved. Registration and refund rows with known names display as `Source Name - Customer Name`, generated rows can open a source/customer action popover, quantity and units appear in the organization finance table, and the line-item scroll area uses a scroll-only scrollbar that hides after inactivity. Organization tabs now have path URLs such as `/organizations/org_1/finance`, while selected customers have deep links such as `/organizations/org_1/customers/users/user_1` and `/organizations/org_1/customers/teams/team_1`. Focused Jest tests cover the calculation labels, finance panel popover actions, and tab path helpers; `npx tsc --noEmit` passes.
 
 ## Context and Orientation
 
@@ -175,6 +210,10 @@ Milestone 8 adds the team finance view. A canonical team page or organization te
 Milestone 9 adds the organization finance dashboard. The organization page should get a finance tab or finance section that summarizes sales, refunds, costs, labor, team costs, Stripe fees, rental revenue, event profitability, team profitability, and margin over a date range. It should include table and chart views. Its acceptance is that a user can filter by date range and see event, team, rental, and custom cost line items roll into organization totals.
 
 Milestone 10 hardens permissions, privacy, and auditability. Compensation data is sensitive and should not be visible to every staff member who can manage events or teams. Add or reuse permissions deliberately, test unauthorized access, and record enough created-by and updated-by metadata for finance changes. Its acceptance is that a staff member with event or team management access but without compensation access can see profitability totals only if allowed, and cannot see individual wage details unless explicitly permitted.
+
+Milestone 11 adds internal staff pay runs. A pay run is a batch of staff labor costs for a chosen organization and service period. The pay run header should store the organization, period start, period end, status, payout status, total amount, item count, approval fields, paid fields, and optional provider reference fields. Each pay-run item should store a snapshot of the staff member, user, event, team, source labor row, wage type, rate, paid minutes, service dates, amount, status, payout status, approval fields, and paid fields. Its acceptance is that Prisma can create pay runs and items, an organization finance manager can list pay runs, and a draft pay run can be created from event/team staff labor without duplicating already-pay-run-linked labor rows.
+
+Milestone 12 adds organization payroll UI. The organization page should show a Finance/Payroll tab for owners and staff with billing or payment management access. The tab should show organization revenue, refunds, fees, custom costs, staff labor costs, net profit or loss, future costs, line-item detail, a pay-run table, and a form to create a draft pay run for a date range. Its acceptance is that browser QA can open an organization, see finance totals, create a draft pay run, and observe the new pay run in the table.
 
 ## Plan of Work
 

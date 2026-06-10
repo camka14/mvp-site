@@ -2,7 +2,10 @@
 
 jest.mock('@/lib/prisma', () => ({ prisma: {} }));
 
-import { loadEventFinanceSummary } from '@/server/finance/financeRepository';
+import {
+  listOrganizationFinancialLineItemCategories,
+  loadEventFinanceSummary,
+} from '@/server/finance/financeRepository';
 
 describe('loadEventFinanceSummary', () => {
   it('resolves event staff costs from overrides, staff rates, role defaults, and salary rates', async () => {
@@ -161,5 +164,34 @@ describe('loadEventFinanceSummary', () => {
         amountCents: -10000,
       }),
     ]));
+  });
+});
+
+describe('listOrganizationFinancialLineItemCategories', () => {
+  it('returns sorted unique non-void custom line item categories', async () => {
+    const client: any = {
+      financialLineItems: {
+        findMany: jest.fn().mockResolvedValue([
+          { category: 'Rentals' },
+          { category: 'operations' },
+          { category: 'Operations' },
+          { category: '  Supplies  ' },
+          { category: '' },
+          { category: null },
+        ]),
+      },
+    };
+
+    const categories = await listOrganizationFinancialLineItemCategories('org_1', client);
+
+    expect(client.financialLineItems.findMany).toHaveBeenCalledWith({
+      where: {
+        organizationId: 'org_1',
+        status: { not: 'VOID' },
+      },
+      select: { category: true },
+      orderBy: { category: 'asc' },
+    });
+    expect(categories).toEqual(['operations', 'Rentals', 'Supplies']);
   });
 });

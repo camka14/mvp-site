@@ -15,6 +15,7 @@ type OrganizationUsersAccessOrg = {
 export type OrganizationUsersScopeEvent = {
   id: string;
   name: string;
+  imageId: string | null;
   start: Date;
   end: Date;
   organizationId: string | null;
@@ -50,6 +51,7 @@ type OrganizationUsersAccessClient = {
       select: {
         id: true;
         name: true;
+        imageId: true;
         start: true;
         end: true;
         organizationId: true;
@@ -60,6 +62,7 @@ type OrganizationUsersAccessClient = {
     }) => Promise<Array<{
       id: string;
       name: string;
+      imageId: string | null;
       start: Date;
       end: Date | null;
       organizationId: string | null;
@@ -186,6 +189,7 @@ export const listOrganizationUsersScopeEvents = async (
     select: {
       id: true,
       name: true,
+      imageId: true,
       start: true,
       end: true,
       organizationId: true,
@@ -270,6 +274,7 @@ export const listOrganizationUsersScopeEvents = async (
   return events.map((event) => ({
     id: event.id,
     name: normalizeEventName(event.name),
+    imageId: normalizeId(event.imageId),
     start: event.start,
     end: event.end ?? event.start,
     organizationId: normalizeId(event.organizationId),

@@ -20,6 +20,8 @@ import TeamFinancePanel from './TeamFinancePanel';
 import TeamRegistrationFlow from './TeamRegistrationFlow';
 import { type PaymentEventSummary } from './PaymentModal';
 
+export type TeamDetailPageTab = 'roster' | 'finance';
+
 interface TeamDetailModalProps {
     currentTeam: Team;
     isOpen: boolean;
@@ -30,6 +32,9 @@ interface TeamDetailModalProps {
     selectedFreeAgentId?: string;
     selectedFreeAgentUser?: UserData;
     canChargeRegistration?: boolean;
+    variant?: 'modal' | 'page';
+    activeTab?: TeamDetailPageTab;
+    onActiveTabChange?: (tab: TeamDetailPageTab) => void;
 }
 
 const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -170,7 +175,16 @@ export default function TeamDetailModal({
     selectedFreeAgentId,
     selectedFreeAgentUser,
     canChargeRegistration,
+    variant = 'modal',
+    activeTab,
+    onActiveTabChange,
 }: TeamDetailModalProps) {
+    const isPageMode = variant === 'page';
+    const detailIsActive = isPageMode || isOpen;
+    const showOrganizationDetailTabs = isPageMode && Boolean(currentTeam.organizationId);
+    const detailTab = showOrganizationDetailTabs ? activeTab ?? 'roster' : 'roster';
+    const showRosterTab = !showOrganizationDetailTabs || detailTab === 'roster';
+    const showFinanceTab = showOrganizationDetailTabs && detailTab === 'finance';
     const { user } = useApp();
     const [showAddPlayers, setShowAddPlayers] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -652,7 +666,7 @@ export default function TeamDetailModal({
     useEffect(() => {
         let cancelled = false;
 
-        if (!isOpen || !canManageTeam) {
+        if (!detailIsActive || !canManageTeam) {
             setLocalFreeAgents(EMPTY_FREE_AGENTS);
             setInviteFreeAgentContext(EMPTY_INVITE_FREE_AGENT_CONTEXT);
             return () => {
@@ -679,20 +693,20 @@ export default function TeamDetailModal({
         return () => {
             cancelled = true;
         };
-    }, [canManageTeam, currentTeam.$id, isOpen]);
+    }, [canManageTeam, currentTeam.$id, detailIsActive]);
 
     useEffect(() => {
-        if (isOpen) {
+        if (detailIsActive) {
             void fetchTeamDetails();
         }
-    }, [isOpen, fetchTeamDetails]);
+    }, [detailIsActive, fetchTeamDetails]);
 
     useEffect(() => {
-        if (isOpen && canManageTeam) {
+        if (detailIsActive && canManageTeam) {
             void fetchRegistrationQuestions();
             void fetchJoinRequests();
         }
-    }, [canManageTeam, fetchJoinRequests, fetchRegistrationQuestions, isOpen]);
+    }, [canManageTeam, fetchJoinRequests, fetchRegistrationQuestions, detailIsActive]);
 
     useEffect(() => {
         setDraftCaptainId(currentTeam.captainId || '');
@@ -717,7 +731,7 @@ export default function TeamDetailModal({
     }, [currentTeam.captainId, draftCaptainId, teamPlayers]);
 
     useEffect(() => {
-        if (!isOpen || !normalizedSelectedFreeAgentId) {
+        if (!detailIsActive || !normalizedSelectedFreeAgentId) {
             return;
         }
         setShowAddPlayers(true);
@@ -725,7 +739,7 @@ export default function TeamDetailModal({
         setInviteMode('free_agents');
         setSearchQuery('');
         setSearchResults([]);
-    }, [isOpen, normalizedSelectedFreeAgentId]);
+    }, [detailIsActive, normalizedSelectedFreeAgentId]);
 
     useEffect(() => {
         setNewName(currentTeam.name || '');
@@ -781,7 +795,7 @@ export default function TeamDetailModal({
     }, [currentTeam.requiredTemplateIds]);
 
     useEffect(() => {
-        if (!isOpen) {
+        if (!detailIsActive) {
             return;
         }
         if (!currentTeam.organizationId) {
@@ -823,10 +837,10 @@ export default function TeamDetailModal({
         return () => {
             cancelled = true;
         };
-    }, [currentTeam.organizationId, isOpen]);
+    }, [currentTeam.organizationId, detailIsActive]);
 
     useEffect(() => {
-        if (!isOpen || !canManageTeam || !currentTeam.$id) {
+        if (!detailIsActive || !canManageTeam || !currentTeam.$id) {
             setMemberCompliance(null);
             setMemberComplianceError(null);
             setMemberComplianceLoading(false);
@@ -864,7 +878,7 @@ export default function TeamDetailModal({
         return () => {
             cancelled = true;
         };
-    }, [canManageTeam, currentTeam.$id, isOpen]);
+    }, [canManageTeam, currentTeam.$id, detailIsActive]);
 
     useEffect(() => {
         const nextJerseyNumbers: Record<string, string> = {};
@@ -1515,10 +1529,9 @@ export default function TeamDetailModal({
         }
     };
 
-    return (
+    const detailContent = (
         <>
-            <Modal opened={isOpen} onClose={onClose} size="xl" centered withCloseButton>
-                <div style={{ padding: 16 }}>
+                <div style={{ padding: isPageMode ? 0 : 16 }}>
                     <Group justify="space-between" align="center" mb="sm">
                         <Group gap="md" align="center">
                             <Avatar src={getTeamAvatarUrl(currentTeam, 60)} alt={currentTeam.name} size={60} radius="xl" />
@@ -1552,7 +1565,7 @@ export default function TeamDetailModal({
                         )}
                     </Group>
                 </div>
-                <div style={{ padding: 24, paddingTop: 0 }}>
+                <div style={{ padding: isPageMode ? 0 : 24, paddingTop: 0 }}>
                     {canManageTeam && getFilteredFreeAgents().length > 0 && (
                         <Alert color="blue" variant="light" mb="md" title="Current event free agents">
                             <Text size="sm" c="blue">
@@ -1565,6 +1578,45 @@ export default function TeamDetailModal({
                     {error && (
                         <Alert color="red" variant="light" mb="md" withCloseButton onClose={() => setError(null)}>{error}</Alert>
                     )}
+
+                    {showOrganizationDetailTabs && (
+                        <SegmentedControl
+                            value={detailTab}
+                            onChange={(value) => onActiveTabChange?.((value as TeamDetailPageTab) || 'roster')}
+                            data={[
+                                { label: 'Roster', value: 'roster' },
+                                { label: 'Finance', value: 'finance' },
+                            ]}
+                            className="org-tab-segmented"
+                            radius="xl"
+                            mb="lg"
+                        />
+                    )}
+
+                    {showFinanceTab && canManageTeam && currentTeam.organizationId && (
+                        <div className="org-tab-content">
+                            <TeamFinancePanel
+                                teamId={currentTeam.$id}
+                                organizationId={currentTeam.organizationId}
+                                isActive={detailIsActive}
+                                canManage={canManageTeam}
+                            />
+                        </div>
+                    )}
+
+                    {showFinanceTab && !canManageTeam && (
+                        <div className="org-tab-content">
+                            <Paper withBorder radius="md" p="xl" ta="center" className="org-tab-surface">
+                                <Text fw={700}>Finance is available to team managers.</Text>
+                                <Text size="sm" c="dimmed" mt={4}>
+                                    Ask an organization administrator for access if you need team finance details.
+                                </Text>
+                            </Paper>
+                        </div>
+                    )}
+
+                    {showRosterTab && (
+                        <div className={isPageMode ? 'org-tab-content' : undefined}>
 
                     {editingDetails && canManageTeam && (
                         <Paper withBorder radius="md" p="md" mb="md">
@@ -1820,12 +1872,12 @@ export default function TeamDetailModal({
                         </Paper>
                     </SimpleGrid>
 
-                    {canManageTeam && currentTeam.organizationId && (
+                    {canManageTeam && currentTeam.organizationId && !showOrganizationDetailTabs && (
                         <div className="mb-6">
                             <TeamFinancePanel
                                 teamId={currentTeam.$id}
                                 organizationId={currentTeam.organizationId}
-                                isActive={isOpen}
+                                isActive={detailIsActive}
                                 canManage={canManageTeam}
                             />
                         </div>
@@ -2593,6 +2645,8 @@ export default function TeamDetailModal({
                             </Paper>
                         </div>
                     )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Delete Confirmation Modal */}
@@ -2608,7 +2662,18 @@ export default function TeamDetailModal({
                         </Group>
                     </Modal>
                 )}
-            </Modal>
+        </>
+    );
+
+    return (
+        <>
+            {isPageMode ? (
+                detailContent
+            ) : (
+                <Modal opened={isOpen} onClose={onClose} size="xl" centered withCloseButton>
+                    {detailContent}
+                </Modal>
+            )}
             <ImageSelectionModal
                 onSelect={handleChangeImage}
                 onClose={() => setImagePickerOpen(false)}

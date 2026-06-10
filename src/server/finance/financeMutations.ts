@@ -79,6 +79,22 @@ type FinancialLineItemInput = {
   actingUserId: string;
 };
 
+type FinancialLineItemUpdateInput = {
+  organizationId: string;
+  lineItemId: string;
+  category?: string;
+  title?: string;
+  description?: string | null;
+  amountCents?: number;
+  quantity?: number | null;
+  unitLabel?: string | null;
+  status?: FinancialLineItemStatus | null;
+  occurredAt?: string | Date | null;
+  serviceStartAt?: string | Date | null;
+  serviceEndAt?: string | Date | null;
+  actingUserId: string;
+};
+
 const createId = (prefix: string): string => `${prefix}_${crypto.randomUUID()}`;
 
 const normalizeId = (value: unknown): string | null => {
@@ -633,5 +649,92 @@ export const createFinancialLineItem = async (
       createdAt: now,
       updatedAt: now,
     },
+  });
+};
+
+export const updateFinancialLineItem = async (
+  input: FinancialLineItemUpdateInput,
+  client: PrismaLike = prisma,
+) => {
+  const organizationId = normalizeId(input.organizationId);
+  const lineItemId = normalizeId(input.lineItemId);
+  if (!organizationId || !lineItemId) {
+    throw new FinanceMutationError(400, 'organizationId and lineItemId are required.');
+  }
+
+  const existing = await client.financialLineItems.findUnique({
+    where: { id: lineItemId },
+    select: {
+      id: true,
+      organizationId: true,
+      occurredAt: true,
+      serviceStartAt: true,
+      serviceEndAt: true,
+    },
+  });
+  if (!existing || existing.organizationId !== organizationId) {
+    throw new FinanceMutationError(404, 'Line item not found for this organization.');
+  }
+
+  const data: Record<string, unknown> = {
+    updatedBy: input.actingUserId,
+    updatedAt: new Date(),
+  };
+  if (Object.prototype.hasOwnProperty.call(input, 'category')) {
+    const category = normalizeOptionalText(input.category);
+    if (!category) {
+      throw new FinanceMutationError(400, 'category is required.');
+    }
+    data.category = category;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'title')) {
+    const title = normalizeOptionalText(input.title);
+    if (!title) {
+      throw new FinanceMutationError(400, 'title is required.');
+    }
+    data.title = title;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'description')) {
+    data.description = normalizeOptionalText(input.description);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'amountCents')) {
+    data.amountCents = normalizePositiveCents(input.amountCents ?? 0, 'amountCents');
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'quantity')) {
+    data.quantity = input.quantity ?? null;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'unitLabel')) {
+    data.unitLabel = normalizeOptionalText(input.unitLabel);
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'status')) {
+    data.status = input.status ?? 'ACTUAL';
+  }
+
+  const occurredAt = Object.prototype.hasOwnProperty.call(input, 'occurredAt')
+    ? parseDate(input.occurredAt, 'occurredAt')
+    : existing.occurredAt;
+  const serviceStartAt = Object.prototype.hasOwnProperty.call(input, 'serviceStartAt')
+    ? parseDate(input.serviceStartAt, 'serviceStartAt')
+    : existing.serviceStartAt;
+  const serviceEndAt = Object.prototype.hasOwnProperty.call(input, 'serviceEndAt')
+    ? parseDate(input.serviceEndAt, 'serviceEndAt')
+    : existing.serviceEndAt;
+
+  if (Object.prototype.hasOwnProperty.call(input, 'occurredAt')) {
+    data.occurredAt = occurredAt;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'serviceStartAt')) {
+    data.serviceStartAt = serviceStartAt;
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'serviceEndAt')) {
+    data.serviceEndAt = serviceEndAt;
+  }
+  if (serviceStartAt && serviceEndAt && serviceEndAt.getTime() < serviceStartAt.getTime()) {
+    throw new FinanceMutationError(400, 'serviceEndAt must be on or after serviceStartAt.');
+  }
+
+  return client.financialLineItems.update({
+    where: { id: lineItemId },
+    data,
   });
 };

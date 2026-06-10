@@ -1,0 +1,169 @@
+/** @jest-environment node */
+
+import { NextRequest } from 'next/server';
+
+const prismaMock = {
+  organizations: {
+    findUnique: jest.fn(),
+  },
+};
+const requireSessionMock = jest.fn();
+const canManageOrganizationFinanceMock = jest.fn();
+const loadOrganizationFinanceSummaryMock = jest.fn();
+const listOrganizationFinancialLineItemCategoriesMock = jest.fn();
+const listStaffPayRunsMock = jest.fn();
+const createDraftStaffPayRunMock = jest.fn();
+const updateStaffPayRunStatusMock = jest.fn();
+
+class MockStaffPayRunError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
+jest.mock('@/lib/permissions', () => ({ requireSession: (...args: any[]) => requireSessionMock(...args) }));
+jest.mock('@/server/finance/financeAccess', () => ({
+  canManageOrganizationFinance: (...args: any[]) => canManageOrganizationFinanceMock(...args),
+}));
+jest.mock('@/server/finance/financeRepository', () => ({
+  listOrganizationFinancialLineItemCategories: (...args: any[]) => listOrganizationFinancialLineItemCategoriesMock(...args),
+  loadOrganizationFinanceSummary: (...args: any[]) => loadOrganizationFinanceSummaryMock(...args),
+}));
+jest.mock('@/server/finance/staffPayRuns', () => ({
+  StaffPayRunError: MockStaffPayRunError,
+  listStaffPayRuns: (...args: any[]) => listStaffPayRunsMock(...args),
+  createDraftStaffPayRun: (...args: any[]) => createDraftStaffPayRunMock(...args),
+  updateStaffPayRunStatus: (...args: any[]) => updateStaffPayRunStatusMock(...args),
+}));
+
+import { GET as getFinance } from '@/app/api/organizations/[id]/finance/route';
+import { POST as postPayRun } from '@/app/api/organizations/[id]/finance/pay-runs/route';
+import { PATCH as patchPayRun } from '@/app/api/organizations/[id]/finance/pay-runs/[payRunId]/route';
+
+describe('organization finance routes', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    requireSessionMock.mockResolvedValue({ userId: 'owner_1', isAdmin: false });
+    prismaMock.organizations.findUnique.mockResolvedValue({
+      id: 'org_1',
+      ownerId: 'owner_1',
+    });
+    canManageOrganizationFinanceMock.mockResolvedValue(true);
+    loadOrganizationFinanceSummaryMock.mockResolvedValue({
+      organizationId: 'org_1',
+      actualProfitCents: 12000,
+      lineItems: [],
+      warnings: [],
+    });
+    listStaffPayRunsMock.mockResolvedValue([
+      {
+        id: 'pay_run_1',
+        organizationId: 'org_1',
+        totalAmountCents: 5000,
+        items: [],
+      },
+    ]);
+    listOrganizationFinancialLineItemCategoriesMock.mockResolvedValue(['Operations', 'Rentals']);
+    createDraftStaffPayRunMock.mockResolvedValue({
+      id: 'pay_run_2',
+      organizationId: 'org_1',
+      totalAmountCents: 7500,
+      items: [],
+    });
+    updateStaffPayRunStatusMock.mockResolvedValue({
+      id: 'pay_run_1',
+      organizationId: 'org_1',
+      status: 'APPROVED',
+      items: [],
+    });
+  });
+
+  it('returns organization finance summary and pay runs for finance managers', async () => {
+    const response = await getFinance(
+      new NextRequest('http://localhost/api/organizations/org_1/finance?from=2026-06-01&to=2026-06-30'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(canManageOrganizationFinanceMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'owner_1' }),
+      expect.objectContaining({ id: 'org_1' }),
+      prismaMock,
+    );
+    expect(loadOrganizationFinanceSummaryMock).toHaveBeenCalledWith('org_1', prismaMock, {
+      from: '2026-06-01',
+      to: '2026-06-30',
+    });
+    expect(listStaffPayRunsMock).toHaveBeenCalledWith('org_1', prismaMock);
+    expect(listOrganizationFinancialLineItemCategoriesMock).toHaveBeenCalledWith('org_1', prismaMock);
+    expect(payload.finance.actualProfitCents).toBe(12000);
+    expect(payload.payRuns[0].id).toBe('pay_run_1');
+    expect(payload.lineItemCategories).toEqual(['Operations', 'Rentals']);
+  });
+
+  it('creates a draft staff pay run for finance managers', async () => {
+    const response = await postPayRun(
+      new NextRequest('http://localhost/api/organizations/org_1/finance/pay-runs', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: 'June payroll',
+          periodStart: '2026-06-01T00:00:00.000Z',
+          periodEnd: '2026-06-30T23:59:59.999Z',
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(createDraftStaffPayRunMock).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: 'org_1',
+      title: 'June payroll',
+      periodStart: '2026-06-01T00:00:00.000Z',
+      periodEnd: '2026-06-30T23:59:59.999Z',
+      actingUserId: 'owner_1',
+    }), prismaMock);
+    expect(payload.payRun.id).toBe('pay_run_2');
+  });
+
+  it('updates pay-run status for finance managers', async () => {
+    const response = await patchPayRun(
+      new NextRequest('http://localhost/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'APPROVE' }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1', payRunId: 'pay_run_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(updateStaffPayRunStatusMock).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'APPROVE',
+      actingUserId: 'owner_1',
+    }), prismaMock);
+    expect(payload.payRun.status).toBe('APPROVED');
+  });
+
+  it('rejects finance route access without finance permission', async () => {
+    canManageOrganizationFinanceMock.mockResolvedValue(false);
+
+    const response = await getFinance(
+      new NextRequest('http://localhost/api/organizations/org_1/finance'),
+      { params: Promise.resolve({ id: 'org_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(403);
+    expect(payload.error).toBe('Forbidden');
+    expect(loadOrganizationFinanceSummaryMock).not.toHaveBeenCalled();
+  });
+});

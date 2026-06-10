@@ -2,6 +2,7 @@
 
 import {
   buildEventFinanceSummary,
+  buildOrganizationFinanceSummary,
   buildTeamFinanceSummary,
   type FinanceBill,
 } from '@/server/finance/financeAnalysis';
@@ -84,6 +85,44 @@ describe('buildEventFinanceSummary', () => {
         id: 'potential:event:event_1:open-spots',
         amountCents: 15000,
         classification: 'potential_revenue',
+      }),
+    ]));
+  });
+
+  it('uses source and customer names for generated bill and refund labels when available', () => {
+    const summary = buildEventFinanceSummary({
+      eventId: 'event_1',
+      bills: [
+        {
+          ...teamRegistrationBill,
+          sourceName: 'Summer League',
+          sourceEntityType: 'event',
+          sourceEntityId: 'event_1',
+          customerType: 'teams',
+          customerId: 'team_1',
+          customerName: 'Harbor Strikers',
+        },
+      ],
+    });
+
+    expect(summary.lineItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'bill:bill_team_registration:paid',
+        label: 'Summer League - Harbor Strikers',
+        sourceName: 'Summer League',
+        sourceEntityType: 'event',
+        sourceEntityId: 'event_1',
+        customerType: 'teams',
+        customerId: 'team_1',
+        customerName: 'Harbor Strikers',
+        quantity: 1,
+        unitLabel: 'team registration',
+      }),
+      expect.objectContaining({
+        id: 'bill:bill_team_registration:refund',
+        label: 'Summer League - Harbor Strikers',
+        quantity: 1,
+        unitLabel: 'refund',
       }),
     ]));
   });
@@ -350,6 +389,108 @@ describe('buildTeamFinanceSummary', () => {
         id: 'custom:future_team_cost',
         timing: 'FUTURE',
         amountCents: -2500,
+      }),
+    ]));
+  });
+});
+
+describe('buildOrganizationFinanceSummary', () => {
+  it('summarizes organization revenue, refunds, fees, labor, custom costs, and future costs', () => {
+    const summary = buildOrganizationFinanceSummary({
+      organizationId: 'org_1',
+      asOf: '2026-06-09T12:00:00.000Z',
+      bills: [
+        {
+          ...teamRegistrationBill,
+          organizationId: 'org_1',
+        },
+        {
+          id: 'rental_bill_1',
+          organizationId: 'org_1',
+          ownerType: 'USER',
+          ownerId: 'user_1',
+          slotId: 'slot_1',
+          payments: [
+            {
+              id: 'rental_payment_1',
+              amountCents: 10000,
+              status: 'PAID',
+              paidAt: '2026-06-05T12:00:00.000Z',
+              stripeProcessingFeeCents: 350,
+            },
+          ],
+        },
+      ],
+      staffLabor: [
+        {
+          id: 'event_staff_1',
+          sourceType: 'EVENT_STAFF_ASSIGNMENT',
+          eventId: 'event_1',
+          label: 'Alex Rivera',
+          actualStart: '2026-06-01T12:00:00.000Z',
+          actualMinutes: 120,
+          rate: { wageType: 'HOURLY', amountCents: 3000 },
+          status: 'ACTUAL',
+        },
+        {
+          id: 'future_team_staff_1',
+          sourceType: 'TEAM_STAFF_LABOR',
+          teamId: 'team_1',
+          label: 'Future Coach',
+          plannedStart: '2026-07-01T12:00:00.000Z',
+          plannedMinutes: 60,
+          rate: { wageType: 'HOURLY', amountCents: 4000 },
+          status: 'PLANNED',
+        },
+      ],
+      customLineItems: [
+        {
+          id: 'org_cost_1',
+          organizationId: 'org_1',
+          title: 'Facility supplies',
+          category: 'supplies',
+          amountCents: 2500,
+          serviceStartAt: '2026-06-02T00:00:00.000Z',
+        },
+      ],
+    });
+
+    expect(summary.grossRevenueCents).toBe(30000);
+    expect(summary.refundCents).toBe(5000);
+    expect(summary.feeCents).toBe(1150);
+    expect(summary.actualRevenueCents).toBe(23850);
+    expect(summary.actualCostCents).toBe(8500);
+    expect(summary.staffCostCents).toBe(6000);
+    expect(summary.customCostCents).toBe(2500);
+    expect(summary.futureCostCents).toBe(4000);
+    expect(summary.actualProfitCents).toBe(15350);
+    expect(summary.projectedProfitCents).toBe(11350);
+    expect(summary.lineItems).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: 'organization-bill:bill_team_registration:paid',
+        label: 'Team registration payment',
+        classification: 'revenue',
+      }),
+      expect.objectContaining({
+        id: 'organization-bill:rental_bill_1:paid',
+        label: 'Rental payment',
+        category: 'rental',
+        classification: 'revenue',
+      }),
+      expect.objectContaining({
+        id: 'labor:event_staff_1',
+        amountCents: -6000,
+        classification: 'labor_cost',
+      }),
+      expect.objectContaining({
+        id: 'labor:future_team_staff_1',
+        timing: 'FUTURE',
+        amountCents: -4000,
+      }),
+      expect.objectContaining({
+        id: 'custom:org_cost_1',
+        amountCents: -2500,
+        classification: 'custom_cost',
       }),
     ]));
   });
