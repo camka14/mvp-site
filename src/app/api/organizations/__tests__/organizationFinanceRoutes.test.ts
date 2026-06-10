@@ -192,6 +192,70 @@ describe('organization finance routes', () => {
     expect(payload.payRun.payoutProviderBatchId).toBe('check-1024');
   });
 
+  it('passes void reason when voiding a pay run', async () => {
+    updateStaffPayRunStatusMock.mockResolvedValue({
+      id: 'pay_run_1',
+      organizationId: 'org_1',
+      status: 'VOID',
+      payoutStatus: 'CANCELLED',
+      notes: 'Duplicate batch',
+      items: [],
+    });
+
+    const response = await patchPayRun(
+      new NextRequest('http://localhost/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          action: 'VOID',
+          voidReason: 'Duplicate batch',
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1', payRunId: 'pay_run_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateStaffPayRunStatusMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'VOID',
+      voidReason: 'Duplicate batch',
+      actingUserId: 'owner_1',
+    }), prismaMock);
+  });
+
+  it('passes item transfer references for payroll handoff', async () => {
+    updateStaffPayRunStatusMock.mockResolvedValue({
+      id: 'pay_run_1',
+      organizationId: 'org_1',
+      status: 'APPROVED',
+      items: [
+        { id: 'pay_item_1', payoutProviderTransferId: 'transfer-1024' },
+      ],
+    });
+
+    const response = await patchPayRun(
+      new NextRequest('http://localhost/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          action: 'UPDATE_ITEM_TRANSFERS',
+          itemTransfers: [
+            { itemId: 'pay_item_1', payoutProviderTransferId: 'transfer-1024' },
+          ],
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1', payRunId: 'pay_run_1' }) },
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateStaffPayRunStatusMock).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'UPDATE_ITEM_TRANSFERS',
+      itemTransfers: [
+        { itemId: 'pay_item_1', payoutProviderTransferId: 'transfer-1024' },
+      ],
+      actingUserId: 'owner_1',
+    }), prismaMock);
+  });
+
   it('rejects finance route access without finance permission', async () => {
     canManageOrganizationFinanceMock.mockResolvedValue(false);
 

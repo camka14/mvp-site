@@ -8,10 +8,15 @@ import { StaffPayRunError, updateStaffPayRunStatus } from '@/server/finance/staf
 export const dynamic = 'force-dynamic';
 
 const updatePayRunSchema = z.object({
-  action: z.enum(['APPROVE', 'MARK_PAID', 'VOID']),
+  action: z.enum(['APPROVE', 'MARK_PAID', 'VOID', 'UPDATE_ITEM_TRANSFERS']),
   payoutProvider: z.string().trim().max(80).nullable().optional(),
   payoutProviderBatchId: z.string().trim().max(160).nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
+  voidReason: z.string().trim().max(1000).nullable().optional(),
+  itemTransfers: z.array(z.object({
+    itemId: z.string().trim().min(1).max(120),
+    payoutProviderTransferId: z.string().trim().max(160).nullable().optional(),
+  }).strict()).max(200).optional(),
 }).strict();
 
 const mutationErrorResponse = (error: unknown) => {
@@ -53,6 +58,8 @@ export async function PATCH(
       payoutProvider: parsed.data.payoutProvider,
       payoutProviderBatchId: parsed.data.payoutProviderBatchId,
       notes: parsed.data.notes,
+      voidReason: parsed.data.voidReason,
+      itemTransfers: parsed.data.itemTransfers,
     }, prisma);
     return NextResponse.json({ payRun }, { status: 200 });
   } catch (error) {

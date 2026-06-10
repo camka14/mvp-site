@@ -107,7 +107,7 @@ const createClient = () => {
   };
 };
 
-const createUpdateClient = () => {
+const createUpdateClient = (status = 'APPROVED') => {
   const tx = {
     staffPayRun: {
       update: jest.fn(async ({ data }) => ({
@@ -117,7 +117,7 @@ const createUpdateClient = () => {
       })),
     },
     staffPayRunItem: {
-      updateMany: jest.fn(async () => ({ count: 2 })),
+      updateMany: jest.fn(async () => ({ count: 1 })),
       findMany: jest.fn().mockResolvedValue([
         {
           id: 'pay_item_1',
@@ -134,7 +134,7 @@ const createUpdateClient = () => {
     staffPayRun: {
       findFirst: jest.fn().mockResolvedValue({
         id: 'pay_run_1',
-        status: 'APPROVED',
+        status,
       }),
     },
     $transaction: jest.fn((callback) => callback(tx)),
@@ -237,5 +237,98 @@ describe('updateStaffPayRunStatus', () => {
       }),
     }));
     expect(payRun.items).toHaveLength(1);
+  });
+
+  it('requires approval before marking a pay run paid', async () => {
+    const client = createUpdateClient('DRAFT');
+
+    await expect(updateStaffPayRunStatus({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'MARK_PAID',
+      actingUserId: 'owner_1',
+    }, client)).rejects.toMatchObject({
+      status: 400,
+      message: 'Pay run must be approved before it can be marked paid.',
+    });
+    expect(client.tx.staffPayRun.update).not.toHaveBeenCalled();
+  });
+
+  it('locks paid pay runs from further mutation', async () => {
+    const client = createUpdateClient('PAID');
+
+    await expect(updateStaffPayRunStatus({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'VOID',
+      voidReason: 'Duplicate batch',
+      actingUserId: 'owner_1',
+    }, client)).rejects.toMatchObject({
+      status: 400,
+      message: 'Paid pay runs cannot be changed.',
+    });
+  });
+
+  it('requires and stores a void reason', async () => {
+    const client = createUpdateClient('APPROVED');
+
+    await expect(updateStaffPayRunStatus({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'VOID',
+      actingUserId: 'owner_1',
+    }, client)).rejects.toMatchObject({
+      status: 400,
+      message: 'A void reason is required.',
+    });
+
+    await updateStaffPayRunStatus({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'VOID',
+      voidReason: 'Duplicate batch',
+      actingUserId: 'owner_1',
+    }, client);
+
+    expect(client.tx.staffPayRun.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: 'VOID',
+        payoutStatus: 'CANCELLED',
+        notes: 'Duplicate batch',
+      }),
+    }));
+    expect(client.tx.staffPayRunItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: 'VOID',
+        payoutStatus: 'CANCELLED',
+        notes: 'Duplicate batch',
+      }),
+    }));
+  });
+
+  it('updates item transfer references before a pay run is paid', async () => {
+    const client = createUpdateClient('APPROVED');
+
+    await updateStaffPayRunStatus({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'UPDATE_ITEM_TRANSFERS',
+      itemTransfers: [
+        { itemId: 'pay_item_1', payoutProviderTransferId: 'transfer-1024' },
+      ],
+      actingUserId: 'owner_1',
+    }, client);
+
+    expect(client.tx.staffPayRunItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: 'pay_item_1',
+        payRunId: 'pay_run_1',
+        organizationId: 'org_1',
+      },
+      data: expect.objectContaining({
+        payoutProviderTransferId: 'transfer-1024',
+        updatedBy: 'owner_1',
+      }),
+    }));
   });
 });

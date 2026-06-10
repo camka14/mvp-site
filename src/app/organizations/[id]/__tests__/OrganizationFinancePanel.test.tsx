@@ -123,18 +123,56 @@ const financeResponse = {
           serviceStartAt: '2026-06-01T16:00:00.000Z',
           serviceEndAt: '2026-06-01T17:00:00.000Z',
           payoutProvider: null,
+          payoutProviderTransferId: null,
         },
       ],
     },
   ],
 };
 
+const approvedFinanceResponse = {
+  ...financeResponse,
+  payRuns: [
+    {
+      ...financeResponse.payRuns[0],
+      status: 'APPROVED',
+      payoutStatus: 'NOT_STARTED',
+      approvedAt: '2026-06-15T17:00:00.000Z',
+      items: financeResponse.payRuns[0].items.map((item) => ({
+        ...item,
+        status: 'APPROVED',
+        payoutStatus: 'NOT_STARTED',
+      })),
+    },
+  ],
+};
+
 describe('OrganizationFinancePanel', () => {
+  const createObjectURLMock = jest.fn(() => 'blob:payroll');
+  const revokeObjectURLMock = jest.fn();
+  const anchorClickMock = jest.fn();
+
   beforeEach(() => {
     (apiRequest as jest.Mock).mockReset();
     mockPush.mockReset();
+    createObjectURLMock.mockClear();
+    revokeObjectURLMock.mockClear();
+    anchorClickMock.mockClear();
+    Object.defineProperty(window.URL, 'createObjectURL', {
+      configurable: true,
+      value: createObjectURLMock,
+    });
+    Object.defineProperty(window.URL, 'revokeObjectURL', {
+      configurable: true,
+      value: revokeObjectURLMock,
+    });
+    jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(anchorClickMock);
     (isApiRequestError as jest.Mock).mockReset();
     (isApiRequestError as jest.Mock).mockReturnValue(false);
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
   });
 
   it('renders organization finance totals, line items, and pay runs', async () => {
@@ -156,6 +194,8 @@ describe('OrganizationFinancePanel', () => {
     expect(screen.getAllByText('INCURRED').length).toBeGreaterThan(0);
     expect(screen.getAllByText('CURRENT').length).toBeGreaterThan(0);
     expect(screen.getAllByText('June payroll').length).toBeGreaterThan(0);
+    expect(screen.getByText('Staff payroll ledger')).toBeInTheDocument();
+    expect(screen.getByText('Event and team profitability')).toBeInTheDocument();
     expect(apiRequest).toHaveBeenCalledWith(expect.stringContaining('/api/organizations/org_1/finance?'));
     const financeUrl = decodeURIComponent((apiRequest as jest.Mock).mock.calls[0][0]);
     const financeParams = new URL(financeUrl, 'http://localhost').searchParams;
@@ -388,28 +428,131 @@ describe('OrganizationFinancePanel', () => {
     expect(await screen.findByText('Staff pay run details')).toBeInTheDocument();
     expect(screen.getByText('Hourly $60.00/hr')).toBeInTheDocument();
     expect(screen.getByText('Event labor')).toBeInTheDocument();
-    expect(screen.getByText('1h')).toBeInTheDocument();
+    expect(screen.getAllByText('1h').length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Event source' }));
     expect(mockPush).toHaveBeenCalledWith('/events/event_1?tab=details');
   });
 
-  it('marks a pay run paid with payout metadata from the modal', async () => {
+  it('exports filtered payroll CSV from loaded pay-run items', async () => {
+    (apiRequest as jest.Mock).mockResolvedValueOnce(financeResponse);
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Export filtered CSV' }));
+
+    expect(createObjectURLMock).toHaveBeenCalledWith(expect.any(Blob));
+    expect(anchorClickMock).toHaveBeenCalled();
+    expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:payroll');
+  });
+
+  it('saves pay-run item transfer references', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(approvedFinanceResponse)
+      .mockResolvedValueOnce({ payRun: { id: 'pay_run_1', status: 'APPROVED' } })
+      .mockResolvedValueOnce({
+        ...approvedFinanceResponse,
+        payRuns: [
+          {
+            ...approvedFinanceResponse.payRuns[0],
+            items: approvedFinanceResponse.payRuns[0].items.map((item) => ({
+              ...item,
+              payoutProviderTransferId: 'transfer-1024',
+            })),
+          },
+        ],
+      });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    const transferButtons = await screen.findAllByRole('button', { name: 'Transfers' });
+    fireEvent.click(transferButtons[0]);
+
+    expect(await screen.findByText('Edit transfer references')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Transfer reference for Alex Rivera'), {
+      target: { value: 'transfer-1024' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save references' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: {
+          action: 'UPDATE_ITEM_TRANSFERS',
+          itemTransfers: [
+            { itemId: 'pay_item_1', payoutProviderTransferId: 'transfer-1024' },
+          ],
+        },
+      });
+    });
+    fireEvent.click(await screen.findByRole('button', { name: 'View pay run June payroll' }));
+    expect(await screen.findByText('transfer-1024')).toBeInTheDocument();
+  });
+
+  it('voids a pay run only after collecting a reason', async () => {
     (apiRequest as jest.Mock)
       .mockResolvedValueOnce(financeResponse)
-      .mockResolvedValueOnce({ payRun: { id: 'pay_run_1', status: 'PAID', payoutStatus: 'PAID' } })
+      .mockResolvedValueOnce({ payRun: { id: 'pay_run_1', status: 'VOID', payoutStatus: 'CANCELLED' } })
       .mockResolvedValueOnce({
         ...financeResponse,
         payRuns: [
           {
             ...financeResponse.payRuns[0],
+            status: 'VOID',
+            payoutStatus: 'CANCELLED',
+            notes: 'Duplicate batch',
+          },
+        ],
+      });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    const voidButtons = await screen.findAllByRole('button', { name: 'Void' });
+    fireEvent.click(voidButtons[0]);
+
+    const voidDialog = await screen.findByRole('dialog', { name: 'Void staff pay run' });
+    fireEvent.click(within(voidDialog).getByRole('button', { name: 'Void pay run' }));
+    expect(await screen.findByText('A void reason is required.')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Void reason'), {
+      target: { value: 'Duplicate batch' },
+    });
+    fireEvent.click(within(voidDialog).getByRole('button', { name: 'Void pay run' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: {
+          action: 'VOID',
+          voidReason: 'Duplicate batch',
+        },
+      });
+    });
+    expect((await screen.findAllByText('VOID')).length).toBeGreaterThan(0);
+  });
+
+  it('marks a pay run paid with payout metadata from the modal', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(approvedFinanceResponse)
+      .mockResolvedValueOnce({ payRun: { id: 'pay_run_1', status: 'PAID', payoutStatus: 'PAID' } })
+      .mockResolvedValueOnce({
+        ...approvedFinanceResponse,
+        payRuns: [
+          {
+            ...approvedFinanceResponse.payRuns[0],
             status: 'PAID',
             payoutStatus: 'PAID',
             paidAt: '2026-06-15T18:00:00.000Z',
             payoutProvider: 'Check',
             payoutProviderBatchId: 'check-1024',
             notes: 'Paid outside the app',
-            items: financeResponse.payRuns[0].items.map((item) => ({
+            items: approvedFinanceResponse.payRuns[0].items.map((item) => ({
               ...item,
               status: 'PAID',
               payoutStatus: 'PAID',

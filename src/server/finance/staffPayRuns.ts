@@ -8,7 +8,12 @@ import { loadOrganizationStaffLaborEntries } from '@/server/finance/financeRepos
 
 type PrismaLike = any;
 
-type StaffPayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID';
+type StaffPayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID' | 'UPDATE_ITEM_TRANSFERS';
+
+type StaffPayRunItemTransferInput = {
+  itemId: string;
+  payoutProviderTransferId?: string | null;
+};
 
 const normalizeOptionalText = (value: unknown, maxLength = 500): string | null => {
   if (typeof value !== 'string') {
@@ -271,6 +276,8 @@ export const updateStaffPayRunStatus = async (
     payoutProvider?: string | null;
     payoutProviderBatchId?: string | null;
     notes?: string | null;
+    voidReason?: string | null;
+    itemTransfers?: StaffPayRunItemTransferInput[];
   },
   client: PrismaLike = prisma,
 ) => {
@@ -292,6 +299,68 @@ export const updateStaffPayRunStatus = async (
   const payoutProvider = normalizeOptionalText(input.payoutProvider, 80);
   const payoutProviderBatchId = normalizeOptionalText(input.payoutProviderBatchId, 160);
   const notes = normalizeOptionalText(input.notes, 1000);
+  const voidReason = normalizeOptionalText(input.voidReason, 1000);
+  const itemTransfers = Array.isArray(input.itemTransfers) ? input.itemTransfers : [];
+
+  if (payRun.status === 'PAID') {
+    throw new StaffPayRunError(400, 'Paid pay runs cannot be changed.');
+  }
+  if (payRun.status === 'VOID') {
+    throw new StaffPayRunError(400, 'Void pay runs cannot be changed.');
+  }
+  if (input.action === 'APPROVE' && payRun.status !== 'DRAFT') {
+    throw new StaffPayRunError(400, 'Only draft pay runs can be approved.');
+  }
+  if (input.action === 'MARK_PAID' && payRun.status !== 'APPROVED') {
+    throw new StaffPayRunError(400, 'Pay run must be approved before it can be marked paid.');
+  }
+  if (input.action === 'VOID' && !voidReason) {
+    throw new StaffPayRunError(400, 'A void reason is required.');
+  }
+  if (input.action === 'UPDATE_ITEM_TRANSFERS' && itemTransfers.length === 0) {
+    throw new StaffPayRunError(400, 'At least one item transfer reference is required.');
+  }
+
+  const applyItemTransfers = async (tx: PrismaLike) => {
+    await Promise.all(itemTransfers.map(async (item) => {
+      const itemId = normalizeOptionalText(item.itemId, 120);
+      if (!itemId) {
+        throw new StaffPayRunError(400, 'Pay run item id is required.');
+      }
+      const result = await tx.staffPayRunItem.updateMany({
+        where: {
+          id: itemId,
+          payRunId: input.payRunId,
+          organizationId: input.organizationId,
+        },
+        data: {
+          payoutProviderTransferId: normalizeOptionalText(item.payoutProviderTransferId, 160),
+          updatedBy: input.actingUserId,
+        },
+      });
+      if (result.count !== 1) {
+        throw new StaffPayRunError(404, 'Pay run item not found.');
+      }
+    }));
+  };
+
+  if (input.action === 'UPDATE_ITEM_TRANSFERS') {
+    return client.$transaction(async (tx: PrismaLike) => {
+      await applyItemTransfers(tx);
+      const updated = await tx.staffPayRun.update({
+        where: { id: input.payRunId },
+        data: { updatedBy: input.actingUserId },
+      });
+      const items = await tx.staffPayRunItem.findMany({
+        where: { payRunId: input.payRunId },
+        orderBy: [{ serviceStartAt: 'asc' }, { createdAt: 'asc' }],
+      });
+      return {
+        ...updated,
+        items,
+      };
+    });
+  }
 
   const updateForAction = {
     APPROVE: {
@@ -313,6 +382,7 @@ export const updateStaffPayRunStatus = async (
     VOID: {
       status: 'VOID',
       payoutStatus: 'CANCELLED',
+      notes: voidReason,
       updatedBy: input.actingUserId,
     },
   }[input.action];
@@ -335,6 +405,7 @@ export const updateStaffPayRunStatus = async (
     VOID: {
       status: 'VOID',
       payoutStatus: 'CANCELLED',
+      notes: voidReason,
       updatedBy: input.actingUserId,
     },
   }[input.action];
@@ -351,6 +422,9 @@ export const updateStaffPayRunStatus = async (
       },
       data: itemUpdateForAction,
     });
+    if (input.action === 'MARK_PAID' && itemTransfers.length > 0) {
+      await applyItemTransfers(tx);
+    }
     const items = await tx.staffPayRunItem.findMany({
       where: { payRunId: input.payRunId },
       orderBy: [{ serviceStartAt: 'asc' }, { createdAt: 'asc' }],

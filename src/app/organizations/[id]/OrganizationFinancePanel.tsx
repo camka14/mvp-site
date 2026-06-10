@@ -22,7 +22,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { ExternalLink, Plus, UserRound } from 'lucide-react';
+import { Download, ExternalLink, Pencil, Plus, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { formatBillAmount } from '@/types';
@@ -138,13 +138,21 @@ type LineItemDraft = {
   unitLabel: string;
 };
 
-type PayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID';
+type PayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID' | 'UPDATE_ITEM_TRANSFERS';
 
 type MarkPaidDraft = {
   payoutProvider: string;
   payoutProviderBatchId: string;
   notes: string;
 };
+
+type PayRunItemTransferDraft = {
+  itemId: string;
+  label: string;
+  payoutProviderTransferId: string;
+};
+
+type PayRunStatusFilter = 'ALL' | 'DRAFT' | 'APPROVED' | 'PAID' | 'VOID';
 
 type OrganizationFinancePanelProps = {
   organizationId: string;
@@ -340,6 +348,101 @@ const defaultMarkPaidDraft = (payRun?: StaffPayRun | null): MarkPaidDraft => ({
   notes: payRun?.notes ?? '',
 });
 
+const csvCell = (value: string | number | null | undefined): string => {
+  const raw = value == null ? '' : String(value);
+  return `"${raw.replace(/"/g, '""')}"`;
+};
+
+const centsToCsvDollars = (amountCents?: number | null): string => (
+  Number.isFinite(amountCents) ? (Number(amountCents) / 100).toFixed(2) : ''
+);
+
+const sourceLabelForPayRunItem = (item: StaffPayRunItem): string => {
+  if (item.eventStaffAssignmentId) {
+    return 'Event labor';
+  }
+  if (item.teamStaffLaborEntryId) {
+    return 'Team labor';
+  }
+  return 'Staff labor';
+};
+
+const buildPayRunCsv = (payRunsToExport: StaffPayRun[]): string => {
+  const headers = [
+    'Pay Run',
+    'Pay Run Status',
+    'Payout Status',
+    'Period Start',
+    'Period End',
+    'Staff',
+    'User ID',
+    'Staff Member ID',
+    'Source Type',
+    'Event ID',
+    'Team ID',
+    'Event Team ID',
+    'Service Start',
+    'Service End',
+    'Wage Type',
+    'Rate',
+    'Paid Minutes',
+    'Amount',
+    'Payout Provider',
+    'Batch Reference',
+    'Transfer Reference',
+    'Item Status',
+    'Item Payout Status',
+    'Notes',
+  ];
+  const rows = payRunsToExport.flatMap((payRun) => (
+    payRun.items.map((item) => [
+      payRun.title,
+      payRun.status,
+      payRun.payoutStatus,
+      payRun.periodStart,
+      payRun.periodEnd,
+      item.label,
+      item.userId ?? '',
+      item.staffMemberId ?? '',
+      sourceLabelForPayRunItem(item),
+      item.eventId ?? '',
+      item.teamId ?? '',
+      item.eventTeamId ?? '',
+      item.serviceStartAt ?? '',
+      item.serviceEndAt ?? '',
+      item.wageType ?? '',
+      centsToCsvDollars(item.rateCents),
+      item.paidMinutes ?? '',
+      centsToCsvDollars(item.amountCents),
+      item.payoutProvider ?? payRun.payoutProvider ?? '',
+      payRun.payoutProviderBatchId ?? '',
+      item.payoutProviderTransferId ?? '',
+      item.status,
+      item.payoutStatus,
+      item.notes ?? payRun.notes ?? '',
+    ])
+  ));
+  return [
+    headers.map(csvCell).join(','),
+    ...rows.map((row) => row.map(csvCell).join(',')),
+  ].join('\n');
+};
+
+const downloadCsv = (filename: string, csv: string): void => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return;
+  }
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+};
+
 const defaultLineItemDraft = (): LineItemDraft => ({
   title: '',
   category: 'Operations',
@@ -428,6 +531,16 @@ export default function OrganizationFinancePanel({
   const [markPaidPayRunId, setMarkPaidPayRunId] = useState<string | null>(null);
   const [markPaidDraft, setMarkPaidDraft] = useState<MarkPaidDraft>(() => defaultMarkPaidDraft());
   const [markPaidError, setMarkPaidError] = useState<string | null>(null);
+  const [voidPayRunId, setVoidPayRunId] = useState<string | null>(null);
+  const [voidReason, setVoidReason] = useState('');
+  const [voidError, setVoidError] = useState<string | null>(null);
+  const [transferPayRunId, setTransferPayRunId] = useState<string | null>(null);
+  const [transferDraft, setTransferDraft] = useState<PayRunItemTransferDraft[]>([]);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [payRunStatusFilter, setPayRunStatusFilter] = useState<PayRunStatusFilter>('ALL');
+  const [payRunStaffFilter, setPayRunStaffFilter] = useState('ALL');
+  const [payRunFromFilter, setPayRunFromFilter] = useState('');
+  const [payRunToFilter, setPayRunToFilter] = useState('');
   const [lineItemModalOpen, setLineItemModalOpen] = useState(false);
   const [editingLineItem, setEditingLineItem] = useState<FinanceLineItem | null>(null);
   const [lineItemDraft, setLineItemDraft] = useState<LineItemDraft>(() => defaultLineItemDraft());
@@ -479,6 +592,147 @@ export default function OrganizationFinancePanel({
   const markPaidPayRun = useMemo(() => (
     payRuns.find((payRun) => payRun.id === markPaidPayRunId) ?? null
   ), [markPaidPayRunId, payRuns]);
+
+  const voidPayRun = useMemo(() => (
+    payRuns.find((payRun) => payRun.id === voidPayRunId) ?? null
+  ), [payRuns, voidPayRunId]);
+
+  const transferPayRun = useMemo(() => (
+    payRuns.find((payRun) => payRun.id === transferPayRunId) ?? null
+  ), [payRuns, transferPayRunId]);
+
+  const payRunStaffOptions = useMemo(() => {
+    const staffByKey = new Map<string, string>();
+    payRuns.forEach((payRun) => {
+      payRun.items.forEach((item) => {
+        const key = item.userId ?? item.staffMemberId ?? item.label;
+        if (!staffByKey.has(key)) {
+          staffByKey.set(key, item.label);
+        }
+      });
+    });
+    return [
+      { value: 'ALL', label: 'All staff' },
+      ...[...staffByKey.entries()]
+        .map(([value, label]) => ({ value, label }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    ];
+  }, [payRuns]);
+
+  const filteredPayRuns = useMemo(() => {
+    const filterStart = payRunFromFilter.trim() ? new Date(`${payRunFromFilter}T00:00:00.000`).getTime() : null;
+    const filterEnd = payRunToFilter.trim() ? new Date(`${payRunToFilter}T23:59:59.999`).getTime() : null;
+    return payRuns.filter((payRun) => {
+      if (payRunStatusFilter !== 'ALL' && payRun.status !== payRunStatusFilter) {
+        return false;
+      }
+      if (payRunStaffFilter !== 'ALL') {
+        const hasStaff = payRun.items.some((item) => (
+          item.userId === payRunStaffFilter
+          || item.staffMemberId === payRunStaffFilter
+          || item.label === payRunStaffFilter
+        ));
+        if (!hasStaff) {
+          return false;
+        }
+      }
+      const payRunStart = new Date(payRun.periodStart).getTime();
+      const payRunEnd = new Date(payRun.periodEnd).getTime();
+      if (filterStart != null && Number.isFinite(filterStart) && Number.isFinite(payRunEnd) && payRunEnd < filterStart) {
+        return false;
+      }
+      if (filterEnd != null && Number.isFinite(filterEnd) && Number.isFinite(payRunStart) && payRunStart > filterEnd) {
+        return false;
+      }
+      return true;
+    });
+  }, [payRunFromFilter, payRunStaffFilter, payRunStatusFilter, payRunToFilter, payRuns]);
+
+  const payRunLedgerRows = useMemo(() => {
+    const rowsByStaff = new Map<string, {
+      key: string;
+      label: string;
+      itemCount: number;
+      minutes: number;
+      draftCents: number;
+      approvedCents: number;
+      paidCents: number;
+      totalCents: number;
+    }>();
+    filteredPayRuns.forEach((payRun) => {
+      payRun.items.forEach((item) => {
+        const key = item.userId ?? item.staffMemberId ?? item.label;
+        const current = rowsByStaff.get(key) ?? {
+          key,
+          label: item.label,
+          itemCount: 0,
+          minutes: 0,
+          draftCents: 0,
+          approvedCents: 0,
+          paidCents: 0,
+          totalCents: 0,
+        };
+        current.itemCount += 1;
+        current.minutes += item.paidMinutes ?? 0;
+        current.totalCents += item.amountCents;
+        if (item.status === 'PAID') {
+          current.paidCents += item.amountCents;
+        } else if (item.status === 'APPROVED') {
+          current.approvedCents += item.amountCents;
+        } else if (item.status === 'DRAFT') {
+          current.draftCents += item.amountCents;
+        }
+        rowsByStaff.set(key, current);
+      });
+    });
+    return [...rowsByStaff.values()].sort((a, b) => b.totalCents - a.totalCents);
+  }, [filteredPayRuns]);
+
+  const profitabilityRows = useMemo(() => {
+    const rowsBySource = new Map<string, {
+      key: string;
+      name: string;
+      type: string;
+      sourceId: string | null;
+      customerType: OrganizationCustomerRouteType | null;
+      revenueCents: number;
+      costCents: number;
+      profitCents: number;
+      itemCount: number;
+    }>();
+    (finance?.lineItems ?? []).forEach((item) => {
+      const normalizedType = item.sourceEntityType === 'team' || item.scope === 'TEAM' || item.scope === 'EVENT_TEAM'
+        ? 'Team'
+        : item.sourceEntityType === 'event' || item.scope === 'EVENT'
+          ? 'Event'
+          : null;
+      if (!normalizedType) {
+        return;
+      }
+      const sourceId = item.sourceEntityId ?? item.customerId ?? item.sourceId ?? null;
+      const key = `${normalizedType}:${sourceId ?? item.sourceName ?? item.label}`;
+      const current = rowsBySource.get(key) ?? {
+        key,
+        name: item.sourceName ?? item.customerName ?? item.label,
+        type: normalizedType,
+        sourceId,
+        customerType: normalizedType === 'Team' ? 'teams' : null,
+        revenueCents: 0,
+        costCents: 0,
+        profitCents: 0,
+        itemCount: 0,
+      };
+      if (item.amountCents >= 0) {
+        current.revenueCents += item.amountCents;
+      } else {
+        current.costCents += Math.abs(item.amountCents);
+      }
+      current.profitCents += item.amountCents;
+      current.itemCount += 1;
+      rowsBySource.set(key, current);
+    });
+    return [...rowsBySource.values()].sort((a, b) => b.profitCents - a.profitCents);
+  }, [finance?.lineItems]);
 
   const lineItemCategoryOptions = useMemo(() => {
     const categoriesByKey = new Map<string, string>();
@@ -571,6 +825,32 @@ export default function OrganizationFinancePanel({
     setMarkPaidDraft(defaultMarkPaidDraft(payRun));
     setMarkPaidError(null);
     setPayrollError(null);
+  }, []);
+
+  const openVoidModal = useCallback((payRun: StaffPayRun) => {
+    setVoidPayRunId(payRun.id);
+    setVoidReason('');
+    setVoidError(null);
+    setPayrollError(null);
+  }, []);
+
+  const openTransferModal = useCallback((payRun: StaffPayRun) => {
+    setTransferPayRunId(payRun.id);
+    setTransferDraft(payRun.items.map((item) => ({
+      itemId: item.id,
+      label: item.label,
+      payoutProviderTransferId: item.payoutProviderTransferId ?? '',
+    })));
+    setTransferError(null);
+    setPayrollError(null);
+  }, []);
+
+  const exportPayRunsCsv = useCallback((payRunsToExport: StaffPayRun[], filename = 'staff-pay-runs.csv') => {
+    if (payRunsToExport.length === 0) {
+      setPayrollError('No pay runs match the current export.');
+      return;
+    }
+    downloadCsv(filename, buildPayRunCsv(payRunsToExport));
   }, []);
 
   const openNewLineItem = useCallback(() => {
@@ -674,11 +954,16 @@ export default function OrganizationFinancePanel({
   const updatePayRun = useCallback(async (
     payRunId: string,
     action: PayRunAction,
-    details?: Partial<MarkPaidDraft>,
+    details?: Partial<MarkPaidDraft> & {
+      voidReason?: string | null;
+      itemTransfers?: Array<{ itemId: string; payoutProviderTransferId?: string | null }>;
+    },
   ): Promise<boolean> => {
     setUpdatingPayRunId(payRunId);
     setPayrollError(null);
     setMarkPaidError(null);
+    setVoidError(null);
+    setTransferError(null);
     try {
       await apiRequest(`/api/organizations/${organizationId}/finance/pay-runs/${payRunId}`, {
         method: 'PATCH',
@@ -687,6 +972,8 @@ export default function OrganizationFinancePanel({
           ...(details?.payoutProvider !== undefined ? { payoutProvider: details.payoutProvider.trim() || null } : {}),
           ...(details?.payoutProviderBatchId !== undefined ? { payoutProviderBatchId: details.payoutProviderBatchId.trim() || null } : {}),
           ...(details?.notes !== undefined ? { notes: details.notes.trim() || null } : {}),
+          ...(details?.voidReason !== undefined ? { voidReason: details.voidReason?.trim() || null } : {}),
+          ...(details?.itemTransfers !== undefined ? { itemTransfers: details.itemTransfers } : {}),
         },
       });
       await loadFinance();
@@ -695,6 +982,10 @@ export default function OrganizationFinancePanel({
       const message = messageForError(updateError, 'Failed to update staff pay run.');
       if (action === 'MARK_PAID') {
         setMarkPaidError(message);
+      } else if (action === 'VOID') {
+        setVoidError(message);
+      } else if (action === 'UPDATE_ITEM_TRANSFERS') {
+        setTransferError(message);
       } else {
         setPayrollError(message);
       }
@@ -715,6 +1006,39 @@ export default function OrganizationFinancePanel({
       setMarkPaidError(null);
     }
   }, [markPaidDraft, markPaidPayRunId, updatePayRun]);
+
+  const voidSelectedPayRun = useCallback(async () => {
+    if (!voidPayRunId) {
+      return;
+    }
+    if (!voidReason.trim()) {
+      setVoidError('A void reason is required.');
+      return;
+    }
+    const didUpdate = await updatePayRun(voidPayRunId, 'VOID', { voidReason });
+    if (didUpdate) {
+      setVoidPayRunId(null);
+      setVoidReason('');
+      setVoidError(null);
+    }
+  }, [updatePayRun, voidPayRunId, voidReason]);
+
+  const saveTransferReferences = useCallback(async () => {
+    if (!transferPayRunId) {
+      return;
+    }
+    const didUpdate = await updatePayRun(transferPayRunId, 'UPDATE_ITEM_TRANSFERS', {
+      itemTransfers: transferDraft.map((item) => ({
+        itemId: item.itemId,
+        payoutProviderTransferId: item.payoutProviderTransferId.trim() || null,
+      })),
+    });
+    if (didUpdate) {
+      setTransferPayRunId(null);
+      setTransferDraft([]);
+      setTransferError(null);
+    }
+  }, [transferDraft, transferPayRunId, updatePayRun]);
 
   const profitTone = (finance?.actualProfitCents ?? 0) >= 0 ? 'green' : 'red';
   const projectedTone = (finance?.projectedProfitCents ?? 0) >= 0 ? 'green' : 'red';
@@ -966,13 +1290,14 @@ export default function OrganizationFinancePanel({
             )}
 
             <ScrollArea.Autosize mah={360} type="scroll" scrollHideDelay={900} offsetScrollbars>
-              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 940 }}>
+              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 1040 }}>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Staff</Table.Th>
                     <Table.Th>Source</Table.Th>
                     <Table.Th>Service</Table.Th>
                     <Table.Th>Wage</Table.Th>
+                    <Table.Th>Transfer</Table.Th>
                     <Table.Th>Status</Table.Th>
                     <Table.Th ta="right">Amount</Table.Th>
                   </Table.Tr>
@@ -1029,6 +1354,11 @@ export default function OrganizationFinancePanel({
                           </Stack>
                         </Table.Td>
                         <Table.Td>
+                          <Text size="sm" c={item.payoutProviderTransferId ? undefined : 'dimmed'}>
+                            {item.payoutProviderTransferId || '-'}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
                           <Group gap={6}>
                             <Badge size="xs" variant="light">{item.status}</Badge>
                             <Badge size="xs" variant="light" color={payRunPayoutColor(item.payoutStatus)}>
@@ -1046,8 +1376,25 @@ export default function OrganizationFinancePanel({
               </Table>
             </ScrollArea.Autosize>
 
-            {canManage && (
-              <Group justify="flex-end">
+            <Group justify="flex-end">
+              <Button
+                variant="default"
+                leftSection={<Download size={14} />}
+                onClick={() => exportPayRunsCsv([selectedPayRun], `${selectedPayRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`)}
+              >
+                Export CSV
+              </Button>
+              {canManage && selectedPayRun.status !== 'PAID' && selectedPayRun.status !== 'VOID' && (
+                <Button
+                  variant="default"
+                  leftSection={<Pencil size={14} />}
+                  onClick={() => openTransferModal(selectedPayRun)}
+                >
+                  Edit transfers
+                </Button>
+              )}
+              {canManage && (
+                <>
                 {selectedPayRun.status === 'DRAFT' && (
                   <Button
                     variant="light"
@@ -1057,7 +1404,7 @@ export default function OrganizationFinancePanel({
                     Approve
                   </Button>
                 )}
-                {selectedPayRun.status !== 'PAID' && selectedPayRun.status !== 'VOID' && (
+                {selectedPayRun.status === 'APPROVED' && (
                   <Button
                     color="green"
                     variant="light"
@@ -1066,18 +1413,19 @@ export default function OrganizationFinancePanel({
                     Mark paid
                   </Button>
                 )}
-                {selectedPayRun.status !== 'VOID' && selectedPayRun.status !== 'PAID' && (
+                {(selectedPayRun.status === 'DRAFT' || selectedPayRun.status === 'APPROVED') && (
                   <Button
                     variant="subtle"
                     color="red"
                     loading={updatingPayRunId === selectedPayRun.id}
-                    onClick={() => void updatePayRun(selectedPayRun.id, 'VOID')}
+                    onClick={() => openVoidModal(selectedPayRun)}
                   >
                     Void
                   </Button>
                 )}
+                </>
+              )}
               </Group>
-            )}
           </Stack>
         )}
       </Modal>
@@ -1146,6 +1494,111 @@ export default function OrganizationFinancePanel({
               onClick={() => void markPayRunPaid()}
             >
               Mark paid
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={Boolean(voidPayRunId)}
+        onClose={() => {
+          setVoidPayRunId(null);
+          setVoidReason('');
+          setVoidError(null);
+        }}
+        title="Void staff pay run"
+        size="md"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Void {voidPayRun?.title ?? 'this pay run'} and cancel its staff pay items.
+          </Text>
+          <Textarea
+            label="Void reason"
+            aria-label="Void reason"
+            value={voidReason}
+            onChange={(event) => setVoidReason(event.currentTarget.value)}
+            autosize
+            minRows={3}
+            required
+          />
+          {voidError && <Text size="sm" c="red" fw={600}>{voidError}</Text>}
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setVoidPayRunId(null);
+                setVoidReason('');
+                setVoidError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              loading={Boolean(voidPayRunId && updatingPayRunId === voidPayRunId)}
+              onClick={() => void voidSelectedPayRun()}
+            >
+              Void pay run
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={Boolean(transferPayRunId)}
+        onClose={() => {
+          setTransferPayRunId(null);
+          setTransferDraft([]);
+          setTransferError(null);
+        }}
+        title="Edit transfer references"
+        size="lg"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Add item-level payout references for {transferPayRun?.title ?? 'this pay run'} before marking the batch paid.
+          </Text>
+          <ScrollArea.Autosize mah={360} type="scroll" scrollHideDelay={900} offsetScrollbars>
+            <Stack gap="sm">
+              {transferDraft.map((item) => (
+                <TextInput
+                  key={item.itemId}
+                  label={item.label}
+                  aria-label={`Transfer reference for ${item.label}`}
+                  placeholder="transfer-1024"
+                  value={item.payoutProviderTransferId}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setTransferDraft((current) => current.map((draftItem) => (
+                      draftItem.itemId === item.itemId
+                        ? { ...draftItem, payoutProviderTransferId: nextValue }
+                        : draftItem
+                    )));
+                  }}
+                />
+              ))}
+            </Stack>
+          </ScrollArea.Autosize>
+          {transferError && <Text size="sm" c="red" fw={600}>{transferError}</Text>}
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setTransferPayRunId(null);
+                setTransferDraft([]);
+                setTransferError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              loading={Boolean(transferPayRunId && updatingPayRunId === transferPayRunId)}
+              onClick={() => void saveTransferReferences()}
+            >
+              Save references
             </Button>
           </Group>
         </Stack>
@@ -1244,6 +1697,113 @@ export default function OrganizationFinancePanel({
             </Alert>
           )}
 
+          <SimpleGrid cols={{ base: 1, xl: 2 }} spacing="md">
+            <Paper withBorder radius="md" p="md" className="org-tab-surface">
+              <Group justify="space-between" align="center" mb="sm">
+                <Title order={6}>Staff payroll ledger</Title>
+                <Text size="sm" c="dimmed">{payRunLedgerRows.length} staff</Text>
+              </Group>
+              <ScrollArea.Autosize mah={320} type="scroll" scrollHideDelay={900} offsetScrollbars>
+                <Table striped highlightOnHover withColumnBorders style={{ minWidth: 720 }}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Staff</Table.Th>
+                      <Table.Th>Items</Table.Th>
+                      <Table.Th>Time</Table.Th>
+                      <Table.Th ta="right">Draft</Table.Th>
+                      <Table.Th ta="right">Approved</Table.Th>
+                      <Table.Th ta="right">Paid</Table.Th>
+                      <Table.Th ta="right">Total</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {payRunLedgerRows.length > 0 ? payRunLedgerRows.map((row) => (
+                      <Table.Tr key={row.key}>
+                        <Table.Td>{row.label}</Table.Td>
+                        <Table.Td>{row.itemCount}</Table.Td>
+                        <Table.Td>{formatLaborMinutes(row.minutes)}</Table.Td>
+                        <Table.Td ta="right">{centsFromDollars(row.draftCents)}</Table.Td>
+                        <Table.Td ta="right">{centsFromDollars(row.approvedCents)}</Table.Td>
+                        <Table.Td ta="right">{centsFromDollars(row.paidCents)}</Table.Td>
+                        <Table.Td ta="right">
+                          <Text fw={700}>{centsFromDollars(row.totalCents)}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )) : (
+                      <Table.Tr>
+                        <Table.Td colSpan={7}>
+                          <Text size="sm" c="dimmed">No payroll items match the current filters.</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </ScrollArea.Autosize>
+            </Paper>
+
+            <Paper withBorder radius="md" p="md" className="org-tab-surface">
+              <Group justify="space-between" align="center" mb="sm">
+                <Title order={6}>Event and team profitability</Title>
+                <Text size="sm" c="dimmed">{profitabilityRows.length} sources</Text>
+              </Group>
+              <ScrollArea.Autosize mah={320} type="scroll" scrollHideDelay={900} offsetScrollbars>
+                <Table striped highlightOnHover withColumnBorders style={{ minWidth: 780 }}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Source</Table.Th>
+                      <Table.Th>Type</Table.Th>
+                      <Table.Th>Items</Table.Th>
+                      <Table.Th ta="right">Revenue</Table.Th>
+                      <Table.Th ta="right">Costs</Table.Th>
+                      <Table.Th ta="right">Profit</Table.Th>
+                      <Table.Th>Actions</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {profitabilityRows.length > 0 ? profitabilityRows.map((row) => {
+                      const target = row.type === 'Event' && row.sourceId
+                        ? { label: row.name, href: `/events/${encodeURIComponent(row.sourceId)}?tab=details` }
+                        : row.type === 'Team' && row.sourceId
+                          ? { label: row.name, href: buildOrganizationCustomerPath(organizationId, 'teams', row.sourceId) }
+                          : null;
+                      return (
+                        <Table.Tr key={row.key}>
+                          <Table.Td>{row.name}</Table.Td>
+                          <Table.Td>{row.type}</Table.Td>
+                          <Table.Td>{row.itemCount}</Table.Td>
+                          <Table.Td ta="right">{centsFromDollars(row.revenueCents)}</Table.Td>
+                          <Table.Td ta="right">{centsFromDollars(-row.costCents)}</Table.Td>
+                          <Table.Td ta="right">
+                            <Text fw={700} c={row.profitCents >= 0 ? 'green' : 'red'}>
+                              {centsFromDollars(row.profitCents)}
+                            </Text>
+                          </Table.Td>
+                          <Table.Td>
+                            <Button
+                              size="xs"
+                              variant="subtle"
+                              leftSection={<ExternalLink size={12} />}
+                              disabled={!target}
+                              onClick={() => navigateToLineItemTarget(target)}
+                            >
+                              Open
+                            </Button>
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    }) : (
+                      <Table.Tr>
+                        <Table.Td colSpan={7}>
+                          <Text size="sm" c="dimmed">No event or team line items for this range.</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    )}
+                  </Table.Tbody>
+                </Table>
+              </ScrollArea.Autosize>
+            </Paper>
+          </SimpleGrid>
+
           <Paper withBorder radius="md" p="md" className="org-tab-surface">
             <Group justify="space-between" align="center" mb="sm">
               <Title order={6}>Finance line items</Title>
@@ -1314,6 +1874,14 @@ export default function OrganizationFinancePanel({
                 <Title order={6}>Staff pay runs</Title>
                 <Text size="sm" c="dimmed">Create internal payroll batches from unpaid staff labor.</Text>
               </Stack>
+              <Button
+                size="xs"
+                variant="default"
+                leftSection={<Download size={14} />}
+                onClick={() => exportPayRunsCsv(filteredPayRuns)}
+              >
+                Export filtered CSV
+              </Button>
             </Group>
 
             {canManage && (
@@ -1347,6 +1915,42 @@ export default function OrganizationFinancePanel({
               </Group>
             )}
 
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm" mb="md">
+              <Select
+                label="Payroll status"
+                data={[
+                  { value: 'ALL', label: 'All statuses' },
+                  { value: 'DRAFT', label: 'Draft' },
+                  { value: 'APPROVED', label: 'Approved' },
+                  { value: 'PAID', label: 'Paid' },
+                  { value: 'VOID', label: 'Void' },
+                ]}
+                value={payRunStatusFilter}
+                onChange={(value) => setPayRunStatusFilter((value as PayRunStatusFilter | null) ?? 'ALL')}
+                allowDeselect={false}
+              />
+              <Select
+                label="Staff"
+                data={payRunStaffOptions}
+                value={payRunStaffFilter}
+                onChange={(value) => setPayRunStaffFilter(value ?? 'ALL')}
+                searchable
+                allowDeselect={false}
+              />
+              <TextInput
+                label="Payroll from"
+                type="date"
+                value={payRunFromFilter}
+                onChange={(event) => setPayRunFromFilter(event.currentTarget.value)}
+              />
+              <TextInput
+                label="Payroll to"
+                type="date"
+                value={payRunToFilter}
+                onChange={(event) => setPayRunToFilter(event.currentTarget.value)}
+              />
+            </SimpleGrid>
+
             <ScrollArea.Autosize mah={420}>
               <Table striped highlightOnHover withColumnBorders style={{ minWidth: 840 }}>
                 <Table.Thead>
@@ -1360,7 +1964,7 @@ export default function OrganizationFinancePanel({
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {payRuns.length > 0 ? payRuns.map((payRun) => (
+                  {filteredPayRuns.length > 0 ? filteredPayRuns.map((payRun) => (
                     <Table.Tr
                       key={payRun.id}
                       onClick={() => setSelectedPayRunId(payRun.id)}
@@ -1403,6 +2007,30 @@ export default function OrganizationFinancePanel({
                       {canManage && (
                         <Table.Td>
                           <Group gap="xs">
+                            <Button
+                              size="xs"
+                              variant="default"
+                              leftSection={<Download size={12} />}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                exportPayRunsCsv([payRun], `${payRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`);
+                              }}
+                            >
+                              Export
+                            </Button>
+                            {payRun.status !== 'PAID' && payRun.status !== 'VOID' && (
+                              <Button
+                                size="xs"
+                                variant="default"
+                                leftSection={<Pencil size={12} />}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openTransferModal(payRun);
+                                }}
+                              >
+                                Transfers
+                              </Button>
+                            )}
                             {payRun.status === 'DRAFT' && (
                               <Button
                                 size="xs"
@@ -1416,7 +2044,7 @@ export default function OrganizationFinancePanel({
                                 Approve
                               </Button>
                             )}
-                            {payRun.status !== 'PAID' && payRun.status !== 'VOID' && (
+                            {payRun.status === 'APPROVED' && (
                               <Button
                                 size="xs"
                                 variant="light"
@@ -1430,7 +2058,7 @@ export default function OrganizationFinancePanel({
                                 Mark paid
                               </Button>
                             )}
-                            {payRun.status !== 'VOID' && payRun.status !== 'PAID' && (
+                            {(payRun.status === 'DRAFT' || payRun.status === 'APPROVED') && (
                               <Button
                                 size="xs"
                                 variant="subtle"
@@ -1438,7 +2066,7 @@ export default function OrganizationFinancePanel({
                                 loading={updatingPayRunId === payRun.id}
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  void updatePayRun(payRun.id, 'VOID');
+                                  openVoidModal(payRun);
                                 }}
                               >
                                 Void
@@ -1451,7 +2079,7 @@ export default function OrganizationFinancePanel({
                   )) : (
                     <Table.Tr>
                       <Table.Td colSpan={canManage ? 6 : 5}>
-                        <Text size="sm" c="dimmed">No staff pay runs yet.</Text>
+                        <Text size="sm" c="dimmed">No staff pay runs match the current filters.</Text>
                       </Table.Td>
                     </Table.Tr>
                   )}
