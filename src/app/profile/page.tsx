@@ -85,7 +85,7 @@ import { billService } from "@/lib/billService";
 import { teamService } from "@/lib/teamService";
 import PaymentModal from "@/components/ui/PaymentModal";
 import BillingAddressFields from "@/components/ui/BillingAddressFields";
-import { ManageTeams } from "@/app/teams/page";
+import ManageTeams from "@/app/teams/components/ManageTeams";
 import RefundRequestsList from "@/components/ui/RefundRequestsList";
 import ProfileInvitesSection from "@/components/ui/ProfileInvitesSection";
 import { productService } from "@/lib/productService";

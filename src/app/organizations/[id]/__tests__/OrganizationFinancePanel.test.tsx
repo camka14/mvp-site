@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { renderWithMantine } from '../../../../../test/utils/renderWithMantine';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import OrganizationFinancePanel from '../OrganizationFinancePanel';
@@ -98,14 +98,31 @@ const financeResponse = {
       payoutStatus: 'NOT_STARTED',
       totalAmountCents: 6000,
       itemCount: 1,
+      approvedAt: null,
+      paidAt: null,
+      payoutProvider: null,
+      payoutProviderBatchId: null,
+      notes: null,
       items: [
         {
           id: 'pay_item_1',
+          staffMemberId: 'staff_1',
+          userId: 'user_1',
+          eventId: 'event_1',
+          teamId: 'team_1',
+          eventTeamId: 'event_team_1',
+          eventStaffAssignmentId: 'event_labor_1',
+          teamStaffLaborEntryId: null,
           label: 'Alex Rivera',
+          wageType: 'HOURLY',
+          rateCents: 6000,
+          paidMinutes: 60,
           amountCents: 6000,
           status: 'DRAFT',
           payoutStatus: 'NOT_STARTED',
           serviceStartAt: '2026-06-01T16:00:00.000Z',
+          serviceEndAt: '2026-06-01T17:00:00.000Z',
+          payoutProvider: null,
         },
       ],
     },
@@ -357,5 +374,81 @@ describe('OrganizationFinancePanel', () => {
       });
     });
     expect((await screen.findAllByText('APPROVED')).length).toBeGreaterThan(0);
+  });
+
+  it('opens pay-run details with wage and source links', async () => {
+    (apiRequest as jest.Mock).mockResolvedValueOnce(financeResponse);
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'View pay run June payroll' }));
+
+    expect(await screen.findByText('Staff pay run details')).toBeInTheDocument();
+    expect(screen.getByText('Hourly $60.00/hr')).toBeInTheDocument();
+    expect(screen.getByText('Event labor')).toBeInTheDocument();
+    expect(screen.getByText('1h')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Event source' }));
+    expect(mockPush).toHaveBeenCalledWith('/events/event_1?tab=details');
+  });
+
+  it('marks a pay run paid with payout metadata from the modal', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(financeResponse)
+      .mockResolvedValueOnce({ payRun: { id: 'pay_run_1', status: 'PAID', payoutStatus: 'PAID' } })
+      .mockResolvedValueOnce({
+        ...financeResponse,
+        payRuns: [
+          {
+            ...financeResponse.payRuns[0],
+            status: 'PAID',
+            payoutStatus: 'PAID',
+            paidAt: '2026-06-15T18:00:00.000Z',
+            payoutProvider: 'Check',
+            payoutProviderBatchId: 'check-1024',
+            notes: 'Paid outside the app',
+            items: financeResponse.payRuns[0].items.map((item) => ({
+              ...item,
+              status: 'PAID',
+              payoutStatus: 'PAID',
+              payoutProvider: 'Check',
+            })),
+          },
+        ],
+      });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    const markPaidButtons = await screen.findAllByRole('button', { name: 'Mark paid' });
+    fireEvent.click(markPaidButtons[0]);
+
+    const payoutDialog = await screen.findByRole('dialog', { name: 'Record staff payout' });
+    fireEvent.change(screen.getByLabelText('Payout provider'), {
+      target: { value: 'Check' },
+    });
+    fireEvent.change(screen.getByLabelText('Payout reference'), {
+      target: { value: 'check-1024' },
+    });
+    fireEvent.change(screen.getByLabelText('Payout notes'), {
+      target: { value: 'Paid outside the app' },
+    });
+    fireEvent.click(within(payoutDialog).getByRole('button', { name: 'Mark paid' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: {
+          action: 'MARK_PAID',
+          payoutProvider: 'Check',
+          payoutProviderBatchId: 'check-1024',
+          notes: 'Paid outside the app',
+        },
+      });
+    });
+    expect((await screen.findAllByText('PAID')).length).toBeGreaterThan(0);
   });
 });

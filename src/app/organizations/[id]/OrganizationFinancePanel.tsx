@@ -75,10 +75,26 @@ type OrganizationFinanceSummary = {
 
 type StaffPayRunItem = {
   id: string;
+  staffMemberId?: string | null;
+  userId?: string | null;
+  eventId?: string | null;
+  teamId?: string | null;
+  eventTeamId?: string | null;
+  eventStaffAssignmentId?: string | null;
+  teamStaffLaborEntryId?: string | null;
   label: string;
+  description?: string | null;
+  wageType?: 'HOURLY' | 'SALARY' | 'FLAT_PER_EVENT' | null;
+  rateCents?: number | null;
+  paidMinutes?: number | null;
   amountCents: number;
   status: string;
   payoutStatus: string;
+  approvedAt?: string | null;
+  paidAt?: string | null;
+  payoutProvider?: string | null;
+  payoutProviderTransferId?: string | null;
+  notes?: string | null;
   serviceStartAt?: string | null;
   serviceEndAt?: string | null;
 };
@@ -93,7 +109,12 @@ type StaffPayRun = {
   totalAmountCents: number;
   itemCount: number;
   approvedAt?: string | null;
+  approvedByUserId?: string | null;
   paidAt?: string | null;
+  paidByUserId?: string | null;
+  payoutProvider?: string | null;
+  payoutProviderBatchId?: string | null;
+  notes?: string | null;
   items: StaffPayRunItem[];
 };
 
@@ -115,6 +136,14 @@ type LineItemDraft = {
   serviceEndDate: string;
   quantity: string | number;
   unitLabel: string;
+};
+
+type PayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID';
+
+type MarkPaidDraft = {
+  payoutProvider: string;
+  payoutProviderBatchId: string;
+  notes: string;
 };
 
 type OrganizationFinancePanelProps = {
@@ -204,6 +233,23 @@ const formatDate = (value?: string | null): string => {
   });
 };
 
+const formatDateTime = (value?: string | null): string => {
+  if (!value) {
+    return 'Not set';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'Not set';
+  }
+  return parsed.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+};
+
 const formatPeriod = (start?: string | null, end?: string | null): string => {
   const startLabel = formatDate(start);
   const endLabel = formatDate(end);
@@ -231,6 +277,68 @@ const formatQuantityAndUnit = (quantity?: number | null, unitLabel?: string | nu
     : normalizedUnit;
   return displayUnit ? `${quantityLabel} ${displayUnit}` : quantityLabel;
 };
+
+const formatLaborMinutes = (minutes?: number | null): string => {
+  if (!minutes || !Number.isFinite(minutes) || minutes <= 0) {
+    return '-';
+  }
+  const wholeMinutes = Math.round(minutes);
+  const hours = Math.floor(wholeMinutes / 60);
+  const remainder = wholeMinutes % 60;
+  if (hours && remainder) {
+    return `${hours}h ${remainder}m`;
+  }
+  if (hours) {
+    return `${hours}h`;
+  }
+  return `${remainder}m`;
+};
+
+const formatWageType = (wageType?: StaffPayRunItem['wageType']): string => {
+  if (wageType === 'HOURLY') {
+    return 'Hourly';
+  }
+  if (wageType === 'SALARY') {
+    return 'Salary';
+  }
+  if (wageType === 'FLAT_PER_EVENT') {
+    return 'Flat per event';
+  }
+  return 'No rate';
+};
+
+const formatWageRate = (item: StaffPayRunItem): string => {
+  if (!item.rateCents || item.rateCents <= 0) {
+    return formatWageType(item.wageType);
+  }
+  const suffix = item.wageType === 'HOURLY'
+    ? '/hr'
+    : item.wageType === 'SALARY'
+      ? '/yr'
+      : item.wageType === 'FLAT_PER_EVENT'
+        ? '/event'
+        : '';
+  return `${formatWageType(item.wageType)} ${centsFromDollars(item.rateCents)}${suffix}`;
+};
+
+const payRunPayoutColor = (status: string): string => {
+  if (status === 'PAID') {
+    return 'green';
+  }
+  if (status === 'FAILED' || status === 'CANCELLED') {
+    return 'red';
+  }
+  if (status === 'PROCESSING' || status === 'PENDING') {
+    return 'orange';
+  }
+  return 'gray';
+};
+
+const defaultMarkPaidDraft = (payRun?: StaffPayRun | null): MarkPaidDraft => ({
+  payoutProvider: payRun?.payoutProvider ?? '',
+  payoutProviderBatchId: payRun?.payoutProviderBatchId ?? '',
+  notes: payRun?.notes ?? '',
+});
 
 const defaultLineItemDraft = (): LineItemDraft => ({
   title: '',
@@ -316,6 +424,10 @@ export default function OrganizationFinancePanel({
   const [payRunSaving, setPayRunSaving] = useState(false);
   const [updatingPayRunId, setUpdatingPayRunId] = useState<string | null>(null);
   const [payrollError, setPayrollError] = useState<string | null>(null);
+  const [selectedPayRunId, setSelectedPayRunId] = useState<string | null>(null);
+  const [markPaidPayRunId, setMarkPaidPayRunId] = useState<string | null>(null);
+  const [markPaidDraft, setMarkPaidDraft] = useState<MarkPaidDraft>(() => defaultMarkPaidDraft());
+  const [markPaidError, setMarkPaidError] = useState<string | null>(null);
   const [lineItemModalOpen, setLineItemModalOpen] = useState(false);
   const [editingLineItem, setEditingLineItem] = useState<FinanceLineItem | null>(null);
   const [lineItemDraft, setLineItemDraft] = useState<LineItemDraft>(() => defaultLineItemDraft());
@@ -359,6 +471,14 @@ export default function OrganizationFinancePanel({
       return bDate - aDate;
     })
   ), [finance?.lineItems]);
+
+  const selectedPayRun = useMemo(() => (
+    payRuns.find((payRun) => payRun.id === selectedPayRunId) ?? null
+  ), [payRuns, selectedPayRunId]);
+
+  const markPaidPayRun = useMemo(() => (
+    payRuns.find((payRun) => payRun.id === markPaidPayRunId) ?? null
+  ), [markPaidPayRunId, payRuns]);
 
   const lineItemCategoryOptions = useMemo(() => {
     const categoriesByKey = new Map<string, string>();
@@ -422,6 +542,36 @@ export default function OrganizationFinancePanel({
     }
     router.push(target.href);
   }, [router]);
+
+  const getPayRunItemTargets = useCallback((item: StaffPayRunItem): LineItemNavigationTarget[] => {
+    const targets: LineItemNavigationTarget[] = [];
+    if (item.eventId) {
+      targets.push({
+        label: 'Event source',
+        href: `/events/${encodeURIComponent(item.eventId)}?tab=details`,
+      });
+    }
+    if (item.teamId) {
+      targets.push({
+        label: 'Team source',
+        href: buildOrganizationCustomerPath(organizationId, 'teams', item.teamId),
+      });
+    }
+    if (item.userId) {
+      targets.push({
+        label: 'Staff profile',
+        href: buildOrganizationCustomerPath(organizationId, 'users', item.userId),
+      });
+    }
+    return targets;
+  }, [organizationId]);
+
+  const openMarkPaidModal = useCallback((payRun: StaffPayRun) => {
+    setMarkPaidPayRunId(payRun.id);
+    setMarkPaidDraft(defaultMarkPaidDraft(payRun));
+    setMarkPaidError(null);
+    setPayrollError(null);
+  }, []);
 
   const openNewLineItem = useCallback(() => {
     setEditingLineItem(null);
@@ -521,21 +671,50 @@ export default function OrganizationFinancePanel({
     }
   }, [loadFinance, organizationId, payRunEnd, payRunStart, payRunTitle]);
 
-  const updatePayRun = useCallback(async (payRunId: string, action: 'APPROVE' | 'MARK_PAID' | 'VOID') => {
+  const updatePayRun = useCallback(async (
+    payRunId: string,
+    action: PayRunAction,
+    details?: Partial<MarkPaidDraft>,
+  ): Promise<boolean> => {
     setUpdatingPayRunId(payRunId);
     setPayrollError(null);
+    setMarkPaidError(null);
     try {
       await apiRequest(`/api/organizations/${organizationId}/finance/pay-runs/${payRunId}`, {
         method: 'PATCH',
-        body: { action },
+        body: {
+          action,
+          ...(details?.payoutProvider !== undefined ? { payoutProvider: details.payoutProvider.trim() || null } : {}),
+          ...(details?.payoutProviderBatchId !== undefined ? { payoutProviderBatchId: details.payoutProviderBatchId.trim() || null } : {}),
+          ...(details?.notes !== undefined ? { notes: details.notes.trim() || null } : {}),
+        },
       });
       await loadFinance();
+      return true;
     } catch (updateError) {
-      setPayrollError(messageForError(updateError, 'Failed to update staff pay run.'));
+      const message = messageForError(updateError, 'Failed to update staff pay run.');
+      if (action === 'MARK_PAID') {
+        setMarkPaidError(message);
+      } else {
+        setPayrollError(message);
+      }
+      return false;
     } finally {
       setUpdatingPayRunId(null);
     }
   }, [loadFinance, organizationId]);
+
+  const markPayRunPaid = useCallback(async () => {
+    if (!markPaidPayRunId) {
+      return;
+    }
+    const didUpdate = await updatePayRun(markPaidPayRunId, 'MARK_PAID', markPaidDraft);
+    if (didUpdate) {
+      setMarkPaidPayRunId(null);
+      setMarkPaidDraft(defaultMarkPaidDraft());
+      setMarkPaidError(null);
+    }
+  }, [markPaidDraft, markPaidPayRunId, updatePayRun]);
 
   const profitTone = (finance?.actualProfitCents ?? 0) >= 0 ? 'green' : 'red';
   const projectedTone = (finance?.projectedProfitCents ?? 0) >= 0 ? 'green' : 'red';
@@ -717,6 +896,256 @@ export default function OrganizationFinancePanel({
             </Button>
             <Button onClick={() => void saveLineItem()} loading={lineItemSaving}>
               Save line item
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={Boolean(selectedPayRun)}
+        onClose={() => setSelectedPayRunId(null)}
+        title="Staff pay run details"
+        size="xl"
+        centered
+      >
+        {selectedPayRun && (
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-start">
+              <Stack gap={2}>
+                <Title order={5}>{selectedPayRun.title}</Title>
+                <Text size="sm" c="dimmed">{formatPeriod(selectedPayRun.periodStart, selectedPayRun.periodEnd)}</Text>
+              </Stack>
+              <Group gap={6}>
+                <Badge size="sm" variant="light">{selectedPayRun.status}</Badge>
+                <Badge size="sm" variant="light" color={payRunPayoutColor(selectedPayRun.payoutStatus)}>
+                  {selectedPayRun.payoutStatus}
+                </Badge>
+              </Group>
+            </Group>
+
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Total</Text>
+                <Text fw={800}>{centsFromDollars(selectedPayRun.totalAmountCents)}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Items</Text>
+                <Text fw={800}>{selectedPayRun.itemCount}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Approved</Text>
+                <Text size="sm">{formatDateTime(selectedPayRun.approvedAt)}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Paid</Text>
+                <Text size="sm">{formatDateTime(selectedPayRun.paidAt)}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Provider</Text>
+                <Text size="sm">{selectedPayRun.payoutProvider || 'Not set'}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Reference</Text>
+                <Text size="sm">{selectedPayRun.payoutProviderBatchId || 'Not set'}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Approved by</Text>
+                <Text size="sm">{selectedPayRun.approvedByUserId || 'Not set'}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Paid by</Text>
+                <Text size="sm">{selectedPayRun.paidByUserId || 'Not set'}</Text>
+              </Paper>
+            </SimpleGrid>
+
+            {selectedPayRun.notes && (
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Notes</Text>
+                <Text size="sm">{selectedPayRun.notes}</Text>
+              </Paper>
+            )}
+
+            <ScrollArea.Autosize mah={360} type="scroll" scrollHideDelay={900} offsetScrollbars>
+              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 940 }}>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Staff</Table.Th>
+                    <Table.Th>Source</Table.Th>
+                    <Table.Th>Service</Table.Th>
+                    <Table.Th>Wage</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th ta="right">Amount</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {selectedPayRun.items.map((item) => {
+                    const sourceLabel = item.eventStaffAssignmentId
+                      ? 'Event labor'
+                      : item.teamStaffLaborEntryId
+                        ? 'Team labor'
+                        : 'Staff labor';
+                    const targets = getPayRunItemTargets(item);
+                    return (
+                      <Table.Tr key={item.id}>
+                        <Table.Td>
+                          <Stack gap={1}>
+                            <Text size="sm" fw={600}>{item.label}</Text>
+                            {item.description && <Text size="xs" c="dimmed">{item.description}</Text>}
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>
+                          <Stack gap={4}>
+                            <Text size="sm">{sourceLabel}</Text>
+                            {targets.length > 0 && (
+                              <Group gap={4}>
+                                {targets.map((target) => (
+                                  <Button
+                                    key={target.href}
+                                    size="xs"
+                                    variant="subtle"
+                                    px={6}
+                                    leftSection={<ExternalLink size={12} />}
+                                    onClick={() => navigateToLineItemTarget(target)}
+                                  >
+                                    {target.label}
+                                  </Button>
+                                ))}
+                              </Group>
+                            )}
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>
+                          <Stack gap={1}>
+                            <Text size="sm">{formatPeriod(item.serviceStartAt, item.serviceEndAt)}</Text>
+                            <Text size="xs" c="dimmed">{formatLaborMinutes(item.paidMinutes)}</Text>
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>
+                          <Stack gap={1}>
+                            <Text size="sm">{formatWageRate(item)}</Text>
+                            {item.payoutProvider && (
+                              <Text size="xs" c="dimmed">{item.payoutProvider}</Text>
+                            )}
+                          </Stack>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap={6}>
+                            <Badge size="xs" variant="light">{item.status}</Badge>
+                            <Badge size="xs" variant="light" color={payRunPayoutColor(item.payoutStatus)}>
+                              {item.payoutStatus}
+                            </Badge>
+                          </Group>
+                        </Table.Td>
+                        <Table.Td ta="right">
+                          <Text fw={700}>{centsFromDollars(item.amountCents)}</Text>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            </ScrollArea.Autosize>
+
+            {canManage && (
+              <Group justify="flex-end">
+                {selectedPayRun.status === 'DRAFT' && (
+                  <Button
+                    variant="light"
+                    loading={updatingPayRunId === selectedPayRun.id}
+                    onClick={() => void updatePayRun(selectedPayRun.id, 'APPROVE')}
+                  >
+                    Approve
+                  </Button>
+                )}
+                {selectedPayRun.status !== 'PAID' && selectedPayRun.status !== 'VOID' && (
+                  <Button
+                    color="green"
+                    variant="light"
+                    onClick={() => openMarkPaidModal(selectedPayRun)}
+                  >
+                    Mark paid
+                  </Button>
+                )}
+                {selectedPayRun.status !== 'VOID' && selectedPayRun.status !== 'PAID' && (
+                  <Button
+                    variant="subtle"
+                    color="red"
+                    loading={updatingPayRunId === selectedPayRun.id}
+                    onClick={() => void updatePayRun(selectedPayRun.id, 'VOID')}
+                  >
+                    Void
+                  </Button>
+                )}
+              </Group>
+            )}
+          </Stack>
+        )}
+      </Modal>
+
+      <Modal
+        opened={Boolean(markPaidPayRunId)}
+        onClose={() => {
+          setMarkPaidPayRunId(null);
+          setMarkPaidDraft(defaultMarkPaidDraft());
+          setMarkPaidError(null);
+        }}
+        title="Record staff payout"
+        size="md"
+        centered
+      >
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Mark {markPaidPayRun?.title ?? 'this pay run'} and its staff pay items as paid.
+          </Text>
+          <TextInput
+            label="Payout provider"
+            aria-label="Payout provider"
+            placeholder="Check, ACH, manual, Stripe"
+            value={markPaidDraft.payoutProvider}
+            onChange={(event) => setMarkPaidDraft((current) => ({
+              ...current,
+              payoutProvider: event.currentTarget.value,
+            }))}
+          />
+          <TextInput
+            label="Reference or batch ID"
+            aria-label="Payout reference"
+            placeholder="check-1024"
+            value={markPaidDraft.payoutProviderBatchId}
+            onChange={(event) => setMarkPaidDraft((current) => ({
+              ...current,
+              payoutProviderBatchId: event.currentTarget.value,
+            }))}
+          />
+          <Textarea
+            label="Notes"
+            aria-label="Payout notes"
+            value={markPaidDraft.notes}
+            onChange={(event) => setMarkPaidDraft((current) => ({
+              ...current,
+              notes: event.currentTarget.value,
+            }))}
+            autosize
+            minRows={3}
+          />
+          {markPaidError && <Text size="sm" c="red" fw={600}>{markPaidError}</Text>}
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => {
+                setMarkPaidPayRunId(null);
+                setMarkPaidDraft(defaultMarkPaidDraft());
+                setMarkPaidError(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="green"
+              loading={Boolean(markPaidPayRunId && updatingPayRunId === markPaidPayRunId)}
+              onClick={() => void markPayRunPaid()}
+            >
+              Mark paid
             </Button>
           </Group>
         </Stack>
@@ -932,10 +1361,24 @@ export default function OrganizationFinancePanel({
                 </Table.Thead>
                 <Table.Tbody>
                   {payRuns.length > 0 ? payRuns.map((payRun) => (
-                    <Table.Tr key={payRun.id}>
+                    <Table.Tr
+                      key={payRun.id}
+                      onClick={() => setSelectedPayRunId(payRun.id)}
+                      style={{ cursor: 'pointer' }}
+                    >
                       <Table.Td>
                         <Stack gap={1}>
-                          <Text size="sm" fw={600}>{payRun.title}</Text>
+                          <button
+                            type="button"
+                            aria-label={`View pay run ${payRun.title}`}
+                            className="block w-full border-0 bg-transparent p-0 text-left"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedPayRunId(payRun.id);
+                            }}
+                          >
+                            <Text size="sm" fw={600}>{payRun.title}</Text>
+                          </button>
                           {payRun.items.slice(0, 2).map((item) => (
                             <Text key={item.id} size="xs" c="dimmed">{item.label} • {centsFromDollars(item.amountCents)}</Text>
                           ))}
@@ -948,7 +1391,7 @@ export default function OrganizationFinancePanel({
                       <Table.Td>
                         <Group gap={6}>
                           <Badge size="xs" variant="light">{payRun.status}</Badge>
-                          <Badge size="xs" variant="light" color={payRun.payoutStatus === 'PAID' ? 'green' : 'gray'}>
+                          <Badge size="xs" variant="light" color={payRunPayoutColor(payRun.payoutStatus)}>
                             {payRun.payoutStatus}
                           </Badge>
                         </Group>
@@ -965,7 +1408,10 @@ export default function OrganizationFinancePanel({
                                 size="xs"
                                 variant="light"
                                 loading={updatingPayRunId === payRun.id}
-                                onClick={() => void updatePayRun(payRun.id, 'APPROVE')}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void updatePayRun(payRun.id, 'APPROVE');
+                                }}
                               >
                                 Approve
                               </Button>
@@ -976,7 +1422,10 @@ export default function OrganizationFinancePanel({
                                 variant="light"
                                 color="green"
                                 loading={updatingPayRunId === payRun.id}
-                                onClick={() => void updatePayRun(payRun.id, 'MARK_PAID')}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  openMarkPaidModal(payRun);
+                                }}
                               >
                                 Mark paid
                               </Button>
@@ -987,7 +1436,10 @@ export default function OrganizationFinancePanel({
                                 variant="subtle"
                                 color="red"
                                 loading={updatingPayRunId === payRun.id}
-                                onClick={() => void updatePayRun(payRun.id, 'VOID')}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void updatePayRun(payRun.id, 'VOID');
+                                }}
                               >
                                 Void
                               </Button>

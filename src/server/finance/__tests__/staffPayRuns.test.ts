@@ -2,7 +2,7 @@
 
 jest.mock('@/lib/prisma', () => ({ prisma: {} }));
 
-import { createDraftStaffPayRun } from '@/server/finance/staffPayRuns';
+import { createDraftStaffPayRun, updateStaffPayRunStatus } from '@/server/finance/staffPayRuns';
 
 const createClient = () => {
   const tx = {
@@ -54,6 +54,14 @@ const createClient = () => {
         { id: 'event_1', start: new Date('2026-06-01T16:00:00.000Z') },
       ]),
     },
+    canonicalTeams: {
+      findMany: jest.fn().mockResolvedValue([
+        { id: 'team_1', name: 'Harbor Strikers' },
+      ]),
+    },
+    teams: {
+      findMany: jest.fn().mockResolvedValue([]),
+    },
     staffMembers: {
       findMany: jest.fn().mockResolvedValue([
         { id: 'staff_1', userId: 'user_1', roleId: 'role_1' },
@@ -93,6 +101,41 @@ const createClient = () => {
     },
     staffPayRunItem: {
       findMany: jest.fn().mockResolvedValue([]),
+    },
+    $transaction: jest.fn((callback) => callback(tx)),
+    tx,
+  };
+};
+
+const createUpdateClient = () => {
+  const tx = {
+    staffPayRun: {
+      update: jest.fn(async ({ data }) => ({
+        id: 'pay_run_1',
+        organizationId: 'org_1',
+        ...data,
+      })),
+    },
+    staffPayRunItem: {
+      updateMany: jest.fn(async () => ({ count: 2 })),
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: 'pay_item_1',
+          payRunId: 'pay_run_1',
+          label: 'Alex Rivera',
+          status: 'PAID',
+          payoutStatus: 'PAID',
+        },
+      ]),
+    },
+  };
+
+  return {
+    staffPayRun: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'pay_run_1',
+        status: 'APPROVED',
+      }),
     },
     $transaction: jest.fn((callback) => callback(tx)),
     tx,
@@ -153,5 +196,46 @@ describe('createDraftStaffPayRun', () => {
       status: 400,
       message: 'No unpaid staff labor was found for this pay period.',
     });
+  });
+});
+
+describe('updateStaffPayRunStatus', () => {
+  it('marks pay runs and items paid with payout provider metadata', async () => {
+    const client = createUpdateClient();
+
+    const payRun = await updateStaffPayRunStatus({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'MARK_PAID',
+      payoutProvider: ' Check ',
+      payoutProviderBatchId: ' check-1024 ',
+      notes: ' Paid outside the app ',
+      actingUserId: 'owner_1',
+    }, client);
+
+    expect(client.tx.staffPayRun.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'pay_run_1' },
+      data: expect.objectContaining({
+        status: 'PAID',
+        payoutStatus: 'PAID',
+        paidByUserId: 'owner_1',
+        payoutProvider: 'Check',
+        payoutProviderBatchId: 'check-1024',
+        notes: 'Paid outside the app',
+      }),
+    }));
+    expect(client.tx.staffPayRunItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        payRunId: 'pay_run_1',
+        organizationId: 'org_1',
+      },
+      data: expect.objectContaining({
+        status: 'PAID',
+        payoutStatus: 'PAID',
+        paidByUserId: 'owner_1',
+        payoutProvider: 'Check',
+      }),
+    }));
+    expect(payRun.items).toHaveLength(1);
   });
 });

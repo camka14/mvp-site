@@ -10,6 +10,14 @@ type PrismaLike = any;
 
 type StaffPayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID';
 
+const normalizeOptionalText = (value: unknown, maxLength = 500): string | null => {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const normalized = value.trim();
+  return normalized ? normalized.slice(0, maxLength) : null;
+};
+
 export class StaffPayRunError extends Error {
   status: number;
 
@@ -260,6 +268,9 @@ export const updateStaffPayRunStatus = async (
     payRunId: string;
     action: StaffPayRunAction;
     actingUserId: string;
+    payoutProvider?: string | null;
+    payoutProviderBatchId?: string | null;
+    notes?: string | null;
   },
   client: PrismaLike = prisma,
 ) => {
@@ -278,6 +289,10 @@ export const updateStaffPayRunStatus = async (
   }
 
   const now = new Date();
+  const payoutProvider = normalizeOptionalText(input.payoutProvider, 80);
+  const payoutProviderBatchId = normalizeOptionalText(input.payoutProviderBatchId, 160);
+  const notes = normalizeOptionalText(input.notes, 1000);
+
   const updateForAction = {
     APPROVE: {
       status: 'APPROVED',
@@ -290,6 +305,9 @@ export const updateStaffPayRunStatus = async (
       payoutStatus: 'PAID',
       paidAt: now,
       paidByUserId: input.actingUserId,
+      payoutProvider,
+      payoutProviderBatchId,
+      ...(input.notes !== undefined ? { notes } : {}),
       updatedBy: input.actingUserId,
     },
     VOID: {
@@ -311,6 +329,7 @@ export const updateStaffPayRunStatus = async (
       payoutStatus: 'PAID',
       paidAt: now,
       paidByUserId: input.actingUserId,
+      payoutProvider,
       updatedBy: input.actingUserId,
     },
     VOID: {

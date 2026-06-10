@@ -9,6 +9,9 @@ export const dynamic = 'force-dynamic';
 
 const updatePayRunSchema = z.object({
   action: z.enum(['APPROVE', 'MARK_PAID', 'VOID']),
+  payoutProvider: z.string().trim().max(80).nullable().optional(),
+  payoutProviderBatchId: z.string().trim().max(160).nullable().optional(),
+  notes: z.string().trim().max(1000).nullable().optional(),
 }).strict();
 
 const mutationErrorResponse = (error: unknown) => {
@@ -47,6 +50,9 @@ export async function PATCH(
       payRunId,
       action: parsed.data.action,
       actingUserId: session.userId,
+      payoutProvider: parsed.data.payoutProvider,
+      payoutProviderBatchId: parsed.data.payoutProviderBatchId,
+      notes: parsed.data.notes,
     }, prisma);
     return NextResponse.json({ payRun }, { status: 200 });
   } catch (error) {

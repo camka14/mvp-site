@@ -153,6 +153,45 @@ describe('organization finance routes', () => {
     expect(payload.payRun.status).toBe('APPROVED');
   });
 
+  it('passes payout metadata when marking a pay run paid', async () => {
+    updateStaffPayRunStatusMock.mockResolvedValue({
+      id: 'pay_run_1',
+      organizationId: 'org_1',
+      status: 'PAID',
+      payoutStatus: 'PAID',
+      payoutProvider: 'Check',
+      payoutProviderBatchId: 'check-1024',
+      items: [],
+    });
+
+    const response = await patchPayRun(
+      new NextRequest('http://localhost/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          action: 'MARK_PAID',
+          payoutProvider: 'Check',
+          payoutProviderBatchId: 'check-1024',
+          notes: 'Paid outside the app',
+        }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1', payRunId: 'pay_run_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(updateStaffPayRunStatusMock).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'MARK_PAID',
+      payoutProvider: 'Check',
+      payoutProviderBatchId: 'check-1024',
+      notes: 'Paid outside the app',
+      actingUserId: 'owner_1',
+    }), prismaMock);
+    expect(payload.payRun.payoutProviderBatchId).toBe('check-1024');
+  });
+
   it('rejects finance route access without finance permission', async () => {
     canManageOrganizationFinanceMock.mockResolvedValue(false);
 
