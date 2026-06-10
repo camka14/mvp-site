@@ -34,7 +34,7 @@ export function TermsConsentModal({
   onAccept,
   onClose,
   title = 'Agree to the Terms and EULA',
-  intro = 'Sending chat messages, creating events, or other user-generated content in Bracket IQ requires agreement to the Terms and EULA.',
+  intro = 'Sending chat messages, creating events, or other user-generated content in BracketIQ requires agreement to the Terms and EULA.',
   confirmLabel = 'Agree',
   dismissLabel = 'Not now',
 }: TermsConsentModalProps) {

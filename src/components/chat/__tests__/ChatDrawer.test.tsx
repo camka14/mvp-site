@@ -32,7 +32,7 @@ describe('ChatDrawer', () => {
       loadChatGroups: jest.fn().mockResolvedValue(undefined),
       markChatViewed: jest.fn(),
       chatTermsState: {
-        version: '2026-04-14',
+        version: '2026-06-10',
         url: '/terms',
         summary: ['There is no tolerance for objectionable content or abusive users.'],
         accepted: false,
@@ -197,7 +197,7 @@ describe('ChatDrawer', () => {
       loadChatGroups: loadChatGroupsMock,
       markChatViewed: jest.fn(),
       chatTermsState: {
-        version: '2026-04-14',
+        version: '2026-06-10',
         url: '/terms',
         summary: ['There is no tolerance for objectionable content or abusive users.'],
         accepted: false,
@@ -241,7 +241,7 @@ describe('ChatDrawer', () => {
       loadChatGroups: jest.fn().mockResolvedValue(undefined),
       markChatViewed: jest.fn(),
       chatTermsState: {
-        version: '2026-04-14',
+        version: '2026-06-10',
         url: '/terms',
         summary: ['There is no tolerance for objectionable content or abusive users.'],
         accepted: false,

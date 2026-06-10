@@ -5741,7 +5741,7 @@ function EventScheduleContent() {
       loading={contentTermsLoading}
       onAccept={() => { void handleAcceptContentTerms(); }}
       allowClose={false}
-      intro="Creating an event in Bracket IQ requires agreement to the Terms and EULA."
+      intro="Creating an event in BracketIQ requires agreement to the Terms and EULA."
     />
   ) : null;
 
