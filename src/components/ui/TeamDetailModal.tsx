@@ -1529,6 +1529,10 @@ export default function TeamDetailModal({
         }
     };
 
+    const rosterSectionClass = (pageClassName: string, modalClassName = 'mb-6') => (
+        isPageMode ? pageClassName : modalClassName
+    );
+
     const detailContent = (
         <>
                 <div style={{ padding: isPageMode ? 0 : 16 }}>
@@ -1616,10 +1620,16 @@ export default function TeamDetailModal({
                     )}
 
                     {showRosterTab && (
-                        <div className={isPageMode ? 'org-tab-content' : undefined}>
+                        <div className={isPageMode ? 'org-tab-content team-detail-roster-grid' : undefined}>
 
                     {editingDetails && canManageTeam && (
-                        <Paper withBorder radius="md" p="md" mb="md">
+                        <Paper
+                            withBorder
+                            radius="md"
+                            p="md"
+                            mb={isPageMode ? 0 : 'md'}
+                            className={isPageMode ? 'team-detail-roster-main' : undefined}
+                        >
                             <Title order={5} mb="sm">Edit Team Details</Title>
                             <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
                                 <MantineSelect
@@ -1861,7 +1871,12 @@ export default function TeamDetailModal({
                     )}
 
                     {/* Team Stats */}
-                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md" mb="md">
+                    <SimpleGrid
+                        cols={isPageMode ? { base: 1, sm: 2, lg: 1 } : { base: 1, md: 2 }}
+                        spacing="md"
+                        mb={isPageMode ? 0 : 'md'}
+                        className={isPageMode ? 'team-detail-roster-side team-detail-roster-stats' : undefined}
+                    >
                         <Paper withBorder p="md" radius="md" ta="center">
                             <Title order={3}>{playerInviteCapacityCount}/{currentTeam.teamSize}</Title>
                             <Text c="dimmed">Player Slots</Text>
@@ -1873,7 +1888,7 @@ export default function TeamDetailModal({
                     </SimpleGrid>
 
                     {canManageTeam && currentTeam.organizationId && !showOrganizationDetailTabs && (
-                        <div className="mb-6">
+                        <div className={rosterSectionClass('team-detail-roster-main')}>
                             <TeamFinancePanel
                                 teamId={currentTeam.$id}
                                 organizationId={currentTeam.organizationId}
@@ -1884,7 +1899,7 @@ export default function TeamDetailModal({
                     )}
 
                     {canManageTeam && (
-                        <div className="mb-6">
+                        <div className={rosterSectionClass('team-detail-roster-main')}>
                             <Group justify="space-between" mb="sm">
                                 <Title order={5}>Join Requests ({joinRequests.filter((request) => request.status === 'PENDING').length})</Title>
                                 {joinRequestsLoading ? (
@@ -1953,7 +1968,7 @@ export default function TeamDetailModal({
                     )}
 
                     {/* Team Members */}
-                    <div className="mb-6">
+                    <div className={rosterSectionClass('team-detail-roster-main')}>
                         <Group justify="space-between" mb="sm">
                             <Title order={5}>Team Members ({teamPlayers.length})</Title>
                             {canManageTeam && memberComplianceLoading ? (
@@ -2147,7 +2162,7 @@ export default function TeamDetailModal({
 
                     {/* Pending Invitations */}
                     {pendingPlayers.length > 0 && (
-                        <div className="mb-6">
+                        <div className={rosterSectionClass('team-detail-roster-main')}>
                             <h4 className="text-lg font-semibold mb-4">Pending Invitations ({pendingPlayers.length})</h4>
                             <div className="space-y-3">
                                 {pendingPlayers.map(player => {
@@ -2228,7 +2243,7 @@ export default function TeamDetailModal({
                     )}
 
                     {/* Team Staff Roles */}
-                    <div className="mb-6">
+                    <div className={rosterSectionClass('team-detail-roster-side')}>
                         <Title order={5} mb="sm">Team Staff</Title>
                         <Paper withBorder radius="md" p="md">
                             <Group justify="space-between" mb="xs">
@@ -2304,7 +2319,7 @@ export default function TeamDetailModal({
 
                     {/* Pending Staff Invitations */}
                     {pendingRoleInvites.length > 0 && (
-                        <div className="mb-6">
+                        <div className={rosterSectionClass('team-detail-roster-side')}>
                             <Title order={5} mb="sm">Pending Staff Invitations ({pendingRoleInvites.length})</Title>
                             <div className="space-y-3">
                                 {pendingRoleInvites.map(({ invite, invitedUser }) => {
@@ -2346,7 +2361,7 @@ export default function TeamDetailModal({
 
                     {/* Add Team Role Invites Section */}
                     {canManageTeam && (
-                        <div className="mb-6">
+                        <div className={rosterSectionClass('team-detail-roster-main')}>
                             <Button onClick={() => setShowAddPlayers(!showAddPlayers)} mb="sm">
                                 {showAddPlayers ? 'Close' : 'Invite Team Members'}
                             </Button>
@@ -2560,84 +2575,86 @@ export default function TeamDetailModal({
                     )}
 
                     {showSelfServiceRegistrationActions && (
-                        <TeamRegistrationFlow
-                            team={currentTeam}
-                            user={user}
-                            paymentSummary={teamPaymentSummary}
-                            onRequireAuth={() => {
-                                notifications.show({ color: 'red', message: 'Sign in to register for this team.' });
-                            }}
-                            onTeamUpdated={(updatedTeam) => {
-                                onTeamUpdated?.(updatedTeam);
-                            }}
-                            onErrorChange={setError}
-                        >
-                            {(flow) => (
-                                <Paper withBorder radius="md" p="md" mb="md">
-                                    {flow.currentUserActiveMember ? (
-                                        <Group justify="space-between" align="center">
-                                            <div>
-                                                <Title order={5}>Team membership</Title>
-                                                <Text size="sm" c="dimmed">You are on this team.</Text>
-                                            </div>
-                                            <Group>
-                                                {flow.actionVisible && flow.shouldOfferDocumentReview && (
+                        <div className={rosterSectionClass('team-detail-roster-main', '')}>
+                            <TeamRegistrationFlow
+                                team={currentTeam}
+                                user={user}
+                                paymentSummary={teamPaymentSummary}
+                                onRequireAuth={() => {
+                                    notifications.show({ color: 'red', message: 'Sign in to register for this team.' });
+                                }}
+                                onTeamUpdated={(updatedTeam) => {
+                                    onTeamUpdated?.(updatedTeam);
+                                }}
+                                onErrorChange={setError}
+                            >
+                                {(flow) => (
+                                    <Paper withBorder radius="md" p="md" mb={isPageMode ? 0 : 'md'}>
+                                        {flow.currentUserActiveMember ? (
+                                            <Group justify="space-between" align="center">
+                                                <div>
+                                                    <Title order={5}>Team membership</Title>
+                                                    <Text size="sm" c="dimmed">You are on this team.</Text>
+                                                </div>
+                                                <Group>
+                                                    {flow.actionVisible && flow.shouldOfferDocumentReview && (
+                                                        <Button
+                                                            variant="default"
+                                                            loading={flow.actionLoading}
+                                                            onClick={() => { flow.openFlow(); }}
+                                                            disabled={flow.actionDisabled}
+                                                        >
+                                                            {flow.actionLabel}
+                                                        </Button>
+                                                    )}
                                                     <Button
-                                                        variant="default"
+                                                        color="red"
+                                                        variant="light"
+                                                        loading={leavingTeam}
+                                                        onClick={() => { void handleLeaveTeam(); }}
+                                                    >
+                                                        Leave Team
+                                                    </Button>
+                                                </Group>
+                                            </Group>
+                                        ) : (
+                                            <Group justify="space-between" align="center">
+                                                <div>
+                                                    <Title order={5}>Team registration</Title>
+                                                    <Text size="sm" c="dimmed">
+                                                        {flow.team.openRegistration
+                                                            ? `Registration is ${formatPrice(Math.max(0, Math.round(flow.team.registrationPriceCents ?? 0)))}.`
+                                                            : 'Registration is not open for this team.'}
+                                                    </Text>
+                                                    {flow.currentUserPaymentPending ? (
+                                                        <Text size="xs" c="dimmed">Your bank payment is processing. Registration is pending until it clears.</Text>
+                                                    ) : flow.currentUserPendingRegistration ? (
+                                                        <Text size="xs" c="dimmed">Your registration is waiting for payment confirmation.</Text>
+                                                    ) : null}
+                                                    {flow.team.openRegistration && !flow.teamHasCapacity && !flow.currentUserPendingRegistration && !flow.currentUserPaymentPending && (
+                                                        <Text size="xs" c="red">This team is full.</Text>
+                                                    )}
+                                                </div>
+                                                {flow.actionVisible && (
+                                                    <Button
+                                                        disabled={flow.actionDisabled}
                                                         loading={flow.actionLoading}
                                                         onClick={() => { flow.openFlow(); }}
-                                                        disabled={flow.actionDisabled}
                                                     >
                                                         {flow.actionLabel}
                                                     </Button>
                                                 )}
-                                                <Button
-                                                    color="red"
-                                                    variant="light"
-                                                    loading={leavingTeam}
-                                                    onClick={() => { void handleLeaveTeam(); }}
-                                                >
-                                                    Leave Team
-                                                </Button>
                                             </Group>
-                                        </Group>
-                                    ) : (
-                                        <Group justify="space-between" align="center">
-                                            <div>
-                                                <Title order={5}>Team registration</Title>
-                                                <Text size="sm" c="dimmed">
-                                                    {flow.team.openRegistration
-                                                        ? `Registration is ${formatPrice(Math.max(0, Math.round(flow.team.registrationPriceCents ?? 0)))}.`
-                                                        : 'Registration is not open for this team.'}
-                                                </Text>
-                                                {flow.currentUserPaymentPending ? (
-                                                    <Text size="xs" c="dimmed">Your bank payment is processing. Registration is pending until it clears.</Text>
-                                                ) : flow.currentUserPendingRegistration ? (
-                                                    <Text size="xs" c="dimmed">Your registration is waiting for payment confirmation.</Text>
-                                                ) : null}
-                                                {flow.team.openRegistration && !flow.teamHasCapacity && !flow.currentUserPendingRegistration && !flow.currentUserPaymentPending && (
-                                                    <Text size="xs" c="red">This team is full.</Text>
-                                                )}
-                                            </div>
-                                            {flow.actionVisible && (
-                                                <Button
-                                                    disabled={flow.actionDisabled}
-                                                    loading={flow.actionLoading}
-                                                    onClick={() => { flow.openFlow(); }}
-                                                >
-                                                    {flow.actionLabel}
-                                                </Button>
-                                            )}
-                                        </Group>
-                                    )}
-                                </Paper>
-                            )}
-                        </TeamRegistrationFlow>
+                                        )}
+                                    </Paper>
+                                )}
+                            </TeamRegistrationFlow>
+                        </div>
                     )}
 
                     {/* Delete Team Section */}
                     {canManageTeam && (
-                        <div className="border-t pt-6">
+                        <div className={isPageMode ? 'team-detail-roster-main team-detail-roster-danger' : 'border-t pt-6'}>
                             <Paper withBorder radius="md" p="md" bg={'red.0'}>
                                 <Title order={5} c="red" mb={4}>Danger Zone</Title>
                                 <Text c="red" size="sm" mb="sm">Once you delete a team, there is no going back. Please be certain.</Text>
