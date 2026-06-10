@@ -424,6 +424,7 @@ export const ModelName = {
   Bills: 'Bills',
   BillPayments: 'BillPayments',
   RefundRequests: 'RefundRequests',
+  OrganizationAccountingConnections: 'OrganizationAccountingConnections',
   StripeAccounts: 'StripeAccounts',
   Events: 'Events',
   Organizations: 'Organizations',
@@ -455,7 +456,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "organizationAccountingConnections" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -3419,6 +3420,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    OrganizationAccountingConnections: {
+      payload: Prisma.$OrganizationAccountingConnectionsPayload<ExtArgs>
+      fields: Prisma.OrganizationAccountingConnectionsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationAccountingConnectionsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationAccountingConnectionsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationAccountingConnectionsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationAccountingConnectionsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationAccountingConnectionsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationAccountingConnectionsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationAccountingConnectionsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationAccountingConnectionsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationAccountingConnectionsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>
+        }
+        update: {
+          args: Prisma.OrganizationAccountingConnectionsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationAccountingConnectionsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationAccountingConnectionsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationAccountingConnectionsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationAccountingConnectionsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationAccountingConnectionsPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationAccountingConnectionsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationAccountingConnections>
+        }
+        groupBy: {
+          args: Prisma.OrganizationAccountingConnectionsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationAccountingConnectionsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationAccountingConnectionsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationAccountingConnectionsCountAggregateOutputType> | number
+        }
+      }
+    }
     StripeAccounts: {
       payload: Prisma.$StripeAccountsPayload<ExtArgs>
       fields: Prisma.StripeAccountsFieldRefs
@@ -5068,6 +5143,7 @@ export const StaffPayRunScalarFieldEnum = {
   title: 'title',
   periodStart: 'periodStart',
   periodEnd: 'periodEnd',
+  scheduledPayDate: 'scheduledPayDate',
   status: 'status',
   payoutStatus: 'payoutStatus',
   totalAmountCents: 'totalAmountCents',
@@ -5076,6 +5152,10 @@ export const StaffPayRunScalarFieldEnum = {
   approvedByUserId: 'approvedByUserId',
   paidAt: 'paidAt',
   paidByUserId: 'paidByUserId',
+  exportedAt: 'exportedAt',
+  exportedByUserId: 'exportedByUserId',
+  exportCount: 'exportCount',
+  lastExportFormat: 'lastExportFormat',
   payoutProvider: 'payoutProvider',
   payoutProviderBatchId: 'payoutProviderBatchId',
   notes: 'notes',
@@ -5473,6 +5553,36 @@ export const RefundRequestsScalarFieldEnum = {
 } as const
 
 export type RefundRequestsScalarFieldEnum = (typeof RefundRequestsScalarFieldEnum)[keyof typeof RefundRequestsScalarFieldEnum]
+
+
+export const OrganizationAccountingConnectionsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  provider: 'provider',
+  status: 'status',
+  externalCompanyId: 'externalCompanyId',
+  externalCompanyName: 'externalCompanyName',
+  environment: 'environment',
+  scopes: 'scopes',
+  accessTokenEncrypted: 'accessTokenEncrypted',
+  refreshTokenEncrypted: 'refreshTokenEncrypted',
+  tokenType: 'tokenType',
+  accessTokenExpiresAt: 'accessTokenExpiresAt',
+  refreshTokenExpiresAt: 'refreshTokenExpiresAt',
+  refreshTokenHardExpiresAt: 'refreshTokenHardExpiresAt',
+  connectedAt: 'connectedAt',
+  connectedByUserId: 'connectedByUserId',
+  disconnectedAt: 'disconnectedAt',
+  disconnectedByUserId: 'disconnectedByUserId',
+  lastSyncedAt: 'lastSyncedAt',
+  lastError: 'lastError',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type OrganizationAccountingConnectionsScalarFieldEnum = (typeof OrganizationAccountingConnectionsScalarFieldEnum)[keyof typeof OrganizationAccountingConnectionsScalarFieldEnum]
 
 
 export const StripeAccountsScalarFieldEnum = {
@@ -6465,6 +6575,34 @@ export type ListEnumRefundRequestsStatusEnumFieldRefInput<$PrismaModel> = FieldR
 
 
 /**
+ * Reference to a field of type 'OrganizationAccountingProviderEnum'
+ */
+export type EnumOrganizationAccountingProviderEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationAccountingProviderEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationAccountingProviderEnum[]'
+ */
+export type ListEnumOrganizationAccountingProviderEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationAccountingProviderEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationAccountingConnectionStatusEnum'
+ */
+export type EnumOrganizationAccountingConnectionStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationAccountingConnectionStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'OrganizationAccountingConnectionStatusEnum[]'
+ */
+export type ListEnumOrganizationAccountingConnectionStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'OrganizationAccountingConnectionStatusEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'StripeAccountsAccountOriginEnum'
  */
 export type EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StripeAccountsAccountOriginEnum'>
@@ -6822,6 +6960,7 @@ export type GlobalOmitConfig = {
   bills?: Prisma.BillsOmit
   billPayments?: Prisma.BillPaymentsOmit
   refundRequests?: Prisma.RefundRequestsOmit
+  organizationAccountingConnections?: Prisma.OrganizationAccountingConnectionsOmit
   stripeAccounts?: Prisma.StripeAccountsOmit
   events?: Prisma.EventsOmit
   organizations?: Prisma.OrganizationsOmit

@@ -150,11 +150,13 @@ describe('createDraftStaffPayRun', () => {
       organizationId: 'org_1',
       periodStart: '2026-06-01T00:00:00.000Z',
       periodEnd: '2026-06-30T23:59:59.999Z',
+      scheduledPayDate: '2026-07-05T00:00:00.000Z',
       title: 'June payroll',
       actingUserId: 'owner_1',
     }, client);
 
     expect(payRun.title).toBe('June payroll');
+    expect(payRun.scheduledPayDate.toISOString()).toBe('2026-07-05T00:00:00.000Z');
     expect(payRun.totalAmountCents).toBe(5000);
     expect(payRun.itemCount).toBe(2);
     expect(client.tx.staffPayRunItem.create).toHaveBeenCalledTimes(2);
@@ -267,6 +269,31 @@ describe('updateStaffPayRunStatus', () => {
       status: 400,
       message: 'Paid pay runs cannot be changed.',
     });
+  });
+
+  it.each(['PAID', 'VOID'])('records manual exports for %s pay runs without changing item statuses', async (status) => {
+    const client = createUpdateClient(status);
+
+    const payRun = await updateStaffPayRunStatus({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'RECORD_EXPORT',
+      exportFormat: ' CSV ',
+      actingUserId: 'owner_1',
+    }, client);
+
+    expect(client.tx.staffPayRun.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'pay_run_1' },
+      data: expect.objectContaining({
+        exportedAt: expect.any(Date),
+        exportedByUserId: 'owner_1',
+        exportCount: { increment: 1 },
+        lastExportFormat: 'CSV',
+        updatedBy: 'owner_1',
+      }),
+    }));
+    expect(client.tx.staffPayRunItem.updateMany).not.toHaveBeenCalled();
+    expect(payRun.items).toHaveLength(1);
   });
 
   it('requires and stores a void reason', async () => {

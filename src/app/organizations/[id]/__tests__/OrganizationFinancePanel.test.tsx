@@ -88,18 +88,44 @@ const financeResponse = {
     ],
   },
   lineItemCategories: ['Operations', 'Rentals'],
+  accountingConnections: [
+    {
+      id: 'qbo_1',
+      provider: 'QUICKBOOKS_ONLINE',
+      status: 'CONNECTED',
+      externalCompanyId: '1234567890',
+      externalCompanyName: null,
+      environment: 'sandbox',
+      scopes: ['com.intuit.quickbooks.accounting'],
+      tokenType: 'bearer',
+      accessTokenExpiresAt: '2026-06-10T20:00:00.000Z',
+      refreshTokenExpiresAt: '2026-09-18T19:00:00.000Z',
+      refreshTokenHardExpiresAt: null,
+      connectedAt: '2026-06-10T19:00:00.000Z',
+      connectedByUserId: 'owner_1',
+      disconnectedAt: null,
+      disconnectedByUserId: null,
+      lastSyncedAt: null,
+      lastError: null,
+    },
+  ],
   payRuns: [
     {
       id: 'pay_run_1',
       title: 'June payroll',
       periodStart: '2026-06-01T00:00:00.000Z',
       periodEnd: '2026-06-30T23:59:59.999Z',
+      scheduledPayDate: '2026-07-05T07:00:00.000Z',
       status: 'DRAFT',
       payoutStatus: 'NOT_STARTED',
       totalAmountCents: 6000,
       itemCount: 1,
       approvedAt: null,
       paidAt: null,
+      exportedAt: null,
+      exportedByUserId: null,
+      exportCount: 0,
+      lastExportFormat: null,
       payoutProvider: null,
       payoutProviderBatchId: null,
       notes: null,
@@ -194,8 +220,14 @@ describe('OrganizationFinancePanel', () => {
     expect(screen.getAllByText('INCURRED').length).toBeGreaterThan(0);
     expect(screen.getAllByText('CURRENT').length).toBeGreaterThan(0);
     expect(screen.getAllByText('June payroll').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Pay date').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Jul 5, 2026').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Not exported').length).toBeGreaterThan(0);
     expect(screen.getByText('Staff payroll ledger')).toBeInTheDocument();
     expect(screen.getByText('Event and team profitability')).toBeInTheDocument();
+    expect(screen.getByText('QuickBooks')).toBeInTheDocument();
+    expect(screen.getByText('1234567890')).toBeInTheDocument();
+    expect(screen.getByText('com.intuit.quickbooks.accounting')).toBeInTheDocument();
     expect(apiRequest).toHaveBeenCalledWith(expect.stringContaining('/api/organizations/org_1/finance?'));
     const financeUrl = decodeURIComponent((apiRequest as jest.Mock).mock.calls[0][0]);
     const financeParams = new URL(financeUrl, 'http://localhost').searchParams;
@@ -350,6 +382,9 @@ describe('OrganizationFinancePanel', () => {
     fireEvent.change(screen.getByLabelText('Period end'), {
       target: { value: '2026-06-30' },
     });
+    fireEvent.change(screen.getByLabelText('Pay date'), {
+      target: { value: '2026-07-05' },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Create pay run' }));
 
     await waitFor(() => {
@@ -359,9 +394,17 @@ describe('OrganizationFinancePanel', () => {
           title: 'Late June payroll',
           periodStart: expect.any(String),
           periodEnd: expect.any(String),
+          scheduledPayDate: expect.any(String),
         }),
       });
     });
+    const requestBody = (apiRequest as jest.Mock).mock.calls.find((call) => (
+      call[0] === '/api/organizations/org_1/finance/pay-runs'
+    ))?.[1]?.body;
+    const scheduledDate = new Date(requestBody.scheduledPayDate);
+    expect(scheduledDate.getFullYear()).toBe(2026);
+    expect(scheduledDate.getMonth()).toBe(6);
+    expect(scheduledDate.getDate()).toBe(5);
     expect(await screen.findByText('Late June payroll')).toBeInTheDocument();
   });
 
@@ -435,7 +478,21 @@ describe('OrganizationFinancePanel', () => {
   });
 
   it('exports filtered payroll CSV from loaded pay-run items', async () => {
-    (apiRequest as jest.Mock).mockResolvedValueOnce(financeResponse);
+    const exportedResponse = {
+      ...financeResponse,
+      payRuns: [
+        {
+          ...financeResponse.payRuns[0],
+          exportedAt: '2026-06-15T18:00:00.000Z',
+          exportCount: 1,
+          lastExportFormat: 'CSV',
+        },
+      ],
+    };
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(financeResponse)
+      .mockResolvedValueOnce({ payRun: exportedResponse.payRuns[0] })
+      .mockResolvedValueOnce(exportedResponse);
 
     renderWithMantine(
       <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
@@ -443,9 +500,82 @@ describe('OrganizationFinancePanel', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Export filtered CSV' }));
 
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: {
+          action: 'RECORD_EXPORT',
+          exportFormat: 'CSV',
+        },
+      });
+    });
     expect(createObjectURLMock).toHaveBeenCalledWith(expect.any(Blob));
     expect(anchorClickMock).toHaveBeenCalled();
     expect(revokeObjectURLMock).toHaveBeenCalledWith('blob:payroll');
+    expect(await screen.findByText('CSV #1')).toBeInTheDocument();
+  });
+
+  it('shows QuickBooks connection startup errors beside the connection controls', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce({
+        ...financeResponse,
+        accountingConnections: [],
+      })
+      .mockRejectedValueOnce(new Error('QuickBooks is not configured.'));
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    await screen.findByText('QuickBooks');
+    fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/integrations/quickbooks/connect', {
+        method: 'POST',
+        body: expect.objectContaining({
+          returnUrl: expect.any(String),
+          refreshUrl: expect.any(String),
+        }),
+      });
+    });
+    expect(await screen.findByText('QuickBooks is not configured.')).toBeInTheDocument();
+  });
+
+  it('disconnects QuickBooks and refreshes finance state', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(financeResponse)
+      .mockResolvedValueOnce({
+        connection: {
+          ...financeResponse.accountingConnections[0],
+          status: 'DISCONNECTED',
+        },
+      })
+      .mockResolvedValueOnce({
+        ...financeResponse,
+        accountingConnections: [
+          {
+            ...financeResponse.accountingConnections[0],
+            status: 'DISCONNECTED',
+            accessTokenExpiresAt: null,
+            disconnectedAt: '2026-06-10T20:00:00.000Z',
+          },
+        ],
+      });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    await screen.findByText('QuickBooks');
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/integrations/quickbooks/disconnect', {
+        method: 'POST',
+      });
+    });
+    expect(await screen.findByText('Not connected')).toBeInTheDocument();
   });
 
   it('saves pay-run item transfer references', async () => {

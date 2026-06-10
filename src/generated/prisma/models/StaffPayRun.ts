@@ -29,11 +29,13 @@ export type AggregateStaffPayRun = {
 export type StaffPayRunAvgAggregateOutputType = {
   totalAmountCents: number | null
   itemCount: number | null
+  exportCount: number | null
 }
 
 export type StaffPayRunSumAggregateOutputType = {
   totalAmountCents: number | null
   itemCount: number | null
+  exportCount: number | null
 }
 
 export type StaffPayRunMinAggregateOutputType = {
@@ -44,6 +46,7 @@ export type StaffPayRunMinAggregateOutputType = {
   title: string | null
   periodStart: Date | null
   periodEnd: Date | null
+  scheduledPayDate: Date | null
   status: $Enums.StaffPayRunStatusEnum | null
   payoutStatus: $Enums.StaffPayoutStatusEnum | null
   totalAmountCents: number | null
@@ -52,6 +55,10 @@ export type StaffPayRunMinAggregateOutputType = {
   approvedByUserId: string | null
   paidAt: Date | null
   paidByUserId: string | null
+  exportedAt: Date | null
+  exportedByUserId: string | null
+  exportCount: number | null
+  lastExportFormat: string | null
   payoutProvider: string | null
   payoutProviderBatchId: string | null
   notes: string | null
@@ -67,6 +74,7 @@ export type StaffPayRunMaxAggregateOutputType = {
   title: string | null
   periodStart: Date | null
   periodEnd: Date | null
+  scheduledPayDate: Date | null
   status: $Enums.StaffPayRunStatusEnum | null
   payoutStatus: $Enums.StaffPayoutStatusEnum | null
   totalAmountCents: number | null
@@ -75,6 +83,10 @@ export type StaffPayRunMaxAggregateOutputType = {
   approvedByUserId: string | null
   paidAt: Date | null
   paidByUserId: string | null
+  exportedAt: Date | null
+  exportedByUserId: string | null
+  exportCount: number | null
+  lastExportFormat: string | null
   payoutProvider: string | null
   payoutProviderBatchId: string | null
   notes: string | null
@@ -90,6 +102,7 @@ export type StaffPayRunCountAggregateOutputType = {
   title: number
   periodStart: number
   periodEnd: number
+  scheduledPayDate: number
   status: number
   payoutStatus: number
   totalAmountCents: number
@@ -98,6 +111,10 @@ export type StaffPayRunCountAggregateOutputType = {
   approvedByUserId: number
   paidAt: number
   paidByUserId: number
+  exportedAt: number
+  exportedByUserId: number
+  exportCount: number
+  lastExportFormat: number
   payoutProvider: number
   payoutProviderBatchId: number
   notes: number
@@ -110,11 +127,13 @@ export type StaffPayRunCountAggregateOutputType = {
 export type StaffPayRunAvgAggregateInputType = {
   totalAmountCents?: true
   itemCount?: true
+  exportCount?: true
 }
 
 export type StaffPayRunSumAggregateInputType = {
   totalAmountCents?: true
   itemCount?: true
+  exportCount?: true
 }
 
 export type StaffPayRunMinAggregateInputType = {
@@ -125,6 +144,7 @@ export type StaffPayRunMinAggregateInputType = {
   title?: true
   periodStart?: true
   periodEnd?: true
+  scheduledPayDate?: true
   status?: true
   payoutStatus?: true
   totalAmountCents?: true
@@ -133,6 +153,10 @@ export type StaffPayRunMinAggregateInputType = {
   approvedByUserId?: true
   paidAt?: true
   paidByUserId?: true
+  exportedAt?: true
+  exportedByUserId?: true
+  exportCount?: true
+  lastExportFormat?: true
   payoutProvider?: true
   payoutProviderBatchId?: true
   notes?: true
@@ -148,6 +172,7 @@ export type StaffPayRunMaxAggregateInputType = {
   title?: true
   periodStart?: true
   periodEnd?: true
+  scheduledPayDate?: true
   status?: true
   payoutStatus?: true
   totalAmountCents?: true
@@ -156,6 +181,10 @@ export type StaffPayRunMaxAggregateInputType = {
   approvedByUserId?: true
   paidAt?: true
   paidByUserId?: true
+  exportedAt?: true
+  exportedByUserId?: true
+  exportCount?: true
+  lastExportFormat?: true
   payoutProvider?: true
   payoutProviderBatchId?: true
   notes?: true
@@ -171,6 +200,7 @@ export type StaffPayRunCountAggregateInputType = {
   title?: true
   periodStart?: true
   periodEnd?: true
+  scheduledPayDate?: true
   status?: true
   payoutStatus?: true
   totalAmountCents?: true
@@ -179,6 +209,10 @@ export type StaffPayRunCountAggregateInputType = {
   approvedByUserId?: true
   paidAt?: true
   paidByUserId?: true
+  exportedAt?: true
+  exportedByUserId?: true
+  exportCount?: true
+  lastExportFormat?: true
   payoutProvider?: true
   payoutProviderBatchId?: true
   notes?: true
@@ -281,6 +315,7 @@ export type StaffPayRunGroupByOutputType = {
   title: string
   periodStart: Date
   periodEnd: Date
+  scheduledPayDate: Date | null
   status: $Enums.StaffPayRunStatusEnum
   payoutStatus: $Enums.StaffPayoutStatusEnum
   totalAmountCents: number
@@ -289,6 +324,10 @@ export type StaffPayRunGroupByOutputType = {
   approvedByUserId: string | null
   paidAt: Date | null
   paidByUserId: string | null
+  exportedAt: Date | null
+  exportedByUserId: string | null
+  exportCount: number
+  lastExportFormat: string | null
   payoutProvider: string | null
   payoutProviderBatchId: string | null
   notes: string | null
@@ -327,6 +366,7 @@ export type StaffPayRunWhereInput = {
   title?: Prisma.StringFilter<"StaffPayRun"> | string
   periodStart?: Prisma.DateTimeFilter<"StaffPayRun"> | Date | string
   periodEnd?: Prisma.DateTimeFilter<"StaffPayRun"> | Date | string
+  scheduledPayDate?: Prisma.DateTimeNullableFilter<"StaffPayRun"> | Date | string | null
   status?: Prisma.EnumStaffPayRunStatusEnumFilter<"StaffPayRun"> | $Enums.StaffPayRunStatusEnum
   payoutStatus?: Prisma.EnumStaffPayoutStatusEnumFilter<"StaffPayRun"> | $Enums.StaffPayoutStatusEnum
   totalAmountCents?: Prisma.IntFilter<"StaffPayRun"> | number
@@ -335,6 +375,10 @@ export type StaffPayRunWhereInput = {
   approvedByUserId?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
   paidAt?: Prisma.DateTimeNullableFilter<"StaffPayRun"> | Date | string | null
   paidByUserId?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
+  exportedAt?: Prisma.DateTimeNullableFilter<"StaffPayRun"> | Date | string | null
+  exportedByUserId?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
+  exportCount?: Prisma.IntFilter<"StaffPayRun"> | number
+  lastExportFormat?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
   payoutProvider?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
   payoutProviderBatchId?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
   notes?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
@@ -350,6 +394,7 @@ export type StaffPayRunOrderByWithRelationInput = {
   title?: Prisma.SortOrder
   periodStart?: Prisma.SortOrder
   periodEnd?: Prisma.SortOrder
+  scheduledPayDate?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
   payoutStatus?: Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
@@ -358,6 +403,10 @@ export type StaffPayRunOrderByWithRelationInput = {
   approvedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
   paidAt?: Prisma.SortOrderInput | Prisma.SortOrder
   paidByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  exportedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  exportedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  exportCount?: Prisma.SortOrder
+  lastExportFormat?: Prisma.SortOrderInput | Prisma.SortOrder
   payoutProvider?: Prisma.SortOrderInput | Prisma.SortOrder
   payoutProviderBatchId?: Prisma.SortOrderInput | Prisma.SortOrder
   notes?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -376,6 +425,7 @@ export type StaffPayRunWhereUniqueInput = Prisma.AtLeast<{
   title?: Prisma.StringFilter<"StaffPayRun"> | string
   periodStart?: Prisma.DateTimeFilter<"StaffPayRun"> | Date | string
   periodEnd?: Prisma.DateTimeFilter<"StaffPayRun"> | Date | string
+  scheduledPayDate?: Prisma.DateTimeNullableFilter<"StaffPayRun"> | Date | string | null
   status?: Prisma.EnumStaffPayRunStatusEnumFilter<"StaffPayRun"> | $Enums.StaffPayRunStatusEnum
   payoutStatus?: Prisma.EnumStaffPayoutStatusEnumFilter<"StaffPayRun"> | $Enums.StaffPayoutStatusEnum
   totalAmountCents?: Prisma.IntFilter<"StaffPayRun"> | number
@@ -384,6 +434,10 @@ export type StaffPayRunWhereUniqueInput = Prisma.AtLeast<{
   approvedByUserId?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
   paidAt?: Prisma.DateTimeNullableFilter<"StaffPayRun"> | Date | string | null
   paidByUserId?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
+  exportedAt?: Prisma.DateTimeNullableFilter<"StaffPayRun"> | Date | string | null
+  exportedByUserId?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
+  exportCount?: Prisma.IntFilter<"StaffPayRun"> | number
+  lastExportFormat?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
   payoutProvider?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
   payoutProviderBatchId?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
   notes?: Prisma.StringNullableFilter<"StaffPayRun"> | string | null
@@ -399,6 +453,7 @@ export type StaffPayRunOrderByWithAggregationInput = {
   title?: Prisma.SortOrder
   periodStart?: Prisma.SortOrder
   periodEnd?: Prisma.SortOrder
+  scheduledPayDate?: Prisma.SortOrderInput | Prisma.SortOrder
   status?: Prisma.SortOrder
   payoutStatus?: Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
@@ -407,6 +462,10 @@ export type StaffPayRunOrderByWithAggregationInput = {
   approvedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
   paidAt?: Prisma.SortOrderInput | Prisma.SortOrder
   paidByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  exportedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  exportedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
+  exportCount?: Prisma.SortOrder
+  lastExportFormat?: Prisma.SortOrderInput | Prisma.SortOrder
   payoutProvider?: Prisma.SortOrderInput | Prisma.SortOrder
   payoutProviderBatchId?: Prisma.SortOrderInput | Prisma.SortOrder
   notes?: Prisma.SortOrderInput | Prisma.SortOrder
@@ -430,6 +489,7 @@ export type StaffPayRunScalarWhereWithAggregatesInput = {
   title?: Prisma.StringWithAggregatesFilter<"StaffPayRun"> | string
   periodStart?: Prisma.DateTimeWithAggregatesFilter<"StaffPayRun"> | Date | string
   periodEnd?: Prisma.DateTimeWithAggregatesFilter<"StaffPayRun"> | Date | string
+  scheduledPayDate?: Prisma.DateTimeNullableWithAggregatesFilter<"StaffPayRun"> | Date | string | null
   status?: Prisma.EnumStaffPayRunStatusEnumWithAggregatesFilter<"StaffPayRun"> | $Enums.StaffPayRunStatusEnum
   payoutStatus?: Prisma.EnumStaffPayoutStatusEnumWithAggregatesFilter<"StaffPayRun"> | $Enums.StaffPayoutStatusEnum
   totalAmountCents?: Prisma.IntWithAggregatesFilter<"StaffPayRun"> | number
@@ -438,6 +498,10 @@ export type StaffPayRunScalarWhereWithAggregatesInput = {
   approvedByUserId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRun"> | string | null
   paidAt?: Prisma.DateTimeNullableWithAggregatesFilter<"StaffPayRun"> | Date | string | null
   paidByUserId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRun"> | string | null
+  exportedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"StaffPayRun"> | Date | string | null
+  exportedByUserId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRun"> | string | null
+  exportCount?: Prisma.IntWithAggregatesFilter<"StaffPayRun"> | number
+  lastExportFormat?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRun"> | string | null
   payoutProvider?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRun"> | string | null
   payoutProviderBatchId?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRun"> | string | null
   notes?: Prisma.StringNullableWithAggregatesFilter<"StaffPayRun"> | string | null
@@ -453,6 +517,7 @@ export type StaffPayRunCreateInput = {
   title: string
   periodStart: Date | string
   periodEnd: Date | string
+  scheduledPayDate?: Date | string | null
   status?: $Enums.StaffPayRunStatusEnum
   payoutStatus?: $Enums.StaffPayoutStatusEnum
   totalAmountCents?: number
@@ -461,6 +526,10 @@ export type StaffPayRunCreateInput = {
   approvedByUserId?: string | null
   paidAt?: Date | string | null
   paidByUserId?: string | null
+  exportedAt?: Date | string | null
+  exportedByUserId?: string | null
+  exportCount?: number
+  lastExportFormat?: string | null
   payoutProvider?: string | null
   payoutProviderBatchId?: string | null
   notes?: string | null
@@ -476,6 +545,7 @@ export type StaffPayRunUncheckedCreateInput = {
   title: string
   periodStart: Date | string
   periodEnd: Date | string
+  scheduledPayDate?: Date | string | null
   status?: $Enums.StaffPayRunStatusEnum
   payoutStatus?: $Enums.StaffPayoutStatusEnum
   totalAmountCents?: number
@@ -484,6 +554,10 @@ export type StaffPayRunUncheckedCreateInput = {
   approvedByUserId?: string | null
   paidAt?: Date | string | null
   paidByUserId?: string | null
+  exportedAt?: Date | string | null
+  exportedByUserId?: string | null
+  exportCount?: number
+  lastExportFormat?: string | null
   payoutProvider?: string | null
   payoutProviderBatchId?: string | null
   notes?: string | null
@@ -499,6 +573,7 @@ export type StaffPayRunUpdateInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   periodStart?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   periodEnd?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  scheduledPayDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   status?: Prisma.EnumStaffPayRunStatusEnumFieldUpdateOperationsInput | $Enums.StaffPayRunStatusEnum
   payoutStatus?: Prisma.EnumStaffPayoutStatusEnumFieldUpdateOperationsInput | $Enums.StaffPayoutStatusEnum
   totalAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
@@ -507,6 +582,10 @@ export type StaffPayRunUpdateInput = {
   approvedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   paidByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  exportedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  exportedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  exportCount?: Prisma.IntFieldUpdateOperationsInput | number
+  lastExportFormat?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payoutProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payoutProviderBatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -522,6 +601,7 @@ export type StaffPayRunUncheckedUpdateInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   periodStart?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   periodEnd?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  scheduledPayDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   status?: Prisma.EnumStaffPayRunStatusEnumFieldUpdateOperationsInput | $Enums.StaffPayRunStatusEnum
   payoutStatus?: Prisma.EnumStaffPayoutStatusEnumFieldUpdateOperationsInput | $Enums.StaffPayoutStatusEnum
   totalAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
@@ -530,6 +610,10 @@ export type StaffPayRunUncheckedUpdateInput = {
   approvedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   paidByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  exportedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  exportedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  exportCount?: Prisma.IntFieldUpdateOperationsInput | number
+  lastExportFormat?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payoutProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payoutProviderBatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -545,6 +629,7 @@ export type StaffPayRunCreateManyInput = {
   title: string
   periodStart: Date | string
   periodEnd: Date | string
+  scheduledPayDate?: Date | string | null
   status?: $Enums.StaffPayRunStatusEnum
   payoutStatus?: $Enums.StaffPayoutStatusEnum
   totalAmountCents?: number
@@ -553,6 +638,10 @@ export type StaffPayRunCreateManyInput = {
   approvedByUserId?: string | null
   paidAt?: Date | string | null
   paidByUserId?: string | null
+  exportedAt?: Date | string | null
+  exportedByUserId?: string | null
+  exportCount?: number
+  lastExportFormat?: string | null
   payoutProvider?: string | null
   payoutProviderBatchId?: string | null
   notes?: string | null
@@ -568,6 +657,7 @@ export type StaffPayRunUpdateManyMutationInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   periodStart?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   periodEnd?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  scheduledPayDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   status?: Prisma.EnumStaffPayRunStatusEnumFieldUpdateOperationsInput | $Enums.StaffPayRunStatusEnum
   payoutStatus?: Prisma.EnumStaffPayoutStatusEnumFieldUpdateOperationsInput | $Enums.StaffPayoutStatusEnum
   totalAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
@@ -576,6 +666,10 @@ export type StaffPayRunUpdateManyMutationInput = {
   approvedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   paidByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  exportedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  exportedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  exportCount?: Prisma.IntFieldUpdateOperationsInput | number
+  lastExportFormat?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payoutProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payoutProviderBatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -591,6 +685,7 @@ export type StaffPayRunUncheckedUpdateManyInput = {
   title?: Prisma.StringFieldUpdateOperationsInput | string
   periodStart?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   periodEnd?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+  scheduledPayDate?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   status?: Prisma.EnumStaffPayRunStatusEnumFieldUpdateOperationsInput | $Enums.StaffPayRunStatusEnum
   payoutStatus?: Prisma.EnumStaffPayoutStatusEnumFieldUpdateOperationsInput | $Enums.StaffPayoutStatusEnum
   totalAmountCents?: Prisma.IntFieldUpdateOperationsInput | number
@@ -599,6 +694,10 @@ export type StaffPayRunUncheckedUpdateManyInput = {
   approvedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   paidAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   paidByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  exportedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  exportedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  exportCount?: Prisma.IntFieldUpdateOperationsInput | number
+  lastExportFormat?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payoutProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   payoutProviderBatchId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   notes?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
@@ -614,6 +713,7 @@ export type StaffPayRunCountOrderByAggregateInput = {
   title?: Prisma.SortOrder
   periodStart?: Prisma.SortOrder
   periodEnd?: Prisma.SortOrder
+  scheduledPayDate?: Prisma.SortOrder
   status?: Prisma.SortOrder
   payoutStatus?: Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
@@ -622,6 +722,10 @@ export type StaffPayRunCountOrderByAggregateInput = {
   approvedByUserId?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   paidByUserId?: Prisma.SortOrder
+  exportedAt?: Prisma.SortOrder
+  exportedByUserId?: Prisma.SortOrder
+  exportCount?: Prisma.SortOrder
+  lastExportFormat?: Prisma.SortOrder
   payoutProvider?: Prisma.SortOrder
   payoutProviderBatchId?: Prisma.SortOrder
   notes?: Prisma.SortOrder
@@ -632,6 +736,7 @@ export type StaffPayRunCountOrderByAggregateInput = {
 export type StaffPayRunAvgOrderByAggregateInput = {
   totalAmountCents?: Prisma.SortOrder
   itemCount?: Prisma.SortOrder
+  exportCount?: Prisma.SortOrder
 }
 
 export type StaffPayRunMaxOrderByAggregateInput = {
@@ -642,6 +747,7 @@ export type StaffPayRunMaxOrderByAggregateInput = {
   title?: Prisma.SortOrder
   periodStart?: Prisma.SortOrder
   periodEnd?: Prisma.SortOrder
+  scheduledPayDate?: Prisma.SortOrder
   status?: Prisma.SortOrder
   payoutStatus?: Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
@@ -650,6 +756,10 @@ export type StaffPayRunMaxOrderByAggregateInput = {
   approvedByUserId?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   paidByUserId?: Prisma.SortOrder
+  exportedAt?: Prisma.SortOrder
+  exportedByUserId?: Prisma.SortOrder
+  exportCount?: Prisma.SortOrder
+  lastExportFormat?: Prisma.SortOrder
   payoutProvider?: Prisma.SortOrder
   payoutProviderBatchId?: Prisma.SortOrder
   notes?: Prisma.SortOrder
@@ -665,6 +775,7 @@ export type StaffPayRunMinOrderByAggregateInput = {
   title?: Prisma.SortOrder
   periodStart?: Prisma.SortOrder
   periodEnd?: Prisma.SortOrder
+  scheduledPayDate?: Prisma.SortOrder
   status?: Prisma.SortOrder
   payoutStatus?: Prisma.SortOrder
   totalAmountCents?: Prisma.SortOrder
@@ -673,6 +784,10 @@ export type StaffPayRunMinOrderByAggregateInput = {
   approvedByUserId?: Prisma.SortOrder
   paidAt?: Prisma.SortOrder
   paidByUserId?: Prisma.SortOrder
+  exportedAt?: Prisma.SortOrder
+  exportedByUserId?: Prisma.SortOrder
+  exportCount?: Prisma.SortOrder
+  lastExportFormat?: Prisma.SortOrder
   payoutProvider?: Prisma.SortOrder
   payoutProviderBatchId?: Prisma.SortOrder
   notes?: Prisma.SortOrder
@@ -683,6 +798,7 @@ export type StaffPayRunMinOrderByAggregateInput = {
 export type StaffPayRunSumOrderByAggregateInput = {
   totalAmountCents?: Prisma.SortOrder
   itemCount?: Prisma.SortOrder
+  exportCount?: Prisma.SortOrder
 }
 
 export type EnumStaffPayRunStatusEnumFieldUpdateOperationsInput = {
@@ -703,6 +819,7 @@ export type StaffPayRunSelect<ExtArgs extends runtime.Types.Extensions.InternalA
   title?: boolean
   periodStart?: boolean
   periodEnd?: boolean
+  scheduledPayDate?: boolean
   status?: boolean
   payoutStatus?: boolean
   totalAmountCents?: boolean
@@ -711,6 +828,10 @@ export type StaffPayRunSelect<ExtArgs extends runtime.Types.Extensions.InternalA
   approvedByUserId?: boolean
   paidAt?: boolean
   paidByUserId?: boolean
+  exportedAt?: boolean
+  exportedByUserId?: boolean
+  exportCount?: boolean
+  lastExportFormat?: boolean
   payoutProvider?: boolean
   payoutProviderBatchId?: boolean
   notes?: boolean
@@ -726,6 +847,7 @@ export type StaffPayRunSelectCreateManyAndReturn<ExtArgs extends runtime.Types.E
   title?: boolean
   periodStart?: boolean
   periodEnd?: boolean
+  scheduledPayDate?: boolean
   status?: boolean
   payoutStatus?: boolean
   totalAmountCents?: boolean
@@ -734,6 +856,10 @@ export type StaffPayRunSelectCreateManyAndReturn<ExtArgs extends runtime.Types.E
   approvedByUserId?: boolean
   paidAt?: boolean
   paidByUserId?: boolean
+  exportedAt?: boolean
+  exportedByUserId?: boolean
+  exportCount?: boolean
+  lastExportFormat?: boolean
   payoutProvider?: boolean
   payoutProviderBatchId?: boolean
   notes?: boolean
@@ -749,6 +875,7 @@ export type StaffPayRunSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.E
   title?: boolean
   periodStart?: boolean
   periodEnd?: boolean
+  scheduledPayDate?: boolean
   status?: boolean
   payoutStatus?: boolean
   totalAmountCents?: boolean
@@ -757,6 +884,10 @@ export type StaffPayRunSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.E
   approvedByUserId?: boolean
   paidAt?: boolean
   paidByUserId?: boolean
+  exportedAt?: boolean
+  exportedByUserId?: boolean
+  exportCount?: boolean
+  lastExportFormat?: boolean
   payoutProvider?: boolean
   payoutProviderBatchId?: boolean
   notes?: boolean
@@ -772,6 +903,7 @@ export type StaffPayRunSelectScalar = {
   title?: boolean
   periodStart?: boolean
   periodEnd?: boolean
+  scheduledPayDate?: boolean
   status?: boolean
   payoutStatus?: boolean
   totalAmountCents?: boolean
@@ -780,6 +912,10 @@ export type StaffPayRunSelectScalar = {
   approvedByUserId?: boolean
   paidAt?: boolean
   paidByUserId?: boolean
+  exportedAt?: boolean
+  exportedByUserId?: boolean
+  exportCount?: boolean
+  lastExportFormat?: boolean
   payoutProvider?: boolean
   payoutProviderBatchId?: boolean
   notes?: boolean
@@ -787,7 +923,7 @@ export type StaffPayRunSelectScalar = {
   updatedBy?: boolean
 }
 
-export type StaffPayRunOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "organizationId" | "title" | "periodStart" | "periodEnd" | "status" | "payoutStatus" | "totalAmountCents" | "itemCount" | "approvedAt" | "approvedByUserId" | "paidAt" | "paidByUserId" | "payoutProvider" | "payoutProviderBatchId" | "notes" | "createdBy" | "updatedBy", ExtArgs["result"]["staffPayRun"]>
+export type StaffPayRunOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "organizationId" | "title" | "periodStart" | "periodEnd" | "scheduledPayDate" | "status" | "payoutStatus" | "totalAmountCents" | "itemCount" | "approvedAt" | "approvedByUserId" | "paidAt" | "paidByUserId" | "exportedAt" | "exportedByUserId" | "exportCount" | "lastExportFormat" | "payoutProvider" | "payoutProviderBatchId" | "notes" | "createdBy" | "updatedBy", ExtArgs["result"]["staffPayRun"]>
 
 export type $StaffPayRunPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "StaffPayRun"
@@ -800,6 +936,7 @@ export type $StaffPayRunPayload<ExtArgs extends runtime.Types.Extensions.Interna
     title: string
     periodStart: Date
     periodEnd: Date
+    scheduledPayDate: Date | null
     status: $Enums.StaffPayRunStatusEnum
     payoutStatus: $Enums.StaffPayoutStatusEnum
     totalAmountCents: number
@@ -808,6 +945,10 @@ export type $StaffPayRunPayload<ExtArgs extends runtime.Types.Extensions.Interna
     approvedByUserId: string | null
     paidAt: Date | null
     paidByUserId: string | null
+    exportedAt: Date | null
+    exportedByUserId: string | null
+    exportCount: number
+    lastExportFormat: string | null
     payoutProvider: string | null
     payoutProviderBatchId: string | null
     notes: string | null
@@ -1243,6 +1384,7 @@ export interface StaffPayRunFieldRefs {
   readonly title: Prisma.FieldRef<"StaffPayRun", 'String'>
   readonly periodStart: Prisma.FieldRef<"StaffPayRun", 'DateTime'>
   readonly periodEnd: Prisma.FieldRef<"StaffPayRun", 'DateTime'>
+  readonly scheduledPayDate: Prisma.FieldRef<"StaffPayRun", 'DateTime'>
   readonly status: Prisma.FieldRef<"StaffPayRun", 'StaffPayRunStatusEnum'>
   readonly payoutStatus: Prisma.FieldRef<"StaffPayRun", 'StaffPayoutStatusEnum'>
   readonly totalAmountCents: Prisma.FieldRef<"StaffPayRun", 'Int'>
@@ -1251,6 +1393,10 @@ export interface StaffPayRunFieldRefs {
   readonly approvedByUserId: Prisma.FieldRef<"StaffPayRun", 'String'>
   readonly paidAt: Prisma.FieldRef<"StaffPayRun", 'DateTime'>
   readonly paidByUserId: Prisma.FieldRef<"StaffPayRun", 'String'>
+  readonly exportedAt: Prisma.FieldRef<"StaffPayRun", 'DateTime'>
+  readonly exportedByUserId: Prisma.FieldRef<"StaffPayRun", 'String'>
+  readonly exportCount: Prisma.FieldRef<"StaffPayRun", 'Int'>
+  readonly lastExportFormat: Prisma.FieldRef<"StaffPayRun", 'String'>
   readonly payoutProvider: Prisma.FieldRef<"StaffPayRun", 'String'>
   readonly payoutProviderBatchId: Prisma.FieldRef<"StaffPayRun", 'String'>
   readonly notes: Prisma.FieldRef<"StaffPayRun", 'String'>

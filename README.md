@@ -56,6 +56,13 @@ npm install
   - `BOLDSIGN_RECONCILE_SECRET` (required for scheduled reconcile cron auth in production)
   - `STRIPE_CONNECT_CLIENT_ID` (required for Stripe Connect OAuth onboarding + fallback management flows)
   - `STRIPE_CONNECT_REDIRECT_URI` (optional, full callback URL override for Stripe Connect OAuth; use when Stripe app settings require a specific host)
+  - QuickBooks Online accounting connection:
+  - `INTUIT_CLIENT_ID`
+  - `INTUIT_CLIENT_SECRET`
+  - `INTUIT_REDIRECT_URI` (optional, full callback URL override; defaults to `/api/integrations/quickbooks/callback` on the current origin)
+  - `INTUIT_ENVIRONMENT` (`sandbox` or `production`; defaults to `sandbox`)
+  - `INTUIT_SCOPES` (optional; defaults to `com.intuit.quickbooks.accounting`)
+  - `INTEGRATION_TOKEN_ENCRYPTION_KEY` (optional; falls back to `AUTH_SECRET` for encrypted integration tokens)
   - Email delivery:
   - Gmail API OAuth sender:
   - `GMAIL_OAUTH_CLIENT_ID`, `GMAIL_OAUTH_CLIENT_SECRET`, `GMAIL_OAUTH_REFRESH_TOKEN`
@@ -82,7 +89,7 @@ npm run dev
 ```
 
 `npm run dev` now starts ngrok (when available) and injects a public redirect URL for BoldSign (`BOLDSIGN_DEV_REDIRECT_BASE_URL`) to avoid browser Private Network Access blocks after signing. To disable this behavior: `MVP_DEV_ENABLE_NGROK=0 npm run dev`.
-It also injects `PUBLIC_WEB_BASE_URL` (for canonical web links) and `STRIPE_CONNECT_REDIRECT_URI` (for Stripe OAuth callback), so localhost is not sent as `redirect_uri`.
+It also injects `PUBLIC_WEB_BASE_URL` (for canonical web links), `STRIPE_CONNECT_REDIRECT_URI` (for Stripe OAuth callback), and `INTUIT_REDIRECT_URI` (for QuickBooks OAuth callback), so localhost is not sent as `redirect_uri`.
 The default reserved dev tunnel is `https://untarnished-berserkly-everette.ngrok-free.dev`; override it with `NGROK_DOMAIN` or `MVP_DEV_NGROK_DOMAIN` if needed. VS Code launch configs require ngrok and Stripe listener startup so broken webhook forwarding fails immediately.
 The ngrok host is also included in `next.config.mjs` `allowedDevOrigins` so Next.js dev HMR and internal `/_next/*` resources can load from the tunnel after Stripe Connect redirects back to the local app. Stripe CLI still handles webhook forwarding; this Next setting is separate because it protects browser-origin requests.
 

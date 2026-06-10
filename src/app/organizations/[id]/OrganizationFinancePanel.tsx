@@ -104,6 +104,7 @@ type StaffPayRun = {
   title: string;
   periodStart: string;
   periodEnd: string;
+  scheduledPayDate?: string | null;
   status: string;
   payoutStatus: string;
   totalAmountCents: number;
@@ -112,6 +113,10 @@ type StaffPayRun = {
   approvedByUserId?: string | null;
   paidAt?: string | null;
   paidByUserId?: string | null;
+  exportedAt?: string | null;
+  exportedByUserId?: string | null;
+  exportCount?: number | null;
+  lastExportFormat?: string | null;
   payoutProvider?: string | null;
   payoutProviderBatchId?: string | null;
   notes?: string | null;
@@ -122,6 +127,27 @@ type FinanceResponse = {
   finance: OrganizationFinanceSummary;
   payRuns: StaffPayRun[];
   lineItemCategories?: string[];
+  accountingConnections?: AccountingConnection[];
+};
+
+type AccountingConnection = {
+  id: string;
+  provider: 'QUICKBOOKS_ONLINE';
+  status: 'CONNECTED' | 'REAUTH_REQUIRED' | 'DISCONNECTED';
+  externalCompanyId?: string | null;
+  externalCompanyName?: string | null;
+  environment: string;
+  scopes: string[];
+  tokenType?: string | null;
+  accessTokenExpiresAt?: string | null;
+  refreshTokenExpiresAt?: string | null;
+  refreshTokenHardExpiresAt?: string | null;
+  connectedAt?: string | null;
+  connectedByUserId?: string | null;
+  disconnectedAt?: string | null;
+  disconnectedByUserId?: string | null;
+  lastSyncedAt?: string | null;
+  lastError?: string | null;
 };
 
 type LineItemStatus = 'ESTIMATED' | 'APPROVED' | 'ACTUAL' | 'PAID' | 'VOID';
@@ -138,7 +164,7 @@ type LineItemDraft = {
   unitLabel: string;
 };
 
-type PayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID' | 'UPDATE_ITEM_TRANSFERS';
+type PayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID' | 'UPDATE_ITEM_TRANSFERS' | 'RECORD_EXPORT';
 
 type MarkPaidDraft = {
   payoutProvider: string;
@@ -342,6 +368,33 @@ const payRunPayoutColor = (status: string): string => {
   return 'gray';
 };
 
+const accountingStatusColor = (status?: AccountingConnection['status'] | null): string => {
+  if (status === 'CONNECTED') {
+    return 'green';
+  }
+  if (status === 'REAUTH_REQUIRED') {
+    return 'orange';
+  }
+  return 'gray';
+};
+
+const accountingStatusLabel = (status?: AccountingConnection['status'] | null): string => {
+  if (status === 'CONNECTED') {
+    return 'Connected';
+  }
+  if (status === 'REAUTH_REQUIRED') {
+    return 'Reconnect required';
+  }
+  return 'Not connected';
+};
+
+const formatPayRunExportStatus = (payRun: StaffPayRun): string => {
+  if (!payRun.exportedAt) {
+    return 'Not exported';
+  }
+  return `${payRun.lastExportFormat ?? 'CSV'} #${payRun.exportCount ?? 1}`;
+};
+
 const defaultMarkPaidDraft = (payRun?: StaffPayRun | null): MarkPaidDraft => ({
   payoutProvider: payRun?.payoutProvider ?? '',
   payoutProviderBatchId: payRun?.payoutProviderBatchId ?? '',
@@ -374,6 +427,10 @@ const buildPayRunCsv = (payRunsToExport: StaffPayRun[]): string => {
     'Payout Status',
     'Period Start',
     'Period End',
+    'Scheduled Pay Date',
+    'Exported At',
+    'Export Count',
+    'Export Format',
     'Staff',
     'User ID',
     'Staff Member ID',
@@ -401,6 +458,10 @@ const buildPayRunCsv = (payRunsToExport: StaffPayRun[]): string => {
       payRun.payoutStatus,
       payRun.periodStart,
       payRun.periodEnd,
+      payRun.scheduledPayDate ?? '',
+      payRun.exportedAt ?? '',
+      payRun.exportCount ?? '',
+      payRun.lastExportFormat ?? '',
       item.label,
       item.userId ?? '',
       item.staffMemberId ?? '',
@@ -519,11 +580,13 @@ export default function OrganizationFinancePanel({
   const [finance, setFinance] = useState<OrganizationFinanceSummary | null>(null);
   const [payRuns, setPayRuns] = useState<StaffPayRun[]>([]);
   const [lineItemCategories, setLineItemCategories] = useState<string[]>([]);
+  const [accountingConnections, setAccountingConnections] = useState<AccountingConnection[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payRunTitle, setPayRunTitle] = useState('');
   const [payRunStart, setPayRunStart] = useState(monthStartValue);
   const [payRunEnd, setPayRunEnd] = useState(() => dateInputValue());
+  const [payRunPayDate, setPayRunPayDate] = useState(() => dateInputValue());
   const [payRunSaving, setPayRunSaving] = useState(false);
   const [updatingPayRunId, setUpdatingPayRunId] = useState<string | null>(null);
   const [payrollError, setPayrollError] = useState<string | null>(null);
@@ -541,6 +604,8 @@ export default function OrganizationFinancePanel({
   const [payRunStaffFilter, setPayRunStaffFilter] = useState('ALL');
   const [payRunFromFilter, setPayRunFromFilter] = useState('');
   const [payRunToFilter, setPayRunToFilter] = useState('');
+  const [quickBooksSaving, setQuickBooksSaving] = useState(false);
+  const [quickBooksError, setQuickBooksError] = useState<string | null>(null);
   const [lineItemModalOpen, setLineItemModalOpen] = useState(false);
   const [editingLineItem, setEditingLineItem] = useState<FinanceLineItem | null>(null);
   const [lineItemDraft, setLineItemDraft] = useState<LineItemDraft>(() => defaultLineItemDraft());
@@ -566,6 +631,7 @@ export default function OrganizationFinancePanel({
       setFinance(response.finance);
       setPayRuns(response.payRuns ?? []);
       setLineItemCategories(response.lineItemCategories ?? []);
+      setAccountingConnections(response.accountingConnections ?? []);
     } catch (loadError) {
       setError(messageForError(loadError, 'Failed to load organization finance.'));
     } finally {
@@ -600,6 +666,10 @@ export default function OrganizationFinancePanel({
   const transferPayRun = useMemo(() => (
     payRuns.find((payRun) => payRun.id === transferPayRunId) ?? null
   ), [payRuns, transferPayRunId]);
+
+  const quickBooksConnection = useMemo(() => (
+    accountingConnections.find((connection) => connection.provider === 'QUICKBOOKS_ONLINE') ?? null
+  ), [accountingConnections]);
 
   const payRunStaffOptions = useMemo(() => {
     const staffByKey = new Map<string, string>();
@@ -845,13 +915,75 @@ export default function OrganizationFinancePanel({
     setPayrollError(null);
   }, []);
 
-  const exportPayRunsCsv = useCallback((payRunsToExport: StaffPayRun[], filename = 'staff-pay-runs.csv') => {
+  const connectQuickBooks = useCallback(async () => {
+    setQuickBooksSaving(true);
+    setQuickBooksError(null);
+    try {
+      const currentUrl = typeof window !== 'undefined'
+        ? window.location.href
+        : `/organizations/${organizationId}/finance`;
+      const response = await apiRequest<{ authorizationUrl: string }>(
+        `/api/organizations/${organizationId}/finance/integrations/quickbooks/connect`,
+        {
+          method: 'POST',
+          body: {
+            returnUrl: currentUrl,
+            refreshUrl: currentUrl,
+          },
+        },
+      );
+      if (typeof window !== 'undefined') {
+        window.location.assign(response.authorizationUrl);
+      }
+    } catch (connectError) {
+      setQuickBooksError(messageForError(connectError, 'Failed to start QuickBooks connection.'));
+      setQuickBooksSaving(false);
+    }
+  }, [organizationId]);
+
+  const disconnectQuickBooks = useCallback(async () => {
+    setQuickBooksSaving(true);
+    setQuickBooksError(null);
+    try {
+      await apiRequest(`/api/organizations/${organizationId}/finance/integrations/quickbooks/disconnect`, {
+        method: 'POST',
+      });
+      await loadFinance();
+    } catch (disconnectError) {
+      setQuickBooksError(messageForError(disconnectError, 'Failed to disconnect QuickBooks.'));
+    } finally {
+      setQuickBooksSaving(false);
+    }
+  }, [loadFinance, organizationId]);
+
+  const exportPayRunsCsv = useCallback(async (payRunsToExport: StaffPayRun[], filename = 'staff-pay-runs.csv') => {
     if (payRunsToExport.length === 0) {
       setPayrollError('No pay runs match the current export.');
       return;
     }
+    setPayrollError(null);
+    if (canManage) {
+      try {
+        await Promise.all(payRunsToExport.map((payRun) => apiRequest(
+          `/api/organizations/${organizationId}/finance/pay-runs/${payRun.id}`,
+          {
+            method: 'PATCH',
+            body: {
+              action: 'RECORD_EXPORT',
+              exportFormat: 'CSV',
+            },
+          },
+        )));
+      } catch (exportError) {
+        setPayrollError(messageForError(exportError, 'Failed to record staff pay run export.'));
+        return;
+      }
+    }
     downloadCsv(filename, buildPayRunCsv(payRunsToExport));
-  }, []);
+    if (canManage) {
+      await loadFinance();
+    }
+  }, [canManage, loadFinance, organizationId]);
 
   const openNewLineItem = useCallback(() => {
     setEditingLineItem(null);
@@ -940,22 +1072,25 @@ export default function OrganizationFinancePanel({
           title: payRunTitle.trim() || null,
           periodStart: dateInputToIso(payRunStart),
           periodEnd: dateInputToIso(payRunEnd, true),
+          scheduledPayDate: payRunPayDate.trim() ? dateInputToIso(payRunPayDate) : null,
         },
       });
       setPayRunTitle('');
+      setPayRunPayDate(dateInputValue());
       await loadFinance();
     } catch (createError) {
       setPayrollError(messageForError(createError, 'Failed to create staff pay run.'));
     } finally {
       setPayRunSaving(false);
     }
-  }, [loadFinance, organizationId, payRunEnd, payRunStart, payRunTitle]);
+  }, [loadFinance, organizationId, payRunEnd, payRunPayDate, payRunStart, payRunTitle]);
 
   const updatePayRun = useCallback(async (
     payRunId: string,
     action: PayRunAction,
     details?: Partial<MarkPaidDraft> & {
       voidReason?: string | null;
+      exportFormat?: string | null;
       itemTransfers?: Array<{ itemId: string; payoutProviderTransferId?: string | null }>;
     },
   ): Promise<boolean> => {
@@ -971,6 +1106,7 @@ export default function OrganizationFinancePanel({
           action,
           ...(details?.payoutProvider !== undefined ? { payoutProvider: details.payoutProvider.trim() || null } : {}),
           ...(details?.payoutProviderBatchId !== undefined ? { payoutProviderBatchId: details.payoutProviderBatchId.trim() || null } : {}),
+          ...(details?.exportFormat !== undefined ? { exportFormat: details.exportFormat?.trim() || null } : {}),
           ...(details?.notes !== undefined ? { notes: details.notes.trim() || null } : {}),
           ...(details?.voidReason !== undefined ? { voidReason: details.voidReason?.trim() || null } : {}),
           ...(details?.itemTransfers !== undefined ? { itemTransfers: details.itemTransfers } : {}),
@@ -1257,12 +1393,24 @@ export default function OrganizationFinancePanel({
                 <Text fw={800}>{selectedPayRun.itemCount}</Text>
               </Paper>
               <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Pay date</Text>
+                <Text size="sm">{formatDate(selectedPayRun.scheduledPayDate)}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed">Approved</Text>
                 <Text size="sm">{formatDateTime(selectedPayRun.approvedAt)}</Text>
               </Paper>
               <Paper withBorder radius="md" p="sm">
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed">Paid</Text>
                 <Text size="sm">{formatDateTime(selectedPayRun.paidAt)}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Exported</Text>
+                <Text size="sm">
+                  {selectedPayRun.exportedAt
+                    ? `${formatDateTime(selectedPayRun.exportedAt)} (${formatPayRunExportStatus(selectedPayRun)})`
+                    : 'Not exported'}
+                </Text>
               </Paper>
               <Paper withBorder radius="md" p="sm">
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed">Provider</Text>
@@ -1380,7 +1528,7 @@ export default function OrganizationFinancePanel({
               <Button
                 variant="default"
                 leftSection={<Download size={14} />}
-                onClick={() => exportPayRunsCsv([selectedPayRun], `${selectedPayRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`)}
+                onClick={() => void exportPayRunsCsv([selectedPayRun], `${selectedPayRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`)}
               >
                 Export CSV
               </Button>
@@ -1880,6 +2028,83 @@ export default function OrganizationFinancePanel({
           <Paper withBorder radius="md" p="md" className="org-tab-surface">
             <Group justify="space-between" align="flex-start" mb="sm">
               <Stack gap={2}>
+                <Group gap="xs">
+                  <Title order={6}>QuickBooks</Title>
+                  <Badge
+                    size="sm"
+                    variant="light"
+                    color={accountingStatusColor(quickBooksConnection?.status)}
+                  >
+                    {accountingStatusLabel(quickBooksConnection?.status)}
+                  </Badge>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Accounting connection for payroll handoffs and future sync.
+                </Text>
+              </Stack>
+              {canManage && (
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<ExternalLink size={14} />}
+                    loading={quickBooksSaving}
+                    onClick={() => void connectQuickBooks()}
+                  >
+                    {quickBooksConnection?.status === 'CONNECTED' ? 'Reconnect' : 'Connect'}
+                  </Button>
+                  {quickBooksConnection?.status === 'CONNECTED' && (
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      color="red"
+                      loading={quickBooksSaving}
+                      onClick={() => void disconnectQuickBooks()}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
+                </Group>
+              )}
+            </Group>
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="sm">
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Company ID</Text>
+                <Text size="sm">{quickBooksConnection?.externalCompanyId || 'Not connected'}</Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Environment</Text>
+                <Text size="sm" tt="capitalize">{quickBooksConnection?.environment || 'sandbox'}</Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Connected</Text>
+                <Text size="sm">{formatDateTime(quickBooksConnection?.connectedAt)}</Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Access expires</Text>
+                <Text size="sm">{formatDateTime(quickBooksConnection?.accessTokenExpiresAt)}</Text>
+              </Stack>
+            </SimpleGrid>
+            {quickBooksConnection?.scopes?.length ? (
+              <Text mt="sm" size="xs" c="dimmed">
+                {quickBooksConnection.scopes.join(' ')}
+              </Text>
+            ) : null}
+            {quickBooksConnection?.lastError && (
+              <Text mt="sm" size="sm" c="red" fw={600}>
+                {quickBooksConnection.lastError}
+              </Text>
+            )}
+            {quickBooksError && (
+              <Text mt="sm" size="sm" c="red" fw={600}>
+                {quickBooksError}
+              </Text>
+            )}
+          </Paper>
+
+          <Paper withBorder radius="md" p="md" className="org-tab-surface">
+            <Group justify="space-between" align="flex-start" mb="sm">
+              <Stack gap={2}>
                 <Title order={6}>Staff pay runs</Title>
                 <Text size="sm" c="dimmed">Create internal payroll batches from unpaid staff labor.</Text>
               </Stack>
@@ -1887,7 +2112,7 @@ export default function OrganizationFinancePanel({
                 size="xs"
                 variant="default"
                 leftSection={<Download size={14} />}
-                onClick={() => exportPayRunsCsv(filteredPayRuns)}
+                onClick={() => void exportPayRunsCsv(filteredPayRuns)}
               >
                 Export filtered CSV
               </Button>
@@ -1912,6 +2137,12 @@ export default function OrganizationFinancePanel({
                   type="date"
                   value={payRunEnd}
                   onChange={(event) => setPayRunEnd(event.currentTarget.value)}
+                />
+                <TextInput
+                  label="Pay date"
+                  type="date"
+                  value={payRunPayDate}
+                  onChange={(event) => setPayRunPayDate(event.currentTarget.value)}
                 />
                 <Button onClick={() => void createPayRun()} loading={payRunSaving}>
                   Create pay run
@@ -1960,13 +2191,15 @@ export default function OrganizationFinancePanel({
               />
             </SimpleGrid>
 
-            <ScrollArea.Autosize mah={420}>
-              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 840 }}>
+            <ScrollArea.Autosize mah={420} type="scroll" scrollHideDelay={900} offsetScrollbars>
+              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 1040 }}>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Pay run</Table.Th>
                     <Table.Th>Period</Table.Th>
+                    <Table.Th>Pay date</Table.Th>
                     <Table.Th>Status</Table.Th>
+                    <Table.Th>Export</Table.Th>
                     <Table.Th>Items</Table.Th>
                     <Table.Th ta="right">Amount</Table.Th>
                     {canManage && <Table.Th>Actions</Table.Th>}
@@ -2001,6 +2234,7 @@ export default function OrganizationFinancePanel({
                         </Stack>
                       </Table.Td>
                       <Table.Td>{formatPeriod(payRun.periodStart, payRun.periodEnd)}</Table.Td>
+                      <Table.Td>{formatDate(payRun.scheduledPayDate)}</Table.Td>
                       <Table.Td>
                         <Group gap={6}>
                           <Badge size="xs" variant="light">{payRun.status}</Badge>
@@ -2008,6 +2242,16 @@ export default function OrganizationFinancePanel({
                             {payRun.payoutStatus}
                           </Badge>
                         </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={1}>
+                          <Text size="sm" fw={payRun.exportedAt ? 600 : 400} c={payRun.exportedAt ? undefined : 'dimmed'}>
+                            {formatPayRunExportStatus(payRun)}
+                          </Text>
+                          {payRun.exportedAt && (
+                            <Text size="xs" c="dimmed">{formatDateTime(payRun.exportedAt)}</Text>
+                          )}
+                        </Stack>
                       </Table.Td>
                       <Table.Td>{payRun.itemCount}</Table.Td>
                       <Table.Td ta="right">
@@ -2022,7 +2266,7 @@ export default function OrganizationFinancePanel({
                               leftSection={<Download size={12} />}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                exportPayRunsCsv([payRun], `${payRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`);
+                                void exportPayRunsCsv([payRun], `${payRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`);
                               }}
                             >
                               Export
@@ -2087,7 +2331,7 @@ export default function OrganizationFinancePanel({
                     </Table.Tr>
                   )) : (
                     <Table.Tr>
-                      <Table.Td colSpan={canManage ? 6 : 5}>
+                      <Table.Td colSpan={canManage ? 8 : 7}>
                         <Text size="sm" c="dimmed">No staff pay runs match the current filters.</Text>
                       </Table.Td>
                     </Table.Tr>

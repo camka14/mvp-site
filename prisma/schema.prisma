@@ -254,6 +254,16 @@ enum StaffPayRunItemStatusEnum {
   VOID
 }
 
+enum OrganizationAccountingProviderEnum {
+  QUICKBOOKS_ONLINE
+}
+
+enum OrganizationAccountingConnectionStatusEnum {
+  CONNECTED
+  REAUTH_REQUIRED
+  DISCONNECTED
+}
+
 enum StaffPayoutStatusEnum {
   NOT_STARTED
   PENDING
@@ -767,6 +777,7 @@ model StaffPayRun {
   title                 String
   periodStart           DateTime
   periodEnd             DateTime
+  scheduledPayDate      DateTime?
   status                StaffPayRunStatusEnum  @default(DRAFT)
   payoutStatus          StaffPayoutStatusEnum  @default(NOT_STARTED)
   totalAmountCents      Int                    @default(0)
@@ -775,6 +786,10 @@ model StaffPayRun {
   approvedByUserId      String?
   paidAt                DateTime?
   paidByUserId          String?
+  exportedAt            DateTime?
+  exportedByUserId      String?
+  exportCount           Int                    @default(0)
+  lastExportFormat      String?
   payoutProvider        String?
   payoutProviderBatchId String?
   notes                 String?
@@ -784,10 +799,12 @@ model StaffPayRun {
   @@index([organizationId])
   @@index([periodStart])
   @@index([periodEnd])
+  @@index([scheduledPayDate])
   @@index([status])
   @@index([payoutStatus])
   @@index([approvedByUserId])
   @@index([paidByUserId])
+  @@index([exportedByUserId])
 }
 
 model StaffPayRunItem {
@@ -1195,6 +1212,40 @@ model RefundRequests {
   reason         String
   organizationId String?
   status         RefundRequestsStatusEnum?
+}
+
+model OrganizationAccountingConnections {
+  id                        String                                     @id
+  createdAt                 DateTime                                   @default(now())
+  updatedAt                 DateTime                                   @updatedAt
+  organizationId            String
+  provider                  OrganizationAccountingProviderEnum
+  status                    OrganizationAccountingConnectionStatusEnum @default(CONNECTED)
+  externalCompanyId         String?
+  externalCompanyName       String?
+  environment               String                                     @default("sandbox")
+  scopes                    String[]                                   @default([])
+  accessTokenEncrypted      String?
+  refreshTokenEncrypted     String?
+  tokenType                 String?
+  accessTokenExpiresAt      DateTime?
+  refreshTokenExpiresAt     DateTime?
+  refreshTokenHardExpiresAt DateTime?
+  connectedAt               DateTime?
+  connectedByUserId         String?
+  disconnectedAt            DateTime?
+  disconnectedByUserId      String?
+  lastSyncedAt              DateTime?
+  lastError                 String?
+  createdBy                 String?
+  updatedBy                 String?
+
+  @@unique([organizationId, provider])
+  @@index([organizationId])
+  @@index([provider, externalCompanyId])
+  @@index([status])
+  @@index([connectedByUserId])
+  @@index([disconnectedByUserId])
 }
 
 model StripeAccounts {

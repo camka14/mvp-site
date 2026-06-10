@@ -603,8 +603,10 @@ const run = async () => {
       try {
         const boldSignWebhookUrl = new URL('/api/documents/webhook', publicUrl).toString();
         const billingWebhookUrl = new URL('/api/billing/webhook', publicUrl).toString();
+        const quickBooksCallbackUrl = new URL('/api/integrations/quickbooks/callback', publicUrl).toString();
         console.log(`[dev] BoldSign webhook URL: ${boldSignWebhookUrl}`);
         console.log(`[dev] Stripe billing webhook URL: ${billingWebhookUrl}`);
+        console.log(`[dev] QuickBooks callback URL: ${quickBooksCallbackUrl}`);
       } catch {
         // Ignore malformed URL edge cases and continue startup.
       }
@@ -618,6 +620,7 @@ const run = async () => {
     nextEnv.PUBLIC_WEB_BASE_URL = publicUrl;
     try {
       nextEnv.STRIPE_CONNECT_REDIRECT_URI = new URL('/api/billing/host/callback', publicUrl).toString();
+      nextEnv.INTUIT_REDIRECT_URI = new URL('/api/integrations/quickbooks/callback', publicUrl).toString();
     } catch {
       // Ignore malformed URL edge cases and continue startup.
     }

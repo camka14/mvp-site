@@ -14,6 +14,7 @@ const listOrganizationFinancialLineItemCategoriesMock = jest.fn();
 const listStaffPayRunsMock = jest.fn();
 const createDraftStaffPayRunMock = jest.fn();
 const updateStaffPayRunStatusMock = jest.fn();
+const listOrganizationAccountingConnectionsMock = jest.fn();
 
 class MockStaffPayRunError extends Error {
   status: number;
@@ -38,6 +39,9 @@ jest.mock('@/server/finance/staffPayRuns', () => ({
   listStaffPayRuns: (...args: any[]) => listStaffPayRunsMock(...args),
   createDraftStaffPayRun: (...args: any[]) => createDraftStaffPayRunMock(...args),
   updateStaffPayRunStatus: (...args: any[]) => updateStaffPayRunStatusMock(...args),
+}));
+jest.mock('@/server/integrations/quickBooksConnection', () => ({
+  listOrganizationAccountingConnections: (...args: any[]) => listOrganizationAccountingConnectionsMock(...args),
 }));
 
 import { GET as getFinance } from '@/app/api/organizations/[id]/finance/route';
@@ -68,6 +72,14 @@ describe('organization finance routes', () => {
       },
     ]);
     listOrganizationFinancialLineItemCategoriesMock.mockResolvedValue(['Operations', 'Rentals']);
+    listOrganizationAccountingConnectionsMock.mockResolvedValue([
+      {
+        id: 'qbo_1',
+        provider: 'QUICKBOOKS_ONLINE',
+        status: 'CONNECTED',
+        externalCompanyId: '1234567890',
+      },
+    ]);
     createDraftStaffPayRunMock.mockResolvedValue({
       id: 'pay_run_2',
       organizationId: 'org_1',
@@ -101,9 +113,11 @@ describe('organization finance routes', () => {
     });
     expect(listStaffPayRunsMock).toHaveBeenCalledWith('org_1', prismaMock);
     expect(listOrganizationFinancialLineItemCategoriesMock).toHaveBeenCalledWith('org_1', prismaMock);
+    expect(listOrganizationAccountingConnectionsMock).toHaveBeenCalledWith('org_1', prismaMock);
     expect(payload.finance.actualProfitCents).toBe(12000);
     expect(payload.payRuns[0].id).toBe('pay_run_1');
     expect(payload.lineItemCategories).toEqual(['Operations', 'Rentals']);
+    expect(payload.accountingConnections[0].externalCompanyId).toBe('1234567890');
   });
 
   it('creates a draft staff pay run for finance managers', async () => {
@@ -114,6 +128,7 @@ describe('organization finance routes', () => {
           title: 'June payroll',
           periodStart: '2026-06-01T00:00:00.000Z',
           periodEnd: '2026-06-30T23:59:59.999Z',
+          scheduledPayDate: '2026-07-05T00:00:00.000Z',
         }),
         headers: { 'content-type': 'application/json' },
       }),
@@ -127,6 +142,7 @@ describe('organization finance routes', () => {
       title: 'June payroll',
       periodStart: '2026-06-01T00:00:00.000Z',
       periodEnd: '2026-06-30T23:59:59.999Z',
+      scheduledPayDate: '2026-07-05T00:00:00.000Z',
       actingUserId: 'owner_1',
     }), prismaMock);
     expect(payload.payRun.id).toBe('pay_run_2');
@@ -151,6 +167,38 @@ describe('organization finance routes', () => {
       actingUserId: 'owner_1',
     }), prismaMock);
     expect(payload.payRun.status).toBe('APPROVED');
+  });
+
+  it('records pay-run export metadata for finance managers', async () => {
+    updateStaffPayRunStatusMock.mockResolvedValue({
+      id: 'pay_run_1',
+      organizationId: 'org_1',
+      status: 'DRAFT',
+      exportedAt: '2026-06-15T18:00:00.000Z',
+      exportCount: 1,
+      lastExportFormat: 'CSV',
+      items: [],
+    });
+
+    const response = await patchPayRun(
+      new NextRequest('http://localhost/api/organizations/org_1/finance/pay-runs/pay_run_1', {
+        method: 'PATCH',
+        body: JSON.stringify({ action: 'RECORD_EXPORT', exportFormat: 'CSV' }),
+        headers: { 'content-type': 'application/json' },
+      }),
+      { params: Promise.resolve({ id: 'org_1', payRunId: 'pay_run_1' }) },
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(updateStaffPayRunStatusMock).toHaveBeenCalledWith(expect.objectContaining({
+      organizationId: 'org_1',
+      payRunId: 'pay_run_1',
+      action: 'RECORD_EXPORT',
+      exportFormat: 'CSV',
+      actingUserId: 'owner_1',
+    }), prismaMock);
+    expect(payload.payRun.exportCount).toBe(1);
   });
 
   it('passes payout metadata when marking a pay run paid', async () => {

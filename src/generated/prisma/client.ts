@@ -242,6 +242,11 @@ export type BillPayments = Prisma.BillPaymentsModel
  */
 export type RefundRequests = Prisma.RefundRequestsModel
 /**
+ * Model OrganizationAccountingConnections
+ *
+ */
+export type OrganizationAccountingConnections = Prisma.OrganizationAccountingConnectionsModel
+/**
  * Model StripeAccounts
  *
  */

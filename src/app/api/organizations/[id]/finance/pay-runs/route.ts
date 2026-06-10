@@ -11,6 +11,7 @@ const createPayRunSchema = z.object({
   title: z.string().trim().max(140).optional().nullable(),
   periodStart: z.string().trim().min(1),
   periodEnd: z.string().trim().min(1),
+  scheduledPayDate: z.string().trim().min(1).optional().nullable(),
   notes: z.string().max(1000).optional().nullable(),
 }).strict();
 
@@ -69,6 +70,7 @@ export async function POST(
       organizationId: id,
       periodStart: parsed.data.periodStart,
       periodEnd: parsed.data.periodEnd,
+      scheduledPayDate: parsed.data.scheduledPayDate,
       title: parsed.data.title,
       notes: parsed.data.notes,
       actingUserId: session.userId,
