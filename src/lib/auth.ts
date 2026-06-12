@@ -56,6 +56,14 @@ type AuthPayload = {
   code?: string;
 };
 
+export type MfaChallengePayload = {
+  challengeId: string;
+  expiresAt: string;
+  method?: 'totp';
+  setupQrUrl?: string;
+  maskedPhoneNumber?: string;
+};
+
 type VerificationRequiredPayload = {
   error: string;
   code: 'EMAIL_NOT_VERIFIED';
@@ -70,10 +78,24 @@ type VerificationRequiredPayload = {
   missingProfileFields?: RequiredProfileField[];
 };
 
+type MfaRequiredPayload = {
+  error: string;
+  code: 'MFA_REQUIRED' | 'MFA_SETUP_REQUIRED';
+  email?: string;
+  requiresMfa: true;
+  requiresMfaSetup?: boolean;
+  mfa: MfaChallengePayload;
+  requiresEmailVerification?: boolean;
+  verificationEmailSent?: boolean;
+};
+
 type ApiErrorData = {
   error?: string;
   code?: string;
   email?: string;
+  mfa?: MfaChallengePayload;
+  requiresMfa?: boolean;
+  requiresMfaSetup?: boolean;
   requiresEmailVerification?: boolean;
   verificationEmailSent?: boolean;
   [key: string]: unknown;
@@ -101,6 +123,16 @@ const isVerificationRequiredPayload = (value: unknown): value is VerificationReq
   return candidate.code === 'EMAIL_NOT_VERIFIED' || candidate.requiresEmailVerification === true;
 };
 
+const isMfaRequiredPayload = (value: unknown): value is MfaRequiredPayload => {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<MfaRequiredPayload>;
+  return (
+    (candidate.code === 'MFA_REQUIRED' || candidate.code === 'MFA_SETUP_REQUIRED')
+    && candidate.requiresMfa === true
+    && Boolean(candidate.mfa?.challengeId)
+  );
+};
+
 const REQUIRED_PROFILE_FIELDS: RequiredProfileField[] = ['firstName', 'lastName', 'dateOfBirth'];
 
 const normalizeRequiredProfileFields = (value: unknown): RequiredProfileField[] => {
@@ -123,6 +155,25 @@ const mapAuthUser = (
   emailVerified: Boolean(user.emailVerifiedAt),
   isAdmin: session?.isAdmin === true,
 });
+
+const buildAuthSessionResult = (data: AuthPayload): AuthSessionResult => {
+  if (!data.user) throw new Error('Authentication failed');
+  const missingProfileFields = normalizeRequiredProfileFields(data.missingProfileFields);
+  const mapped = mapAuthUser(data.user, data.session);
+  authService.setCurrentAuthUser(mapped);
+  if (data.profile) authService.setCurrentUserData(data.profile as UserData);
+  authService.setGuest(false);
+  return {
+    user: mapped,
+    profile: (data.profile as UserData) ?? null,
+    session: data.session ?? null,
+    token: data.token ?? null,
+    requiresProfileCompletion: data.requiresProfileCompletion === true || missingProfileFields.length > 0,
+    missingProfileFields,
+    requiresEmailVerification: data.requiresEmailVerification === true,
+    verificationEmailSent: data.verificationEmailSent === true,
+  };
+};
 
 const apiFetch = async <T>(path: string, init?: RequestInit): Promise<T> => {
   const res = await fetch(path, {
@@ -265,48 +316,73 @@ export const authService = {
     if (isVerificationRequiredPayload(data) && (!data.user || !data.session)) {
       throw new ApiError(data.error || 'Email verification required', 403, data);
     }
-    if (!data.user) throw new Error('Authentication failed');
-    const missingProfileFields = normalizeRequiredProfileFields(data.missingProfileFields);
-    const mapped = mapAuthUser(data.user, data.session);
-    this.setCurrentAuthUser(mapped);
-    if (data.profile) this.setCurrentUserData(data.profile as UserData);
-    this.setGuest(false);
-    return {
-      user: mapped,
-      profile: (data.profile as UserData) ?? null,
-      session: data.session ?? null,
-      token: data.token ?? null,
-      requiresProfileCompletion: data.requiresProfileCompletion === true || missingProfileFields.length > 0,
-      missingProfileFields,
-      requiresEmailVerification: data.requiresEmailVerification === true,
-      verificationEmailSent: data.verificationEmailSent === true,
-    };
+    return buildAuthSessionResult(data as AuthPayload);
   },
 
   async login(email: string, password: string): Promise<AuthSessionResult> {
-    const data = await apiFetch<AuthPayload | VerificationRequiredPayload>('/api/auth/login', {
+    const data = await apiFetch<AuthPayload | VerificationRequiredPayload | MfaRequiredPayload>('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, clientType: 'web' }),
     });
+    if (isMfaRequiredPayload(data)) {
+      throw new ApiError(data.error || 'Authenticator verification required', 200, data);
+    }
     if (isVerificationRequiredPayload(data) && (!data.user || !data.session)) {
       throw new ApiError(data.error || 'Email verification required', 403, data);
     }
-    if (!data.user) throw new Error('Authentication failed');
-    const missingProfileFields = normalizeRequiredProfileFields(data.missingProfileFields);
-    const mapped = mapAuthUser(data.user, data.session);
-    this.setCurrentAuthUser(mapped);
-    if (data.profile) this.setCurrentUserData(data.profile as UserData);
-    this.setGuest(false);
-    return {
-      user: mapped,
-      profile: (data.profile as UserData) ?? null,
-      session: data.session ?? null,
-      token: data.token ?? null,
-      requiresProfileCompletion: data.requiresProfileCompletion === true || missingProfileFields.length > 0,
-      missingProfileFields,
-      requiresEmailVerification: data.requiresEmailVerification === true,
-      verificationEmailSent: data.verificationEmailSent === true,
-    };
+    return buildAuthSessionResult(data as AuthPayload);
+  },
+
+  async confirmLoginMfa(challengeId: string, code: string): Promise<AuthSessionResult> {
+    const data = await apiFetch<AuthPayload>('/api/auth/mfa/login/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ challengeId, code }),
+    });
+    return buildAuthSessionResult(data);
+  },
+
+  async confirmLoginMfaSetup(challengeId: string, code: string): Promise<AuthSessionResult> {
+    const data = await apiFetch<AuthPayload>('/api/auth/mfa/setup/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ challengeId, code }),
+    });
+    return buildAuthSessionResult(data);
+  },
+
+  async getTotpMfaStatus(): Promise<{ mfa: { authenticatorEnabled: boolean; enabledAt: string | null; lastVerifiedAt: string | null; provider: string | null } }> {
+    return apiFetch('/api/auth/mfa/totp');
+  },
+
+  async startProfileTotpMfa(): Promise<{ mfa: MfaChallengePayload }> {
+    return apiFetch('/api/auth/mfa/totp/start', {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+  },
+
+  async confirmProfileTotpMfa(challengeId: string, code: string): Promise<{ mfa: { authenticatorEnabled: boolean; enabledAt: string | null; lastVerifiedAt: string | null; provider: string | null } }> {
+    return apiFetch('/api/auth/mfa/totp/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ challengeId, code }),
+    });
+  },
+
+  async getPhoneMfaStatus(): Promise<{ mfa: { phoneVerified: boolean; maskedPhoneNumber: string | null; phoneVerifiedAt: string | null; provider: string | null } }> {
+    return apiFetch('/api/auth/mfa/phone');
+  },
+
+  async startProfilePhoneMfa(phoneNumber: string): Promise<{ mfa: MfaChallengePayload }> {
+    return apiFetch('/api/auth/mfa/phone/start', {
+      method: 'POST',
+      body: JSON.stringify({ phoneNumber }),
+    });
+  },
+
+  async confirmProfilePhoneMfa(challengeId: string, code: string): Promise<{ mfa: { phoneVerified: boolean; maskedPhoneNumber: string | null; phoneVerifiedAt: string | null; provider: string | null } }> {
+    return apiFetch('/api/auth/mfa/phone/confirm', {
+      method: 'POST',
+      body: JSON.stringify({ challengeId, code }),
+    });
   },
 
   async getCurrentUser(): Promise<UserAccount | null> {

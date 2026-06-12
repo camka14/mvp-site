@@ -1,37 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
-import { verifyPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
-import { applyNameCaseToUserFields } from '@/lib/nameCase';
+import { verifyPassword, setAuthCookie } from '@/lib/authServer';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import {
   isInitialEmailVerificationAvailable,
   sendInitialEmailVerification,
 } from '@/server/authEmailVerification';
 import { ACCOUNT_SUSPENDED_CODE, isAuthUserSuspended } from '@/server/authState';
-import { buildProfileCompletionState } from '@/server/profileCompletion';
-import { withDerivedCanonicalTeamIds } from '@/server/teams/teamMembership';
 import { applyRateLimit, RATE_LIMIT_POLICIES } from '@/server/rateLimit';
+import { buildAuthSessionPayload } from '@/server/authSessionPayload';
+import {
+  createWebLoginMfaChallenge,
+  isTotpMfaError,
+  isWebLoginClient,
+  readTotpMfaRequestMetadata,
+} from '@/server/authTotpMfa';
 
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
-});
-
-const toPublicUser = (user: {
-  id: string;
-  email: string;
-  name: string | null;
-  emailVerifiedAt: Date | null;
-  createdAt: Date | null;
-  updatedAt: Date | null;
-}) => ({
-  id: user.id,
-  email: user.email,
-  name: user.name,
-  emailVerifiedAt: user.emailVerifiedAt,
-  createdAt: user.createdAt,
-  updatedAt: user.updatedAt,
+  clientType: z.enum(['web']).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -46,7 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { email, password } = parsed.data;
+  const { email, password, clientType } = parsed.data;
   const normalizedEmail = email.toLowerCase();
   const authUser = await prisma.authUser.findUnique({ where: { email: normalizedEmail } });
   if (!authUser) {
@@ -80,40 +69,49 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const now = new Date();
-  await prisma.authUser.update({ where: { id: authUser.id }, data: { lastLogin: now, updatedAt: now } });
-  const profile = await prisma.userData.findUnique({ where: { id: authUser.id } });
-  const [profileWithDerivedTeamIds] = profile
-    ? await withDerivedCanonicalTeamIds([profile], prisma)
-    : [null];
-
-  const session: SessionToken = {
-    userId: authUser.id,
-    isAdmin: false,
-    sessionVersion: authUser.sessionVersion ?? 0,
-  };
-  const token = signSessionToken(session);
-  const res = NextResponse.json(
-    {
-      user: toPublicUser(authUser),
-      session,
-      token,
-      profile: profileWithDerivedTeamIds ? applyNameCaseToUserFields(profileWithDerivedTeamIds) : null,
-      ...buildProfileCompletionState({ authUser, profile }),
-      ...(requiresEmailVerification
-        ? {
-            code: 'EMAIL_NOT_VERIFIED',
+  if (isWebLoginClient(clientType)) {
+    try {
+      const challenge = await createWebLoginMfaChallenge({
+        userId: authUser.id,
+        sessionVersion: authUser.sessionVersion ?? 0,
+        metadata: readTotpMfaRequestMetadata(req),
+      });
+      if (challenge) {
+        return NextResponse.json(
+          {
+            error: 'Authenticator verification required.',
+            code: challenge.code,
             email: authUser.email,
-            requiresEmailVerification: true,
+            requiresMfa: true,
+            requiresMfaSetup: false,
+            mfa: challenge.mfa,
+            requiresEmailVerification,
             verificationEmailSent,
-          }
-        : {
-            requiresEmailVerification: false,
-            verificationEmailSent: false,
-          }),
-    },
-    { status: 200 },
-  );
+          },
+          { status: 200 },
+        );
+      }
+    } catch (error) {
+      if (isTotpMfaError(error)) {
+        return NextResponse.json(
+          { error: error.message, code: error.code },
+          { status: error.status },
+        );
+      }
+      throw error;
+    }
+  }
+
+  const now = new Date();
+  const updatedAuthUser = await prisma.authUser.update({
+    where: { id: authUser.id },
+    data: { lastLogin: now, updatedAt: now },
+  });
+  const { payload, token } = await buildAuthSessionPayload({
+    authUser: updatedAuthUser,
+    verificationEmailSent,
+  });
+  const res = NextResponse.json(payload, { status: 200 });
   setAuthCookie(res, token);
   return res;
 }

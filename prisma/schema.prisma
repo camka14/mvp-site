@@ -311,6 +311,13 @@ enum AppReleasePlatformEnum {
   ANDROID
 }
 
+enum AuthMfaChallengePurposeEnum {
+  LOGIN
+  LOGIN_SETUP
+  PROFILE_PHONE_SETUP
+  PROFILE_TOTP_SETUP
+}
+
 model AppReleases {
   id                 String                 @id
   platform           AppReleasePlatformEnum
@@ -535,18 +542,57 @@ model UserData {
 }
 
 model SensitiveUserData {
-  id                  String    @id
-  createdAt           DateTime?
-  updatedAt           DateTime?
-  userId              String
-  email               String
-  billingAddressLine1 String?
-  billingAddressLine2 String?
-  billingCity         String?
-  billingState        String?
-  billingPostalCode   String?
-  billingCountryCode  String?
-  appleRefreshToken String?
+  id                            String    @id
+  createdAt                     DateTime?
+  updatedAt                     DateTime?
+  userId                        String
+  email                         String
+  billingAddressLine1           String?
+  billingAddressLine2           String?
+  billingCity                   String?
+  billingState                  String?
+  billingPostalCode             String?
+  billingCountryCode            String?
+  appleRefreshToken             String?
+  phoneNumberE164               String?
+  phoneVerifiedAt               DateTime?
+  phoneVerificationProvider     String?
+  phoneVerificationLastSentAt   DateTime?
+  phoneVerificationAttemptCount Int       @default(0)
+  totpSecretEncrypted           String?
+  totpEnabledAt                 DateTime?
+  totpVerifiedAt                DateTime?
+  totpLastUsedCounter           Int?
+  totpProvider                  String?
+  financialMfaRequiredAt        DateTime?
+  financialMfaSatisfiedAt       DateTime?
+
+  @@index([userId])
+  @@index([phoneVerifiedAt])
+  @@index([totpEnabledAt])
+}
+
+model AuthMfaChallenges {
+  id                    String                      @id
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+  userId                String
+  purpose               AuthMfaChallengePurposeEnum
+  phoneNumberE164       String?
+  totpSecretEncrypted   String?
+  provider              String
+  providerChallengeId   String?
+  devCodeHash           String?
+  expiresAt             DateTime
+  consumedAt            DateTime?
+  lastSentAt            DateTime?
+  attemptCount          Int                         @default(0)
+  sessionVersion        Int                         @default(0)
+  verificationIpHash    String?
+  verificationUserAgent String?
+
+  @@index([userId, purpose, consumedAt])
+  @@index([expiresAt])
 }
 
 model Invites {

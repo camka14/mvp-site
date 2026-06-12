@@ -111,8 +111,10 @@ import {
   CreditCard,
   FileCheck2,
   FolderKanban,
+  KeyRound,
   LockKeyhole,
   Mail,
+  QrCode,
   ShieldCheck,
   UserRound,
   UsersRound,
@@ -203,6 +205,12 @@ type ProfileViewTab =
   | "billing";
 type ProfileEditTab = "general" | "security";
 type ProfileRefundRequestsTab = "submitted" | "hosted";
+type TotpMfaStatus = {
+  authenticatorEnabled: boolean;
+  enabledAt: string | null;
+  lastVerifiedAt: string | null;
+  provider: string | null;
+};
 
 const PROFILE_BILLING_VISIBLE_ITEM_COUNT = 5;
 const PROFILE_BILLING_LIST_GAP = 12;
@@ -414,6 +422,13 @@ function ProfilePageContent() {
     string | null
   >(null);
 
+  useEffect(() => {
+    if (searchParams.get("tab") === "security") {
+      setIsEditing(true);
+      setEditTab("security");
+    }
+  }, [searchParams]);
+
   // Profile form data
   const [profileData, setProfileData] = useState({
     firstName: "",
@@ -498,6 +513,17 @@ function ProfilePageContent() {
     newPassword: "",
     confirmPassword: "",
   });
+  const [totpMfaStatus, setTotpMfaStatus] = useState<TotpMfaStatus | null>(
+    null,
+  );
+  const [loadingTotpMfaStatus, setLoadingTotpMfaStatus] = useState(false);
+  const [showTotpMfaSection, setShowTotpMfaSection] = useState(false);
+  const [totpMfaCode, setTotpMfaCode] = useState("");
+  const [totpMfaChallengeId, setTotpMfaChallengeId] = useState("");
+  const [totpMfaQrUrl, setTotpMfaQrUrl] = useState("");
+  const [startingTotpMfaSetup, setStartingTotpMfaSetup] = useState(false);
+  const [confirmingTotpMfaCode, setConfirmingTotpMfaCode] = useState(false);
+  const [totpMfaError, setTotpMfaError] = useState<string | null>(null);
   const [connectingStripe, setConnectingStripe] = useState(false);
   const [managingStripe, setManagingStripe] = useState(false);
   type OwnedBill = Bill & { ownerLabel?: string };
@@ -630,6 +656,33 @@ function ProfilePageContent() {
     void loadBillingAddress();
   }, [loadBillingAddress]);
 
+  const loadTotpMfaStatus = useCallback(async () => {
+    if (!user?.$id) {
+      setTotpMfaStatus(null);
+      return;
+    }
+
+    setLoadingTotpMfaStatus(true);
+    setTotpMfaError(null);
+    try {
+      const result = await authService.getTotpMfaStatus();
+      setTotpMfaStatus(result.mfa);
+    } catch (loadError) {
+      const message =
+        loadError instanceof Error
+          ? loadError.message
+          : "Failed to load authenticator status.";
+      setTotpMfaError(message);
+      setTotpMfaStatus(null);
+    } finally {
+      setLoadingTotpMfaStatus(false);
+    }
+  }, [user?.$id]);
+
+  useEffect(() => {
+    void loadTotpMfaStatus();
+  }, [loadTotpMfaStatus]);
+
   useEffect(() => {
     if (!emailChangeStatus) return;
 
@@ -692,6 +745,11 @@ function ProfilePageContent() {
         newPassword: "",
         confirmPassword: "",
       });
+      setShowTotpMfaSection(false);
+      setTotpMfaCode("");
+      setTotpMfaChallengeId("");
+      setTotpMfaQrUrl("");
+      setTotpMfaError(null);
     } else {
       setEditTab("general");
     }
@@ -1281,6 +1339,58 @@ function ProfilePageContent() {
     }
   };
 
+  const handleTotpMfaStart = async () => {
+    setStartingTotpMfaSetup(true);
+    setTotpMfaError(null);
+    try {
+      const result = await authService.startProfileTotpMfa();
+      setTotpMfaChallengeId(result.mfa.challengeId);
+      setTotpMfaQrUrl(result.mfa.setupQrUrl || "");
+      setTotpMfaCode("");
+      notifications.show({
+        color: "blue",
+        message: "Scan the QR code, then enter the authenticator code.",
+      });
+    } catch (error: any) {
+      const message = error?.message || "Failed to start authenticator setup.";
+      setTotpMfaError(message);
+      notifications.show({ color: "red", message });
+    } finally {
+      setStartingTotpMfaSetup(false);
+    }
+  };
+
+  const handleTotpMfaConfirm = async () => {
+    if (!totpMfaChallengeId || !totpMfaCode.trim()) {
+      setTotpMfaError("Enter the authenticator code.");
+      return;
+    }
+
+    setConfirmingTotpMfaCode(true);
+    setTotpMfaError(null);
+    try {
+      const result = await authService.confirmProfileTotpMfa(
+        totpMfaChallengeId,
+        totpMfaCode,
+      );
+      setTotpMfaStatus(result.mfa);
+      setTotpMfaCode("");
+      setTotpMfaChallengeId("");
+      setTotpMfaQrUrl("");
+      setShowTotpMfaSection(false);
+      notifications.show({
+        color: "green",
+        message: "Authenticator updated.",
+      });
+    } catch (error: any) {
+      const message = error?.message || "Failed to verify authenticator code.";
+      setTotpMfaError(message);
+      notifications.show({ color: "red", message });
+    } finally {
+      setConfirmingTotpMfaCode(false);
+    }
+  };
+
   const handleConnectStripeAccount = useCallback(async () => {
     if (!user) return;
     if (typeof window === "undefined") {
@@ -1321,6 +1431,11 @@ function ProfilePageContent() {
         err instanceof Error && err.message
           ? err.message
           : "Unable to start Stripe onboarding right now.";
+      if (message.toLowerCase().includes("authenticator app")) {
+        setIsEditing(true);
+        setEditTab("security");
+        setShowTotpMfaSection(true);
+      }
       notifications.show({ color: "red", message });
     } finally {
       setConnectingStripe(false);
@@ -2424,7 +2539,7 @@ function ProfilePageContent() {
     {
       id: "security",
       label: "Account security",
-      description: "Email verification and password updates.",
+      description: "Email, password, and authenticator app.",
       icon: LockKeyhole,
     },
   ];
@@ -4537,7 +4652,15 @@ function ProfilePageContent() {
     </div>
   );
 
-  const renderSecurityEditTab = () => (
+  const renderSecurityEditTab = () => {
+    const totpMfaEnabledAtLabel = totpMfaStatus?.enabledAt
+      ? formatDateTimeLabel(totpMfaStatus.enabledAt)
+      : null;
+    const totpMfaLastVerifiedAtLabel = totpMfaStatus?.lastVerifiedAt
+      ? formatDateTimeLabel(totpMfaStatus.lastVerifiedAt)
+      : null;
+
+    return (
     <div className="space-y-6">
       <Paper withBorder radius="lg" p="lg" shadow="xs">
         <Badge variant="light" color="blue" radius="xl">
@@ -4547,7 +4670,7 @@ function ProfilePageContent() {
           Protect your sign-in
         </Title>
         <Text size="sm" c="dimmed" mt="xs">
-          Update your verified email and change your password when needed.
+          Update your verified email, password, and authenticator app.
         </Text>
       </Paper>
 
@@ -4684,9 +4807,130 @@ function ProfilePageContent() {
             </div>
           )}
         </Paper>
+
+        <Paper withBorder radius="lg" p="md" shadow="xs">
+          <Group justify="space-between" mb="sm" align="flex-start">
+            <div>
+              <Title order={4}>Authenticator app</Title>
+              <Text size="sm" c="dimmed">
+                Website sign-in uses a 6-digit code from your authenticator app.
+              </Text>
+            </div>
+            <Button
+              variant="subtle"
+              onClick={() => {
+                setShowTotpMfaSection(!showTotpMfaSection);
+                setTotpMfaError(null);
+                setTotpMfaCode("");
+                setTotpMfaChallengeId("");
+                setTotpMfaQrUrl("");
+              }}
+            >
+              {showTotpMfaSection
+                ? "Cancel"
+                : totpMfaStatus?.authenticatorEnabled
+                  ? "Replace app"
+                  : "Set up app"}
+            </Button>
+          </Group>
+
+          {totpMfaError ? (
+            <Alert color="red" mb="sm">
+              {totpMfaError}
+            </Alert>
+          ) : null}
+
+          {loadingTotpMfaStatus ? (
+            <Text c="dimmed" size="sm">
+              Loading authenticator status...
+            </Text>
+          ) : showTotpMfaSection ? (
+            <div className="space-y-4">
+              {totpMfaQrUrl ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-center">
+                  <Group justify="center" gap="xs" mb="sm">
+                    <QrCode className="h-4 w-4 text-slate-600" />
+                    <Text size="sm" fw={600}>
+                      Scan with your authenticator app
+                    </Text>
+                  </Group>
+                  <img
+                    src={totpMfaQrUrl}
+                    alt="Authenticator setup QR code"
+                    className="mx-auto h-48 w-48 rounded-lg border border-slate-200 bg-white p-2"
+                  />
+                </div>
+              ) : (
+                <Alert color="blue">
+                  Start setup to generate a QR code for Microsoft Authenticator, Google Authenticator, 1Password, or Authy.
+                </Alert>
+              )}
+              {totpMfaChallengeId ? (
+                <TextInput
+                  label="Authenticator code"
+                  placeholder="Enter 6-digit code"
+                  value={totpMfaCode}
+                  onChange={(event) =>
+                    setTotpMfaCode(event.currentTarget.value)
+                  }
+                  inputMode="numeric"
+                  maxLength={16}
+                />
+              ) : null}
+              <Group gap="sm">
+                {!totpMfaChallengeId ? (
+                  <Button
+                    onClick={handleTotpMfaStart}
+                    disabled={startingTotpMfaSetup}
+                  >
+                    {startingTotpMfaSetup ? "Starting..." : "Start setup"}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleTotpMfaConfirm}
+                    disabled={confirmingTotpMfaCode || !totpMfaCode}
+                  >
+                    {confirmingTotpMfaCode ? "Verifying..." : "Verify app"}
+                  </Button>
+                )}
+              </Group>
+            </div>
+          ) : totpMfaStatus?.authenticatorEnabled ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+              <Group gap="sm" align="flex-start">
+                <ShieldCheck className="mt-0.5 h-4 w-4 text-slate-500" />
+                <div>
+                  <Text size="sm" c="dimmed">
+                    Authenticator app is enabled.
+                  </Text>
+                  {totpMfaEnabledAtLabel ? (
+                    <Text size="xs" c="dimmed" mt={2}>
+                      Enabled {totpMfaEnabledAtLabel}
+                    </Text>
+                  ) : null}
+                  {totpMfaLastVerifiedAtLabel ? (
+                    <Text size="xs" c="dimmed" mt={2}>
+                      Last verified {totpMfaLastVerifiedAtLabel}
+                    </Text>
+                  ) : null}
+                </div>
+              </Group>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+              <Group gap="sm" align="flex-start">
+                <KeyRound className="mt-0.5 h-4 w-4 text-amber-700" />
+                <Text size="sm" c="yellow.9">
+                  Set up an authenticator app before your next website sign-in.
+                </Text>
+              </Group>
+            </div>
+          )}
+        </Paper>
       </SimpleGrid>
     </div>
-  );
+    );
+  };
 
   const renderMainPanel = () => {
     if (isEditing) {
