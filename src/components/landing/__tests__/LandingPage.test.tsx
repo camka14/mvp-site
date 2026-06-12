@@ -150,7 +150,7 @@ describe('LandingPage', () => {
     render(<LandingPage />);
 
     expect(
-      screen.getByRole('heading', { name: /run tournaments from the web\. keep everyone updated from mobile\./i }),
+      screen.getByRole('heading', { name: /run events from the web\. keep teams updated from mobile\./i }),
     ).toBeInTheDocument();
     expect(screen.getByText('Organizer console').closest('article')).toHaveClass('landing-platform-card');
     expect(screen.getByText('Mobile participant app').closest('article')).toHaveClass('landing-platform-card');
@@ -161,9 +161,8 @@ describe('LandingPage', () => {
     render(<LandingPage />);
 
     expect(screen.getByRole('heading', { name: /built for every run of play/i })).toBeInTheDocument();
-    expect(screen.getByAltText('Facility operations dashboard for mixed programs')).toBeInTheDocument();
+    expect(screen.getByAltText('Sports operations dashboard for mixed programs')).toBeInTheDocument();
     expect(screen.getByText('Facility Programs').closest('article')).toHaveClass('landing-use-case');
-    expect(screen.queryByText(/^Formats$/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/^System$/i)).not.toBeInTheDocument();
   });
 
@@ -206,6 +205,7 @@ describe('LandingPage', () => {
     expect(screen.getAllByAltText('Mobile schedule view')[0].closest('.landing-surface-soft')).toBeNull();
     expect(screen.getAllByAltText('Web field and scheduling view').length).toBeGreaterThan(0);
     expect(screen.getAllByAltText('Web team management and roster view').length).toBeGreaterThan(0);
+    expect(screen.getAllByAltText('Web payment flow and checkout summary').length).toBeGreaterThan(0);
   });
 
   it('presents signable document creation for rentals, events, and teams', () => {

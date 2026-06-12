@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { prisma } from '@/lib/prisma';
-import { hashPassword, setAuthCookie, signSessionToken, SessionToken } from '@/lib/authServer';
+import { hashPassword, setAuthCookie } from '@/lib/authServer';
 import { isInvitePlaceholderAuthUser } from '@/lib/authUserPlaceholders';
 import { getRequestOrigin } from '@/lib/requestOrigin';
 import { normalizeOptionalName } from '@/lib/nameCase';
 import {
-  buildProfileCompletionState,
   resolveRequiredProfileFieldsCompletedAt,
 } from '@/server/profileCompletion';
 import { isAuthUserSuspended } from '@/server/authState';
 import { reserveGeneratedUserName } from '@/server/userNames';
 import { sendAdminAccountCreatedNotification } from '@/server/adminNotifications';
+import {
+  createWebLoginMfaChallenge,
+  isTotpMfaError,
+  readTotpMfaRequestMetadata,
+} from '@/server/authTotpMfa';
+import { buildAuthSessionPayload } from '@/server/authSessionPayload';
 
 const STATE_COOKIE = 'google_oauth_state';
 const VERIFIER_COOKIE = 'google_oauth_verifier';
@@ -288,23 +293,45 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const session: SessionToken = {
-    userId: authUser.id,
-    isAdmin: false,
-    sessionVersion: authUser.sessionVersion ?? 0,
-  };
-  const token = signSessionToken(session);
-  const profileCompletionState = buildProfileCompletionState({ authUser, profile });
-  const destinationUrl = new URL(
-    profileCompletionState.requiresProfileCompletion ? '/complete-profile' : next,
-    origin,
-  );
-  if (profileCompletionState.requiresProfileCompletion) {
-    destinationUrl.searchParams.set('next', next);
+  let challenge: Awaited<ReturnType<typeof createWebLoginMfaChallenge>>;
+  try {
+    challenge = await createWebLoginMfaChallenge({
+      userId: authUser.id,
+      sessionVersion: authUser.sessionVersion ?? 0,
+      metadata: readTotpMfaRequestMetadata(req),
+    });
+  } catch (error) {
+    if (isTotpMfaError(error)) {
+      const res = NextResponse.redirect(
+        new URL(`/login?oauth=google&error=${encodeURIComponent(error.code)}`, origin),
+        { status: 302 },
+      );
+      clearOauthCookies(res);
+      return res;
+    }
+    throw error;
   }
 
-  const res = NextResponse.redirect(destinationUrl, { status: 302 });
-  clearOauthCookies(res);
+  const destinationUrl = new URL('/login', origin);
+  if (challenge) {
+    destinationUrl.searchParams.set('oauth', 'google');
+    destinationUrl.searchParams.set('mfa', 'code');
+    destinationUrl.searchParams.set('mfaChallenge', challenge.mfa.challengeId);
+    destinationUrl.searchParams.set('mfaExpiresAt', challenge.mfa.expiresAt);
+    destinationUrl.searchParams.set('next', next);
+
+    const res = NextResponse.redirect(destinationUrl, { status: 302 });
+    clearOauthCookies(res);
+    return res;
+  }
+
+  const { token } = await buildAuthSessionPayload({ authUser });
+  const signedInDestinationUrl = new URL('/login', origin);
+  signedInDestinationUrl.searchParams.set('oauth', 'google');
+  signedInDestinationUrl.searchParams.set('mfaOffer', '1');
+  signedInDestinationUrl.searchParams.set('next', next);
+  const res = NextResponse.redirect(signedInDestinationUrl, { status: 302 });
   setAuthCookie(res, token);
+  clearOauthCookies(res);
   return res;
 }

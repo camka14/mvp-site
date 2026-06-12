@@ -117,6 +117,8 @@ describe('EventFinancePanel', () => {
     );
 
     expect(await screen.findByText('Profit analysis')).toBeInTheDocument();
+    expect(screen.getByText('Current profit/loss')).toBeInTheDocument();
+    expect(screen.queryByText('Actual loss')).not.toBeInTheDocument();
     expect(screen.getAllByText('$200.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('-$75.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('$125.00').length).toBeGreaterThan(0);

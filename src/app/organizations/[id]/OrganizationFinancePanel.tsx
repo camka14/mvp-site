@@ -22,7 +22,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
-import { Download, ExternalLink, Pencil, Plus, UserRound } from 'lucide-react';
+import { Download, ExternalLink, Pencil, Plus, Settings2, UserRound } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { formatBillAmount } from '@/types';
@@ -99,11 +99,45 @@ type StaffPayRunItem = {
   serviceEndAt?: string | null;
 };
 
+type AccountingSyncRecord = {
+  id: string;
+  provider: 'QUICKBOOKS_ONLINE';
+  sourceType: 'STAFF_PAY_RUN' | 'FINANCE_JOURNAL_ENTRY';
+  staffPayRunId?: string | null;
+  sourceKey?: string | null;
+  status: 'PENDING' | 'SYNCED' | 'FAILED' | 'REAUTH_REQUIRED' | 'VOID';
+  externalTxnId?: string | null;
+  externalTxnType?: string | null;
+  externalTxnDocNumber?: string | null;
+  intuitTid?: string | null;
+  errorCode?: string | null;
+  errorMessage?: string | null;
+  syncedAt?: string | null;
+  syncedByUserId?: string | null;
+};
+
+type FinanceCategoryAccountingEntryType = 'REVENUE' | 'EXPENSE' | 'LIABILITY' | 'ASSET';
+
+type CategoryAccountingMapping = {
+  id: string;
+  provider: 'QUICKBOOKS_ONLINE';
+  category: string;
+  categoryKey: string;
+  entryType: FinanceCategoryAccountingEntryType;
+  accountExternalId?: string | null;
+  accountName?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+  updatedAt?: string | null;
+  updatedBy?: string | null;
+};
+
 type StaffPayRun = {
   id: string;
   title: string;
   periodStart: string;
   periodEnd: string;
+  scheduledPayDate?: string | null;
   status: string;
   payoutStatus: string;
   totalAmountCents: number;
@@ -112,16 +146,105 @@ type StaffPayRun = {
   approvedByUserId?: string | null;
   paidAt?: string | null;
   paidByUserId?: string | null;
+  exportedAt?: string | null;
+  exportedByUserId?: string | null;
+  exportCount?: number | null;
+  lastExportFormat?: string | null;
   payoutProvider?: string | null;
   payoutProviderBatchId?: string | null;
   notes?: string | null;
   items: StaffPayRunItem[];
+  accountingSyncs?: AccountingSyncRecord[];
 };
 
 type FinanceResponse = {
   finance: OrganizationFinanceSummary;
   payRuns: StaffPayRun[];
   lineItemCategories?: string[];
+  accountingConnections?: AccountingConnection[];
+  categoryAccountingMappings?: CategoryAccountingMapping[];
+};
+
+type AccountingConnection = {
+  id: string;
+  provider: 'QUICKBOOKS_ONLINE';
+  status: 'CONNECTED' | 'REAUTH_REQUIRED' | 'DISCONNECTED';
+  externalCompanyId?: string | null;
+  externalCompanyName?: string | null;
+  environment: string;
+  scopes: string[];
+  tokenType?: string | null;
+  accessTokenExpiresAt?: string | null;
+  refreshTokenExpiresAt?: string | null;
+  refreshTokenHardExpiresAt?: string | null;
+  connectedAt?: string | null;
+  connectedByUserId?: string | null;
+  disconnectedAt?: string | null;
+  disconnectedByUserId?: string | null;
+  lastSyncedAt?: string | null;
+  lastIntuitTid?: string | null;
+  lastErrorAt?: string | null;
+  lastError?: string | null;
+  payrollExpenseAccountExternalId?: string | null;
+  payrollExpenseAccountName?: string | null;
+  payrollLiabilityAccountExternalId?: string | null;
+  payrollLiabilityAccountName?: string | null;
+  financeClearingAccountExternalId?: string | null;
+  financeClearingAccountName?: string | null;
+};
+
+type QuickBooksAccount = {
+  id: string;
+  name: string;
+  fullyQualifiedName?: string | null;
+  displayName: string;
+  accountType?: string | null;
+  accountSubType?: string | null;
+  classification?: string | null;
+  accountNumber?: string | null;
+  active: boolean;
+};
+
+type QuickBooksAccountsResponse = {
+  accounts: QuickBooksAccount[];
+};
+
+type QuickBooksJournalPreviewLine = {
+  id: string;
+  lineItemId: string;
+  lineItemLabel: string;
+  category: string;
+  sourceType: string;
+  sourceName?: string | null;
+  customerName?: string | null;
+  postingType: 'Debit' | 'Credit';
+  amountCents: number;
+  accountExternalId?: string | null;
+  accountName?: string | null;
+  description: string;
+  missingAccount: boolean;
+  role: 'LINE_ITEM_ACCOUNT' | 'CLEARING_ACCOUNT';
+};
+
+type QuickBooksJournalPreview = {
+  provider: 'QUICKBOOKS_ONLINE';
+  txnDate: string;
+  privateNote: string;
+  includedLineItemCount: number;
+  skippedLineItemCount: number;
+  unmappedLineItemCount: number;
+  debitTotalCents: number;
+  creditTotalCents: number;
+  isBalanced: boolean;
+  readyToSync: boolean;
+  warnings: string[];
+  lines: QuickBooksJournalPreviewLine[];
+};
+
+type QuickBooksJournalSyncResponse = {
+  preview: QuickBooksJournalPreview;
+  syncRecord: AccountingSyncRecord;
+  alreadySynced: boolean;
 };
 
 type LineItemStatus = 'ESTIMATED' | 'APPROVED' | 'ACTUAL' | 'PAID' | 'VOID';
@@ -138,7 +261,7 @@ type LineItemDraft = {
   unitLabel: string;
 };
 
-type PayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID' | 'UPDATE_ITEM_TRANSFERS';
+type PayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID' | 'UPDATE_ITEM_TRANSFERS' | 'RECORD_EXPORT';
 
 type MarkPaidDraft = {
   payoutProvider: string;
@@ -150,6 +273,26 @@ type PayRunItemTransferDraft = {
   itemId: string;
   label: string;
   payoutProviderTransferId: string;
+};
+
+type QuickBooksMappingDraft = {
+  payrollExpenseAccountExternalId: string;
+  payrollExpenseAccountName: string;
+  payrollLiabilityAccountExternalId: string;
+  payrollLiabilityAccountName: string;
+  financeClearingAccountExternalId: string;
+  financeClearingAccountName: string;
+};
+
+type QuickBooksAccountIntent = 'asset' | 'expense' | 'liability' | 'revenue';
+
+type CategoryAccountingMappingDraft = {
+  key: string;
+  category: string;
+  entryType: FinanceCategoryAccountingEntryType;
+  accountExternalId: string;
+  accountName: string;
+  notes: string;
 };
 
 type PayRunStatusFilter = 'ALL' | 'DRAFT' | 'APPROVED' | 'PAID' | 'VOID';
@@ -342,6 +485,355 @@ const payRunPayoutColor = (status: string): string => {
   return 'gray';
 };
 
+const accountingStatusColor = (status?: AccountingConnection['status'] | null): string => {
+  if (status === 'CONNECTED') {
+    return 'green';
+  }
+  if (status === 'REAUTH_REQUIRED') {
+    return 'orange';
+  }
+  return 'gray';
+};
+
+const accountingStatusLabel = (status?: AccountingConnection['status'] | null): string => {
+  if (status === 'CONNECTED') {
+    return 'Connected';
+  }
+  if (status === 'REAUTH_REQUIRED') {
+    return 'Reconnect required';
+  }
+  return 'Not connected';
+};
+
+const accountingSyncStatusColor = (status?: AccountingSyncRecord['status'] | null): string => {
+  if (status === 'SYNCED') {
+    return 'green';
+  }
+  if (status === 'FAILED') {
+    return 'red';
+  }
+  if (status === 'REAUTH_REQUIRED') {
+    return 'orange';
+  }
+  if (status === 'PENDING') {
+    return 'yellow';
+  }
+  return 'gray';
+};
+
+const accountingSyncStatusLabel = (status?: AccountingSyncRecord['status'] | null): string => {
+  if (status === 'SYNCED') {
+    return 'Synced';
+  }
+  if (status === 'FAILED') {
+    return 'Failed';
+  }
+  if (status === 'REAUTH_REQUIRED') {
+    return 'Reconnect';
+  }
+  if (status === 'PENDING') {
+    return 'Pending';
+  }
+  return 'Not synced';
+};
+
+const isRetryableQuickBooksReauthSync = (
+  sync?: AccountingSyncRecord | null,
+  connection?: AccountingConnection | null,
+): boolean => (
+  sync?.provider === 'QUICKBOOKS_ONLINE'
+    && sync.status === 'REAUTH_REQUIRED'
+    && connection?.status === 'CONNECTED'
+);
+
+const quickBooksSyncStatusColor = (
+  sync?: AccountingSyncRecord | null,
+  connection?: AccountingConnection | null,
+): string => (
+  isRetryableQuickBooksReauthSync(sync, connection)
+    ? 'blue'
+    : accountingSyncStatusColor(sync?.status)
+);
+
+const quickBooksSyncStatusLabel = (
+  sync?: AccountingSyncRecord | null,
+  connection?: AccountingConnection | null,
+): string => (
+  isRetryableQuickBooksReauthSync(sync, connection)
+    ? 'Retry'
+    : accountingSyncStatusLabel(sync?.status)
+);
+
+const quickBooksSyncErrorMessage = (
+  sync?: AccountingSyncRecord | null,
+  connection?: AccountingConnection | null,
+): string | null => {
+  if (!sync?.errorMessage) {
+    return null;
+  }
+  if (isRetryableQuickBooksReauthSync(sync, connection)) {
+    return 'QuickBooks reconnected. Try syncing this pay run again.';
+  }
+  return sync.errorMessage;
+};
+
+const quickBooksConnectionActionLabel = (connection?: AccountingConnection | null): string => (
+  connection?.status === 'CONNECTED' || connection?.status === 'REAUTH_REQUIRED'
+    ? 'Reconnect'
+    : 'Connect'
+);
+
+const quickBooksPayRunActionLabel = (sync?: AccountingSyncRecord | null): string => (
+  sync?.status === 'FAILED' || sync?.status === 'REAUTH_REQUIRED' ? 'Retry QBO' : 'Sync QBO'
+);
+
+const accountingEntryTypeLabel = (entryType: FinanceCategoryAccountingEntryType): string => {
+  if (entryType === 'REVENUE') {
+    return 'Revenue';
+  }
+  if (entryType === 'EXPENSE') {
+    return 'Expense';
+  }
+  if (entryType === 'LIABILITY') {
+    return 'Liability';
+  }
+  return 'Asset';
+};
+
+const accountingEntryTypeColor = (entryType: FinanceCategoryAccountingEntryType): string => {
+  if (entryType === 'REVENUE') {
+    return 'green';
+  }
+  if (entryType === 'EXPENSE') {
+    return 'red';
+  }
+  if (entryType === 'LIABILITY') {
+    return 'orange';
+  }
+  return 'blue';
+};
+
+const isQuickBooksPayRunSyncEligible = (payRun: StaffPayRun): boolean => (
+  payRun.status === 'APPROVED' || payRun.status === 'PAID'
+);
+
+const getQuickBooksSync = (payRun: StaffPayRun): AccountingSyncRecord | null => (
+  payRun.accountingSyncs?.find((sync) => sync.provider === 'QUICKBOOKS_ONLINE') ?? null
+);
+
+const categoryMappingKey = (category: string, entryType: FinanceCategoryAccountingEntryType): string => (
+  `${category.trim().toLowerCase()}::${entryType}`
+);
+
+const inferLineItemEntryType = (item: FinanceLineItem): FinanceCategoryAccountingEntryType => (
+  item.amountCents >= 0 ? 'REVENUE' : 'EXPENSE'
+);
+
+const buildCategoryAccountingMappingDrafts = ({
+  lineItems,
+  categories,
+  mappings,
+}: {
+  lineItems: FinanceLineItem[];
+  categories: string[];
+  mappings: CategoryAccountingMapping[];
+}): CategoryAccountingMappingDraft[] => {
+  const rows = new Map<string, CategoryAccountingMappingDraft>();
+  const addRow = (category: string, entryType: FinanceCategoryAccountingEntryType) => {
+    const normalizedCategory = category.trim();
+    if (!normalizedCategory) {
+      return;
+    }
+    const key = categoryMappingKey(normalizedCategory, entryType);
+    if (!rows.has(key)) {
+      rows.set(key, {
+        key,
+        category: normalizedCategory,
+        entryType,
+        accountExternalId: '',
+        accountName: '',
+        notes: '',
+      });
+    }
+  };
+
+  lineItems.forEach((item) => addRow(item.category, inferLineItemEntryType(item)));
+  categories.forEach((category) => addRow(category, 'EXPENSE'));
+  mappings.forEach((mapping) => {
+    addRow(mapping.category, mapping.entryType);
+    const key = categoryMappingKey(mapping.category, mapping.entryType);
+    const current = rows.get(key);
+    if (current) {
+      rows.set(key, {
+        ...current,
+        accountExternalId: mapping.accountExternalId ?? '',
+        accountName: mapping.accountName ?? '',
+        notes: mapping.notes ?? '',
+      });
+    }
+  });
+
+  return [...rows.values()].sort((a, b) => (
+    a.category.localeCompare(b.category) || a.entryType.localeCompare(b.entryType)
+  ));
+};
+
+const defaultQuickBooksMappingDraft = (connection?: AccountingConnection | null): QuickBooksMappingDraft => ({
+  payrollExpenseAccountExternalId: connection?.payrollExpenseAccountExternalId ?? '',
+  payrollExpenseAccountName: connection?.payrollExpenseAccountName ?? '',
+  payrollLiabilityAccountExternalId: connection?.payrollLiabilityAccountExternalId ?? '',
+  payrollLiabilityAccountName: connection?.payrollLiabilityAccountName ?? '',
+  financeClearingAccountExternalId: connection?.financeClearingAccountExternalId ?? '',
+  financeClearingAccountName: connection?.financeClearingAccountName ?? '',
+});
+
+const normalizeQuickBooksText = (value?: string | null): string => (
+  value?.trim().toLowerCase() ?? ''
+);
+
+const quickBooksAccountHasKeyword = (account: QuickBooksAccount, keywords: string[]): boolean => {
+  const searchable = [
+    account.name,
+    account.fullyQualifiedName,
+    account.accountType,
+    account.accountSubType,
+    account.classification,
+  ].map(normalizeQuickBooksText).join(' ');
+  return keywords.some((keyword) => searchable.includes(keyword));
+};
+
+const quickBooksMappingScore = (
+  account: QuickBooksAccount,
+  intent: QuickBooksAccountIntent,
+): number => {
+  const accountType = normalizeQuickBooksText(account.accountType);
+  const accountSubType = normalizeQuickBooksText(account.accountSubType);
+  if (intent === 'expense') {
+    let score = accountType === 'expense' || accountType === 'cost of goods sold' || accountType === 'other expense' ? 60 : 0;
+    if (quickBooksAccountHasKeyword(account, ['payroll', 'wage', 'salary', 'labor', 'staff', 'contractor'])) {
+      score += 30;
+    }
+    if (accountSubType.includes('payroll') || accountSubType.includes('labor')) {
+      score += 10;
+    }
+    return score;
+  }
+
+  if (intent === 'revenue') {
+    let score = accountType === 'income' || accountType === 'other income' ? 60 : 0;
+    if (quickBooksAccountHasKeyword(account, ['sales', 'revenue', 'income', 'registration', 'fees'])) {
+      score += 30;
+    }
+    if (accountSubType.includes('income') || accountSubType.includes('sales')) {
+      score += 10;
+    }
+    return score;
+  }
+
+  if (intent === 'asset') {
+    let score = accountType === 'bank'
+      || accountType === 'accounts receivable'
+      || accountType === 'other current asset'
+      ? 60
+      : 0;
+    if (quickBooksAccountHasKeyword(account, ['cash', 'bank', 'receivable', 'asset', 'clearing'])) {
+      score += 30;
+    }
+    if (accountSubType.includes('cash') || accountSubType.includes('receivable')) {
+      score += 10;
+    }
+    return score;
+  }
+
+  let score = accountType === 'other current liability'
+    || accountType === 'long term liability'
+    || accountType === 'accounts payable'
+    ? 60
+    : 0;
+  if (quickBooksAccountHasKeyword(account, ['payroll', 'liabil', 'clearing', 'accrued', 'payable', 'withholding'])) {
+    score += 30;
+  }
+  if (accountSubType.includes('liabil') || accountSubType.includes('payroll')) {
+    score += 10;
+  }
+  return score;
+};
+
+const sortQuickBooksAccountsForMapping = (
+  accounts: QuickBooksAccount[],
+  intent: QuickBooksAccountIntent,
+): QuickBooksAccount[] => (
+  [...accounts].sort((a, b) => {
+    const scoreDelta = quickBooksMappingScore(b, intent) - quickBooksMappingScore(a, intent);
+    if (scoreDelta !== 0) {
+      return scoreDelta;
+    }
+    return a.displayName.localeCompare(b.displayName);
+  })
+);
+
+const quickBooksAccountIntentForEntryType = (
+  entryType: FinanceCategoryAccountingEntryType,
+): QuickBooksAccountIntent => {
+  if (entryType === 'REVENUE') {
+    return 'revenue';
+  }
+  if (entryType === 'LIABILITY') {
+    return 'liability';
+  }
+  if (entryType === 'ASSET') {
+    return 'asset';
+  }
+  return 'expense';
+};
+
+const quickBooksAccountSelectOption = (account: QuickBooksAccount) => ({
+  value: account.id,
+  label: account.displayName,
+});
+
+const selectedQuickBooksAccountFallback = (
+  id: string,
+  name: string,
+): QuickBooksAccount | null => {
+  const trimmedId = id.trim();
+  const trimmedName = name.trim();
+  if (!trimmedId) {
+    return null;
+  }
+  return {
+    id: trimmedId,
+    name: trimmedName || trimmedId,
+    fullyQualifiedName: trimmedName || null,
+    displayName: trimmedName ? `${trimmedName} · ${trimmedId}` : trimmedId,
+    accountType: null,
+    accountSubType: null,
+    classification: null,
+    accountNumber: null,
+    active: true,
+  };
+};
+
+const mergeSelectedQuickBooksAccount = (
+  accounts: QuickBooksAccount[],
+  selected: QuickBooksAccount | null,
+): QuickBooksAccount[] => {
+  if (!selected || accounts.some((account) => account.id === selected.id)) {
+    return accounts;
+  }
+  return [selected, ...accounts];
+};
+
+const formatPayRunExportStatus = (payRun: StaffPayRun): string => {
+  if (!payRun.exportedAt) {
+    return 'Not exported';
+  }
+  const format = payRun.lastExportFormat === 'QUICKBOOKS_JOURNAL_ENTRY'
+    ? 'QuickBooks'
+    : payRun.lastExportFormat ?? 'CSV';
+  return `${format} #${payRun.exportCount ?? 1}`;
+};
+
 const defaultMarkPaidDraft = (payRun?: StaffPayRun | null): MarkPaidDraft => ({
   payoutProvider: payRun?.payoutProvider ?? '',
   payoutProviderBatchId: payRun?.payoutProviderBatchId ?? '',
@@ -374,6 +866,10 @@ const buildPayRunCsv = (payRunsToExport: StaffPayRun[]): string => {
     'Payout Status',
     'Period Start',
     'Period End',
+    'Scheduled Pay Date',
+    'Exported At',
+    'Export Count',
+    'Export Format',
     'Staff',
     'User ID',
     'Staff Member ID',
@@ -401,6 +897,10 @@ const buildPayRunCsv = (payRunsToExport: StaffPayRun[]): string => {
       payRun.payoutStatus,
       payRun.periodStart,
       payRun.periodEnd,
+      payRun.scheduledPayDate ?? '',
+      payRun.exportedAt ?? '',
+      payRun.exportCount ?? '',
+      payRun.lastExportFormat ?? '',
       item.label,
       item.userId ?? '',
       item.staffMemberId ?? '',
@@ -519,11 +1019,14 @@ export default function OrganizationFinancePanel({
   const [finance, setFinance] = useState<OrganizationFinanceSummary | null>(null);
   const [payRuns, setPayRuns] = useState<StaffPayRun[]>([]);
   const [lineItemCategories, setLineItemCategories] = useState<string[]>([]);
+  const [accountingConnections, setAccountingConnections] = useState<AccountingConnection[]>([]);
+  const [categoryAccountingMappings, setCategoryAccountingMappings] = useState<CategoryAccountingMapping[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [payRunTitle, setPayRunTitle] = useState('');
   const [payRunStart, setPayRunStart] = useState(monthStartValue);
   const [payRunEnd, setPayRunEnd] = useState(() => dateInputValue());
+  const [payRunPayDate, setPayRunPayDate] = useState(() => dateInputValue());
   const [payRunSaving, setPayRunSaving] = useState(false);
   const [updatingPayRunId, setUpdatingPayRunId] = useState<string | null>(null);
   const [payrollError, setPayrollError] = useState<string | null>(null);
@@ -541,6 +1044,25 @@ export default function OrganizationFinancePanel({
   const [payRunStaffFilter, setPayRunStaffFilter] = useState('ALL');
   const [payRunFromFilter, setPayRunFromFilter] = useState('');
   const [payRunToFilter, setPayRunToFilter] = useState('');
+  const [quickBooksSaving, setQuickBooksSaving] = useState(false);
+  const [quickBooksMappingSaving, setQuickBooksMappingSaving] = useState(false);
+  const [quickBooksMappingDraft, setQuickBooksMappingDraft] = useState<QuickBooksMappingDraft>(() => defaultQuickBooksMappingDraft());
+  const [quickBooksAccounts, setQuickBooksAccounts] = useState<QuickBooksAccount[]>([]);
+  const [quickBooksAccountsLoading, setQuickBooksAccountsLoading] = useState(false);
+  const [quickBooksAccountsError, setQuickBooksAccountsError] = useState<string | null>(null);
+  const [quickBooksSettingsOpen, setQuickBooksSettingsOpen] = useState(false);
+  const [quickBooksManualMappingOpen, setQuickBooksManualMappingOpen] = useState(false);
+  const [syncingQuickBooksPayRunId, setSyncingQuickBooksPayRunId] = useState<string | null>(null);
+  const [quickBooksError, setQuickBooksError] = useState<string | null>(null);
+  const [categoryMappingDrafts, setCategoryMappingDrafts] = useState<CategoryAccountingMappingDraft[]>([]);
+  const [categoryMappingSaving, setCategoryMappingSaving] = useState(false);
+  const [categoryMappingError, setCategoryMappingError] = useState<string | null>(null);
+  const [journalPreview, setJournalPreview] = useState<QuickBooksJournalPreview | null>(null);
+  const [journalPreviewLoading, setJournalPreviewLoading] = useState(false);
+  const [journalPreviewError, setJournalPreviewError] = useState<string | null>(null);
+  const [journalSyncLoading, setJournalSyncLoading] = useState(false);
+  const [journalSyncError, setJournalSyncError] = useState<string | null>(null);
+  const [journalSyncRecord, setJournalSyncRecord] = useState<AccountingSyncRecord | null>(null);
   const [lineItemModalOpen, setLineItemModalOpen] = useState(false);
   const [editingLineItem, setEditingLineItem] = useState<FinanceLineItem | null>(null);
   const [lineItemDraft, setLineItemDraft] = useState<LineItemDraft>(() => defaultLineItemDraft());
@@ -566,6 +1088,8 @@ export default function OrganizationFinancePanel({
       setFinance(response.finance);
       setPayRuns(response.payRuns ?? []);
       setLineItemCategories(response.lineItemCategories ?? []);
+      setAccountingConnections(response.accountingConnections ?? []);
+      setCategoryAccountingMappings(response.categoryAccountingMappings ?? []);
     } catch (loadError) {
       setError(messageForError(loadError, 'Failed to load organization finance.'));
     } finally {
@@ -600,6 +1124,137 @@ export default function OrganizationFinancePanel({
   const transferPayRun = useMemo(() => (
     payRuns.find((payRun) => payRun.id === transferPayRunId) ?? null
   ), [payRuns, transferPayRunId]);
+
+  const quickBooksConnection = useMemo(() => (
+    accountingConnections.find((connection) => connection.provider === 'QUICKBOOKS_ONLINE') ?? null
+  ), [accountingConnections]);
+
+  useEffect(() => {
+    setQuickBooksMappingDraft(defaultQuickBooksMappingDraft(quickBooksConnection));
+  }, [
+    quickBooksConnection?.id,
+    quickBooksConnection?.payrollExpenseAccountExternalId,
+    quickBooksConnection?.payrollExpenseAccountName,
+    quickBooksConnection?.payrollLiabilityAccountExternalId,
+    quickBooksConnection?.payrollLiabilityAccountName,
+    quickBooksConnection?.financeClearingAccountExternalId,
+    quickBooksConnection?.financeClearingAccountName,
+  ]);
+
+  const quickBooksMappingReady = Boolean(
+    quickBooksConnection?.payrollExpenseAccountExternalId
+      && quickBooksConnection?.payrollLiabilityAccountExternalId,
+  );
+  const quickBooksMappingDisabled = !quickBooksConnection || quickBooksConnection.status !== 'CONNECTED';
+  const quickBooksCategoryMappingDisabled = !quickBooksConnection || quickBooksConnection.status === 'DISCONNECTED';
+
+  const activeQuickBooksAccounts = useMemo(() => (
+    quickBooksAccounts.filter((account) => account.active)
+  ), [quickBooksAccounts]);
+
+  const configuredCategoryMappingCount = useMemo(() => (
+    categoryAccountingMappings.filter((mapping) => mapping.isActive && mapping.accountExternalId).length
+  ), [categoryAccountingMappings]);
+
+  const expenseAccountOptions = useMemo(() => {
+    const selectedAccount = selectedQuickBooksAccountFallback(
+      quickBooksMappingDraft.payrollExpenseAccountExternalId,
+      quickBooksMappingDraft.payrollExpenseAccountName,
+    );
+    return mergeSelectedQuickBooksAccount(
+      sortQuickBooksAccountsForMapping(activeQuickBooksAccounts, 'expense'),
+      selectedAccount,
+    ).map(quickBooksAccountSelectOption);
+  }, [
+    activeQuickBooksAccounts,
+    quickBooksMappingDraft.payrollExpenseAccountExternalId,
+    quickBooksMappingDraft.payrollExpenseAccountName,
+  ]);
+
+  const liabilityAccountOptions = useMemo(() => {
+    const selectedAccount = selectedQuickBooksAccountFallback(
+      quickBooksMappingDraft.payrollLiabilityAccountExternalId,
+      quickBooksMappingDraft.payrollLiabilityAccountName,
+    );
+    return mergeSelectedQuickBooksAccount(
+      sortQuickBooksAccountsForMapping(activeQuickBooksAccounts, 'liability'),
+      selectedAccount,
+    ).map(quickBooksAccountSelectOption);
+  }, [
+    activeQuickBooksAccounts,
+    quickBooksMappingDraft.payrollLiabilityAccountExternalId,
+    quickBooksMappingDraft.payrollLiabilityAccountName,
+  ]);
+
+  const clearingAccountOptions = useMemo(() => {
+    const selectedAccount = selectedQuickBooksAccountFallback(
+      quickBooksMappingDraft.financeClearingAccountExternalId,
+      quickBooksMappingDraft.financeClearingAccountName,
+    );
+    return mergeSelectedQuickBooksAccount(
+      sortQuickBooksAccountsForMapping(activeQuickBooksAccounts, 'asset'),
+      selectedAccount,
+    ).map(quickBooksAccountSelectOption);
+  }, [
+    activeQuickBooksAccounts,
+    quickBooksMappingDraft.financeClearingAccountExternalId,
+    quickBooksMappingDraft.financeClearingAccountName,
+  ]);
+
+  const getCategoryAccountOptions = useCallback((draft: CategoryAccountingMappingDraft) => {
+    const selectedAccount = selectedQuickBooksAccountFallback(
+      draft.accountExternalId,
+      draft.accountName,
+    );
+    return mergeSelectedQuickBooksAccount(
+      sortQuickBooksAccountsForMapping(
+        activeQuickBooksAccounts,
+        quickBooksAccountIntentForEntryType(draft.entryType),
+      ),
+      selectedAccount,
+    ).map(quickBooksAccountSelectOption);
+  }, [activeQuickBooksAccounts]);
+
+  const getSelectedCategoryAccount = useCallback((draft: CategoryAccountingMappingDraft) => (
+    activeQuickBooksAccounts.find((account) => account.id === draft.accountExternalId)
+      ?? selectedQuickBooksAccountFallback(draft.accountExternalId, draft.accountName)
+  ), [activeQuickBooksAccounts]);
+
+  const selectedExpenseAccount = useMemo(() => (
+    activeQuickBooksAccounts.find((account) => account.id === quickBooksMappingDraft.payrollExpenseAccountExternalId)
+      ?? selectedQuickBooksAccountFallback(
+        quickBooksMappingDraft.payrollExpenseAccountExternalId,
+        quickBooksMappingDraft.payrollExpenseAccountName,
+      )
+  ), [
+    activeQuickBooksAccounts,
+    quickBooksMappingDraft.payrollExpenseAccountExternalId,
+    quickBooksMappingDraft.payrollExpenseAccountName,
+  ]);
+
+  const selectedLiabilityAccount = useMemo(() => (
+    activeQuickBooksAccounts.find((account) => account.id === quickBooksMappingDraft.payrollLiabilityAccountExternalId)
+      ?? selectedQuickBooksAccountFallback(
+        quickBooksMappingDraft.payrollLiabilityAccountExternalId,
+        quickBooksMappingDraft.payrollLiabilityAccountName,
+      )
+  ), [
+    activeQuickBooksAccounts,
+    quickBooksMappingDraft.payrollLiabilityAccountExternalId,
+    quickBooksMappingDraft.payrollLiabilityAccountName,
+  ]);
+
+  const selectedClearingAccount = useMemo(() => (
+    activeQuickBooksAccounts.find((account) => account.id === quickBooksMappingDraft.financeClearingAccountExternalId)
+      ?? selectedQuickBooksAccountFallback(
+        quickBooksMappingDraft.financeClearingAccountExternalId,
+        quickBooksMappingDraft.financeClearingAccountName,
+      )
+  ), [
+    activeQuickBooksAccounts,
+    quickBooksMappingDraft.financeClearingAccountExternalId,
+    quickBooksMappingDraft.financeClearingAccountName,
+  ]);
 
   const payRunStaffOptions = useMemo(() => {
     const staffByKey = new Map<string, string>();
@@ -752,9 +1407,57 @@ export default function OrganizationFinancePanel({
     return [...categoriesByKey.values()].sort((a, b) => a.localeCompare(b));
   }, [finance?.lineItems, lineItemCategories]);
 
+  useEffect(() => {
+    setCategoryMappingDrafts(buildCategoryAccountingMappingDrafts({
+      lineItems: finance?.lineItems ?? [],
+      categories: lineItemCategories,
+      mappings: categoryAccountingMappings,
+    }));
+  }, [categoryAccountingMappings, finance?.lineItems, lineItemCategories]);
+
   const updateLineItemDraft = useCallback((patch: Partial<LineItemDraft>) => {
     setLineItemDraft((current) => ({ ...current, ...patch }));
   }, []);
+
+  const updateCategoryMappingDraft = useCallback((
+    key: string,
+    patch: Partial<Pick<CategoryAccountingMappingDraft, 'accountExternalId' | 'accountName' | 'notes'>>,
+  ) => {
+    setJournalPreview(null);
+    setJournalSyncRecord(null);
+    setCategoryMappingDrafts((current) => current.map((draft) => (
+      draft.key === key ? { ...draft, ...patch } : draft
+    )));
+  }, []);
+
+  const selectCategoryMappingAccount = useCallback((key: string, accountId: string | null) => {
+    setJournalPreview(null);
+    setJournalSyncRecord(null);
+    setCategoryMappingDrafts((current) => current.map((draft) => {
+      if (draft.key !== key) {
+        return draft;
+      }
+      if (!accountId) {
+        return {
+          ...draft,
+          accountExternalId: '',
+          accountName: '',
+        };
+      }
+      const account = activeQuickBooksAccounts.find((entry) => entry.id === accountId);
+      if (!account) {
+        return {
+          ...draft,
+          accountExternalId: accountId,
+        };
+      }
+      return {
+        ...draft,
+        accountExternalId: account.id,
+        accountName: account.fullyQualifiedName ?? account.name ?? '',
+      };
+    }));
+  }, [activeQuickBooksAccounts]);
 
   const getLineItemSourceTarget = useCallback((item: FinanceLineItem): LineItemNavigationTarget | null => {
     const sourceId = item.sourceEntityId?.trim();
@@ -845,13 +1548,276 @@ export default function OrganizationFinancePanel({
     setPayrollError(null);
   }, []);
 
-  const exportPayRunsCsv = useCallback((payRunsToExport: StaffPayRun[], filename = 'staff-pay-runs.csv') => {
+  const connectQuickBooks = useCallback(async () => {
+    setQuickBooksSaving(true);
+    setQuickBooksError(null);
+    try {
+      const currentUrl = typeof window !== 'undefined'
+        ? window.location.href
+        : `/organizations/${organizationId}/finance`;
+      const response = await apiRequest<{ authorizationUrl: string }>(
+        `/api/organizations/${organizationId}/finance/integrations/quickbooks/connect`,
+        {
+          method: 'POST',
+          body: {
+            returnUrl: currentUrl,
+            refreshUrl: currentUrl,
+          },
+        },
+      );
+      if (typeof window !== 'undefined') {
+        window.location.assign(response.authorizationUrl);
+      }
+    } catch (connectError) {
+      setQuickBooksError(messageForError(connectError, 'Failed to start QuickBooks connection.'));
+      setQuickBooksSaving(false);
+    }
+  }, [organizationId]);
+
+  const disconnectQuickBooks = useCallback(async () => {
+    setQuickBooksSaving(true);
+    setQuickBooksError(null);
+    try {
+      await apiRequest(`/api/organizations/${organizationId}/finance/integrations/quickbooks/disconnect`, {
+        method: 'POST',
+      });
+      setQuickBooksAccounts([]);
+      setQuickBooksAccountsError(null);
+      await loadFinance();
+    } catch (disconnectError) {
+      setQuickBooksError(messageForError(disconnectError, 'Failed to disconnect QuickBooks.'));
+    } finally {
+      setQuickBooksSaving(false);
+    }
+  }, [loadFinance, organizationId]);
+
+  const loadQuickBooksAccounts = useCallback(async () => {
+    if (quickBooksMappingDisabled) {
+      return;
+    }
+    setQuickBooksAccountsLoading(true);
+    setQuickBooksAccountsError(null);
+    try {
+      const response = await apiRequest<QuickBooksAccountsResponse>(
+        `/api/organizations/${organizationId}/finance/integrations/quickbooks/accounts`,
+        { timeoutMs: 30000 },
+      );
+      setQuickBooksAccounts(response.accounts ?? []);
+    } catch (accountsError) {
+      setQuickBooksAccountsError(messageForError(accountsError, 'Failed to load QuickBooks accounts.'));
+      setQuickBooksManualMappingOpen(true);
+    } finally {
+      setQuickBooksAccountsLoading(false);
+    }
+  }, [organizationId, quickBooksMappingDisabled]);
+
+  useEffect(() => {
+    if (
+      !quickBooksSettingsOpen
+      || quickBooksMappingDisabled
+      || quickBooksAccounts.length > 0
+      || quickBooksAccountsLoading
+      || quickBooksAccountsError
+    ) {
+      return;
+    }
+    void loadQuickBooksAccounts();
+  }, [
+    loadQuickBooksAccounts,
+    quickBooksAccounts.length,
+    quickBooksAccountsError,
+    quickBooksAccountsLoading,
+    quickBooksMappingDisabled,
+    quickBooksSettingsOpen,
+  ]);
+
+  const updateQuickBooksMappingDraft = useCallback((patch: Partial<QuickBooksMappingDraft>) => {
+    setQuickBooksMappingDraft((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const selectQuickBooksExpenseAccount = useCallback((accountId: string | null) => {
+    const account = activeQuickBooksAccounts.find((entry) => entry.id === accountId) ?? null;
+    updateQuickBooksMappingDraft({
+      payrollExpenseAccountExternalId: account?.id ?? '',
+      payrollExpenseAccountName: account?.fullyQualifiedName ?? account?.name ?? '',
+    });
+  }, [activeQuickBooksAccounts, updateQuickBooksMappingDraft]);
+
+  const selectQuickBooksLiabilityAccount = useCallback((accountId: string | null) => {
+    const account = activeQuickBooksAccounts.find((entry) => entry.id === accountId) ?? null;
+    updateQuickBooksMappingDraft({
+      payrollLiabilityAccountExternalId: account?.id ?? '',
+      payrollLiabilityAccountName: account?.fullyQualifiedName ?? account?.name ?? '',
+    });
+  }, [activeQuickBooksAccounts, updateQuickBooksMappingDraft]);
+
+  const selectQuickBooksClearingAccount = useCallback((accountId: string | null) => {
+    const account = activeQuickBooksAccounts.find((entry) => entry.id === accountId) ?? null;
+    updateQuickBooksMappingDraft({
+      financeClearingAccountExternalId: account?.id ?? '',
+      financeClearingAccountName: account?.fullyQualifiedName ?? account?.name ?? '',
+    });
+    setJournalPreview(null);
+    setJournalSyncRecord(null);
+  }, [activeQuickBooksAccounts, updateQuickBooksMappingDraft]);
+
+  const saveQuickBooksMapping = useCallback(async () => {
+    setQuickBooksMappingSaving(true);
+    setQuickBooksError(null);
+    try {
+      const response = await apiRequest<{ connection: AccountingConnection }>(
+        `/api/organizations/${organizationId}/finance/integrations/quickbooks/settings`,
+        {
+          method: 'PATCH',
+          body: {
+            payrollExpenseAccountExternalId: quickBooksMappingDraft.payrollExpenseAccountExternalId.trim() || null,
+            payrollExpenseAccountName: quickBooksMappingDraft.payrollExpenseAccountName.trim() || null,
+            payrollLiabilityAccountExternalId: quickBooksMappingDraft.payrollLiabilityAccountExternalId.trim() || null,
+            payrollLiabilityAccountName: quickBooksMappingDraft.payrollLiabilityAccountName.trim() || null,
+            financeClearingAccountExternalId: quickBooksMappingDraft.financeClearingAccountExternalId.trim() || null,
+            financeClearingAccountName: quickBooksMappingDraft.financeClearingAccountName.trim() || null,
+          },
+        },
+      );
+      setAccountingConnections((current) => {
+        const withoutQuickBooks = current.filter((connection) => connection.provider !== 'QUICKBOOKS_ONLINE');
+        return [...withoutQuickBooks, response.connection];
+      });
+      setJournalPreview(null);
+      setJournalSyncRecord(null);
+    } catch (mappingError) {
+      setQuickBooksError(messageForError(mappingError, 'Failed to save QuickBooks account mapping.'));
+    } finally {
+      setQuickBooksMappingSaving(false);
+    }
+  }, [organizationId, quickBooksMappingDraft]);
+
+  const saveCategoryAccountingMappings = useCallback(async () => {
+    setCategoryMappingSaving(true);
+    setCategoryMappingError(null);
+    setJournalPreview(null);
+    setJournalSyncRecord(null);
+    try {
+      const response = await apiRequest<{ mappings: CategoryAccountingMapping[] }>(
+        `/api/organizations/${organizationId}/finance/integrations/quickbooks/category-mappings`,
+        {
+          method: 'PATCH',
+          body: {
+            mappings: categoryMappingDrafts.map((draft) => ({
+              category: draft.category,
+              entryType: draft.entryType,
+              accountExternalId: draft.accountExternalId.trim() || null,
+              accountName: draft.accountName.trim() || null,
+              notes: draft.notes.trim() || null,
+            })),
+          },
+        },
+      );
+      setCategoryAccountingMappings(response.mappings ?? []);
+    } catch (mappingError) {
+      setCategoryMappingError(messageForError(mappingError, 'Failed to save financial category mappings.'));
+    } finally {
+      setCategoryMappingSaving(false);
+    }
+  }, [categoryMappingDrafts, organizationId]);
+
+  const loadJournalEntryPreview = useCallback(async () => {
+    setJournalPreviewLoading(true);
+    setJournalPreviewError(null);
+    setJournalSyncError(null);
+    setJournalSyncRecord(null);
+    try {
+      const params = new URLSearchParams();
+      if (fromDate.trim()) {
+        params.set('from', dateInputToIso(fromDate) ?? fromDate);
+      }
+      if (toDate.trim()) {
+        params.set('to', dateInputToIso(toDate, true) ?? toDate);
+      }
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      const response = await apiRequest<{ preview: QuickBooksJournalPreview }>(
+        `/api/organizations/${organizationId}/finance/integrations/quickbooks/journal-entry-preview${suffix}`,
+        { timeoutMs: 30000 },
+      );
+      setJournalPreview(response.preview);
+    } catch (previewError) {
+      setJournalPreviewError(messageForError(previewError, 'Failed to build QuickBooks journal entry preview.'));
+    } finally {
+      setJournalPreviewLoading(false);
+    }
+  }, [fromDate, organizationId, toDate]);
+
+  const syncJournalEntryToQuickBooks = useCallback(async () => {
+    setJournalSyncLoading(true);
+    setJournalSyncError(null);
+    try {
+      const params = new URLSearchParams();
+      if (fromDate.trim()) {
+        params.set('from', dateInputToIso(fromDate) ?? fromDate);
+      }
+      if (toDate.trim()) {
+        params.set('to', dateInputToIso(toDate, true) ?? toDate);
+      }
+      const suffix = params.toString() ? `?${params.toString()}` : '';
+      const response = await apiRequest<QuickBooksJournalSyncResponse>(
+        `/api/organizations/${organizationId}/finance/integrations/quickbooks/journal-entry-sync${suffix}`,
+        { method: 'POST', timeoutMs: 30000 },
+      );
+      setJournalPreview(response.preview);
+      setJournalSyncRecord(response.syncRecord);
+      await loadFinance();
+    } catch (syncError) {
+      setJournalSyncError(messageForError(syncError, 'Failed to sync QuickBooks journal entry.'));
+    } finally {
+      setJournalSyncLoading(false);
+    }
+  }, [fromDate, loadFinance, organizationId, toDate]);
+
+  const syncPayRunToQuickBooks = useCallback(async (payRun: StaffPayRun) => {
+    setSyncingQuickBooksPayRunId(payRun.id);
+    setQuickBooksError(null);
+    try {
+      await apiRequest(
+        `/api/organizations/${organizationId}/finance/integrations/quickbooks/pay-runs/${payRun.id}/sync`,
+        { method: 'POST', timeoutMs: 30000 },
+      );
+      await loadFinance();
+    } catch (syncError) {
+      setQuickBooksError(messageForError(syncError, 'Failed to sync staff pay run to QuickBooks.'));
+      await loadFinance();
+    } finally {
+      setSyncingQuickBooksPayRunId(null);
+    }
+  }, [loadFinance, organizationId]);
+
+  const exportPayRunsCsv = useCallback(async (payRunsToExport: StaffPayRun[], filename = 'staff-pay-runs.csv') => {
     if (payRunsToExport.length === 0) {
       setPayrollError('No pay runs match the current export.');
       return;
     }
+    setPayrollError(null);
+    if (canManage) {
+      try {
+        await Promise.all(payRunsToExport.map((payRun) => apiRequest(
+          `/api/organizations/${organizationId}/finance/pay-runs/${payRun.id}`,
+          {
+            method: 'PATCH',
+            body: {
+              action: 'RECORD_EXPORT',
+              exportFormat: 'CSV',
+            },
+          },
+        )));
+      } catch (exportError) {
+        setPayrollError(messageForError(exportError, 'Failed to record staff pay run export.'));
+        return;
+      }
+    }
     downloadCsv(filename, buildPayRunCsv(payRunsToExport));
-  }, []);
+    if (canManage) {
+      await loadFinance();
+    }
+  }, [canManage, loadFinance, organizationId]);
 
   const openNewLineItem = useCallback(() => {
     setEditingLineItem(null);
@@ -940,22 +1906,25 @@ export default function OrganizationFinancePanel({
           title: payRunTitle.trim() || null,
           periodStart: dateInputToIso(payRunStart),
           periodEnd: dateInputToIso(payRunEnd, true),
+          scheduledPayDate: payRunPayDate.trim() ? dateInputToIso(payRunPayDate) : null,
         },
       });
       setPayRunTitle('');
+      setPayRunPayDate(dateInputValue());
       await loadFinance();
     } catch (createError) {
       setPayrollError(messageForError(createError, 'Failed to create staff pay run.'));
     } finally {
       setPayRunSaving(false);
     }
-  }, [loadFinance, organizationId, payRunEnd, payRunStart, payRunTitle]);
+  }, [loadFinance, organizationId, payRunEnd, payRunPayDate, payRunStart, payRunTitle]);
 
   const updatePayRun = useCallback(async (
     payRunId: string,
     action: PayRunAction,
     details?: Partial<MarkPaidDraft> & {
       voidReason?: string | null;
+      exportFormat?: string | null;
       itemTransfers?: Array<{ itemId: string; payoutProviderTransferId?: string | null }>;
     },
   ): Promise<boolean> => {
@@ -971,6 +1940,7 @@ export default function OrganizationFinancePanel({
           action,
           ...(details?.payoutProvider !== undefined ? { payoutProvider: details.payoutProvider.trim() || null } : {}),
           ...(details?.payoutProviderBatchId !== undefined ? { payoutProviderBatchId: details.payoutProviderBatchId.trim() || null } : {}),
+          ...(details?.exportFormat !== undefined ? { exportFormat: details.exportFormat?.trim() || null } : {}),
           ...(details?.notes !== undefined ? { notes: details.notes.trim() || null } : {}),
           ...(details?.voidReason !== undefined ? { voidReason: details.voidReason?.trim() || null } : {}),
           ...(details?.itemTransfers !== undefined ? { itemTransfers: details.itemTransfers } : {}),
@@ -1119,6 +2089,109 @@ export default function OrganizationFinancePanel({
     );
   };
 
+  const renderQuickBooksPayRunSyncDetails = (payRun: StaffPayRun) => {
+    const quickBooksSync = getQuickBooksSync(payRun);
+    const quickBooksSyncEligible = isQuickBooksPayRunSyncEligible(payRun);
+    const quickBooksSyncNeedsMapping = quickBooksSyncEligible
+      && quickBooksConnection?.status === 'CONNECTED'
+      && !quickBooksMappingReady
+      && quickBooksSync?.status !== 'SYNCED';
+    const quickBooksSyncError = quickBooksSyncNeedsMapping
+      ? 'Set QuickBooks payroll account mapping before syncing.'
+      : quickBooksSyncErrorMessage(quickBooksSync, quickBooksConnection);
+    const canSyncPayRunToQuickBooks = canManage
+      && quickBooksConnection?.status === 'CONNECTED'
+      && quickBooksMappingReady
+      && quickBooksSyncEligible
+      && quickBooksSync?.status !== 'SYNCED';
+    const canReconnectQuickBooks = canManage
+      && quickBooksConnection?.status === 'REAUTH_REQUIRED'
+      && quickBooksSyncEligible
+      && quickBooksSync?.status !== 'SYNCED';
+
+    return (
+      <Paper withBorder radius="md" p="sm">
+        <Group justify="space-between" align="flex-start">
+          <Stack gap={4}>
+            <Group gap={6}>
+              <Text size="xs" fw={700} tt="uppercase" c="dimmed">QuickBooks sync</Text>
+              <Badge
+                size="xs"
+                variant="light"
+                color={quickBooksSyncNeedsMapping ? 'yellow' : quickBooksSyncStatusColor(quickBooksSync, quickBooksConnection)}
+              >
+                {quickBooksSyncNeedsMapping ? 'Needs mapping' : quickBooksSyncStatusLabel(quickBooksSync, quickBooksConnection)}
+              </Badge>
+            </Group>
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="xs">
+              <Stack gap={1}>
+                <Text size="xs" c="dimmed">Transaction</Text>
+                <Text size="sm">
+                  {quickBooksSync?.externalTxnId
+                    ? `${quickBooksSync.externalTxnType ?? 'Txn'} ${quickBooksSync.externalTxnDocNumber || quickBooksSync.externalTxnId}`
+                    : 'Not synced'}
+                </Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" c="dimmed">Last synced</Text>
+                <Text size="sm">{formatDateTime(quickBooksSync?.syncedAt)}</Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" c="dimmed">Synced by</Text>
+                <Text size="sm">{quickBooksSync?.syncedByUserId || 'Not set'}</Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" c="dimmed">Intuit TID</Text>
+                <Text size="sm">{quickBooksSync?.intuitTid || 'Not set'}</Text>
+              </Stack>
+            </SimpleGrid>
+            {quickBooksSyncError && (
+              <Text
+                size="sm"
+                c={
+                  quickBooksSyncNeedsMapping
+                    ? 'orange'
+                    : isRetryableQuickBooksReauthSync(quickBooksSync, quickBooksConnection)
+                      ? 'blue'
+                      : 'red'
+                }
+                fw={600}
+              >
+                {quickBooksSyncError}
+              </Text>
+            )}
+          </Stack>
+          {canManage && (
+            <Group gap="xs">
+              {canReconnectQuickBooks && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<ExternalLink size={12} />}
+                  loading={quickBooksSaving}
+                  onClick={() => void connectQuickBooks()}
+                >
+                  Reconnect QBO
+                </Button>
+              )}
+              {quickBooksSyncEligible && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  disabled={!canSyncPayRunToQuickBooks}
+                  loading={syncingQuickBooksPayRunId === payRun.id}
+                  onClick={() => void syncPayRunToQuickBooks(payRun)}
+                >
+                  {quickBooksPayRunActionLabel(quickBooksSync)}
+                </Button>
+              )}
+            </Group>
+          )}
+        </Group>
+      </Paper>
+    );
+  };
+
   return (
     <Stack gap="md">
       <Modal
@@ -1257,12 +2330,24 @@ export default function OrganizationFinancePanel({
                 <Text fw={800}>{selectedPayRun.itemCount}</Text>
               </Paper>
               <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Pay date</Text>
+                <Text size="sm">{formatDate(selectedPayRun.scheduledPayDate)}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed">Approved</Text>
                 <Text size="sm">{formatDateTime(selectedPayRun.approvedAt)}</Text>
               </Paper>
               <Paper withBorder radius="md" p="sm">
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed">Paid</Text>
                 <Text size="sm">{formatDateTime(selectedPayRun.paidAt)}</Text>
+              </Paper>
+              <Paper withBorder radius="md" p="sm">
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Exported</Text>
+                <Text size="sm">
+                  {selectedPayRun.exportedAt
+                    ? `${formatDateTime(selectedPayRun.exportedAt)} (${formatPayRunExportStatus(selectedPayRun)})`
+                    : 'Not exported'}
+                </Text>
               </Paper>
               <Paper withBorder radius="md" p="sm">
                 <Text size="xs" fw={700} tt="uppercase" c="dimmed">Provider</Text>
@@ -1289,8 +2374,10 @@ export default function OrganizationFinancePanel({
               </Paper>
             )}
 
+            {renderQuickBooksPayRunSyncDetails(selectedPayRun)}
+
             <ScrollArea.Autosize mah={360} type="scroll" scrollHideDelay={900} offsetScrollbars>
-              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 1040 }}>
+              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 1180 }}>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Staff</Table.Th>
@@ -1380,7 +2467,7 @@ export default function OrganizationFinancePanel({
               <Button
                 variant="default"
                 leftSection={<Download size={14} />}
-                onClick={() => exportPayRunsCsv([selectedPayRun], `${selectedPayRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`)}
+                onClick={() => void exportPayRunsCsv([selectedPayRun], `${selectedPayRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`)}
               >
                 Export CSV
               </Button>
@@ -1877,6 +2964,572 @@ export default function OrganizationFinancePanel({
             </ScrollArea.Autosize>
           </Paper>
 
+          {canManage && (
+            <Modal
+              opened={quickBooksSettingsOpen}
+              onClose={() => setQuickBooksSettingsOpen(false)}
+              title="QuickBooks settings"
+              size="xl"
+              centered
+            >
+              <Stack gap="md">
+                <Group justify="space-between" align="flex-start">
+                  <Stack gap={2}>
+                    <Group gap="xs">
+                      <Badge
+                        size="sm"
+                        variant="light"
+                        color={accountingStatusColor(quickBooksConnection?.status)}
+                      >
+                        {accountingStatusLabel(quickBooksConnection?.status)}
+                      </Badge>
+                      <Badge size="sm" variant="light" color={quickBooksMappingReady ? 'green' : 'yellow'}>
+                        {quickBooksMappingReady ? 'Payroll mapping ready' : 'Payroll mapping needed'}
+                      </Badge>
+                    </Group>
+                    <Text size="sm" c="dimmed">
+                      Configure QuickBooks account mappings for payroll and finance line-item JournalEntry sync.
+                    </Text>
+                  </Stack>
+                  <Group gap="xs">
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      loading={quickBooksAccountsLoading}
+                      disabled={quickBooksMappingDisabled}
+                      onClick={() => void loadQuickBooksAccounts()}
+                    >
+                      {quickBooksAccounts.length ? 'Refresh accounts' : 'Load accounts'}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      disabled={quickBooksMappingDisabled}
+                      onClick={() => setQuickBooksManualMappingOpen((current) => !current)}
+                    >
+                      {quickBooksManualMappingOpen ? 'Hide manual entry' : 'Manual entry'}
+                    </Button>
+                  </Group>
+                </Group>
+
+                {quickBooksAccountsError && (
+                  <Alert color="yellow" variant="light">
+                    {quickBooksAccountsError}
+                  </Alert>
+                )}
+
+                <Paper withBorder radius="md" p="md">
+                  <Stack gap="sm">
+                    <Group justify="space-between" align="center">
+                      <Title order={6}>QuickBooks account settings</Title>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        loading={quickBooksMappingSaving}
+                        disabled={quickBooksMappingDisabled}
+                        onClick={() => void saveQuickBooksMapping()}
+                      >
+                        Save account settings
+                      </Button>
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                      Pick accounts from the connected QuickBooks chart of accounts. The finance clearing account balances revenue, refund, fee, and expense journal-entry rows.
+                    </Text>
+                    <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
+                      <Select
+                        label="Payroll expense account"
+                        placeholder={quickBooksAccounts.length ? 'Select an expense account' : 'Load accounts or use manual entry'}
+                        searchable
+                        clearable
+                        nothingFoundMessage="No accounts found"
+                        data={expenseAccountOptions}
+                        value={quickBooksMappingDraft.payrollExpenseAccountExternalId || null}
+                        onChange={selectQuickBooksExpenseAccount}
+                        disabled={quickBooksMappingDisabled}
+                        description={selectedExpenseAccount?.accountType
+                          ? `${selectedExpenseAccount.accountType}${selectedExpenseAccount.accountSubType ? ` - ${selectedExpenseAccount.accountSubType}` : ''}`
+                          : 'Expense and cost accounts appear first.'}
+                      />
+                      <Select
+                        label="Payroll liability or clearing account"
+                        placeholder={quickBooksAccounts.length ? 'Select a liability account' : 'Load accounts or use manual entry'}
+                        searchable
+                        clearable
+                        nothingFoundMessage="No accounts found"
+                        data={liabilityAccountOptions}
+                        value={quickBooksMappingDraft.payrollLiabilityAccountExternalId || null}
+                        onChange={selectQuickBooksLiabilityAccount}
+                        disabled={quickBooksMappingDisabled}
+                        description={selectedLiabilityAccount?.accountType
+                          ? `${selectedLiabilityAccount.accountType}${selectedLiabilityAccount.accountSubType ? ` - ${selectedLiabilityAccount.accountSubType}` : ''}`
+                          : 'Liability, payable, and clearing accounts appear first.'}
+                      />
+                      <Select
+                        label="Finance clearing account"
+                        placeholder={quickBooksAccounts.length ? 'Select a clearing account' : 'Load accounts or use manual entry'}
+                        searchable
+                        clearable
+                        nothingFoundMessage="No accounts found"
+                        data={clearingAccountOptions}
+                        value={quickBooksMappingDraft.financeClearingAccountExternalId || null}
+                        onChange={selectQuickBooksClearingAccount}
+                        disabled={quickBooksMappingDisabled}
+                        description={selectedClearingAccount?.accountType
+                          ? `${selectedClearingAccount.accountType}${selectedClearingAccount.accountSubType ? ` - ${selectedClearingAccount.accountSubType}` : ''}`
+                          : 'Asset, bank, receivable, and clearing accounts appear first.'}
+                      />
+                    </SimpleGrid>
+                    {quickBooksManualMappingOpen && (
+                      <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }} spacing="sm">
+                        <TextInput
+                          label="Expense account ID"
+                          value={quickBooksMappingDraft.payrollExpenseAccountExternalId}
+                          onChange={(event) => updateQuickBooksMappingDraft({
+                            payrollExpenseAccountExternalId: event.currentTarget.value,
+                          })}
+                          disabled={quickBooksMappingDisabled}
+                        />
+                        <TextInput
+                          label="Expense account name"
+                          value={quickBooksMappingDraft.payrollExpenseAccountName}
+                          onChange={(event) => updateQuickBooksMappingDraft({
+                            payrollExpenseAccountName: event.currentTarget.value,
+                          })}
+                          disabled={quickBooksMappingDisabled}
+                        />
+                        <TextInput
+                          label="Liability account ID"
+                          value={quickBooksMappingDraft.payrollLiabilityAccountExternalId}
+                          onChange={(event) => updateQuickBooksMappingDraft({
+                            payrollLiabilityAccountExternalId: event.currentTarget.value,
+                          })}
+                          disabled={quickBooksMappingDisabled}
+                        />
+                        <TextInput
+                          label="Liability account name"
+                          value={quickBooksMappingDraft.payrollLiabilityAccountName}
+                          onChange={(event) => updateQuickBooksMappingDraft({
+                            payrollLiabilityAccountName: event.currentTarget.value,
+                          })}
+                          disabled={quickBooksMappingDisabled}
+                        />
+                        <TextInput
+                          label="Finance clearing account ID"
+                          value={quickBooksMappingDraft.financeClearingAccountExternalId}
+                          onChange={(event) => {
+                            updateQuickBooksMappingDraft({
+                              financeClearingAccountExternalId: event.currentTarget.value,
+                            });
+                            setJournalPreview(null);
+                            setJournalSyncRecord(null);
+                          }}
+                          disabled={quickBooksMappingDisabled}
+                        />
+                        <TextInput
+                          label="Finance clearing account name"
+                          value={quickBooksMappingDraft.financeClearingAccountName}
+                          onChange={(event) => {
+                            updateQuickBooksMappingDraft({
+                              financeClearingAccountName: event.currentTarget.value,
+                            });
+                            setJournalPreview(null);
+                            setJournalSyncRecord(null);
+                          }}
+                          disabled={quickBooksMappingDisabled}
+                        />
+                      </SimpleGrid>
+                    )}
+                  </Stack>
+                </Paper>
+
+                <Paper withBorder radius="md" p="md">
+                  <Stack gap="sm">
+                    <Group justify="space-between" align="center">
+                      <Stack gap={2}>
+                        <Title order={6}>Financial category mappings</Title>
+                        <Text size="xs" c="dimmed">
+                          Map finance categories to QuickBooks accounts before previewing or syncing line-item JournalEntries.
+                        </Text>
+                      </Stack>
+                      <Button
+                        size="xs"
+                        variant="light"
+                        loading={categoryMappingSaving}
+                        disabled={quickBooksCategoryMappingDisabled || categoryMappingDrafts.length === 0}
+                        onClick={() => void saveCategoryAccountingMappings()}
+                      >
+                        Save category mappings
+                      </Button>
+                    </Group>
+                    {categoryMappingError && (
+                      <Alert color="red" variant="light">
+                        {categoryMappingError}
+                      </Alert>
+                    )}
+                    <ScrollArea.Autosize mah={360} type="scroll" scrollHideDelay={900} offsetScrollbars>
+                      <Table striped highlightOnHover withColumnBorders style={{ minWidth: quickBooksManualMappingOpen ? 1120 : 860 }}>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Category</Table.Th>
+                            <Table.Th>Type</Table.Th>
+                            <Table.Th>QuickBooks account</Table.Th>
+                            {quickBooksManualMappingOpen && (
+                              <>
+                                <Table.Th>Account ID</Table.Th>
+                                <Table.Th>Account name</Table.Th>
+                              </>
+                            )}
+                            <Table.Th>Notes</Table.Th>
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {categoryMappingDrafts.length > 0 ? categoryMappingDrafts.map((draft) => {
+                            const selectedCategoryAccount = getSelectedCategoryAccount(draft);
+                            return (
+                              <Table.Tr key={draft.key}>
+                                <Table.Td>
+                                  <Text size="sm" fw={600}>{draft.category}</Text>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Badge size="xs" variant="light" color={accountingEntryTypeColor(draft.entryType)}>
+                                    {accountingEntryTypeLabel(draft.entryType)}
+                                  </Badge>
+                                </Table.Td>
+                                <Table.Td>
+                                  <Select
+                                    aria-label={`QuickBooks account for ${draft.category} ${accountingEntryTypeLabel(draft.entryType)}`}
+                                    placeholder={quickBooksAccounts.length ? 'Select account' : 'Load accounts or use manual entry'}
+                                    searchable
+                                    clearable
+                                    nothingFoundMessage="No accounts found"
+                                    data={getCategoryAccountOptions(draft)}
+                                    value={draft.accountExternalId || null}
+                                    onChange={(value) => selectCategoryMappingAccount(draft.key, value)}
+                                    disabled={quickBooksCategoryMappingDisabled}
+                                    description={selectedCategoryAccount?.accountType
+                                      ? `${selectedCategoryAccount.accountType}${selectedCategoryAccount.accountSubType ? ` - ${selectedCategoryAccount.accountSubType}` : ''}`
+                                      : `${accountingEntryTypeLabel(draft.entryType)} accounts appear first.`}
+                                  />
+                                </Table.Td>
+                                {quickBooksManualMappingOpen && (
+                                  <>
+                                    <Table.Td>
+                                      <TextInput
+                                        aria-label={`Account ID for ${draft.category} ${accountingEntryTypeLabel(draft.entryType)}`}
+                                        value={draft.accountExternalId}
+                                        onChange={(event) => updateCategoryMappingDraft(draft.key, {
+                                          accountExternalId: event.currentTarget.value,
+                                        })}
+                                        disabled={quickBooksCategoryMappingDisabled}
+                                      />
+                                    </Table.Td>
+                                    <Table.Td>
+                                      <TextInput
+                                        aria-label={`Account name for ${draft.category} ${accountingEntryTypeLabel(draft.entryType)}`}
+                                        value={draft.accountName}
+                                        onChange={(event) => updateCategoryMappingDraft(draft.key, {
+                                          accountName: event.currentTarget.value,
+                                        })}
+                                        disabled={quickBooksCategoryMappingDisabled}
+                                      />
+                                    </Table.Td>
+                                  </>
+                                )}
+                                <Table.Td>
+                                  <TextInput
+                                    aria-label={`Accounting notes for ${draft.category} ${accountingEntryTypeLabel(draft.entryType)}`}
+                                    value={draft.notes}
+                                    onChange={(event) => updateCategoryMappingDraft(draft.key, {
+                                      notes: event.currentTarget.value,
+                                    })}
+                                    disabled={quickBooksCategoryMappingDisabled}
+                                  />
+                                </Table.Td>
+                              </Table.Tr>
+                            );
+                          }) : (
+                            <Table.Tr>
+                              <Table.Td colSpan={quickBooksManualMappingOpen ? 6 : 4}>
+                                <Text size="sm" c="dimmed">No finance categories are available yet.</Text>
+                              </Table.Td>
+                            </Table.Tr>
+                          )}
+                        </Table.Tbody>
+                      </Table>
+                    </ScrollArea.Autosize>
+                  </Stack>
+                </Paper>
+
+                <Paper withBorder radius="md" p="md">
+                  <Stack gap="sm">
+                    <Group justify="space-between" align="center">
+                      <Stack gap={2}>
+                        <Title order={6}>Journal entry preview</Title>
+                        <Text size="xs" c="dimmed">
+                          Preview the QuickBooks JournalEntry rows for the selected finance date range, then sync the reviewed rows when every account is mapped.
+                        </Text>
+                      </Stack>
+                      <Group gap="xs">
+                        <Button
+                          size="xs"
+                          variant="light"
+                          loading={journalPreviewLoading}
+                          disabled={quickBooksCategoryMappingDisabled || journalSyncLoading}
+                          onClick={() => void loadJournalEntryPreview()}
+                        >
+                          Preview journal entry
+                        </Button>
+                        <Button
+                          size="xs"
+                          loading={journalSyncLoading}
+                          disabled={quickBooksCategoryMappingDisabled || journalPreviewLoading || !journalPreview?.readyToSync}
+                          onClick={() => void syncJournalEntryToQuickBooks()}
+                        >
+                          Sync journal entry
+                        </Button>
+                      </Group>
+                    </Group>
+                    {journalPreviewError && (
+                      <Alert color="red" variant="light">
+                        {journalPreviewError}
+                      </Alert>
+                    )}
+                    {journalSyncError && (
+                      <Alert color="red" variant="light">
+                        {journalSyncError}
+                      </Alert>
+                    )}
+                    {journalSyncRecord?.status === 'SYNCED' && (
+                      <Alert color="green" variant="light">
+                        Synced to QuickBooks
+                        {journalSyncRecord.externalTxnType ? ` ${journalSyncRecord.externalTxnType}` : ''}
+                        {journalSyncRecord.externalTxnId ? ` ${journalSyncRecord.externalTxnId}` : ''}
+                        {journalSyncRecord.externalTxnDocNumber ? ` (${journalSyncRecord.externalTxnDocNumber})` : ''}.
+                      </Alert>
+                    )}
+                    {journalPreview && (
+                      <Stack gap="sm">
+                        <Group gap="xs">
+                          <Badge color={journalPreview.readyToSync ? 'green' : 'yellow'} variant="light">
+                            {journalPreview.readyToSync ? 'Ready to sync' : 'Needs mapping'}
+                          </Badge>
+                          <Badge color={journalPreview.isBalanced ? 'green' : 'red'} variant="light">
+                            {journalPreview.isBalanced ? 'Balanced' : 'Unbalanced'}
+                          </Badge>
+                          <Badge variant="light">
+                            {journalPreview.includedLineItemCount} line items
+                          </Badge>
+                          {journalPreview.skippedLineItemCount > 0 && (
+                            <Badge color="gray" variant="light">
+                              {journalPreview.skippedLineItemCount} skipped
+                            </Badge>
+                          )}
+                        </Group>
+                        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+                          <Stack gap={1}>
+                            <Text size="xs" fw={700} tt="uppercase" c="dimmed">Txn date</Text>
+                            <Text size="sm">{formatDate(journalPreview.txnDate)}</Text>
+                          </Stack>
+                          <Stack gap={1}>
+                            <Text size="xs" fw={700} tt="uppercase" c="dimmed">Debit total</Text>
+                            <Text size="sm" fw={700}>{centsFromDollars(journalPreview.debitTotalCents)}</Text>
+                          </Stack>
+                          <Stack gap={1}>
+                            <Text size="xs" fw={700} tt="uppercase" c="dimmed">Credit total</Text>
+                            <Text size="sm" fw={700}>{centsFromDollars(journalPreview.creditTotalCents)}</Text>
+                          </Stack>
+                        </SimpleGrid>
+                        {journalPreview.warnings.length > 0 && (
+                          <Alert color="yellow" variant="light">
+                            <Stack gap={2}>
+                              {journalPreview.warnings.map((warning) => (
+                                <Text key={warning} size="sm">{warning}</Text>
+                              ))}
+                            </Stack>
+                          </Alert>
+                        )}
+                        <ScrollArea.Autosize mah={320} type="scroll" scrollHideDelay={900} offsetScrollbars>
+                          <Table striped highlightOnHover withColumnBorders style={{ minWidth: 980 }}>
+                            <Table.Thead>
+                              <Table.Tr>
+                                <Table.Th>Line item</Table.Th>
+                                <Table.Th>Posting</Table.Th>
+                                <Table.Th>Account</Table.Th>
+                                <Table.Th>Role</Table.Th>
+                                <Table.Th>Description</Table.Th>
+                                <Table.Th ta="right">Amount</Table.Th>
+                              </Table.Tr>
+                            </Table.Thead>
+                            <Table.Tbody>
+                              {journalPreview.lines.length > 0 ? journalPreview.lines.map((line) => (
+                                <Table.Tr key={line.id}>
+                                  <Table.Td>
+                                    <Stack gap={1}>
+                                      <Text size="sm" fw={600}>{line.lineItemLabel}</Text>
+                                      <Text size="xs" c="dimmed">{line.category}</Text>
+                                    </Stack>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    <Badge
+                                      size="xs"
+                                      color={line.postingType === 'Debit' ? 'blue' : 'green'}
+                                      variant="light"
+                                    >
+                                      {line.postingType}
+                                    </Badge>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    <Stack gap={1}>
+                                      <Text size="sm" c={line.missingAccount ? 'red' : undefined} fw={line.missingAccount ? 700 : 500}>
+                                        {line.accountName || 'Missing account'}
+                                      </Text>
+                                      {line.accountExternalId && (
+                                        <Text size="xs" c="dimmed">ID {line.accountExternalId}</Text>
+                                      )}
+                                    </Stack>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    <Text size="xs" c="dimmed">
+                                      {line.role === 'CLEARING_ACCOUNT' ? 'Clearing' : 'Mapped category'}
+                                    </Text>
+                                  </Table.Td>
+                                  <Table.Td>
+                                    <Text size="xs" lineClamp={2}>{line.description}</Text>
+                                  </Table.Td>
+                                  <Table.Td ta="right">
+                                    <Text fw={700}>{centsFromDollars(line.amountCents)}</Text>
+                                  </Table.Td>
+                                </Table.Tr>
+                              )) : (
+                                <Table.Tr>
+                                  <Table.Td colSpan={6}>
+                                    <Text size="sm" c="dimmed">No journal entry rows are available for this range.</Text>
+                                  </Table.Td>
+                                </Table.Tr>
+                              )}
+                            </Table.Tbody>
+                          </Table>
+                        </ScrollArea.Autosize>
+                      </Stack>
+                    )}
+                  </Stack>
+                </Paper>
+              </Stack>
+            </Modal>
+          )}
+
+          <Paper withBorder radius="md" p="md" className="org-tab-surface">
+            <Group justify="space-between" align="flex-start" mb="sm">
+              <Stack gap={2}>
+                <Group gap="xs">
+                  <Title order={6}>QuickBooks</Title>
+                  <Badge
+                    size="sm"
+                    variant="light"
+                    color={accountingStatusColor(quickBooksConnection?.status)}
+                  >
+                    {accountingStatusLabel(quickBooksConnection?.status)}
+                  </Badge>
+                </Group>
+                <Text size="sm" c="dimmed">
+                  Accounting connection for payroll handoffs and future sync.
+                </Text>
+              </Stack>
+              {canManage && (
+                <Group gap="xs">
+                  <Button
+                    size="xs"
+                    variant="light"
+                    leftSection={<ExternalLink size={14} />}
+                    loading={quickBooksSaving}
+                    onClick={() => void connectQuickBooks()}
+                  >
+                    {quickBooksConnectionActionLabel(quickBooksConnection)}
+                  </Button>
+                  {quickBooksConnection?.status === 'CONNECTED' && (
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      color="red"
+                      loading={quickBooksSaving}
+                      onClick={() => void disconnectQuickBooks()}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
+                </Group>
+              )}
+            </Group>
+            <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }} spacing="sm">
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Company</Text>
+                <Text size="sm">
+                  {quickBooksConnection
+                    ? quickBooksConnection.externalCompanyName || accountingStatusLabel(quickBooksConnection.status)
+                    : 'Not connected'}
+                </Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Environment</Text>
+                <Text size="sm" tt="capitalize">{quickBooksConnection?.environment || 'sandbox'}</Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Connected</Text>
+                <Text size="sm">{formatDateTime(quickBooksConnection?.connectedAt)}</Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Access expires</Text>
+                <Text size="sm">{formatDateTime(quickBooksConnection?.accessTokenExpiresAt)}</Text>
+              </Stack>
+              <Stack gap={1}>
+                <Text size="xs" fw={700} tt="uppercase" c="dimmed">Last synced</Text>
+                <Text size="sm">{formatDateTime(quickBooksConnection?.lastSyncedAt)}</Text>
+              </Stack>
+            </SimpleGrid>
+            {quickBooksConnection?.lastIntuitTid && (
+              <Text mt="sm" size="xs" c="dimmed">
+                Last Intuit TID: {quickBooksConnection.lastIntuitTid}
+              </Text>
+            )}
+            {quickBooksConnection?.scopes?.length ? (
+              <Text mt="sm" size="xs" c="dimmed">
+                {quickBooksConnection.scopes.join(' ')}
+              </Text>
+            ) : null}
+            {canManage && (
+              <Group mt="md" justify="space-between" align="center">
+                <Group gap="xs">
+                  <Badge size="sm" variant="light" color={quickBooksMappingReady ? 'green' : 'yellow'}>
+                    {quickBooksMappingReady ? 'Payroll mapping ready' : 'Payroll mapping needed'}
+                  </Badge>
+                  <Badge size="sm" variant="light" color={configuredCategoryMappingCount > 0 ? 'blue' : 'gray'}>
+                    {configuredCategoryMappingCount} category mappings
+                  </Badge>
+                </Group>
+                <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<Settings2 size={14} />}
+                  aria-label="QuickBooks settings"
+                  disabled={!quickBooksConnection}
+                  onClick={() => setQuickBooksSettingsOpen(true)}
+                >
+                  Settings
+                </Button>
+              </Group>
+            )}
+            {quickBooksConnection?.lastError && (
+              <Text mt="sm" size="sm" c="red" fw={600}>
+                {quickBooksConnection.lastError}
+              </Text>
+            )}
+            {quickBooksError && (
+              <Text mt="sm" size="sm" c="red" fw={600}>
+                {quickBooksError}
+              </Text>
+            )}
+          </Paper>
+
           <Paper withBorder radius="md" p="md" className="org-tab-surface">
             <Group justify="space-between" align="flex-start" mb="sm">
               <Stack gap={2}>
@@ -1887,7 +3540,7 @@ export default function OrganizationFinancePanel({
                 size="xs"
                 variant="default"
                 leftSection={<Download size={14} />}
-                onClick={() => exportPayRunsCsv(filteredPayRuns)}
+                onClick={() => void exportPayRunsCsv(filteredPayRuns)}
               >
                 Export filtered CSV
               </Button>
@@ -1912,6 +3565,12 @@ export default function OrganizationFinancePanel({
                   type="date"
                   value={payRunEnd}
                   onChange={(event) => setPayRunEnd(event.currentTarget.value)}
+                />
+                <TextInput
+                  label="Pay date"
+                  type="date"
+                  value={payRunPayDate}
+                  onChange={(event) => setPayRunPayDate(event.currentTarget.value)}
                 />
                 <Button onClick={() => void createPayRun()} loading={payRunSaving}>
                   Create pay run
@@ -1960,20 +3619,42 @@ export default function OrganizationFinancePanel({
               />
             </SimpleGrid>
 
-            <ScrollArea.Autosize mah={420}>
-              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 840 }}>
+            <ScrollArea.Autosize mah={420} type="scroll" scrollHideDelay={900} offsetScrollbars>
+              <Table striped highlightOnHover withColumnBorders style={{ minWidth: 1040 }}>
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Pay run</Table.Th>
                     <Table.Th>Period</Table.Th>
+                    <Table.Th>Pay date</Table.Th>
                     <Table.Th>Status</Table.Th>
+                    <Table.Th>Export</Table.Th>
+                    <Table.Th>Accounting</Table.Th>
                     <Table.Th>Items</Table.Th>
                     <Table.Th ta="right">Amount</Table.Th>
                     {canManage && <Table.Th>Actions</Table.Th>}
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {filteredPayRuns.length > 0 ? filteredPayRuns.map((payRun) => (
+                  {filteredPayRuns.length > 0 ? filteredPayRuns.map((payRun) => {
+                    const quickBooksSync = getQuickBooksSync(payRun);
+                    const quickBooksSyncEligible = isQuickBooksPayRunSyncEligible(payRun);
+                    const quickBooksSyncNeedsMapping = quickBooksSyncEligible
+                      && quickBooksConnection?.status === 'CONNECTED'
+                      && !quickBooksMappingReady
+                      && quickBooksSync?.status !== 'SYNCED';
+                    const quickBooksSyncError = quickBooksSyncNeedsMapping
+                      ? 'Set QuickBooks payroll account mapping before syncing.'
+                      : quickBooksSyncErrorMessage(quickBooksSync, quickBooksConnection);
+                    const canSyncPayRunToQuickBooks = canManage
+                      && quickBooksConnection?.status === 'CONNECTED'
+                      && quickBooksMappingReady
+                      && quickBooksSyncEligible
+                      && quickBooksSync?.status !== 'SYNCED';
+                    const canReconnectQuickBooks = canManage
+                      && quickBooksConnection?.status === 'REAUTH_REQUIRED'
+                      && quickBooksSyncEligible
+                      && quickBooksSync?.status !== 'SYNCED';
+                    return (
                     <Table.Tr
                       key={payRun.id}
                       onClick={() => setSelectedPayRunId(payRun.id)}
@@ -2001,6 +3682,7 @@ export default function OrganizationFinancePanel({
                         </Stack>
                       </Table.Td>
                       <Table.Td>{formatPeriod(payRun.periodStart, payRun.periodEnd)}</Table.Td>
+                      <Table.Td>{formatDate(payRun.scheduledPayDate)}</Table.Td>
                       <Table.Td>
                         <Group gap={6}>
                           <Badge size="xs" variant="light">{payRun.status}</Badge>
@@ -2008,6 +3690,55 @@ export default function OrganizationFinancePanel({
                             {payRun.payoutStatus}
                           </Badge>
                         </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={1}>
+                          <Text size="sm" fw={payRun.exportedAt ? 600 : 400} c={payRun.exportedAt ? undefined : 'dimmed'}>
+                            {formatPayRunExportStatus(payRun)}
+                          </Text>
+                          {payRun.exportedAt && (
+                            <Text size="xs" c="dimmed">{formatDateTime(payRun.exportedAt)}</Text>
+                          )}
+                        </Stack>
+                      </Table.Td>
+                      <Table.Td>
+                        <Stack gap={2}>
+                          <Group gap={6}>
+                            <Badge
+                              size="xs"
+                              variant="light"
+                              color={quickBooksSyncNeedsMapping ? 'yellow' : quickBooksSyncStatusColor(quickBooksSync, quickBooksConnection)}
+                            >
+                              {quickBooksSyncNeedsMapping ? 'Needs mapping' : quickBooksSyncStatusLabel(quickBooksSync, quickBooksConnection)}
+                            </Badge>
+                            <Text size="xs" c="dimmed">QBO</Text>
+                          </Group>
+                          {quickBooksSync?.externalTxnId && (
+                            <Text size="xs" c="dimmed">
+                              {quickBooksSync.externalTxnType ?? 'Txn'} {quickBooksSync.externalTxnDocNumber || quickBooksSync.externalTxnId}
+                            </Text>
+                          )}
+                          {quickBooksSync?.syncedAt && (
+                            <Text size="xs" c="dimmed">{formatDateTime(quickBooksSync.syncedAt)}</Text>
+                          )}
+                          {quickBooksSync?.intuitTid && (
+                            <Text size="xs" c="dimmed">TID {quickBooksSync.intuitTid}</Text>
+                          )}
+                          {quickBooksSyncError && (
+                            <Text
+                              size="xs"
+                              c={
+                                quickBooksSyncNeedsMapping
+                                  ? 'orange'
+                                  : isRetryableQuickBooksReauthSync(quickBooksSync, quickBooksConnection)
+                                    ? 'blue'
+                                    : 'red'
+                              }
+                            >
+                              {quickBooksSyncError}
+                            </Text>
+                          )}
+                        </Stack>
                       </Table.Td>
                       <Table.Td>{payRun.itemCount}</Table.Td>
                       <Table.Td ta="right">
@@ -2022,11 +3753,41 @@ export default function OrganizationFinancePanel({
                               leftSection={<Download size={12} />}
                               onClick={(event) => {
                                 event.stopPropagation();
-                                exportPayRunsCsv([payRun], `${payRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`);
+                                void exportPayRunsCsv([payRun], `${payRun.title.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}-payroll.csv`);
                               }}
                             >
                               Export
                             </Button>
+                            {(payRun.status === 'APPROVED' || payRun.status === 'PAID') && (
+                              <>
+                                {canReconnectQuickBooks && (
+                                  <Button
+                                    size="xs"
+                                    variant="light"
+                                    leftSection={<ExternalLink size={12} />}
+                                    loading={quickBooksSaving}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void connectQuickBooks();
+                                    }}
+                                  >
+                                    Reconnect QBO
+                                  </Button>
+                                )}
+                                <Button
+                                  size="xs"
+                                  variant="light"
+                                  disabled={!canSyncPayRunToQuickBooks}
+                                  loading={syncingQuickBooksPayRunId === payRun.id}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void syncPayRunToQuickBooks(payRun);
+                                  }}
+                                >
+                                  {quickBooksPayRunActionLabel(quickBooksSync)}
+                                </Button>
+                              </>
+                            )}
                             {payRun.status !== 'PAID' && payRun.status !== 'VOID' && (
                               <Button
                                 size="xs"
@@ -2085,9 +3846,10 @@ export default function OrganizationFinancePanel({
                         </Table.Td>
                       )}
                     </Table.Tr>
-                  )) : (
+                    );
+                  }) : (
                     <Table.Tr>
-                      <Table.Td colSpan={canManage ? 6 : 5}>
+                      <Table.Td colSpan={canManage ? 9 : 8}>
                         <Text size="sm" c="dimmed">No staff pay runs match the current filters.</Text>
                       </Table.Td>
                     </Table.Tr>

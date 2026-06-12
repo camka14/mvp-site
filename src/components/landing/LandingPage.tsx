@@ -76,7 +76,7 @@ const featureSections = [
     eyebrow: 'Scheduling',
     visualLabel: 'Live resource board',
     title: 'Schedule courts fast.',
-    storyCopy: 'Build court and field blocks for sports events, then spot conflicts before the schedule goes live.',
+    storyCopy: 'Build court and field blocks for events, leagues, and tournaments, then spot conflicts before the schedule goes live.',
     points: ['Courts + fields', 'Conflict checks'],
     details: ['Place resources quickly', 'See conflicts before publishing', 'Keep the full day visible'],
     webImage: {
@@ -120,7 +120,7 @@ const featureSections = [
     eyebrow: 'Payments',
     visualLabel: 'Checkout summary',
     title: 'Payments, reconciled.',
-    storyCopy: 'Collect event fees online, match payment records, and keep refunds tied to the right team or player.',
+    storyCopy: 'Collect registration fees online, match payment records, and keep refunds tied to the right team or player.',
     points: ['Checkout', 'Refunds'],
     details: ['Collect from mobile', 'Match Stripe records', 'Handle refunds cleanly'],
     webImage: {
@@ -242,11 +242,11 @@ const commandStats = [
 const platformColumns = [
   {
     label: 'Organizer console',
-    title: 'A web dashboard for facility and tournament operations.',
+    title: 'A web dashboard for events, leagues, tournaments, and teams.',
     points: [
       'Create events, leagues, and tournaments',
       'Manage teams, divisions, schedules',
-      'Handle payments, payouts, and billing',
+      'Coordinate registration, rosters, and staff',
       'Broadcast updates and announcements',
       'Track documents and waivers',
     ],
@@ -282,7 +282,7 @@ const workflowSteps = [
   {
     label: 'Build',
     title: 'Set up the operating model',
-    detail: 'Create the event, divisions, fields, documents, pricing, and registration paths from one clean admin surface.',
+    detail: 'Create the event, divisions, fields, documents, team rules, and registration paths from one clean admin surface.',
   },
   {
     label: 'Publish',
@@ -786,8 +786,8 @@ function StaticOperationsContent({ landingImageProps }: { landingImageProps: Lan
         </h2>
 
         <p className="landing-static-operations-copy mt-5 max-w-xl text-base font-semibold leading-7 text-slate-600">
-          BracketIQ connects scheduling, teams, payments, documents, communication, and live operations in one
-          tournament management engine.
+          BracketIQ connects scheduling, teams, brackets, documents, communication, and live operations in one
+          sports management workspace.
         </p>
       </div>
 
@@ -924,7 +924,7 @@ export default function LandingPage({
                 Run every event from one home.
               </h1>
               <p className="landing-copy mx-auto max-w-2xl text-base sm:text-lg">
-                BracketIQ gives organizers one place to publish events, manage schedules, collect payments, and keep every participant updated.
+                BracketIQ gives organizers one place to run events, leagues, tournaments, teams, payments, and participant updates.
               </p>
             </div>
 
@@ -1050,8 +1050,8 @@ export default function LandingPage({
           <div className="landing-platform-layout">
             <div className="landing-platform-intro">
               <h2 className="landing-platform-title">
-                Run tournaments from the web.
-                <span>Keep everyone updated from mobile.</span>
+                Run events from the web.
+                <span>Keep teams updated from mobile.</span>
               </h2>
             </div>
             {platformColumns.map((column) => {
@@ -1149,7 +1149,7 @@ export default function LandingPage({
               <h2 className="landing-section-title mt-3">Your site stays live.</h2>
               <p className="landing-section-copy mt-5">
                 Publish schedules, brackets, registration, payments, and documents from BracketIQ to the website your
-                facility already uses.
+                organization already uses.
               </p>
               <div className="landing-integration-chip-row" aria-label="Website integration capabilities">
                 {['Event pages', 'Embeds', 'Checkout', 'Documents'].map((item) => (
@@ -1198,7 +1198,7 @@ export default function LandingPage({
           <div className="landing-use-case-row">
             <div className="landing-use-case-copy">
               <p className="landing-label">Use cases</p>
-              <h3>One operating layer for the programs that fill your facility.</h3>
+              <h3>One operating layer for sports programs, clubs, and event organizers.</h3>
               <p>
                 Mix leagues, rentals, camps, clubs, and tournaments without changing systems for each format.
               </p>
@@ -1219,7 +1219,7 @@ export default function LandingPage({
                 <Image
                   {...landingImageProps}
                   src="/landing/org_home_web.png"
-                  alt="Facility operations dashboard for mixed programs"
+                  alt="Sports operations dashboard for mixed programs"
                   width={1919}
                   height={909}
                   sizes="(min-width: 1280px) 760px, (min-width: 768px) 58vw, 100vw"
@@ -1288,7 +1288,7 @@ export default function LandingPage({
               <p className="landing-label">Free To Use</p>
               <h2 className="landing-section-title mt-3">Free to use. Pay only on processing.</h2>
               <p className="landing-section-copy mt-4">
-                Run events without a subscription. BracketIQ only takes a 1-3% fee when payments are processed.
+                Run events, leagues, and tournaments without a subscription. BracketIQ only takes a 1-3% fee when payments are processed.
               </p>
             </div>
 
@@ -1352,12 +1352,12 @@ export default function LandingPage({
 
         <div className="relative mx-auto max-w-7xl px-5 py-28 lg:px-8">
           <h2 className="max-w-5xl text-6xl font-black leading-[0.92] text-white sm:text-7xl lg:text-8xl">
-            Run the whole tournament, not just the bracket.
+            Run the whole sports calendar, not just the bracket.
           </h2>
 
           <p className="mt-6 max-w-2xl text-lg font-semibold leading-8 text-white/65">
-            BracketIQ keeps courts, teams, payments, documents, updates, and live operations connected from setup
-            through championship day.
+            BracketIQ keeps schedules, teams, brackets, documents, updates, and live operations connected from setup
+            through the final match.
           </p>
 
           <div className="mt-10 flex flex-wrap gap-3">

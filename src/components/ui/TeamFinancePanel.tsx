@@ -3,24 +3,34 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Badge,
-  Box,
   Button,
   Group,
   Loader,
   Modal,
   NumberInput,
   Paper,
+  Popover,
+  ScrollArea,
   Select,
   SimpleGrid,
   Stack,
   Table,
   Text,
+  Textarea,
   TextInput,
   Title,
 } from '@mantine/core';
+import { ExternalLink, UserRound } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { apiRequest, isApiRequestError } from '@/lib/apiClient';
 import { formatBillAmount } from '@/types';
+import {
+  buildOrganizationCustomerPath,
+  buildOrganizationTabPath,
+  type OrganizationCustomerRouteType,
+} from '@/app/organizations/[id]/organizationTabs';
 
 type FinanceLineItemClassification =
   | 'revenue'
@@ -39,8 +49,17 @@ type FinanceLineItem = {
   sourceId?: string | null;
   scope: 'EVENT' | 'TEAM' | 'ORGANIZATION' | 'EVENT_TEAM';
   label: string;
+  sourceName?: string | null;
+  sourceEntityType?: 'event' | 'rental' | 'organization' | 'team' | null;
+  sourceEntityId?: string | null;
+  customerType?: OrganizationCustomerRouteType | null;
+  customerId?: string | null;
+  customerName?: string | null;
+  description?: string | null;
   category: string;
   amountCents: number;
+  quantity?: number | null;
+  unitLabel?: string | null;
   classification: FinanceLineItemClassification;
   status: string;
   timing: FinanceLineItemTiming;
@@ -75,6 +94,7 @@ type TeamFinanceResponse = {
 };
 
 type StaffLaborStatus = 'PLANNED' | 'ACTUAL';
+type LineItemStatus = 'ESTIMATED' | 'APPROVED' | 'ACTUAL' | 'PAID' | 'VOID';
 
 type TeamFinanceStaffMemberOption = {
   id: string;
@@ -97,6 +117,10 @@ type TeamFinancePanelProps = {
 };
 
 type MetricTone = 'green' | 'red' | 'orange' | 'gray';
+type LineItemNavigationTarget = {
+  label: string;
+  href: string;
+};
 
 const classificationLabels: Record<FinanceLineItemClassification, string> = {
   revenue: 'Revenue',
@@ -127,6 +151,18 @@ const timingColors: Record<FinanceLineItemTiming, string> = {
   WARNING: 'yellow',
 };
 
+const LINE_ITEM_STATUS_OPTIONS = [
+  { value: 'ESTIMATED', label: 'Estimated' },
+  { value: 'APPROVED', label: 'Approved' },
+  { value: 'ACTUAL', label: 'Incurred' },
+  { value: 'PAID', label: 'Paid' },
+  { value: 'VOID', label: 'Void' },
+] satisfies Array<{ value: LineItemStatus; label: string }>;
+
+const LINE_ITEM_STATUS_LABELS = new Map<LineItemStatus, string>(
+  LINE_ITEM_STATUS_OPTIONS.map((option) => [option.value, option.label]),
+);
+
 const dateInputValue = (date = new Date()): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -134,12 +170,24 @@ const dateInputValue = (date = new Date()): string => {
   return `${year}-${month}-${day}`;
 };
 
-const dateInputToIso = (value: string): string | null => {
+const dateInputToIso = (value: string, endOfDay = false): string | null => {
   if (!value.trim()) {
     return null;
   }
-  const parsed = new Date(`${value}T00:00:00`);
+  const suffix = endOfDay ? 'T23:59:59.999' : 'T00:00:00.000';
+  const parsed = new Date(`${value}${suffix}`);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+};
+
+const dateValueFromIso = (value?: string | null): string => {
+  if (!value) {
+    return '';
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return dateInputValue(parsed);
 };
 
 const dateTimeInputToIso = (dateValue: string, timeValue: string): string | null => {
@@ -164,6 +212,13 @@ const addMinutesToIso = (isoValue: string, minutes: number): string | null => {
 const centsFromDollars = (value: string | number): number => {
   const numericValue = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numericValue) ? Math.round(numericValue * 100) : 0;
+};
+
+const dollarsFromCents = (amountCents: number | null | undefined): string => {
+  if (!Number.isFinite(amountCents)) {
+    return '';
+  }
+  return (Number(amountCents) / 100).toFixed(2);
 };
 
 const positiveIntegerFromInput = (value: string | number): number => {
@@ -198,6 +253,28 @@ const formatLineItemPeriod = (item: FinanceLineItem): string => {
     return `${start} - ${end}`;
   }
   return start ?? end ?? 'No date';
+};
+
+const formatLineItemStatus = (status: string): string => (
+  LINE_ITEM_STATUS_LABELS.get(status as LineItemStatus)?.toUpperCase() ?? status
+);
+
+const formatLineItemTiming = (timing: FinanceLineItemTiming): string => (
+  timing === 'ACTUAL' ? 'CURRENT' : timing
+);
+
+const formatQuantityAndUnit = (quantity?: number | null, unitLabel?: string | null): string => {
+  const normalizedUnit = unitLabel?.trim();
+  if (quantity == null || !Number.isFinite(quantity)) {
+    return normalizedUnit || '-';
+  }
+  const quantityLabel = Number.isInteger(quantity)
+    ? String(quantity)
+    : quantity.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const displayUnit = quantity === 1 && normalizedUnit === 'hours'
+    ? 'hour'
+    : normalizedUnit;
+  return displayUnit ? `${quantityLabel} ${displayUnit}` : quantityLabel;
 };
 
 const messageForError = (error: unknown, fallback: string): string => {
@@ -246,12 +323,16 @@ function FinanceMetricCard({
 }
 
 function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
+  const otherCostCents = Math.max(
+    0,
+    finance.actualCostCents - finance.eventRegistrationCostCents - finance.staffCostCents,
+  );
   const maxValue = Math.max(
     finance.actualRevenueCents,
-    finance.actualCostCents,
     Math.abs(finance.actualProfitCents),
     finance.eventRegistrationCostCents,
     finance.staffCostCents,
+    otherCostCents,
     finance.futureCostCents,
     1,
   );
@@ -263,13 +344,7 @@ function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
       colorClassName: 'bg-green-500',
     },
     {
-      label: 'Team costs',
-      amountCents: finance.actualCostCents,
-      displayCents: -finance.actualCostCents,
-      colorClassName: 'bg-red-500',
-    },
-    {
-      label: 'Event registrations',
+      label: 'Event registration costs',
       amountCents: finance.eventRegistrationCostCents,
       displayCents: -finance.eventRegistrationCostCents,
       colorClassName: 'bg-red-500',
@@ -281,13 +356,19 @@ function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
       colorClassName: 'bg-red-600',
     },
     {
+      label: 'Other costs',
+      amountCents: otherCostCents,
+      displayCents: -otherCostCents,
+      colorClassName: 'bg-red-400',
+    },
+    {
       label: 'Future costs',
       amountCents: finance.futureCostCents,
       displayCents: -finance.futureCostCents,
       colorClassName: 'bg-orange-500',
     },
     {
-      label: finance.actualProfitCents >= 0 ? 'Actual profit' : 'Actual loss',
+      label: 'Current profit/loss',
       amountCents: Math.abs(finance.actualProfitCents),
       displayCents: finance.actualProfitCents,
       colorClassName: finance.actualProfitCents >= 0 ? 'bg-green-600' : 'bg-red-600',
@@ -298,7 +379,7 @@ function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
     <Paper withBorder radius="md" p="md">
       <Stack gap="sm">
         <Group justify="space-between" align="center">
-          <Text fw={700}>Team cost analysis</Text>
+          <Text fw={700}>Team profit analysis</Text>
           <Badge color={finance.projectedProfitCents >= 0 ? 'green' : 'red'} variant="light">
             Projected {formatSignedAmount(finance.projectedProfitCents)}
           </Badge>
@@ -347,12 +428,17 @@ export default function TeamFinancePanel({
   isActive,
   canManage,
 }: TeamFinancePanelProps) {
+  const router = useRouter();
   const [finance, setFinance] = useState<TeamFinanceSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [costCategory, setCostCategory] = useState('Operations');
   const [costTitle, setCostTitle] = useState('');
+  const [costDescription, setCostDescription] = useState('');
   const [costAmount, setCostAmount] = useState<string | number>('');
+  const [costStatus, setCostStatus] = useState<LineItemStatus>('ACTUAL');
+  const [costQuantity, setCostQuantity] = useState<string | number>('');
+  const [costUnitLabel, setCostUnitLabel] = useState('');
   const [costStartDate, setCostStartDate] = useState(() => dateInputValue());
   const [costEndDate, setCostEndDate] = useState('');
   const costStartDateInputRef = useRef<HTMLInputElement>(null);
@@ -361,6 +447,7 @@ export default function TeamFinancePanel({
   const [costError, setCostError] = useState<string | null>(null);
   const [costInfo, setCostInfo] = useState<string | null>(null);
   const [customCostModalOpen, setCustomCostModalOpen] = useState(false);
+  const [editingCostItem, setEditingCostItem] = useState<FinanceLineItem | null>(null);
   const [staffOptions, setStaffOptions] = useState<TeamFinanceStaffMemberOption[]>([]);
   const [staffOptionsLoading, setStaffOptionsLoading] = useState(false);
   const [staffOptionsError, setStaffOptionsError] = useState<string | null>(null);
@@ -404,8 +491,9 @@ export default function TeamFinancePanel({
     setStaffOptionsError(null);
     try {
       const response = await apiRequest<TeamFinanceStaffOptionsResponse>(`/api/teams/${teamId}/finance/staff`);
-      setStaffOptions(response.staffMembers);
-      setLaborStaffMemberId((current) => current ?? response.staffMembers[0]?.id ?? null);
+      const staffMembers = Array.isArray(response.staffMembers) ? response.staffMembers : [];
+      setStaffOptions(staffMembers);
+      setLaborStaffMemberId((current) => current ?? staffMembers[0]?.id ?? null);
     } catch (loadError) {
       setStaffOptionsError(messageForError(loadError, 'Failed to load staff options.'));
       setStaffOptions([]);
@@ -430,6 +518,22 @@ export default function TeamFinancePanel({
     ].filter(Boolean).join(' '),
   })), [staffOptions]);
 
+  const lineItemCategoryOptions = useMemo(() => {
+    const categoriesByKey = new Map<string, string>();
+    ['Operations', costCategory, ...(finance?.lineItems ?? []).map((item) => item.category)]
+      .forEach((category) => {
+        const normalizedCategory = category.trim();
+        if (!normalizedCategory) {
+          return;
+        }
+        const key = normalizedCategory.toLowerCase();
+        if (!categoriesByKey.has(key)) {
+          categoriesByKey.set(key, normalizedCategory);
+        }
+      });
+    return [...categoriesByKey.values()].sort((a, b) => a.localeCompare(b));
+  }, [costCategory, finance?.lineItems]);
+
   const sortedLineItems = useMemo(() => {
     if (!finance) {
       return [];
@@ -453,14 +557,102 @@ export default function TeamFinancePanel({
     });
   }, [finance]);
 
-  const handleAddCost = async () => {
+  const resetCostDraft = useCallback(() => {
+    setEditingCostItem(null);
+    setCostCategory('Operations');
+    setCostTitle('');
+    setCostDescription('');
+    setCostAmount('');
+    setCostStatus('ACTUAL');
+    setCostQuantity('');
+    setCostUnitLabel('');
+    setCostStartDate(dateInputValue());
+    setCostEndDate('');
+  }, []);
+
+  const openNewCostModal = useCallback(() => {
+    resetCostDraft();
+    setCostError(null);
+    setCostInfo(null);
+    setCustomCostModalOpen(true);
+  }, [resetCostDraft]);
+
+  const openEditCostModal = useCallback((item: FinanceLineItem) => {
+    if (item.isGenerated || !item.sourceId) {
+      return;
+    }
+    setEditingCostItem(item);
+    setCostCategory(item.category);
+    setCostTitle(item.label);
+    setCostDescription(item.description ?? '');
+    setCostAmount(dollarsFromCents(Math.abs(item.amountCents)));
+    setCostStatus(LINE_ITEM_STATUS_OPTIONS.some((option) => option.value === item.status)
+      ? item.status as LineItemStatus
+      : 'ACTUAL');
+    setCostQuantity(item.quantity ?? '');
+    setCostUnitLabel(item.unitLabel ?? '');
+    setCostStartDate(dateValueFromIso(item.serviceStartAt));
+    setCostEndDate(dateValueFromIso(item.serviceEndAt));
+    setCostError(null);
+    setCostInfo(null);
+    setCustomCostModalOpen(true);
+  }, []);
+
+  const getLineItemSourceTarget = useCallback((item: FinanceLineItem): LineItemNavigationTarget | null => {
+    if (!organizationId) {
+      return null;
+    }
+    const sourceId = item.sourceEntityId?.trim();
+    const sourceType = item.sourceEntityType;
+    if (!sourceId || !sourceType) {
+      return null;
+    }
+    const label = item.sourceName?.trim() || 'Source';
+    if (sourceType === 'event') {
+      return { label, href: `/events/${encodeURIComponent(sourceId)}?tab=details` };
+    }
+    if (sourceType === 'rental') {
+      return { label, href: buildOrganizationTabPath(organizationId, 'fields') };
+    }
+    if (sourceType === 'team') {
+      return { label, href: buildOrganizationCustomerPath(organizationId, 'teams', sourceId) };
+    }
+    if (sourceType === 'organization') {
+      return { label, href: buildOrganizationTabPath(organizationId, 'overview') };
+    }
+    return null;
+  }, [organizationId]);
+
+  const getLineItemCustomerTarget = useCallback((item: FinanceLineItem): LineItemNavigationTarget | null => {
+    if (!organizationId) {
+      return null;
+    }
+    const customerId = item.customerId?.trim();
+    const customerType = item.customerType;
+    if (!customerId || (customerType !== 'users' && customerType !== 'teams')) {
+      return null;
+    }
+    return {
+      label: item.customerName?.trim() || (customerType === 'teams' ? 'Team customer' : 'Customer'),
+      href: buildOrganizationCustomerPath(organizationId, customerType, customerId),
+    };
+  }, [organizationId]);
+
+  const navigateToLineItemTarget = useCallback((target: LineItemNavigationTarget | null) => {
+    if (!target) {
+      return;
+    }
+    router.push(target.href);
+  }, [router]);
+
+  const handleSaveCost = async () => {
     if (!organizationId) {
       setCostError('This team is not linked to an organization.');
       return;
     }
     const amountCents = centsFromDollars(costAmount);
     const serviceStartAt = dateInputToIso(costStartDateInputRef.current?.value ?? costStartDate);
-    const serviceEndAt = dateInputToIso(costEndDateInputRef.current?.value ?? costEndDate);
+    const serviceEndAt = dateInputToIso(costEndDateInputRef.current?.value ?? costEndDate, true);
     if (!costTitle.trim() || !costCategory.trim() || amountCents <= 0 || !serviceStartAt) {
       setCostError('Enter a title, category, amount greater than 0, and start date.');
       return;
@@ -469,33 +661,49 @@ export default function TeamFinancePanel({
       setCostError('End date must be on or after the start date.');
       return;
     }
+    const quantity = costQuantity === '' ? null : Number(costQuantity);
+    if (quantity != null && (!Number.isFinite(quantity) || quantity <= 0)) {
+      setCostError('Quantity must be greater than zero.');
+      return;
+    }
 
     setSavingCost(true);
     setCostError(null);
     setCostInfo(null);
     try {
-      await apiRequest(`/api/organizations/${organizationId}/finance/line-items`, {
-        method: 'POST',
-        body: {
-          scope: 'TEAM',
-          teamId,
-          category: costCategory.trim(),
-          title: costTitle.trim(),
-          amountCents,
-          status: 'ACTUAL',
-          serviceStartAt,
-          serviceEndAt,
-        },
-      });
-      setCostInfo('Team cost added.');
-      setCostTitle('');
-      setCostAmount('');
-      setCostStartDate(dateInputValue());
-      setCostEndDate('');
+      const body = {
+        category: costCategory.trim(),
+        title: costTitle.trim(),
+        description: costDescription.trim() || null,
+        amountCents,
+        quantity,
+        unitLabel: costUnitLabel.trim() || null,
+        status: costStatus,
+        occurredAt: serviceStartAt,
+        serviceStartAt,
+        serviceEndAt,
+      };
+      if (editingCostItem?.sourceId) {
+        await apiRequest(`/api/organizations/${organizationId}/finance/line-items/${editingCostItem.sourceId}`, {
+          method: 'PATCH',
+          body,
+        });
+      } else {
+        await apiRequest(`/api/organizations/${organizationId}/finance/line-items`, {
+          method: 'POST',
+          body: {
+            scope: 'TEAM',
+            teamId,
+            ...body,
+          },
+        });
+      }
+      setCostInfo(editingCostItem ? 'Team cost updated.' : 'Team cost added.');
       setCustomCostModalOpen(false);
+      resetCostDraft();
       await loadFinance();
     } catch (saveError) {
-      setCostError(messageForError(saveError, 'Failed to add team cost.'));
+      setCostError(messageForError(saveError, 'Failed to save team cost.'));
     } finally {
       setSavingCost(false);
     }
@@ -583,6 +791,82 @@ export default function TeamFinancePanel({
   const actualProfitTone: MetricTone = finance.actualProfitCents >= 0 ? 'green' : 'red';
   const projectedProfitTone: MetricTone = finance.projectedProfitCents >= 0 ? 'green' : 'red';
 
+  const renderLineItemName = (item: FinanceLineItem, canEditLineItem: boolean) => {
+    if (canEditLineItem) {
+      return (
+        <button
+          type="button"
+          aria-label={`Edit ${item.label}`}
+          className="block w-full border-0 bg-transparent p-0 text-left"
+          onClick={(event) => {
+            event.stopPropagation();
+            openEditCostModal(item);
+          }}
+        >
+          <Stack gap={1}>
+            <Text size="sm" fw={600}>{item.label}</Text>
+            <Text size="xs" c="dimmed">Custom</Text>
+          </Stack>
+        </button>
+      );
+    }
+
+    const sourceTarget = item.isGenerated ? getLineItemSourceTarget(item) : null;
+    const customerTarget = item.isGenerated ? getLineItemCustomerTarget(item) : null;
+    if (item.isGenerated && (sourceTarget || customerTarget)) {
+      return (
+        <Popover width={280} position="bottom-start" shadow="md" withArrow withinPortal>
+          <Popover.Target>
+            <button
+              type="button"
+              aria-label={`Open actions for ${item.label}`}
+              className="block w-full border-0 bg-transparent p-0 text-left"
+              onClick={(event) => event?.stopPropagation?.()}
+            >
+              <Stack gap={1}>
+                <Text size="sm" fw={600}>{item.label}</Text>
+                <Text size="xs" c="dimmed">Generated</Text>
+              </Stack>
+            </button>
+          </Popover.Target>
+          <Popover.Dropdown>
+            <Stack gap={4}>
+              <Button
+                size="xs"
+                variant="subtle"
+                justify="flex-start"
+                aria-label={`Go to "${sourceTarget?.label ?? 'Source'}"`}
+                leftSection={<ExternalLink size={14} />}
+                disabled={!sourceTarget}
+                onClick={() => navigateToLineItemTarget(sourceTarget)}
+              >
+                Go to &quot;{sourceTarget?.label ?? 'Source'}&quot;
+              </Button>
+              <Button
+                size="xs"
+                variant="subtle"
+                justify="flex-start"
+                aria-label={`Go to "${customerTarget?.label ?? 'Customer'}"`}
+                leftSection={<UserRound size={14} />}
+                disabled={!customerTarget}
+                onClick={() => navigateToLineItemTarget(customerTarget)}
+              >
+                Go to &quot;{customerTarget?.label ?? 'Customer'}&quot;
+              </Button>
+            </Stack>
+          </Popover.Dropdown>
+        </Popover>
+      );
+    }
+
+    return (
+      <Stack gap={1}>
+        <Text size="sm" fw={600}>{item.label}</Text>
+        <Text size="xs" c="dimmed">{item.isGenerated ? 'Generated' : 'Custom'}</Text>
+      </Stack>
+    );
+  };
+
   return (
     <Stack gap="md">
       <Group justify="space-between" align="flex-start">
@@ -611,7 +895,7 @@ export default function TeamFinancePanel({
           description="Confirmed team revenue attributed to this team."
         />
         <FinanceMetricCard
-          label="Costs"
+          label="Total costs"
           amountCents={-finance.actualCostCents}
           tone="red"
           description="Event registration costs, staff labor, fees, and custom costs."
@@ -683,11 +967,7 @@ export default function TeamFinancePanel({
               <Group gap="xs">
                 <Button
                   variant="default"
-                  onClick={() => {
-                    setCostError(null);
-                    setCostInfo(null);
-                    setCustomCostModalOpen(true);
-                  }}
+                  onClick={openNewCostModal}
                 >
                   Add custom cost
                 </Button>
@@ -723,93 +1003,124 @@ export default function TeamFinancePanel({
           ) : (
             <>
               <Stack gap="sm" hiddenFrom="sm">
-                {sortedLineItems.map((item) => (
-                  <Paper key={item.id} withBorder radius="md" p="sm">
-                    <Stack gap="xs">
-                      <Group justify="space-between" align="flex-start" wrap="nowrap" gap="sm">
-                        <Stack gap={4} className="min-w-0">
-                          <Text size="sm" fw={600}>{item.label}</Text>
-                          <Group gap={6} wrap="wrap">
-                            <Badge
-                              color={classificationColors[item.classification]}
-                              variant="light"
-                              size="sm"
-                            >
-                              {classificationLabels[item.classification]}
-                            </Badge>
-                            <Badge variant="outline" color={item.isGenerated ? 'gray' : 'blue'} size="sm">
-                              {item.isGenerated ? 'Generated' : 'Custom'}
-                            </Badge>
-                            <Badge variant="light" color={timingColors[item.timing]} size="sm">
-                              {item.timing.toLowerCase()}
-                            </Badge>
-                          </Group>
-                        </Stack>
-                        <FinanceLineItemAmount item={item} />
-                      </Group>
+                {sortedLineItems.map((item) => {
+                  const canEditLineItem = canManage && !item.isGenerated && Boolean(item.sourceId);
+                  return (
+                    <Paper
+                      key={item.id}
+                      withBorder
+                      radius="md"
+                      p="sm"
+                      data-testid={canEditLineItem ? `team-finance-line-item-${item.sourceId}` : undefined}
+                      onClick={canEditLineItem ? () => openEditCostModal(item) : undefined}
+                      style={{ cursor: canEditLineItem ? 'pointer' : undefined }}
+                    >
+                      <Stack gap="xs">
+                        <Group justify="space-between" align="flex-start" wrap="nowrap" gap="sm">
+                          <Stack gap={4} className="min-w-0">
+                            {renderLineItemName(item, canEditLineItem)}
+                            <Group gap={6} wrap="wrap">
+                              <Badge
+                                color={classificationColors[item.classification]}
+                                variant="light"
+                                size="sm"
+                              >
+                                {classificationLabels[item.classification]}
+                              </Badge>
+                              <Badge variant="light" color={timingColors[item.timing]} size="sm">
+                                {formatLineItemTiming(item.timing).toLowerCase()}
+                              </Badge>
+                            </Group>
+                          </Stack>
+                          <FinanceLineItemAmount item={item} />
+                        </Group>
 
-                      <SimpleGrid cols={2} spacing="xs">
-                        <div>
-                          <Text size="xs" c="dimmed">Category</Text>
-                          <Text size="sm">{item.category}</Text>
-                        </div>
-                        <div>
-                          <Text size="xs" c="dimmed">Period</Text>
-                          <Text size="sm">{formatLineItemPeriod(item)}</Text>
-                        </div>
-                      </SimpleGrid>
-                    </Stack>
-                  </Paper>
-                ))}
+                        <SimpleGrid cols={2} spacing="xs">
+                          <div>
+                            <Text size="xs" c="dimmed">Category</Text>
+                            <Text size="sm">{item.category}</Text>
+                          </div>
+                          <div>
+                            <Text size="xs" c="dimmed">Period</Text>
+                            <Text size="sm">{formatLineItemPeriod(item)}</Text>
+                          </div>
+                          <div>
+                            <Text size="xs" c="dimmed">Quantity</Text>
+                            <Text size="sm">{formatQuantityAndUnit(item.quantity, item.unitLabel)}</Text>
+                          </div>
+                          <div>
+                            <Text size="xs" c="dimmed">Status</Text>
+                            <Text size="sm">{formatLineItemStatus(item.status)}</Text>
+                          </div>
+                        </SimpleGrid>
+                      </Stack>
+                    </Paper>
+                  );
+                })}
               </Stack>
 
-              <Box visibleFrom="sm" className="overflow-x-auto">
-                <Table striped highlightOnHover>
+              <ScrollArea.Autosize visibleFrom="sm" mah={440} type="scroll" scrollHideDelay={900} offsetScrollbars>
+                <Table striped highlightOnHover withColumnBorders style={{ minWidth: 900 }}>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Item</Table.Th>
                       <Table.Th>Category</Table.Th>
                       <Table.Th>Period</Table.Th>
-                      <Table.Th>Timing</Table.Th>
+                      <Table.Th>Quantity</Table.Th>
+                      <Table.Th>Status</Table.Th>
                       <Table.Th>Source</Table.Th>
                       <Table.Th ta="right">Amount</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {sortedLineItems.map((item) => (
-                      <Table.Tr key={item.id}>
-                        <Table.Td>
-                          <Stack gap={2}>
-                            <Text size="sm" fw={600}>{item.label}</Text>
-                            <Badge
-                              color={classificationColors[item.classification]}
-                              variant="light"
-                              size="sm"
-                            >
-                              {classificationLabels[item.classification]}
+                    {sortedLineItems.map((item) => {
+                      const canEditLineItem = canManage && !item.isGenerated && Boolean(item.sourceId);
+                      return (
+                        <Table.Tr
+                          key={item.id}
+                          data-testid={canEditLineItem ? `team-finance-line-item-${item.sourceId}` : undefined}
+                          onClick={canEditLineItem ? () => openEditCostModal(item) : undefined}
+                          style={{ cursor: canEditLineItem ? 'pointer' : undefined }}
+                        >
+                          <Table.Td>
+                            <Stack gap={2}>
+                              {renderLineItemName(item, canEditLineItem)}
+                              <Badge
+                                color={classificationColors[item.classification]}
+                                variant="light"
+                                size="sm"
+                              >
+                                {classificationLabels[item.classification]}
+                              </Badge>
+                            </Stack>
+                          </Table.Td>
+                          <Table.Td>{item.category}</Table.Td>
+                          <Table.Td>{formatLineItemPeriod(item)}</Table.Td>
+                          <Table.Td>{formatQuantityAndUnit(item.quantity, item.unitLabel)}</Table.Td>
+                          <Table.Td>
+                            <Group gap={6}>
+                              <Badge variant="light" color="gray">
+                                {formatLineItemStatus(item.status)}
+                              </Badge>
+                              <Badge variant="light" color={timingColors[item.timing]}>
+                                {formatLineItemTiming(item.timing)}
+                              </Badge>
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge variant="outline" color={item.isGenerated ? 'gray' : 'blue'}>
+                              {item.isGenerated ? 'Generated' : 'Custom'}
                             </Badge>
-                          </Stack>
-                        </Table.Td>
-                        <Table.Td>{item.category}</Table.Td>
-                        <Table.Td>{formatLineItemPeriod(item)}</Table.Td>
-                        <Table.Td>
-                          <Badge variant="light" color={timingColors[item.timing]}>
-                            {item.timing.toLowerCase()}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge variant="outline" color={item.isGenerated ? 'gray' : 'blue'}>
-                            {item.isGenerated ? 'Generated' : 'Custom'}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td ta="right">
-                          <FinanceLineItemAmount item={item} />
-                        </Table.Td>
-                      </Table.Tr>
-                    ))}
+                          </Table.Td>
+                          <Table.Td ta="right">
+                            <FinanceLineItemAmount item={item} />
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })}
                   </Table.Tbody>
                 </Table>
-              </Box>
+              </ScrollArea.Autosize>
             </>
           )}
         </Stack>
@@ -924,10 +1235,11 @@ export default function TeamFinancePanel({
             onClose={() => {
               if (!savingCost) {
                 setCustomCostModalOpen(false);
+                setEditingCostItem(null);
                 setCostError(null);
               }
             }}
-            title="Add custom team cost"
+            title={editingCostItem ? 'Edit custom team cost' : 'Add custom team cost'}
             size="lg"
             centered
           >
@@ -947,11 +1259,13 @@ export default function TeamFinancePanel({
                   value={costTitle}
                   onChange={(event) => setCostTitle(event.currentTarget.value)}
                 />
-                <TextInput
+                <Autocomplete
                   label="Category"
                   placeholder="Equipment"
+                  data={lineItemCategoryOptions}
                   value={costCategory}
-                  onChange={(event) => setCostCategory(event.currentTarget.value)}
+                  onChange={setCostCategory}
+                  comboboxProps={{ withinPortal: true }}
                 />
                 <NumberInput
                   label="Amount"
@@ -960,6 +1274,13 @@ export default function TeamFinancePanel({
                   min={0}
                   value={costAmount}
                   onChange={setCostAmount}
+                />
+                <Select
+                  label="Status"
+                  data={LINE_ITEM_STATUS_OPTIONS}
+                  value={costStatus}
+                  onChange={(value) => setCostStatus((value as LineItemStatus | null) ?? 'ACTUAL')}
+                  allowDeselect={false}
                 />
                 <TextInput
                   label="Start date"
@@ -976,19 +1297,42 @@ export default function TeamFinancePanel({
                   onChange={(event) => setCostEndDate(event.currentTarget.value)}
                 />
               </SimpleGrid>
+              <SimpleGrid cols={{ base: 1, md: 2 }} spacing="md">
+                <NumberInput
+                  label="Quantity"
+                  decimalScale={2}
+                  min={0}
+                  value={costQuantity}
+                  onChange={setCostQuantity}
+                />
+                <TextInput
+                  label="Unit"
+                  placeholder="hours"
+                  value={costUnitLabel}
+                  onChange={(event) => setCostUnitLabel(event.currentTarget.value)}
+                />
+              </SimpleGrid>
+              <Textarea
+                label="Description"
+                value={costDescription}
+                onChange={(event) => setCostDescription(event.currentTarget.value)}
+                autosize
+                minRows={3}
+              />
               <Group justify="flex-end">
                 <Button
                   variant="default"
                   onClick={() => {
                     setCustomCostModalOpen(false);
+                    setEditingCostItem(null);
                     setCostError(null);
                   }}
                   disabled={savingCost}
                 >
                   Cancel
                 </Button>
-                <Button onClick={() => void handleAddCost()} loading={savingCost}>
-                  Add cost
+                <Button onClick={() => void handleSaveCost()} loading={savingCost}>
+                  {editingCostItem ? 'Save cost' : 'Add cost'}
                 </Button>
               </Group>
             </Stack>

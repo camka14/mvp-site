@@ -743,6 +743,7 @@ function OrganizationDetailContent() {
   const eventsTabSentinelRef = useRef<HTMLDivElement | null>(null);
   const locationRequestAttemptedRef = useRef(false);
   const handledStripeStateRef = useRef<string | null>(null);
+  const handledQuickBooksStateRef = useRef<string | null>(null);
   const [updatingEventHostId, setUpdatingEventHostId] = useState<string | null>(null);
   const [staffSearch, setStaffSearch] = useState('');
   const [staffResults, setStaffResults] = useState<UserData[]>([]);
@@ -1755,6 +1756,52 @@ function OrganizationDetailContent() {
       });
     }
   }, [authLoading, id, isAuthenticated, searchParams, syncOrganizationVerification, user]);
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !user || !id) {
+      return;
+    }
+
+    const quickBooksState = searchParams?.get('quickbooks');
+    if (!quickBooksState) {
+      handledQuickBooksStateRef.current = null;
+      return;
+    }
+
+    const reason = searchParams?.get('reason') ?? '';
+    const handledKey = `${id}:${quickBooksState}:${reason}`;
+    if (handledQuickBooksStateRef.current === handledKey) {
+      return;
+    }
+    handledQuickBooksStateRef.current = handledKey;
+
+    if (quickBooksState === 'return') {
+      notifications.show({
+        color: 'green',
+        message: 'QuickBooks connected.',
+      });
+      return;
+    }
+
+    if (quickBooksState !== 'error') {
+      return;
+    }
+
+    const message = reason === 'expired_state'
+      ? 'QuickBooks authorization expired. Start the QuickBooks connection again.'
+      : reason === 'invalid_state'
+        ? 'QuickBooks connection could not be verified. Start the QuickBooks connection again.'
+        : reason === 'missing_realm'
+          ? 'QuickBooks did not return a company id. Choose a QuickBooks company and try again.'
+          : reason === 'token_exchange_failed'
+            ? 'QuickBooks approved access, but BracketIQ could not finish the token exchange.'
+            : 'QuickBooks connection failed. Start the QuickBooks connection again.';
+
+    notifications.show({
+      color: reason === 'expired_state' ? 'yellow' : 'red',
+      message,
+    });
+  }, [authLoading, id, isAuthenticated, searchParams, user]);
 
   useEffect(() => {
     if (location) {

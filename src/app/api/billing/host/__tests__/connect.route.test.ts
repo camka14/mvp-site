@@ -8,6 +8,7 @@ const createOrReuseManagedOrganizationStripeAccountMock = jest.fn();
 const findManagedOrganizationStripeAccountMock = jest.fn();
 const markManagedOrganizationStripeAccountMockVerifiedMock = jest.fn();
 const syncManagedOrganizationStripeAccountMock = jest.fn();
+const isTotpMfaEnabledForUserMock = jest.fn();
 
 const stripeAuthorizeUrlMock = jest.fn();
 const stripeAccountsCreateMock = jest.fn();
@@ -62,6 +63,10 @@ jest.mock('@/server/organizationStripeVerification', () => ({
   syncManagedOrganizationStripeAccount: (...args: unknown[]) => syncManagedOrganizationStripeAccountMock(...args),
 }));
 
+jest.mock('@/server/authTotpMfa', () => ({
+  isTotpMfaEnabledForUser: (...args: unknown[]) => isTotpMfaEnabledForUserMock(...args),
+}));
+
 import { POST } from '@/app/api/billing/host/connect/route';
 import { parseConnectState } from '@/app/api/billing/host/stripeConnectState';
 
@@ -96,6 +101,7 @@ describe('POST /api/billing/host/connect', () => {
     process.env.STRIPE_SECRET_KEY = 'sk_test_123';
     process.env.STRIPE_CONNECT_CLIENT_ID = 'ca_test_123';
     requireSessionMock.mockResolvedValue({ userId: 'user_1', isAdmin: false });
+    isTotpMfaEnabledForUserMock.mockResolvedValue(true);
     canManageOrganizationMock.mockReturnValue(true);
     prismaMock.organizations.findUnique.mockResolvedValue({ ownerId: 'user_1' });
     prismaMock.organizations.update.mockResolvedValue({ id: 'org_1' });
@@ -193,6 +199,26 @@ describe('POST /api/billing/host/connect', () => {
     expect(canManageOrganizationMock).toHaveBeenCalledWith({ userId: 'user_1', isAdmin: false }, {
       ownerId: 'user_1',
     });
+  });
+
+  it('blocks connected account creation until the acting user enables MFA', async () => {
+    isTotpMfaEnabledForUserMock.mockResolvedValueOnce(false);
+
+    const res = await POST(jsonPost('http://localhost/api/billing/host/connect', buildStatefulBody({ user: { id: 'user_1', email: 'user@example.com' } })));
+    const payload = await res.json();
+
+    expect(res.status).toBe(403);
+    expect(payload).toEqual({
+      error: 'Set up an authenticator app before creating a Stripe account.',
+      code: 'MFA_REQUIRED_FOR_STRIPE_CONNECT',
+      mfaSetupPath: '/profile?tab=security',
+    });
+    expect(isTotpMfaEnabledForUserMock).toHaveBeenCalledWith('user_1');
+    expect(prismaMock.userData.update).not.toHaveBeenCalled();
+    expect(prismaMock.stripeAccounts.upsert).not.toHaveBeenCalled();
+    expect(stripeAccountsCreateMock).not.toHaveBeenCalled();
+    expect(stripeAccountLinksCreateMock).not.toHaveBeenCalled();
+    expect(stripeInstance.oauth.authorizeUrl).not.toHaveBeenCalled();
   });
 
   it('returns a mock connect link in mock mode and stores mock account state', async () => {

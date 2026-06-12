@@ -81,6 +81,12 @@ jest.mock('../TeamFinancePanel', () => ({
     </div>
   ),
 }));
+jest.mock('@/components/schedule/ScheduleCalendarPanel', () => ({
+  __esModule: true,
+  default: ({ endpoint, title }: any) => (
+    <div data-testid="team-schedule-panel">{`${title}:${endpoint}`}</div>
+  ),
+}));
 
 import TeamDetailModal from '../TeamDetailModal';
 import { useApp } from '@/app/providers';
@@ -222,7 +228,55 @@ describe('TeamDetailModal', () => {
     });
   });
 
-  it('renders roster and finance as page tabs for organization teams', async () => {
+  it('renders roster player cards in the responsive grid', async () => {
+    const players = [
+      buildUser({
+        $id: 'player_1',
+        firstName: 'Alexandria',
+        lastName: 'Stone',
+        fullName: 'Alexandria Stone',
+        userName: 'alexandria.stone',
+      }),
+      buildUser({
+        $id: 'player_2',
+        firstName: 'Benjamin',
+        lastName: 'Rivers',
+        fullName: 'Benjamin Rivers',
+        userName: 'benjamin.rivers',
+      }),
+    ];
+    const team = buildTeam({
+      $id: 'team_1',
+      captainId: 'player_1',
+      managerId: '',
+      playerIds: ['player_1', 'player_2'],
+      pending: [],
+      teamSize: 6,
+    });
+    userServiceMock.getUsersByIds.mockResolvedValueOnce(players);
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage={false}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Roster (2)' })).toBeInTheDocument();
+      expect(screen.queryByText(/^Team Members/i)).not.toBeInTheDocument();
+      expect(screen.getByText('Alexandria Stone')).toBeInTheDocument();
+      expect(screen.getByText('Benjamin Rivers')).toBeInTheDocument();
+    });
+
+    const rosterGrid = document.querySelector('.responsive-card-grid.team-roster-player-grid');
+    expect(rosterGrid).not.toBeNull();
+    expect(rosterGrid?.querySelectorAll('.team-roster-player-card')).toHaveLength(2);
+  });
+
+  it('renders roster, schedule, and finance as page tabs for organization teams', async () => {
     const manager = buildUser({
       $id: 'manager_1',
       firstName: 'Morgan',
@@ -256,6 +310,7 @@ describe('TeamDetailModal', () => {
     );
 
     expect(screen.getByText('Roster')).toBeInTheDocument();
+    expect(screen.getByText('Schedule')).toBeInTheDocument();
     expect(screen.getByText('Finance')).toBeInTheDocument();
     expect(screen.getByText('Player Slots')).toBeInTheDocument();
     expect(screen.queryByTestId('team-finance-panel')).not.toBeInTheDocument();
@@ -266,6 +321,9 @@ describe('TeamDetailModal', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+
+    fireEvent.click(screen.getByText('Schedule'));
+    expect(onActiveTabChange).toHaveBeenCalledWith('schedule');
 
     fireEvent.click(screen.getByText('Finance'));
     expect(onActiveTabChange).toHaveBeenCalledWith('finance');
@@ -293,6 +351,37 @@ describe('TeamDetailModal', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+  });
+
+  it('renders the schedule tab for non-organization team pages', async () => {
+    const team = buildTeam({
+      $id: 'team_1',
+      organizationId: '',
+      captainId: 'captain_1',
+      managerId: '',
+      playerIds: [],
+      pending: [],
+      teamSize: 6,
+    });
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage={false}
+        variant="page"
+        activeTab="schedule"
+      />,
+    );
+
+    expect(screen.getByText('Roster')).toBeInTheDocument();
+    expect(screen.getByText('Schedule')).toBeInTheDocument();
+    expect(screen.queryByText('Finance')).not.toBeInTheDocument();
+    expect(screen.getByTestId('team-schedule-panel')).toHaveTextContent(
+      'Team Schedule:/api/teams/team_1/schedule?limit=300',
+    );
+    expect(screen.queryByText('Player Slots')).not.toBeInTheDocument();
   });
 
   it('allows a pending paid team registration to resume payment even when the team is full', async () => {
@@ -469,7 +558,7 @@ describe('TeamDetailModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /invite team members/i }));
+    fireEvent.click(screen.getByRole('button', { name: /invite roster members/i }));
     expect(await screen.findByRole('tab', { name: /free agents/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /invite user/i })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: /invite by email/i })).toBeInTheDocument();
@@ -532,7 +621,7 @@ describe('TeamDetailModal', () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /invite team members/i }));
+    fireEvent.click(screen.getByRole('button', { name: /invite roster members/i }));
 
     expect(await screen.findByText(/already has 2 of 2 player slots filled/i)).toBeInTheDocument();
 

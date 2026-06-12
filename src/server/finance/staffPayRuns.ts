@@ -8,7 +8,7 @@ import { loadOrganizationStaffLaborEntries } from '@/server/finance/financeRepos
 
 type PrismaLike = any;
 
-type StaffPayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID' | 'UPDATE_ITEM_TRANSFERS';
+type StaffPayRunAction = 'APPROVE' | 'MARK_PAID' | 'VOID' | 'UPDATE_ITEM_TRANSFERS' | 'RECORD_EXPORT';
 
 type StaffPayRunItemTransferInput = {
   itemId: string;
@@ -46,6 +46,13 @@ const parseDate = (value: unknown, fieldName: string): Date => {
     }
   }
   throw new StaffPayRunError(400, `${fieldName} must be a valid date.`);
+};
+
+const parseOptionalDate = (value: unknown, fieldName: string): Date | null => {
+  if (value == null || value === '') {
+    return null;
+  }
+  return parseDate(value, fieldName);
 };
 
 const toDate = (value: unknown): Date | null => {
@@ -95,6 +102,7 @@ const normalizeTitle = (value: unknown, periodStart: Date, periodEnd: Date): str
 const mapPayRun = (row: any) => ({
   ...row,
   items: Array.isArray(row.items) ? row.items : [],
+  accountingSyncs: Array.isArray(row.accountingSyncs) ? row.accountingSyncs : [],
 });
 
 const attachPayRunItems = async (
@@ -107,20 +115,37 @@ const attachPayRunItems = async (
     return payRuns.map(mapPayRun);
   }
 
-  const items = await client.staffPayRunItem.findMany({
-    where: {
-      organizationId,
-      payRunId: { in: payRunIds },
-    },
-    orderBy: [{ serviceStartAt: 'asc' }, { createdAt: 'asc' }],
-  });
+  const [items, syncRecords] = await Promise.all([
+    client.staffPayRunItem.findMany({
+      where: {
+        organizationId,
+        payRunId: { in: payRunIds },
+      },
+      orderBy: [{ serviceStartAt: 'asc' }, { createdAt: 'asc' }],
+    }),
+    client.accountingSyncRecords.findMany({
+      where: {
+        organizationId,
+        sourceType: 'STAFF_PAY_RUN',
+        staffPayRunId: { in: payRunIds },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+    }),
+  ]);
   const itemsByPayRunId = new Map<string, any[]>();
   items.forEach((item: any) => {
     itemsByPayRunId.set(item.payRunId, [...(itemsByPayRunId.get(item.payRunId) ?? []), item]);
   });
+  const syncsByPayRunId = new Map<string, any[]>();
+  syncRecords.forEach((sync: any) => {
+    if (typeof sync.staffPayRunId === 'string') {
+      syncsByPayRunId.set(sync.staffPayRunId, [...(syncsByPayRunId.get(sync.staffPayRunId) ?? []), sync]);
+    }
+  });
   return payRuns.map((payRun) => mapPayRun({
     ...payRun,
     items: itemsByPayRunId.get(payRun.id) ?? [],
+    accountingSyncs: syncsByPayRunId.get(payRun.id) ?? [],
   }));
 };
 
@@ -141,6 +166,7 @@ export const createDraftStaffPayRun = async (
     organizationId: string;
     periodStart: string | Date;
     periodEnd: string | Date;
+    scheduledPayDate?: string | Date | null;
     title?: string | null;
     notes?: string | null;
     actingUserId: string;
@@ -149,6 +175,7 @@ export const createDraftStaffPayRun = async (
 ) => {
   const periodStart = parseDate(input.periodStart, 'periodStart');
   const periodEnd = parseDate(input.periodEnd, 'periodEnd');
+  const scheduledPayDate = parseOptionalDate(input.scheduledPayDate, 'scheduledPayDate');
   if (periodEnd.getTime() < periodStart.getTime()) {
     throw new StaffPayRunError(400, 'periodEnd must be on or after periodStart.');
   }
@@ -239,6 +266,7 @@ export const createDraftStaffPayRun = async (
         title: normalizeTitle(input.title, periodStart, periodEnd),
         periodStart,
         periodEnd,
+        scheduledPayDate,
         status: 'DRAFT',
         payoutStatus: 'NOT_STARTED',
         totalAmountCents,
@@ -275,6 +303,7 @@ export const updateStaffPayRunStatus = async (
     actingUserId: string;
     payoutProvider?: string | null;
     payoutProviderBatchId?: string | null;
+    exportFormat?: string | null;
     notes?: string | null;
     voidReason?: string | null;
     itemTransfers?: StaffPayRunItemTransferInput[];
@@ -298,14 +327,15 @@ export const updateStaffPayRunStatus = async (
   const now = new Date();
   const payoutProvider = normalizeOptionalText(input.payoutProvider, 80);
   const payoutProviderBatchId = normalizeOptionalText(input.payoutProviderBatchId, 160);
+  const exportFormat = normalizeOptionalText(input.exportFormat, 40) ?? 'CSV';
   const notes = normalizeOptionalText(input.notes, 1000);
   const voidReason = normalizeOptionalText(input.voidReason, 1000);
   const itemTransfers = Array.isArray(input.itemTransfers) ? input.itemTransfers : [];
 
-  if (payRun.status === 'PAID') {
+  if (payRun.status === 'PAID' && input.action !== 'RECORD_EXPORT') {
     throw new StaffPayRunError(400, 'Paid pay runs cannot be changed.');
   }
-  if (payRun.status === 'VOID') {
+  if (payRun.status === 'VOID' && input.action !== 'RECORD_EXPORT') {
     throw new StaffPayRunError(400, 'Void pay runs cannot be changed.');
   }
   if (input.action === 'APPROVE' && payRun.status !== 'DRAFT') {
@@ -319,6 +349,29 @@ export const updateStaffPayRunStatus = async (
   }
   if (input.action === 'UPDATE_ITEM_TRANSFERS' && itemTransfers.length === 0) {
     throw new StaffPayRunError(400, 'At least one item transfer reference is required.');
+  }
+
+  if (input.action === 'RECORD_EXPORT') {
+    return client.$transaction(async (tx: PrismaLike) => {
+      const updated = await tx.staffPayRun.update({
+        where: { id: input.payRunId },
+        data: {
+          exportedAt: now,
+          exportedByUserId: input.actingUserId,
+          exportCount: { increment: 1 },
+          lastExportFormat: exportFormat,
+          updatedBy: input.actingUserId,
+        },
+      });
+      const items = await tx.staffPayRunItem.findMany({
+        where: { payRunId: input.payRunId },
+        orderBy: [{ serviceStartAt: 'asc' }, { createdAt: 'asc' }],
+      });
+      return {
+        ...updated,
+        items,
+      };
+    });
   }
 
   const applyItemTransfers = async (tx: PrismaLike) => {

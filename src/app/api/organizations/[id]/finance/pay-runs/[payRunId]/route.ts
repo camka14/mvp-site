@@ -8,9 +8,10 @@ import { StaffPayRunError, updateStaffPayRunStatus } from '@/server/finance/staf
 export const dynamic = 'force-dynamic';
 
 const updatePayRunSchema = z.object({
-  action: z.enum(['APPROVE', 'MARK_PAID', 'VOID', 'UPDATE_ITEM_TRANSFERS']),
+  action: z.enum(['APPROVE', 'MARK_PAID', 'VOID', 'UPDATE_ITEM_TRANSFERS', 'RECORD_EXPORT']),
   payoutProvider: z.string().trim().max(80).nullable().optional(),
   payoutProviderBatchId: z.string().trim().max(160).nullable().optional(),
+  exportFormat: z.string().trim().max(40).nullable().optional(),
   notes: z.string().trim().max(1000).nullable().optional(),
   voidReason: z.string().trim().max(1000).nullable().optional(),
   itemTransfers: z.array(z.object({
@@ -57,6 +58,7 @@ export async function PATCH(
       actingUserId: session.userId,
       payoutProvider: parsed.data.payoutProvider,
       payoutProviderBatchId: parsed.data.payoutProviderBatchId,
+      exportFormat: parsed.data.exportFormat,
       notes: parsed.data.notes,
       voidReason: parsed.data.voidReason,
       itemTransfers: parsed.data.itemTransfers,

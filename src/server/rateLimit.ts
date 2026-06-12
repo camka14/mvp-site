@@ -58,6 +58,18 @@ export const RATE_LIMIT_POLICIES = {
     windowSeconds: 60 * 60,
     message: 'Too many verification email requests. Please wait before trying again.',
   },
+  authMfaSend: {
+    name: 'auth:mfa-send',
+    limit: 5,
+    windowSeconds: 60 * 60,
+    message: 'Too many verification code requests. Please wait before trying again.',
+  },
+  authMfaVerification: {
+    name: 'auth:mfa-verification',
+    limit: 10,
+    windowSeconds: 10 * 60,
+    message: 'Too many verification attempts. Please wait before trying again.',
+  },
   mobileOAuth: {
     name: 'auth:mobile-oauth',
     limit: 30,

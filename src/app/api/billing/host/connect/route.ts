@@ -4,6 +4,7 @@ import Stripe from 'stripe';
 import { prisma } from '@/lib/prisma';
 import { requireSession } from '@/lib/permissions';
 import { canManageOrganization } from '@/server/accessControl';
+import { isTotpMfaEnabledForUser } from '@/server/authTotpMfa';
 import {
   createOrReuseManagedOrganizationStripeAccount,
   findManagedOrganizationStripeAccount,
@@ -117,6 +118,17 @@ export async function POST(req: NextRequest) {
 
       organizationName = organization.name;
       organizationWebsite = normalizeAbsoluteUrl(organization.website ?? null);
+    }
+
+    if (!(await isTotpMfaEnabledForUser(session.userId))) {
+      return NextResponse.json(
+        {
+          error: 'Set up an authenticator app before creating a Stripe account.',
+          code: 'MFA_REQUIRED_FOR_STRIPE_CONNECT',
+          mfaSetupPath: '/profile?tab=security',
+        },
+        { status: 403 },
+      );
     }
 
     if (!secretKey) {

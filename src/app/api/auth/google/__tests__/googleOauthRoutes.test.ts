@@ -27,11 +27,21 @@ const authServerMock = {
   setAuthCookie: jest.fn(),
 };
 const sendAdminAccountCreatedNotificationMock = jest.fn();
+const authTotpMfaMock = {
+  createWebLoginMfaChallenge: jest.fn(),
+  isTotpMfaError: jest.fn(),
+  readTotpMfaRequestMetadata: jest.fn(),
+};
 
 jest.mock('@/lib/prisma', () => ({ prisma: prismaMock }));
 jest.mock('@/lib/authServer', () => authServerMock);
 jest.mock('@/server/adminNotifications', () => ({
   sendAdminAccountCreatedNotification: (...args: any[]) => sendAdminAccountCreatedNotificationMock(...args),
+}));
+jest.mock('@/server/authTotpMfa', () => ({
+  createWebLoginMfaChallenge: (...args: any[]) => authTotpMfaMock.createWebLoginMfaChallenge(...args),
+  isTotpMfaError: (...args: any[]) => authTotpMfaMock.isTotpMfaError(...args),
+  readTotpMfaRequestMetadata: (...args: any[]) => authTotpMfaMock.readTotpMfaRequestMetadata(...args),
 }));
 
 import { GET as START_GET } from '@/app/api/auth/google/start/route';
@@ -61,6 +71,9 @@ describe('google oauth routes', () => {
     authServerMock.hashPassword.mockResolvedValue('hashed');
     authServerMock.signSessionToken.mockReturnValue('signed-token');
     sendAdminAccountCreatedNotificationMock.mockResolvedValue(undefined);
+    authTotpMfaMock.isTotpMfaError.mockReturnValue(false);
+    authTotpMfaMock.readTotpMfaRequestMetadata.mockReturnValue({ ipHash: 'ip_hash', userAgent: 'jest' });
+    authTotpMfaMock.createWebLoginMfaChallenge.mockResolvedValue(null);
   });
 
   afterAll(() => {
@@ -98,7 +111,15 @@ describe('google oauth routes', () => {
     expect(cookieText).toContain('google_oauth_next=%2Fdiscover');
   });
 
-  it('GET /api/auth/google/callback exchanges code, creates user if needed, and sets auth cookie', async () => {
+  it('GET /api/auth/google/callback exchanges code, creates user if needed, and redirects to MFA', async () => {
+    authTotpMfaMock.createWebLoginMfaChallenge.mockResolvedValueOnce({
+      code: 'MFA_REQUIRED',
+      mfa: {
+        challengeId: 'mfa_google_1',
+        expiresAt: '2026-06-11T20:00:00.000Z',
+        method: 'totp',
+      },
+    });
     process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
     process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'client-secret';
 
@@ -128,8 +149,20 @@ describe('google oauth routes', () => {
     const res = await CALLBACK_GET(req);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('http://localhost/complete-profile?next=%2Fdiscover');
-    expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
+    const location = new URL(res.headers.get('location') || '');
+    expect(location.origin).toBe('http://localhost');
+    expect(location.pathname).toBe('/login');
+    expect(location.searchParams.get('oauth')).toBe('google');
+    expect(location.searchParams.get('mfa')).toBe('code');
+    expect(location.searchParams.get('mfaChallenge')).toBe('mfa_google_1');
+    expect(location.searchParams.get('mfaSetupQrUrl')).toBeNull();
+    expect(location.searchParams.get('next')).toBe('/discover');
+    expect(authServerMock.setAuthCookie).not.toHaveBeenCalled();
+    expect(authTotpMfaMock.createWebLoginMfaChallenge).toHaveBeenCalledWith({
+      userId: 'user_1',
+      sessionVersion: 0,
+      metadata: { ipHash: 'ip_hash', userAgent: 'jest' },
+    });
     expect(prismaMock.authUser.create).toHaveBeenCalled();
     expect(sendAdminAccountCreatedNotificationMock).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user_1',
@@ -139,7 +172,7 @@ describe('google oauth routes', () => {
     }));
   });
 
-  it('GET /api/auth/google/callback falls back to /discover when next cookie is unsafe', async () => {
+  it('GET /api/auth/google/callback falls back to /discover for the optional MFA offer when next cookie is unsafe', async () => {
     process.env.GOOGLE_OAUTH_CLIENT_ID = 'client-id';
     process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'client-secret';
 
@@ -169,6 +202,11 @@ describe('google oauth routes', () => {
     const res = await CALLBACK_GET(req);
 
     expect(res.status).toBe(302);
-    expect(res.headers.get('location')).toBe('http://localhost/complete-profile?next=%2Fdiscover');
+    const location = new URL(res.headers.get('location') || '');
+    expect(location.pathname).toBe('/login');
+    expect(location.searchParams.get('oauth')).toBe('google');
+    expect(location.searchParams.get('mfaOffer')).toBe('1');
+    expect(location.searchParams.get('next')).toBe('/discover');
+    expect(authServerMock.setAuthCookie).toHaveBeenCalledWith(res, 'signed-token');
   });
 });
