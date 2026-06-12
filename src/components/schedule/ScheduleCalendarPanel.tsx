@@ -7,7 +7,7 @@ import {
   Calendar as BigCalendar,
   dateFnsLocalizer,
 } from 'react-big-calendar';
-import type { EventProps, View } from 'react-big-calendar';
+import type { EventProps, ToolbarProps, View } from 'react-big-calendar';
 import { parse, format, getDay, startOfWeek } from 'date-fns';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import {
@@ -88,6 +88,7 @@ const calendarFormats = {
 };
 
 const SCHEDULE_CARD_MIN_HEIGHT = '2.7rem';
+const SCHEDULE_CALENDAR_VIEW_ORDER: View[] = ['month', 'week', 'day', 'agenda'];
 
 const parseDate = (value?: string | null): Date | null => {
   if (!value) return null;
@@ -118,6 +119,61 @@ const getScheduleCardStyle = (
     height: needsReadableAutoHeight ? 'auto' : '100%',
   };
 };
+
+const getToolbarViewNames = (
+  views: ToolbarProps<ScheduleCalendarEvent>['views'],
+): View[] => {
+  const enabledViews = Array.isArray(views)
+    ? views
+    : Object.entries(views)
+      .filter(([, enabled]) => Boolean(enabled))
+      .map(([name]) => name as View);
+
+  return SCHEDULE_CALENDAR_VIEW_ORDER.filter((view) => enabledViews.includes(view));
+};
+
+function ScheduleCalendarToolbar({
+  label,
+  localizer,
+  onNavigate,
+  onView,
+  view,
+  views,
+}: ToolbarProps<ScheduleCalendarEvent>) {
+  const viewNames = getToolbarViewNames(views);
+  const messages = localizer.messages;
+
+  return (
+    <div className="rbc-toolbar shared-calendar-toolbar">
+      <span className="rbc-btn-group">
+        <button type="button" onClick={() => onNavigate('TODAY')}>
+          {messages.today}
+        </button>
+        <button type="button" onClick={() => onNavigate('PREV')}>
+          {messages.previous}
+        </button>
+        <button type="button" onClick={() => onNavigate('NEXT')}>
+          {messages.next}
+        </button>
+      </span>
+      <span className="rbc-toolbar-label">{label}</span>
+      {viewNames.length > 1 ? (
+        <span className="rbc-btn-group shared-calendar-toolbar__views">
+          {viewNames.map((viewName) => (
+            <button
+              key={viewName}
+              type="button"
+              className={view === viewName ? 'rbc-active' : undefined}
+              onClick={() => onView(viewName)}
+            >
+              {messages[viewName]}
+            </button>
+          ))}
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 const getTeamName = (
   match: Match,
@@ -372,6 +428,7 @@ export default function ScheduleCalendarPanel({
           popup
           selectable
           components={{
+            toolbar: ScheduleCalendarToolbar,
             event: EventTile,
             month: { event: EventTile },
             week: { event: EventTile },

@@ -7,6 +7,28 @@ export const teamDetailTabFromPathSegment = (segment?: string | null): TeamDetai
   return 'roster';
 };
 
+export const resolveTeamDetailTabFromPath = (
+  pathname: string,
+  teamId: string,
+): TeamDetailPageTab | null => {
+  const segments = pathname
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => {
+      try {
+        return decodeURIComponent(segment);
+      } catch {
+        return segment;
+      }
+    });
+
+  if (segments[0] !== 'teams' || segments[1] !== teamId) {
+    return null;
+  }
+
+  return teamDetailTabFromPathSegment(segments[2]);
+};
+
 export const buildTeamManagementPath = (
   teamId: string,
   tab: TeamDetailPageTab = 'roster',

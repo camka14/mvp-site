@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 import { renderWithMantine } from '../../../../test/utils/renderWithMantine';
 import { buildTeam, buildUser } from '../../../../test/factories';
@@ -32,6 +32,7 @@ jest.mock('@/lib/teamService', () => ({
     inviteUserToTeamRole: jest.fn(),
     inviteEmailToTeamRole: jest.fn(),
     getTeamById: jest.fn(),
+    updateTeamDetails: jest.fn(),
     getRegistrationQuestions: jest.fn(),
     getTeamJoinRequestContext: jest.fn(),
     listTeamJoinRequests: jest.fn(),
@@ -62,6 +63,16 @@ jest.mock('@/lib/paymentService', () => ({
     createTeamRegistrationPaymentIntent: jest.fn(),
   },
 }));
+jest.mock('@mantine/notifications', () => {
+  const actual = jest.requireActual('@mantine/notifications');
+  return {
+    ...actual,
+    notifications: {
+      ...actual.notifications,
+      show: jest.fn(),
+    },
+  };
+});
 jest.mock('@/lib/boldsignService', () => ({
   boldsignService: {
     createSignLinks: jest.fn(),
@@ -102,6 +113,7 @@ const teamServiceMock = jest.requireMock('@/lib/teamService').teamService as {
   inviteUserToTeamRole: jest.Mock;
   inviteEmailToTeamRole: jest.Mock;
   getTeamById: jest.Mock;
+  updateTeamDetails: jest.Mock;
   getRegistrationQuestions: jest.Mock;
   getTeamJoinRequestContext: jest.Mock;
   listTeamJoinRequests: jest.Mock;
@@ -127,6 +139,7 @@ describe('TeamDetailModal', () => {
     teamServiceMock.inviteUserToTeamRole.mockReset();
     teamServiceMock.inviteEmailToTeamRole.mockReset();
     teamServiceMock.getTeamById.mockReset();
+    teamServiceMock.updateTeamDetails.mockReset();
     teamServiceMock.getRegistrationQuestions.mockReset();
     teamServiceMock.getTeamJoinRequestContext.mockReset();
     teamServiceMock.listTeamJoinRequests.mockReset();
@@ -149,6 +162,7 @@ describe('TeamDetailModal', () => {
     teamServiceMock.inviteUserToTeamRole.mockResolvedValue(true);
     teamServiceMock.inviteEmailToTeamRole.mockResolvedValue(true);
     teamServiceMock.getTeamById.mockResolvedValue(undefined);
+    teamServiceMock.updateTeamDetails.mockResolvedValue(undefined);
     teamServiceMock.getRegistrationQuestions.mockResolvedValue([]);
     teamServiceMock.getTeamJoinRequestContext.mockResolvedValue({
       questions: [],
@@ -226,6 +240,148 @@ describe('TeamDetailModal', () => {
         expect.stringContaining('name=12'),
       );
     });
+  });
+
+  it('opens team detail editing in a modal and keeps jersey inputs on player cards', async () => {
+    const players = [
+      buildUser({
+        $id: 'player_1',
+        firstName: 'Alex',
+        lastName: 'Stone',
+        fullName: 'Alex Stone',
+      }),
+      buildUser({
+        $id: 'player_2',
+        firstName: 'Casey',
+        lastName: 'Lane',
+        fullName: 'Casey Lane',
+      }),
+    ];
+    const team = buildTeam({
+      $id: 'team_1',
+      captainId: 'player_1',
+      managerId: '',
+      playerIds: ['player_1', 'player_2'],
+      pending: [],
+      playerRegistrations: [
+        {
+          id: 'registration_1',
+          teamId: 'team_1',
+          userId: 'player_1',
+          status: 'ACTIVE',
+          jerseyNumber: '12',
+        },
+        {
+          id: 'registration_2',
+          teamId: 'team_1',
+          userId: 'player_2',
+          status: 'ACTIVE',
+          jerseyNumber: '23',
+        },
+      ],
+      teamSize: 6,
+    });
+    userServiceMock.getUsersByIds.mockResolvedValueOnce(players);
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage
+        variant="page"
+        activeTab="roster"
+      />,
+    );
+
+    const alexJerseyInput = await screen.findByLabelText('Jersey number for Alex Stone');
+    expect(alexJerseyInput).toHaveValue('12');
+    expect(screen.getByLabelText('Jersey number for Casey Lane')).toHaveValue('23');
+    expect(
+      Boolean(screen.getByText('Captain').compareDocumentPosition(alexJerseyInput) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+    expect(screen.queryByText('Player jersey numbers')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Team Details' }));
+
+    const editDialog = await screen.findByRole('dialog', { name: 'Edit Team Details' });
+    expect(within(editDialog).getByLabelText('Sport')).toBeInTheDocument();
+    expect(within(editDialog).getByLabelText('Team Size')).toBeInTheDocument();
+    expect(within(editDialog).getByRole('button', { name: 'Save Team Details' })).toBeInTheDocument();
+    expect(within(editDialog).queryByText('Player jersey numbers')).not.toBeInTheDocument();
+  });
+
+  it('saves jersey numbers from roster player cards', async () => {
+    const player = buildUser({
+      $id: 'player_1',
+      firstName: 'Alex',
+      lastName: 'Stone',
+      fullName: 'Alex Stone',
+    });
+    const team = buildTeam({
+      $id: 'team_1',
+      captainId: 'player_1',
+      managerId: '',
+      playerIds: ['player_1'],
+      pending: [],
+      playerRegistrations: [{
+        id: 'registration_1',
+        teamId: 'team_1',
+        userId: 'player_1',
+        status: 'ACTIVE',
+        jerseyNumber: '12',
+      }],
+      teamSize: 6,
+    });
+    const updatedTeam = buildTeam({
+      ...team,
+      playerRegistrations: [{
+        id: 'registration_1',
+        teamId: 'team_1',
+        userId: 'player_1',
+        status: 'ACTIVE',
+        jerseyNumber: '18',
+        isCaptain: true,
+      }],
+    });
+    const onTeamUpdated = jest.fn();
+    userServiceMock.getUsersByIds.mockResolvedValueOnce([player]);
+    teamServiceMock.updateTeamDetails.mockResolvedValueOnce(updatedTeam);
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        onTeamUpdated={onTeamUpdated}
+        canManage
+      />,
+    );
+
+    const jerseyInput = await screen.findByLabelText('Jersey number for Alex Stone');
+    expect(jerseyInput).toHaveValue('12');
+
+    fireEvent.change(jerseyInput, { target: { value: '18A' } });
+    expect(jerseyInput).toHaveValue('18');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save jersey number for Alex Stone' }));
+
+    await waitFor(() => {
+      expect(teamServiceMock.updateTeamDetails).toHaveBeenCalledWith('team_1', {
+        playerRegistrations: [
+          expect.objectContaining({
+            id: 'registration_1',
+            teamId: 'team_1',
+            userId: 'player_1',
+            status: 'ACTIVE',
+            jerseyNumber: '18',
+            position: null,
+            isCaptain: true,
+          }),
+        ],
+      });
+    });
+    expect(onTeamUpdated).toHaveBeenCalledWith(updatedTeam);
   });
 
   it('renders roster player cards in the responsive grid', async () => {
@@ -351,6 +507,51 @@ describe('TeamDetailModal', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+  });
+
+  it('places team staff directly after roster summary cards in page mode', async () => {
+    const team = buildTeam({
+      $id: 'team_1',
+      captainId: 'captain_1',
+      managerId: '',
+      playerIds: [],
+      pending: [],
+      teamSize: 6,
+    });
+
+    renderWithMantine(
+      <TeamDetailModal
+        currentTeam={team}
+        isOpen
+        onClose={jest.fn()}
+        canManage={false}
+        variant="page"
+        activeTab="roster"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: 'Team Staff' })).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(userServiceMock.listInvites).toHaveBeenCalled();
+    });
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const playerSlots = screen.getByText('Player Slots');
+    const pendingInvites = screen.getByText('Pending Invites');
+    const teamStaff = screen.getByRole('heading', { name: 'Team Staff' });
+    const roster = screen.getByRole('heading', { name: 'Roster (0)' });
+    const isBefore = (before: Element, after: Element) => (
+      Boolean(before.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING)
+    );
+
+    expect(isBefore(playerSlots, teamStaff)).toBe(true);
+    expect(isBefore(pendingInvites, teamStaff)).toBe(true);
+    expect(isBefore(teamStaff, roster)).toBe(true);
   });
 
   it('renders the schedule tab for non-organization team pages', async () => {
@@ -504,7 +705,7 @@ describe('TeamDetailModal', () => {
     expect(teamServiceMock.registerSelfForTeam.mock.calls.some(([teamId]) => teamId === 'event_team_1')).toBe(false);
   });
 
-  it('prechecks source event teams when selecting a free-agent invite', async () => {
+  it('sends source event teams immediately when inviting a free agent', async () => {
     const manager = buildUser({
       $id: 'manager_1',
       firstName: 'Morgan',
@@ -564,11 +765,8 @@ describe('TeamDetailModal', () => {
     expect(screen.getByRole('tab', { name: /invite by email/i })).toBeInTheDocument();
     expect(await screen.findByText('Free Agent')).toBeInTheDocument();
 
-    fireEvent.click(screen.getAllByRole('button', { name: /select/i })[0]);
-    const checkbox = await screen.findByRole('checkbox', { name: /future event - test team/i });
-    expect(checkbox).toBeChecked();
-
-    fireEvent.click(screen.getByRole('button', { name: /send player invite/i }));
+    expect(screen.queryByRole('button', { name: /select/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('button', { name: /^invite$/i })[0]);
 
     await waitFor(() => {
       expect(teamServiceMock.inviteUserToTeamRole).toHaveBeenCalledWith(
@@ -578,6 +776,7 @@ describe('TeamDetailModal', () => {
         { eventTeamIds: ['event_team_1'] },
       );
     });
+    expect(screen.getByRole('dialog', { name: /invite to test team/i })).toBeInTheDocument();
   });
 
   it('blocks player invites when team registration slots are full', async () => {

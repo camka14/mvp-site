@@ -13,7 +13,11 @@ import { teamService } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 import type { Organization, Team, UserData } from '@/types';
 import { buildOrganizationTabPath } from '@/app/organizations/[id]/organizationTabs';
-import { buildTeamManagementPath, teamDetailTabFromPathSegment } from '../teamRoutes';
+import {
+  buildTeamManagementPath,
+  resolveTeamDetailTabFromPath,
+  teamDetailTabFromPathSegment,
+} from '../teamRoutes';
 
 type TeamManagementPageClientProps = {
   teamId: string;
@@ -62,6 +66,20 @@ export default function TeamManagementPageClient({
   useEffect(() => {
     setActiveTab(teamDetailTabFromPathSegment(initialTabSegment));
   }, [initialTabSegment]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      const nextTab = resolveTeamDetailTabFromPath(window.location.pathname, teamId);
+      if (nextTab) {
+        setActiveTab(nextTab);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [teamId]);
 
   const loadTeam = useCallback(async () => {
     const normalizedTeamId = teamId.trim();
@@ -164,8 +182,12 @@ export default function TeamManagementPageClient({
 
   const handleTabChange = useCallback((nextTab: TeamDetailPageTab) => {
     setActiveTab(nextTab);
-    router.push(`${buildTeamManagementPath(teamId, nextTab)}${teamDetailQueryString(searchParams)}`);
-  }, [router, searchParams, teamId]);
+    window.history.pushState(
+      null,
+      '',
+      `${buildTeamManagementPath(teamId, nextTab)}${teamDetailQueryString(searchParams)}`,
+    );
+  }, [searchParams, teamId]);
 
   const handleTeamUpdated = useCallback((updatedTeam: Team) => {
     setTeam(updatedTeam);

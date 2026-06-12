@@ -2,13 +2,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { notifications } from '@mantine/notifications';
-import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Tabs, Loader, Stack, Collapse } from '@mantine/core';
+import { Modal, Group, Text, Title, Button, Paper, SimpleGrid, Avatar, Badge, Alert, TextInput, ScrollArea, SegmentedControl, NumberInput, Select as MantineSelect, Checkbox, MultiSelect, Loader, Stack, Collapse } from '@mantine/core';
 import { Invite, Team, UserData, Event, SPORTS_LIST, getUserFullName, getUserAvatarUrl, getTeamAvatarUrl, getUserHandle, formatPrice, formatBillAmount } from '@/types';
 import type { RegistrationQuestionDraft, TeamJoinPolicy, TeamJoinRequest, TeamPlayerRegistration } from '@/types';
 import type { TeamComplianceSummary, TeamComplianceUserSummary, TeamMemberComplianceResponse } from '@/lib/eventTeamCompliance';
 import { useApp } from '@/app/providers';
 import { apiRequest } from '@/lib/apiClient';
-import { teamService, type TeamInviteEventTeamOption, type TeamInviteFreeAgentContext } from '@/lib/teamService';
+import { teamService, type TeamInviteFreeAgentContext } from '@/lib/teamService';
 import { userService } from '@/lib/userService';
 import ResponsiveCardGrid from './ResponsiveCardGrid';
 import ScheduleCalendarPanel from '@/components/schedule/ScheduleCalendarPanel';
@@ -21,6 +21,7 @@ import { ImageSelectionModal } from './ImageSelectionModal';
 import TeamFinancePanel from './TeamFinancePanel';
 import TeamRegistrationFlow from './TeamRegistrationFlow';
 import { type PaymentEventSummary } from './PaymentModal';
+import InvitePlayersModal from '@/app/teams/components/InvitePlayersModal';
 
 export type TeamDetailPageTab = 'roster' | 'schedule' | 'finance';
 
@@ -39,7 +40,6 @@ interface TeamDetailModalProps {
     onActiveTabChange?: (tab: TeamDetailPageTab) => void;
 }
 
-const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 type TeamInviteRoleType = 'player' | 'team_manager' | 'team_head_coach' | 'team_assistant_coach';
 const TEAM_ROLE_INVITE_TYPES = ['TEAM'] as const;
 const DIVISION_GENDER_OPTIONS = [
@@ -203,9 +203,6 @@ export default function TeamDetailModal({
     const { user } = useApp();
     const [showAddPlayers, setShowAddPlayers] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [searchResults, setSearchResults] = useState<UserData[]>([]);
-    const [searching, setSearching] = useState(false);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [teamPlayers, setTeamPlayers] = useState<UserData[]>([]);
@@ -239,14 +236,9 @@ export default function TeamDetailModal({
     const [templateOptions, setTemplateOptions] = useState<Array<{ value: string; label: string }>>([]);
     const [templatesLoading, setTemplatesLoading] = useState(false);
     const [jerseyNumbersByUserId, setJerseyNumbersByUserId] = useState<Record<string, string>>({});
+    const [savingJerseyNumberIds, setSavingJerseyNumberIds] = useState<Set<string>>(new Set());
     const [leavingTeam, setLeavingTeam] = useState(false);
     const [imagePickerOpen, setImagePickerOpen] = useState(false);
-    const [inviteMode, setInviteMode] = useState<'free_agents' | 'user' | 'email'>('free_agents');
-    const [emailInviteInput, setEmailInviteInput] = useState('');
-    const [invitingByEmail, setInvitingByEmail] = useState(false);
-    const [selectedInviteUser, setSelectedInviteUser] = useState<UserData | null>(null);
-    const [selectedInviteEventTeamIds, setSelectedInviteEventTeamIds] = useState<string[]>([]);
-    const [selectedInviteRole, setSelectedInviteRole] = useState<TeamInviteRoleType>('player');
     const [cancellingInviteIds, setCancellingInviteIds] = useState<Set<string>>(new Set());
     const [pendingRoleInvites, setPendingRoleInvites] = useState<Array<{ invite: Invite; invitedUser?: UserData }>>([]);
     const [cancellingRoleInviteIds, setCancellingRoleInviteIds] = useState<Set<string>>(new Set());
@@ -269,8 +261,6 @@ export default function TeamDetailModal({
     const effectiveJoinPolicy = currentTeam.joinPolicy ?? (currentTeam.openRegistration ? 'OPEN_REGISTRATION' : 'CLOSED');
     const draftRegistrationEnabled = draftJoinPolicy === 'OPEN_REGISTRATION' || draftJoinPolicy === 'REQUEST_TO_JOIN';
     const draftRequestOnly = draftJoinPolicy === 'REQUEST_TO_JOIN';
-    const normalizedInviteEmail = emailInviteInput.trim().toLowerCase();
-    const inviteEmailValid = EMAIL_REGEX.test(normalizedInviteEmail);
     const assistantCoachIds = useMemo(() => (
         Array.isArray(currentTeam.assistantCoachIds)
             ? currentTeam.assistantCoachIds
@@ -332,9 +322,6 @@ export default function TeamDetailModal({
     const playerInviteCapacityCount = playerInviteCapacityUserIds.size;
     const playerInviteLimit = Math.max(0, Math.trunc(currentTeam.teamSize || 0));
     const canInviteAnotherPlayer = playerInviteLimit <= 0 || playerInviteCapacityCount < playerInviteLimit;
-    const playerInviteCapacityMessage = playerInviteLimit > 0
-        ? `This team already has ${playerInviteCapacityCount} of ${playerInviteLimit} player slots filled. Remove a player or pending invite, or increase team size before inviting another player.`
-        : '';
     const showSelfServiceRegistrationActions = Boolean(user?.$id) && !canManageTeam;
     const complianceByUserId = useMemo(() => {
         const byId = new Map<string, TeamComplianceUserSummary>();
@@ -343,43 +330,7 @@ export default function TeamDetailModal({
         });
         return byId;
     }, [memberCompliance?.users]);
-    const selectedRoleLabel = (() => {
-        switch (selectedInviteRole) {
-            case 'team_manager':
-                return 'Manager';
-            case 'team_head_coach':
-                return 'Head Coach';
-            case 'team_assistant_coach':
-                return 'Assistant Coach';
-            default:
-                return 'Player';
-        }
-    })();
     const normalizedSelectedFreeAgentId = selectedFreeAgentId?.trim() || null;
-    const suggestedFreeAgent = (() => {
-        if (selectedFreeAgentUser && normalizedSelectedFreeAgentId && selectedFreeAgentUser.$id === normalizedSelectedFreeAgentId) {
-            return selectedFreeAgentUser;
-        }
-        if (!normalizedSelectedFreeAgentId) {
-            return selectedFreeAgentUser ?? null;
-        }
-        return localFreeAgents.find((agent) => agent.$id === normalizedSelectedFreeAgentId)
-            ?? selectedFreeAgentUser
-            ?? null;
-    })();
-    const inviteEventTeamOptions = useMemo(() => inviteFreeAgentContext.eventTeams, [inviteFreeAgentContext.eventTeams]);
-    const inviteEventNameById = useMemo(() => {
-        const entries = new Map<string, string>();
-        inviteEventTeamOptions.forEach((option) => {
-            entries.set(option.eventId, option.eventName);
-        });
-        return entries;
-    }, [inviteEventTeamOptions]);
-    const getFreeAgentEventNames = useCallback((userId: string): string[] => (
-        (inviteFreeAgentContext.freeAgentEventsByUserId[userId] ?? [])
-            .map((eventId) => inviteEventNameById.get(eventId))
-            .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-    ), [inviteEventNameById, inviteFreeAgentContext.freeAgentEventsByUserId]);
     const divisionTypeOptions = useMemo(
         () => getDivisionTypeOptionsForSport(draftSport || currentTeam.sport || ''),
         [currentTeam.sport, draftSport],
@@ -555,74 +506,6 @@ export default function TeamDetailModal({
         }
     }, [canManageTeam, currentTeam.$id]);
 
-    const isRoleInvitePending = useCallback((userId: string, roleType: TeamInviteRoleType): boolean => {
-        if (roleType === 'player') {
-            return currentTeam.pending.includes(userId);
-        }
-        return pendingRoleInvites.some(
-            (entry) => getPendingInviteRole(currentTeam, entry.invite) === roleType
-                && entry.invite.userId === userId
-                && entry.invite.status === 'PENDING',
-        );
-    }, [currentTeam, pendingRoleInvites]);
-
-    const canInviteUserForRole = useCallback((userId: string, roleType: TeamInviteRoleType): boolean => {
-        if (roleType === 'player') {
-            return canInviteAnotherPlayer
-                && !playerInviteCapacityUserIds.has(userId)
-                && !currentTeam.playerIds.includes(userId)
-                && !currentTeam.pending.includes(userId);
-        }
-        if (roleType === 'team_manager') {
-            return currentTeam.managerId !== userId && !isRoleInvitePending(userId, roleType);
-        }
-        if (roleType === 'team_head_coach') {
-            return currentTeam.headCoachId !== userId && !isRoleInvitePending(userId, roleType);
-        }
-        if (roleType === 'team_assistant_coach') {
-            return !assistantCoachIds.includes(userId) && !isRoleInvitePending(userId, roleType);
-        }
-        return false;
-    }, [
-        assistantCoachIds,
-        canInviteAnotherPlayer,
-        currentTeam.headCoachId,
-        currentTeam.managerId,
-        currentTeam.pending,
-        currentTeam.playerIds,
-        isRoleInvitePending,
-        playerInviteCapacityUserIds,
-    ]);
-
-    const resetInviteTarget = useCallback(() => {
-        setSelectedInviteUser(null);
-        setSelectedInviteEventTeamIds([]);
-    }, []);
-
-    const precheckEventTeamIdsForUser = useCallback((userId: string): string[] => {
-        if (selectedInviteRole !== 'player') {
-            return [];
-        }
-        return inviteFreeAgentContext.freeAgentEventTeamIdsByUserId[userId] ?? [];
-    }, [inviteFreeAgentContext.freeAgentEventTeamIdsByUserId, selectedInviteRole]);
-
-    const selectInviteUser = useCallback((targetUser: UserData) => {
-        if (!canInviteUserForRole(targetUser.$id, selectedInviteRole)) {
-            if (selectedInviteRole === 'player' && !canInviteAnotherPlayer) {
-                notifications.show({ color: 'yellow', message: playerInviteCapacityMessage });
-            }
-            return;
-        }
-        setSelectedInviteUser(targetUser);
-        setSelectedInviteEventTeamIds(precheckEventTeamIdsForUser(targetUser.$id));
-    }, [
-        canInviteAnotherPlayer,
-        canInviteUserForRole,
-        playerInviteCapacityMessage,
-        precheckEventTeamIdsForUser,
-        selectedInviteRole,
-    ]);
-
     const fetchTeamDetails = useCallback(async () => {
         try {
             setLoading(true);
@@ -664,19 +547,6 @@ export default function TeamDetailModal({
             setLoading(false);
         }
     }, [assistantCoachIds, currentTeam.$id, currentTeam.captainId, currentTeam.headCoachId, currentTeam.managerId, currentTeam.pending, currentTeam.playerIds, fetchRoleInvites]);
-
-    const performSearch = useCallback(async () => {
-        setSearching(true);
-        try {
-            const results = await userService.searchUsers(searchQuery);
-            const filteredResults = results.filter((result) => canInviteUserForRole(result.$id, selectedInviteRole));
-            setSearchResults(filteredResults);
-        } catch (error) {
-            console.error('Search failed:', error);
-        } finally {
-            setSearching(false);
-        }
-    }, [canInviteUserForRole, searchQuery, selectedInviteRole]);
 
     useEffect(() => {
         let cancelled = false;
@@ -750,10 +620,6 @@ export default function TeamDetailModal({
             return;
         }
         setShowAddPlayers(true);
-        setSelectedInviteRole('player');
-        setInviteMode('free_agents');
-        setSearchQuery('');
-        setSearchResults([]);
     }, [detailIsActive, normalizedSelectedFreeAgentId]);
 
     useEffect(() => {
@@ -948,18 +814,6 @@ export default function TeamDetailModal({
         resolveDraftDivisionDisplayName,
     ]);
 
-    useEffect(() => {
-        if (inviteMode !== 'user') {
-            setSearchResults([]);
-            return;
-        }
-        if (searchQuery.length >= 2) {
-            performSearch();
-        } else {
-            setSearchResults([]);
-        }
-    }, [searchQuery, inviteMode, performSearch]);
-
     const extractFileIdFromUrl = (url: string): string => {
         try {
             const match = url.match(/\/files\/([^/]+)\/preview/);
@@ -997,6 +851,21 @@ export default function TeamDetailModal({
             setError('Failed to update team name');
         }
     };
+
+    const buildPlayerRegistrationPayload = useCallback((captainId: string) => (
+        teamPlayers.map((player) => {
+            const existingRegistration = activePlayerRegistrationByUserId.get(player.$id);
+            return {
+                id: existingRegistration?.id ?? `${currentTeam.$id}__${player.$id}`,
+                teamId: currentTeam.$id,
+                userId: player.$id,
+                status: existingRegistration?.status ?? 'ACTIVE',
+                jerseyNumber: (jerseyNumbersByUserId[player.$id] ?? '').trim() || null,
+                position: existingRegistration?.position ?? null,
+                isCaptain: player.$id === captainId,
+            };
+        })
+    ), [activePlayerRegistrationByUserId, currentTeam.$id, jerseyNumbersByUserId, teamPlayers]);
 
     const handleSaveDetails = async () => {
         const nextSport = draftSport.trim();
@@ -1068,18 +937,7 @@ export default function TeamDetailModal({
             openRegistration: draftJoinPolicy === 'OPEN_REGISTRATION',
             registrationPriceCents: nextRegistrationPriceCents,
             requiredTemplateIds: currentTeam.organizationId ? draftRequiredTemplateIds : [],
-            playerRegistrations: teamPlayers.map((player) => {
-                const existingRegistration = activePlayerRegistrationByUserId.get(player.$id);
-                return {
-                    id: existingRegistration?.id ?? `${currentTeam.$id}__${player.$id}`,
-                    teamId: currentTeam.$id,
-                    userId: player.$id,
-                    status: existingRegistration?.status ?? 'ACTIVE',
-                    jerseyNumber: (jerseyNumbersByUserId[player.$id] ?? '').trim() || null,
-                    position: existingRegistration?.position ?? null,
-                    isCaptain: player.$id === nextCaptainId,
-                };
-            }),
+            playerRegistrations: buildPlayerRegistrationPayload(nextCaptainId),
         });
         if (!updated) {
             setError('Failed to update team details');
@@ -1092,26 +950,41 @@ export default function TeamDetailModal({
         setEditingDetails(false);
     };
 
+    const handleSaveJerseyNumber = async (playerId: string) => {
+        setSavingJerseyNumberIds((current) => new Set(current).add(playerId));
+        setError(null);
+        try {
+            const updated = await teamService.updateTeamDetails(currentTeam.$id, {
+                playerRegistrations: buildPlayerRegistrationPayload(currentTeam.captainId),
+            });
+            if (!updated) {
+                setError('Failed to update jersey number');
+                return;
+            }
+            onTeamUpdated?.(updated);
+            notifications.show({ color: 'green', message: 'Jersey number updated.' });
+        } catch (saveError) {
+            console.error('Failed to update jersey number:', saveError);
+            setError('Failed to update jersey number');
+        } finally {
+            setSavingJerseyNumberIds((current) => {
+                const next = new Set(current);
+                next.delete(playerId);
+                return next;
+            });
+        }
+    };
+
     const getFilteredFreeAgents = () => {
-        if (selectedInviteRole !== 'player') {
+        if (!canInviteAnotherPlayer) {
             return [];
         }
-        const normalizedQuery = searchQuery.trim().toLowerCase();
-        const filtered = localFreeAgents.filter((agent) => {
-            if (!canInviteUserForRole(agent.$id, 'player')) {
-                return false;
-            }
-            if (!normalizedQuery) {
-                return true;
-            }
-            const searchable = [
-                getUserFullName(agent),
-                getUserHandle(agent),
-                agent.userName,
-            ].filter(Boolean).join(' ').toLowerCase();
-            return searchable.includes(normalizedQuery);
-        });
-        const limited = normalizedQuery ? filtered : filtered.slice(0, 10);
+        const filtered = localFreeAgents.filter((agent) => (
+            !playerInviteCapacityUserIds.has(agent.$id)
+                && !currentTeam.playerIds.includes(agent.$id)
+                && !currentTeam.pending.includes(agent.$id)
+        ));
+        const limited = filtered.slice(0, 10);
         if (!normalizedSelectedFreeAgentId) {
             return limited;
         }
@@ -1122,180 +995,19 @@ export default function TeamDetailModal({
         return [prioritized, ...limited.filter((agent) => agent.$id !== normalizedSelectedFreeAgentId)];
     };
 
-    const getAvailableUsers = () => {
-        let users = [...searchResults];
-        const filteredFreeAgents = getFilteredFreeAgents();
-
-        if (selectedInviteRole === 'player' && filteredFreeAgents.length > 0) {
-            const freeAgentsNotInResults = filteredFreeAgents.filter(
-                agent => !users.some(user => user.$id === agent.$id)
-            );
-            users = [...freeAgentsNotInResults, ...users];
-        }
-
-        return users;
-    };
-
-    const handleInviteUser = async (userId: string) => {
-        if (invitingByEmail) {
-            return;
-        }
-        if (selectedInviteRole === 'player' && !canInviteAnotherPlayer) {
-            notifications.show({ color: 'yellow', message: playerInviteCapacityMessage });
-            return;
-        }
-        setInvitingByEmail(true);
-        try {
-            const user = await userService.getUserById(userId, { teamId: currentTeam.$id });
-            if (!user) throw new Error('User not found');
-            if (!canInviteUserForRole(user.$id, selectedInviteRole)) {
-                notifications.show({ color: 'yellow', message: `${selectedRoleLabel} already assigned or invited.` });
-                return;
-            }
-            const success = await teamService.inviteUserToTeamRole(currentTeam, user, selectedInviteRole, {
-                eventTeamIds: selectedInviteRole === 'player' ? selectedInviteEventTeamIds : [],
-            });
-
-            if (success) {
-                if (selectedInviteRole === 'player') {
-                    const invitedUser = await userService.getUserById(userId, { teamId: currentTeam.$id });
-                    if (invitedUser) {
-                        setPendingPlayers(prev => (
-                            prev.some(player => player.$id === invitedUser.$id) ? prev : [...prev, invitedUser]
-                        ));
-                        const updatedTeam = {
-                            ...currentTeam,
-                            pending: Array.from(new Set([...currentTeam.pending, userId]))
-                        };
-                        onTeamUpdated?.(updatedTeam);
-                    }
-                } else {
-                    await fetchRoleInvites();
-                }
-                setSearchResults(prev => prev.filter(searchUser => searchUser.$id !== userId));
-                resetInviteTarget();
-            }
-        } catch (error) {
-            console.error('Failed to invite user:', error);
-            setError('Failed to send invitation');
-        } finally {
-            setInvitingByEmail(false);
-        }
-    };
-
-    const handleInviteByEmail = async () => {
-        if (!user) {
-            notifications.show({ color: 'red', message: 'You must be logged in to send team invites.' });
-            return;
-        }
-        if (!inviteEmailValid) {
-            notifications.show({ color: 'red', message: 'Enter a valid email address.' });
-            return;
-        }
-        if (invitingByEmail) {
-            return;
-        }
-        if (selectedInviteRole === 'player' && !canInviteAnotherPlayer) {
-            notifications.show({ color: 'yellow', message: playerInviteCapacityMessage });
-            return;
-        }
-
-        setInvitingByEmail(true);
-
-        try {
-            const success = await teamService.inviteEmailToTeamRole(currentTeam, normalizedInviteEmail, selectedInviteRole, {
-                eventTeamIds: selectedInviteRole === 'player' ? selectedInviteEventTeamIds : [],
-            });
-            if (!success) {
-                notifications.show({ color: 'red', message: 'Failed to send invite.' });
-                return;
-            }
-
-            if (selectedInviteRole === 'player') {
-                const updatedTeam = await teamService.getTeamById(currentTeam.$id, true, { teamId: currentTeam.$id });
-                if (updatedTeam) {
-                    onTeamUpdated?.(updatedTeam);
-                }
-                await fetchTeamDetails();
-            } else {
-                await fetchRoleInvites();
-            }
-
-            notifications.show({ color: 'green', message: `${selectedRoleLabel} invite sent to ${normalizedInviteEmail}.` });
-            setEmailInviteInput('');
-            setSelectedInviteEventTeamIds([]);
-        } catch (err) {
-            const message = err instanceof Error ? err.message : 'Failed to send invite';
-            notifications.show({ color: 'red', message });
-        } finally {
-            setInvitingByEmail(false);
-        }
-    };
-
-    const renderEventTeamCheckboxes = () => {
-        if (selectedInviteRole !== 'player' || inviteEventTeamOptions.length === 0) {
-            return null;
-        }
-
-        return (
-            <div className="mt-3 border-t pt-3">
-                <Text fw={500} size="sm" mb={6}>Update your team in upcoming events</Text>
-                <Checkbox.Group
-                    value={selectedInviteEventTeamIds}
-                    onChange={setSelectedInviteEventTeamIds}
-                >
-                    <div className="space-y-2">
-                        {inviteEventTeamOptions.map((option: TeamInviteEventTeamOption) => (
-                            <Checkbox
-                                key={option.eventTeamId}
-                                value={option.eventTeamId}
-                                label={`${option.eventName} - ${option.teamName}`}
-                            />
-                        ))}
-                    </div>
-                </Checkbox.Group>
-            </div>
-        );
-    };
-
-    const renderSelectedInviteUserPrompt = () => {
-        if (!selectedInviteUser) {
-            return null;
-        }
-
-        return (
-            <div className="mt-3 rounded-md border border-gray-200 p-3">
-                <Group justify="space-between" align="flex-start">
-                    <Group>
-                        <Avatar
-                            src={getUserAvatarUrl(selectedInviteUser, 40)}
-                            alt={getUserFullName(selectedInviteUser)}
-                            size={40}
-                            radius="xl"
-                        />
-                        <div>
-                            <Text fw={500}>{getUserFullName(selectedInviteUser)}</Text>
-                            {getUserHandle(selectedInviteUser) && (
-                                <Text size="xs" c="dimmed">{getUserHandle(selectedInviteUser)}</Text>
-                            )}
-                            <Text size="xs" c="dimmed">{selectedRoleLabel} invite</Text>
-                        </div>
-                    </Group>
-                    <Button size="xs" variant="subtle" onClick={resetInviteTarget}>Change</Button>
-                </Group>
-                {renderEventTeamCheckboxes()}
-                <Group justify="flex-end" mt="sm">
-                    <Button
-                        onClick={() => { void handleInviteUser(selectedInviteUser.$id); }}
-                        loading={invitingByEmail}
-                        disabled={selectedInviteRole === 'player' && !canInviteAnotherPlayer}
-                    >
-                        Send {selectedRoleLabel} Invite
-                    </Button>
-                </Group>
-            </div>
-        );
-    };
+    const handlePlayerInviteSent = useCallback((invitedUser: UserData) => {
+        const nextPendingPlayers = pendingPlayers.some((player) => player.$id === invitedUser.$id)
+            ? pendingPlayers
+            : [...pendingPlayers, invitedUser];
+        setPendingPlayers(nextPendingPlayers);
+        onTeamUpdated?.({
+            ...currentTeam,
+            pending: Array.from(new Set([
+                ...currentTeam.pending,
+                ...nextPendingPlayers.map((player) => player.$id),
+            ])),
+        });
+    }, [currentTeam, onTeamUpdated, pendingPlayers]);
 
     const handleCancelRoleInvite = async (inviteId: string) => {
         setCancellingRoleInviteIds((previous) => new Set(previous).add(inviteId));
@@ -1549,12 +1261,17 @@ export default function TeamDetailModal({
     );
 
     const renderRosterPlayerCards = () => (
-        <ResponsiveCardGrid maxCardWidth={620} className="team-roster-player-grid">
+        <ResponsiveCardGrid maxCardWidth={352} className="team-roster-player-grid">
             {teamPlayers.map(player => {
                 const playerRegistration = activePlayerRegistrationByUserId.get(player.$id);
                 const compliance = complianceByUserId.get(player.$id);
                 const expanded = expandedComplianceUserIds.includes(player.$id);
                 const canExpandCompliance = canManageTeam && Boolean(compliance);
+                const playerName = getUserFullName(player);
+                const currentJerseyNumber = playerRegistration?.jerseyNumber ?? '';
+                const jerseyDraftValue = jerseyNumbersByUserId[player.$id] ?? '';
+                const jerseyNumberChanged = jerseyDraftValue.trim() !== currentJerseyNumber;
+                const savingJerseyNumber = savingJerseyNumberIds.has(player.$id);
                 return (
                     <Paper
                         key={player.$id}
@@ -1577,13 +1294,13 @@ export default function TeamDetailModal({
                                 <Group align="flex-start" gap="sm" wrap="nowrap" style={{ flex: '1 1 18rem', minWidth: 0 }}>
                                     <Avatar
                                         src={getUserAvatarUrl(player, 40, playerRegistration?.jerseyNumber)}
-                                        alt={getUserFullName(player)}
+                                        alt={playerName}
                                         size={40}
                                         radius="xl"
                                         style={{ flexShrink: 0 }}
                                     />
                                     <div style={{ flex: 1, minWidth: 0 }}>
-                                        <Text fw={500} truncate>{getUserFullName(player)}</Text>
+                                        <Text fw={500} truncate>{playerName}</Text>
                                         {getUserHandle(player) && <Text size="xs" c="dimmed" truncate>{getUserHandle(player)}</Text>}
                                         <Group gap={6} mt={4} wrap="wrap">
                                             {player.$id === currentTeam.captainId && (
@@ -1608,44 +1325,82 @@ export default function TeamDetailModal({
                                                 </>
                                             ) : null}
                                         </Group>
-                                    </div>
-                                </Group>
-                                <Group gap="xs" justify="flex-end" wrap="wrap" style={{ flex: '0 1 auto' }}>
-                                    {canExpandCompliance ? (
-                                        <Button
-                                            variant="light"
-                                            size="xs"
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                setExpandedComplianceUserIds((current) => (
-                                                    current.includes(player.$id)
-                                                        ? current.filter((id) => id !== player.$id)
-                                                        : [...current, player.$id]
-                                                ));
-                                            }}
-                                        >
-                                            {expanded ? 'Collapse' : 'Details'}
-                                        </Button>
-                                    ) : null}
-                                    {canManageTeam && (
-                                        (player.$id !== currentTeam.captainId)
-                                        || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
-                                    ) && (
-                                        <Button
-                                            color="red"
-                                            variant="subtle"
-                                            size="xs"
-                                            loading={removingPlayerIds.has(player.$id)}
-                                            onClick={(event) => {
-                                                event.stopPropagation();
-                                                void handleRemovePlayer(player.$id);
-                                            }}
-                                        >
-                                            Remove
-                                        </Button>
-                                    )}
-                                </Group>
-                            </Group>
+                                        <Group gap="xs" mt="xs" align="flex-end" wrap="wrap" onClick={(event) => event.stopPropagation()}>
+                                            {canManageTeam ? (
+                                                <Group gap={6} align="flex-end" wrap="nowrap">
+                                                    <TextInput
+                                                        label="Jersey #"
+                                                        aria-label={`Jersey number for ${playerName}`}
+                                                        value={jerseyDraftValue}
+                                                        placeholder="--"
+                                                        size="xs"
+                                                        inputMode="numeric"
+                                                        pattern="[0-9]*"
+                                                        className="team-roster-jersey-input"
+                                                        onClick={(event) => event.stopPropagation()}
+                                                        onFocus={(event) => event.stopPropagation()}
+                                                        onChange={(event) => {
+                                                            const value = event.currentTarget.value.replace(/\D/g, '');
+                                                            setJerseyNumbersByUserId((current) => ({
+                                                                ...current,
+                                                                [player.$id]: value,
+                                                            }));
+                                                        }}
+                                                    />
+                                                    <Button
+                                                        size="xs"
+                                                        variant="light"
+                                                        disabled={!jerseyNumberChanged}
+                                                        loading={savingJerseyNumber}
+                                                        aria-label={`Save jersey number for ${playerName}`}
+                                                        onClick={(event) => {
+                                                            event.stopPropagation();
+                                                            void handleSaveJerseyNumber(player.$id);
+                                                        }}
+                                                    >
+                                                        Save
+                                                    </Button>
+                                                </Group>
+                                            ) : currentJerseyNumber ? (
+                                                <Badge variant="light" color="gray">#{currentJerseyNumber}</Badge>
+                                            ) : null}
+                                            {canExpandCompliance ? (
+                                                <Button
+                                                    variant="light"
+                                                    size="xs"
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        setExpandedComplianceUserIds((current) => (
+                                                            current.includes(player.$id)
+                                                                ? current.filter((id) => id !== player.$id)
+                                                                : [...current, player.$id]
+                                                        ));
+                                                    }}
+                                                >
+                                                    {expanded ? 'Collapse' : 'Details'}
+                                                </Button>
+                                            ) : null}
+                                            {canManageTeam && (
+                                                (player.$id !== currentTeam.captainId)
+                                                || (editingDetails && draftCaptainId.trim().length > 0 && draftCaptainId !== currentTeam.captainId)
+                                            ) && (
+                                                <Button
+                                                    color="red"
+                                                    variant="subtle"
+                                                    size="xs"
+                                                    loading={removingPlayerIds.has(player.$id)}
+                                                    onClick={(event) => {
+                                                        event.stopPropagation();
+                                                        void handleRemovePlayer(player.$id);
+                                                    }}
+                                                >
+                                                    Remove
+                                                </Button>
+                                            )}
+                                        </Group>
+	                                    </div>
+	                                </Group>
+	                            </Group>
                             {expanded && compliance ? (
                                 <Paper withBorder radius="sm" p="sm" bg="gray.0">
                                     <Stack gap="xs">
@@ -1720,6 +1475,238 @@ export default function TeamDetailModal({
         </ResponsiveCardGrid>
     );
 
+    const editDetailsModal = canManageTeam ? (
+        <Modal
+            opened={editingDetails}
+            onClose={() => setEditingDetails(false)}
+            title="Edit Team Details"
+            size="lg"
+            centered
+            scrollAreaComponent={ScrollArea.Autosize}
+        >
+            <Stack gap="md">
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                    <MantineSelect
+                        label="Sport"
+                        data={sportOptions}
+                        value={draftSport || null}
+                        onChange={(value) => setDraftSport(value || '')}
+                        searchable
+                        allowDeselect={false}
+                        nothingFoundMessage="No sports found"
+                    />
+                    <MantineSelect
+                        label="Division Gender"
+                        data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
+                        value={draftDivisionGender}
+                        onChange={(value) => setDraftDivisionGender((value as 'M' | 'F' | 'C') || 'C')}
+                        allowDeselect={false}
+                    />
+                    <MantineSelect
+                        label="Skill Division"
+                        data={skillDivisionOptions}
+                        value={draftSkillDivisionTypeId}
+                        onChange={(value) => setDraftSkillDivisionTypeId(value || 'open')}
+                        searchable
+                        allowDeselect={false}
+                    />
+                    <MantineSelect
+                        label="Age Division"
+                        data={ageDivisionOptions}
+                        value={draftAgeDivisionTypeId}
+                        onChange={(value) => setDraftAgeDivisionTypeId(value || DEFAULT_AGE_DIVISION_FALLBACK)}
+                        searchable
+                        allowDeselect={false}
+                    />
+                    <TextInput
+                        label="Division Preview"
+                        value={draftDivision}
+                        readOnly
+                    />
+                    <NumberInput
+                        label="Team Size"
+                        min={1}
+                        value={draftTeamSize}
+                        onChange={(value) => setDraftTeamSize(Number(value) || 1)}
+                    />
+                    <MantineSelect
+                        label="Team Captain"
+                        placeholder={teamPlayers.length > 0 ? 'Select a captain' : 'No team players available'}
+                        data={teamPlayers.map((player) => ({
+                            value: player.$id,
+                            label: getUserFullName(player),
+                        }))}
+                        value={draftCaptainId || null}
+                        onChange={(value) => setDraftCaptainId(value || '')}
+                        disabled={teamPlayers.length === 0}
+                        allowDeselect={false}
+                    />
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>Registration policy</Text>
+                        <SegmentedControl
+                            fullWidth
+                            data={[
+                                { value: 'CLOSED', label: 'Closed' },
+                                { value: 'OPEN_REGISTRATION', label: 'Open' },
+                                { value: 'REQUEST_TO_JOIN', label: 'Request' },
+                            ]}
+                            value={draftJoinPolicy}
+                            onChange={(value) => setDraftJoinPolicy(value as TeamJoinPolicy)}
+                        />
+                        <Text size="xs" c="dimmed" mt={4}>
+                            {draftRequestOnly
+                                ? 'Players submit a request and wait for manager approval.'
+                                : draftJoinPolicy === 'OPEN_REGISTRATION'
+                                    ? 'Players can join immediately from the team view.'
+                                    : 'Players cannot join from the team view.'}
+                        </Text>
+                    </div>
+                    <NumberInput
+                        label="Registration cost"
+                        description={
+                            draftRequestOnly
+                                ? 'Shown as an expected cost and default bill amount. Players are not prompted to pay when requesting.'
+                                : canChargeForTeamRegistration
+                                ? 'Leave at $0 for free registration.'
+                                : 'Connect Stripe to charge for registration. Free registration is still available.'
+                        }
+                        min={0}
+                        decimalScale={2}
+                        fixedDecimalScale
+                        prefix="$"
+                        value={draftRegistrationPriceDollars}
+                        onChange={(value) => {
+                            const numeric = typeof value === 'number' ? value : Number(value);
+                            setDraftRegistrationPriceDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
+                        }}
+                        disabled={!draftRegistrationEnabled || (draftJoinPolicy === 'OPEN_REGISTRATION' && !canChargeForTeamRegistration)}
+                    />
+                </SimpleGrid>
+
+                {draftRequestOnly && (
+                    <Alert color="yellow" variant="light">
+                        Players will not be prompted for payment during request submission. Use player actions after approval to send a bill.
+                    </Alert>
+                )}
+
+                {draftRegistrationEnabled && (
+                    <Paper withBorder radius="md" p="sm">
+                        <Group justify="space-between" mb="xs">
+                            <div>
+                                <Text fw={500} size="sm">Registration questions</Text>
+                                <Text size="xs" c="dimmed">Players answer these before joining or requesting to join.</Text>
+                            </div>
+                            <Group gap="xs">
+                                <Button
+                                    size="xs"
+                                    variant="subtle"
+                                    aria-expanded={!registrationQuestionsCollapsed}
+                                    aria-controls="team-registration-questions-content"
+                                    onClick={() => setRegistrationQuestionsCollapsed((current) => !current)}
+                                >
+                                    {registrationQuestionsCollapsed ? 'Expand' : 'Collapse'}
+                                </Button>
+                                <Button
+                                    size="xs"
+                                    variant="light"
+                                    onClick={() => {
+                                        setRegistrationQuestionsCollapsed(false);
+                                        setDraftRegistrationQuestions((current) => [
+                                            ...current,
+                                            {
+                                                prompt: '',
+                                                answerType: 'TEXT',
+                                                required: false,
+                                                sortOrder: current.length,
+                                            },
+                                        ]);
+                                    }}
+                                >
+                                    Add Question
+                                </Button>
+                            </Group>
+                        </Group>
+                        <Collapse in={!registrationQuestionsCollapsed}>
+                            <Stack id="team-registration-questions-content" gap="xs">
+                                {questionsLoading ? (
+                                    <Group gap={6}>
+                                        <Loader size="xs" />
+                                        <Text size="xs" c="dimmed">Loading questions</Text>
+                                    </Group>
+                                ) : draftRegistrationQuestions.length > 0 ? (
+                                    <Stack gap="xs">
+                                        {draftRegistrationQuestions.map((question, index) => (
+                                            <Stack key={question.id ?? `draft-${index}`} gap={6}>
+                                                <TextInput
+                                                    label={`Question ${index + 1}`}
+                                                    value={question.prompt}
+                                                    onChange={(event) => {
+                                                        const value = event.currentTarget.value;
+                                                        setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
+                                                            entryIndex === index ? { ...entry, prompt: value } : entry
+                                                        )));
+                                                    }}
+                                                />
+                                                <Group justify="space-between">
+                                                    <Checkbox
+                                                        label="Required"
+                                                        checked={Boolean(question.required)}
+                                                        onChange={(event) => {
+                                                            const checked = event.currentTarget.checked;
+                                                            setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
+                                                                entryIndex === index ? { ...entry, required: checked } : entry
+                                                            )));
+                                                        }}
+                                                    />
+                                                    <Button
+                                                        size="xs"
+                                                        variant="subtle"
+                                                        color="red"
+                                                        onClick={() => setDraftRegistrationQuestions((current) => current.filter((_, entryIndex) => entryIndex !== index))}
+                                                    >
+                                                        Remove
+                                                    </Button>
+                                                </Group>
+                                            </Stack>
+                                        ))}
+                                    </Stack>
+                                ) : (
+                                    <Text size="xs" c="dimmed">No registration questions yet.</Text>
+                                )}
+                            </Stack>
+                        </Collapse>
+                    </Paper>
+                )}
+
+                {currentTeam.organizationId && (
+                    <div>
+                        <MultiSelect
+                            label="Required Documents"
+                            data={templateOptions}
+                            value={draftRequiredTemplateIds}
+                            onChange={setDraftRequiredTemplateIds}
+                            placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
+                            searchable
+                            clearable
+                            disabled={templatesLoading}
+                            nothingFoundMessage="No templates found"
+                        />
+                        {!templatesLoading && templateOptions.length === 0 && (
+                            <Text size="xs" c="dimmed" mt={4}>
+                                No templates available for this organization yet.
+                            </Text>
+                        )}
+                    </div>
+                )}
+
+                <Group justify="flex-end">
+                    <Button variant="default" onClick={() => setEditingDetails(false)}>Cancel</Button>
+                    <Button onClick={() => { void handleSaveDetails(); }}>Save Team Details</Button>
+                </Group>
+            </Stack>
+        </Modal>
+    ) : null;
+
     const detailContent = (
         <>
                 <div style={{ padding: isPageMode ? 0 : 16 }}>
@@ -1747,9 +1734,9 @@ export default function TeamDetailModal({
                                 <Button
                                     variant="subtle"
                                     size="xs"
-                                    onClick={() => setEditingDetails((value) => !value)}
+                                    onClick={() => setEditingDetails(true)}
                                 >
-                                    {editingDetails ? 'Close Team Details' : 'Edit Team Details'}
+                                    Edit Team Details
                                 </Button>
                                 <Button variant="default" size="xs" onClick={() => setImagePickerOpen(true)}>Change Image</Button>
                             </Group>
@@ -1823,254 +1810,6 @@ export default function TeamDetailModal({
                     {showRosterTab && (
                         <div className={isPageMode ? 'org-tab-content team-detail-roster-grid' : undefined}>
 
-                    {editingDetails && canManageTeam && (
-                        <Paper
-                            withBorder
-                            radius="md"
-                            p="md"
-                            mb={isPageMode ? 0 : 'md'}
-                            className={isPageMode ? 'team-detail-roster-main' : undefined}
-                        >
-                            <Title order={5} mb="sm">Edit Team Details</Title>
-                            <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                                <MantineSelect
-                                    label="Sport"
-                                    data={sportOptions}
-                                    value={draftSport || null}
-                                    onChange={(value) => setDraftSport(value || '')}
-                                    searchable
-                                    allowDeselect={false}
-                                    nothingFoundMessage="No sports found"
-                                />
-                                <MantineSelect
-                                    label="Division Gender"
-                                    data={DIVISION_GENDER_OPTIONS.map((option) => ({ ...option }))}
-                                    value={draftDivisionGender}
-                                    onChange={(value) => setDraftDivisionGender((value as 'M' | 'F' | 'C') || 'C')}
-                                    allowDeselect={false}
-                                />
-                                <MantineSelect
-                                    label="Skill Division"
-                                    data={skillDivisionOptions}
-                                    value={draftSkillDivisionTypeId}
-                                    onChange={(value) => setDraftSkillDivisionTypeId(value || 'open')}
-                                    searchable
-                                    allowDeselect={false}
-                                />
-                                <MantineSelect
-                                    label="Age Division"
-                                    data={ageDivisionOptions}
-                                    value={draftAgeDivisionTypeId}
-                                    onChange={(value) => setDraftAgeDivisionTypeId(value || DEFAULT_AGE_DIVISION_FALLBACK)}
-                                    searchable
-                                    allowDeselect={false}
-                                />
-                                <TextInput
-                                    label="Division Preview"
-                                    value={draftDivision}
-                                    readOnly
-                                />
-                                <NumberInput
-                                    label="Team Size"
-                                    min={1}
-                                    value={draftTeamSize}
-                                    onChange={(value) => setDraftTeamSize(Number(value) || 1)}
-                                />
-                                <MantineSelect
-                                    label="Team Captain"
-                                    placeholder={teamPlayers.length > 0 ? 'Select a captain' : 'No team players available'}
-                                    data={teamPlayers.map((player) => ({
-                                        value: player.$id,
-                                        label: getUserFullName(player),
-                                    }))}
-                                    value={draftCaptainId || null}
-                                    onChange={(value) => setDraftCaptainId(value || '')}
-                                    disabled={teamPlayers.length === 0}
-                                    allowDeselect={false}
-                                />
-                                <div>
-                                    <Text size="sm" fw={500} mb={4}>Registration policy</Text>
-                                    <SegmentedControl
-                                        fullWidth
-                                        data={[
-                                            { value: 'CLOSED', label: 'Closed' },
-                                            { value: 'OPEN_REGISTRATION', label: 'Open' },
-                                            { value: 'REQUEST_TO_JOIN', label: 'Request' },
-                                        ]}
-                                        value={draftJoinPolicy}
-                                        onChange={(value) => setDraftJoinPolicy(value as TeamJoinPolicy)}
-                                    />
-                                    <Text size="xs" c="dimmed" mt={4}>
-                                        {draftRequestOnly
-                                            ? 'Players submit a request and wait for manager approval.'
-                                            : draftJoinPolicy === 'OPEN_REGISTRATION'
-                                                ? 'Players can join immediately from the team view.'
-                                                : 'Players cannot join from the team view.'}
-                                    </Text>
-                                </div>
-                                <NumberInput
-                                    label="Registration cost"
-                                    description={
-                                        draftRequestOnly
-                                            ? 'Shown as an expected cost and default bill amount. Players are not prompted to pay when requesting.'
-                                            : canChargeForTeamRegistration
-                                            ? 'Leave at $0 for free registration.'
-                                            : 'Connect Stripe to charge for registration. Free registration is still available.'
-                                    }
-                                    min={0}
-                                    decimalScale={2}
-                                    fixedDecimalScale
-                                    prefix="$"
-                                    value={draftRegistrationPriceDollars}
-                                    onChange={(value) => {
-                                        const numeric = typeof value === 'number' ? value : Number(value);
-                                        setDraftRegistrationPriceDollars(Number.isFinite(numeric) ? Math.max(0, numeric) : 0);
-                                    }}
-                                    disabled={!draftRegistrationEnabled || (draftJoinPolicy === 'OPEN_REGISTRATION' && !canChargeForTeamRegistration)}
-                                />
-                            </SimpleGrid>
-                            {draftRequestOnly && (
-                                <Alert color="yellow" variant="light" mt="sm">
-                                    Players will not be prompted for payment during request submission. Use player actions after approval to send a bill.
-                                </Alert>
-                            )}
-                            {draftRegistrationEnabled && (
-                                <Paper withBorder radius="md" p="sm" mt="sm">
-                                    <Group justify="space-between" mb="xs">
-                                        <div>
-                                            <Text fw={500} size="sm">Registration questions</Text>
-                                            <Text size="xs" c="dimmed">Players answer these before joining or requesting to join.</Text>
-                                        </div>
-                                        <Group gap="xs">
-                                            <Button
-                                                size="xs"
-                                                variant="subtle"
-                                                aria-expanded={!registrationQuestionsCollapsed}
-                                                aria-controls="team-registration-questions-content"
-                                                onClick={() => setRegistrationQuestionsCollapsed((current) => !current)}
-                                            >
-                                                {registrationQuestionsCollapsed ? 'Expand' : 'Collapse'}
-                                            </Button>
-                                            <Button
-                                                size="xs"
-                                                variant="light"
-                                                onClick={() => {
-                                                    setRegistrationQuestionsCollapsed(false);
-                                                    setDraftRegistrationQuestions((current) => [
-                                                        ...current,
-                                                        {
-                                                            prompt: '',
-                                                            answerType: 'TEXT',
-                                                            required: false,
-                                                            sortOrder: current.length,
-                                                        },
-                                                    ]);
-                                                }}
-                                            >
-                                                Add Question
-                                            </Button>
-                                        </Group>
-                                    </Group>
-                                    <Collapse in={!registrationQuestionsCollapsed}>
-                                        <Stack id="team-registration-questions-content" gap="xs">
-                                            {questionsLoading ? (
-                                                <Group gap={6}>
-                                                    <Loader size="xs" />
-                                                    <Text size="xs" c="dimmed">Loading questions</Text>
-                                                </Group>
-                                            ) : draftRegistrationQuestions.length > 0 ? (
-                                                <Stack gap="xs">
-                                                    {draftRegistrationQuestions.map((question, index) => (
-                                                        <Stack key={question.id ?? `draft-${index}`} gap={6}>
-                                                            <TextInput
-                                                                label={`Question ${index + 1}`}
-                                                                value={question.prompt}
-                                                                onChange={(event) => {
-                                                                    const value = event.currentTarget.value;
-                                                                    setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
-                                                                        entryIndex === index ? { ...entry, prompt: value } : entry
-                                                                    )));
-                                                                }}
-                                                            />
-                                                            <Group justify="space-between">
-                                                                <Checkbox
-                                                                    label="Required"
-                                                                    checked={Boolean(question.required)}
-                                                                    onChange={(event) => {
-                                                                        const checked = event.currentTarget.checked;
-                                                                        setDraftRegistrationQuestions((current) => current.map((entry, entryIndex) => (
-                                                                            entryIndex === index ? { ...entry, required: checked } : entry
-                                                                        )));
-                                                                    }}
-                                                                />
-                                                                <Button
-                                                                    size="xs"
-                                                                    variant="subtle"
-                                                                    color="red"
-                                                                    onClick={() => setDraftRegistrationQuestions((current) => current.filter((_, entryIndex) => entryIndex !== index))}
-                                                                >
-                                                                    Remove
-                                                                </Button>
-                                                            </Group>
-                                                        </Stack>
-                                                    ))}
-                                                </Stack>
-                                            ) : (
-                                                <Text size="xs" c="dimmed">No registration questions yet.</Text>
-                                            )}
-                                        </Stack>
-                                    </Collapse>
-                                </Paper>
-                            )}
-                            {currentTeam.organizationId && (
-                                <div className="mt-3">
-                                    <MultiSelect
-                                        label="Required Documents"
-                                        data={templateOptions}
-                                        value={draftRequiredTemplateIds}
-                                        onChange={setDraftRequiredTemplateIds}
-                                        placeholder={templatesLoading ? 'Loading templates...' : 'Select templates'}
-                                        searchable
-                                        clearable
-                                        disabled={templatesLoading}
-                                        nothingFoundMessage="No templates found"
-                                    />
-                                    {!templatesLoading && templateOptions.length === 0 && (
-                                        <Text size="xs" c="dimmed" mt={4}>
-                                            No templates available for this organization yet.
-                                        </Text>
-                                    )}
-                                </div>
-                            )}
-                            {teamPlayers.length > 0 && (
-                                <Paper withBorder radius="md" p="sm" mt="sm">
-                                    <Text fw={500} size="sm" mb="xs">Player jersey numbers</Text>
-                                    <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm">
-                                        {teamPlayers.map((player) => (
-                                            <TextInput
-                                                key={player.$id}
-                                                label={getUserFullName(player)}
-                                                placeholder="Jersey number"
-                                                value={jerseyNumbersByUserId[player.$id] ?? ''}
-                                                onChange={(event) => {
-                                                    const value = event.currentTarget.value;
-                                                    setJerseyNumbersByUserId((current) => ({
-                                                        ...current,
-                                                        [player.$id]: value,
-                                                    }));
-                                                }}
-                                            />
-                                        ))}
-                                    </SimpleGrid>
-                                </Paper>
-                            )}
-                            <Group justify="flex-end" mt="sm">
-                                <Button variant="default" onClick={() => setEditingDetails(false)}>Cancel</Button>
-                                <Button onClick={() => { void handleSaveDetails(); }}>Save Team Details</Button>
-                            </Group>
-                        </Paper>
-                    )}
-
                     {/* Team Stats */}
                     <SimpleGrid
                         cols={isPageMode ? { base: 1, sm: 2, lg: 1 } : { base: 1, md: 2 }}
@@ -2087,199 +1826,6 @@ export default function TeamDetailModal({
                             <Text c="dimmed">Pending Invites</Text>
                         </Paper>
                     </SimpleGrid>
-
-                    {canManageTeam && currentTeam.organizationId && !showTeamDetailTabs && (
-                        <div className={rosterSectionClass('team-detail-roster-main')}>
-                            <TeamFinancePanel
-                                teamId={currentTeam.$id}
-                                organizationId={currentTeam.organizationId}
-                                isActive={detailIsActive}
-                                canManage={canManageTeam}
-                            />
-                        </div>
-                    )}
-
-                    {canManageTeam && (
-                        <div className={rosterSectionClass('team-detail-roster-main')}>
-                            <Group justify="space-between" mb="sm">
-                                <Title order={5}>Join Requests ({joinRequests.filter((request) => request.status === 'PENDING').length})</Title>
-                                {joinRequestsLoading ? (
-                                    <Group gap={6}>
-                                        <Loader size="xs" />
-                                        <Text size="xs" c="dimmed">Loading requests</Text>
-                                    </Group>
-                                ) : null}
-                            </Group>
-                            {joinRequests.filter((request) => request.status === 'PENDING').length > 0 ? (
-                                <Stack gap="sm">
-                                    {joinRequests.filter((request) => request.status === 'PENDING').map((request) => {
-                                        const applicant = request.registrant
-                                            ? ({ ...request.registrant, $id: request.registrantUserId } as UserData)
-                                            : null;
-                                        return (
-                                            <Paper key={request.id} withBorder radius="md" p="sm">
-                                                <Stack gap="sm">
-                                                    <Group justify="space-between" align="flex-start">
-                                                        <div>
-                                                            <Text fw={600}>{applicant ? getUserFullName(applicant) : request.registrantUserId}</Text>
-                                                            <Text size="xs" c="dimmed">
-                                                                {request.registrantType === 'CHILD' ? 'Child player request' : 'Player request'}
-                                                            </Text>
-                                                        </div>
-                                                        <Badge variant="light" color="yellow">Pending</Badge>
-                                                    </Group>
-                                                    <Stack gap={6}>
-                                                        {(request.answers ?? []).length > 0 ? request.answers?.map((answer) => (
-                                                            <Paper key={answer.questionId} withBorder radius="sm" p="xs" bg="gray.0">
-                                                                <Text size="xs" fw={600}>{answer.prompt}</Text>
-                                                                <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
-                                                                    {answer.answer.trim() || 'No answer'}
-                                                                </Text>
-                                                            </Paper>
-                                                        )) : (
-                                                            <Text size="xs" c="dimmed">No answers submitted.</Text>
-                                                        )}
-                                                    </Stack>
-                                                    <Group justify="flex-end">
-                                                        <Button
-                                                            size="xs"
-                                                            variant="light"
-                                                            loading={reviewingRequestIds.has(request.id)}
-                                                            onClick={() => { void handleReviewJoinRequest(request.id, 'DECLINE'); }}
-                                                        >
-                                                            Decline
-                                                        </Button>
-                                                        <Button
-                                                            size="xs"
-                                                            loading={reviewingRequestIds.has(request.id)}
-                                                            onClick={() => { void handleReviewJoinRequest(request.id, 'APPROVE'); }}
-                                                        >
-                                                            Approve
-                                                        </Button>
-                                                    </Group>
-                                                </Stack>
-                                            </Paper>
-                                        );
-                                    })}
-                                </Stack>
-                            ) : (
-                                <Text size="sm" c="dimmed">No pending join requests.</Text>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Roster */}
-                    <div className={rosterSectionClass('team-detail-roster-main')}>
-                        <Group justify="space-between" mb="sm">
-                            <Title order={5}>Roster ({teamPlayers.length})</Title>
-                            {canManageTeam && memberComplianceLoading ? (
-                                <Group gap={6}>
-                                    <Loader size="xs" />
-                                    <Text size="xs" c="dimmed">Loading status</Text>
-                                </Group>
-                            ) : null}
-                        </Group>
-                        {canManageTeam && memberComplianceError ? (
-                            <Alert color="red" variant="light" mb="sm">
-                                {memberComplianceError}
-                            </Alert>
-                        ) : null}
-                        {teamPlayers.length > 0 ? (
-                            isPageMode
-                                ? renderRosterPlayerCards()
-                                : (
-                                    <ScrollArea.Autosize mah={360} type="auto">
-                                        {renderRosterPlayerCards()}
-                                    </ScrollArea.Autosize>
-                                )
-                        ) : (
-                            <Text c="dimmed" ta="center" py={8}>
-                                {canManageTeam ? 'Invite some players to build your team!' : 'This team is just getting started.'}
-                            </Text>
-                        )}
-                    </div>
-
-                    {/* Pending Invitations */}
-                    {pendingPlayers.length > 0 && (
-                        <div className={rosterSectionClass('team-detail-roster-main')}>
-                            <h4 className="text-lg font-semibold mb-4">Pending Invitations ({pendingPlayers.length})</h4>
-                            <div className="space-y-3">
-                                {pendingPlayers.map(player => {
-                                    const isFromEvent = localFreeAgents.some(agent => agent.$id === player.$id);
-                                    const isCancelling = cancellingInviteIds.has(player.$id);
-
-                                    return (
-                                        <div
-                                            key={player.$id}
-                                            className={`flex items-center justify-between p-3 rounded-lg border ${isFromEvent
-                                                ? 'bg-blue-50 border-blue-200'
-                                                : 'bg-yellow-50 border-yellow-200'
-                                                }`}
-                                        >
-                                            <div className="flex items-center space-x-3">
-                                                <Image
-                                                    src={getUserAvatarUrl(player, 40)}
-                                                    alt={getUserFullName(player)}
-                                                    width={40}
-                                                    height={40}
-                                                    unoptimized
-                                                    className="w-10 h-10 rounded-full object-cover"
-                                                />
-                                                <div>
-                                                    <p className="font-medium">{getUserFullName(player)}</p>
-                                                    {getUserHandle(player) && (
-                                                        <p className="text-xs text-gray-500">{getUserHandle(player)}</p>
-                                                    )}
-                                                    <span className={`text-xs font-medium ${isFromEvent ? 'text-blue-600' : 'text-yellow-600'
-                                                        }`}>
-                                                        {isFromEvent ? 'Free Agent - Invitation pending' : 'Invitation pending'}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            {canManageTeam && (
-                                                <button
-                                                    onClick={() => handleCancelInvite(player.$id)}
-                                                    disabled={isCancelling}
-                                                    className={`flex items-center space-x-1 text-sm transition-colors ${isCancelling
-                                                        ? 'text-gray-400 cursor-not-allowed'
-                                                        : 'text-red-600 hover:text-red-800'
-                                                        }`}
-                                                >
-                                                    {isCancelling ? (
-                                                        <>
-                                                            <svg
-                                                                className="animate-spin h-4 w-4"
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                fill="none"
-                                                                viewBox="0 0 24 24"
-                                                            >
-                                                                <circle
-                                                                    className="opacity-25"
-                                                                    cx="12"
-                                                                    cy="12"
-                                                                    r="10"
-                                                                    stroke="currentColor"
-                                                                    strokeWidth="4"
-                                                                />
-                                                                <path
-                                                                    className="opacity-75"
-                                                                    fill="currentColor"
-                                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                                                />
-                                                            </svg>
-                                                            <span>Cancelling...</span>
-                                                        </>
-                                                    ) : (
-                                                        <span>Cancel</span>
-                                                    )}
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
 
                     {/* Team Staff Roles */}
                     <div className={rosterSectionClass('team-detail-roster-side')}>
@@ -2398,218 +1944,218 @@ export default function TeamDetailModal({
                         </div>
                     )}
 
+                    {canManageTeam && currentTeam.organizationId && !showTeamDetailTabs && (
+                        <div className={rosterSectionClass('team-detail-roster-main')}>
+                            <TeamFinancePanel
+                                teamId={currentTeam.$id}
+                                organizationId={currentTeam.organizationId}
+                                isActive={detailIsActive}
+                                canManage={canManageTeam}
+                            />
+                        </div>
+                    )}
+
+                    {canManageTeam && (
+                        <div className={rosterSectionClass('team-detail-roster-main')}>
+                            <Group justify="space-between" mb="sm">
+                                <Title order={5}>Join Requests ({joinRequests.filter((request) => request.status === 'PENDING').length})</Title>
+                                {joinRequestsLoading ? (
+                                    <Group gap={6}>
+                                        <Loader size="xs" />
+                                        <Text size="xs" c="dimmed">Loading requests</Text>
+                                    </Group>
+                                ) : null}
+                            </Group>
+                            {joinRequests.filter((request) => request.status === 'PENDING').length > 0 ? (
+                                <Stack gap="sm">
+                                    {joinRequests.filter((request) => request.status === 'PENDING').map((request) => {
+                                        const applicant = request.registrant
+                                            ? ({ ...request.registrant, $id: request.registrantUserId } as UserData)
+                                            : null;
+                                        return (
+                                            <Paper key={request.id} withBorder radius="md" p="sm">
+                                                <Stack gap="sm">
+                                                    <Group justify="space-between" align="flex-start">
+                                                        <div>
+                                                            <Text fw={600}>{applicant ? getUserFullName(applicant) : request.registrantUserId}</Text>
+                                                            <Text size="xs" c="dimmed">
+                                                                {request.registrantType === 'CHILD' ? 'Child player request' : 'Player request'}
+                                                            </Text>
+                                                        </div>
+                                                        <Badge variant="light" color="yellow">Pending</Badge>
+                                                    </Group>
+                                                    <Stack gap={6}>
+                                                        {(request.answers ?? []).length > 0 ? request.answers?.map((answer) => (
+                                                            <Paper key={answer.questionId} withBorder radius="sm" p="xs" bg="gray.0">
+                                                                <Text size="xs" fw={600}>{answer.prompt}</Text>
+                                                                <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                                                                    {answer.answer.trim() || 'No answer'}
+                                                                </Text>
+                                                            </Paper>
+                                                        )) : (
+                                                            <Text size="xs" c="dimmed">No answers submitted.</Text>
+                                                        )}
+                                                    </Stack>
+                                                    <Group justify="flex-end">
+                                                        <Button
+                                                            size="xs"
+                                                            variant="light"
+                                                            loading={reviewingRequestIds.has(request.id)}
+                                                            onClick={() => { void handleReviewJoinRequest(request.id, 'DECLINE'); }}
+                                                        >
+                                                            Decline
+                                                        </Button>
+                                                        <Button
+                                                            size="xs"
+                                                            loading={reviewingRequestIds.has(request.id)}
+                                                            onClick={() => { void handleReviewJoinRequest(request.id, 'APPROVE'); }}
+                                                        >
+                                                            Approve
+                                                        </Button>
+                                                    </Group>
+                                                </Stack>
+                                            </Paper>
+                                        );
+                                    })}
+                                </Stack>
+                            ) : (
+                                <Text size="sm" c="dimmed">No pending join requests.</Text>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Roster */}
+                    <div className={rosterSectionClass('team-detail-roster-main')}>
+                        <Group justify="space-between" mb="sm">
+                            <Title order={5}>Roster ({teamPlayers.length})</Title>
+                            {canManageTeam && memberComplianceLoading ? (
+                                <Group gap={6}>
+                                    <Loader size="xs" />
+                                    <Text size="xs" c="dimmed">Loading status</Text>
+                                </Group>
+                            ) : null}
+                        </Group>
+                        {canManageTeam && memberComplianceError ? (
+                            <Alert color="red" variant="light" mb="sm">
+                                {memberComplianceError}
+                            </Alert>
+                        ) : null}
+                        {teamPlayers.length > 0 ? (
+                            isPageMode
+                                ? renderRosterPlayerCards()
+                                : (
+                                    <ScrollArea.Autosize mah={360} type="auto">
+                                        {renderRosterPlayerCards()}
+                                    </ScrollArea.Autosize>
+                                )
+                        ) : (
+                            <Text c="dimmed" ta="center" py={8}>
+                                {canManageTeam ? 'Invite some players to build your team!' : 'This team is just getting started.'}
+                            </Text>
+                        )}
+                    </div>
+
+                    {/* Pending Invitations */}
+                    {pendingPlayers.length > 0 && (
+                        <div className={rosterSectionClass('team-detail-roster-main')}>
+                            <h4 className="text-lg font-semibold mb-4">Pending Invitations ({pendingPlayers.length})</h4>
+                            <ResponsiveCardGrid maxCardWidth={352} className="team-roster-player-grid">
+                                {pendingPlayers.map(player => {
+                                    const isFromEvent = localFreeAgents.some(agent => agent.$id === player.$id);
+                                    const isCancelling = cancellingInviteIds.has(player.$id);
+
+                                    return (
+                                        <div
+                                            key={player.$id}
+                                            className={`flex h-full items-start justify-between gap-3 p-3 rounded-lg border ${isFromEvent
+                                                ? 'bg-blue-50 border-blue-200'
+                                                : 'bg-yellow-50 border-yellow-200'
+                                                }`}
+                                        >
+                                            <div className="flex min-w-0 items-start space-x-3">
+                                                <Image
+                                                    src={getUserAvatarUrl(player, 40)}
+                                                    alt={getUserFullName(player)}
+                                                    width={40}
+                                                    height={40}
+                                                    unoptimized
+                                                    className="w-10 h-10 rounded-full object-cover shrink-0"
+                                                />
+                                                <div className="min-w-0">
+                                                    <p className="font-medium truncate">{getUserFullName(player)}</p>
+                                                    {getUserHandle(player) && (
+                                                        <p className="text-xs text-gray-500 truncate">{getUserHandle(player)}</p>
+                                                    )}
+                                                    <span className={`text-xs font-medium ${isFromEvent ? 'text-blue-600' : 'text-yellow-600'
+                                                        }`}>
+                                                        {isFromEvent ? 'Free Agent - Invitation pending' : 'Invitation pending'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            {canManageTeam && (
+                                                <button
+                                                    onClick={() => handleCancelInvite(player.$id)}
+                                                    disabled={isCancelling}
+                                                    className={`flex shrink-0 items-center space-x-1 text-sm transition-colors ${isCancelling
+                                                        ? 'text-gray-400 cursor-not-allowed'
+                                                        : 'text-red-600 hover:text-red-800'
+                                                        }`}
+                                                >
+                                                    {isCancelling ? (
+                                                        <>
+                                                            <svg
+                                                                className="animate-spin h-4 w-4"
+                                                                xmlns="http://www.w3.org/2000/svg"
+                                                                fill="none"
+                                                                viewBox="0 0 24 24"
+                                                            >
+                                                                <circle
+                                                                    className="opacity-25"
+                                                                    cx="12"
+                                                                    cy="12"
+                                                                    r="10"
+                                                                    stroke="currentColor"
+                                                                    strokeWidth="4"
+                                                                />
+                                                                <path
+                                                                    className="opacity-75"
+                                                                    fill="currentColor"
+                                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                                                />
+                                                            </svg>
+                                                            <span>Cancelling...</span>
+                                                        </>
+                                                    ) : (
+                                                        <span>Cancel</span>
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </ResponsiveCardGrid>
+                        </div>
+                    )}
+
                     {/* Add Team Role Invites Section */}
                     {canManageTeam && (
                         <div className={rosterSectionClass('team-detail-roster-main')}>
-                            <Button onClick={() => setShowAddPlayers(!showAddPlayers)} mb="sm">
-                                {showAddPlayers ? 'Close' : 'Invite Roster Members'}
+                            <Button onClick={() => setShowAddPlayers(true)} mb="sm">
+                                Invite Roster Members
                             </Button>
-                            {showAddPlayers && (
-                                <Paper withBorder radius="md" p="md">
-                                    <Title order={6} mb="sm">Invite to {currentTeam.name}</Title>
-                                    <SegmentedControl
-                                        mb="sm"
-                                        value={selectedInviteRole}
-                                        onChange={(value) => {
-                                            const nextRole = value as TeamInviteRoleType;
-                                            setSelectedInviteRole(nextRole);
-                                            if (nextRole !== 'player' && inviteMode === 'free_agents') {
-                                                setInviteMode('user');
-                                            }
-                                            setSearchQuery('');
-                                            setSearchResults([]);
-                                            resetInviteTarget();
-                                        }}
-                                        data={[
-                                            { label: 'Player', value: 'player' },
-                                            { label: 'Manager', value: 'team_manager' },
-                                            { label: 'Head Coach', value: 'team_head_coach' },
-                                            { label: 'Assistant Coach', value: 'team_assistant_coach' },
-                                        ]}
-                                        fullWidth
-                                    />
-                                    <Tabs
-                                        value={inviteMode}
-                                        onChange={(value) => {
-                                            const nextMode = (value ?? 'user') as typeof inviteMode;
-                                            setInviteMode(nextMode);
-                                            setSearchQuery('');
-                                            setSearchResults([]);
-                                            setEmailInviteInput('');
-                                            resetInviteTarget();
-                                        }}
-                                        keepMounted={false}
-                                    >
-                                        <Tabs.List grow mb="sm">
-                                            <Tabs.Tab value="free_agents" disabled={selectedInviteRole !== 'player'}>Free Agents</Tabs.Tab>
-                                            <Tabs.Tab value="user">Invite User</Tabs.Tab>
-                                            <Tabs.Tab value="email">Invite by Email</Tabs.Tab>
-                                        </Tabs.List>
-
-                                        <Tabs.Panel value="free_agents">
-                                            <TextInput
-                                                placeholder="Search free agents"
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.currentTarget.value)}
-                                                mb="sm"
-                                            />
-                                        </Tabs.Panel>
-
-                                        <Tabs.Panel value="user">
-                                            <TextInput
-                                                placeholder={`Search ${selectedRoleLabel.toLowerCase()} (min 2 characters)`}
-                                                value={searchQuery}
-                                                onChange={(e) => setSearchQuery(e.currentTarget.value)}
-                                                mb="sm"
-                                            />
-                                        </Tabs.Panel>
-
-                                        <Tabs.Panel value="email">
-                                            <TextInput
-                                                placeholder="name@example.com"
-                                                value={emailInviteInput}
-                                                onChange={(e) => setEmailInviteInput(e.currentTarget.value)}
-                                                error={
-                                                    emailInviteInput.trim().length > 0 && !inviteEmailValid
-                                                        ? 'Enter a valid email address'
-                                                        : undefined
-                                                }
-                                                mb="sm"
-                                            />
-                                        </Tabs.Panel>
-                                    </Tabs>
-
-                                    {selectedInviteRole === 'player' && !canInviteAnotherPlayer && (
-                                        <Alert color="yellow" variant="light" mb="sm">
-                                            {playerInviteCapacityMessage}
-                                        </Alert>
-                                    )}
-
-                                    {inviteMode === 'user' && searching && (
-                                        <Group justify="center" py="sm">
-                                            <Text c="dimmed" size="sm">Searching...</Text>
-                                        </Group>
-                                    )}
-                                    {inviteMode === 'user' && !searching && searchQuery.length >= 2 && getAvailableUsers().length === 0 && (
-                                        <Text c="dimmed" ta="center" py={8}>
-                                            {`No ${selectedRoleLabel.toLowerCase()} found matching "${searchQuery}"`}
-                                        </Text>
-                                    )}
-                                    {selectedInviteRole === 'player' && inviteMode === 'free_agents' && suggestedFreeAgent && !selectedInviteUser && (
-                                        <Paper withBorder radius="md" p="sm" mb="sm" bg={'green.0'}>
-                                            <Group justify="space-between">
-                                                <Group>
-                                                    <Avatar
-                                                        src={getUserAvatarUrl(suggestedFreeAgent, 40)}
-                                                        alt={getUserFullName(suggestedFreeAgent)}
-                                                        size={40}
-                                                        radius="xl"
-                                                    />
-                                                    <div>
-                                                        <Text fw={500}>{getUserFullName(suggestedFreeAgent)}</Text>
-                                                        {getUserHandle(suggestedFreeAgent) && (
-                                                            <Text size="xs" c="dimmed">{getUserHandle(suggestedFreeAgent)}</Text>
-                                                        )}
-                                                        <Text size="xs" c="green">Suggested from event free agents</Text>
-                                                    </div>
-                                                </Group>
-                                                <Button
-                                                    size="xs"
-                                                    disabled={!canInviteUserForRole(suggestedFreeAgent.$id, 'player')}
-                                                    onClick={() => selectInviteUser(suggestedFreeAgent)}
-                                                >
-                                                    Select
-                                                </Button>
-                                            </Group>
-                                        </Paper>
-                                    )}
-                                    {selectedInviteRole === 'player' && inviteMode === 'free_agents' && !selectedInviteUser && !searching && getFilteredFreeAgents().length > 0 && (
-                                        <div className="mb-4">
-                                            <Text fw={500} size="sm" c="blue" mb={4}>Available Free Agents from Events:</Text>
-                                            <div className="space-y-2">
-                                                {getFilteredFreeAgents().map(agent => (
-                                                    <Paper key={agent.$id} withBorder radius="md" p="sm" bg={'blue.0'}>
-                                                        <Group justify="space-between">
-                                                            <Group>
-                                                                <Avatar src={getUserAvatarUrl(agent, 40)} alt={getUserFullName(agent)} size={40} radius="xl" />
-                                                                <div>
-                                                                    <Text fw={500}>{getUserFullName(agent)}</Text>
-                                                                    {getUserHandle(agent) && (
-                                                                        <Text size="xs" c="dimmed">{getUserHandle(agent)}</Text>
-                                                                    )}
-                                                                    <Text size="xs" c="blue">
-                                                                        {getFreeAgentEventNames(agent.$id).join(', ') || 'Free Agent from Event'}
-                                                                    </Text>
-                                                                </div>
-                                                            </Group>
-                                                            <Button
-                                                                size="xs"
-                                                                disabled={!canInviteUserForRole(agent.$id, 'player')}
-                                                                onClick={() => selectInviteUser(agent)}
-                                                            >
-                                                                Select
-                                                            </Button>
-                                                        </Group>
-                                                    </Paper>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-                                    {inviteMode === 'free_agents' && !selectedInviteUser && !searching && getFilteredFreeAgents().length === 0 && (
-                                        <Text c="dimmed" ta="center" py={8}>
-                                            {searchQuery.trim().length > 0 ? 'No free agents found matching your search.' : 'No future event free agents found.'}
-                                        </Text>
-                                    )}
-                                    {inviteMode === 'user' && !selectedInviteUser && !searching && getAvailableUsers().length > 0 && searchQuery.length >= 2 && (
-                                        <ScrollArea.Autosize mah={300}>
-                                            <div className="space-y-2">
-                                                {getAvailableUsers().map(user => {
-                                                    const isFreeAgent = getFilteredFreeAgents().some(agent => agent.$id === user.$id);
-                                                    return (
-                                                        <Paper key={user.$id} withBorder radius="md" p="sm" bg={isFreeAgent ? 'blue.0' : undefined}>
-                                                            <Group justify="space-between">
-                                                                <Group>
-                                                                    <Avatar src={getUserAvatarUrl(user, 40)} alt={getUserFullName(user)} size={40} radius="xl" />
-                                                                    <div>
-                                                                        <Text fw={500}>{getUserFullName(user)}</Text>
-                                                                        {getUserHandle(user) && (
-                                                                            <Text size="xs" c="dimmed">{getUserHandle(user)}</Text>
-                                                                        )}
-                                                                        {isFreeAgent && <Text size="xs" c="blue">Free Agent from Event</Text>}
-                                                                    </div>
-                                                                </Group>
-                                                                <Button
-                                                                    size="xs"
-                                                                    disabled={!canInviteUserForRole(user.$id, selectedInviteRole)}
-                                                                    onClick={() => selectInviteUser(user)}
-                                                                >
-                                                                    Select
-                                                                </Button>
-                                                            </Group>
-                                                        </Paper>
-                                                    );
-                                                })}
-                                            </div>
-                                        </ScrollArea.Autosize>
-                                    )}
-                                    {renderSelectedInviteUserPrompt()}
-
-                                    {inviteMode === 'email' && (
-                                        <div className="mt-3">
-                                            {renderEventTeamCheckboxes()}
-                                            <Group justify="flex-end">
-                                                <Button
-                                                    onClick={handleInviteByEmail}
-                                                    loading={invitingByEmail}
-                                                    disabled={!inviteEmailValid || (selectedInviteRole === 'player' && !canInviteAnotherPlayer)}
-                                                >
-                                                    Send {selectedRoleLabel} Invite
-                                                </Button>
-                                            </Group>
-                                        </div>
-                                    )}
-                                </Paper>
-                            )}
+                            <InvitePlayersModal
+                                isOpen={showAddPlayers}
+                                onClose={() => setShowAddPlayers(false)}
+                                team={currentTeam}
+                                freeAgentContext={inviteFreeAgentContext}
+                                selectedFreeAgentId={selectedFreeAgentId}
+                                selectedFreeAgentUser={selectedFreeAgentUser}
+                                pendingRoleInvites={pendingRoleInvites}
+                                onPlayerInviteSent={handlePlayerInviteSent}
+                                onRoleInvitesChanged={fetchRoleInvites}
+                                onTeamUpdated={onTeamUpdated}
+                                onInvitesSent={fetchTeamDetails}
+                            />
                         </div>
                     )}
 
@@ -2730,6 +2276,7 @@ export default function TeamDetailModal({
                     {detailContent}
                 </Modal>
             )}
+            {editDetailsModal}
             <ImageSelectionModal
                 onSelect={handleChangeImage}
                 onClose={() => setImagePickerOpen(false)}

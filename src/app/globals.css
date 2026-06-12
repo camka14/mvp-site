@@ -558,7 +558,12 @@ svg {
 
 .team-roster-player-grid {
   align-items: stretch;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17.5rem), 1fr));
+  justify-content: start;
+}
+
+.team-roster-player-grid > * {
+  max-width: 22rem;
 }
 
 .team-roster-player-card {
@@ -574,6 +579,11 @@ svg {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.team-roster-jersey-input {
+  width: 5.75rem;
+  flex-shrink: 0;
 }
 
 .org-page-shell .team-detail-roster-danger {
