@@ -164,7 +164,13 @@ describe('TeamFinancePanel', () => {
       />,
     );
 
-    expect(await screen.findByText('Team cost analysis')).toBeInTheDocument();
+    expect(await screen.findByText('Team profit analysis')).toBeInTheDocument();
+    expect(screen.getByText('Total costs')).toBeInTheDocument();
+    expect(screen.getByText('Event registration costs')).toBeInTheDocument();
+    expect(screen.getByText('Other costs')).toBeInTheDocument();
+    expect(screen.getByText('Current profit/loss')).toBeInTheDocument();
+    expect(screen.queryByText('Actual loss')).not.toBeInTheDocument();
+    expect(screen.queryByText('Team costs')).not.toBeInTheDocument();
     expect(screen.getAllByText('-$180.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('-$120.00').length).toBeGreaterThan(0);
     expect(screen.getAllByText('-$60.00').length).toBeGreaterThan(0);

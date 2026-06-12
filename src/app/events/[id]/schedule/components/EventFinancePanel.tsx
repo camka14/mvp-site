@@ -269,7 +269,7 @@ function EventFinanceBar({ finance }: { finance: EventFinanceSummary }) {
       colorClassName: 'bg-red-500',
     },
     {
-      label: finance.actualProfitCents >= 0 ? 'Actual profit' : 'Actual loss',
+      label: 'Current profit/loss',
       amountCents: Math.abs(finance.actualProfitCents),
       displayCents: finance.actualProfitCents,
       colorClassName: finance.actualProfitCents >= 0 ? 'bg-green-600' : 'bg-red-600',

@@ -3,6 +3,7 @@ import {
   buildOrganizationTabPath,
   buildOrganizationTabs,
   organizationTabFromPathSegment,
+  resolveOrganizationRouteTab,
 } from '../organizationTabs';
 
 describe('buildOrganizationTabs', () => {
@@ -106,5 +107,25 @@ describe('buildOrganizationTabs', () => {
   it('builds selected customer paths under the customers tab', () => {
     expect(buildOrganizationCustomerPath('org_1', 'users', 'user_1')).toBe('/organizations/org_1/customers/users/user_1');
     expect(buildOrganizationCustomerPath('org_1', 'teams', 'team_1')).toBe('/organizations/org_1/customers/teams/team_1');
+  });
+
+  it('resolves organization tab URLs without requiring a route transition', () => {
+    expect(resolveOrganizationRouteTab({
+      pathname: '/organizations/org_1',
+      organizationId: 'org_1',
+    })).toBe('overview');
+    expect(resolveOrganizationRouteTab({
+      pathname: '/organizations/org_1/finance',
+      organizationId: 'org_1',
+    })).toBe('finance');
+    expect(resolveOrganizationRouteTab({
+      pathname: '/organizations/org_1/customers/users/user_1',
+      organizationId: 'org_1',
+    })).toBe('users');
+    expect(resolveOrganizationRouteTab({
+      pathname: '/organizations/org_1',
+      organizationId: 'org_1',
+      queryTab: 'public-page',
+    })).toBe('publicPage');
   });
 });

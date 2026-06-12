@@ -12,6 +12,7 @@
     "migrate:deploy": "prisma migrate deploy",
     "start": "node server.mjs",
     "lint": "eslint",
+    "security:audit": "npm audit --omit=dev --audit-level=high",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:ci": "jest --runInBand --coverage",

@@ -323,12 +323,16 @@ function FinanceMetricCard({
 }
 
 function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
+  const otherCostCents = Math.max(
+    0,
+    finance.actualCostCents - finance.eventRegistrationCostCents - finance.staffCostCents,
+  );
   const maxValue = Math.max(
     finance.actualRevenueCents,
-    finance.actualCostCents,
     Math.abs(finance.actualProfitCents),
     finance.eventRegistrationCostCents,
     finance.staffCostCents,
+    otherCostCents,
     finance.futureCostCents,
     1,
   );
@@ -340,13 +344,7 @@ function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
       colorClassName: 'bg-green-500',
     },
     {
-      label: 'Team costs',
-      amountCents: finance.actualCostCents,
-      displayCents: -finance.actualCostCents,
-      colorClassName: 'bg-red-500',
-    },
-    {
-      label: 'Event registrations',
+      label: 'Event registration costs',
       amountCents: finance.eventRegistrationCostCents,
       displayCents: -finance.eventRegistrationCostCents,
       colorClassName: 'bg-red-500',
@@ -358,13 +356,19 @@ function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
       colorClassName: 'bg-red-600',
     },
     {
+      label: 'Other costs',
+      amountCents: otherCostCents,
+      displayCents: -otherCostCents,
+      colorClassName: 'bg-red-400',
+    },
+    {
       label: 'Future costs',
       amountCents: finance.futureCostCents,
       displayCents: -finance.futureCostCents,
       colorClassName: 'bg-orange-500',
     },
     {
-      label: finance.actualProfitCents >= 0 ? 'Actual profit' : 'Actual loss',
+      label: 'Current profit/loss',
       amountCents: Math.abs(finance.actualProfitCents),
       displayCents: finance.actualProfitCents,
       colorClassName: finance.actualProfitCents >= 0 ? 'bg-green-600' : 'bg-red-600',
@@ -375,7 +379,7 @@ function TeamFinanceBar({ finance }: { finance: TeamFinanceSummary }) {
     <Paper withBorder radius="md" p="md">
       <Stack gap="sm">
         <Group justify="space-between" align="center">
-          <Text fw={700}>Team cost analysis</Text>
+          <Text fw={700}>Team profit analysis</Text>
           <Badge color={finance.projectedProfitCents >= 0 ? 'green' : 'red'} variant="light">
             Projected {formatSignedAmount(finance.projectedProfitCents)}
           </Badge>
@@ -891,7 +895,7 @@ export default function TeamFinancePanel({
           description="Confirmed team revenue attributed to this team."
         />
         <FinanceMetricCard
-          label="Costs"
+          label="Total costs"
           amountCents={-finance.actualCostCents}
           tone="red"
           description="Event registration costs, staff labor, fees, and custom costs."

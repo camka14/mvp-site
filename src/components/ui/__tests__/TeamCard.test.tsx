@@ -143,7 +143,7 @@ describe('TeamCard members visibility', () => {
 
     renderWithMantine(<TeamCard team={team} />);
 
-    expect(screen.getByText('Members:')).toBeInTheDocument();
+    expect(screen.getByText('Roster:')).toBeInTheDocument();
     expect(screen.getByAltText('Visible Player')).toBeInTheDocument();
     expect(screen.queryByAltText('Name Hidden')).not.toBeInTheDocument();
   });
@@ -187,7 +187,7 @@ describe('TeamCard members visibility', () => {
 
     renderWithMantine(<TeamCard team={team} />);
 
-    expect(screen.queryByText('Members:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Roster:')).not.toBeInTheDocument();
   });
 
   it('hides the members section when there are no members', () => {
@@ -198,7 +198,7 @@ describe('TeamCard members visibility', () => {
 
     renderWithMantine(<TeamCard team={team} />);
 
-    expect(screen.queryByText('Members:')).not.toBeInTheDocument();
+    expect(screen.queryByText('Roster:')).not.toBeInTheDocument();
   });
 });
 

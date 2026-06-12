@@ -59,6 +59,7 @@ export const ModelName = {
   Divisions: 'Divisions',
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
+  AuthMfaChallenges: 'AuthMfaChallenges',
   Invites: 'Invites',
   TeamInviteEventSyncs: 'TeamInviteEventSyncs',
   StaffMembers: 'StaffMembers',
@@ -92,6 +93,8 @@ export const ModelName = {
   BillPayments: 'BillPayments',
   RefundRequests: 'RefundRequests',
   OrganizationAccountingConnections: 'OrganizationAccountingConnections',
+  AccountingSyncRecords: 'AccountingSyncRecords',
+  OrganizationFinanceCategoryAccountingMappings: 'OrganizationFinanceCategoryAccountingMappings',
   StripeAccounts: 'StripeAccounts',
   Events: 'Events',
   Organizations: 'Organizations',
@@ -345,10 +348,45 @@ export const SensitiveUserDataScalarFieldEnum = {
   billingState: 'billingState',
   billingPostalCode: 'billingPostalCode',
   billingCountryCode: 'billingCountryCode',
-  appleRefreshToken: 'appleRefreshToken'
+  appleRefreshToken: 'appleRefreshToken',
+  phoneNumberE164: 'phoneNumberE164',
+  phoneVerifiedAt: 'phoneVerifiedAt',
+  phoneVerificationProvider: 'phoneVerificationProvider',
+  phoneVerificationLastSentAt: 'phoneVerificationLastSentAt',
+  phoneVerificationAttemptCount: 'phoneVerificationAttemptCount',
+  totpSecretEncrypted: 'totpSecretEncrypted',
+  totpEnabledAt: 'totpEnabledAt',
+  totpVerifiedAt: 'totpVerifiedAt',
+  totpLastUsedCounter: 'totpLastUsedCounter',
+  totpProvider: 'totpProvider',
+  financialMfaRequiredAt: 'financialMfaRequiredAt',
+  financialMfaSatisfiedAt: 'financialMfaSatisfiedAt'
 } as const
 
 export type SensitiveUserDataScalarFieldEnum = (typeof SensitiveUserDataScalarFieldEnum)[keyof typeof SensitiveUserDataScalarFieldEnum]
+
+
+export const AuthMfaChallengesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  userId: 'userId',
+  purpose: 'purpose',
+  phoneNumberE164: 'phoneNumberE164',
+  totpSecretEncrypted: 'totpSecretEncrypted',
+  provider: 'provider',
+  providerChallengeId: 'providerChallengeId',
+  devCodeHash: 'devCodeHash',
+  expiresAt: 'expiresAt',
+  consumedAt: 'consumedAt',
+  lastSentAt: 'lastSentAt',
+  attemptCount: 'attemptCount',
+  sessionVersion: 'sessionVersion',
+  verificationIpHash: 'verificationIpHash',
+  verificationUserAgent: 'verificationUserAgent'
+} as const
+
+export type AuthMfaChallengesScalarFieldEnum = (typeof AuthMfaChallengesScalarFieldEnum)[keyof typeof AuthMfaChallengesScalarFieldEnum]
 
 
 export const InvitesScalarFieldEnum = {
@@ -972,6 +1010,7 @@ export const OrganizationAccountingConnectionsScalarFieldEnum = {
   provider: 'provider',
   status: 'status',
   externalCompanyId: 'externalCompanyId',
+  externalCompanyIdEncrypted: 'externalCompanyIdEncrypted',
   externalCompanyName: 'externalCompanyName',
   environment: 'environment',
   scopes: 'scopes',
@@ -986,12 +1025,67 @@ export const OrganizationAccountingConnectionsScalarFieldEnum = {
   disconnectedAt: 'disconnectedAt',
   disconnectedByUserId: 'disconnectedByUserId',
   lastSyncedAt: 'lastSyncedAt',
+  lastIntuitTid: 'lastIntuitTid',
+  lastErrorAt: 'lastErrorAt',
   lastError: 'lastError',
+  payrollExpenseAccountExternalId: 'payrollExpenseAccountExternalId',
+  payrollExpenseAccountName: 'payrollExpenseAccountName',
+  payrollLiabilityAccountExternalId: 'payrollLiabilityAccountExternalId',
+  payrollLiabilityAccountName: 'payrollLiabilityAccountName',
+  financeClearingAccountExternalId: 'financeClearingAccountExternalId',
+  financeClearingAccountName: 'financeClearingAccountName',
   createdBy: 'createdBy',
   updatedBy: 'updatedBy'
 } as const
 
 export type OrganizationAccountingConnectionsScalarFieldEnum = (typeof OrganizationAccountingConnectionsScalarFieldEnum)[keyof typeof OrganizationAccountingConnectionsScalarFieldEnum]
+
+
+export const AccountingSyncRecordsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  provider: 'provider',
+  sourceType: 'sourceType',
+  staffPayRunId: 'staffPayRunId',
+  sourceKey: 'sourceKey',
+  status: 'status',
+  externalTxnId: 'externalTxnId',
+  externalTxnType: 'externalTxnType',
+  externalTxnDocNumber: 'externalTxnDocNumber',
+  intuitTid: 'intuitTid',
+  errorCode: 'errorCode',
+  errorMessage: 'errorMessage',
+  requestSummary: 'requestSummary',
+  responseSummary: 'responseSummary',
+  syncedAt: 'syncedAt',
+  syncedByUserId: 'syncedByUserId',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type AccountingSyncRecordsScalarFieldEnum = (typeof AccountingSyncRecordsScalarFieldEnum)[keyof typeof AccountingSyncRecordsScalarFieldEnum]
+
+
+export const OrganizationFinanceCategoryAccountingMappingsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  provider: 'provider',
+  category: 'category',
+  categoryKey: 'categoryKey',
+  entryType: 'entryType',
+  accountExternalId: 'accountExternalId',
+  accountName: 'accountName',
+  isActive: 'isActive',
+  notes: 'notes',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type OrganizationFinanceCategoryAccountingMappingsScalarFieldEnum = (typeof OrganizationFinanceCategoryAccountingMappingsScalarFieldEnum)[keyof typeof OrganizationFinanceCategoryAccountingMappingsScalarFieldEnum]
 
 
 export const StripeAccountsScalarFieldEnum = {

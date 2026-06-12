@@ -15,6 +15,7 @@ const listStaffPayRunsMock = jest.fn();
 const createDraftStaffPayRunMock = jest.fn();
 const updateStaffPayRunStatusMock = jest.fn();
 const listOrganizationAccountingConnectionsMock = jest.fn();
+const listOrganizationFinanceCategoryAccountingMappingsMock = jest.fn();
 
 class MockStaffPayRunError extends Error {
   status: number;
@@ -42,6 +43,9 @@ jest.mock('@/server/finance/staffPayRuns', () => ({
 }));
 jest.mock('@/server/integrations/quickBooksConnection', () => ({
   listOrganizationAccountingConnections: (...args: any[]) => listOrganizationAccountingConnectionsMock(...args),
+}));
+jest.mock('@/server/integrations/financeCategoryAccountingMappings', () => ({
+  listOrganizationFinanceCategoryAccountingMappings: (...args: any[]) => listOrganizationFinanceCategoryAccountingMappingsMock(...args),
 }));
 
 import { GET as getFinance } from '@/app/api/organizations/[id]/finance/route';
@@ -77,7 +81,18 @@ describe('organization finance routes', () => {
         id: 'qbo_1',
         provider: 'QUICKBOOKS_ONLINE',
         status: 'CONNECTED',
-        externalCompanyId: '1234567890',
+        externalCompanyId: null,
+      },
+    ]);
+    listOrganizationFinanceCategoryAccountingMappingsMock.mockResolvedValue([
+      {
+        id: 'category_mapping_1',
+        provider: 'QUICKBOOKS_ONLINE',
+        category: 'Rentals',
+        categoryKey: 'rentals',
+        entryType: 'EXPENSE',
+        accountExternalId: '75',
+        accountName: 'Field Rental Expense',
       },
     ]);
     createDraftStaffPayRunMock.mockResolvedValue({
@@ -114,10 +129,13 @@ describe('organization finance routes', () => {
     expect(listStaffPayRunsMock).toHaveBeenCalledWith('org_1', prismaMock);
     expect(listOrganizationFinancialLineItemCategoriesMock).toHaveBeenCalledWith('org_1', prismaMock);
     expect(listOrganizationAccountingConnectionsMock).toHaveBeenCalledWith('org_1', prismaMock);
+    expect(listOrganizationFinanceCategoryAccountingMappingsMock).toHaveBeenCalledWith('org_1', prismaMock);
     expect(payload.finance.actualProfitCents).toBe(12000);
     expect(payload.payRuns[0].id).toBe('pay_run_1');
     expect(payload.lineItemCategories).toEqual(['Operations', 'Rentals']);
-    expect(payload.accountingConnections[0].externalCompanyId).toBe('1234567890');
+    expect(payload.accountingConnections[0].externalCompanyId).toBeNull();
+    expect(payload.categoryAccountingMappings[0].category).toBe('Rentals');
+    expect(JSON.stringify(payload.accountingConnections)).not.toContain('1234567890');
   });
 
   it('creates a draft staff pay run for finance managers', async () => {

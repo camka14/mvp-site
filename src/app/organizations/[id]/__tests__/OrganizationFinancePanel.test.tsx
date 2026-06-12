@@ -93,7 +93,7 @@ const financeResponse = {
       id: 'qbo_1',
       provider: 'QUICKBOOKS_ONLINE',
       status: 'CONNECTED',
-      externalCompanyId: '1234567890',
+      externalCompanyId: null,
       externalCompanyName: null,
       environment: 'sandbox',
       scopes: ['com.intuit.quickbooks.accounting'],
@@ -106,7 +106,30 @@ const financeResponse = {
       disconnectedAt: null,
       disconnectedByUserId: null,
       lastSyncedAt: null,
+      lastIntuitTid: null,
+      lastErrorAt: null,
       lastError: null,
+      payrollExpenseAccountExternalId: '62',
+      payrollExpenseAccountName: 'Payroll Expenses',
+      payrollLiabilityAccountExternalId: '41',
+      payrollLiabilityAccountName: 'Payroll Clearing',
+      financeClearingAccountExternalId: '35',
+      financeClearingAccountName: 'Undeposited Funds',
+    },
+  ],
+  categoryAccountingMappings: [
+    {
+      id: 'category_mapping_1',
+      provider: 'QUICKBOOKS_ONLINE',
+      category: 'labor',
+      categoryKey: 'labor',
+      entryType: 'EXPENSE',
+      accountExternalId: '62',
+      accountName: 'Payroll Expenses',
+      notes: 'Staff labor costs',
+      isActive: true,
+      updatedAt: '2026-06-10T19:00:00.000Z',
+      updatedBy: 'owner_1',
     },
   ],
   payRuns: [
@@ -129,6 +152,7 @@ const financeResponse = {
       payoutProvider: null,
       payoutProviderBatchId: null,
       notes: null,
+      accountingSyncs: [],
       items: [
         {
           id: 'pay_item_1',
@@ -226,7 +250,11 @@ describe('OrganizationFinancePanel', () => {
     expect(screen.getByText('Staff payroll ledger')).toBeInTheDocument();
     expect(screen.getByText('Event and team profitability')).toBeInTheDocument();
     expect(screen.getByText('QuickBooks')).toBeInTheDocument();
-    expect(screen.getByText('1234567890')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'QuickBooks settings' })).toBeInTheDocument();
+    expect(screen.getByText('Payroll mapping ready')).toBeInTheDocument();
+    expect(screen.getByText('1 category mappings')).toBeInTheDocument();
+    expect(screen.queryByText('Financial category mappings')).not.toBeInTheDocument();
+    expect(screen.queryByText('1234567890')).not.toBeInTheDocument();
     expect(screen.getByText('com.intuit.quickbooks.accounting')).toBeInTheDocument();
     expect(apiRequest).toHaveBeenCalledWith(expect.stringContaining('/api/organizations/org_1/finance?'));
     const financeUrl = decodeURIComponent((apiRequest as jest.Mock).mock.calls[0][0]);
@@ -472,6 +500,8 @@ describe('OrganizationFinancePanel', () => {
     expect(screen.getByText('Hourly $60.00/hr')).toBeInTheDocument();
     expect(screen.getByText('Event labor')).toBeInTheDocument();
     expect(screen.getAllByText('1h').length).toBeGreaterThan(0);
+    expect(screen.getByText('QuickBooks sync')).toBeInTheDocument();
+    expect(screen.getByText('Transaction')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Event source' }));
     expect(mockPush).toHaveBeenCalledWith('/events/event_1?tab=details');
@@ -542,6 +572,527 @@ describe('OrganizationFinancePanel', () => {
     expect(await screen.findByText('QuickBooks is not configured.')).toBeInTheDocument();
   });
 
+  it('saves QuickBooks payroll account mappings from QuickBooks settings', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(financeResponse)
+      .mockResolvedValueOnce({
+        accounts: [
+          {
+            id: '62',
+            name: 'Payroll Expenses',
+            fullyQualifiedName: 'Payroll Expenses',
+            displayName: 'Payroll Expenses · Expense · PayrollExpenses',
+            accountType: 'Expense',
+            accountSubType: 'PayrollExpenses',
+            classification: 'Expense',
+            accountNumber: null,
+            active: true,
+          },
+          {
+            id: '41',
+            name: 'Payroll Clearing',
+            fullyQualifiedName: 'Payroll Clearing',
+            displayName: 'Payroll Clearing · Other Current Liability · OtherCurrentLiabilities',
+            accountType: 'Other Current Liability',
+            accountSubType: 'OtherCurrentLiabilities',
+            classification: 'Liability',
+            accountNumber: null,
+            active: true,
+          },
+          {
+            id: '35',
+            name: 'Undeposited Funds',
+            fullyQualifiedName: 'Undeposited Funds',
+            displayName: 'Undeposited Funds · Other Current Asset · UndepositedFunds',
+            accountType: 'Other Current Asset',
+            accountSubType: 'UndepositedFunds',
+            classification: 'Asset',
+            accountNumber: null,
+            active: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        connection: {
+          ...financeResponse.accountingConnections[0],
+          payrollExpenseAccountExternalId: '63',
+          payrollExpenseAccountName: 'Staff Payroll Expense',
+          payrollLiabilityAccountExternalId: '42',
+          payrollLiabilityAccountName: 'Staff Payroll Clearing',
+          financeClearingAccountExternalId: '35',
+          financeClearingAccountName: 'Undeposited Funds',
+        },
+      });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    await screen.findByText('QuickBooks');
+    fireEvent.click(screen.getByRole('button', { name: 'QuickBooks settings' }));
+    await screen.findByText('QuickBooks account settings');
+    await screen.findByRole('button', { name: 'Refresh accounts' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manual entry' }));
+    fireEvent.change(screen.getByLabelText('Expense account ID'), {
+      target: { value: '63' },
+    });
+    fireEvent.change(screen.getByLabelText('Expense account name'), {
+      target: { value: 'Staff Payroll Expense' },
+    });
+    fireEvent.change(screen.getByLabelText('Liability account ID'), {
+      target: { value: '42' },
+    });
+    fireEvent.change(screen.getByLabelText('Liability account name'), {
+      target: { value: 'Staff Payroll Clearing' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save account settings' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/integrations/quickbooks/settings', {
+        method: 'PATCH',
+        body: {
+          payrollExpenseAccountExternalId: '63',
+          payrollExpenseAccountName: 'Staff Payroll Expense',
+          payrollLiabilityAccountExternalId: '42',
+          payrollLiabilityAccountName: 'Staff Payroll Clearing',
+          financeClearingAccountExternalId: '35',
+          financeClearingAccountName: 'Undeposited Funds',
+        },
+      });
+    });
+    expect(screen.getByLabelText('Expense account ID')).toHaveValue('63');
+  });
+
+  it('loads QuickBooks accounts for assisted payroll mapping choices', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(financeResponse)
+      .mockResolvedValueOnce({
+        accounts: [
+          {
+            id: '62',
+            name: 'Payroll Expenses',
+            fullyQualifiedName: 'Payroll Expenses',
+            displayName: 'Payroll Expenses · Expense · PayrollExpenses',
+            accountType: 'Expense',
+            accountSubType: 'PayrollExpenses',
+            classification: 'Expense',
+            accountNumber: null,
+            active: true,
+          },
+          {
+            id: '41',
+            name: 'Payroll Clearing',
+            fullyQualifiedName: 'Payroll Clearing',
+            displayName: 'Payroll Clearing · Other Current Liability · OtherCurrentLiabilities',
+            accountType: 'Other Current Liability',
+            accountSubType: 'OtherCurrentLiabilities',
+            classification: 'Liability',
+            accountNumber: null,
+            active: true,
+          },
+          {
+            id: '35',
+            name: 'Undeposited Funds',
+            fullyQualifiedName: 'Undeposited Funds',
+            displayName: 'Undeposited Funds · Other Current Asset · UndepositedFunds',
+            accountType: 'Other Current Asset',
+            accountSubType: 'UndepositedFunds',
+            classification: 'Asset',
+            accountNumber: null,
+            active: true,
+          },
+        ],
+      });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    await screen.findByText('QuickBooks');
+    fireEvent.click(screen.getByRole('button', { name: 'QuickBooks settings' }));
+    await screen.findByText('QuickBooks account settings');
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith(
+        '/api/organizations/org_1/finance/integrations/quickbooks/accounts',
+        { timeoutMs: 30000 },
+      );
+    });
+    expect(await screen.findByRole('button', { name: 'Refresh accounts' })).toBeInTheDocument();
+    expect(screen.getAllByText('Expense - PayrollExpenses').length).toBeGreaterThan(0);
+    expect(screen.getByText('Other Current Liability - OtherCurrentLiabilities')).toBeInTheDocument();
+    expect(screen.getByText('Other Current Asset - UndepositedFunds')).toBeInTheDocument();
+  });
+
+  it('shows stale QuickBooks reconnect sync records as retryable when the connection is connected', async () => {
+    (apiRequest as jest.Mock).mockResolvedValueOnce({
+      ...approvedFinanceResponse,
+      payRuns: [
+        {
+          ...approvedFinanceResponse.payRuns[0],
+          accountingSyncs: [
+            {
+              id: 'accounting_sync_1',
+              provider: 'QUICKBOOKS_ONLINE',
+              sourceType: 'STAFF_PAY_RUN',
+              staffPayRunId: 'pay_run_1',
+              status: 'REAUTH_REQUIRED',
+              externalTxnId: null,
+              externalTxnType: null,
+              externalTxnDocNumber: null,
+              intuitTid: null,
+              errorCode: 'REAUTH_REQUIRED',
+              errorMessage: 'Reconnect QuickBooks before syncing this pay run.',
+              syncedAt: null,
+              syncedByUserId: null,
+            },
+          ],
+        },
+      ],
+    });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    expect(await screen.findByText('Retry')).toBeInTheDocument();
+    expect(screen.getByText('QuickBooks reconnected. Try syncing this pay run again.')).toBeInTheDocument();
+    expect(screen.queryByText('Reconnect QuickBooks before syncing this pay run.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry QBO' })).toBeEnabled();
+  });
+
+  it('shows a reconnect action when the QuickBooks connection requires authorization', async () => {
+    (apiRequest as jest.Mock).mockResolvedValueOnce({
+      ...approvedFinanceResponse,
+      accountingConnections: [
+        {
+          ...approvedFinanceResponse.accountingConnections[0],
+          status: 'REAUTH_REQUIRED',
+          lastError: 'QuickBooks authorization expired. Reconnect QuickBooks to continue.',
+        },
+      ],
+      payRuns: [
+        {
+          ...approvedFinanceResponse.payRuns[0],
+          accountingSyncs: [
+            {
+              id: 'accounting_sync_1',
+              provider: 'QUICKBOOKS_ONLINE',
+              sourceType: 'STAFF_PAY_RUN',
+              staffPayRunId: 'pay_run_1',
+              status: 'REAUTH_REQUIRED',
+              externalTxnId: null,
+              externalTxnType: null,
+              externalTxnDocNumber: null,
+              intuitTid: 'tid-expired',
+              errorCode: 'REAUTH_REQUIRED',
+              errorMessage: 'Reconnect QuickBooks before syncing this pay run.',
+              syncedAt: null,
+              syncedByUserId: null,
+            },
+          ],
+        },
+      ],
+    });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    expect((await screen.findAllByText('Reconnect required')).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole('button', { name: 'Reconnect QBO' }).length).toBeGreaterThan(0);
+    expect(screen.getByText('QuickBooks authorization expired. Reconnect QuickBooks to continue.')).toBeInTheDocument();
+    expect(screen.getByText('TID tid-expired')).toBeInTheDocument();
+  });
+
+  it('explains disabled QuickBooks pay-run sync when payroll account mapping is missing', async () => {
+    (apiRequest as jest.Mock).mockResolvedValueOnce({
+      ...approvedFinanceResponse,
+      accountingConnections: [
+        {
+          ...approvedFinanceResponse.accountingConnections[0],
+          payrollExpenseAccountExternalId: null,
+          payrollExpenseAccountName: null,
+          payrollLiabilityAccountExternalId: null,
+          payrollLiabilityAccountName: null,
+        },
+      ],
+    });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    expect(await screen.findByText('Needs mapping')).toBeInTheDocument();
+    expect(screen.getByText('Set QuickBooks payroll account mapping before syncing.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sync QBO' })).toBeDisabled();
+  });
+
+  it('syncs an approved staff pay run to QuickBooks and refreshes accounting status', async () => {
+    const syncedFinanceResponse = {
+      ...approvedFinanceResponse,
+      payRuns: [
+        {
+          ...approvedFinanceResponse.payRuns[0],
+          exportedAt: '2026-06-15T18:00:00.000Z',
+          exportCount: 1,
+          lastExportFormat: 'QUICKBOOKS_JOURNAL_ENTRY',
+          accountingSyncs: [
+            {
+              id: 'accounting_sync_1',
+              provider: 'QUICKBOOKS_ONLINE',
+              sourceType: 'STAFF_PAY_RUN',
+              staffPayRunId: 'pay_run_1',
+              status: 'SYNCED',
+              externalTxnId: '987',
+              externalTxnType: 'JournalEntry',
+              externalTxnDocNumber: 'JE-14',
+              intuitTid: 'tid-123',
+              errorCode: null,
+              errorMessage: null,
+              syncedAt: '2026-06-15T18:00:00.000Z',
+              syncedByUserId: 'owner_1',
+            },
+          ],
+        },
+      ],
+    };
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(approvedFinanceResponse)
+      .mockResolvedValueOnce({
+        alreadySynced: false,
+        syncRecord: syncedFinanceResponse.payRuns[0].accountingSyncs[0],
+      })
+      .mockResolvedValueOnce(syncedFinanceResponse);
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Sync QBO' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith(
+        '/api/organizations/org_1/finance/integrations/quickbooks/pay-runs/pay_run_1/sync',
+        { method: 'POST', timeoutMs: 30000 },
+      );
+    });
+    expect(await screen.findByText('QuickBooks #1')).toBeInTheDocument();
+    expect(screen.getByText('JournalEntry JE-14')).toBeInTheDocument();
+    expect(screen.getByText('TID tid-123')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'View pay run June payroll' }));
+    expect(await screen.findByText('QuickBooks sync')).toBeInTheDocument();
+    expect(screen.getByText('Synced by')).toBeInTheDocument();
+    expect(screen.getByText('owner_1')).toBeInTheDocument();
+  });
+
+  it('saves future QuickBooks financial category mappings from existing line item categories', async () => {
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(financeResponse)
+      .mockResolvedValueOnce({
+        accounts: [
+          {
+            id: '75',
+            name: 'Field Rental Expense',
+            fullyQualifiedName: 'Field Rental Expense',
+            displayName: 'Field Rental Expense · Expense · RentOrLeaseOfBuildings',
+            accountType: 'Expense',
+            accountSubType: 'RentOrLeaseOfBuildings',
+            classification: 'Expense',
+            accountNumber: null,
+            active: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        mappings: [
+          {
+            id: 'category_mapping_2',
+            provider: 'QUICKBOOKS_ONLINE',
+            category: 'Rentals',
+            categoryKey: 'rentals',
+            entryType: 'EXPENSE',
+            accountExternalId: '75',
+            accountName: 'Field Rental Expense',
+            notes: 'Custom rental costs',
+            isActive: true,
+          },
+        ],
+      });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    await screen.findByText('QuickBooks');
+    fireEvent.click(screen.getByRole('button', { name: 'QuickBooks settings' }));
+    await screen.findByText('Financial category mappings');
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith(
+        '/api/organizations/org_1/finance/integrations/quickbooks/accounts',
+        { timeoutMs: 30000 },
+      );
+    });
+    expect(screen.getAllByLabelText('QuickBooks account for Rentals Expense')[0]).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Manual entry' }));
+    fireEvent.change(screen.getByLabelText('Account ID for Rentals Expense'), {
+      target: { value: '75' },
+    });
+    fireEvent.change(screen.getByLabelText('Account name for Rentals Expense'), {
+      target: { value: 'Field Rental Expense' },
+    });
+    fireEvent.change(screen.getByLabelText('Accounting notes for Rentals Expense'), {
+      target: { value: 'Custom rental costs' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save category mappings' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith('/api/organizations/org_1/finance/integrations/quickbooks/category-mappings', {
+        method: 'PATCH',
+        body: {
+          mappings: expect.arrayContaining([
+            expect.objectContaining({
+              category: 'Rentals',
+              entryType: 'EXPENSE',
+              accountExternalId: '75',
+              accountName: 'Field Rental Expense',
+              notes: 'Custom rental costs',
+            }),
+          ]),
+        },
+      });
+    });
+  });
+
+  it('previews QuickBooks journal entry rows for finance line items', async () => {
+    const journalPreview = {
+      provider: 'QUICKBOOKS_ONLINE',
+      txnDate: '2026-06-11',
+      privateNote: 'BracketIQ finance line-item journal entry (2026-06-01 to 2026-06-11)',
+      includedLineItemCount: 2,
+      skippedLineItemCount: 0,
+      unmappedLineItemCount: 0,
+      debitTotalCents: 22500,
+      creditTotalCents: 22500,
+      isBalanced: true,
+      readyToSync: true,
+      warnings: [],
+      lines: [
+        {
+          id: 'line_1:mapped',
+          lineItemId: 'custom:line_1',
+          lineItemLabel: 'Field rental',
+          category: 'Rentals',
+          sourceType: 'custom_line_item',
+          sourceName: null,
+          customerName: null,
+          postingType: 'Debit',
+          amountCents: 2500,
+          accountExternalId: '75',
+          accountName: 'Field Rental Expense',
+          description: 'Field rental',
+          missingAccount: false,
+          role: 'LINE_ITEM_ACCOUNT',
+        },
+        {
+          id: 'line_1:clearing',
+          lineItemId: 'custom:line_1',
+          lineItemLabel: 'Field rental',
+          category: 'Finance clearing',
+          sourceType: 'custom_line_item',
+          sourceName: null,
+          customerName: null,
+          postingType: 'Credit',
+          amountCents: 2500,
+          accountExternalId: '35',
+          accountName: 'Undeposited Funds',
+          description: 'Clearing entry for Field rental',
+          missingAccount: false,
+          role: 'CLEARING_ACCOUNT',
+        },
+      ],
+    };
+    (apiRequest as jest.Mock)
+      .mockResolvedValueOnce(financeResponse)
+      .mockResolvedValueOnce({
+        accounts: [
+          {
+            id: '35',
+            name: 'Undeposited Funds',
+            fullyQualifiedName: 'Undeposited Funds',
+            displayName: 'Undeposited Funds · Other Current Asset · UndepositedFunds',
+            accountType: 'Other Current Asset',
+            accountSubType: 'UndepositedFunds',
+            classification: 'Asset',
+            accountNumber: null,
+            active: true,
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        preview: journalPreview,
+      })
+      .mockResolvedValueOnce({
+        preview: journalPreview,
+        syncRecord: {
+          id: 'accounting_sync_1',
+          provider: 'QUICKBOOKS_ONLINE',
+          sourceType: 'FINANCE_JOURNAL_ENTRY',
+          sourceKey: 'organization:org_1:finance-journal:2026-06-01:2026-06-11',
+          status: 'SYNCED',
+          externalTxnId: '147',
+          externalTxnType: 'JournalEntry',
+          externalTxnDocNumber: 'JE-25',
+          intuitTid: 'tid-147',
+          syncedAt: '2026-06-11T20:00:00.000Z',
+          syncedByUserId: 'owner_1',
+        },
+        alreadySynced: false,
+      })
+      .mockResolvedValueOnce({
+        ...financeResponse,
+        accountingConnections: [
+          {
+            ...financeResponse.accountingConnections[0],
+            lastSyncedAt: '2026-06-11T20:00:00.000Z',
+            lastIntuitTid: 'tid-147',
+          },
+        ],
+      });
+
+    renderWithMantine(
+      <OrganizationFinancePanel organizationId="org_1" isActive canManage />,
+    );
+
+    await screen.findByText('QuickBooks');
+    fireEvent.click(screen.getByRole('button', { name: 'QuickBooks settings' }));
+    await screen.findByText('Journal entry preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview journal entry' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith(
+        expect.stringContaining('/api/organizations/org_1/finance/integrations/quickbooks/journal-entry-preview?'),
+        { timeoutMs: 30000 },
+      );
+    });
+    expect(await screen.findByText('Ready to sync')).toBeInTheDocument();
+    expect(screen.getByText('Balanced')).toBeInTheDocument();
+    expect(screen.getByText('Debit total')).toBeInTheDocument();
+    expect(screen.getAllByText('$225.00').length).toBeGreaterThan(0);
+    expect(screen.getByText('Field Rental Expense')).toBeInTheDocument();
+    expect(screen.getByText('Undeposited Funds')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync journal entry' }));
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledWith(
+        expect.stringContaining('/api/organizations/org_1/finance/integrations/quickbooks/journal-entry-sync?'),
+        { method: 'POST', timeoutMs: 30000 },
+      );
+    });
+    expect(await screen.findByText(/Synced to QuickBooks JournalEntry 147/)).toBeInTheDocument();
+  });
+
   it('disconnects QuickBooks and refreshes finance state', async () => {
     (apiRequest as jest.Mock)
       .mockResolvedValueOnce(financeResponse)
@@ -575,7 +1126,9 @@ describe('OrganizationFinancePanel', () => {
         method: 'POST',
       });
     });
-    expect(await screen.findByText('Not connected')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getAllByText('Not connected').length).toBeGreaterThan(0);
+    });
   });
 
   it('saves pay-run item transfer references', async () => {

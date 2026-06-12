@@ -20,8 +20,20 @@ export type SensitiveUserDataModel = runtime.Types.Result.DefaultSelection<Prism
 
 export type AggregateSensitiveUserData = {
   _count: SensitiveUserDataCountAggregateOutputType | null
+  _avg: SensitiveUserDataAvgAggregateOutputType | null
+  _sum: SensitiveUserDataSumAggregateOutputType | null
   _min: SensitiveUserDataMinAggregateOutputType | null
   _max: SensitiveUserDataMaxAggregateOutputType | null
+}
+
+export type SensitiveUserDataAvgAggregateOutputType = {
+  phoneVerificationAttemptCount: number | null
+  totpLastUsedCounter: number | null
+}
+
+export type SensitiveUserDataSumAggregateOutputType = {
+  phoneVerificationAttemptCount: number | null
+  totpLastUsedCounter: number | null
 }
 
 export type SensitiveUserDataMinAggregateOutputType = {
@@ -37,6 +49,18 @@ export type SensitiveUserDataMinAggregateOutputType = {
   billingPostalCode: string | null
   billingCountryCode: string | null
   appleRefreshToken: string | null
+  phoneNumberE164: string | null
+  phoneVerifiedAt: Date | null
+  phoneVerificationProvider: string | null
+  phoneVerificationLastSentAt: Date | null
+  phoneVerificationAttemptCount: number | null
+  totpSecretEncrypted: string | null
+  totpEnabledAt: Date | null
+  totpVerifiedAt: Date | null
+  totpLastUsedCounter: number | null
+  totpProvider: string | null
+  financialMfaRequiredAt: Date | null
+  financialMfaSatisfiedAt: Date | null
 }
 
 export type SensitiveUserDataMaxAggregateOutputType = {
@@ -52,6 +76,18 @@ export type SensitiveUserDataMaxAggregateOutputType = {
   billingPostalCode: string | null
   billingCountryCode: string | null
   appleRefreshToken: string | null
+  phoneNumberE164: string | null
+  phoneVerifiedAt: Date | null
+  phoneVerificationProvider: string | null
+  phoneVerificationLastSentAt: Date | null
+  phoneVerificationAttemptCount: number | null
+  totpSecretEncrypted: string | null
+  totpEnabledAt: Date | null
+  totpVerifiedAt: Date | null
+  totpLastUsedCounter: number | null
+  totpProvider: string | null
+  financialMfaRequiredAt: Date | null
+  financialMfaSatisfiedAt: Date | null
 }
 
 export type SensitiveUserDataCountAggregateOutputType = {
@@ -67,9 +103,31 @@ export type SensitiveUserDataCountAggregateOutputType = {
   billingPostalCode: number
   billingCountryCode: number
   appleRefreshToken: number
+  phoneNumberE164: number
+  phoneVerifiedAt: number
+  phoneVerificationProvider: number
+  phoneVerificationLastSentAt: number
+  phoneVerificationAttemptCount: number
+  totpSecretEncrypted: number
+  totpEnabledAt: number
+  totpVerifiedAt: number
+  totpLastUsedCounter: number
+  totpProvider: number
+  financialMfaRequiredAt: number
+  financialMfaSatisfiedAt: number
   _all: number
 }
 
+
+export type SensitiveUserDataAvgAggregateInputType = {
+  phoneVerificationAttemptCount?: true
+  totpLastUsedCounter?: true
+}
+
+export type SensitiveUserDataSumAggregateInputType = {
+  phoneVerificationAttemptCount?: true
+  totpLastUsedCounter?: true
+}
 
 export type SensitiveUserDataMinAggregateInputType = {
   id?: true
@@ -84,6 +142,18 @@ export type SensitiveUserDataMinAggregateInputType = {
   billingPostalCode?: true
   billingCountryCode?: true
   appleRefreshToken?: true
+  phoneNumberE164?: true
+  phoneVerifiedAt?: true
+  phoneVerificationProvider?: true
+  phoneVerificationLastSentAt?: true
+  phoneVerificationAttemptCount?: true
+  totpSecretEncrypted?: true
+  totpEnabledAt?: true
+  totpVerifiedAt?: true
+  totpLastUsedCounter?: true
+  totpProvider?: true
+  financialMfaRequiredAt?: true
+  financialMfaSatisfiedAt?: true
 }
 
 export type SensitiveUserDataMaxAggregateInputType = {
@@ -99,6 +169,18 @@ export type SensitiveUserDataMaxAggregateInputType = {
   billingPostalCode?: true
   billingCountryCode?: true
   appleRefreshToken?: true
+  phoneNumberE164?: true
+  phoneVerifiedAt?: true
+  phoneVerificationProvider?: true
+  phoneVerificationLastSentAt?: true
+  phoneVerificationAttemptCount?: true
+  totpSecretEncrypted?: true
+  totpEnabledAt?: true
+  totpVerifiedAt?: true
+  totpLastUsedCounter?: true
+  totpProvider?: true
+  financialMfaRequiredAt?: true
+  financialMfaSatisfiedAt?: true
 }
 
 export type SensitiveUserDataCountAggregateInputType = {
@@ -114,6 +196,18 @@ export type SensitiveUserDataCountAggregateInputType = {
   billingPostalCode?: true
   billingCountryCode?: true
   appleRefreshToken?: true
+  phoneNumberE164?: true
+  phoneVerifiedAt?: true
+  phoneVerificationProvider?: true
+  phoneVerificationLastSentAt?: true
+  phoneVerificationAttemptCount?: true
+  totpSecretEncrypted?: true
+  totpEnabledAt?: true
+  totpVerifiedAt?: true
+  totpLastUsedCounter?: true
+  totpProvider?: true
+  financialMfaRequiredAt?: true
+  financialMfaSatisfiedAt?: true
   _all?: true
 }
 
@@ -155,6 +249,18 @@ export type SensitiveUserDataAggregateArgs<ExtArgs extends runtime.Types.Extensi
   /**
    * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
    *
+   * Select which fields to average
+  **/
+  _avg?: SensitiveUserDataAvgAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
+   * Select which fields to sum
+  **/
+  _sum?: SensitiveUserDataSumAggregateInputType
+  /**
+   * {@link https://www.prisma.io/docs/concepts/components/prisma-client/aggregations Aggregation Docs}
+   *
    * Select which fields to find the minimum value
   **/
   _min?: SensitiveUserDataMinAggregateInputType
@@ -185,6 +291,8 @@ export type SensitiveUserDataGroupByArgs<ExtArgs extends runtime.Types.Extension
   take?: number
   skip?: number
   _count?: SensitiveUserDataCountAggregateInputType | true
+  _avg?: SensitiveUserDataAvgAggregateInputType
+  _sum?: SensitiveUserDataSumAggregateInputType
   _min?: SensitiveUserDataMinAggregateInputType
   _max?: SensitiveUserDataMaxAggregateInputType
 }
@@ -202,7 +310,21 @@ export type SensitiveUserDataGroupByOutputType = {
   billingPostalCode: string | null
   billingCountryCode: string | null
   appleRefreshToken: string | null
+  phoneNumberE164: string | null
+  phoneVerifiedAt: Date | null
+  phoneVerificationProvider: string | null
+  phoneVerificationLastSentAt: Date | null
+  phoneVerificationAttemptCount: number
+  totpSecretEncrypted: string | null
+  totpEnabledAt: Date | null
+  totpVerifiedAt: Date | null
+  totpLastUsedCounter: number | null
+  totpProvider: string | null
+  financialMfaRequiredAt: Date | null
+  financialMfaSatisfiedAt: Date | null
   _count: SensitiveUserDataCountAggregateOutputType | null
+  _avg: SensitiveUserDataAvgAggregateOutputType | null
+  _sum: SensitiveUserDataSumAggregateOutputType | null
   _min: SensitiveUserDataMinAggregateOutputType | null
   _max: SensitiveUserDataMaxAggregateOutputType | null
 }
@@ -238,6 +360,18 @@ export type SensitiveUserDataWhereInput = {
   billingPostalCode?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   billingCountryCode?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   appleRefreshToken?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  phoneNumberE164?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  phoneVerifiedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  phoneVerificationProvider?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  phoneVerificationLastSentAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  phoneVerificationAttemptCount?: Prisma.IntFilter<"SensitiveUserData"> | number
+  totpSecretEncrypted?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  totpEnabledAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  totpVerifiedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  totpLastUsedCounter?: Prisma.IntNullableFilter<"SensitiveUserData"> | number | null
+  totpProvider?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  financialMfaRequiredAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  financialMfaSatisfiedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
 }
 
 export type SensitiveUserDataOrderByWithRelationInput = {
@@ -253,6 +387,18 @@ export type SensitiveUserDataOrderByWithRelationInput = {
   billingPostalCode?: Prisma.SortOrderInput | Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrderInput | Prisma.SortOrder
   appleRefreshToken?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneNumberE164?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneVerificationProvider?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneVerificationLastSentAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneVerificationAttemptCount?: Prisma.SortOrder
+  totpSecretEncrypted?: Prisma.SortOrderInput | Prisma.SortOrder
+  totpEnabledAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  totpVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  totpLastUsedCounter?: Prisma.SortOrderInput | Prisma.SortOrder
+  totpProvider?: Prisma.SortOrderInput | Prisma.SortOrder
+  financialMfaRequiredAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  financialMfaSatisfiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
 }
 
 export type SensitiveUserDataWhereUniqueInput = Prisma.AtLeast<{
@@ -271,6 +417,18 @@ export type SensitiveUserDataWhereUniqueInput = Prisma.AtLeast<{
   billingPostalCode?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   billingCountryCode?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
   appleRefreshToken?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  phoneNumberE164?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  phoneVerifiedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  phoneVerificationProvider?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  phoneVerificationLastSentAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  phoneVerificationAttemptCount?: Prisma.IntFilter<"SensitiveUserData"> | number
+  totpSecretEncrypted?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  totpEnabledAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  totpVerifiedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  totpLastUsedCounter?: Prisma.IntNullableFilter<"SensitiveUserData"> | number | null
+  totpProvider?: Prisma.StringNullableFilter<"SensitiveUserData"> | string | null
+  financialMfaRequiredAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
+  financialMfaSatisfiedAt?: Prisma.DateTimeNullableFilter<"SensitiveUserData"> | Date | string | null
 }, "id">
 
 export type SensitiveUserDataOrderByWithAggregationInput = {
@@ -286,9 +444,23 @@ export type SensitiveUserDataOrderByWithAggregationInput = {
   billingPostalCode?: Prisma.SortOrderInput | Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrderInput | Prisma.SortOrder
   appleRefreshToken?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneNumberE164?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneVerificationProvider?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneVerificationLastSentAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  phoneVerificationAttemptCount?: Prisma.SortOrder
+  totpSecretEncrypted?: Prisma.SortOrderInput | Prisma.SortOrder
+  totpEnabledAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  totpVerifiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  totpLastUsedCounter?: Prisma.SortOrderInput | Prisma.SortOrder
+  totpProvider?: Prisma.SortOrderInput | Prisma.SortOrder
+  financialMfaRequiredAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  financialMfaSatisfiedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.SensitiveUserDataCountOrderByAggregateInput
+  _avg?: Prisma.SensitiveUserDataAvgOrderByAggregateInput
   _max?: Prisma.SensitiveUserDataMaxOrderByAggregateInput
   _min?: Prisma.SensitiveUserDataMinOrderByAggregateInput
+  _sum?: Prisma.SensitiveUserDataSumOrderByAggregateInput
 }
 
 export type SensitiveUserDataScalarWhereWithAggregatesInput = {
@@ -307,6 +479,18 @@ export type SensitiveUserDataScalarWhereWithAggregatesInput = {
   billingPostalCode?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
   billingCountryCode?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
   appleRefreshToken?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
+  phoneNumberE164?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
+  phoneVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SensitiveUserData"> | Date | string | null
+  phoneVerificationProvider?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
+  phoneVerificationLastSentAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SensitiveUserData"> | Date | string | null
+  phoneVerificationAttemptCount?: Prisma.IntWithAggregatesFilter<"SensitiveUserData"> | number
+  totpSecretEncrypted?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
+  totpEnabledAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SensitiveUserData"> | Date | string | null
+  totpVerifiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SensitiveUserData"> | Date | string | null
+  totpLastUsedCounter?: Prisma.IntNullableWithAggregatesFilter<"SensitiveUserData"> | number | null
+  totpProvider?: Prisma.StringNullableWithAggregatesFilter<"SensitiveUserData"> | string | null
+  financialMfaRequiredAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SensitiveUserData"> | Date | string | null
+  financialMfaSatisfiedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"SensitiveUserData"> | Date | string | null
 }
 
 export type SensitiveUserDataCreateInput = {
@@ -322,6 +506,18 @@ export type SensitiveUserDataCreateInput = {
   billingPostalCode?: string | null
   billingCountryCode?: string | null
   appleRefreshToken?: string | null
+  phoneNumberE164?: string | null
+  phoneVerifiedAt?: Date | string | null
+  phoneVerificationProvider?: string | null
+  phoneVerificationLastSentAt?: Date | string | null
+  phoneVerificationAttemptCount?: number
+  totpSecretEncrypted?: string | null
+  totpEnabledAt?: Date | string | null
+  totpVerifiedAt?: Date | string | null
+  totpLastUsedCounter?: number | null
+  totpProvider?: string | null
+  financialMfaRequiredAt?: Date | string | null
+  financialMfaSatisfiedAt?: Date | string | null
 }
 
 export type SensitiveUserDataUncheckedCreateInput = {
@@ -337,6 +533,18 @@ export type SensitiveUserDataUncheckedCreateInput = {
   billingPostalCode?: string | null
   billingCountryCode?: string | null
   appleRefreshToken?: string | null
+  phoneNumberE164?: string | null
+  phoneVerifiedAt?: Date | string | null
+  phoneVerificationProvider?: string | null
+  phoneVerificationLastSentAt?: Date | string | null
+  phoneVerificationAttemptCount?: number
+  totpSecretEncrypted?: string | null
+  totpEnabledAt?: Date | string | null
+  totpVerifiedAt?: Date | string | null
+  totpLastUsedCounter?: number | null
+  totpProvider?: string | null
+  financialMfaRequiredAt?: Date | string | null
+  financialMfaSatisfiedAt?: Date | string | null
 }
 
 export type SensitiveUserDataUpdateInput = {
@@ -352,6 +560,18 @@ export type SensitiveUserDataUpdateInput = {
   billingPostalCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingCountryCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneNumberE164?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  phoneVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneVerificationLastSentAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  phoneVerificationAttemptCount?: Prisma.IntFieldUpdateOperationsInput | number
+  totpSecretEncrypted?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  totpEnabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  totpVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  totpLastUsedCounter?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  totpProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financialMfaRequiredAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  financialMfaSatisfiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type SensitiveUserDataUncheckedUpdateInput = {
@@ -367,6 +587,18 @@ export type SensitiveUserDataUncheckedUpdateInput = {
   billingPostalCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingCountryCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneNumberE164?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  phoneVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneVerificationLastSentAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  phoneVerificationAttemptCount?: Prisma.IntFieldUpdateOperationsInput | number
+  totpSecretEncrypted?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  totpEnabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  totpVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  totpLastUsedCounter?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  totpProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financialMfaRequiredAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  financialMfaSatisfiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type SensitiveUserDataCreateManyInput = {
@@ -382,6 +614,18 @@ export type SensitiveUserDataCreateManyInput = {
   billingPostalCode?: string | null
   billingCountryCode?: string | null
   appleRefreshToken?: string | null
+  phoneNumberE164?: string | null
+  phoneVerifiedAt?: Date | string | null
+  phoneVerificationProvider?: string | null
+  phoneVerificationLastSentAt?: Date | string | null
+  phoneVerificationAttemptCount?: number
+  totpSecretEncrypted?: string | null
+  totpEnabledAt?: Date | string | null
+  totpVerifiedAt?: Date | string | null
+  totpLastUsedCounter?: number | null
+  totpProvider?: string | null
+  financialMfaRequiredAt?: Date | string | null
+  financialMfaSatisfiedAt?: Date | string | null
 }
 
 export type SensitiveUserDataUpdateManyMutationInput = {
@@ -397,6 +641,18 @@ export type SensitiveUserDataUpdateManyMutationInput = {
   billingPostalCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingCountryCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneNumberE164?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  phoneVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneVerificationLastSentAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  phoneVerificationAttemptCount?: Prisma.IntFieldUpdateOperationsInput | number
+  totpSecretEncrypted?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  totpEnabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  totpVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  totpLastUsedCounter?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  totpProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financialMfaRequiredAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  financialMfaSatisfiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type SensitiveUserDataUncheckedUpdateManyInput = {
@@ -412,6 +668,18 @@ export type SensitiveUserDataUncheckedUpdateManyInput = {
   billingPostalCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   billingCountryCode?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   appleRefreshToken?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneNumberE164?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  phoneVerificationProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  phoneVerificationLastSentAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  phoneVerificationAttemptCount?: Prisma.IntFieldUpdateOperationsInput | number
+  totpSecretEncrypted?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  totpEnabledAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  totpVerifiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  totpLastUsedCounter?: Prisma.NullableIntFieldUpdateOperationsInput | number | null
+  totpProvider?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financialMfaRequiredAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  financialMfaSatisfiedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
 }
 
 export type SensitiveUserDataCountOrderByAggregateInput = {
@@ -427,6 +695,23 @@ export type SensitiveUserDataCountOrderByAggregateInput = {
   billingPostalCode?: Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrder
   appleRefreshToken?: Prisma.SortOrder
+  phoneNumberE164?: Prisma.SortOrder
+  phoneVerifiedAt?: Prisma.SortOrder
+  phoneVerificationProvider?: Prisma.SortOrder
+  phoneVerificationLastSentAt?: Prisma.SortOrder
+  phoneVerificationAttemptCount?: Prisma.SortOrder
+  totpSecretEncrypted?: Prisma.SortOrder
+  totpEnabledAt?: Prisma.SortOrder
+  totpVerifiedAt?: Prisma.SortOrder
+  totpLastUsedCounter?: Prisma.SortOrder
+  totpProvider?: Prisma.SortOrder
+  financialMfaRequiredAt?: Prisma.SortOrder
+  financialMfaSatisfiedAt?: Prisma.SortOrder
+}
+
+export type SensitiveUserDataAvgOrderByAggregateInput = {
+  phoneVerificationAttemptCount?: Prisma.SortOrder
+  totpLastUsedCounter?: Prisma.SortOrder
 }
 
 export type SensitiveUserDataMaxOrderByAggregateInput = {
@@ -442,6 +727,18 @@ export type SensitiveUserDataMaxOrderByAggregateInput = {
   billingPostalCode?: Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrder
   appleRefreshToken?: Prisma.SortOrder
+  phoneNumberE164?: Prisma.SortOrder
+  phoneVerifiedAt?: Prisma.SortOrder
+  phoneVerificationProvider?: Prisma.SortOrder
+  phoneVerificationLastSentAt?: Prisma.SortOrder
+  phoneVerificationAttemptCount?: Prisma.SortOrder
+  totpSecretEncrypted?: Prisma.SortOrder
+  totpEnabledAt?: Prisma.SortOrder
+  totpVerifiedAt?: Prisma.SortOrder
+  totpLastUsedCounter?: Prisma.SortOrder
+  totpProvider?: Prisma.SortOrder
+  financialMfaRequiredAt?: Prisma.SortOrder
+  financialMfaSatisfiedAt?: Prisma.SortOrder
 }
 
 export type SensitiveUserDataMinOrderByAggregateInput = {
@@ -457,6 +754,23 @@ export type SensitiveUserDataMinOrderByAggregateInput = {
   billingPostalCode?: Prisma.SortOrder
   billingCountryCode?: Prisma.SortOrder
   appleRefreshToken?: Prisma.SortOrder
+  phoneNumberE164?: Prisma.SortOrder
+  phoneVerifiedAt?: Prisma.SortOrder
+  phoneVerificationProvider?: Prisma.SortOrder
+  phoneVerificationLastSentAt?: Prisma.SortOrder
+  phoneVerificationAttemptCount?: Prisma.SortOrder
+  totpSecretEncrypted?: Prisma.SortOrder
+  totpEnabledAt?: Prisma.SortOrder
+  totpVerifiedAt?: Prisma.SortOrder
+  totpLastUsedCounter?: Prisma.SortOrder
+  totpProvider?: Prisma.SortOrder
+  financialMfaRequiredAt?: Prisma.SortOrder
+  financialMfaSatisfiedAt?: Prisma.SortOrder
+}
+
+export type SensitiveUserDataSumOrderByAggregateInput = {
+  phoneVerificationAttemptCount?: Prisma.SortOrder
+  totpLastUsedCounter?: Prisma.SortOrder
 }
 
 
@@ -474,6 +788,18 @@ export type SensitiveUserDataSelect<ExtArgs extends runtime.Types.Extensions.Int
   billingPostalCode?: boolean
   billingCountryCode?: boolean
   appleRefreshToken?: boolean
+  phoneNumberE164?: boolean
+  phoneVerifiedAt?: boolean
+  phoneVerificationProvider?: boolean
+  phoneVerificationLastSentAt?: boolean
+  phoneVerificationAttemptCount?: boolean
+  totpSecretEncrypted?: boolean
+  totpEnabledAt?: boolean
+  totpVerifiedAt?: boolean
+  totpLastUsedCounter?: boolean
+  totpProvider?: boolean
+  financialMfaRequiredAt?: boolean
+  financialMfaSatisfiedAt?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectCreateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -489,6 +815,18 @@ export type SensitiveUserDataSelectCreateManyAndReturn<ExtArgs extends runtime.T
   billingPostalCode?: boolean
   billingCountryCode?: boolean
   appleRefreshToken?: boolean
+  phoneNumberE164?: boolean
+  phoneVerifiedAt?: boolean
+  phoneVerificationProvider?: boolean
+  phoneVerificationLastSentAt?: boolean
+  phoneVerificationAttemptCount?: boolean
+  totpSecretEncrypted?: boolean
+  totpEnabledAt?: boolean
+  totpVerifiedAt?: boolean
+  totpLastUsedCounter?: boolean
+  totpProvider?: boolean
+  financialMfaRequiredAt?: boolean
+  financialMfaSatisfiedAt?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetSelect<{
@@ -504,6 +842,18 @@ export type SensitiveUserDataSelectUpdateManyAndReturn<ExtArgs extends runtime.T
   billingPostalCode?: boolean
   billingCountryCode?: boolean
   appleRefreshToken?: boolean
+  phoneNumberE164?: boolean
+  phoneVerifiedAt?: boolean
+  phoneVerificationProvider?: boolean
+  phoneVerificationLastSentAt?: boolean
+  phoneVerificationAttemptCount?: boolean
+  totpSecretEncrypted?: boolean
+  totpEnabledAt?: boolean
+  totpVerifiedAt?: boolean
+  totpLastUsedCounter?: boolean
+  totpProvider?: boolean
+  financialMfaRequiredAt?: boolean
+  financialMfaSatisfiedAt?: boolean
 }, ExtArgs["result"]["sensitiveUserData"]>
 
 export type SensitiveUserDataSelectScalar = {
@@ -519,9 +869,21 @@ export type SensitiveUserDataSelectScalar = {
   billingPostalCode?: boolean
   billingCountryCode?: boolean
   appleRefreshToken?: boolean
+  phoneNumberE164?: boolean
+  phoneVerifiedAt?: boolean
+  phoneVerificationProvider?: boolean
+  phoneVerificationLastSentAt?: boolean
+  phoneVerificationAttemptCount?: boolean
+  totpSecretEncrypted?: boolean
+  totpEnabledAt?: boolean
+  totpVerifiedAt?: boolean
+  totpLastUsedCounter?: boolean
+  totpProvider?: boolean
+  financialMfaRequiredAt?: boolean
+  financialMfaSatisfiedAt?: boolean
 }
 
-export type SensitiveUserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "email" | "billingAddressLine1" | "billingAddressLine2" | "billingCity" | "billingState" | "billingPostalCode" | "billingCountryCode" | "appleRefreshToken", ExtArgs["result"]["sensitiveUserData"]>
+export type SensitiveUserDataOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "userId" | "email" | "billingAddressLine1" | "billingAddressLine2" | "billingCity" | "billingState" | "billingPostalCode" | "billingCountryCode" | "appleRefreshToken" | "phoneNumberE164" | "phoneVerifiedAt" | "phoneVerificationProvider" | "phoneVerificationLastSentAt" | "phoneVerificationAttemptCount" | "totpSecretEncrypted" | "totpEnabledAt" | "totpVerifiedAt" | "totpLastUsedCounter" | "totpProvider" | "financialMfaRequiredAt" | "financialMfaSatisfiedAt", ExtArgs["result"]["sensitiveUserData"]>
 
 export type $SensitiveUserDataPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "SensitiveUserData"
@@ -539,6 +901,18 @@ export type $SensitiveUserDataPayload<ExtArgs extends runtime.Types.Extensions.I
     billingPostalCode: string | null
     billingCountryCode: string | null
     appleRefreshToken: string | null
+    phoneNumberE164: string | null
+    phoneVerifiedAt: Date | null
+    phoneVerificationProvider: string | null
+    phoneVerificationLastSentAt: Date | null
+    phoneVerificationAttemptCount: number
+    totpSecretEncrypted: string | null
+    totpEnabledAt: Date | null
+    totpVerifiedAt: Date | null
+    totpLastUsedCounter: number | null
+    totpProvider: string | null
+    financialMfaRequiredAt: Date | null
+    financialMfaSatisfiedAt: Date | null
   }, ExtArgs["result"]["sensitiveUserData"]>
   composites: {}
 }
@@ -974,6 +1348,18 @@ export interface SensitiveUserDataFieldRefs {
   readonly billingPostalCode: Prisma.FieldRef<"SensitiveUserData", 'String'>
   readonly billingCountryCode: Prisma.FieldRef<"SensitiveUserData", 'String'>
   readonly appleRefreshToken: Prisma.FieldRef<"SensitiveUserData", 'String'>
+  readonly phoneNumberE164: Prisma.FieldRef<"SensitiveUserData", 'String'>
+  readonly phoneVerifiedAt: Prisma.FieldRef<"SensitiveUserData", 'DateTime'>
+  readonly phoneVerificationProvider: Prisma.FieldRef<"SensitiveUserData", 'String'>
+  readonly phoneVerificationLastSentAt: Prisma.FieldRef<"SensitiveUserData", 'DateTime'>
+  readonly phoneVerificationAttemptCount: Prisma.FieldRef<"SensitiveUserData", 'Int'>
+  readonly totpSecretEncrypted: Prisma.FieldRef<"SensitiveUserData", 'String'>
+  readonly totpEnabledAt: Prisma.FieldRef<"SensitiveUserData", 'DateTime'>
+  readonly totpVerifiedAt: Prisma.FieldRef<"SensitiveUserData", 'DateTime'>
+  readonly totpLastUsedCounter: Prisma.FieldRef<"SensitiveUserData", 'Int'>
+  readonly totpProvider: Prisma.FieldRef<"SensitiveUserData", 'String'>
+  readonly financialMfaRequiredAt: Prisma.FieldRef<"SensitiveUserData", 'DateTime'>
+  readonly financialMfaSatisfiedAt: Prisma.FieldRef<"SensitiveUserData", 'DateTime'>
 }
 
 

@@ -49,6 +49,7 @@ describe('QuickBooks OAuth callback route', () => {
   });
 
   afterEach(() => {
+    jest.useRealTimers();
     global.fetch = originalFetch;
     Object.entries(originalEnv).forEach(([key, value]) => {
       if (value === undefined) {
@@ -89,13 +90,15 @@ describe('QuickBooks OAuth callback route', () => {
       create: expect.objectContaining({
         organizationId: 'org_1',
         provider: 'QUICKBOOKS_ONLINE',
-        externalCompanyId: '1234567890',
+        externalCompanyId: null,
+        externalCompanyIdEncrypted: expect.not.stringContaining('1234567890'),
         connectedByUserId: 'owner_1',
         accessTokenEncrypted: expect.not.stringContaining('access-token'),
         refreshTokenEncrypted: expect.not.stringContaining('refresh-token'),
       }),
       update: expect.objectContaining({
-        externalCompanyId: '1234567890',
+        externalCompanyId: null,
+        externalCompanyIdEncrypted: expect.not.stringContaining('1234567890'),
         connectedByUserId: 'owner_1',
       }),
     }));
@@ -111,6 +114,28 @@ describe('QuickBooks OAuth callback route', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('http://localhost/?quickbooks=error&reason=invalid_state');
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
+  it('redirects an expired signed state back to the finance tab with an expired-state reason', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-06-11T06:30:00.000Z'));
+    const state = createQuickBooksState(
+      'org_1',
+      'owner_1',
+      'http://localhost/organizations/org_1/finance',
+      'http://localhost/organizations/org_1/finance',
+    );
+    jest.setSystemTime(new Date('2026-06-11T07:01:00.000Z'));
+    const url = new URL('http://localhost/api/integrations/quickbooks/callback');
+    url.searchParams.set('code', 'auth-code');
+    url.searchParams.set('realmId', '1234567890');
+    url.searchParams.set('state', state);
+
+    const response = await GET(new NextRequest(url));
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('http://localhost/organizations/org_1/finance?quickbooks=error&reason=expired_state');
     expect(global.fetch).not.toHaveBeenCalled();
     expect(upsertMock).not.toHaveBeenCalled();
   });
@@ -136,7 +161,9 @@ describe('QuickBooks OAuth callback route', () => {
 
     expect(response.status).toBe(302);
     expect(response.headers.get('location')).toBe('http://localhost/organizations/org_1/finance?quickbooks=error&reason=token_exchange_failed');
-    expect(consoleErrorSpy).toHaveBeenCalledWith('QuickBooks OAuth callback failed', expect.any(Error));
+    expect(consoleErrorSpy).toHaveBeenCalledWith('QuickBooks OAuth callback failed', {
+      message: 'QuickBooks token request failed.',
+    });
     expect(upsertMock).not.toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
   });

@@ -7,6 +7,7 @@ import {
   loadOrganizationFinanceSummary,
 } from '@/server/finance/financeRepository';
 import { listStaffPayRuns } from '@/server/finance/staffPayRuns';
+import { listOrganizationFinanceCategoryAccountingMappings } from '@/server/integrations/financeCategoryAccountingMappings';
 import { listOrganizationAccountingConnections } from '@/server/integrations/quickBooksConnection';
 
 export const dynamic = 'force-dynamic';
@@ -31,11 +32,12 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const from = searchParams.get('from');
   const to = searchParams.get('to');
-  const [finance, payRuns, lineItemCategories, accountingConnections] = await Promise.all([
+  const [finance, payRuns, lineItemCategories, accountingConnections, categoryAccountingMappings] = await Promise.all([
     loadOrganizationFinanceSummary(id, prisma, { from, to }),
     listStaffPayRuns(id, prisma),
     listOrganizationFinancialLineItemCategories(id, prisma),
     listOrganizationAccountingConnections(id, prisma),
+    listOrganizationFinanceCategoryAccountingMappings(id, prisma),
   ]);
   if (!finance) {
     return NextResponse.json({ error: 'Organization finance is unavailable.' }, { status: 404 });
@@ -46,5 +48,6 @@ export async function GET(
     payRuns,
     lineItemCategories,
     accountingConnections,
+    categoryAccountingMappings,
   }, { status: 200 });
 }

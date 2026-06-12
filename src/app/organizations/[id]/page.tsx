@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
@@ -61,7 +61,7 @@ import {
   buildOrganizationCustomerPath,
   buildOrganizationTabPath,
   buildOrganizationTabs,
-  organizationTabFromPathSegment,
+  resolveOrganizationRouteTab,
   type OrganizationCustomerRouteType,
   type OrganizationTab,
 } from './organizationTabs';
@@ -688,21 +688,23 @@ const getStaffRoleLabel = (role: OrganizationTeamStaffSummary['role']): string =
 function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, authUser, loading: authLoading, isAuthenticated, updateUser } = useApp();
   const { location, requestLocation } = useLocation();
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
-  const routeTabSegment = Array.isArray(params?.tab) ? params?.tab[0] : (params?.tab as string | undefined);
   const routeCustomerType = Array.isArray(params?.customerType)
     ? params?.customerType[0]
     : (params?.customerType as string | undefined);
   const routeCustomerId = Array.isArray(params?.customerId)
     ? params?.customerId[0]
     : (params?.customerId as string | undefined);
-  const requestedPathTab = organizationTabFromPathSegment(routeTabSegment);
-  const requestedQueryTab = organizationTabFromPathSegment(searchParams?.get('tab'));
-  const requestedTab = requestedPathTab ?? requestedQueryTab;
+  const requestedTab = resolveOrganizationRouteTab({
+    pathname,
+    organizationId: id,
+    queryTab: searchParams?.get('tab'),
+  });
   const requestedCustomerType: OrganizationCustomerRouteType | null = routeCustomerType === 'users' || routeCustomerType === 'teams'
     ? routeCustomerType
     : null;
@@ -741,6 +743,7 @@ function OrganizationDetailContent() {
   const eventsTabSentinelRef = useRef<HTMLDivElement | null>(null);
   const locationRequestAttemptedRef = useRef(false);
   const handledStripeStateRef = useRef<string | null>(null);
+  const handledQuickBooksStateRef = useRef<string | null>(null);
   const [updatingEventHostId, setUpdatingEventHostId] = useState<string | null>(null);
   const [staffSearch, setStaffSearch] = useState('');
   const [staffResults, setStaffResults] = useState<UserData[]>([]);
@@ -1755,6 +1758,52 @@ function OrganizationDetailContent() {
   }, [authLoading, id, isAuthenticated, searchParams, syncOrganizationVerification, user]);
 
   useEffect(() => {
+    if (authLoading || !isAuthenticated || !user || !id) {
+      return;
+    }
+
+    const quickBooksState = searchParams?.get('quickbooks');
+    if (!quickBooksState) {
+      handledQuickBooksStateRef.current = null;
+      return;
+    }
+
+    const reason = searchParams?.get('reason') ?? '';
+    const handledKey = `${id}:${quickBooksState}:${reason}`;
+    if (handledQuickBooksStateRef.current === handledKey) {
+      return;
+    }
+    handledQuickBooksStateRef.current = handledKey;
+
+    if (quickBooksState === 'return') {
+      notifications.show({
+        color: 'green',
+        message: 'QuickBooks connected.',
+      });
+      return;
+    }
+
+    if (quickBooksState !== 'error') {
+      return;
+    }
+
+    const message = reason === 'expired_state'
+      ? 'QuickBooks authorization expired. Start the QuickBooks connection again.'
+      : reason === 'invalid_state'
+        ? 'QuickBooks connection could not be verified. Start the QuickBooks connection again.'
+        : reason === 'missing_realm'
+          ? 'QuickBooks did not return a company id. Choose a QuickBooks company and try again.'
+          : reason === 'token_exchange_failed'
+            ? 'QuickBooks approved access, but BracketIQ could not finish the token exchange.'
+            : 'QuickBooks connection failed. Start the QuickBooks connection again.';
+
+    notifications.show({
+      color: reason === 'expired_state' ? 'yellow' : 'red',
+      message,
+    });
+  }, [authLoading, id, isAuthenticated, searchParams, user]);
+
+  useEffect(() => {
     if (location) {
       return;
     }
@@ -2125,9 +2174,9 @@ function OrganizationDetailContent() {
     const nextTab = value as OrganizationTab;
     setActiveTab(nextTab);
     if (id) {
-      router.push(buildOrganizationTabPath(id, nextTab));
+      window.history.pushState(null, '', buildOrganizationTabPath(id, nextTab));
     }
-  }, [id, router]);
+  }, [id]);
 
   const openOrganizationCustomer = useCallback((row: OrganizationCustomerRow) => {
     setSelectedCustomerKey(row.key);

@@ -556,6 +556,26 @@ svg {
   min-width: 0;
 }
 
+.team-roster-player-grid {
+  align-items: stretch;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+}
+
+.team-roster-player-card {
+  height: 100%;
+  min-width: 0;
+}
+
+.team-roster-player-card .mantine-Badge-root {
+  max-width: 100%;
+}
+
+.team-roster-player-card .mantine-Badge-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .org-page-shell .team-detail-roster-danger {
   border-top: 1px solid var(--mvp-neutral-200);
   padding-top: 1rem;

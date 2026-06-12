@@ -80,12 +80,12 @@ export type PrismaVersion = {
 }
 
 /**
- * Prisma Client JS version: 7.7.0
- * Query Engine version: 75cbdc1eb7150937890ad5465d861175c6624711
+ * Prisma Client JS version: 7.8.0
+ * Query Engine version: 3c6e192761c0362d496ed980de936e2f3cebcd3a
  */
 export const prismaVersion: PrismaVersion = {
-  client: "7.7.0",
-  engine: "75cbdc1eb7150937890ad5465d861175c6624711"
+  client: "7.8.0",
+  engine: "3c6e192761c0362d496ed980de936e2f3cebcd3a"
 }
 
 /**
@@ -392,6 +392,7 @@ export const ModelName = {
   Divisions: 'Divisions',
   UserData: 'UserData',
   SensitiveUserData: 'SensitiveUserData',
+  AuthMfaChallenges: 'AuthMfaChallenges',
   Invites: 'Invites',
   TeamInviteEventSyncs: 'TeamInviteEventSyncs',
   StaffMembers: 'StaffMembers',
@@ -425,6 +426,8 @@ export const ModelName = {
   BillPayments: 'BillPayments',
   RefundRequests: 'RefundRequests',
   OrganizationAccountingConnections: 'OrganizationAccountingConnections',
+  AccountingSyncRecords: 'AccountingSyncRecords',
+  OrganizationFinanceCategoryAccountingMappings: 'OrganizationFinanceCategoryAccountingMappings',
   StripeAccounts: 'StripeAccounts',
   Events: 'Events',
   Organizations: 'Organizations',
@@ -456,7 +459,7 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
     omit: GlobalOmitOptions
   }
   meta: {
-    modelProps: "appReleases" | "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "organizationAccountingConnections" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
+    modelProps: "appReleases" | "fields" | "matches" | "matchSegments" | "matchIncidents" | "divisions" | "userData" | "sensitiveUserData" | "authMfaChallenges" | "invites" | "teamInviteEventSyncs" | "staffMembers" | "organizationRoles" | "organizationRolePermissions" | "organizationRoleCompensationRates" | "staffCompensationRates" | "eventStaffAssignments" | "teamStaffLaborEntries" | "financialLineItems" | "staffPayRun" | "staffPayRunItem" | "eventOfficials" | "teams" | "canonicalTeams" | "teamRegistrations" | "registrationQuestions" | "registrationQuestionResponses" | "teamJoinRequests" | "teamStaffAssignments" | "eventTeamStaffAssignments" | "messages" | "chatGroup" | "moderationReport" | "aiConversationPointer" | "aiPendingConfirmation" | "pushDeviceTarget" | "lockFiles" | "paymentIntents" | "bills" | "billPayments" | "refundRequests" | "organizationAccountingConnections" | "accountingSyncRecords" | "organizationFinanceCategoryAccountingMappings" | "stripeAccounts" | "events" | "organizations" | "products" | "subscriptions" | "timeSlots" | "leagueScoringConfigs" | "sports" | "templateDocuments" | "signedDocuments" | "boldSignWebhookEvents" | "boldSignSyncOperations" | "parentChildLinks" | "eventRegistrations" | "authUser" | "file"
     txIsolationLevel: TransactionIsolationLevel
   }
   model: {
@@ -1049,6 +1052,80 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         count: {
           args: Prisma.SensitiveUserDataCountArgs<ExtArgs>
           result: runtime.Types.Utils.Optional<Prisma.SensitiveUserDataCountAggregateOutputType> | number
+        }
+      }
+    }
+    AuthMfaChallenges: {
+      payload: Prisma.$AuthMfaChallengesPayload<ExtArgs>
+      fields: Prisma.AuthMfaChallengesFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AuthMfaChallengesFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AuthMfaChallengesFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>
+        }
+        findFirst: {
+          args: Prisma.AuthMfaChallengesFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AuthMfaChallengesFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>
+        }
+        findMany: {
+          args: Prisma.AuthMfaChallengesFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>[]
+        }
+        create: {
+          args: Prisma.AuthMfaChallengesCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>
+        }
+        createMany: {
+          args: Prisma.AuthMfaChallengesCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AuthMfaChallengesCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>[]
+        }
+        delete: {
+          args: Prisma.AuthMfaChallengesDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>
+        }
+        update: {
+          args: Prisma.AuthMfaChallengesUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>
+        }
+        deleteMany: {
+          args: Prisma.AuthMfaChallengesDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AuthMfaChallengesUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AuthMfaChallengesUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>[]
+        }
+        upsert: {
+          args: Prisma.AuthMfaChallengesUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AuthMfaChallengesPayload>
+        }
+        aggregate: {
+          args: Prisma.AuthMfaChallengesAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAuthMfaChallenges>
+        }
+        groupBy: {
+          args: Prisma.AuthMfaChallengesGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AuthMfaChallengesGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AuthMfaChallengesCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AuthMfaChallengesCountAggregateOutputType> | number
         }
       }
     }
@@ -3494,6 +3571,154 @@ export type TypeMap<ExtArgs extends runtime.Types.Extensions.InternalArgs = runt
         }
       }
     }
+    AccountingSyncRecords: {
+      payload: Prisma.$AccountingSyncRecordsPayload<ExtArgs>
+      fields: Prisma.AccountingSyncRecordsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.AccountingSyncRecordsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.AccountingSyncRecordsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>
+        }
+        findFirst: {
+          args: Prisma.AccountingSyncRecordsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.AccountingSyncRecordsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>
+        }
+        findMany: {
+          args: Prisma.AccountingSyncRecordsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>[]
+        }
+        create: {
+          args: Prisma.AccountingSyncRecordsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>
+        }
+        createMany: {
+          args: Prisma.AccountingSyncRecordsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.AccountingSyncRecordsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>[]
+        }
+        delete: {
+          args: Prisma.AccountingSyncRecordsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>
+        }
+        update: {
+          args: Prisma.AccountingSyncRecordsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>
+        }
+        deleteMany: {
+          args: Prisma.AccountingSyncRecordsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.AccountingSyncRecordsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.AccountingSyncRecordsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>[]
+        }
+        upsert: {
+          args: Prisma.AccountingSyncRecordsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$AccountingSyncRecordsPayload>
+        }
+        aggregate: {
+          args: Prisma.AccountingSyncRecordsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateAccountingSyncRecords>
+        }
+        groupBy: {
+          args: Prisma.AccountingSyncRecordsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AccountingSyncRecordsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.AccountingSyncRecordsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AccountingSyncRecordsCountAggregateOutputType> | number
+        }
+      }
+    }
+    OrganizationFinanceCategoryAccountingMappings: {
+      payload: Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload<ExtArgs>
+      fields: Prisma.OrganizationFinanceCategoryAccountingMappingsFieldRefs
+      operations: {
+        findUnique: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsFindUniqueArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload> | null
+        }
+        findUniqueOrThrow: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsFindUniqueOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>
+        }
+        findFirst: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsFindFirstArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload> | null
+        }
+        findFirstOrThrow: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsFindFirstOrThrowArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>
+        }
+        findMany: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsFindManyArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>[]
+        }
+        create: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsCreateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>
+        }
+        createMany: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsCreateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        createManyAndReturn: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsCreateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>[]
+        }
+        delete: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsDeleteArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>
+        }
+        update: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsUpdateArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>
+        }
+        deleteMany: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsDeleteManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateMany: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsUpdateManyArgs<ExtArgs>
+          result: BatchPayload
+        }
+        updateManyAndReturn: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsUpdateManyAndReturnArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>[]
+        }
+        upsert: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsUpsertArgs<ExtArgs>
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$OrganizationFinanceCategoryAccountingMappingsPayload>
+        }
+        aggregate: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsAggregateArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.AggregateOrganizationFinanceCategoryAccountingMappings>
+        }
+        groupBy: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsGroupByArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationFinanceCategoryAccountingMappingsGroupByOutputType>[]
+        }
+        count: {
+          args: Prisma.OrganizationFinanceCategoryAccountingMappingsCountArgs<ExtArgs>
+          result: runtime.Types.Utils.Optional<Prisma.OrganizationFinanceCategoryAccountingMappingsCountAggregateOutputType> | number
+        }
+      }
+    }
     StripeAccounts: {
       payload: Prisma.$StripeAccountsPayload<ExtArgs>
       fields: Prisma.StripeAccountsFieldRefs
@@ -4936,10 +5161,45 @@ export const SensitiveUserDataScalarFieldEnum = {
   billingState: 'billingState',
   billingPostalCode: 'billingPostalCode',
   billingCountryCode: 'billingCountryCode',
-  appleRefreshToken: 'appleRefreshToken'
+  appleRefreshToken: 'appleRefreshToken',
+  phoneNumberE164: 'phoneNumberE164',
+  phoneVerifiedAt: 'phoneVerifiedAt',
+  phoneVerificationProvider: 'phoneVerificationProvider',
+  phoneVerificationLastSentAt: 'phoneVerificationLastSentAt',
+  phoneVerificationAttemptCount: 'phoneVerificationAttemptCount',
+  totpSecretEncrypted: 'totpSecretEncrypted',
+  totpEnabledAt: 'totpEnabledAt',
+  totpVerifiedAt: 'totpVerifiedAt',
+  totpLastUsedCounter: 'totpLastUsedCounter',
+  totpProvider: 'totpProvider',
+  financialMfaRequiredAt: 'financialMfaRequiredAt',
+  financialMfaSatisfiedAt: 'financialMfaSatisfiedAt'
 } as const
 
 export type SensitiveUserDataScalarFieldEnum = (typeof SensitiveUserDataScalarFieldEnum)[keyof typeof SensitiveUserDataScalarFieldEnum]
+
+
+export const AuthMfaChallengesScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  userId: 'userId',
+  purpose: 'purpose',
+  phoneNumberE164: 'phoneNumberE164',
+  totpSecretEncrypted: 'totpSecretEncrypted',
+  provider: 'provider',
+  providerChallengeId: 'providerChallengeId',
+  devCodeHash: 'devCodeHash',
+  expiresAt: 'expiresAt',
+  consumedAt: 'consumedAt',
+  lastSentAt: 'lastSentAt',
+  attemptCount: 'attemptCount',
+  sessionVersion: 'sessionVersion',
+  verificationIpHash: 'verificationIpHash',
+  verificationUserAgent: 'verificationUserAgent'
+} as const
+
+export type AuthMfaChallengesScalarFieldEnum = (typeof AuthMfaChallengesScalarFieldEnum)[keyof typeof AuthMfaChallengesScalarFieldEnum]
 
 
 export const InvitesScalarFieldEnum = {
@@ -5563,6 +5823,7 @@ export const OrganizationAccountingConnectionsScalarFieldEnum = {
   provider: 'provider',
   status: 'status',
   externalCompanyId: 'externalCompanyId',
+  externalCompanyIdEncrypted: 'externalCompanyIdEncrypted',
   externalCompanyName: 'externalCompanyName',
   environment: 'environment',
   scopes: 'scopes',
@@ -5577,12 +5838,67 @@ export const OrganizationAccountingConnectionsScalarFieldEnum = {
   disconnectedAt: 'disconnectedAt',
   disconnectedByUserId: 'disconnectedByUserId',
   lastSyncedAt: 'lastSyncedAt',
+  lastIntuitTid: 'lastIntuitTid',
+  lastErrorAt: 'lastErrorAt',
   lastError: 'lastError',
+  payrollExpenseAccountExternalId: 'payrollExpenseAccountExternalId',
+  payrollExpenseAccountName: 'payrollExpenseAccountName',
+  payrollLiabilityAccountExternalId: 'payrollLiabilityAccountExternalId',
+  payrollLiabilityAccountName: 'payrollLiabilityAccountName',
+  financeClearingAccountExternalId: 'financeClearingAccountExternalId',
+  financeClearingAccountName: 'financeClearingAccountName',
   createdBy: 'createdBy',
   updatedBy: 'updatedBy'
 } as const
 
 export type OrganizationAccountingConnectionsScalarFieldEnum = (typeof OrganizationAccountingConnectionsScalarFieldEnum)[keyof typeof OrganizationAccountingConnectionsScalarFieldEnum]
+
+
+export const AccountingSyncRecordsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  provider: 'provider',
+  sourceType: 'sourceType',
+  staffPayRunId: 'staffPayRunId',
+  sourceKey: 'sourceKey',
+  status: 'status',
+  externalTxnId: 'externalTxnId',
+  externalTxnType: 'externalTxnType',
+  externalTxnDocNumber: 'externalTxnDocNumber',
+  intuitTid: 'intuitTid',
+  errorCode: 'errorCode',
+  errorMessage: 'errorMessage',
+  requestSummary: 'requestSummary',
+  responseSummary: 'responseSummary',
+  syncedAt: 'syncedAt',
+  syncedByUserId: 'syncedByUserId',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type AccountingSyncRecordsScalarFieldEnum = (typeof AccountingSyncRecordsScalarFieldEnum)[keyof typeof AccountingSyncRecordsScalarFieldEnum]
+
+
+export const OrganizationFinanceCategoryAccountingMappingsScalarFieldEnum = {
+  id: 'id',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
+  organizationId: 'organizationId',
+  provider: 'provider',
+  category: 'category',
+  categoryKey: 'categoryKey',
+  entryType: 'entryType',
+  accountExternalId: 'accountExternalId',
+  accountName: 'accountName',
+  isActive: 'isActive',
+  notes: 'notes',
+  createdBy: 'createdBy',
+  updatedBy: 'updatedBy'
+} as const
+
+export type OrganizationFinanceCategoryAccountingMappingsScalarFieldEnum = (typeof OrganizationFinanceCategoryAccountingMappingsScalarFieldEnum)[keyof typeof OrganizationFinanceCategoryAccountingMappingsScalarFieldEnum]
 
 
 export const StripeAccountsScalarFieldEnum = {
@@ -6197,6 +6513,20 @@ export type ListEnumDivisionsKindEnumFieldRefInput<$PrismaModel> = FieldRefInput
 
 
 /**
+ * Reference to a field of type 'AuthMfaChallengePurposeEnum'
+ */
+export type EnumAuthMfaChallengePurposeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AuthMfaChallengePurposeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'AuthMfaChallengePurposeEnum[]'
+ */
+export type ListEnumAuthMfaChallengePurposeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AuthMfaChallengePurposeEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'TeamInviteEventSyncStatusEnum'
  */
 export type EnumTeamInviteEventSyncStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'TeamInviteEventSyncStatusEnum'>
@@ -6603,6 +6933,48 @@ export type ListEnumOrganizationAccountingConnectionStatusEnumFieldRefInput<$Pri
 
 
 /**
+ * Reference to a field of type 'AccountingSyncSourceTypeEnum'
+ */
+export type EnumAccountingSyncSourceTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AccountingSyncSourceTypeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'AccountingSyncSourceTypeEnum[]'
+ */
+export type ListEnumAccountingSyncSourceTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AccountingSyncSourceTypeEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'AccountingSyncStatusEnum'
+ */
+export type EnumAccountingSyncStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AccountingSyncStatusEnum'>
+
+
+
+/**
+ * Reference to a field of type 'AccountingSyncStatusEnum[]'
+ */
+export type ListEnumAccountingSyncStatusEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'AccountingSyncStatusEnum[]'>
+
+
+
+/**
+ * Reference to a field of type 'FinanceCategoryAccountingEntryTypeEnum'
+ */
+export type EnumFinanceCategoryAccountingEntryTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FinanceCategoryAccountingEntryTypeEnum'>
+
+
+
+/**
+ * Reference to a field of type 'FinanceCategoryAccountingEntryTypeEnum[]'
+ */
+export type ListEnumFinanceCategoryAccountingEntryTypeEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'FinanceCategoryAccountingEntryTypeEnum[]'>
+
+
+
+/**
  * Reference to a field of type 'StripeAccountsAccountOriginEnum'
  */
 export type EnumStripeAccountsAccountOriginEnumFieldRefInput<$PrismaModel> = FieldRefInputType<$PrismaModel, 'StripeAccountsAccountOriginEnum'>
@@ -6918,6 +7290,21 @@ export type PrismaClientOptions = ({
    * ```
    */
   comments?: runtime.SqlCommenterPlugin[]
+  /**
+   * Optional maximum size for the query plan cache. If not provided, a default size will be used.
+   * A value of `0` can be used to disable the cache entirely. A higher cache size can improve
+   * performance for applications that execute a large number of unique queries, while a smaller
+   * cache size can reduce memory usage.
+   *
+   * @example
+   * ```
+   * const prisma = new PrismaClient({
+   *   adapter,
+   *   queryPlanCacheMaxSize: 100,
+   * })
+   * ```
+   */
+  queryPlanCacheMaxSize?: number
 }
 export type GlobalOmitConfig = {
   appReleases?: Prisma.AppReleasesOmit
@@ -6928,6 +7315,7 @@ export type GlobalOmitConfig = {
   divisions?: Prisma.DivisionsOmit
   userData?: Prisma.UserDataOmit
   sensitiveUserData?: Prisma.SensitiveUserDataOmit
+  authMfaChallenges?: Prisma.AuthMfaChallengesOmit
   invites?: Prisma.InvitesOmit
   teamInviteEventSyncs?: Prisma.TeamInviteEventSyncsOmit
   staffMembers?: Prisma.StaffMembersOmit
@@ -6961,6 +7349,8 @@ export type GlobalOmitConfig = {
   billPayments?: Prisma.BillPaymentsOmit
   refundRequests?: Prisma.RefundRequestsOmit
   organizationAccountingConnections?: Prisma.OrganizationAccountingConnectionsOmit
+  accountingSyncRecords?: Prisma.AccountingSyncRecordsOmit
+  organizationFinanceCategoryAccountingMappings?: Prisma.OrganizationFinanceCategoryAccountingMappingsOmit
   stripeAccounts?: Prisma.StripeAccountsOmit
   events?: Prisma.EventsOmit
   organizations?: Prisma.OrganizationsOmit

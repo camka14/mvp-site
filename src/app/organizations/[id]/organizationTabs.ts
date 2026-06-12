@@ -58,6 +58,51 @@ export const organizationTabFromPathSegment = (segment?: string | null): Organiz
   return normalized ? ORGANIZATION_TAB_ALIASES[normalized] ?? null : null;
 };
 
+const decodePathSegment = (segment: string): string => {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+};
+
+const getOrganizationPathSegments = (pathname?: string | null): string[] => (
+  String(pathname ?? '')
+    .split(/[?#]/, 1)[0]
+    .split('/')
+    .filter(Boolean)
+    .map(decodePathSegment)
+);
+
+export const resolveOrganizationRouteTab = ({
+  pathname,
+  organizationId,
+  queryTab,
+}: {
+  pathname?: string | null;
+  organizationId?: string | null;
+  queryTab?: string | null;
+}): OrganizationTab | null => {
+  const queryTabValue = organizationTabFromPathSegment(queryTab);
+  const segments = getOrganizationPathSegments(pathname);
+  if (segments[0] !== 'organizations') {
+    return queryTabValue;
+  }
+  if (organizationId && segments[1] !== organizationId) {
+    return queryTabValue;
+  }
+
+  const pathTab = organizationTabFromPathSegment(segments[2]);
+  if (pathTab) {
+    return pathTab;
+  }
+  if (queryTabValue) {
+    return queryTabValue;
+  }
+
+  return segments.length === 2 ? 'overview' : null;
+};
+
 export const buildOrganizationTabPath = (organizationId: string, tab: OrganizationTab): string => {
   const encodedOrganizationId = encodeURIComponent(organizationId);
   const segment = ORGANIZATION_TAB_TO_PATH_SEGMENT[tab];

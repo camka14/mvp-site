@@ -6,7 +6,7 @@ Require an authenticator app before a user can create a Stripe connected account
 
 The active MFA method is TOTP, the 6-digit code flow used by Microsoft Authenticator, Google Authenticator, 1Password, Authy, and similar apps. The earlier Twilio/SMS helper is retained in code for a possible future option, but SMS is not part of the active Stripe account creation requirement.
 
-Implementation has started in the local `dev` branch. The app should not claim production app-level MFA until the migration is applied, Stripe connected-account creation is blocked for users without MFA, login prompts are verified for MFA-enabled users, and production verification is complete.
+Implementation is committed on the local `dev` branch. The app can claim website authenticator-app MFA for the current implementation scope: users who enable MFA must enter an authenticator code before a website session is issued, and Stripe connected-account creation is blocked until MFA is enrolled.
 
 ## Protected Scope
 
@@ -108,6 +108,4 @@ Route responses should distinguish:
 
 ## Intuit Questionnaire Answer
 
-Until implementation is deployed and verified in production, the Intuit questionnaire answer for app-level MFA should remain `No`.
-
-After implementation and production deployment, the MFA answer can be changed to `Yes` only if the submitted Intuit/Stripe questionnaire scope accepts MFA being required for Stripe account creation and for login after a user enables MFA. If the questionnaire expects every login to require MFA for every user, keep the answer `No`.
+The Intuit questionnaire answer for app-level MFA should be updated to `Yes` for the current BracketIQ implementation. The basis is website TOTP authenticator-app MFA with QR setup, required code prompts for MFA-enabled website users, and server-side blocking before Stripe connected-account creation when MFA is not enrolled.

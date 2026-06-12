@@ -102,6 +102,7 @@ const normalizeTitle = (value: unknown, periodStart: Date, periodEnd: Date): str
 const mapPayRun = (row: any) => ({
   ...row,
   items: Array.isArray(row.items) ? row.items : [],
+  accountingSyncs: Array.isArray(row.accountingSyncs) ? row.accountingSyncs : [],
 });
 
 const attachPayRunItems = async (
@@ -114,20 +115,37 @@ const attachPayRunItems = async (
     return payRuns.map(mapPayRun);
   }
 
-  const items = await client.staffPayRunItem.findMany({
-    where: {
-      organizationId,
-      payRunId: { in: payRunIds },
-    },
-    orderBy: [{ serviceStartAt: 'asc' }, { createdAt: 'asc' }],
-  });
+  const [items, syncRecords] = await Promise.all([
+    client.staffPayRunItem.findMany({
+      where: {
+        organizationId,
+        payRunId: { in: payRunIds },
+      },
+      orderBy: [{ serviceStartAt: 'asc' }, { createdAt: 'asc' }],
+    }),
+    client.accountingSyncRecords.findMany({
+      where: {
+        organizationId,
+        sourceType: 'STAFF_PAY_RUN',
+        staffPayRunId: { in: payRunIds },
+      },
+      orderBy: [{ updatedAt: 'desc' }],
+    }),
+  ]);
   const itemsByPayRunId = new Map<string, any[]>();
   items.forEach((item: any) => {
     itemsByPayRunId.set(item.payRunId, [...(itemsByPayRunId.get(item.payRunId) ?? []), item]);
   });
+  const syncsByPayRunId = new Map<string, any[]>();
+  syncRecords.forEach((sync: any) => {
+    if (typeof sync.staffPayRunId === 'string') {
+      syncsByPayRunId.set(sync.staffPayRunId, [...(syncsByPayRunId.get(sync.staffPayRunId) ?? []), sync]);
+    }
+  });
   return payRuns.map((payRun) => mapPayRun({
     ...payRun,
     items: itemsByPayRunId.get(payRun.id) ?? [],
+    accountingSyncs: syncsByPayRunId.get(payRun.id) ?? [],
   }));
 };
 

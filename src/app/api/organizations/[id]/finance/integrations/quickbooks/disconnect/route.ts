@@ -23,10 +23,19 @@ export async function POST(
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  const connection = await disconnectQuickBooksConnection({
-    organizationId: id,
-    actingUserId: session.userId,
-    client: prisma,
-  });
-  return NextResponse.json({ connection }, { status: 200 });
+  try {
+    const connection = await disconnectQuickBooksConnection({
+      organizationId: id,
+      actingUserId: session.userId,
+      client: prisma,
+    });
+    return NextResponse.json({ connection }, { status: 200 });
+  } catch (error) {
+    console.error('QuickBooks disconnect failed', {
+      message: error instanceof Error ? error.message : 'Unknown QuickBooks disconnect error.',
+    });
+    return NextResponse.json({
+      error: 'QuickBooks disconnect failed. QuickBooks tokens were not cleared because revocation could not be confirmed.',
+    }, { status: 502 });
+  }
 }

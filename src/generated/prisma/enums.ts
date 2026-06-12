@@ -386,6 +386,35 @@ export const OrganizationAccountingConnectionStatusEnum = {
 export type OrganizationAccountingConnectionStatusEnum = (typeof OrganizationAccountingConnectionStatusEnum)[keyof typeof OrganizationAccountingConnectionStatusEnum]
 
 
+export const AccountingSyncSourceTypeEnum = {
+  STAFF_PAY_RUN: 'STAFF_PAY_RUN',
+  FINANCE_JOURNAL_ENTRY: 'FINANCE_JOURNAL_ENTRY'
+} as const
+
+export type AccountingSyncSourceTypeEnum = (typeof AccountingSyncSourceTypeEnum)[keyof typeof AccountingSyncSourceTypeEnum]
+
+
+export const AccountingSyncStatusEnum = {
+  PENDING: 'PENDING',
+  SYNCED: 'SYNCED',
+  FAILED: 'FAILED',
+  REAUTH_REQUIRED: 'REAUTH_REQUIRED',
+  VOID: 'VOID'
+} as const
+
+export type AccountingSyncStatusEnum = (typeof AccountingSyncStatusEnum)[keyof typeof AccountingSyncStatusEnum]
+
+
+export const FinanceCategoryAccountingEntryTypeEnum = {
+  REVENUE: 'REVENUE',
+  EXPENSE: 'EXPENSE',
+  LIABILITY: 'LIABILITY',
+  ASSET: 'ASSET'
+} as const
+
+export type FinanceCategoryAccountingEntryTypeEnum = (typeof FinanceCategoryAccountingEntryTypeEnum)[keyof typeof FinanceCategoryAccountingEntryTypeEnum]
+
+
 export const StaffPayoutStatusEnum = {
   NOT_STARTED: 'NOT_STARTED',
   PENDING: 'PENDING',
@@ -452,3 +481,13 @@ export const AppReleasePlatformEnum = {
 } as const
 
 export type AppReleasePlatformEnum = (typeof AppReleasePlatformEnum)[keyof typeof AppReleasePlatformEnum]
+
+
+export const AuthMfaChallengePurposeEnum = {
+  LOGIN: 'LOGIN',
+  LOGIN_SETUP: 'LOGIN_SETUP',
+  PROFILE_PHONE_SETUP: 'PROFILE_PHONE_SETUP',
+  PROFILE_TOTP_SETUP: 'PROFILE_TOTP_SETUP'
+} as const
+
+export type AuthMfaChallengePurposeEnum = (typeof AuthMfaChallengePurposeEnum)[keyof typeof AuthMfaChallengePurposeEnum]

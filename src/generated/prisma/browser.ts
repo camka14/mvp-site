@@ -58,6 +58,11 @@ export type UserData = Prisma.UserDataModel
  */
 export type SensitiveUserData = Prisma.SensitiveUserDataModel
 /**
+ * Model AuthMfaChallenges
+ *
+ */
+export type AuthMfaChallenges = Prisma.AuthMfaChallengesModel
+/**
  * Model Invites
  *
  */
@@ -222,6 +227,16 @@ export type RefundRequests = Prisma.RefundRequestsModel
  *
  */
 export type OrganizationAccountingConnections = Prisma.OrganizationAccountingConnectionsModel
+/**
+ * Model AccountingSyncRecords
+ *
+ */
+export type AccountingSyncRecords = Prisma.AccountingSyncRecordsModel
+/**
+ * Model OrganizationFinanceCategoryAccountingMappings
+ *
+ */
+export type OrganizationFinanceCategoryAccountingMappings = Prisma.OrganizationFinanceCategoryAccountingMappingsModel
 /**
  * Model StripeAccounts
  *

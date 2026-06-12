@@ -179,7 +179,7 @@ export default function TeamCard({
       {visibleMembers.length > 0 && (
         <Group justify="space-between" mb="xs">
           <Group gap={6}>
-            <Text size="sm" c="dimmed">Members:</Text>
+            <Text size="sm" c="dimmed">Roster:</Text>
             <Group gap={-8}>
               {visibleMembersPreview.map((player) => (
                 <Avatar

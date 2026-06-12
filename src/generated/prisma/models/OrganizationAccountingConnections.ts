@@ -32,6 +32,7 @@ export type OrganizationAccountingConnectionsMinAggregateOutputType = {
   provider: $Enums.OrganizationAccountingProviderEnum | null
   status: $Enums.OrganizationAccountingConnectionStatusEnum | null
   externalCompanyId: string | null
+  externalCompanyIdEncrypted: string | null
   externalCompanyName: string | null
   environment: string | null
   accessTokenEncrypted: string | null
@@ -45,7 +46,15 @@ export type OrganizationAccountingConnectionsMinAggregateOutputType = {
   disconnectedAt: Date | null
   disconnectedByUserId: string | null
   lastSyncedAt: Date | null
+  lastIntuitTid: string | null
+  lastErrorAt: Date | null
   lastError: string | null
+  payrollExpenseAccountExternalId: string | null
+  payrollExpenseAccountName: string | null
+  payrollLiabilityAccountExternalId: string | null
+  payrollLiabilityAccountName: string | null
+  financeClearingAccountExternalId: string | null
+  financeClearingAccountName: string | null
   createdBy: string | null
   updatedBy: string | null
 }
@@ -58,6 +67,7 @@ export type OrganizationAccountingConnectionsMaxAggregateOutputType = {
   provider: $Enums.OrganizationAccountingProviderEnum | null
   status: $Enums.OrganizationAccountingConnectionStatusEnum | null
   externalCompanyId: string | null
+  externalCompanyIdEncrypted: string | null
   externalCompanyName: string | null
   environment: string | null
   accessTokenEncrypted: string | null
@@ -71,7 +81,15 @@ export type OrganizationAccountingConnectionsMaxAggregateOutputType = {
   disconnectedAt: Date | null
   disconnectedByUserId: string | null
   lastSyncedAt: Date | null
+  lastIntuitTid: string | null
+  lastErrorAt: Date | null
   lastError: string | null
+  payrollExpenseAccountExternalId: string | null
+  payrollExpenseAccountName: string | null
+  payrollLiabilityAccountExternalId: string | null
+  payrollLiabilityAccountName: string | null
+  financeClearingAccountExternalId: string | null
+  financeClearingAccountName: string | null
   createdBy: string | null
   updatedBy: string | null
 }
@@ -84,6 +102,7 @@ export type OrganizationAccountingConnectionsCountAggregateOutputType = {
   provider: number
   status: number
   externalCompanyId: number
+  externalCompanyIdEncrypted: number
   externalCompanyName: number
   environment: number
   scopes: number
@@ -98,7 +117,15 @@ export type OrganizationAccountingConnectionsCountAggregateOutputType = {
   disconnectedAt: number
   disconnectedByUserId: number
   lastSyncedAt: number
+  lastIntuitTid: number
+  lastErrorAt: number
   lastError: number
+  payrollExpenseAccountExternalId: number
+  payrollExpenseAccountName: number
+  payrollLiabilityAccountExternalId: number
+  payrollLiabilityAccountName: number
+  financeClearingAccountExternalId: number
+  financeClearingAccountName: number
   createdBy: number
   updatedBy: number
   _all: number
@@ -113,6 +140,7 @@ export type OrganizationAccountingConnectionsMinAggregateInputType = {
   provider?: true
   status?: true
   externalCompanyId?: true
+  externalCompanyIdEncrypted?: true
   externalCompanyName?: true
   environment?: true
   accessTokenEncrypted?: true
@@ -126,7 +154,15 @@ export type OrganizationAccountingConnectionsMinAggregateInputType = {
   disconnectedAt?: true
   disconnectedByUserId?: true
   lastSyncedAt?: true
+  lastIntuitTid?: true
+  lastErrorAt?: true
   lastError?: true
+  payrollExpenseAccountExternalId?: true
+  payrollExpenseAccountName?: true
+  payrollLiabilityAccountExternalId?: true
+  payrollLiabilityAccountName?: true
+  financeClearingAccountExternalId?: true
+  financeClearingAccountName?: true
   createdBy?: true
   updatedBy?: true
 }
@@ -139,6 +175,7 @@ export type OrganizationAccountingConnectionsMaxAggregateInputType = {
   provider?: true
   status?: true
   externalCompanyId?: true
+  externalCompanyIdEncrypted?: true
   externalCompanyName?: true
   environment?: true
   accessTokenEncrypted?: true
@@ -152,7 +189,15 @@ export type OrganizationAccountingConnectionsMaxAggregateInputType = {
   disconnectedAt?: true
   disconnectedByUserId?: true
   lastSyncedAt?: true
+  lastIntuitTid?: true
+  lastErrorAt?: true
   lastError?: true
+  payrollExpenseAccountExternalId?: true
+  payrollExpenseAccountName?: true
+  payrollLiabilityAccountExternalId?: true
+  payrollLiabilityAccountName?: true
+  financeClearingAccountExternalId?: true
+  financeClearingAccountName?: true
   createdBy?: true
   updatedBy?: true
 }
@@ -165,6 +210,7 @@ export type OrganizationAccountingConnectionsCountAggregateInputType = {
   provider?: true
   status?: true
   externalCompanyId?: true
+  externalCompanyIdEncrypted?: true
   externalCompanyName?: true
   environment?: true
   scopes?: true
@@ -179,7 +225,15 @@ export type OrganizationAccountingConnectionsCountAggregateInputType = {
   disconnectedAt?: true
   disconnectedByUserId?: true
   lastSyncedAt?: true
+  lastIntuitTid?: true
+  lastErrorAt?: true
   lastError?: true
+  payrollExpenseAccountExternalId?: true
+  payrollExpenseAccountName?: true
+  payrollLiabilityAccountExternalId?: true
+  payrollLiabilityAccountName?: true
+  financeClearingAccountExternalId?: true
+  financeClearingAccountName?: true
   createdBy?: true
   updatedBy?: true
   _all?: true
@@ -265,6 +319,7 @@ export type OrganizationAccountingConnectionsGroupByOutputType = {
   provider: $Enums.OrganizationAccountingProviderEnum
   status: $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId: string | null
+  externalCompanyIdEncrypted: string | null
   externalCompanyName: string | null
   environment: string
   scopes: string[]
@@ -279,7 +334,15 @@ export type OrganizationAccountingConnectionsGroupByOutputType = {
   disconnectedAt: Date | null
   disconnectedByUserId: string | null
   lastSyncedAt: Date | null
+  lastIntuitTid: string | null
+  lastErrorAt: Date | null
   lastError: string | null
+  payrollExpenseAccountExternalId: string | null
+  payrollExpenseAccountName: string | null
+  payrollLiabilityAccountExternalId: string | null
+  payrollLiabilityAccountName: string | null
+  financeClearingAccountExternalId: string | null
+  financeClearingAccountName: string | null
   createdBy: string | null
   updatedBy: string | null
   _count: OrganizationAccountingConnectionsCountAggregateOutputType | null
@@ -313,6 +376,7 @@ export type OrganizationAccountingConnectionsWhereInput = {
   provider?: Prisma.EnumOrganizationAccountingProviderEnumFilter<"OrganizationAccountingConnections"> | $Enums.OrganizationAccountingProviderEnum
   status?: Prisma.EnumOrganizationAccountingConnectionStatusEnumFilter<"OrganizationAccountingConnections"> | $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  externalCompanyIdEncrypted?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   externalCompanyName?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   environment?: Prisma.StringFilter<"OrganizationAccountingConnections"> | string
   scopes?: Prisma.StringNullableListFilter<"OrganizationAccountingConnections">
@@ -327,7 +391,15 @@ export type OrganizationAccountingConnectionsWhereInput = {
   disconnectedAt?: Prisma.DateTimeNullableFilter<"OrganizationAccountingConnections"> | Date | string | null
   disconnectedByUserId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   lastSyncedAt?: Prisma.DateTimeNullableFilter<"OrganizationAccountingConnections"> | Date | string | null
+  lastIntuitTid?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  lastErrorAt?: Prisma.DateTimeNullableFilter<"OrganizationAccountingConnections"> | Date | string | null
   lastError?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  payrollExpenseAccountExternalId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  payrollExpenseAccountName?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  payrollLiabilityAccountExternalId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  payrollLiabilityAccountName?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  financeClearingAccountExternalId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  financeClearingAccountName?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   createdBy?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   updatedBy?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
 }
@@ -340,6 +412,7 @@ export type OrganizationAccountingConnectionsOrderByWithRelationInput = {
   provider?: Prisma.SortOrder
   status?: Prisma.SortOrder
   externalCompanyId?: Prisma.SortOrderInput | Prisma.SortOrder
+  externalCompanyIdEncrypted?: Prisma.SortOrderInput | Prisma.SortOrder
   externalCompanyName?: Prisma.SortOrderInput | Prisma.SortOrder
   environment?: Prisma.SortOrder
   scopes?: Prisma.SortOrder
@@ -354,7 +427,15 @@ export type OrganizationAccountingConnectionsOrderByWithRelationInput = {
   disconnectedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   disconnectedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
   lastSyncedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  lastIntuitTid?: Prisma.SortOrderInput | Prisma.SortOrder
+  lastErrorAt?: Prisma.SortOrderInput | Prisma.SortOrder
   lastError?: Prisma.SortOrderInput | Prisma.SortOrder
+  payrollExpenseAccountExternalId?: Prisma.SortOrderInput | Prisma.SortOrder
+  payrollExpenseAccountName?: Prisma.SortOrderInput | Prisma.SortOrder
+  payrollLiabilityAccountExternalId?: Prisma.SortOrderInput | Prisma.SortOrder
+  payrollLiabilityAccountName?: Prisma.SortOrderInput | Prisma.SortOrder
+  financeClearingAccountExternalId?: Prisma.SortOrderInput | Prisma.SortOrder
+  financeClearingAccountName?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedBy?: Prisma.SortOrderInput | Prisma.SortOrder
 }
@@ -371,6 +452,7 @@ export type OrganizationAccountingConnectionsWhereUniqueInput = Prisma.AtLeast<{
   provider?: Prisma.EnumOrganizationAccountingProviderEnumFilter<"OrganizationAccountingConnections"> | $Enums.OrganizationAccountingProviderEnum
   status?: Prisma.EnumOrganizationAccountingConnectionStatusEnumFilter<"OrganizationAccountingConnections"> | $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  externalCompanyIdEncrypted?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   externalCompanyName?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   environment?: Prisma.StringFilter<"OrganizationAccountingConnections"> | string
   scopes?: Prisma.StringNullableListFilter<"OrganizationAccountingConnections">
@@ -385,7 +467,15 @@ export type OrganizationAccountingConnectionsWhereUniqueInput = Prisma.AtLeast<{
   disconnectedAt?: Prisma.DateTimeNullableFilter<"OrganizationAccountingConnections"> | Date | string | null
   disconnectedByUserId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   lastSyncedAt?: Prisma.DateTimeNullableFilter<"OrganizationAccountingConnections"> | Date | string | null
+  lastIntuitTid?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  lastErrorAt?: Prisma.DateTimeNullableFilter<"OrganizationAccountingConnections"> | Date | string | null
   lastError?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  payrollExpenseAccountExternalId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  payrollExpenseAccountName?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  payrollLiabilityAccountExternalId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  payrollLiabilityAccountName?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  financeClearingAccountExternalId?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
+  financeClearingAccountName?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   createdBy?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
   updatedBy?: Prisma.StringNullableFilter<"OrganizationAccountingConnections"> | string | null
 }, "id" | "organizationId_provider">
@@ -398,6 +488,7 @@ export type OrganizationAccountingConnectionsOrderByWithAggregationInput = {
   provider?: Prisma.SortOrder
   status?: Prisma.SortOrder
   externalCompanyId?: Prisma.SortOrderInput | Prisma.SortOrder
+  externalCompanyIdEncrypted?: Prisma.SortOrderInput | Prisma.SortOrder
   externalCompanyName?: Prisma.SortOrderInput | Prisma.SortOrder
   environment?: Prisma.SortOrder
   scopes?: Prisma.SortOrder
@@ -412,7 +503,15 @@ export type OrganizationAccountingConnectionsOrderByWithAggregationInput = {
   disconnectedAt?: Prisma.SortOrderInput | Prisma.SortOrder
   disconnectedByUserId?: Prisma.SortOrderInput | Prisma.SortOrder
   lastSyncedAt?: Prisma.SortOrderInput | Prisma.SortOrder
+  lastIntuitTid?: Prisma.SortOrderInput | Prisma.SortOrder
+  lastErrorAt?: Prisma.SortOrderInput | Prisma.SortOrder
   lastError?: Prisma.SortOrderInput | Prisma.SortOrder
+  payrollExpenseAccountExternalId?: Prisma.SortOrderInput | Prisma.SortOrder
+  payrollExpenseAccountName?: Prisma.SortOrderInput | Prisma.SortOrder
+  payrollLiabilityAccountExternalId?: Prisma.SortOrderInput | Prisma.SortOrder
+  payrollLiabilityAccountName?: Prisma.SortOrderInput | Prisma.SortOrder
+  financeClearingAccountExternalId?: Prisma.SortOrderInput | Prisma.SortOrder
+  financeClearingAccountName?: Prisma.SortOrderInput | Prisma.SortOrder
   createdBy?: Prisma.SortOrderInput | Prisma.SortOrder
   updatedBy?: Prisma.SortOrderInput | Prisma.SortOrder
   _count?: Prisma.OrganizationAccountingConnectionsCountOrderByAggregateInput
@@ -431,6 +530,7 @@ export type OrganizationAccountingConnectionsScalarWhereWithAggregatesInput = {
   provider?: Prisma.EnumOrganizationAccountingProviderEnumWithAggregatesFilter<"OrganizationAccountingConnections"> | $Enums.OrganizationAccountingProviderEnum
   status?: Prisma.EnumOrganizationAccountingConnectionStatusEnumWithAggregatesFilter<"OrganizationAccountingConnections"> | $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
+  externalCompanyIdEncrypted?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
   externalCompanyName?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
   environment?: Prisma.StringWithAggregatesFilter<"OrganizationAccountingConnections"> | string
   scopes?: Prisma.StringNullableListFilter<"OrganizationAccountingConnections">
@@ -445,7 +545,15 @@ export type OrganizationAccountingConnectionsScalarWhereWithAggregatesInput = {
   disconnectedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | Date | string | null
   disconnectedByUserId?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
   lastSyncedAt?: Prisma.DateTimeNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | Date | string | null
+  lastIntuitTid?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
+  lastErrorAt?: Prisma.DateTimeNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | Date | string | null
   lastError?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
+  payrollExpenseAccountExternalId?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
+  payrollExpenseAccountName?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
+  payrollLiabilityAccountExternalId?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
+  payrollLiabilityAccountName?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
+  financeClearingAccountExternalId?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
+  financeClearingAccountName?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
   createdBy?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
   updatedBy?: Prisma.StringNullableWithAggregatesFilter<"OrganizationAccountingConnections"> | string | null
 }
@@ -458,6 +566,7 @@ export type OrganizationAccountingConnectionsCreateInput = {
   provider: $Enums.OrganizationAccountingProviderEnum
   status?: $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: string | null
+  externalCompanyIdEncrypted?: string | null
   externalCompanyName?: string | null
   environment?: string
   scopes?: Prisma.OrganizationAccountingConnectionsCreatescopesInput | string[]
@@ -472,7 +581,15 @@ export type OrganizationAccountingConnectionsCreateInput = {
   disconnectedAt?: Date | string | null
   disconnectedByUserId?: string | null
   lastSyncedAt?: Date | string | null
+  lastIntuitTid?: string | null
+  lastErrorAt?: Date | string | null
   lastError?: string | null
+  payrollExpenseAccountExternalId?: string | null
+  payrollExpenseAccountName?: string | null
+  payrollLiabilityAccountExternalId?: string | null
+  payrollLiabilityAccountName?: string | null
+  financeClearingAccountExternalId?: string | null
+  financeClearingAccountName?: string | null
   createdBy?: string | null
   updatedBy?: string | null
 }
@@ -485,6 +602,7 @@ export type OrganizationAccountingConnectionsUncheckedCreateInput = {
   provider: $Enums.OrganizationAccountingProviderEnum
   status?: $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: string | null
+  externalCompanyIdEncrypted?: string | null
   externalCompanyName?: string | null
   environment?: string
   scopes?: Prisma.OrganizationAccountingConnectionsCreatescopesInput | string[]
@@ -499,7 +617,15 @@ export type OrganizationAccountingConnectionsUncheckedCreateInput = {
   disconnectedAt?: Date | string | null
   disconnectedByUserId?: string | null
   lastSyncedAt?: Date | string | null
+  lastIntuitTid?: string | null
+  lastErrorAt?: Date | string | null
   lastError?: string | null
+  payrollExpenseAccountExternalId?: string | null
+  payrollExpenseAccountName?: string | null
+  payrollLiabilityAccountExternalId?: string | null
+  payrollLiabilityAccountName?: string | null
+  financeClearingAccountExternalId?: string | null
+  financeClearingAccountName?: string | null
   createdBy?: string | null
   updatedBy?: string | null
 }
@@ -512,6 +638,7 @@ export type OrganizationAccountingConnectionsUpdateInput = {
   provider?: Prisma.EnumOrganizationAccountingProviderEnumFieldUpdateOperationsInput | $Enums.OrganizationAccountingProviderEnum
   status?: Prisma.EnumOrganizationAccountingConnectionStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  externalCompanyIdEncrypted?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   externalCompanyName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   environment?: Prisma.StringFieldUpdateOperationsInput | string
   scopes?: Prisma.OrganizationAccountingConnectionsUpdatescopesInput | string[]
@@ -526,7 +653,15 @@ export type OrganizationAccountingConnectionsUpdateInput = {
   disconnectedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   disconnectedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastSyncedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastIntuitTid?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lastErrorAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   lastError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollExpenseAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollExpenseAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollLiabilityAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollLiabilityAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financeClearingAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financeClearingAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   updatedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
@@ -539,6 +674,7 @@ export type OrganizationAccountingConnectionsUncheckedUpdateInput = {
   provider?: Prisma.EnumOrganizationAccountingProviderEnumFieldUpdateOperationsInput | $Enums.OrganizationAccountingProviderEnum
   status?: Prisma.EnumOrganizationAccountingConnectionStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  externalCompanyIdEncrypted?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   externalCompanyName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   environment?: Prisma.StringFieldUpdateOperationsInput | string
   scopes?: Prisma.OrganizationAccountingConnectionsUpdatescopesInput | string[]
@@ -553,7 +689,15 @@ export type OrganizationAccountingConnectionsUncheckedUpdateInput = {
   disconnectedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   disconnectedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastSyncedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastIntuitTid?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lastErrorAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   lastError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollExpenseAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollExpenseAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollLiabilityAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollLiabilityAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financeClearingAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financeClearingAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   updatedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
@@ -566,6 +710,7 @@ export type OrganizationAccountingConnectionsCreateManyInput = {
   provider: $Enums.OrganizationAccountingProviderEnum
   status?: $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: string | null
+  externalCompanyIdEncrypted?: string | null
   externalCompanyName?: string | null
   environment?: string
   scopes?: Prisma.OrganizationAccountingConnectionsCreatescopesInput | string[]
@@ -580,7 +725,15 @@ export type OrganizationAccountingConnectionsCreateManyInput = {
   disconnectedAt?: Date | string | null
   disconnectedByUserId?: string | null
   lastSyncedAt?: Date | string | null
+  lastIntuitTid?: string | null
+  lastErrorAt?: Date | string | null
   lastError?: string | null
+  payrollExpenseAccountExternalId?: string | null
+  payrollExpenseAccountName?: string | null
+  payrollLiabilityAccountExternalId?: string | null
+  payrollLiabilityAccountName?: string | null
+  financeClearingAccountExternalId?: string | null
+  financeClearingAccountName?: string | null
   createdBy?: string | null
   updatedBy?: string | null
 }
@@ -593,6 +746,7 @@ export type OrganizationAccountingConnectionsUpdateManyMutationInput = {
   provider?: Prisma.EnumOrganizationAccountingProviderEnumFieldUpdateOperationsInput | $Enums.OrganizationAccountingProviderEnum
   status?: Prisma.EnumOrganizationAccountingConnectionStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  externalCompanyIdEncrypted?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   externalCompanyName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   environment?: Prisma.StringFieldUpdateOperationsInput | string
   scopes?: Prisma.OrganizationAccountingConnectionsUpdatescopesInput | string[]
@@ -607,7 +761,15 @@ export type OrganizationAccountingConnectionsUpdateManyMutationInput = {
   disconnectedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   disconnectedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastSyncedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastIntuitTid?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lastErrorAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   lastError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollExpenseAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollExpenseAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollLiabilityAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollLiabilityAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financeClearingAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financeClearingAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   updatedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
@@ -620,6 +782,7 @@ export type OrganizationAccountingConnectionsUncheckedUpdateManyInput = {
   provider?: Prisma.EnumOrganizationAccountingProviderEnumFieldUpdateOperationsInput | $Enums.OrganizationAccountingProviderEnum
   status?: Prisma.EnumOrganizationAccountingConnectionStatusEnumFieldUpdateOperationsInput | $Enums.OrganizationAccountingConnectionStatusEnum
   externalCompanyId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  externalCompanyIdEncrypted?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   externalCompanyName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   environment?: Prisma.StringFieldUpdateOperationsInput | string
   scopes?: Prisma.OrganizationAccountingConnectionsUpdatescopesInput | string[]
@@ -634,7 +797,15 @@ export type OrganizationAccountingConnectionsUncheckedUpdateManyInput = {
   disconnectedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   disconnectedByUserId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   lastSyncedAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
+  lastIntuitTid?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  lastErrorAt?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null
   lastError?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollExpenseAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollExpenseAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollLiabilityAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  payrollLiabilityAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financeClearingAccountExternalId?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
+  financeClearingAccountName?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   createdBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   updatedBy?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
 }
@@ -652,6 +823,7 @@ export type OrganizationAccountingConnectionsCountOrderByAggregateInput = {
   provider?: Prisma.SortOrder
   status?: Prisma.SortOrder
   externalCompanyId?: Prisma.SortOrder
+  externalCompanyIdEncrypted?: Prisma.SortOrder
   externalCompanyName?: Prisma.SortOrder
   environment?: Prisma.SortOrder
   scopes?: Prisma.SortOrder
@@ -666,7 +838,15 @@ export type OrganizationAccountingConnectionsCountOrderByAggregateInput = {
   disconnectedAt?: Prisma.SortOrder
   disconnectedByUserId?: Prisma.SortOrder
   lastSyncedAt?: Prisma.SortOrder
+  lastIntuitTid?: Prisma.SortOrder
+  lastErrorAt?: Prisma.SortOrder
   lastError?: Prisma.SortOrder
+  payrollExpenseAccountExternalId?: Prisma.SortOrder
+  payrollExpenseAccountName?: Prisma.SortOrder
+  payrollLiabilityAccountExternalId?: Prisma.SortOrder
+  payrollLiabilityAccountName?: Prisma.SortOrder
+  financeClearingAccountExternalId?: Prisma.SortOrder
+  financeClearingAccountName?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   updatedBy?: Prisma.SortOrder
 }
@@ -679,6 +859,7 @@ export type OrganizationAccountingConnectionsMaxOrderByAggregateInput = {
   provider?: Prisma.SortOrder
   status?: Prisma.SortOrder
   externalCompanyId?: Prisma.SortOrder
+  externalCompanyIdEncrypted?: Prisma.SortOrder
   externalCompanyName?: Prisma.SortOrder
   environment?: Prisma.SortOrder
   accessTokenEncrypted?: Prisma.SortOrder
@@ -692,7 +873,15 @@ export type OrganizationAccountingConnectionsMaxOrderByAggregateInput = {
   disconnectedAt?: Prisma.SortOrder
   disconnectedByUserId?: Prisma.SortOrder
   lastSyncedAt?: Prisma.SortOrder
+  lastIntuitTid?: Prisma.SortOrder
+  lastErrorAt?: Prisma.SortOrder
   lastError?: Prisma.SortOrder
+  payrollExpenseAccountExternalId?: Prisma.SortOrder
+  payrollExpenseAccountName?: Prisma.SortOrder
+  payrollLiabilityAccountExternalId?: Prisma.SortOrder
+  payrollLiabilityAccountName?: Prisma.SortOrder
+  financeClearingAccountExternalId?: Prisma.SortOrder
+  financeClearingAccountName?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   updatedBy?: Prisma.SortOrder
 }
@@ -705,6 +894,7 @@ export type OrganizationAccountingConnectionsMinOrderByAggregateInput = {
   provider?: Prisma.SortOrder
   status?: Prisma.SortOrder
   externalCompanyId?: Prisma.SortOrder
+  externalCompanyIdEncrypted?: Prisma.SortOrder
   externalCompanyName?: Prisma.SortOrder
   environment?: Prisma.SortOrder
   accessTokenEncrypted?: Prisma.SortOrder
@@ -718,7 +908,15 @@ export type OrganizationAccountingConnectionsMinOrderByAggregateInput = {
   disconnectedAt?: Prisma.SortOrder
   disconnectedByUserId?: Prisma.SortOrder
   lastSyncedAt?: Prisma.SortOrder
+  lastIntuitTid?: Prisma.SortOrder
+  lastErrorAt?: Prisma.SortOrder
   lastError?: Prisma.SortOrder
+  payrollExpenseAccountExternalId?: Prisma.SortOrder
+  payrollExpenseAccountName?: Prisma.SortOrder
+  payrollLiabilityAccountExternalId?: Prisma.SortOrder
+  payrollLiabilityAccountName?: Prisma.SortOrder
+  financeClearingAccountExternalId?: Prisma.SortOrder
+  financeClearingAccountName?: Prisma.SortOrder
   createdBy?: Prisma.SortOrder
   updatedBy?: Prisma.SortOrder
 }
@@ -750,6 +948,7 @@ export type OrganizationAccountingConnectionsSelect<ExtArgs extends runtime.Type
   provider?: boolean
   status?: boolean
   externalCompanyId?: boolean
+  externalCompanyIdEncrypted?: boolean
   externalCompanyName?: boolean
   environment?: boolean
   scopes?: boolean
@@ -764,7 +963,15 @@ export type OrganizationAccountingConnectionsSelect<ExtArgs extends runtime.Type
   disconnectedAt?: boolean
   disconnectedByUserId?: boolean
   lastSyncedAt?: boolean
+  lastIntuitTid?: boolean
+  lastErrorAt?: boolean
   lastError?: boolean
+  payrollExpenseAccountExternalId?: boolean
+  payrollExpenseAccountName?: boolean
+  payrollLiabilityAccountExternalId?: boolean
+  payrollLiabilityAccountName?: boolean
+  financeClearingAccountExternalId?: boolean
+  financeClearingAccountName?: boolean
   createdBy?: boolean
   updatedBy?: boolean
 }, ExtArgs["result"]["organizationAccountingConnections"]>
@@ -777,6 +984,7 @@ export type OrganizationAccountingConnectionsSelectCreateManyAndReturn<ExtArgs e
   provider?: boolean
   status?: boolean
   externalCompanyId?: boolean
+  externalCompanyIdEncrypted?: boolean
   externalCompanyName?: boolean
   environment?: boolean
   scopes?: boolean
@@ -791,7 +999,15 @@ export type OrganizationAccountingConnectionsSelectCreateManyAndReturn<ExtArgs e
   disconnectedAt?: boolean
   disconnectedByUserId?: boolean
   lastSyncedAt?: boolean
+  lastIntuitTid?: boolean
+  lastErrorAt?: boolean
   lastError?: boolean
+  payrollExpenseAccountExternalId?: boolean
+  payrollExpenseAccountName?: boolean
+  payrollLiabilityAccountExternalId?: boolean
+  payrollLiabilityAccountName?: boolean
+  financeClearingAccountExternalId?: boolean
+  financeClearingAccountName?: boolean
   createdBy?: boolean
   updatedBy?: boolean
 }, ExtArgs["result"]["organizationAccountingConnections"]>
@@ -804,6 +1020,7 @@ export type OrganizationAccountingConnectionsSelectUpdateManyAndReturn<ExtArgs e
   provider?: boolean
   status?: boolean
   externalCompanyId?: boolean
+  externalCompanyIdEncrypted?: boolean
   externalCompanyName?: boolean
   environment?: boolean
   scopes?: boolean
@@ -818,7 +1035,15 @@ export type OrganizationAccountingConnectionsSelectUpdateManyAndReturn<ExtArgs e
   disconnectedAt?: boolean
   disconnectedByUserId?: boolean
   lastSyncedAt?: boolean
+  lastIntuitTid?: boolean
+  lastErrorAt?: boolean
   lastError?: boolean
+  payrollExpenseAccountExternalId?: boolean
+  payrollExpenseAccountName?: boolean
+  payrollLiabilityAccountExternalId?: boolean
+  payrollLiabilityAccountName?: boolean
+  financeClearingAccountExternalId?: boolean
+  financeClearingAccountName?: boolean
   createdBy?: boolean
   updatedBy?: boolean
 }, ExtArgs["result"]["organizationAccountingConnections"]>
@@ -831,6 +1056,7 @@ export type OrganizationAccountingConnectionsSelectScalar = {
   provider?: boolean
   status?: boolean
   externalCompanyId?: boolean
+  externalCompanyIdEncrypted?: boolean
   externalCompanyName?: boolean
   environment?: boolean
   scopes?: boolean
@@ -845,12 +1071,20 @@ export type OrganizationAccountingConnectionsSelectScalar = {
   disconnectedAt?: boolean
   disconnectedByUserId?: boolean
   lastSyncedAt?: boolean
+  lastIntuitTid?: boolean
+  lastErrorAt?: boolean
   lastError?: boolean
+  payrollExpenseAccountExternalId?: boolean
+  payrollExpenseAccountName?: boolean
+  payrollLiabilityAccountExternalId?: boolean
+  payrollLiabilityAccountName?: boolean
+  financeClearingAccountExternalId?: boolean
+  financeClearingAccountName?: boolean
   createdBy?: boolean
   updatedBy?: boolean
 }
 
-export type OrganizationAccountingConnectionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "organizationId" | "provider" | "status" | "externalCompanyId" | "externalCompanyName" | "environment" | "scopes" | "accessTokenEncrypted" | "refreshTokenEncrypted" | "tokenType" | "accessTokenExpiresAt" | "refreshTokenExpiresAt" | "refreshTokenHardExpiresAt" | "connectedAt" | "connectedByUserId" | "disconnectedAt" | "disconnectedByUserId" | "lastSyncedAt" | "lastError" | "createdBy" | "updatedBy", ExtArgs["result"]["organizationAccountingConnections"]>
+export type OrganizationAccountingConnectionsOmit<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = runtime.Types.Extensions.GetOmit<"id" | "createdAt" | "updatedAt" | "organizationId" | "provider" | "status" | "externalCompanyId" | "externalCompanyIdEncrypted" | "externalCompanyName" | "environment" | "scopes" | "accessTokenEncrypted" | "refreshTokenEncrypted" | "tokenType" | "accessTokenExpiresAt" | "refreshTokenExpiresAt" | "refreshTokenHardExpiresAt" | "connectedAt" | "connectedByUserId" | "disconnectedAt" | "disconnectedByUserId" | "lastSyncedAt" | "lastIntuitTid" | "lastErrorAt" | "lastError" | "payrollExpenseAccountExternalId" | "payrollExpenseAccountName" | "payrollLiabilityAccountExternalId" | "payrollLiabilityAccountName" | "financeClearingAccountExternalId" | "financeClearingAccountName" | "createdBy" | "updatedBy", ExtArgs["result"]["organizationAccountingConnections"]>
 
 export type $OrganizationAccountingConnectionsPayload<ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs> = {
   name: "OrganizationAccountingConnections"
@@ -863,6 +1097,7 @@ export type $OrganizationAccountingConnectionsPayload<ExtArgs extends runtime.Ty
     provider: $Enums.OrganizationAccountingProviderEnum
     status: $Enums.OrganizationAccountingConnectionStatusEnum
     externalCompanyId: string | null
+    externalCompanyIdEncrypted: string | null
     externalCompanyName: string | null
     environment: string
     scopes: string[]
@@ -877,7 +1112,15 @@ export type $OrganizationAccountingConnectionsPayload<ExtArgs extends runtime.Ty
     disconnectedAt: Date | null
     disconnectedByUserId: string | null
     lastSyncedAt: Date | null
+    lastIntuitTid: string | null
+    lastErrorAt: Date | null
     lastError: string | null
+    payrollExpenseAccountExternalId: string | null
+    payrollExpenseAccountName: string | null
+    payrollLiabilityAccountExternalId: string | null
+    payrollLiabilityAccountName: string | null
+    financeClearingAccountExternalId: string | null
+    financeClearingAccountName: string | null
     createdBy: string | null
     updatedBy: string | null
   }, ExtArgs["result"]["organizationAccountingConnections"]>
@@ -1310,6 +1553,7 @@ export interface OrganizationAccountingConnectionsFieldRefs {
   readonly provider: Prisma.FieldRef<"OrganizationAccountingConnections", 'OrganizationAccountingProviderEnum'>
   readonly status: Prisma.FieldRef<"OrganizationAccountingConnections", 'OrganizationAccountingConnectionStatusEnum'>
   readonly externalCompanyId: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
+  readonly externalCompanyIdEncrypted: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
   readonly externalCompanyName: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
   readonly environment: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
   readonly scopes: Prisma.FieldRef<"OrganizationAccountingConnections", 'String[]'>
@@ -1324,7 +1568,15 @@ export interface OrganizationAccountingConnectionsFieldRefs {
   readonly disconnectedAt: Prisma.FieldRef<"OrganizationAccountingConnections", 'DateTime'>
   readonly disconnectedByUserId: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
   readonly lastSyncedAt: Prisma.FieldRef<"OrganizationAccountingConnections", 'DateTime'>
+  readonly lastIntuitTid: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
+  readonly lastErrorAt: Prisma.FieldRef<"OrganizationAccountingConnections", 'DateTime'>
   readonly lastError: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
+  readonly payrollExpenseAccountExternalId: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
+  readonly payrollExpenseAccountName: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
+  readonly payrollLiabilityAccountExternalId: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
+  readonly payrollLiabilityAccountName: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
+  readonly financeClearingAccountExternalId: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
+  readonly financeClearingAccountName: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
   readonly createdBy: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
   readonly updatedBy: Prisma.FieldRef<"OrganizationAccountingConnections", 'String'>
 }

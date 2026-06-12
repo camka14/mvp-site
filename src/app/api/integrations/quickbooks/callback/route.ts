@@ -4,7 +4,7 @@ import {
   appendQuickBooksResultQuery,
   exchangeQuickBooksAuthorizationCode,
   getQuickBooksCallbackUrl,
-  parseQuickBooksState,
+  parseQuickBooksStateResult,
   upsertQuickBooksConnection,
 } from '@/server/integrations/quickBooksConnection';
 
@@ -31,16 +31,18 @@ export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get('code');
   const realmId = req.nextUrl.searchParams.get('realmId');
 
-  const state = stateToken ? parseQuickBooksState(stateToken) : null;
+  const stateResult = stateToken ? parseQuickBooksStateResult(stateToken) : null;
+  const state = stateResult?.state ?? null;
+  const stateErrorTarget = stateResult?.expiredState?.refreshUrl ?? fallbackUrl;
 
   if (error) {
-    return redirectWithResult(state?.refreshUrl ?? fallbackUrl, 'error', error);
+    return redirectWithResult(state?.refreshUrl ?? stateErrorTarget, 'error', error);
   }
   if (!stateToken) {
     return redirectWithResult(fallbackUrl, 'error', 'missing_state');
   }
   if (!state) {
-    return redirectWithResult(fallbackUrl, 'error', 'invalid_state');
+    return redirectWithResult(stateErrorTarget, 'error', stateResult?.error ?? 'invalid_state');
   }
   if (!code) {
     return redirectWithResult(state.refreshUrl, 'error', 'missing_code');
@@ -62,7 +64,9 @@ export async function GET(req: NextRequest) {
     });
     return redirectWithResult(state.returnUrl, 'return');
   } catch (error) {
-    console.error('QuickBooks OAuth callback failed', error);
+    console.error('QuickBooks OAuth callback failed', {
+      message: error instanceof Error ? error.message : 'Unknown QuickBooks OAuth callback error.',
+    });
     return redirectWithResult(state.refreshUrl, 'error', 'token_exchange_failed');
   }
 }
