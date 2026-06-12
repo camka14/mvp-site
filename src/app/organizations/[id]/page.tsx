@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Navigation from '@/components/layout/Navigation';
 import Loading from '@/components/ui/Loading';
 import OrganizationVerificationBadge from '@/components/ui/OrganizationVerificationBadge';
@@ -61,7 +61,7 @@ import {
   buildOrganizationCustomerPath,
   buildOrganizationTabPath,
   buildOrganizationTabs,
-  organizationTabFromPathSegment,
+  resolveOrganizationRouteTab,
   type OrganizationCustomerRouteType,
   type OrganizationTab,
 } from './organizationTabs';
@@ -688,21 +688,23 @@ const getStaffRoleLabel = (role: OrganizationTeamStaffSummary['role']): string =
 function OrganizationDetailContent() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { user, authUser, loading: authLoading, isAuthenticated, updateUser } = useApp();
   const { location, requestLocation } = useLocation();
   const { sports, loading: sportsLoading, error: sportsError } = useSports();
   const id = Array.isArray(params?.id) ? params?.id[0] : (params?.id as string);
-  const routeTabSegment = Array.isArray(params?.tab) ? params?.tab[0] : (params?.tab as string | undefined);
   const routeCustomerType = Array.isArray(params?.customerType)
     ? params?.customerType[0]
     : (params?.customerType as string | undefined);
   const routeCustomerId = Array.isArray(params?.customerId)
     ? params?.customerId[0]
     : (params?.customerId as string | undefined);
-  const requestedPathTab = organizationTabFromPathSegment(routeTabSegment);
-  const requestedQueryTab = organizationTabFromPathSegment(searchParams?.get('tab'));
-  const requestedTab = requestedPathTab ?? requestedQueryTab;
+  const requestedTab = resolveOrganizationRouteTab({
+    pathname,
+    organizationId: id,
+    queryTab: searchParams?.get('tab'),
+  });
   const requestedCustomerType: OrganizationCustomerRouteType | null = routeCustomerType === 'users' || routeCustomerType === 'teams'
     ? routeCustomerType
     : null;
@@ -2125,9 +2127,9 @@ function OrganizationDetailContent() {
     const nextTab = value as OrganizationTab;
     setActiveTab(nextTab);
     if (id) {
-      router.push(buildOrganizationTabPath(id, nextTab));
+      window.history.pushState(null, '', buildOrganizationTabPath(id, nextTab));
     }
-  }, [id, router]);
+  }, [id]);
 
   const openOrganizationCustomer = useCallback((row: OrganizationCustomerRow) => {
     setSelectedCustomerKey(row.key);
