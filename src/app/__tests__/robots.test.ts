@@ -9,6 +9,9 @@ describe('robots', () => {
     expect(rules).toMatchObject({
       userAgent: '*',
     });
+    expect(rules?.allow).toEqual(
+      expect.arrayContaining(['/api/files/', '/api/avatars/']),
+    );
     expect(rules?.disallow).toEqual(
       expect.arrayContaining(['/api/', '/admin', '/discover', '/login']),
     );

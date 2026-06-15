@@ -1,21 +1,81 @@
+import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import BlogStructuredData from '@/components/blog/BlogStructuredData';
 import { getPublicOrganizationEventForRegistration } from '@/server/publicOrganizationCatalog';
+import {
+  absoluteUrl,
+  createPublicEventMetaDescription,
+  createPublicEventStructuredData,
+  getPublicEventSeoData,
+  publicEventPath,
+} from '@/server/publicSearchSeo';
 import styles from '../../PublicOrganizationPage.module.css';
 import EventRegistrationClient from './EventRegistrationClient';
 import type { Event } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
+type PublicEventRegistrationPageProps = {
+  params: Promise<{ slug: string; eventId: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export async function generateMetadata({ params }: PublicEventRegistrationPageProps): Promise<Metadata> {
+  const { slug, eventId } = await params;
+  const seoData = await getPublicEventSeoData(slug, eventId);
+  if (!seoData) {
+    return {};
+  }
+
+  const seoEventId = seoData.event.id ?? seoData.event.$id ?? eventId;
+  const seoEventName = seoData.event.name ?? 'Event';
+  const canonicalPath = publicEventPath(seoData.organization.slug, seoEventId);
+  const description = createPublicEventMetaDescription(seoData);
+  const title = `${seoEventName} | ${seoData.organization.name} on BracketIQ`;
+  const eventImage = seoData.event.imageId
+    ? absoluteUrl(`/api/files/${encodeURIComponent(seoData.event.imageId)}/preview?w=1200&h=675`)
+    : absoluteUrl(seoData.organization.logoUrl ?? '/BIQ_drawing.svg');
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: canonicalPath,
+    },
+    robots: {
+      index: true,
+      follow: true,
+    },
+    openGraph: {
+      title,
+      description,
+      url: absoluteUrl(canonicalPath),
+      type: 'website',
+      images: [
+        {
+          url: eventImage,
+          width: 1200,
+          height: 675,
+          alt: seoEventName,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [eventImage],
+    },
+  };
+}
+
 export default async function PublicEventRegistrationPage({
   params,
   searchParams,
-}: {
-  params: Promise<{ slug: string; eventId: string }>;
-  searchParams?: Promise<Record<string, string | string[] | undefined>>;
-}) {
+}: PublicEventRegistrationPageProps) {
   const { slug, eventId } = await params;
   const query = await searchParams;
   const slotId = typeof query?.slotId === 'string' ? query.slotId.trim() : '';
@@ -52,6 +112,12 @@ export default async function PublicEventRegistrationPage({
           }}
         />
       </div>
+      <BlogStructuredData
+        data={createPublicEventStructuredData({
+          organization: result.organization,
+          event: result.event,
+        })}
+      />
     </main>
   );
 }

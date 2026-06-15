@@ -1,12 +1,33 @@
+const mockListPublicSitemapEntries = jest.fn();
+
+jest.mock('@/server/publicSearchSeo', () => ({
+  listPublicSitemapEntries: () => mockListPublicSitemapEntries(),
+}));
+
 import sitemap from '../sitemap';
 
 describe('sitemap', () => {
-  it('includes the blog hub, guide hub, and published content canonical routes', () => {
-    const entries = sitemap();
+  beforeEach(() => {
+    mockListPublicSitemapEntries.mockReset();
+    mockListPublicSitemapEntries.mockResolvedValue([]);
+  });
+
+  it('includes the blog hub, guide hub, published content, and public catalog canonical routes', async () => {
+    mockListPublicSitemapEntries.mockResolvedValue([
+      {
+        url: 'https://bracket-iq.com/o/river-city/events/event_1',
+        lastModified: new Date('2026-06-01T00:00:00.000Z'),
+        changeFrequency: 'daily',
+        priority: 0.75,
+      },
+    ]);
+
+    const entries = await sitemap();
     const urls = entries.map((entry) => entry.url);
 
     expect(urls).toContain('https://bracket-iq.com/blog');
     expect(urls).toContain('https://bracket-iq.com/guides');
+    expect(urls).toContain('https://bracket-iq.com/find-events');
     expect(urls).toContain('https://bracket-iq.com/mobile-app');
     expect(urls).toContain('https://bracket-iq.com/terms');
     expect(urls).toContain('https://bracket-iq.com/guides/event-organizers-one-place');
@@ -37,6 +58,8 @@ describe('sitemap', () => {
     expect(urls).toContain('https://bracket-iq.com/guides/manage-tournament-in-bracketiq');
     expect(urls).toContain('https://bracket-iq.com/guides/create-tournament-in-bracketiq');
     expect(urls).toContain('https://bracket-iq.com/guides/paid-pickup-event-payments');
+    expect(urls).toContain('https://bracket-iq.com/o/river-city/events/event_1');
     expect(urls).not.toContain('https://bracket-iq.com/blog/manage-tournament-in-bracketiq');
+    expect(mockListPublicSitemapEntries).toHaveBeenCalledTimes(1);
   });
 });

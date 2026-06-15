@@ -36,6 +36,7 @@ import { getNextRentalOccurrence, weekdayLabel } from './utils/rentals';
 import { useSports } from '@/app/hooks/useSports';
 import { createId } from '@/lib/id';
 import { buildIndividualEventCreateUrl } from '@/lib/eventCreateNavigation';
+import { DISCOVER_SPORT_PARAM, parseDiscoverSportFilters, resolveDiscoverSportFilters } from '@/lib/discoverFilters';
 import { formatDisplayTime } from '@/lib/dateUtils';
 import EventsTabContent from './components/EventsTabContent';
 import DiscoverSearchControls from './components/DiscoverSearchControls';
@@ -113,6 +114,10 @@ function DiscoverPageContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchParamsString = searchParams.toString();
+  const urlSelectedSports = useMemo(
+    () => parseDiscoverSportFilters(new URLSearchParams(searchParamsString)),
+    [searchParamsString],
+  );
   const { user, loading: authLoading, isAuthenticated, isGuest } = useApp();
   const { location, requestLocation } = useLocation();
 
@@ -134,7 +139,7 @@ function DiscoverPageContent() {
   const EVENT_TYPE_OPTIONS = useMemo(() => ['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT'] as const, []);
   const [selectedEventTypes, setSelectedEventTypes] =
     useState<(typeof EVENT_TYPE_OPTIONS)[number][]>(['EVENT', 'TOURNAMENT', 'LEAGUE', 'WEEKLY_EVENT']);
-  const [selectedSports, setSelectedSports] = useState<string[]>([]);
+  const [selectedSports, setSelectedSports] = useState<string[]>(() => urlSelectedSports);
   const [maxDistance, setMaxDistance] = useState<number | null>(null);
   const [selectedStartDate, setSelectedStartDate] = useState<Date | null>(null);
   const [selectedEndDate, setSelectedEndDate] = useState<Date | null>(null);
@@ -242,6 +247,11 @@ function DiscoverPageContent() {
     } else {
       params.delete('q');
     }
+    params.delete(DISCOVER_SPORT_PARAM);
+    params.delete('sports');
+    selectedSports.forEach((sport) => {
+      params.append(DISCOVER_SPORT_PARAM, sport);
+    });
     const nextQuery = params.toString();
     const nextUrl = nextQuery ? `/discover?${nextQuery}` : '/discover';
     const currentUrl = searchParamsString ? `/discover?${searchParamsString}` : '/discover';
@@ -251,13 +261,11 @@ function DiscoverPageContent() {
     // Keep discover query params in sync without triggering router navigations
     // that can race with user-initiated route changes (Profile/Organizations).
     window.history.replaceState(window.history.state, '', nextUrl);
-  }, [debouncedSearch, pathname, searchParamsString]);
+  }, [debouncedSearch, pathname, searchParamsString, selectedSports]);
 
   useEffect(() => {
     if (sportsLoading) return;
-    setSelectedSports((current) =>
-      current.filter((sport) => sportOptions.includes(sport))
-    );
+    setSelectedSports((current) => resolveDiscoverSportFilters(current, sportOptions));
     setTeamSelectedSports((current) =>
       current.filter((sport) => sportOptions.includes(sport))
     );

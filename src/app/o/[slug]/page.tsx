@@ -1,17 +1,74 @@
+import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import BlogStructuredData from '@/components/blog/BlogStructuredData';
 import {
+  getPublicOrganizationBySlug,
   getPublicOrganizationCatalog,
   type PublicOrganizationEventCard,
   type PublicOrganizationRentalCard,
   type PublicOrganizationTeamCard,
 } from '@/server/publicOrganizationCatalog';
+import {
+  absoluteUrl,
+  createPublicOrganizationMetaDescription,
+  createPublicOrganizationStructuredData,
+  publicOrganizationPath,
+} from '@/server/publicSearchSeo';
 import PublicProductGrid from './PublicProductGrid';
 import styles from './PublicOrganizationPage.module.css';
 
 export const dynamic = 'force-dynamic';
+
+type PublicOrganizationPageProps = {
+  params: Promise<{ slug: string }>;
+};
+
+export async function generateMetadata({ params }: PublicOrganizationPageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const organization = await getPublicOrganizationBySlug(slug, { surface: 'page' });
+  if (!organization) {
+    return {};
+  }
+
+  const canonicalPath = publicOrganizationPath(organization.slug);
+  const description = createPublicOrganizationMetaDescription(organization);
+  const title = `${organization.name} Events, Teams, and Rentals | BracketIQ`;
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: canonicalPath,
+    },
+    robots: {
+      index: true,
+      follow: true,
+    },
+    openGraph: {
+      title,
+      description,
+      url: absoluteUrl(canonicalPath),
+      type: 'website',
+      images: [
+        {
+          url: absoluteUrl(organization.logoUrl),
+          width: 240,
+          height: 240,
+          alt: `${organization.name} on BracketIQ`,
+        },
+      ],
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+      images: [absoluteUrl(organization.logoUrl)],
+    },
+  };
+}
 
 const formatPrice = (cents: number): string => (
   cents > 0
@@ -128,7 +185,7 @@ function RentalItem({ rental }: { rental: PublicOrganizationRentalCard }) {
   );
 }
 
-export default async function PublicOrganizationPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function PublicOrganizationPage({ params }: PublicOrganizationPageProps) {
   const { slug } = await params;
   const catalog = await getPublicOrganizationCatalog(slug, { surface: 'page', limit: 8 });
   if (!catalog) {
@@ -218,6 +275,7 @@ export default async function PublicOrganizationPage({ params }: { params: Promi
           )}
         </section>
       </div>
+      <BlogStructuredData data={createPublicOrganizationStructuredData({ organization, events })} />
     </main>
   );
 }
