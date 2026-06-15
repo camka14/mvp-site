@@ -3,6 +3,8 @@ import { getContentSitemapEntries } from '@/lib/blog';
 import { SITE_URL } from '@/lib/siteUrl';
 import { listPublicSitemapEntries } from '@/server/publicSearchSeo';
 
+export const dynamic = 'force-dynamic';
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = [
     {
