@@ -1,4 +1,4 @@
-import { buildFacilityCalendarSummary, buildFieldCalendarEvents } from '../fieldCalendar';
+import { buildFacilityCalendarFeed, buildFacilityCalendarSummary, buildFieldCalendarEvents } from '../fieldCalendar';
 import type { Field, Match } from '@/types';
 import { createSport } from '@/types/defaults';
 
@@ -192,6 +192,126 @@ describe('buildFieldCalendarEvents', () => {
       fieldName: 'River City Sports Complex - Court 1',
       bookingTitle: 'League night',
       hours: 1,
+    }));
+  });
+
+  it('builds one facility calendar feed across rentals, events, games, maintenance, staff, officials, and conflicts', () => {
+    const range = {
+      start: new Date('2026-03-10T00:00:00.000Z'),
+      end: new Date('2026-03-11T00:00:00.000Z'),
+    };
+    const field = {
+      ...baseField,
+      $id: 'field_1',
+      name: 'Court 1',
+      facilityId: 'facility_river_city',
+      facility: {
+        $id: 'facility_river_city',
+        name: 'River City Sports Complex',
+      },
+      rentalSlots: [
+        {
+          $id: 'slot_1',
+          repeating: false,
+          startDate: '2026-03-10T10:00:00.000Z',
+          endDate: '2026-03-10T12:00:00.000Z',
+          scheduledFieldId: 'field_1',
+          scheduledFieldIds: ['field_1'],
+          price: 5000,
+        },
+      ],
+      events: [
+        {
+          $id: 'event_1',
+          name: 'League night',
+          eventType: 'EVENT',
+          start: '2026-03-10T10:30:00.000Z',
+          end: '2026-03-10T11:30:00.000Z',
+          eventOfficials: [
+            {
+              id: 'event_official_1',
+              userId: 'official_1',
+              positionIds: ['r1'],
+              fieldIds: ['field_1'],
+              isActive: true,
+            },
+          ],
+          staffAssignments: [
+            {
+              id: 'event_staff_1',
+              userId: 'staff_user_1',
+              staffMemberId: 'staff_member_1',
+              role: 'Facility lead',
+              plannedStart: '2026-03-10T10:00:00.000Z',
+              plannedEnd: '2026-03-10T12:00:00.000Z',
+              status: 'PLANNED',
+            },
+          ],
+        },
+      ],
+      matches: [
+        {
+          $id: 'match_1',
+          matchId: 4,
+          eventId: 'event_1',
+          fieldId: 'field_1',
+          start: '2026-03-10T13:00:00.000Z',
+          end: '2026-03-10T14:00:00.000Z',
+          team1Points: [],
+          team2Points: [],
+          setResults: [],
+          officialIds: [
+            {
+              userId: 'official_2',
+              positionId: 'r2',
+              positionIds: ['r2'],
+              slotIndex: 0,
+              holderType: 'OFFICIAL',
+            },
+          ],
+        },
+      ],
+      maintenanceBlocks: [
+        {
+          id: 'maintenance_1',
+          title: 'Net repair',
+          start: '2026-03-10T15:00:00.000Z',
+          end: '2026-03-10T16:00:00.000Z',
+          status: 'PLANNED',
+        },
+      ],
+    } as unknown as Field;
+
+    const feed = buildFacilityCalendarFeed([field], range);
+    const itemTypes = feed.items.map((item) => item.type);
+
+    expect(itemTypes).toEqual(expect.arrayContaining([
+      'rental',
+      'event',
+      'game',
+      'maintenance_block',
+      'staff_assignment',
+      'official_assignment',
+      'conflict',
+    ]));
+    expect(feed.summary.conflictCount).toBe(1);
+    expect(feed.items.find((item) => item.type === 'conflict')).toEqual(expect.objectContaining({
+      unresolved: true,
+      status: 'UNRESOLVED',
+      fieldId: 'field_1',
+      facilityId: 'facility_river_city',
+    }));
+    expect(feed.items.find((item) => item.type === 'staff_assignment')).toEqual(expect.objectContaining({
+      title: 'Facility lead',
+      userId: 'staff_user_1',
+      staffMemberId: 'staff_member_1',
+    }));
+    expect(feed.items.filter((item) => item.type === 'official_assignment').map((item) => item.userId)).toEqual(
+      expect.arrayContaining(['official_1', 'official_2']),
+    );
+    expect(feed.items.find((item) => item.type === 'maintenance_block')).toEqual(expect.objectContaining({
+      title: 'Net repair',
+      status: 'PLANNED',
     }));
   });
 });

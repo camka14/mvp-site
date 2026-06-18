@@ -32,6 +32,35 @@ export type FieldCalendarEntry = {
   fieldName: string;
 };
 
+export type FacilityCalendarFeedItemType =
+  | 'event'
+  | 'game'
+  | 'rental'
+  | 'maintenance_block'
+  | 'staff_assignment'
+  | 'official_assignment'
+  | 'conflict';
+
+export type FacilityCalendarFeedItem = {
+  id: string;
+  type: FacilityCalendarFeedItemType;
+  title: string;
+  start: Date;
+  end: Date;
+  facilityId: string | null;
+  facilityName: string;
+  fieldId: string;
+  fieldName: string;
+  sourceId?: string | null;
+  parentId?: string | null;
+  userId?: string | null;
+  staffMemberId?: string | null;
+  positionIds?: string[];
+  status?: string | null;
+  unresolved?: boolean;
+  source: unknown;
+};
+
 export type FacilityCalendarConflict = {
   id: string;
   fieldId: string;
@@ -66,6 +95,12 @@ export type FacilityCalendarFacilitySummary = FacilityCalendarMetricTotals & {
 
 export type FacilityCalendarSummary = FacilityCalendarMetricTotals & {
   facilities: FacilityCalendarFacilitySummary[];
+};
+
+export type FacilityCalendarFeed = {
+  items: FacilityCalendarFeedItem[];
+  summary: FacilityCalendarSummary;
+  range: CalendarRange;
 };
 
 const normalizeToMondayIndex = (date: Date): number => {
@@ -322,6 +357,359 @@ const getFieldFacilityName = (field: Field): string => {
   return 'Unassigned facility';
 };
 
+const getFieldFacilityContext = (field?: Field | null): Pick<FacilityCalendarFeedItem, 'facilityId' | 'facilityName' | 'fieldId' | 'fieldName'> => {
+  const fallbackFieldId = field?.$id ?? '';
+  return {
+    facilityId: field ? getFieldFacilityId(field) : null,
+    facilityName: field ? getFieldFacilityName(field) : 'Unassigned facility',
+    fieldId: fallbackFieldId,
+    fieldName: field ? getFacilityScopedFieldDisplayName(field) : 'Resource',
+  };
+};
+
+const getSourceId = (value: unknown): string | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (typeof value.$id === 'string' && value.$id.trim()) {
+    return value.$id.trim();
+  }
+  if (typeof value.id === 'string' && value.id.trim()) {
+    return value.id.trim();
+  }
+  return null;
+};
+
+const normalizeString = (value: unknown): string | null => (
+  typeof value === 'string' && value.trim() ? value.trim() : null
+);
+
+const toRecordArray = (value: unknown): Record<string, unknown>[] => (
+  Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => isRecord(item))
+    : []
+);
+
+const toStringArray = (value: unknown): string[] => (
+  Array.isArray(value)
+    ? value.map((item) => String(item ?? '').trim()).filter(Boolean)
+    : []
+);
+
+const isMatchCalendarResource = (value: unknown): value is Match => (
+  isRecord(value)
+  && (
+    typeof value.matchId === 'number'
+    || Array.isArray(value.team1Points)
+    || Array.isArray(value.setResults)
+  )
+);
+
+const isEventCalendarResource = (value: unknown): value is EventRecord => (
+  isRecord(value)
+  && typeof value.eventType === 'string'
+);
+
+const getEntryFeedItemType = (entry: FieldCalendarEntry): FacilityCalendarFeedItemType => {
+  if (entry.metaType === 'rental') {
+    return 'rental';
+  }
+  if (isMatchCalendarResource(entry.resource)) {
+    return 'game';
+  }
+  return 'event';
+};
+
+const getEntryFeedTitle = (entry: FieldCalendarEntry, type: FacilityCalendarFeedItemType): string => {
+  if (type === 'rental') {
+    return 'Rental slot';
+  }
+  const resource = entry.resource as { name?: unknown; matchId?: unknown; event?: { name?: unknown } } | null | undefined;
+  if (type === 'game') {
+    const eventName = normalizeString(resource?.event?.name);
+    const matchLabel = typeof resource?.matchId === 'number' ? `Match #${resource.matchId}` : 'Game';
+    return eventName ? `${eventName} - ${matchLabel}` : matchLabel;
+  }
+  return normalizeString(resource?.name) ?? entry.title;
+};
+
+const buildBaseFeedItem = (
+  entry: FieldCalendarEntry,
+  fieldsById: Map<string, Field>,
+): FacilityCalendarFeedItem => {
+  const field = fieldsById.get(entry.resourceId) ?? null;
+  const type = getEntryFeedItemType(entry);
+  return {
+    id: entry.id,
+    type,
+    title: getEntryFeedTitle(entry, type),
+    start: entry.start,
+    end: entry.end,
+    ...getFieldFacilityContext(field),
+    fieldId: entry.resourceId,
+    fieldName: entry.fieldName,
+    sourceId: getSourceId(entry.resource),
+    parentId: isMatchCalendarResource(entry.resource)
+      ? normalizeString((entry.resource as Match).eventId)
+      : isEventCalendarResource(entry.resource)
+        ? normalizeString((entry.resource as EventRecord).parentEvent)
+        : null,
+    status: isRecord(entry.resource) ? normalizeString(entry.resource.status) : null,
+    source: entry.resource,
+  };
+};
+
+const getFallbackInterval = (
+  source: { start?: unknown; end?: unknown },
+  range: CalendarRange,
+): CalendarInterval | null => {
+  const start = parseToDate(source.start as string | Date | null | undefined);
+  if (!start) {
+    return null;
+  }
+  const end = ensureEndDate(start, source.end as string | Date | null | undefined, ONE_HOUR_IN_MINUTES);
+  return clampIntervalToRange(start, end, range);
+};
+
+const getAssignmentInterval = (
+  assignment: Record<string, unknown>,
+  fallback: CalendarInterval | null,
+  range: CalendarRange,
+): CalendarInterval | null => {
+  const rawStart = assignment.plannedStart ?? assignment.actualStart ?? assignment.start;
+  const rawEnd = assignment.plannedEnd ?? assignment.actualEnd ?? assignment.end;
+  const start = parseToDate(rawStart as string | Date | null | undefined);
+  const end = parseToDate(rawEnd as string | Date | null | undefined);
+  if (start) {
+    return clampIntervalToRange(start, end && end.getTime() > start.getTime() ? end : ensureEndDate(start, null), range);
+  }
+  return fallback;
+};
+
+const getEventStaffAssignmentRows = (event: EventRecord): Record<string, unknown>[] => {
+  const raw = event as unknown as Record<string, unknown>;
+  return [
+    ...toRecordArray(raw.staffAssignments),
+    ...toRecordArray(raw.eventStaffAssignments),
+    ...toRecordArray(raw.staffLaborEntries),
+  ];
+};
+
+const buildEventStaffFeedItems = (
+  field: Field,
+  event: EventRecord,
+  range: CalendarRange,
+): FacilityCalendarFeedItem[] => {
+  const fallback = getFallbackInterval(event as unknown as { start?: unknown; end?: unknown }, range);
+  return getEventStaffAssignmentRows(event).flatMap((assignment, index) => {
+    const interval = getAssignmentInterval(assignment, fallback, range);
+    if (!interval) {
+      return [];
+    }
+    const sourceId = getSourceId(assignment) ?? `${getSourceId(event) ?? 'event'}-staff-${index}`;
+    return [{
+      id: `facility-calendar-staff-${field.$id}-${sourceId}-${interval.start.getTime()}`,
+      type: 'staff_assignment' as const,
+      title: normalizeString(assignment.title) ?? normalizeString(assignment.role) ?? 'Staff assignment',
+      start: interval.start,
+      end: interval.end,
+      ...getFieldFacilityContext(field),
+      sourceId,
+      parentId: getSourceId(event),
+      userId: normalizeString(assignment.userId),
+      staffMemberId: normalizeString(assignment.staffMemberId),
+      status: normalizeString(assignment.status),
+      source: assignment,
+    }];
+  });
+};
+
+const buildEventOfficialFeedItems = (
+  field: Field,
+  event: EventRecord,
+  range: CalendarRange,
+): FacilityCalendarFeedItem[] => {
+  const fallback = getFallbackInterval(event as unknown as { start?: unknown; end?: unknown }, range);
+  return (event.eventOfficials ?? []).flatMap((official, index) => {
+    if (official.isActive === false) {
+      return [];
+    }
+    const assignedFieldIds = toStringArray(official.fieldIds);
+    if (assignedFieldIds.length && !assignedFieldIds.includes(field.$id)) {
+      return [];
+    }
+    if (!fallback) {
+      return [];
+    }
+    const sourceId = normalizeString(official.id) ?? `${getSourceId(event) ?? 'event'}-official-${index}`;
+    return [{
+      id: `facility-calendar-event-official-${field.$id}-${sourceId}-${fallback.start.getTime()}`,
+      type: 'official_assignment' as const,
+      title: 'Official assignment',
+      start: fallback.start,
+      end: fallback.end,
+      ...getFieldFacilityContext(field),
+      sourceId,
+      parentId: getSourceId(event),
+      userId: normalizeString(official.userId),
+      positionIds: toStringArray(official.positionIds),
+      status: 'ACTIVE',
+      source: official,
+    }];
+  });
+};
+
+const buildMatchOfficialFeedItems = (
+  field: Field,
+  match: Match,
+  range: CalendarRange,
+): FacilityCalendarFeedItem[] => {
+  const fallback = getFallbackInterval(match as unknown as { start?: unknown; end?: unknown }, range);
+  if (!fallback) {
+    return [];
+  }
+  const assignmentRows = toRecordArray(match.officialIds);
+  const rowItems = assignmentRows.flatMap((assignment, index) => {
+    const userId = normalizeString(assignment.userId);
+    if (!userId) {
+      return [];
+    }
+    const sourceId = getSourceId(assignment) ?? `${getSourceId(match) ?? 'match'}-official-${userId}-${index}`;
+    return [{
+      id: `facility-calendar-match-official-${field.$id}-${sourceId}-${fallback.start.getTime()}`,
+      type: 'official_assignment' as const,
+      title: 'Match official assignment',
+      start: fallback.start,
+      end: fallback.end,
+      ...getFieldFacilityContext(field),
+      sourceId,
+      parentId: getSourceId(match),
+      userId,
+      positionIds: toStringArray(assignment.positionIds),
+      status: typeof assignment.checkedIn === 'boolean' && assignment.checkedIn ? 'CHECKED_IN' : 'ASSIGNED',
+      source: assignment,
+    }];
+  });
+
+  const legacyOfficialId = normalizeString(match.officialId);
+  if (!legacyOfficialId || rowItems.some((item) => item.userId === legacyOfficialId)) {
+    return rowItems;
+  }
+
+  return [
+    ...rowItems,
+    {
+      id: `facility-calendar-match-official-${field.$id}-${getSourceId(match) ?? 'match'}-${legacyOfficialId}-${fallback.start.getTime()}`,
+      type: 'official_assignment' as const,
+      title: 'Match official assignment',
+      start: fallback.start,
+      end: fallback.end,
+      ...getFieldFacilityContext(field),
+      sourceId: getSourceId(match),
+      parentId: getSourceId(match),
+      userId: legacyOfficialId,
+      positionIds: [],
+      status: match.officialCheckedIn ? 'CHECKED_IN' : 'ASSIGNED',
+      source: match,
+    },
+  ];
+};
+
+const getMaintenanceBlockRows = (field: Field): Record<string, unknown>[] => {
+  const raw = field as unknown as Record<string, unknown>;
+  return [
+    ...toRecordArray(raw.maintenanceBlocks),
+    ...toRecordArray(raw.maintenance),
+  ];
+};
+
+const buildMaintenanceFeedItems = (
+  field: Field,
+  range: CalendarRange,
+): FacilityCalendarFeedItem[] => (
+  getMaintenanceBlockRows(field).flatMap((block, index) => {
+    const start = parseToDate(block.start as string | Date | null | undefined);
+    if (!start) {
+      return [];
+    }
+    const end = ensureEndDate(start, block.end as string | Date | null | undefined, ONE_HOUR_IN_MINUTES);
+    const interval = clampIntervalToRange(start, end, range);
+    if (!interval) {
+      return [];
+    }
+    const sourceId = getSourceId(block) ?? `${field.$id}-maintenance-${index}`;
+    return [{
+      id: `facility-calendar-maintenance-${field.$id}-${sourceId}-${interval.start.getTime()}`,
+      type: 'maintenance_block' as const,
+      title: normalizeString(block.title) ?? normalizeString(block.reason) ?? 'Maintenance block',
+      start: interval.start,
+      end: interval.end,
+      ...getFieldFacilityContext(field),
+      sourceId,
+      status: normalizeString(block.status),
+      source: block,
+    }];
+  })
+);
+
+const buildHydratedAssignmentFeedItems = (
+  fields: Field[],
+  range: CalendarRange,
+): FacilityCalendarFeedItem[] => (
+  fields.flatMap((field) => [
+    ...((field.events ?? []).flatMap((event) => [
+      ...buildEventStaffFeedItems(field, event, range),
+      ...buildEventOfficialFeedItems(field, event, range),
+    ])),
+    ...((field.matches ?? []).flatMap((match) => buildMatchOfficialFeedItems(field, match, range))),
+    ...buildMaintenanceFeedItems(field, range),
+  ])
+);
+
+const buildConflictFeedItems = (
+  conflicts: FacilityCalendarConflict[],
+  fieldsById: Map<string, Field>,
+): FacilityCalendarFeedItem[] => (
+  conflicts.map((conflict) => {
+    const field = fieldsById.get(conflict.fieldId) ?? null;
+    return {
+      id: `facility-calendar-conflict-${conflict.id}`,
+      type: 'conflict',
+      title: `Conflict: ${conflict.bookingTitle}`,
+      start: conflict.start,
+      end: conflict.end,
+      ...getFieldFacilityContext(field),
+      fieldId: conflict.fieldId,
+      fieldName: conflict.fieldName,
+      sourceId: conflict.id,
+      parentId: conflict.bookingEntryId,
+      status: 'UNRESOLVED',
+      unresolved: true,
+      source: conflict,
+    };
+  })
+);
+
+const sortFacilityCalendarFeedItems = (items: FacilityCalendarFeedItem[]): FacilityCalendarFeedItem[] => {
+  const order: Record<FacilityCalendarFeedItemType, number> = {
+    conflict: 0,
+    maintenance_block: 1,
+    event: 2,
+    game: 3,
+    rental: 4,
+    official_assignment: 5,
+    staff_assignment: 6,
+  };
+
+  return [...items].sort((left, right) => (
+    left.start.getTime() - right.start.getTime()
+    || order[left.type] - order[right.type]
+    || left.facilityName.localeCompare(right.facilityName, undefined, { numeric: true, sensitivity: 'base' })
+    || left.fieldName.localeCompare(right.fieldName, undefined, { numeric: true, sensitivity: 'base' })
+    || left.title.localeCompare(right.title, undefined, { numeric: true, sensitivity: 'base' })
+  ));
+};
+
 export const buildFacilityCalendarSummary = (
   fields: Field[],
   range: CalendarRange = null,
@@ -352,6 +740,27 @@ export const buildFacilityCalendarSummary = (
   return {
     ...totals,
     facilities,
+  };
+};
+
+export const buildFacilityCalendarFeed = (
+  fields: Field[],
+  range: CalendarRange = null,
+): FacilityCalendarFeed => {
+  const fieldsById = new Map(fields.map((field) => [field.$id, field]));
+  const summary = buildFacilityCalendarSummary(fields, range);
+  const baseItems = buildFieldCalendarEvents(fields, range).map((entry) => buildBaseFeedItem(entry, fieldsById));
+  const assignmentItems = buildHydratedAssignmentFeedItems(fields, range);
+  const conflictItems = buildConflictFeedItems(summary.conflicts, fieldsById);
+
+  return {
+    items: sortFacilityCalendarFeedItems([
+      ...baseItems,
+      ...assignmentItems,
+      ...conflictItems,
+    ]),
+    summary,
+    range,
   };
 };
 
