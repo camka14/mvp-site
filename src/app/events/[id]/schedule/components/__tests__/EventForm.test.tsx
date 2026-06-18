@@ -769,6 +769,42 @@ describe('EventForm dirty state', () => {
     expect(isValid).toBe(false);
   });
 
+  it('allows rental create flow to start without event image or divisions', async () => {
+    const formRef = React.createRef<EventFormHandle>();
+
+    renderForm(
+      jest.fn(),
+      formRef,
+      {
+        imageId: '',
+        divisions: [],
+        divisionDetails: [],
+      },
+      null,
+      {
+        isCreateMode: true,
+        rentalPurchase: {
+          start: '2026-03-12T10:00',
+          end: '2026-03-12T12:00',
+          fieldId: 'field_1',
+          organization: null,
+        },
+      },
+    );
+
+    await waitFor(() => {
+      expect(formRef.current).not.toBeNull();
+    });
+
+    let isValid = false;
+    await act(async () => {
+      isValid = await formRef.current!.validate();
+    });
+
+    expect(isValid).toBe(true);
+    expect(formRef.current?.getValidationErrors()).toEqual([]);
+  });
+
   it('requires every league division to be assigned to at least one timeslot', async () => {
     const formRef = React.createRef<EventFormHandle>();
     const baseDivision = buildEvent().divisionDetails[0];

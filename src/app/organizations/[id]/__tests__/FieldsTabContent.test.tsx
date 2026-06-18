@@ -215,6 +215,14 @@ const buildOrganizationWithTwoRentalFields = () => ({
 
 const buildOrganizationWithFacilityRentalFields = () => {
   const organization = buildOrganizationWithTwoRentalFields();
+  organization.fields[0] = {
+    ...organization.fields[0],
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+  organization.fields[1] = {
+    ...organization.fields[1],
+    createdAt: '2026-01-02T00:00:00.000Z',
+  };
   organization.facilities = [
     {
       $id: 'facility_river_city',
@@ -607,6 +615,59 @@ describe('FieldsTabContent calendar navigation', () => {
 
     expect(await screen.findAllByText('River City Sports Complex - Main')).not.toHaveLength(0);
     expect(screen.getByRole('heading', { name: 'Facilities' })).toBeInTheDocument();
+  });
+
+  it('passes facility context through public rental checkout', async () => {
+    const selectionReadyMock = jest.fn();
+    getNextRentalOccurrenceMock.mockImplementation((slot: any) => new Date(slot.startDate));
+    getFieldEventsMatchesMock.mockImplementation(async (field: any) => ({
+      ...field,
+      events: [],
+      matches: [],
+    }));
+    const user = userEvent.setup();
+
+    render(
+      <MantineProvider>
+        <FieldsTabContent
+          organization={buildOrganizationWithFacilityRentalFields()}
+          organizationId="org_test"
+          currentUser={{ $id: 'user_2' } as any}
+          onRentalSelectionReady={selectionReadyMock}
+        />
+      </MantineProvider>,
+    );
+
+    const createEventButton = await screen.findByRole('button', { name: 'Create Event' });
+    await waitFor(() => {
+      expect(createEventButton).toBeEnabled();
+    });
+    await user.click(createEventButton);
+
+    await waitFor(() => {
+      expect(selectionReadyMock).toHaveBeenCalledTimes(1);
+    });
+    const payload = selectionReadyMock.mock.calls[0]?.[0];
+    expect(payload).toEqual(expect.objectContaining({
+      organizationId: 'org_test',
+      facilityId: 'facility_river_city',
+      facilityName: 'River City Sports Complex',
+      facilityLocation: '100 River City Way',
+      facilityAddress: '100 River City Way, Portland, OR 97201, USA',
+      primaryFieldId: 'field_main',
+      primaryFieldName: 'River City Sports Complex - Main',
+      location: '100 River City Way',
+      coordinates: [-122.676, 45.523],
+      fieldIds: ['field_main'],
+    }));
+
+    const manageEventUrl = new URL(payload.manageEventUrl, 'http://localhost');
+    expect(manageEventUrl.searchParams.get('rentalFacilityId')).toBe('facility_river_city');
+    expect(manageEventUrl.searchParams.get('rentalFacilityName')).toBe('River City Sports Complex');
+    expect(manageEventUrl.searchParams.get('rentalFacilityLocation')).toBe('100 River City Way');
+    expect(manageEventUrl.searchParams.get('rentalFacilityAddress')).toBe('100 River City Way, Portland, OR 97201, USA');
+    expect(manageEventUrl.searchParams.get('rentalLat')).toBe('45.523');
+    expect(manageEventUrl.searchParams.get('rentalLng')).toBe('-122.676');
   });
 
   it('shows facility operations metrics for managers', async () => {

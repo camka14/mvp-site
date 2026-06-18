@@ -45,7 +45,7 @@ import { buildLeaguePlayoffPlaceholderAssignmentsForMatches } from '@/lib/bracke
 import { createClientId } from '@/lib/clientId';
 import { createId } from '@/lib/id';
 import { cloneEventAsTemplate, seedEventFromTemplate } from '@/lib/eventTemplates';
-import { getFieldDisplayName } from '@/lib/fieldUtils';
+import { getFieldDisplayName, getFieldResolvedLocation } from '@/lib/fieldUtils';
 import {
   collectViewerDivisionHighlightKeys,
   collectViewerTeamIds,
@@ -1024,6 +1024,10 @@ function EventScheduleContent() {
   const rentalEndParam = searchParams?.get('rentalEnd') || undefined;
   const rentalFieldIdParam = searchParams?.get('rentalFieldId') || undefined;
   const rentalFieldNameParam = searchParams?.get('rentalFieldName') || undefined;
+  const rentalFacilityIdParam = searchParams?.get('rentalFacilityId') || undefined;
+  const rentalFacilityNameParam = searchParams?.get('rentalFacilityName') || undefined;
+  const rentalFacilityLocationParam = searchParams?.get('rentalFacilityLocation') || undefined;
+  const rentalFacilityAddressParam = searchParams?.get('rentalFacilityAddress') || undefined;
   const rentalLocationParam = searchParams?.get('rentalLocation') || undefined;
   const rentalLatParam = searchParams?.get('rentalLat') || undefined;
   const rentalLngParam = searchParams?.get('rentalLng') || undefined;
@@ -1383,6 +1387,26 @@ function EventScheduleContent() {
     return undefined;
   }, [rentalLatParam, rentalLngParam]);
 
+  const getRentalFieldCoordinates = useCallback((field?: Field | null): [number, number] | undefined => {
+    const lng = Number(field?.long);
+    const lat = Number(field?.lat);
+    if (Number.isFinite(lng) && Number.isFinite(lat) && !(lng === 0 && lat === 0)) {
+      return [lng, lat];
+    }
+    const facility = field?.facility;
+    if (facility && typeof facility === 'object') {
+      const coordinates = facility.coordinates;
+      if (Array.isArray(coordinates) && coordinates.length >= 2) {
+        const facilityLng = Number(coordinates[0]);
+        const facilityLat = Number(coordinates[1]);
+        if (Number.isFinite(facilityLng) && Number.isFinite(facilityLat) && !(facilityLng === 0 && facilityLat === 0)) {
+          return [facilityLng, facilityLat];
+        }
+      }
+    }
+    return undefined;
+  }, []);
+
   const userLocationLabel = useMemo(() => {
     if (userLocationInfo) {
       const parts = [userLocationInfo.city, userLocationInfo.state]
@@ -1498,21 +1522,32 @@ function EventScheduleContent() {
         location: rentalLocationParam ?? '',
         lat: rentalCoordinates?.[1] ?? 0,
         long: rentalCoordinates?.[0] ?? 0,
+        facilityId: rentalFacilityIdParam ?? null,
+        facility: rentalFacilityIdParam || rentalFacilityNameParam || rentalFacilityLocationParam || rentalFacilityAddressParam
+          ? {
+            $id: rentalFacilityIdParam ?? `${primaryRentalFieldId}-facility`,
+            organizationId: resolvedRentalOrgId ?? '',
+            name: rentalFacilityNameParam ?? 'Facility',
+            location: rentalFacilityLocationParam ?? '',
+            address: rentalFacilityAddressParam ?? null,
+          }
+          : null,
       };
     })();
 
     const resolvedField = rentalFieldFromOrg ?? rentalField;
-    const derivedLocation = rentalLocationParam ?? resolvedField?.location ?? rentalOrganization?.location ?? '';
+    const derivedLocation = rentalLocationParam
+      ?? getFieldResolvedLocation(resolvedField, rentalFacilityLocationParam ?? rentalOrganization?.location ?? '');
     const derivedCoordinates =
       rentalCoordinates ??
-      (resolvedField ? [resolvedField.long, resolvedField.lat] as [number, number] : undefined) ??
+      getRentalFieldCoordinates(resolvedField) ??
       (rentalOrganization?.coordinates as [number, number] | undefined);
 
     const defaults: Partial<Event> = {
       start: normalizedStart,
       end: normalizedEnd,
       location: derivedLocation,
-      address: rentalOrganization?.address ?? undefined,
+      address: rentalFacilityAddressParam ?? rentalOrganization?.address ?? undefined,
     };
 
     if (derivedCoordinates) {
@@ -1533,6 +1568,16 @@ function EventScheduleContent() {
           location: rentalLocationParam ?? rentalOrganization?.location ?? '',
           lat: rentalCoordinates?.[1] ?? 0,
           long: rentalCoordinates?.[0] ?? 0,
+          facilityId: rentalFacilityIdParam ?? null,
+          facility: rentalFacilityIdParam || rentalFacilityNameParam || rentalFacilityLocationParam || rentalFacilityAddressParam
+            ? {
+              $id: rentalFacilityIdParam ?? `${fieldId}-facility`,
+              organizationId: resolvedRentalOrgId ?? '',
+              name: rentalFacilityNameParam ?? 'Facility',
+              location: rentalFacilityLocationParam ?? '',
+              address: rentalFacilityAddressParam ?? null,
+            }
+            : null,
         } as Field;
       })
       .filter((field): field is Field => Boolean(field?.$id));
@@ -1579,11 +1624,17 @@ function EventScheduleContent() {
     rentalSelections,
     rentalFieldIdsFromSelections,
     rentalCoordinates,
+    rentalFacilityAddressParam,
+    rentalFacilityIdParam,
+    rentalFacilityLocationParam,
+    rentalFacilityNameParam,
     normalizedRentalEnd,
     rentalFieldIdParam,
     rentalFieldNameParam,
     rentalLocationParam,
     normalizedRentalStart,
+    getRentalFieldCoordinates,
+    resolvedRentalOrgId,
   ]);
 
   const rentalPurchaseContext = useMemo(() => {

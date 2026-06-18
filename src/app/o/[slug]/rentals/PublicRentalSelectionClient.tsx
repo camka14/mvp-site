@@ -64,7 +64,7 @@ const buildRentalPaymentDraft = (
     start: payload.rentalStart,
     end: payload.rentalEnd,
     location: payload.location || organization.location || 'Rental',
-    address: organization.address,
+    address: payload.facilityAddress ?? organization.address,
     coordinates: fallbackCoordinates,
     price: 0,
     imageId: '',
@@ -143,10 +143,16 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
 
   const paymentEvent = useMemo(() => ({
     name: `${organization.name} rental`,
-    location: pendingSelection?.location || organization.location || '',
+    location: pendingSelection?.location || pendingSelection?.facilityLocation || organization.location || '',
     eventType: 'EVENT' as const,
     price: pendingSelection?.totalRentalCents ?? 0,
-  }), [organization.location, organization.name, pendingSelection?.location, pendingSelection?.totalRentalCents]);
+  }), [
+    organization.location,
+    organization.name,
+    pendingSelection?.facilityLocation,
+    pendingSelection?.location,
+    pendingSelection?.totalRentalCents,
+  ]);
 
   const createRentalOrder = useCallback(async (
     payload: RentalSelectionCheckoutPayload,
@@ -342,10 +348,28 @@ export default function PublicRentalSelectionClient({ slug, organization }: Publ
       >
         <Stack gap="md">
           {pendingSelection ? (
-            <Group justify="space-between">
-              <Text fw={600}>Rental total</Text>
-              <Text fw={700}>{formatPrice(pendingSelection.totalRentalCents)}</Text>
-            </Group>
+            <Stack gap={4}>
+              <Group justify="space-between">
+                <Text fw={600}>Rental total</Text>
+                <Text fw={700}>{formatPrice(pendingSelection.totalRentalCents)}</Text>
+              </Group>
+              {pendingSelection.facilityName ? (
+                <Text size="sm">
+                  <Text span fw={600}>Facility:</Text> {pendingSelection.facilityName}
+                </Text>
+              ) : null}
+              {pendingSelection.primaryFieldName ? (
+                <Text size="sm">
+                  <Text span fw={600}>Resource:</Text> {pendingSelection.primaryFieldName}
+                  {pendingSelection.fieldIds.length > 1 ? ` + ${pendingSelection.fieldIds.length - 1} more` : ''}
+                </Text>
+              ) : null}
+              {pendingSelection.location || pendingSelection.facilityLocation ? (
+                <Text size="sm" c="dimmed">
+                  {pendingSelection.location || pendingSelection.facilityLocation}
+                </Text>
+              ) : null}
+            </Stack>
           ) : null}
           {showSportPrompt ? (
             <>

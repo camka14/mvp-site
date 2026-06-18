@@ -3363,7 +3363,12 @@ const tournamentConfigSchema = z.object({
     setDurationMinutes: z.number().optional(),
 });
 
-const eventFormSchema = z
+type EventFormSchemaOptions = {
+    allowMissingEventImage?: boolean;
+    allowMissingEventDivisions?: boolean;
+};
+
+const buildEventFormSchema = (options: EventFormSchemaOptions = {}) => z
     .object({
         $id: z.string(),
         name: z.string().trim().min(1, 'Event name is required'),
@@ -3465,7 +3470,9 @@ const eventFormSchema = z
         requiredTemplateIds: z.array(z.string()).default([]),
         hostId: z.string().optional(),
         noFixedEndDateTime: z.boolean().default(false),
-        imageId: z.string().trim().min(1, 'Event image is required'),
+        imageId: options.allowMissingEventImage
+            ? z.string().trim().default('')
+            : z.string().trim().min(1, 'Event image is required'),
         seedColor: z.number(),
         waitList: z.array(z.string()),
         freeAgents: z.array(z.string()),
@@ -3548,14 +3555,15 @@ const eventFormSchema = z
             });
         }
 
-        if (values.divisions.length === 0) {
+        const requiresDivisionSelection = !(options.allowMissingEventDivisions && values.eventType === 'EVENT');
+        if (requiresDivisionSelection && values.divisions.length === 0) {
             ctx.addIssue({
                 code: "custom",
                 message: 'Select at least one division',
                 path: ['divisions'],
             });
         }
-        if (values.divisionDetails.length === 0) {
+        if (requiresDivisionSelection && values.divisionDetails.length === 0) {
             ctx.addIssue({
                 code: "custom",
                 message: 'Add at least one division',
@@ -4053,6 +4061,14 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
     const activeEditingEvent = incomingEvent ?? null;
 
     const isEditMode = Boolean(activeEditingEvent && !isCreateMode);
+    const isRentalCreateFlow = Boolean(!isEditMode && rentalPurchase);
+    const eventValidationSchema = useMemo(
+        () => buildEventFormSchema({
+            allowMissingEventImage: isRentalCreateFlow,
+            allowMissingEventDivisions: isRentalCreateFlow,
+        }),
+        [isRentalCreateFlow],
+    );
 
     useEffect(() => {
         const eventId = activeEditingEvent?.$id;
@@ -4708,7 +4724,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         trigger,
         formState: { errors, isDirty },
     } = useForm<EventFormValues>({
-        resolver: zodResolver(eventFormSchema) as Resolver<EventFormValues>,
+        resolver: zodResolver(eventValidationSchema) as Resolver<EventFormValues>,
         mode: 'onBlur',
         reValidateMode: 'onBlur',
         defaultValues: buildDefaultFormValues(),
@@ -9132,7 +9148,6 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         [selectedImageId],
     );
 
-    const isRentalCreateFlow = Boolean(!isEditMode && rentalPurchase);
     const eventTypeOptions = useMemo(
         () => [
             { value: 'EVENT', label: 'Event' },
@@ -10216,7 +10231,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         const isFormValid = await trigger();
         if (!isFormValid) {
             const currentValues = getValues();
-            const schemaResult = eventFormSchema.safeParse(currentValues);
+            const schemaResult = eventValidationSchema.safeParse(currentValues);
             const flattenedErrors = dedupeValidationErrors([
                 ...(schemaResult.success ? [] : flattenZodIssues(schemaResult.error.issues)),
                 ...flattenFormErrors(errors),
@@ -10257,6 +10272,7 @@ const EventForm = React.forwardRef<EventFormHandle, EventFormProps>(({
         eventData.officialSchedulingMode,
         eventData.parentEvent,
         errors,
+        eventValidationSchema,
         getValues,
         officialStaffingCoverageError,
         requiredOfficialSlotsPerMatch,

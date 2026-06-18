@@ -176,8 +176,11 @@ function RentalItem({ rental }: { rental: PublicOrganizationRentalCard }) {
   return (
     <a href={rental.detailsUrl} className={styles.item}>
       <div className={styles.itemBody}>
-        <h3 className={styles.itemTitle}>{rental.fieldName}</h3>
-        <p className={styles.itemMeta}>{rental.location ?? 'Location TBD'}</p>
+        <h3 className={styles.itemTitle}>{rental.facilityName ?? rental.fieldName}</h3>
+        {rental.facilityName ? (
+          <p className={styles.itemMeta}>{rental.fieldName}</p>
+        ) : null}
+        <p className={styles.itemMeta}>{rental.location ?? rental.facilityLocation ?? 'Location TBD'}</p>
         <p className={styles.itemMeta}>{formatDate(rental.start)} - {formatPrice(rental.priceCents)}</p>
         <span className={styles.itemAction}>Book rental</span>
       </div>

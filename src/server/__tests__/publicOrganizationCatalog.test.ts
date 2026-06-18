@@ -106,6 +106,7 @@ describe('publicOrganizationCatalog', () => {
     prismaMock.canonicalTeams.findFirst.mockReset();
     prismaMock.teamRegistrations.findMany.mockReset();
     prismaMock.fields.findMany.mockReset();
+    prismaMock.facilities.findMany.mockReset();
     prismaMock.timeSlots.findMany.mockReset();
     prismaMock.products.findMany.mockReset();
     prismaMock.products.findFirst.mockReset();
@@ -117,6 +118,7 @@ describe('publicOrganizationCatalog', () => {
     prismaMock.sports.findUnique.mockResolvedValue(null);
     prismaMock.divisions.findMany.mockResolvedValue([]);
     prismaMock.teamRegistrations.findMany.mockResolvedValue([]);
+    prismaMock.facilities.findMany.mockResolvedValue([]);
     prismaMock.matches.findMany.mockResolvedValue([]);
     buildDivisionStandingsResponseMock.mockReset();
     toLeagueEventMock.mockReset();
@@ -695,7 +697,7 @@ describe('publicOrganizationCatalog', () => {
             { status: 'PENDING' },
             {
               status: 'STARTED',
-              createdAt: { gte: new Date('2026-04-21T21:55:00.000Z') },
+              createdAt: { gte: new Date('2026-04-21T21:50:00.000Z') },
             },
           ],
         },
@@ -801,6 +803,11 @@ describe('publicOrganizationCatalog', () => {
     expect(rentals).toEqual([
       expect.objectContaining({
         id: 'slot_1',
+        fieldId: 'field_1',
+        fieldName: 'Main Field',
+        facilityId: 'facility_1',
+        facilityName: 'Main Park',
+        facilityLocation: 'Main Park',
         location: 'Main Park',
         detailsUrl: '/o/scsoccer/rentals',
       }),

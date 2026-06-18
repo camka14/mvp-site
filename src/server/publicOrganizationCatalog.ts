@@ -80,6 +80,9 @@ export type PublicOrganizationRentalCard = {
   id: string;
   fieldId: string;
   fieldName: string;
+  facilityId: string | null;
+  facilityName: string | null;
+  facilityLocation: string | null;
   location: string | null;
   priceCents: number;
   start: string | null;
@@ -1161,6 +1164,10 @@ export const listPublicOrganizationRentals = async (
   });
   return slots.map((slot: Record<string, any>): PublicOrganizationRentalCard => {
     const field = fieldBySlotId.get(String(slot.id)) ?? {};
+    const facility = field.facility && typeof field.facility === 'object'
+      ? field.facility as Record<string, any>
+      : null;
+    const facilityLocation = normalizeNullableString(facility?.location) ?? normalizeNullableString(facility?.address) ?? null;
     return {
       id: String(slot.id),
       fieldId: String(field.id ?? ''),
@@ -1168,6 +1175,9 @@ export const listPublicOrganizationRentals = async (
         { id: String(field.id ?? ''), name: normalizeNullableString(field.name) ?? '' },
         'Rental field',
       ),
+      facilityId: normalizeNullableString(facility?.id) ?? normalizeNullableString(field.facilityId) ?? null,
+      facilityName: normalizeNullableString(facility?.name) ?? null,
+      facilityLocation,
       location: getFieldResolvedLocation(field, organization.location),
       priceCents: typeof slot.price === 'number' ? slot.price : 0,
       start: toIsoString(slot.startDate),

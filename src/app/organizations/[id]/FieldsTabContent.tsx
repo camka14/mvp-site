@@ -102,6 +102,10 @@ export type RentalSelectionCheckoutPayload = {
   manageEventUrl: string;
   organizationId: string | null;
   organizationName: string;
+  facilityId: string | null;
+  facilityName: string | null;
+  facilityLocation: string | null;
+  facilityAddress: string | null;
   totalRentalCents: number;
   rentalStart: string;
   rentalEnd: string;
@@ -250,6 +254,66 @@ const getFieldFacility = (field?: Field | null): Facility | null => {
     return facility;
   }
   return null;
+};
+
+const getFieldFacilityFilterValue = (field?: Field | null): string => (
+  getFieldFacilityId(field) ?? UNASSIGNED_FACILITY_FILTER_VALUE
+);
+
+const getFacilityLabelForFilterValue = (facilities: Facility[], filterValue: string): string => {
+  if (filterValue === ALL_FACILITIES_FILTER_VALUE) {
+    return 'All facilities';
+  }
+  if (filterValue === UNASSIGNED_FACILITY_FILTER_VALUE) {
+    return 'Unassigned resources';
+  }
+  return facilities.find((facility) => facility.$id === filterValue)?.name || 'Facility';
+};
+
+const getFieldFacilityFromList = (
+  field: Field | null | undefined,
+  facilities: Facility[],
+): Facility | null => {
+  const expanded = getFieldFacility(field);
+  if (expanded) {
+    return expanded;
+  }
+  const facilityId = getFieldFacilityId(field);
+  return facilityId ? facilities.find((facility) => facility.$id === facilityId) ?? null : null;
+};
+
+const facilityCoordinatesToTuple = (value: Facility['coordinates'] | Organization['coordinates'] | unknown): [number, number] | null => {
+  if (Array.isArray(value) && value.length >= 2) {
+    const lng = Number(value[0]);
+    const lat = Number(value[1]);
+    if (Number.isFinite(lng) && Number.isFinite(lat) && !(lng === 0 && lat === 0)) {
+      return [lng, lat];
+    }
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const lat = Number(record.lat ?? record.latitude);
+    const lng = Number(record.lng ?? record.long ?? record.longitude);
+    if (Number.isFinite(lng) && Number.isFinite(lat) && !(lng === 0 && lat === 0)) {
+      return [lng, lat];
+    }
+  }
+  return null;
+};
+
+const getFieldCoordinatesWithFallback = (
+  field: Field | null | undefined,
+  facility?: Facility | null,
+  organization?: Organization | null,
+): [number, number] | undefined => {
+  const fieldLat = Number(field?.lat);
+  const fieldLng = Number(field?.long);
+  if (Number.isFinite(fieldLat) && Number.isFinite(fieldLng) && !(fieldLat === 0 && fieldLng === 0)) {
+    return [fieldLng, fieldLat];
+  }
+  return facilityCoordinatesToTuple(facility?.coordinates)
+    ?? facilityCoordinatesToTuple(organization?.coordinates)
+    ?? undefined;
 };
 
 const buildFacilityManagementList = (
@@ -1081,6 +1145,15 @@ export default function FieldsTabContent({
       ? [{ value: UNASSIGNED_FACILITY_FILTER_VALUE, label: 'Unassigned resources' }]
       : []),
   ], [facilityOptions, unassignedFields.length]);
+  const publicFacilityFilterOptions = useMemo(() => {
+    const options = [
+      ...facilityOptions,
+      ...(unassignedFields.length > 0
+        ? [{ value: UNASSIGNED_FACILITY_FILTER_VALUE, label: 'Unassigned resources' }]
+        : []),
+    ];
+    return options.length ? options : facilityFilterOptions;
+  }, [facilityFilterOptions, facilityOptions, unassignedFields.length]);
   const facilityFilteredFields = useMemo(
     () => fields.filter((field) => fieldMatchesFacilityFilter(field, selectedFacilityFilterValue)),
     [fields, selectedFacilityFilterValue],
@@ -1104,10 +1177,6 @@ export default function FieldsTabContent({
     value: field.$id,
     label: getFacilityScopedFieldDisplayName(field),
   })), [fields]);
-  const fieldOptions = useMemo(() => facilityFilteredFields.map((field) => ({
-    value: field.$id,
-    label: getFacilityScopedFieldDisplayName(field),
-  })), [facilityFilteredFields]);
   const fieldFilterItems = useMemo<FieldCalendarFilterItem[]>(() => facilityFilteredFields.map((field) => {
     const label = getFacilityScopedFieldDisplayName(field);
     const count = (field.events?.length ?? 0) + (field.matches?.length ?? 0) + (field.rentalSlots?.length ?? 0);
@@ -1142,6 +1211,20 @@ export default function FieldsTabContent({
   const fieldLabelById = useMemo(
     () => new Map(allFieldOptions.map((option) => [option.value, option.label])),
     [allFieldOptions],
+  );
+  const facilityFieldsByFilterValue = useMemo(() => {
+    const byFilterValue = new Map<string, Field[]>();
+    fields.forEach((field) => {
+      const filterValue = getFieldFacilityFilterValue(field);
+      const bucket = byFilterValue.get(filterValue) ?? [];
+      bucket.push(field);
+      byFilterValue.set(filterValue, bucket);
+    });
+    return byFilterValue;
+  }, [fields]);
+  const facilityById = useMemo(
+    () => new Map(facilities.map((facility) => [facility.$id, facility])),
+    [facilities],
   );
 
   const rentalListings = useMemo(() => {
@@ -1237,6 +1320,19 @@ export default function FieldsTabContent({
   }, [facilityFilterOptions, selectedFacilityFilterValue]);
 
   useEffect(() => {
+    if (canManage) {
+      return;
+    }
+    if (selectedFacilityFilterValue !== ALL_FACILITIES_FILTER_VALUE) {
+      return;
+    }
+    const firstFacilityValue = publicFacilityFilterOptions.find((option) => option.value !== ALL_FACILITIES_FILTER_VALUE)?.value;
+    if (firstFacilityValue) {
+      setSelectedFacilityFilterValue(firstFacilityValue);
+    }
+  }, [canManage, publicFacilityFilterOptions, selectedFacilityFilterValue]);
+
+  useEffect(() => {
     if (!canManage) {
       return;
     }
@@ -1277,6 +1373,22 @@ export default function FieldsTabContent({
     [fields, selectedFieldIds],
   );
   const selectedField = selectedFields[0] ?? null;
+  const getSelectionFacilityFilterValue = useCallback(
+    (fieldIds: string[]): string => {
+      const normalizedIds = normalizeFieldIds(fieldIds);
+      const matchingFields = normalizedIds
+        .map((fieldId) => fields.find((field) => field.$id === fieldId))
+        .filter((field): field is Field => Boolean(field));
+      if (!matchingFields.length) {
+        return selectedFacilityFilterValue === ALL_FACILITIES_FILTER_VALUE
+          ? publicFacilityFilterOptions.find((option) => option.value !== ALL_FACILITIES_FILTER_VALUE)?.value ?? ALL_FACILITIES_FILTER_VALUE
+          : selectedFacilityFilterValue;
+      }
+      const facilityValues = Array.from(new Set(matchingFields.map((field) => getFieldFacilityFilterValue(field))));
+      return facilityValues.length === 1 ? facilityValues[0] : ALL_FACILITIES_FILTER_VALUE;
+    },
+    [fields, publicFacilityFilterOptions, selectedFacilityFilterValue],
+  );
   const readonlyCalendarFieldIds = useMemo(() => {
     if (canManage) {
       return [];
@@ -2240,7 +2352,7 @@ export default function FieldsTabContent({
     const seedSelection = rentalSelections[0];
     const fallbackFieldId = seedSelection
       ? normalizeFieldIds(seedSelection.scheduledFieldIds)[0]
-      : fields[0]?.$id;
+      : facilityFilteredFields[0]?.$id ?? fields[0]?.$id;
     if (!fallbackFieldId) {
       notifications.show({ color: 'red', message: 'No resources available for rental selection.' });
       return;
@@ -2255,7 +2367,7 @@ export default function FieldsTabContent({
     const nextStart = seedRange ? new Date(seedRange.end.getTime()) : defaultStart;
     const nextEnd = new Date(nextStart.getTime() + durationMs);
     setRentalSelections((prev) => [buildSelectionFromCalendarRange(nextStart, nextEnd, fallbackFieldId), ...prev]);
-  }, [fields, rentalSelections]);
+  }, [facilityFilteredFields, fields, rentalSelections]);
 
   const handleRemoveRentalSelection = useCallback((selectionKey: string) => {
     setRentalSelections((prev) => prev.filter((selectionItem) => selectionItem.key !== selectionKey));
@@ -2559,7 +2671,10 @@ export default function FieldsTabContent({
       new Set(serializedSelections.flatMap((selectionItem) => normalizeFieldIds(selectionItem.scheduledFieldIds))),
     );
     const primaryField = fields.find((field) => field.$id === allFieldIds[0]) ?? null;
-    const primaryFieldLocation = getFieldResolvedLocation(primaryField, org?.location ?? '');
+    const primaryFacility = getFieldFacilityFromList(primaryField, facilities);
+    const primaryFacilityLocation = primaryFacility?.location || primaryFacility?.address || null;
+    const primaryFieldLocation = getFieldResolvedLocation(primaryField, primaryFacilityLocation ?? org?.location ?? '');
+    const primaryCoordinates = getFieldCoordinatesWithFallback(primaryField, primaryFacility, org);
     const newId = createId();
     const params = new URLSearchParams();
     params.set('create', '1');
@@ -2578,11 +2693,21 @@ export default function FieldsTabContent({
       if (primaryFieldLocation) {
         params.set('rentalLocation', primaryFieldLocation);
       }
-      if (typeof primaryField.lat === 'number' && Number.isFinite(primaryField.lat)) {
-        params.set('rentalLat', String(primaryField.lat));
+      if (primaryCoordinates) {
+        params.set('rentalLng', String(primaryCoordinates[0]));
+        params.set('rentalLat', String(primaryCoordinates[1]));
       }
-      if (typeof primaryField.long === 'number' && Number.isFinite(primaryField.long)) {
-        params.set('rentalLng', String(primaryField.long));
+      if (primaryFacility?.$id) {
+        params.set('rentalFacilityId', primaryFacility.$id);
+      }
+      if (primaryFacility?.name) {
+        params.set('rentalFacilityName', primaryFacility.name);
+      }
+      if (primaryFacilityLocation) {
+        params.set('rentalFacilityLocation', primaryFacilityLocation);
+      }
+      if (primaryFacility?.address) {
+        params.set('rentalFacilityAddress', primaryFacility.address);
       }
     }
     if (totalRentalCents > 0) {
@@ -2610,6 +2735,10 @@ export default function FieldsTabContent({
         manageEventUrl,
         organizationId: org?.$id ?? null,
         organizationName: org?.name ?? 'Organization',
+        facilityId: primaryFacility?.$id ?? getFieldFacilityId(primaryField) ?? null,
+        facilityName: primaryFacility?.name ?? null,
+        facilityLocation: primaryFacilityLocation,
+        facilityAddress: primaryFacility?.address ?? null,
         totalRentalCents: Math.round(totalRentalCents),
         rentalStart: earliestSelectionStart ? formatLocalDateTime(earliestSelectionStart) : '',
         rentalEnd: latestSelectionEnd ? formatLocalDateTime(latestSelectionEnd) : '',
@@ -2620,12 +2749,7 @@ export default function FieldsTabContent({
           ? getFacilityScopedFieldDisplayName(primaryField)
           : null,
         location: primaryFieldLocation,
-        coordinates: typeof primaryField?.lat === 'number'
-          && Number.isFinite(primaryField.lat)
-          && typeof primaryField?.long === 'number'
-          && Number.isFinite(primaryField.long)
-          ? [primaryField.long, primaryField.lat]
-          : undefined,
+        coordinates: primaryCoordinates,
         requiredTemplateIds: rentalRequiredTemplateIds,
         hostRequiredTemplateIds: rentalHostRequiredTemplateIds,
       });
@@ -2637,8 +2761,10 @@ export default function FieldsTabContent({
     canManage,
     currentUser,
     fields,
+    facilities,
     hostSelection,
     org?.$id,
+    org?.coordinates,
     org?.location,
     org?.name,
     rentalHostRequiredTemplateIds,
@@ -3117,8 +3243,27 @@ export default function FieldsTabContent({
                   {rentalSelections.map((selectionItem, index) => {
                     const validation = rentalSelectionValidationByKey.get(selectionItem.key);
                     const selectionRange = resolveSelectionDateRange(selectionItem);
-                    const selectionFieldNames = normalizeFieldIds(selectionItem.scheduledFieldIds)
-                      .map((fieldId) => fieldLabelById.get(fieldId) ?? fieldId);
+                    const selectionFieldIds = normalizeFieldIds(selectionItem.scheduledFieldIds);
+                    const selectionFacilityValue = getSelectionFacilityFilterValue(selectionFieldIds);
+                    const selectionFacilityLabel = getFacilityLabelForFilterValue(facilities, selectionFacilityValue);
+                    const selectionFacilityFields = selectionFacilityValue === ALL_FACILITIES_FILTER_VALUE
+                      ? fields
+                      : facilityFieldsByFilterValue.get(selectionFacilityValue) ?? [];
+                    const selectionFieldOptions = selectionFacilityFields.map((field) => ({
+                      value: field.$id,
+                      label: getFacilityScopedFieldDisplayName(field),
+                    }));
+                    const selectionFieldNames = selectionFieldIds.map((fieldId) => fieldLabelById.get(fieldId) ?? fieldId);
+                    const firstSelectionField = fields.find((field) => field.$id === selectionFieldIds[0]) ?? null;
+                    const selectionFacility = getFieldFacilityFromList(firstSelectionField, facilities) ?? (
+                      selectionFacilityValue !== ALL_FACILITIES_FILTER_VALUE && selectionFacilityValue !== UNASSIGNED_FACILITY_FILTER_VALUE
+                        ? facilityById.get(selectionFacilityValue) ?? null
+                        : null
+                    );
+                    const selectionLocation = getFieldResolvedLocation(
+                      firstSelectionField,
+                      selectionFacility?.location || selectionFacility?.address || org?.location || '',
+                    );
                     const hasConflict = (validation?.conflictCount ?? 0) > 0;
                     return (
                       <Paper
@@ -3128,7 +3273,7 @@ export default function FieldsTabContent({
                         p="md"
                         shadow="xs"
                         style={{
-                          aspectRatio: '1 / 1',
+                          minHeight: 360,
                           display: 'flex',
                           flexDirection: 'column',
                           justifyContent: 'space-between',
@@ -3162,10 +3307,29 @@ export default function FieldsTabContent({
                               Remove
                             </Button>
                           </Group>
+                          <Select
+                            label="Facility"
+                            data={publicFacilityFilterOptions}
+                            value={selectionFacilityValue}
+                            onChange={(nextValue) => {
+                              const normalizedValue = nextValue ?? publicFacilityFilterOptions[0]?.value ?? ALL_FACILITIES_FILTER_VALUE;
+                              const nextFacilityFields = normalizedValue === ALL_FACILITIES_FILTER_VALUE
+                                ? fields
+                                : facilityFieldsByFilterValue.get(normalizedValue) ?? [];
+                              const nextFieldIds = nextFacilityFields.length ? [nextFacilityFields[0].$id] : [];
+                              setSelectedFacilityFilterValue(normalizedValue);
+                              setReadonlyVisibleFieldIds(nextFacilityFields.map((field) => field.$id));
+                              updateRentalSelection(selectionItem.key, (current) => ({
+                                ...current,
+                                scheduledFieldIds: nextFieldIds,
+                              }));
+                            }}
+                            allowDeselect={false}
+                          />
                           <MultiSelect
                             label="Resources"
-                            data={fieldOptions}
-                            value={normalizeFieldIds(selectionItem.scheduledFieldIds)}
+                            data={selectionFieldOptions}
+                            value={selectionFieldIds.filter((fieldId) => selectionFacilityFields.some((field) => field.$id === fieldId))}
                             onChange={(nextValues) => {
                               updateRentalSelection(selectionItem.key, (current) => ({
                                 ...current,
@@ -3215,7 +3379,7 @@ export default function FieldsTabContent({
                           </Group>
                           <Text size="xs" c="dimmed">
                             {selectionRange
-                              ? `${formatDisplayDateTime(selectionRange.start)} - ${formatDisplayDateTime(selectionRange.end)} • ${selectionFieldNames.join(', ')}`
+                              ? `${selectionFacilityLabel} • ${formatDisplayDateTime(selectionRange.start)} - ${formatDisplayDateTime(selectionRange.end)} • ${selectionFieldNames.join(', ')}${selectionLocation ? ` • ${selectionLocation}` : ''}`
                               : 'Select date/time and resources to validate availability.'}
                           </Text>
                           {validation?.errors.map((errorMessage, errorIndex) => (
@@ -3249,7 +3413,7 @@ export default function FieldsTabContent({
               <Stack gap="sm">
                 <Select
                   label="Facility"
-                  data={facilityFilterOptions}
+                  data={publicFacilityFilterOptions}
                   value={selectedFacilityFilterValue}
                   onChange={handleFacilityFilterChange}
                   allowDeselect={false}
